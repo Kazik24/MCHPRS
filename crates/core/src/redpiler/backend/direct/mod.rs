@@ -38,6 +38,20 @@ struct TickScheduler {
     pos: usize,
 }
 
+// this function calculates fibonacci number sequence
+// todo make this a trait
+#[allow(unused)]
+fn fibonacci(n: usize) -> usize {
+    let mut a = 0;
+    let mut b = 1;
+    for _ in 0..n {
+        let c = a + b;
+        a = b;
+        b = c;
+    }
+    a
+}
+
 impl TickScheduler {
     const NUM_PRIORITIES: usize = 4;
     const NUM_QUEUES: usize = 16;

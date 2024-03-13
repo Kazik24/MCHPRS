@@ -353,6 +353,7 @@ items! {
         from_id(_id): 640 => {},
         block: true,
     },
+    // TODO add piston item/block (piston/piston_head/ block at the end of piston???)
     Unknown {
         props: {
             id: u32

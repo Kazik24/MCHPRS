@@ -73,6 +73,7 @@ pub fn on_neighbor_changed(
     wire
 }
 
+// todo can piston instant repeater be implemented as a redstone wire????
 pub fn on_neighbor_updated(mut wire: RedstoneWire, world: &mut impl World, pos: BlockPos) {
     let new_power = calculate_power(world, pos);
 

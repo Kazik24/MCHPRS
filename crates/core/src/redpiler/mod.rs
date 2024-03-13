@@ -93,7 +93,7 @@ impl CompilerOptions {
 
 #[derive(Default)]
 pub struct Compiler {
-    is_active: bool,
+    is_active: bool, //todo add option to disable redpiler completely
     jit: Option<BackendDispatcher>,
     options: CompilerOptions,
 }

@@ -182,6 +182,7 @@ fn diode_get_input_strength(world: &impl World, pos: BlockPos, facing: BlockDire
     power
 }
 
+//todo implement update for pistons
 pub fn update(block: Block, world: &mut impl World, pos: BlockPos) {
     match block {
         Block::RedstoneWire { wire } => {
