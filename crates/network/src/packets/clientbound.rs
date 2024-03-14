@@ -1,7 +1,5 @@
 use super::{PacketEncoder, PacketEncoderExt, PalettedContainer, SlotData};
 use crate::nbt_map::NBTMap;
-use bitvec::bits;
-use bitvec::prelude::Lsb0;
 use serde::Serialize;
 use std::collections::HashMap;
 
@@ -544,14 +542,23 @@ impl ClientBoundPacket for CChunkData {
         // Block Light Mask
         buf.write_varint(0);
 
-        let bits = bits![u64, Lsb0; 1].repeat(self.chunk_sections.len() + 2);
-        let longs = bits.as_raw_slice();
+        // fixes compilation on 32-bit platforms
+        let mut mask = Vec::new();
+        let mut count = self.chunk_sections.len() + 2;
+        mask.write_varint(count.div_ceil(64) as i32);
+        for _ in 0..count.div_ceil(64) {
+            match count.checked_sub(64) {
+                Some(new_count) => {
+                    count = new_count;
+                    mask.write_long(-1); //all bits to 1
+                }
+                None => mask.write_long(((1u64 << count) - 1) as i64), //'count' bits to 1
+            }
+        }
         // Empty Sky Light Mask
-        buf.write_varint(longs.len() as i32);
-        longs.iter().for_each(|&x| buf.write_long(x as i64));
+        buf.extend_from_slice(&mask);
         // Empty Block Light Mask
-        buf.write_varint(longs.len() as i32);
-        longs.iter().for_each(|&x| buf.write_long(x as i64));
+        buf.extend_from_slice(&mask);
 
         // Sky Light array count
         buf.write_varint(0);

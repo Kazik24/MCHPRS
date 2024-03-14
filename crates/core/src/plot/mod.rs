@@ -55,6 +55,7 @@ pub const PLOT_SECTIONS: usize = 16;
 pub const PLOT_BLOCK_HEIGHT: i32 = PLOT_SECTIONS as i32 * 16;
 
 pub struct Plot {
+    //todo plots are worlds on its own, when player enters the plot, all network packets are dispatched by that plot
     pub world: PlotWorld,
     pub players: Vec<Player>,
     pub redpiler: Compiler,
@@ -84,7 +85,7 @@ pub struct Plot {
     running: bool,
     /// If true, the plot will remain running even if no players are on for a long time.
     always_running: bool,
-    auto_redpiler: bool,
+    auto_redpiler: bool, //todo disables/enables automatic redpiler engaging
 
     owner: Option<u128>,
     async_rt: Runtime,
