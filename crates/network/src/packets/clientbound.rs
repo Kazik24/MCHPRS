@@ -543,22 +543,22 @@ impl ClientBoundPacket for CChunkData {
         buf.write_varint(0);
 
         // fixes compilation on 32-bit platforms
-        let mut mask = Vec::new();
+        // Empty Sky Light Mask
         let mut count = self.chunk_sections.len() + 2;
-        mask.write_varint(count.div_ceil(64) as i32);
+        let mask_start = buf.len();
+        buf.write_varint(count.div_ceil(64) as i32);
         for _ in 0..count.div_ceil(64) {
             match count.checked_sub(64) {
                 Some(new_count) => {
                     count = new_count;
-                    mask.write_long(-1); //all bits to 1
+                    buf.write_long(-1); //all bits to 1
                 }
-                None => mask.write_long(((1u64 << count) - 1) as i64), //'count' bits to 1
+                None => buf.write_long(((1u64 << count) - 1) as i64), //'count' bits to 1
             }
         }
-        // Empty Sky Light Mask
-        buf.extend_from_slice(&mask);
-        // Empty Block Light Mask
-        buf.extend_from_slice(&mask);
+
+        // Empty Block Light Mask (same as Sky Light Mask)
+        buf.extend_from_within(mask_start..);
 
         // Sky Light array count
         buf.write_varint(0);
