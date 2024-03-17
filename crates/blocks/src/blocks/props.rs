@@ -120,6 +120,13 @@ pub struct RedstonePiston {
     pub extended: bool,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default, BlockProperty, BlockTransform)]
+pub struct RedstonePistonHead {
+    pub facing: BlockFacing,
+    pub sticky: bool,
+    pub short: bool,
+}
+
 #[derive(Copy, Clone, Default, Debug, PartialEq, Eq)]
 pub enum LeverFace {
     Floor,

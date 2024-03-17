@@ -159,14 +159,18 @@ macro_rules! blocks {
                 props: {
                     $(
                         $prop_name:ident : $prop_type:ident
+                        $(,)?
                     ),*
+                    $(,)?
                 },
                 get_id: $get_id:expr,
                 $( from_id_offset: $get_id_offset:literal, )?
                 from_id($id_name:ident): $from_id_pat:pat => {
                     $(
                         $from_id_pkey:ident: $from_id_pval:expr
+                        $(,)?
                     ),*
+                    $(,)?
                 },
                 from_names($name_name:ident): {
                     $(
@@ -174,13 +178,16 @@ macro_rules! blocks {
                             $(
                                 $from_name_pkey:ident: $from_name_pval:expr
                             ),*
+                            $(,)?
                         }
                     ),*
+                    $(,)?
                 },
                 get_name: $get_name:expr,
                 $( solid: $solid:literal, )?
                 $( transparent: $transparent:literal, )?
                 $( cube: $cube:literal, )?
+                $(,)?
             }
         ),*
     ) => {
@@ -822,6 +829,24 @@ blocks! {
             }
         },
         get_name: "piston",
+        solid: true,
+        cube: true,
+    },
+    PistonHead {
+        props: {
+            head: RedstonePistonHead
+        },
+        get_id: (head.facing.get_id() * 4) + 1416,
+        from_id_offset: 1416,
+        from_id(_id): 1416..=1439 => {
+            head: Default::default()
+        },
+        from_names(_name): {
+            "piston_head" => {
+                head: Default::default()
+            }
+        },
+        get_name: "piston_head",
         solid: true,
         cube: true,
     },
