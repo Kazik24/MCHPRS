@@ -140,6 +140,18 @@ fn comparator_id_test() {
     assert_eq!(new, original);
 }
 
+#[test]
+fn test_piston_observers_id_conversions() {
+    //9510
+    let ids = (1385..=1415) // pistons
+        .chain(9510..=9521); // observers
+    for i in ids {
+        let block = Block::from_id(i);
+        let id = block.get_id();
+        assert_eq!(id, i);
+    }
+}
+
 macro_rules! blocks {
     (
         $(
@@ -742,16 +754,21 @@ blocks! {
         transparent: true,
         cube: true,
     },
+
     Observer {
         props: {
             observer: RedstoneObserver
         },
-        get_id: (observer.facing.get_id() << 1) + 9510,
+        get_id: if observer.powered {
+            (observer.facing.get_id() << 1) + 9510
+        } else {
+            (observer.facing.get_id() << 1) + 9511
+        },
         from_id_offset: 9510,
         from_id(id): 9510..=9521 => {
             observer: RedstoneObserver{
                 facing: BlockFacing::from_id(id >> 1),
-                powered: false,
+                powered: id & 1 == 0,
             }
         },
         from_names(_name): {
@@ -763,23 +780,48 @@ blocks! {
         solid: true,
         cube: true,
     },
-    //id???
-    // https://nekoyue.github.io/ForgeJavaDocs-NG/javadoc/1.18.2/net/minecraft/world/level/block/Block.html#getId(net.minecraft.world.level.block.state.BlockState)
 
+    //todo maybe in the future add slime blocks
     Piston{
         props: {
             piston: RedstonePiston
         },
-        get_id: 1385,
-        from_id(_id): 1385..=1391 => {
-            piston: Default::default()
+        get_id: match (piston.sticky, piston.extended) {
+            (true, true) => piston.facing.get_id() + 1385,
+            (true, false) => piston.facing.get_id() + 1391,
+            (false, true) => piston.facing.get_id() + 1404,
+            (false, false) => piston.facing.get_id() + 1410,
+        },
+        from_id(id): 1385..=1396 | 1404..=1415 => {
+            piston: match id {
+                1385..=1390 => RedstonePiston{
+                    sticky: true,
+                    extended: true,
+                    facing: BlockFacing::from_id(id - 1385),
+                },
+                1391..=1396 => RedstonePiston{
+                    sticky: true,
+                    extended: false,
+                    facing: BlockFacing::from_id(id - 1391),
+                },
+                1404..=1409 => RedstonePiston{
+                    sticky: false,
+                    extended: true,
+                    facing: BlockFacing::from_id(id - 1404),
+                },
+                _ => RedstonePiston{
+                    sticky: false,
+                    extended: false,
+                    facing: BlockFacing::from_id(id - 1410),
+                },
+            }
         },
         from_names(_name): {
-            "redstone_block" => {
+            "piston" => {
                 piston: Default::default()
             }
         },
-        get_name: "redstone_12312",
+        get_name: "piston",
         solid: true,
         cube: true,
     },

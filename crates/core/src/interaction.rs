@@ -223,17 +223,19 @@ pub fn get_state_for_placement(
         Item::Observer {} => Block::Observer {
             observer: RedstoneObserver {
                 facing: context.player.get_block_facing(),
-                powered: true,
+                powered: false,
             },
         },
-        Item::Piston { sticky } => {
-            Block::Unknown{
-                id: 1417 + if sticky { 1 } else { 0 },
-            }
-        }
+        Item::Piston { sticky } => Block::Piston {
+            piston: RedstonePiston {
+                facing: context.player.get_block_facing().opposite(),
+                extended: false,
+                sticky,
+            },
+        },
         v => {
-            info!("unknown item {:?}", v);
-            Block::Stone {  }
+            info!("unknown item {:?}", v); //todo remove
+            Block::Stone {}
         }
     };
     if is_valid_position(block, world, pos) {

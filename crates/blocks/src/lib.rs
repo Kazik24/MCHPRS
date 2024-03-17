@@ -425,6 +425,18 @@ impl BlockFacing {
             other => other,
         }
     }
+
+    pub fn opposite(self) -> BlockFacing {
+        use BlockFacing::*;
+        match self {
+            North => South,
+            South => North,
+            East => West,
+            West => East,
+            Up => Down,
+            Down => Up,
+        }
+    }
 }
 
 impl ToString for BlockFacing {
