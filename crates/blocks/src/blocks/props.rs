@@ -1,3 +1,5 @@
+use crate::BlockFacing;
+
 use super::{BlockDirection, BlockProperty, BlockTransform, FlipDirection};
 use std::str::FromStr;
 
@@ -103,6 +105,19 @@ impl RedstoneComparator {
             powered,
         }
     }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default, BlockProperty, BlockTransform)]
+pub struct RedstoneObserver {
+    pub facing: BlockFacing,
+    pub powered: bool,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default, BlockProperty, BlockTransform)]
+pub struct RedstonePiston {
+    pub facing: BlockFacing,
+    pub sticky: bool,
+    pub extended: bool,
 }
 
 #[derive(Copy, Clone, Default, Debug, PartialEq, Eq)]

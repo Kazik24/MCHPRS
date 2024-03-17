@@ -744,19 +744,42 @@ blocks! {
     },
     Observer {
         props: {
-            facing: BlockFacing
+            observer: RedstoneObserver
         },
-        get_id: (facing.get_id() << 1) + 9510,
+        get_id: (observer.facing.get_id() << 1) + 9510,
         from_id_offset: 9510,
         from_id(id): 9510..=9521 => {
-            facing: BlockFacing::from_id(id >> 1)
+            observer: RedstoneObserver{
+                facing: BlockFacing::from_id(id >> 1),
+                powered: false,
+            }
         },
         from_names(_name): {
             "observer" => {
-                facing: Default::default()
+                observer: Default::default()
             }
         },
         get_name: "observer",
+        solid: true,
+        cube: true,
+    },
+    //id???
+    // https://nekoyue.github.io/ForgeJavaDocs-NG/javadoc/1.18.2/net/minecraft/world/level/block/Block.html#getId(net.minecraft.world.level.block.state.BlockState)
+
+    Piston{
+        props: {
+            piston: RedstonePiston
+        },
+        get_id: 1385,
+        from_id(_id): 1385..=1391 => {
+            piston: Default::default()
+        },
+        from_names(_name): {
+            "redstone_block" => {
+                piston: Default::default()
+            }
+        },
+        get_name: "redstone_12312",
         solid: true,
         cube: true,
     },

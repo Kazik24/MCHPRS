@@ -2,7 +2,7 @@ use crate::block_entities::ContainerType;
 use crate::BlockColorVariant;
 use mchprs_utils::map;
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct ItemStack {
     pub item_type: Item,
     pub count: u8,
@@ -351,6 +351,23 @@ items! {
         props: {},
         get_id: 640,
         from_id(_id): 640 => {},
+        block: true,
+    },
+    Observer {
+        props: {},
+        get_id: 594,
+        from_id(_id): 594 => {},
+        block: true,
+    },
+    Piston {
+        props: {
+            sticky: bool
+        },
+        get_id: if sticky { 591 } else { 590 },
+        from_id_offset: 590,
+        from_id(id): 590..=591 => {
+            sticky: id != 0
+        },
         block: true,
     },
     // TODO add piston item/block (piston/piston_head/ block at the end of piston???)

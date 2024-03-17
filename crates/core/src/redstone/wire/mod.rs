@@ -117,7 +117,7 @@ fn can_connect_to(block: Block, side: BlockDirection) -> bool {
         Block::RedstoneRepeater { repeater } => {
             repeater.facing == side || repeater.facing == side.opposite()
         }
-        Block::Observer { facing } => facing == side.block_facing(),
+        Block::Observer { observer } => observer.facing == side.block_facing(),
         _ => false,
     }
 }

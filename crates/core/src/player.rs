@@ -347,11 +347,18 @@ impl Player {
     }
 
     pub fn get_facing(&self) -> BlockFacing {
+        self.get_facing_pitch_cutoff(70.0)
+    }
+
+    pub fn get_block_facing(&self) -> BlockFacing {
+        self.get_facing_pitch_cutoff(45.0)
+    }
+
+    fn get_facing_pitch_cutoff(&self, pitch_cutoff: f32) -> BlockFacing {
         let yaw = self.yaw.rem_euclid(360.0);
-        let pitch = self.pitch;
-        if pitch <= -70.0 {
+        if self.pitch <= -pitch_cutoff {
             BlockFacing::Up
-        } else if pitch >= 70.0 {
+        } else if self.pitch >= pitch_cutoff {
             BlockFacing::Down
         } else if (45.0..=135.0).contains(&yaw) {
             BlockFacing::West

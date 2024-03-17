@@ -10,6 +10,7 @@ use mchprs_blocks::items::{Item, ItemStack};
 use mchprs_blocks::{BlockFace, BlockPos, SignType};
 use mchprs_network::packets::clientbound::{COpenSignEditor, ClientBoundPacket};
 use mchprs_world::TickPriority;
+use tracing::info;
 
 pub fn on_use(
     block: Block,
@@ -219,7 +220,21 @@ pub fn get_state_for_placement(
                 powered: false,
             },
         },
-        _ => Block::Air {},
+        Item::Observer {} => Block::Observer {
+            observer: RedstoneObserver {
+                facing: context.player.get_block_facing(),
+                powered: true,
+            },
+        },
+        Item::Piston { sticky } => {
+            Block::Unknown{
+                id: 1417 + if sticky { 1 } else { 0 },
+            }
+        }
+        v => {
+            info!("unknown item {:?}", v);
+            Block::Stone {  }
+        }
     };
     if is_valid_position(block, world, pos) {
         block
@@ -418,7 +433,7 @@ pub fn use_item_on_block(
         return false;
     }
     let can_place = item.item_type.is_block() && world.get_block(block_pos).can_place_block_in();
-
+    info!("unknown item {:?}, can place: {can_place:?}", item);
     if !ctx.player.crouching
         && on_use(
             use_block,

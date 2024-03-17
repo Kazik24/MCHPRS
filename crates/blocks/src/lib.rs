@@ -161,6 +161,32 @@ impl BlockFace {
     }
 }
 
+//todo remove (not needed anymore)
+impl From<BlockFace> for BlockFacing {
+    fn from(face: BlockFace) -> BlockFacing {
+        match face {
+            BlockFace::North => BlockFacing::North,
+            BlockFace::South => BlockFacing::South,
+            BlockFace::East => BlockFacing::East,
+            BlockFace::West => BlockFacing::West,
+            BlockFace::Top => BlockFacing::Up,
+            BlockFace::Bottom => BlockFacing::Down,
+        }
+    }
+}
+impl From<BlockFacing> for BlockFace {
+    fn from(facing: BlockFacing) -> BlockFace {
+        match facing {
+            BlockFacing::North => BlockFace::North,
+            BlockFacing::South => BlockFace::South,
+            BlockFacing::East => BlockFace::East,
+            BlockFacing::West => BlockFace::West,
+            BlockFacing::Up => BlockFace::Top,
+            BlockFacing::Down => BlockFace::Bottom,
+        }
+    }
+}
+
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum BlockColorVariant {
     White = 0,

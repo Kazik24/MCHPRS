@@ -88,7 +88,7 @@ pub struct Plot {
     auto_redpiler: bool, //todo disables/enables automatic redpiler engaging
 
     owner: Option<u128>,
-    async_rt: Runtime,
+    async_rt: Runtime, //todo use one runtime for all plots since it's heavy object used just for some small requests
     scoreboard: Scoreboard,
 }
 
