@@ -226,13 +226,21 @@ pub fn get_state_for_placement(
                 powered: false,
             },
         },
-        Item::Piston { sticky } => Block::Piston {
-            piston: RedstonePiston {
-                facing: context.player.get_block_facing().opposite(),
-                extended: false,
-                sticky,
-            },
-        },
+        // TODO, I replaced this block to PistonHead for debugging, It needs to automaticly extend & replace Piston block with extended one and place PistonHead block next to it.
+        Item::Piston { sticky } => 
+        
+        Block::PistonHead { head: RedstonePistonHead {
+            facing: context.player.get_block_facing().opposite(),
+            sticky,
+            short: true,
+        } },
+        // Block::Piston {
+        //     piston: RedstonePiston {
+        //         facing: context.player.get_block_facing().opposite(),
+        //         extended: false,
+        //         sticky,
+        //     },
+        // },
         v => {
             info!("unknown item {:?}", v); //todo remove
             Block::Stone {}
