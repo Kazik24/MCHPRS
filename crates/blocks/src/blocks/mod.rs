@@ -142,9 +142,9 @@ fn comparator_id_test() {
 
 #[test]
 fn test_piston_observers_id_conversions() {
-    //9510
     let ids = (1385..=1415) // pistons
-        .chain(9510..=9521); // observers
+        .chain(9510..=9521) // observers
+        .chain(1416..=1439); // piston heads
     for i in ids {
         let block = Block::from_id(i);
         let id = block.get_id();
@@ -159,7 +159,6 @@ macro_rules! blocks {
                 props: {
                     $(
                         $prop_name:ident : $prop_type:ident
-                        $(,)?
                     ),*
                     $(,)?
                 },
@@ -168,7 +167,6 @@ macro_rules! blocks {
                 from_id($id_name:ident): $from_id_pat:pat => {
                     $(
                         $from_id_pkey:ident: $from_id_pval:expr
-                        $(,)?
                     ),*
                     $(,)?
                 },
@@ -801,34 +799,27 @@ blocks! {
         },
         from_id(id): 1385..=1396 | 1404..=1415 => {
             piston: match id {
-                1385..=1390 => RedstonePiston{
+                1385..=1396 => RedstonePiston{
                     sticky: true,
-                    extended: true,
-                    facing: BlockFacing::from_id(id - 1385),
-                },
-                1391..=1396 => RedstonePiston{
-                    sticky: true,
-                    extended: false,
-                    facing: BlockFacing::from_id(id - 1391),
-                },
-                1404..=1409 => RedstonePiston{
-                    sticky: false,
-                    extended: true,
-                    facing: BlockFacing::from_id(id - 1404),
+                    extended: (id - 1385) / 6 == 0,
+                    facing: BlockFacing::from_id((id - 1385) % 6),
                 },
                 _ => RedstonePiston{
                     sticky: false,
-                    extended: false,
-                    facing: BlockFacing::from_id(id - 1410),
+                    extended: (id - 1404) / 6 == 0,
+                    facing: BlockFacing::from_id((id - 1404) % 6),
                 },
             }
         },
         from_names(_name): {
             "piston" => {
-                piston: Default::default()
+                piston: RedstonePiston{ sticky: false, ..Default::default() }
+            },
+            "sticky_piston" => {
+                piston: RedstonePiston{ sticky: true, ..Default::default() }
             }
         },
-        get_name: "piston",
+        get_name: if piston.sticky { "sticky_piston" } else { "piston" },
         solid: true,
         cube: true,
     },
@@ -836,10 +827,14 @@ blocks! {
         props: {
             head: RedstonePistonHead
         },
-        get_id: (head.facing.get_id() * 4) + 1416,
+        get_id: (head.facing.get_id() * 4) + (head.sticky as u32) + (((!head.short) as u32) * 2) + 1416,
         from_id_offset: 1416,
-        from_id(_id): 1416..=1439 => {
-            head: Default::default()
+        from_id(id): 1416..=1439 => {
+            head: RedstonePistonHead{
+                facing: BlockFacing::from_id(id >> 2),
+                sticky: id & 1 != 0,
+                short: id & 2 == 0,
+            }
         },
         from_names(_name): {
             "piston_head" => {
@@ -847,6 +842,27 @@ blocks! {
             }
         },
         get_name: "piston_head",
+        solid: true,
+        cube: true,
+    },
+    MovingPiston {
+        props: {
+            facing: BlockFacing,
+            sticky: bool,
+        },
+        get_id: (facing.get_id() << 1) + (sticky as u32) + 1456,
+        from_id_offset: 1456,
+        from_id(id): 1456..=1467 => {
+            facing: BlockFacing::from_id(id >> 1),
+            sticky: id & 1 != 0,
+        },
+        from_names(_name): {
+            "moving_piston" => {
+                facing: Default::default(),
+                sticky: false,
+            }
+        },
+        get_name: "moving_piston",
         solid: true,
         cube: true,
     },
