@@ -272,6 +272,10 @@ pub fn place_in_world(
     change_surrounding_blocks(world, pos);
     if let Block::RedstoneWire { .. } = block {
         redstone::update_wire_neighbors(world, pos);
+    } if let Block::Piston { piston } = block {
+       // update piston ? here
+
+       redstone::update_surrounding_blocks(world, pos);
     } else {
         redstone::update_surrounding_blocks(world, pos);
     }
@@ -388,6 +392,7 @@ pub fn change(block: Block, world: &mut impl World, pos: BlockPos, direction: Bl
             redstone::update_wire_neighbors(world, pos);
         }
     }
+    // if let Pison? 
 }
 
 fn change_surrounding_blocks(world: &mut impl World, pos: BlockPos) {
@@ -407,6 +412,8 @@ fn change_surrounding_blocks(world: &mut impl World, pos: BlockPos) {
         change(down_block, world, down_pos, *direction);
     }
 }
+
+
 
 #[derive(PartialEq, Eq, Copy, Clone)]
 pub enum ActionResult {
