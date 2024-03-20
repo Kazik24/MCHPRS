@@ -1,4 +1,6 @@
+use crate::blocks::Block;
 use crate::items::Item;
+use crate::BlockFace;
 use mchprs_utils::{map, nbt_unwrap_val};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -68,6 +70,27 @@ impl ContainerType {
     }
 }
 
+#[derive(Debug, Copy, Clone, Serialize, Deserialize)]
+pub struct MovingPistonEntity {
+    extending: bool,
+    facing: BlockFace,
+    progress: u8,
+    source: bool,
+    block_state: u32,
+}
+
+impl MovingPistonEntity {
+    pub const ID: &'static str = "minecraft:moving_piston";
+    pub const MAX_PROGRESS: u8 = u8::MAX;
+    pub fn get_progress(&self) -> f32 {
+        self.progress as f32 / Self::MAX_PROGRESS as f32
+    }
+    pub fn progress_to_u8(progress: f32) -> u8 {
+        let prog = progress * Self::MAX_PROGRESS as f32;
+        prog.clamp(0.0, Self::MAX_PROGRESS as f32) as u8
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum BlockEntity {
     Comparator {
@@ -79,6 +102,7 @@ pub enum BlockEntity {
         ty: ContainerType,
     },
     Sign(Box<SignBlockEntity>),
+    MovingPiston(MovingPistonEntity),
 }
 
 impl BlockEntity {
@@ -92,6 +116,7 @@ impl BlockEntity {
                 ContainerType::Hopper => 16,
             },
             BlockEntity::Sign(_) => 7,
+            BlockEntity::MovingPiston(_) => todo!("find a protocol id for moving pistons"),
         }
     }
 
@@ -180,6 +205,22 @@ impl BlockEntity {
                     ],
                 }))
             }),
+            MovingPistonEntity::ID => Some({
+                let block_state = nbt_unwrap_val!(&nbt["blockState"], Value::Compound);
+                let block_state = nbt_unwrap_val!(&block_state["Name"], Value::String);
+                //todo properties of blocks (low priority)
+                let block_state = Block::from_name(block_state)?.get_id();
+                BlockEntity::MovingPiston(MovingPistonEntity {
+                    block_state,
+                    extending: *nbt_unwrap_val!(&nbt["extending"], Value::Byte) != 0,
+                    facing: BlockFace::from_id(*nbt_unwrap_val!(&nbt["facing"], Value::Int) as u32),
+                    progress: MovingPistonEntity::progress_to_u8(*nbt_unwrap_val!(
+                        &nbt["progress"],
+                        Value::Float
+                    )),
+                    source: *nbt_unwrap_val!(&nbt["source"], Value::Byte) != 0,
+                })
+            }),
             _ => None,
         }
     }
@@ -224,6 +265,20 @@ impl BlockEntity {
                 nbt::Blob::with_content(map! {
                     "id" => Value::String(ty.to_string()),
                     "Items" => Value::List(items)
+                })
+            }),
+            BlockEntity::MovingPiston(mp) => Some({
+                let block_state = map! {
+                    "Name" => Value::String(format!("minecraft:{}",Block::from_id(mp.block_state).get_name())),
+                    //todo properties of blocks (low priority)
+                };
+                nbt::Blob::with_content(map! {
+                    "id" => Value::String(MovingPistonEntity::ID.into()),
+                    "blockState" => Value::Compound(block_state),
+                    "extending" => Value::Byte(mp.extending as i8),
+                    "facing" => Value::Int(mp.facing.get_id() as i32),
+                    "progress" => Value::Float(mp.get_progress()),
+                    "source" => Value::Byte(mp.source as i8),
                 })
             }),
         }

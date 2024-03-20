@@ -127,6 +127,13 @@ pub struct RedstonePistonHead {
     pub short: bool,
 }
 
+impl RedstonePiston {
+    pub fn extend(mut self, extended: bool) -> Self {
+        self.extended = extended;
+        self
+    }
+}
+
 #[derive(Copy, Clone, Default, Debug, PartialEq, Eq)]
 pub enum LeverFace {
     Floor,

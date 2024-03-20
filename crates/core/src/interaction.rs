@@ -227,13 +227,20 @@ pub fn get_state_for_placement(
             },
         },
         // TODO, I replaced this block to PistonHead for debugging, It needs to automaticly extend & replace Piston block with extended one and place PistonHead block next to it.
-        Item::Piston { sticky } => 
-        
-        Block::PistonHead { head: RedstonePistonHead {
-            facing: context.player.get_block_facing().opposite(),
-            sticky,
-            short: true,
-        } },
+        Item::Piston { sticky } => Block::Piston {
+            piston: RedstonePiston {
+                facing: context.player.get_block_facing().opposite(),
+                sticky,
+                extended: false,
+            },
+        },
+        Item::Snowball {} => Block::PistonHead {
+            head: RedstonePistonHead {
+                facing: context.player.get_block_facing().opposite(),
+                sticky: true,
+                short: true,
+            },
+        },
         // Block::Piston {
         //     piston: RedstonePiston {
         //         facing: context.player.get_block_facing().opposite(),
@@ -272,10 +279,11 @@ pub fn place_in_world(
     change_surrounding_blocks(world, pos);
     if let Block::RedstoneWire { .. } = block {
         redstone::update_wire_neighbors(world, pos);
-    } if let Block::Piston { piston } = block {
-       // update piston ? here
+    }
+    if let Block::Piston { piston } = block {
+        // update piston ? here
 
-       redstone::update_surrounding_blocks(world, pos);
+        redstone::update_surrounding_blocks(world, pos);
     } else {
         redstone::update_surrounding_blocks(world, pos);
     }
@@ -392,7 +400,7 @@ pub fn change(block: Block, world: &mut impl World, pos: BlockPos, direction: Bl
             redstone::update_wire_neighbors(world, pos);
         }
     }
-    // if let Pison? 
+    // if let Pison?
 }
 
 fn change_surrounding_blocks(world: &mut impl World, pos: BlockPos) {
@@ -412,8 +420,6 @@ fn change_surrounding_blocks(world: &mut impl World, pos: BlockPos) {
         change(down_block, world, down_pos, *direction);
     }
 }
-
-
 
 #[derive(PartialEq, Eq, Copy, Clone)]
 pub enum ActionResult {

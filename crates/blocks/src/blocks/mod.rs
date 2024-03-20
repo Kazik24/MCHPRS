@@ -98,6 +98,7 @@ impl Block {
                 | Block::Hopper { .. }
                 | Block::Sign { .. }
                 | Block::WallSign { .. }
+                | Block::MovingPiston { .. }
         )
     }
 

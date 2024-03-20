@@ -115,17 +115,20 @@ where
     }
 }
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum BlockFace {
-    Bottom,
-    Top,
-    North,
-    South,
-    West,
-    East,
+    Bottom = 0,
+    Top = 1,
+    North = 2,
+    South = 3,
+    West = 4,
+    East = 5,
 }
 
 impl BlockFace {
+    pub fn get_id(self) -> u32 {
+        self as u32
+    }
     pub fn from_id(id: u32) -> BlockFace {
         match id {
             0 => BlockFace::Bottom,
@@ -137,9 +140,7 @@ impl BlockFace {
             _ => panic!("invalid BlockFace with id {}", id),
         }
     }
-}
 
-impl BlockFace {
     pub fn values() -> [BlockFace; 6] {
         use BlockFace::*;
         [Top, Bottom, North, South, East, West]

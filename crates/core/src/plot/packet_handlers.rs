@@ -169,6 +169,7 @@ impl ServerBoundPacketHandler for Plot {
             player_block_placement.y,
             player_block_placement.z,
         );
+        //FIXME: this panics if face is invalid, player can literally crash the whole server with this, and even corrupt plots if timed well!
         let block_face = BlockFace::from_id(player_block_placement.face as u32);
 
         let cancel = |plot: &mut Plot| {
