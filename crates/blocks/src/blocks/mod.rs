@@ -230,7 +230,7 @@ macro_rules! blocks {
                 }
             }
 
-            pub fn get_id(self) -> u32 {
+            pub const fn get_id(self) -> u32 {
                 match self {
                     $(
                         Block::$name {
@@ -359,6 +359,7 @@ macro_rules! blocks {
     }
 }
 
+// list of block states: https://github.com/PrismarineJS/minecraft-data/blob/master/data/pc/1.18/blocks.json
 blocks! {
     Air {
         props: {},
@@ -436,14 +437,14 @@ blocks! {
             sign_type: SignType,
             facing: BlockDirection
         },
-        get_id: 1 + (sign_type.0 << 3) + (facing.get_id() << 1) + match sign_type.0 {
+        get_id: 1 + (sign_type.to_item_type() << 3) as u32 + (facing.get_id() << 1) + match sign_type.0 {
             0..=5 => 3802,
             6..=7 => 15973 - (6 << 3),
             _ => unreachable!(),
         },
         from_id_offset: 0,
         from_id(id): 3802..=3849 | 15973..=15988 => {
-            sign_type: SignType(match id {
+            sign_type: SignType::from_item_type(match id {
                 3802..=3849 => (id - 3802) >> 3,
                 15973..=15988 => ((id - 15973) >> 3) + 6,
                 _ => unreachable!(),
@@ -549,25 +550,25 @@ blocks! {
     Sign {
         props: {
             sign_type: SignType,
-            rotation: u32
+            rotation: u8
         },
-        get_id: 1 + (sign_type.0 << 5) + (rotation << 1) + match sign_type.0 {
+        get_id: 1 + ((sign_type.to_item_type() << 5) as u32) + (rotation << 1) as u32 + match sign_type.0 {
             0..=5 => 3438,
             6..=7 => 15909 - (6 << 5),
             _ => unreachable!(),
         },
         from_id_offset: 0,
         from_id(id): 3438..=3629 | 15909..=15972 => {
-            sign_type: SignType(match id {
+            sign_type: SignType::from_item_type(match id {
                 3438..=3629 => (id - 3438) >> 5,
                 15909..=15972 => ((id - 15909) >> 5) + 6,
                 _ => unreachable!(),
             }),
-            rotation: (match id {
+            rotation: ((match id {
                 3438..=3629 => id - 3438,
                 15909..=15972 => id - 15909,
                 _ => unreachable!(),
-            } & 0b11110) >> 1
+            } & 0b11110) >> 1) as u8
         },
         from_names(_name): {
             "oak_sign" => {
@@ -956,6 +957,17 @@ blocks! {
             "sandstone" => {}
         },
         get_name: "sandstone",
+        solid: true,
+        cube: true,
+    },
+    StoneBrick {
+        props: {},
+        get_id: 4564,
+        from_id(_id): 4564 => {},
+        from_names(_name): {
+            "stone_bricks" => {}
+        },
+        get_name: "stone_bricks",
         solid: true,
         cube: true,
     },

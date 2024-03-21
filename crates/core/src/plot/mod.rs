@@ -899,6 +899,9 @@ impl Plot {
     }
 
     fn generate_chunk(layers: i32, x: i32, z: i32) -> Chunk {
+        const BORDER: u32 = Block::StoneBrick {}.get_id();
+        const FILL: u32 = Block::Sandstone {}.get_id();
+
         let mut chunk = Chunk::empty(x, z);
 
         for ry in 0..layers {
@@ -912,9 +915,9 @@ impl Plot {
                         || (block_x + 1) % PLOT_BLOCK_WIDTH == 0
                         || (block_z + 1) % PLOT_BLOCK_WIDTH == 0
                     {
-                        chunk.set_block(rx as u32, ry as u32, rz as u32, 4564); // Stone Bricks
+                        chunk.set_block(rx as u32, ry as u32, rz as u32, BORDER);
                     } else {
-                        chunk.set_block(rx as u32, ry as u32, rz as u32, 278); // Sandstone
+                        chunk.set_block(rx as u32, ry as u32, rz as u32, FILL);
                     }
                 }
             }

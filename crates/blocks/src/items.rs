@@ -1,5 +1,5 @@
 use crate::block_entities::ContainerType;
-use crate::BlockColorVariant;
+use crate::{BlockColorVariant, SignType};
 use mchprs_utils::map;
 
 #[derive(Clone, Debug)]
@@ -141,6 +141,7 @@ macro_rules! items {
     }
 }
 
+// list of ids: https://github.com/PrismarineJS/minecraft-data/blob/master/data/pc/1.18/items.json
 items! {
     // Wooden Axe
     WEWand {
@@ -314,12 +315,12 @@ items! {
     },
     Sign {
         props: {
-            sign_type: u32
+            sign_type: SignType
         },
-        get_id: 768 + sign_type,
+        get_id: 768 + sign_type.to_item_type(),
         from_id_offset: 768,
         from_id(id): 768..=775 => {
-            sign_type: id
+            sign_type: SignType::from_item_type(id)
         },
         block: true,
     },

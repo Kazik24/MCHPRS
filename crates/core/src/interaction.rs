@@ -7,7 +7,7 @@ use crate::world::World;
 use mchprs_blocks::block_entities::BlockEntity;
 use mchprs_blocks::blocks::*;
 use mchprs_blocks::items::{Item, ItemStack};
-use mchprs_blocks::{BlockFace, BlockPos, SignType};
+use mchprs_blocks::{BlockFace, BlockPos};
 use mchprs_network::packets::clientbound::{COpenSignEditor, ClientBoundPacket};
 use mchprs_world::TickPriority;
 use tracing::info;
@@ -183,11 +183,13 @@ pub fn get_state_for_placement(
         Item::Sign { sign_type } => match context.block_face {
             BlockFace::Bottom => Block::Air {},
             BlockFace::Top => Block::Sign {
-                sign_type: SignType::from_item_type(sign_type),
-                rotation: (((180.0 + context.player.yaw) * 16.0 / 360.0) + 0.5).floor() as u32 & 15,
+                sign_type,
+                rotation: ((180.0 + context.player.yaw).rem_euclid(360.0) * 16.0 / 360.0).round()
+                    as u8
+                    & 15,
             },
             _ => Block::WallSign {
-                sign_type: SignType::from_item_type(sign_type),
+                sign_type,
                 facing: context.block_face.unwrap_direction(),
             },
         },
@@ -282,7 +284,6 @@ pub fn place_in_world(
     }
     if let Block::Piston { piston } = block {
         // update piston ? here
-
         redstone::update_surrounding_blocks(world, pos);
     } else {
         redstone::update_surrounding_blocks(world, pos);

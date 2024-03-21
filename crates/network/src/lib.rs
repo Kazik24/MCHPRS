@@ -23,6 +23,8 @@ impl PlayerPacketSender {
         PlayerPacketSender { stream }
     }
 
+    //todo maybe this will need async variant for queueing packets and sending them in background
+    //for massive piston updates
     pub fn send_packet(&self, data: &PacketEncoder) {
         if let Some(stream) = &self.stream {
             // Going to assume stream is compressed since it should be after login

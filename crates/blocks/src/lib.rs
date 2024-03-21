@@ -209,7 +209,7 @@ pub enum BlockColorVariant {
 }
 
 impl BlockColorVariant {
-    pub fn get_id(self) -> u32 {
+    pub const fn get_id(self) -> u32 {
         self as u32
     }
 
@@ -253,7 +253,7 @@ pub enum BlockDirection {
 }
 
 impl BlockDirection {
-    pub fn opposite(self) -> BlockDirection {
+    pub const fn opposite(self) -> BlockDirection {
         use BlockDirection::*;
         match self {
             North => South,
@@ -263,7 +263,7 @@ impl BlockDirection {
         }
     }
 
-    pub fn block_face(self) -> BlockFace {
+    pub const fn block_face(self) -> BlockFace {
         use BlockDirection::*;
         match self {
             North => BlockFace::North,
@@ -273,7 +273,7 @@ impl BlockDirection {
         }
     }
 
-    pub fn block_facing(self) -> BlockFacing {
+    pub const fn block_facing(self) -> BlockFacing {
         use BlockDirection::*;
         match self {
             North => BlockFacing::North,
@@ -293,7 +293,7 @@ impl BlockDirection {
         }
     }
 
-    pub fn get_id(self) -> u32 {
+    pub const fn get_id(self) -> u32 {
         match self {
             BlockDirection::North => 0,
             BlockDirection::South => 1,
@@ -302,7 +302,7 @@ impl BlockDirection {
         }
     }
 
-    pub fn rotate(self) -> BlockDirection {
+    pub const fn rotate(self) -> BlockDirection {
         use BlockDirection::*;
         match self {
             North => East,
@@ -322,7 +322,7 @@ impl BlockDirection {
         }
     }
 
-    pub fn from_rotation(rotation: u32) -> Option<BlockDirection> {
+    pub fn from_rotation(rotation: u8) -> Option<BlockDirection> {
         match rotation {
             0 => Some(BlockDirection::South),
             4 => Some(BlockDirection::West),
@@ -382,7 +382,7 @@ impl BlockFacing {
         }
     }
 
-    pub fn get_id(self) -> u32 {
+    pub const fn get_id(self) -> u32 {
         match self {
             BlockFacing::North => 0,
             BlockFacing::East => 1,
@@ -393,7 +393,7 @@ impl BlockFacing {
         }
     }
 
-    pub fn offset_pos(self, mut pos: BlockPos, n: i32) -> BlockPos {
+    pub const fn offset_pos(self, mut pos: BlockPos, n: i32) -> BlockPos {
         match self {
             BlockFacing::North => pos.z -= n,
             BlockFacing::South => pos.z += n,
@@ -405,7 +405,7 @@ impl BlockFacing {
         pos
     }
 
-    pub fn rotate(self) -> BlockFacing {
+    pub const fn rotate(self) -> BlockFacing {
         use BlockFacing::*;
         match self {
             North => East,
@@ -416,7 +416,7 @@ impl BlockFacing {
         }
     }
 
-    pub fn rotate_ccw(self) -> BlockFacing {
+    pub const fn rotate_ccw(self) -> BlockFacing {
         use BlockFacing::*;
         match self {
             North => West,
@@ -427,7 +427,7 @@ impl BlockFacing {
         }
     }
 
-    pub fn opposite(self) -> BlockFacing {
+    pub const fn opposite(self) -> BlockFacing {
         use BlockFacing::*;
         match self {
             North => South,
@@ -470,10 +470,13 @@ impl FromStr for BlockFacing {
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
-pub struct SignType(pub u32);
+pub struct SignType(pub u8);
 
 impl SignType {
-    pub fn from_item_type(sign_type: u32) -> Self {
+    pub const fn to_item_type(self) -> u32 {
+        self.0 as u32
+    }
+    pub const fn from_item_type(sign_type: u32) -> Self {
         Self(match sign_type {
             0 => 0, // Oak
             1 => 1, // Spruce
@@ -483,7 +486,7 @@ impl SignType {
             5 => 5, // Dark Oak
             6 => 6, // Crimson
             7 => 7, // Warped
-            _ => sign_type,
+            _ => sign_type as _,
         })
     }
 }

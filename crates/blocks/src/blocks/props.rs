@@ -46,7 +46,7 @@ pub enum ComparatorMode {
 }
 
 impl ComparatorMode {
-    pub(super) fn from_id(id: u32) -> ComparatorMode {
+    pub(super) const fn from_id(id: u32) -> ComparatorMode {
         match id {
             0 => ComparatorMode::Compare,
             1 => ComparatorMode::Subtract,
@@ -54,14 +54,14 @@ impl ComparatorMode {
         }
     }
 
-    pub(super) fn get_id(self) -> u32 {
+    pub(super) const fn get_id(self) -> u32 {
         match self {
             ComparatorMode::Compare => 0,
             ComparatorMode::Subtract => 1,
         }
     }
 
-    pub fn toggle(self) -> ComparatorMode {
+    pub const fn toggle(self) -> ComparatorMode {
         match self {
             ComparatorMode::Subtract => ComparatorMode::Compare,
             ComparatorMode::Compare => ComparatorMode::Subtract,
@@ -143,7 +143,7 @@ pub enum LeverFace {
 }
 
 impl LeverFace {
-    pub(super) fn from_id(id: u32) -> LeverFace {
+    pub(super) const fn from_id(id: u32) -> LeverFace {
         match id {
             0 => LeverFace::Floor,
             1 => LeverFace::Wall,
@@ -152,7 +152,7 @@ impl LeverFace {
         }
     }
 
-    pub(super) fn get_id(self) -> u32 {
+    pub(super) const fn get_id(self) -> u32 {
         match self {
             LeverFace::Floor => 0,
             LeverFace::Wall => 1,
@@ -210,7 +210,7 @@ pub enum ButtonFace {
 }
 
 impl ButtonFace {
-    pub(super) fn from_id(id: u32) -> ButtonFace {
+    pub(super) const fn from_id(id: u32) -> ButtonFace {
         match id {
             0 => ButtonFace::Floor,
             1 => ButtonFace::Wall,
@@ -219,7 +219,7 @@ impl ButtonFace {
         }
     }
 
-    pub(super) fn get_id(self) -> u32 {
+    pub(super) const fn get_id(self) -> u32 {
         match self {
             ButtonFace::Floor => 0,
             ButtonFace::Wall => 1,
@@ -306,7 +306,7 @@ impl ToString for RedstoneWireSide {
 }
 
 impl RedstoneWireSide {
-    pub fn from_id(id: u32) -> RedstoneWireSide {
+    pub const fn from_id(id: u32) -> RedstoneWireSide {
         match id {
             0 => RedstoneWireSide::Up,
             1 => RedstoneWireSide::Side,
@@ -315,7 +315,7 @@ impl RedstoneWireSide {
         }
     }
 
-    pub fn get_id(self) -> u32 {
+    pub const fn get_id(self) -> u32 {
         match self {
             RedstoneWireSide::Up => 0,
             RedstoneWireSide::Side => 1,
@@ -385,11 +385,11 @@ pub enum TrapdoorHalf {
 }
 
 impl TrapdoorHalf {
-    pub fn get_id(self) -> u32 {
+    pub const fn get_id(self) -> u32 {
         self as u32
     }
 
-    pub fn from_id(id: u32) -> TrapdoorHalf {
+    pub const fn from_id(id: u32) -> TrapdoorHalf {
         use TrapdoorHalf::*;
         match id {
             0 => Top,

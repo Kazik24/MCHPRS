@@ -72,11 +72,22 @@ impl ContainerType {
 
 #[derive(Debug, Copy, Clone, Serialize, Deserialize)]
 pub struct MovingPistonEntity {
-    extending: bool,
-    facing: BlockFace,
+    pub extending: bool,
+    pub facing: BlockFace,
     progress: u8,
-    source: bool,
-    block_state: u32,
+    pub source: bool,
+    pub block_state: u32,
+}
+impl Default for MovingPistonEntity {
+    fn default() -> Self {
+        Self {
+            extending: false,
+            facing: BlockFace::Bottom,
+            progress: 0,
+            source: false,
+            block_state: 0,
+        }
+    }
 }
 
 impl MovingPistonEntity {
@@ -84,6 +95,9 @@ impl MovingPistonEntity {
     pub const MAX_PROGRESS: u8 = u8::MAX;
     pub fn get_progress(&self) -> f32 {
         self.progress as f32 / Self::MAX_PROGRESS as f32
+    }
+    pub fn set_progress(&mut self, progress: f32) {
+        self.progress = Self::progress_to_u8(progress);
     }
     pub fn progress_to_u8(progress: f32) -> u8 {
         let prog = progress * Self::MAX_PROGRESS as f32;
@@ -116,7 +130,7 @@ impl BlockEntity {
                 ContainerType::Hopper => 16,
             },
             BlockEntity::Sign(_) => 7,
-            BlockEntity::MovingPiston(_) => todo!("find a protocol id for moving pistons"),
+            BlockEntity::MovingPiston(_) => 67, //idk if this is correct, found it at https://github.com/PrismarineJS/minecraft-data/tree/master
         }
     }
 
