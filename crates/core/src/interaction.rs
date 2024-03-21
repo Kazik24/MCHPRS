@@ -290,8 +290,6 @@ pub fn place_in_world(
     }
 }
 
-
-
 pub fn destroy(block: Block, world: &mut impl World, pos: BlockPos) {
     if block.has_block_entity() {
         world.delete_block_entity(pos);

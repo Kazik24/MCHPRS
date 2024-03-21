@@ -370,6 +370,9 @@ pub enum BlockFacing {
 }
 
 impl BlockFacing {
+    pub fn horizontal_values() -> [Self; 4] {
+        [Self::North, Self::South, Self::East, Self::West]
+    }
     pub fn from_id(id: u32) -> BlockFacing {
         match id {
             0 => BlockFacing::North,

@@ -3,9 +3,9 @@
 //! scenerio (i.e. regular buiding)
 
 pub mod comparator;
+mod piston;
 pub mod repeater;
 pub mod wire;
-mod piston;
 
 use crate::world::World;
 use mchprs_blocks::block_entities::BlockEntity;

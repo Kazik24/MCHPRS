@@ -127,6 +127,16 @@ pub struct RedstonePistonHead {
     pub short: bool,
 }
 
+impl From<RedstonePiston> for RedstonePistonHead {
+    fn from(value: RedstonePiston) -> Self {
+        RedstonePistonHead {
+            facing: value.facing,
+            sticky: value.sticky,
+            short: false,
+        }
+    }
+}
+
 impl RedstonePiston {
     pub fn extend(mut self, extended: bool) -> Self {
         self.extended = extended;
