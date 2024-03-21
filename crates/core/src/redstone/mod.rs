@@ -3,9 +3,9 @@
 //! scenerio (i.e. regular buiding)
 
 pub mod comparator;
+mod piston;
 pub mod repeater;
 pub mod wire;
-mod piston;
 
 use crate::world::World;
 use mchprs_blocks::block_entities::BlockEntity;
@@ -227,6 +227,9 @@ pub fn update(block: Block, world: &mut impl World, pos: BlockPos) {
                 };
                 world.set_block(pos, new_block);
             }
+        }
+        Block::Piston { piston } => {
+            //todo
         }
         _ => {}
     }
