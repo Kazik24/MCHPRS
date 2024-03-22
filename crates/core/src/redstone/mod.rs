@@ -228,6 +228,9 @@ pub fn update(block: Block, world: &mut impl World, pos: BlockPos) {
                 world.set_block(pos, new_block);
             }
         }
+        Block::Piston { piston } => {
+            //todo
+        }
         _ => {}
     }
 }
