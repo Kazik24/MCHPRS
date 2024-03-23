@@ -19,7 +19,7 @@ pub fn is_piston_powered(world: &impl World, pos: BlockPos) -> bool {
     // todo piston as argument for perf resons (as it is done everywhere like that)
     let piston_block = world.get_block(pos);
     let Block::Piston { piston } = piston_block else {
-        false
+        return false;
     };
 
     // check for direct power
@@ -59,8 +59,7 @@ pub fn is_piston_powered(world: &impl World, pos: BlockPos) -> bool {
     return false;
 }
 
-  
-pub fn update_piston_state(world: &impl World, pos: BlockPos) {
+pub fn update_piston_state(world: &mut impl World, pos: BlockPos) {
     let piston_block = world.get_block(pos);
     let Block::Piston { piston } = piston_block else {
         return;
@@ -69,27 +68,31 @@ pub fn update_piston_state(world: &impl World, pos: BlockPos) {
     let powered = is_piston_powered(world, pos);
     let is_extended = piston.extended;
     if powered != is_extended {
-        world.set_block(pos, Block::Piston {
-            piston: RedstonePiston {
-                extended: powered,
-                ..piston
+        world.set_block(
+            pos,
+            Block::Piston {
+                piston: RedstonePiston {
+                    extended: powered,
+                    ..piston
+                },
             },
-        });
-        
+        );
+
         if powered {
-            // extend 
-            let headpos = pos.offset(piston.facing.into()); 
-            
+            // extend
+            let headpos = pos.offset(piston.facing.into());
+
             // get block
             let block = world.get_block(headpos);
 
-            world.set_block(headpos, Block::PistonHead {
-                head: piston.into()
-            });
-
+            world.set_block(
+                headpos,
+                Block::PistonHead {
+                    head: piston.into(),
+                },
+            );
         } else {
             // retract
-
         }
-    } 
+    }
 }

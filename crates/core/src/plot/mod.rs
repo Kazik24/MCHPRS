@@ -138,6 +138,18 @@ impl PlotWorld {
         );
         (first_pos, second_pos)
     }
+
+    pub fn tick_interpreted(&mut self) {
+        self.to_be_ticked
+            .sort_by_key(|e| (e.ticks_left, e.tick_priority));
+        for pending in &mut self.to_be_ticked {
+            pending.ticks_left = pending.ticks_left.saturating_sub(1);
+        }
+        while self.to_be_ticked.first().map_or(1, |e| e.ticks_left) == 0 {
+            let entry = self.to_be_ticked.remove(0);
+            redstone::tick(self.get_block(entry.pos), self, entry.pos);
+        }
+    }
 }
 
 impl World for PlotWorld {
@@ -240,18 +252,8 @@ impl Plot {
         self.timings.tick();
         if self.redpiler.is_active() {
             self.redpiler.tick();
-            return;
-        }
-
-        self.world
-            .to_be_ticked
-            .sort_by_key(|e| (e.ticks_left, e.tick_priority));
-        for pending in &mut self.world.to_be_ticked {
-            pending.ticks_left = pending.ticks_left.saturating_sub(1);
-        }
-        while self.world.to_be_ticked.first().map_or(1, |e| e.ticks_left) == 0 {
-            let entry = self.world.to_be_ticked.remove(0);
-            redstone::tick(self.world.get_block(entry.pos), &mut self.world, entry.pos);
+        } else {
+            self.world.tick_interpreted();
         }
     }
 

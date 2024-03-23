@@ -11,7 +11,7 @@ use mchprs_save_data::plot_data::PlotData;
 const START_BUTTON: BlockPos = BlockPos::new(187, 99, 115);
 
 fn load_world(path: impl AsRef<Path>) -> PlotWorld {
-    let data = PlotData::load_from_file(path).unwrap();
+    let data = PlotData::load_from_file(path, false).unwrap();
 
     let chunks: Vec<Chunk> = data
         .chunk_data

@@ -108,19 +108,20 @@ pub struct PlotData<const NUM_CHUNK_SECTIONS: usize> {
 impl<const NUM_CHUNK_SECTIONS: usize> PlotData<NUM_CHUNK_SECTIONS> {
     pub fn load_from_file(
         path: impl AsRef<Path>,
+        save_if_plot_fixed: bool,
     ) -> Result<PlotData<NUM_CHUNK_SECTIONS>, PlotLoadError> {
         let mut file = File::open(&path)?;
 
         let mut magic = [0; 8];
         file.read_exact(&mut magic)?;
         if &magic != PLOT_MAGIC {
-            return fixer::try_fix(path, FixInfo::InvalidHeader)?
+            return fixer::try_fix(path, FixInfo::InvalidHeader, save_if_plot_fixed)?
                 .ok_or(PlotLoadError::InvalidHeader);
         }
 
         let version = file.read_u32::<LittleEndian>()?;
         if version < VERSION {
-            return fixer::try_fix(path, FixInfo::OldVersion { version })?
+            return fixer::try_fix(path, FixInfo::OldVersion { version }, save_if_plot_fixed)?
                 .ok_or(PlotLoadError::ConversionFailed(version));
         }
         if version > VERSION {

@@ -41,6 +41,7 @@ fn make_backup(path: impl AsRef<Path>) -> Result<(), PlotLoadError> {
 pub fn try_fix<const NUM_SECTIONS: usize>(
     path: impl AsRef<Path>,
     info: FixInfo,
+    save_fixed_plot: bool,
 ) -> Result<Option<PlotData<NUM_SECTIONS>>, PlotLoadError> {
     debug!("Trying to fix plot with {:?}", info);
     let result = match info {
@@ -57,8 +58,10 @@ pub fn try_fix<const NUM_SECTIONS: usize>(
 
     Ok(match result {
         Some(data) => {
-            make_backup(&path)?;
-            data.save_to_file(&path)?;
+            if save_fixed_plot {
+                make_backup(&path)?;
+                data.save_to_file(&path)?;
+            }
             debug!("Successfully converted plot to version {}", VERSION);
             Some(data)
         }

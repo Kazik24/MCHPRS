@@ -22,7 +22,7 @@ pub fn sleep_time_for_tps(tps: Tps) -> Duration {
 pub fn load_plot(path: impl AsRef<Path>) -> Result<PlotData<PLOT_SECTIONS>> {
     let path = path.as_ref();
     if path.exists() {
-        Ok(PlotData::load_from_file(path)
+        Ok(PlotData::load_from_file(path, true)
             .with_context(|| format!("error loading plot save file at {}", path.display()))?)
     } else {
         Ok(EMPTY_PLOT.clone())
@@ -36,7 +36,7 @@ pub fn empty_plot() -> PlotData<PLOT_SECTIONS> {
 static EMPTY_PLOT: Lazy<PlotData<PLOT_SECTIONS>> = Lazy::new(|| {
     let template_path = Path::new("./world/plots/pTEMPLATE");
     if template_path.exists() {
-        PlotData::load_from_file(template_path).expect("failed to read template plot")
+        PlotData::load_from_file(template_path, true).expect("failed to read template plot")
     } else {
         let mut chunks = Vec::new();
         for chunk_x in 0..PLOT_WIDTH {

@@ -16,3 +16,6 @@ pub mod world;
 
 #[macro_use]
 extern crate bitflags;
+
+#[cfg(test)]
+mod tests;
