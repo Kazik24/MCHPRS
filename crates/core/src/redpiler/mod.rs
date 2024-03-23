@@ -118,7 +118,7 @@ impl Compiler {
 
     pub fn compile<W: World>(
         &mut self,
-        world: &mut W,
+        world: &W,
         bounds: (BlockPos, BlockPos),
         options: CompilerOptions,
         ticks: Vec<TickEntry>,
