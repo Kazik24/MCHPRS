@@ -1410,6 +1410,7 @@ dependencies = [
  "rustc-hash",
  "serde",
  "serde_json",
+ "sha2",
  "smallvec",
  "tokio",
  "toml 0.7.3",
