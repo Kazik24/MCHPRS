@@ -1,3 +1,4 @@
+use crate::interaction::{destroy, place_in_world};
 use crate::world::World;
 use mchprs_blocks::block_entities::BlockEntity;
 use mchprs_blocks::blocks::{Block, ComparatorMode, RedstonePiston};
@@ -15,13 +16,7 @@ fn is_powered_in_direction(
     super::get_weak_power(block, world, offset, direction.into(), false) > 0
 }
 
-pub fn is_piston_powered(world: &impl World, pos: BlockPos) -> bool {
-    // todo piston as argument for perf resons (as it is done everywhere like that)
-    let piston_block = world.get_block(pos);
-    let Block::Piston { piston } = piston_block else {
-        return false;
-    };
-
+pub fn is_piston_powered(world: &impl World, piston: RedstonePiston, pos: BlockPos) -> bool {
     // check for direct power
     if is_powered_in_direction(world, pos, &piston, piston.facing.opposite()) {
         return true;
@@ -59,13 +54,8 @@ pub fn is_piston_powered(world: &impl World, pos: BlockPos) -> bool {
     return false;
 }
 
-pub fn update_piston_state(world: &mut impl World, pos: BlockPos) {
-    let piston_block = world.get_block(pos);
-    let Block::Piston { piston } = piston_block else {
-        return;
-    };
-
-    let powered = is_piston_powered(world, pos);
+pub fn update_piston_state(world: &mut impl World, piston: RedstonePiston, pos: BlockPos) {
+    let powered = is_piston_powered(world, piston, pos);
     let is_extended = piston.extended;
     if powered != is_extended {
         world.set_block(
@@ -82,17 +72,49 @@ pub fn update_piston_state(world: &mut impl World, pos: BlockPos) {
             // extend
             let headpos = pos.offset(piston.facing.into());
 
-            // get block
-            let block = world.get_block(headpos);
-
-            world.set_block(
-                headpos,
-                Block::PistonHead {
-                    head: piston.into(),
-                },
-            );
+            if move_block(world, headpos, piston.facing, Move::Push) {
+                world.set_block(
+                    headpos,
+                    Block::PistonHead {
+                        head: piston.into(),
+                    },
+                );
+            }
         } else {
             // retract
+            let headpos = pos.offset(piston.facing.into());
+            move_block(world, headpos, piston.facing, Move::Pull); // pull cannot fail, but the block might just not move
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Move {
+    Push,
+    Pull,
+}
+
+fn move_block(
+    world: &mut impl World,
+    head: BlockPos,
+    direction: BlockFacing,
+    move_type: Move,
+) -> bool {
+    match move_type {
+        Move::Push => {
+            //todo move column of blocks, instead of one block
+            let block = world.get_block(head);
+            let pushed_pos = head.offset(direction.into());
+            destroy(block, world, head);
+            place_in_world(block, world, pushed_pos, &None);
+            true
+        }
+        Move::Pull => {
+            let pushed_pos = head.offset(direction.into());
+            let block = world.get_block(pushed_pos);
+            destroy(block, world, pushed_pos);
+            place_in_world(block, world, head, &None);
+            true
         }
     }
 }

@@ -229,7 +229,7 @@ pub fn update(block: Block, world: &mut impl World, pos: BlockPos) {
             }
         }
         Block::Piston { piston } => {
-            //todo
+            piston::update_piston_state(world, piston, pos);
         }
         _ => {}
     }
