@@ -56,34 +56,51 @@ pub fn is_piston_powered(world: &impl World, piston: RedstonePiston, pos: BlockP
 
 pub fn update_piston_state(world: &mut impl World, piston: RedstonePiston, pos: BlockPos) {
     let powered = is_piston_powered(world, piston, pos);
-    let is_extended = piston.extended;
-    if powered != is_extended {
+    if powered != piston.extended {
+        //todo without this there is stack overflow!!, probably cause update of placing/destroying blocks triggers this again.
         world.set_block(
             pos,
             Block::Piston {
-                piston: RedstonePiston {
-                    extended: powered,
-                    ..piston
-                },
+                piston: piston.extend(powered),
             },
         );
-
         if powered {
             // extend
             let headpos = pos.offset(piston.facing.into());
 
             if move_block(world, headpos, piston.facing, Move::Push) {
                 world.set_block(
+                    pos,
+                    Block::Piston {
+                        piston: piston.extend(true),
+                    },
+                );
+                world.set_block(
                     headpos,
                     Block::PistonHead {
                         head: piston.into(),
+                    },
+                );
+            } else {
+                //temporary fix for stack overflow
+                world.set_block(
+                    pos,
+                    Block::Piston {
+                        piston: piston.extend(false),
                     },
                 );
             }
         } else {
             // retract
             let headpos = pos.offset(piston.facing.into());
-            move_block(world, headpos, piston.facing, Move::Pull); // pull cannot fail, but the block might just not move
+            move_block(world, headpos, piston.facing, Move::Pull(piston.sticky));
+            world.set_block(
+                pos,
+                Block::Piston {
+                    piston: piston.extend(false),
+                },
+            );
+            // pull cannot fail, but the block might just not move
         }
     }
 }
@@ -91,7 +108,7 @@ pub fn update_piston_state(world: &mut impl World, piston: RedstonePiston, pos: 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Move {
     Push,
-    Pull,
+    Pull(bool), // sticky: bool
 }
 
 fn move_block(
@@ -102,19 +119,51 @@ fn move_block(
 ) -> bool {
     match move_type {
         Move::Push => {
-            //todo move column of blocks, instead of one block
             let block = world.get_block(head);
             let pushed_pos = head.offset(direction.into());
-            destroy(block, world, head);
-            place_in_world(block, world, pushed_pos, &None);
-            true
+
+            let has_entity = block.has_block_entity();
+            let is_cube = block.is_cube();
+            //if normal block without entity destroy because it will be moved, when block is not a cube destroy it anyways (and dont move)
+            let extend_piston = !has_entity || !is_cube;
+            if extend_piston {
+                destroy(block, world, head);
+            }
+            //push block only if its a cube (also half-slab) and without block entity
+            if !has_entity && is_cube {
+                push_block_column(world, pushed_pos, direction, block)
+            } else {
+                return extend_piston;
+            }
         }
-        Move::Pull => {
+        Move::Pull(sticky) => {
             let pushed_pos = head.offset(direction.into());
             let block = world.get_block(pushed_pos);
-            destroy(block, world, pushed_pos);
-            place_in_world(block, world, head, &None);
+
+            world.delete_block_entity(head); //head can have block entity
+            world.set_block(head, Block::Air {}); // raw set without update (todo send block updates for BUD switches)
+
+            let has_entity = block.has_block_entity();
+            let is_cube = block.is_cube();
+            //pull block only if its a cube (also half-slab) and without block entity
+            if !has_entity && is_cube && sticky {
+                destroy(block, world, pushed_pos);
+                place_in_world(block, world, head, &None);
+            }
             true
         }
     }
+}
+
+const MAX_PUSHED_BLOCKS: usize = 12;
+
+fn push_block_column(
+    world: &mut impl World,
+    pos: BlockPos,
+    _direction: BlockFacing,
+    first_block: Block,
+) -> bool {
+    //todo move column of blocks, instead of one block
+    place_in_world(first_block, world, pos, &None);
+    true
 }
