@@ -93,7 +93,7 @@ pub fn update_piston_state(world: &mut impl World, piston: RedstonePiston, pos: 
         } else {
             // retract
             let headpos = pos.offset(piston.facing.into());
-            move_block(world, headpos, piston.facing, Move::Pull(piston.sticky));
+            move_block(world, headpos, piston.facing, Move::Pull(piston.sticky.into()));
             world.set_block(
                 pos,
                 Block::Piston {
@@ -106,9 +106,26 @@ pub fn update_piston_state(world: &mut impl World, piston: RedstonePiston, pos: 
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum PistonType {
+    Sticky,
+    Normal,
+}
+
+impl From<bool> for PistonType {
+    fn from(sticky: bool) -> Self {
+        if sticky {
+            PistonType::Sticky
+        } else {
+            PistonType::Normal
+        }
+    }
+
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Move {
     Push,
-    Pull(bool), // sticky: bool
+    Pull(PistonType), 
 }
 
 fn move_block(
@@ -146,7 +163,7 @@ fn move_block(
             let has_entity = block.has_block_entity();
             let is_cube = block.is_cube();
             //pull block only if its a cube (also half-slab) and without block entity
-            if !has_entity && is_cube && sticky {
+            if !has_entity && is_cube && sticky == PistonType::Sticky {
                 destroy(block, world, pushed_pos);
                 place_in_world(block, world, head, &None);
             }

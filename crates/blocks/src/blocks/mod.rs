@@ -1322,3 +1322,8 @@ blocks! {
         cube: true,
     }
 }
+
+
+// TODO make macro for building blocks
+
+
