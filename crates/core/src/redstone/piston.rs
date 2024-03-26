@@ -1,14 +1,12 @@
 use crate::interaction::{destroy, place_in_world};
 use crate::world::World;
-use mchprs_blocks::blocks::{Block, ComparatorMode, RedstonePiston};
-use mchprs_blocks::{BlockDirection, BlockFace, BlockFacing, BlockPos};
+use mchprs_blocks::blocks::{Block, RedstonePiston};
+use mchprs_blocks::{BlockFace, BlockFacing, BlockPos};
 
 fn is_powered_in_direction(world: &impl World, pos: BlockPos, direction: BlockFacing) -> bool {
     let offset = pos.offset(direction.into());
     let block = world.get_block(offset);
-    let power = super::get_redstone_power(block, world, offset, direction.into());
-
-    power > 0
+    super::get_redstone_power(block, world, offset, direction.into()) > 0
 }
 
 pub fn should_piston_extend(
@@ -16,7 +14,6 @@ pub fn should_piston_extend(
     piston: RedstonePiston,
     piston_pos: BlockPos,
 ) -> bool {
-    // check for direct power
     if is_powered_in_direction(world, piston_pos, piston.facing.opposite()) {
         return true;
     }
@@ -51,12 +48,6 @@ pub fn should_piston_extend(
 pub fn update_piston_state(world: &mut impl World, piston: RedstonePiston, piston_pos: BlockPos) {
     let should_extend = should_piston_extend(world, piston, piston_pos);
     if should_extend != piston.extended {
-        tracing::info!(
-            "Piston state changes {:?}, pos {:?}",
-            should_extend,
-            piston_pos
-        );
-        //todo without this there is stack overflow!!, probably cause update of placing/destroying blocks triggers this again.
         if should_extend {
             extend(world, piston, piston_pos, piston.facing);
         } else {

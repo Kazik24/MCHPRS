@@ -282,7 +282,7 @@ pub fn place_in_world(
     if let Block::RedstoneWire { .. } = block {
         redstone::update_wire_neighbors(world, pos);
     }
-    if let Block::Piston { piston } = block {
+    if let Block::Piston { .. } = block {
         // update piston ? here
         redstone::update_surrounding_blocks(world, pos);
     } else {
