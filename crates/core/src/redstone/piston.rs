@@ -36,9 +36,11 @@ pub fn should_piston_extend(
     if is_powered_in_direction(world, piston_pos, BlockFacing::Down) {
         return true;
     }
+
     if is_powered_in_direction(world, piston_pos.offset(BlockFace::Top), BlockFacing::Down) {
         return true;
     }
+
     for direction in BlockFacing::horizontal_values() {
         if is_powered_in_direction(world, piston_pos.offset(BlockFace::Top), direction) {
             return true;
@@ -58,54 +60,11 @@ pub fn update_piston_state(world: &mut impl World, piston: RedstonePiston, pisto
         );
         //todo without this there is stack overflow!!, probably cause update of placing/destroying blocks triggers this again.
         // but this is quite logical? When pistion state changes you need to change block to extended / normal
-        world.set_block(
-            piston_pos,
-            Block::Piston {
-                piston: piston.extend(should_extend),
-            },
-        );
-        if should_extend {
-            // extend
-            // let headpos = pos.offset(piston.facing.into());
-            // tracing::info!("Head pos {:?}", headpos);
 
-            // if move_block(world, headpos, piston.facing, Move::Push) {
-            //     world.set_block(
-            //         pos,
-            //         Block::Piston {
-            //             piston: piston.extend(true),
-            //         },
-            //     );
-            //     world.set_block(
-            //         headpos,
-            //         Block::PistonHead {
-            //             head: piston.into(),
-            //         },
-            //     );
-            // } else {
-            //     //temporary fix for stack overflow
-            //     world.set_block(
-            //         pos,
-            //         Block::Piston {
-            //             piston: piston.extend(false),
-            //         },
-            //     );
-            // }
+        if should_extend {
             extend(world, piston, piston_pos, piston.facing);
         } else {
-            // retract
-            // let headpos = piston_pos.offset(piston.facing.into());
-            // move_block(world, headpos, piston.facing, Move::Pull(piston.sticky.into()));
-            // world.set_block(
-            //     piston_pos,
-            //     Block::Piston {
-            //         piston: piston.extend(false),
-            //     },
-            // );
-
             retract(world, piston, piston_pos, piston.facing);
-
-            // pull cannot fail, but the block might just not move
         }
     }
 }
@@ -132,6 +91,13 @@ fn extend(
     piston_pos: BlockPos,
     direction: BlockFacing,
 ) {
+    world.set_block(
+        piston_pos,
+        Block::Piston {
+            piston: piston.extend(true),
+        },
+    );
+    
     let head_pos = piston_pos.offset(direction.into());
     let head_block = world.get_block(head_pos);
 
@@ -143,51 +109,48 @@ fn extend(
 
     // instead of relaing on PistonHead, maybe relay on Piston itself?
     if let Block::PistonHead { .. } = head_block {
-        // this is illigal state for piston
-        // maybe should be automaticly fixed? (piston replaced with extended piston, head left alone)
         tracing::info!("Piston already extended");
         return;
     }
 
-    if head_block.is_movable() {
-        tracing::info!("Piston can be extended");
-        // replace block with piston head
-        world.set_block(
-            head_pos,
-            Block::PistonHead {
-                head: piston.into(),
-            },
-        );
+    if !head_block.is_movable() {
+        return;
+    }
 
-        // unify this branch with     if head_block.is_movable() { bsc they do same thing idk
-        match head_block {
-            Block::Air {} => {
-                // nothing to push, dont push air
-                return;
-            }
-            _ => {}
-        }
+    tracing::info!("Piston can be extended");
 
-        // block sticed to piston
-        let pushed_pos = head_pos.offset(direction.into());
-        let old_block = world.get_block(pushed_pos);
+    // replace block with piston head
+    world.set_block(
+        head_pos,
+        Block::PistonHead {
+            head: piston.into(),
+        },
+    );
 
-        tracing::info!(
-            "Replaced block: {:?} {:?}",
-            old_block,
-            old_block.is_movable()
-        );
-
-        if !old_block.is_movable() {
+    match head_block {
+        Block::Air {} => {
             return;
         }
-        // destroy block (check what happens if we just override this block or ignore if not air)
-        // ignoring can be nice, bsc it will mean that pistion just can push one block.
-        destroy(old_block, world, pushed_pos);
-
-        // place block
-        place_in_world(head_block, world, pushed_pos, &None);
+        _ => {}
     }
+
+    // block sticed to piston
+    let pushed_pos = head_pos.offset(direction.into());
+    let old_block = world.get_block(pushed_pos);
+
+    tracing::info!(
+        "Replaced block: {:?} {:?}",
+        old_block,
+        old_block.is_movable()
+    );
+
+    if !old_block.is_movable() {
+        return;
+    }
+
+    destroy(old_block, world, pushed_pos);
+
+    place_in_world(head_block, world, pushed_pos, &None);
 }
 fn retract(
     world: &mut impl World,
@@ -200,7 +163,7 @@ fn retract(
 
     // instead of relaing on PistonHead, maybe relay on Piston itself?
     match head_block {
-        Block::PistonHead { head } => {}
+        Block::PistonHead { .. } => {}
         _ => {
             tracing::info!("Piston not extended");
             return;
