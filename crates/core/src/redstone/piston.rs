@@ -112,6 +112,8 @@ fn extend(
         _ => {}
     }
 
+    // this logic implise that if unmovable block is in front of piston, piston will smash current block
+    // at this point it probably should be repeated for each block in front of piston.
     // block sticed to piston
     let pushed_pos = head_pos.offset(direction.into());
     let old_block = world.get_block(pushed_pos);
