@@ -228,7 +228,6 @@ pub fn get_state_for_placement(
                 powered: false,
             },
         },
-        // TODO, I replaced this block to PistonHead for debugging, It needs to automaticly extend & replace Piston block with extended one and place PistonHead block next to it.
         Item::Piston { sticky } => Block::Piston {
             piston: RedstonePiston {
                 facing: context.player.get_block_facing().opposite(),
@@ -282,8 +281,8 @@ pub fn place_in_world(
     if let Block::RedstoneWire { .. } = block {
         redstone::update_wire_neighbors(world, pos);
     }
-    if let Block::Piston { piston } = block {
-        // update piston ? here
+    if let Block::Piston { .. } = block {
+        // todo update piston ? here
         redstone::update_surrounding_blocks(world, pos);
     } else {
         redstone::update_surrounding_blocks(world, pos);
