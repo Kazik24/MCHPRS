@@ -33,9 +33,11 @@ pub fn should_piston_extend(
     if is_powered_in_direction(world, piston_pos, BlockFacing::Down) {
         return true;
     }
+
     if is_powered_in_direction(world, piston_pos.offset(BlockFace::Top), BlockFacing::Down) {
         return true;
     }
+
     for direction in BlockFacing::horizontal_values() {
         if is_powered_in_direction(world, piston_pos.offset(BlockFace::Top), direction) {
             return true;
@@ -56,21 +58,6 @@ pub fn update_piston_state(world: &mut impl World, piston: RedstonePiston, pisto
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum PistonType {
-    Sticky,
-    Normal,
-}
-
-impl From<bool> for PistonType {
-    fn from(sticky: bool) -> Self {
-        if sticky {
-            PistonType::Sticky
-        } else {
-            PistonType::Normal
-        }
-    }
-}
 
 fn extend(
     world: &mut impl World,
@@ -78,10 +65,17 @@ fn extend(
     piston_pos: BlockPos,
     direction: BlockFacing,
 ) {
+    world.set_block(
+        piston_pos,
+        Block::Piston {
+            piston: piston.extend(true),
+        },
+    );
+    
     let head_pos = piston_pos.offset(direction.into());
     let head_block = world.get_block(head_pos);
 
-    if piston.extended {
+    if let Block::PistonHead { .. } = head_block {
         return;
     }
 
@@ -89,7 +83,6 @@ fn extend(
         return;
     }
 
-    // replace head block with piston head
     world.set_block(
         head_pos,
         Block::PistonHead {
@@ -97,35 +90,24 @@ fn extend(
         },
     );
 
-    // update piston to be extended
-    world.set_block(
-        piston_pos,
-        Block::Piston {
-            piston: piston.extend(true),
-        },
-    );
-
     match head_block {
         Block::Air {} => {
-            return; // do not push air
+            return;
         }
         _ => {}
     }
 
-    // this logic implise that if unmovable block is in front of piston, piston will smash current block
-    // at this point it probably should be repeated for each block in front of piston.
     // block sticed to piston
     let pushed_pos = head_pos.offset(direction.into());
     let old_block = world.get_block(pushed_pos);
 
-    if old_block.is_movable() {
-        // destroy block (check what happens if we just override this block or ignore if not air)
-        // ignoring can be nice, bsc it will mean that pistion just can push one block.
-        destroy(old_block, world, pushed_pos);
-
-        // place block
-        place_in_world(head_block, world, pushed_pos, &None);
+    if !old_block.is_movable() {
+        return;
     }
+
+    destroy(old_block, world, pushed_pos);
+
+    place_in_world(head_block, world, pushed_pos, &None);
 }
 
 fn retract(
@@ -136,19 +118,17 @@ fn retract(
 ) {
     let head_pos = piston_pos.offset(direction.into());
 
-    if piston.extended {
-        return;
+    // instead of relaing on PistonHead, maybe relay on Piston itself?
+    match head_block {
+        Block::PistonHead { .. } => {}
+        _ => {
+            return;
+        }
     }
 
     world.delete_block_entity(head_pos); //head can have block entity. why it can have block entity?
     world.set_block(head_pos, Block::Air {}); // raw set without update (todo send block updates for BUD switches)
 
-    world.set_block(
-        piston_pos,
-        Block::Piston {
-            piston: piston.extend(false),
-        },
-    );
 
     let pull_pos = head_pos.offset(direction.into());
     let pull_block = world.get_block(pull_pos);
@@ -158,4 +138,12 @@ fn retract(
         destroy(pull_block, world, pull_pos);
         place_in_world(pull_block, world, head_pos, &None);
     }
+
+    // update piston to be retracted
+    world.set_block(
+        piston_pos,
+        Block::Piston {
+            piston: piston.extend(false),
+        },
+    );
 }
