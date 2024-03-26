@@ -284,8 +284,6 @@ pub fn place_in_world(
     }
     if let Block::Piston { piston } = block {
         // update piston ? here
-        // when moving piston block, do a destroy first (aksually this might be not needed)
-        //todo check if piston can be moved world.get_block_entity(pos).is_some()
         redstone::update_surrounding_blocks(world, pos);
     } else {
         redstone::update_surrounding_blocks(world, pos);

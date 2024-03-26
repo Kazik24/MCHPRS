@@ -230,6 +230,10 @@ macro_rules! blocks {
                 }
             }
 
+            pub fn is_movable(&self) -> bool {
+                !self.has_block_entity() || self.is_cube()
+            }
+
             pub const fn get_id(self) -> u32 {
                 match self {
                     $(
@@ -1323,7 +1327,4 @@ blocks! {
     }
 }
 
-
 // TODO make macro for building blocks
-
-

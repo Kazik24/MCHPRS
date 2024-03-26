@@ -113,8 +113,6 @@ pub struct RedstoneObserver {
     pub powered: bool,
 }
 
-
-
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default, BlockProperty, BlockTransform)]
 pub struct RedstonePiston {
     pub facing: BlockFacing,
