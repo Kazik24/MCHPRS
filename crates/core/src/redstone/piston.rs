@@ -117,6 +117,7 @@ fn retract(
     direction: BlockFacing,
 ) {
     let head_pos = piston_pos.offset(direction.into());
+    let head_block = world.get_block(head_pos);
 
     // instead of relaing on PistonHead, maybe relay on Piston itself?
     match head_block {
