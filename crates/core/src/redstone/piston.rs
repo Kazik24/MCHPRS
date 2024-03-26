@@ -58,7 +58,6 @@ pub fn update_piston_state(world: &mut impl World, piston: RedstonePiston, pisto
     }
 }
 
-
 fn extend(
     world: &mut impl World,
     piston: RedstonePiston,
@@ -96,6 +95,7 @@ fn extend(
         }
         _ => {}
     }
+    // if !has_entity && is_cube && sticky == PistonType::Sticky {
 
     // block sticed to piston
     let pushed_pos = head_pos.offset(direction.into());
