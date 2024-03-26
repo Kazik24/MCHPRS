@@ -125,15 +125,14 @@ fn extend(
     let pushed_pos = head_pos.offset(direction.into());
     let old_block = world.get_block(pushed_pos);
 
-    if !old_block.is_movable() {
-        return;
-    }
-    // destroy block (check what happens if we just override this block or ignore if not air)
-    // ignoring can be nice, bsc it will mean that pistion just can push one block.
-    destroy(old_block, world, pushed_pos);
+    if old_block.is_movable() {
+        // destroy block (check what happens if we just override this block or ignore if not air)
+        // ignoring can be nice, bsc it will mean that pistion just can push one block.
+        destroy(old_block, world, pushed_pos);
 
-    // place block
-    place_in_world(head_block, world, pushed_pos, &None);
+        // place block
+        place_in_world(head_block, world, pushed_pos, &None);
+    }
 }
 
 fn retract(
