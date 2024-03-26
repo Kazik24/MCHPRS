@@ -106,6 +106,7 @@ fn extend(
         },
     );
 
+    // update piston to be extended
     world.set_block(
         piston_pos,
         Block::Piston {
@@ -150,6 +151,12 @@ fn retract(
     world.delete_block_entity(head_pos); //head can have block entity. why it can have block entity?
     world.set_block(head_pos, Block::Air {}); // raw set without update (todo send block updates for BUD switches)
 
+    world.set_block(
+        piston_pos,
+        Block::Piston {
+            piston: piston.extend(false),
+        },
+    );
 
     let pull_pos = head_pos.offset(direction.into());
     let pull_block = world.get_block(pull_pos);
@@ -159,12 +166,4 @@ fn retract(
         destroy(pull_block, world, pull_pos);
         place_in_world(pull_block, world, head_pos, &None);
     }
-
-    // update piston to be retracted
-    world.set_block(
-        piston_pos,
-        Block::Piston {
-            piston: piston.extend(false),
-        },
-    );
 }
