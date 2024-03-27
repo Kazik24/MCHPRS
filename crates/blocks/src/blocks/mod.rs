@@ -848,7 +848,7 @@ blocks! {
             }
         },
         get_name: "piston_head",
-        solid: true,
+        solid: false,
         cube: true,
     },
     MovingPiston {
