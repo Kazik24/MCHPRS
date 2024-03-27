@@ -14,27 +14,28 @@ pub fn should_piston_extend(
     piston: RedstonePiston,
     piston_pos: BlockPos,
 ) -> bool {
-    if is_powered_in_direction(world, piston_pos, piston.facing.opposite()) {
+    // normal 
+
+    if piston.facing != BlockFacing::Up && is_powered_in_direction(world, piston_pos, BlockFacing::Up) {
         return true;
     }
 
-    if is_powered_in_direction(world, piston_pos, piston.facing.rotate_ccw()) {
+    if piston.facing != BlockFacing::Down && is_powered_in_direction(world, piston_pos, BlockFacing::Down) {
         return true;
     }
 
-    if is_powered_in_direction(world, piston_pos, piston.facing.rotate()) {
-        return true;
+    for direction in BlockFacing::horizontal_values() {
+        if piston.facing != direction && is_powered_in_direction(world, piston_pos, direction) {
+            return true;
+        }
     }
 
-    if is_powered_in_direction(world, piston_pos, BlockFacing::Up) {
-        return true;
-    }
-
-    if is_powered_in_direction(world, piston_pos, BlockFacing::Down) {
-        return true;
-    }
-
+    // bud
     if is_powered_in_direction(world, piston_pos.offset(BlockFace::Top), BlockFacing::Down) {
+        return true;
+    }
+
+    if is_powered_in_direction(world, piston_pos.offset(BlockFace::Top), BlockFacing::Up) {
         return true;
     }
 
@@ -50,6 +51,7 @@ pub fn should_piston_extend(
 pub fn update_piston_state(world: &mut impl World, piston: RedstonePiston, piston_pos: BlockPos) {
     let should_extend = should_piston_extend(world, piston, piston_pos);
     if should_extend != piston.extended {
+        tracing::info!("piston state changed to {:?}", should_extend);
         if should_extend {
             extend(world, piston, piston_pos, piston.facing);
         } else {
@@ -79,10 +81,15 @@ fn extend(
     let head_pos = piston_pos.offset(direction.into());
     let head_block = world.get_block(head_pos);
 
+    tracing::info!("head block: {:?} {:?}", head_block, head_pos);
+
     // with tick check this is not needed
     if let Block::PistonHead { .. } = head_block {
+        tracing::info!("head block is piston head");
         return;
     }
+
+    tracing::info!("extending piston head");
 
     world.set_block(
         head_pos,
@@ -93,19 +100,24 @@ fn extend(
 
     match head_block {
         Block::Air {} => {
+            tracing::info!("head block is air");
             return;
         }
         _ => {}
     }
 
     if head_block.has_block_entity() || !head_block.is_cube() {
+        tracing::info!("head block is not cube or has block entity");
         return;
     }
 
     let pushed_pos = head_pos.offset(direction.into());
     let old_block = world.get_block(pushed_pos);
 
+    tracing::info!("pushed block: {:?} {:?}", old_block, pushed_pos);
+
     if old_block.is_simple_cube() {
+        tracing::info!("pushed block is simple cube");
         destroy(old_block, world, pushed_pos);
         place_in_world(head_block, world, pushed_pos, &None);
     }
