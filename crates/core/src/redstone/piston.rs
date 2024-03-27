@@ -64,6 +64,11 @@ fn extend(
     piston_pos: BlockPos,
     direction: BlockFacing,
 ) {
+    // put world.schedule_tick(piston_pos, 1, priority); somewhere
+    // but consider the true zero-tick pistons with locking updates in same tick
+    // as simple as adding last_update_tick: i32 in RedstonePiston
+    // and checking here if tick is the same as last_update_tick
+
     world.set_block(
         piston_pos,
         Block::Piston {
@@ -99,9 +104,7 @@ fn extend(
         }
         _ => {}
     }
-    // if !has_entity && is_cube && sticky == PistonType::Sticky {
 
-    // block sticed to piston
     let pushed_pos = head_pos.offset(direction.into());
     let old_block = world.get_block(pushed_pos);
 
@@ -131,7 +134,7 @@ fn retract(
         }
     }
 
-    world.delete_block_entity(head_pos); //head can have block entity. why it can have block entity?
+    world.delete_block_entity(head_pos); //head can have block entity.
     world.set_block(head_pos, Block::Air {}); // raw set without update (todo send block updates for BUD switches)
 
 
@@ -144,7 +147,6 @@ fn retract(
         place_in_world(pull_block, world, head_pos, &None);
     }
 
-    // update piston to be retracted
     world.set_block(
         piston_pos,
         Block::Piston {
