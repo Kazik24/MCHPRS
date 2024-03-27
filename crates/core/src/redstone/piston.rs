@@ -78,8 +78,12 @@ fn extend(
         return;
     }
 
-    if !head_block.is_movable() {
+    if !head_block.is_simple_cube() {
         return;
+    }
+
+    if !head_block.has_block_entity() || !head_block.is_cube() {
+        destroy(head_block, world, head_pos);
     }
 
     world.set_block(
@@ -101,7 +105,7 @@ fn extend(
     let pushed_pos = head_pos.offset(direction.into());
     let old_block = world.get_block(pushed_pos);
 
-    if !old_block.is_movable() {
+    if !old_block.is_simple_cube() {
         return;
     }
 
@@ -135,7 +139,7 @@ fn retract(
     let pull_block = world.get_block(pull_pos);
 
     //pull block only if its a cube (also half-slab) and without block entity
-    if pull_block.is_movable() && piston.sticky {
+    if pull_block.is_simple_cube() && piston.sticky {
         destroy(pull_block, world, pull_pos);
         place_in_world(pull_block, world, head_pos, &None);
     }
