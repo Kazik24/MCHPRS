@@ -231,7 +231,7 @@ macro_rules! blocks {
             }
 
             pub fn is_simple_cube(&self) -> bool {
-                !self.has_block_entity() && self.is_cube()
+                !self.has_block_entity() || self.is_cube()
             }
 
             pub const fn get_id(self) -> u32 {

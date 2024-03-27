@@ -231,7 +231,7 @@ pub fn update(block: Block, world: &mut impl World, pos: BlockPos) {
             piston::update_piston_state(world, piston, pos);
         }
         Block::Observer { observer } => {
-            // todo
+            tracing::info!("Observer updated, {:?} {:?}", observer, pos);
         }
         _ => {}
     }

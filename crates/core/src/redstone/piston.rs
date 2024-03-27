@@ -75,20 +75,13 @@ fn extend(
             piston: piston.extend(true),
         },
     );
-    
+
     let head_pos = piston_pos.offset(direction.into());
     let head_block = world.get_block(head_pos);
 
+    // with tick check this is not needed
     if let Block::PistonHead { .. } = head_block {
         return;
-    }
-
-    if !head_block.is_simple_cube() {
-        return;
-    }
-
-    if !head_block.has_block_entity() || !head_block.is_cube() {
-        destroy(head_block, world, head_pos);
     }
 
     world.set_block(
@@ -105,16 +98,17 @@ fn extend(
         _ => {}
     }
 
-    let pushed_pos = head_pos.offset(direction.into());
-    let old_block = world.get_block(pushed_pos);
-
-    if !old_block.is_simple_cube() {
+    if head_block.has_block_entity() || !head_block.is_cube() {
         return;
     }
 
-    destroy(old_block, world, pushed_pos);
+    let pushed_pos = head_pos.offset(direction.into());
+    let old_block = world.get_block(pushed_pos);
 
-    place_in_world(head_block, world, pushed_pos, &None);
+    if old_block.is_simple_cube() {
+        destroy(old_block, world, pushed_pos);
+        place_in_world(head_block, world, pushed_pos, &None);
+    }
 }
 
 fn retract(
@@ -126,7 +120,6 @@ fn retract(
     let head_pos = piston_pos.offset(direction.into());
     let head_block = world.get_block(head_pos);
 
-    // instead of relaing on PistonHead, maybe relay on Piston itself?
     match head_block {
         Block::PistonHead { .. } => {}
         _ => {
@@ -135,14 +128,13 @@ fn retract(
     }
 
     world.delete_block_entity(head_pos); //head can have block entity.
-    world.set_block(head_pos, Block::Air {}); // raw set without update (todo send block updates for BUD switches)
-
+                                         // world.set_block(head_pos, Block::Air {}); // raw set without update (todo send block updates for BUD switches)
 
     let pull_pos = head_pos.offset(direction.into());
     let pull_block = world.get_block(pull_pos);
 
     //pull block only if its a cube (also half-slab) and without block entity
-    if pull_block.is_simple_cube() && piston.sticky {
+    if !(pull_block.has_block_entity() || !pull_block.is_cube()) && piston.sticky {
         destroy(pull_block, world, pull_pos);
         place_in_world(pull_block, world, head_pos, &None);
     }
