@@ -183,7 +183,6 @@ fn diode_get_input_strength(world: &impl World, pos: BlockPos, facing: BlockDire
     power
 }
 
-//todo implement update for pistons
 pub fn update(block: Block, world: &mut impl World, pos: BlockPos) {
     match block {
         Block::RedstoneWire { wire } => {
@@ -230,6 +229,9 @@ pub fn update(block: Block, world: &mut impl World, pos: BlockPos) {
         }
         Block::Piston { piston } => {
             piston::update_piston_state(world, piston, pos);
+        }
+        Block::Observer { observer } => {
+            // todo
         }
         _ => {}
     }
@@ -288,6 +290,7 @@ pub fn tick(block: Block, world: &mut impl World, pos: BlockPos) {
                 }
             }
         }
+        // piston should tick too?
         _ => {}
     }
 }
