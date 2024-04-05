@@ -16,6 +16,7 @@ use std::sync::Arc;
 use std::time::Instant;
 use tracing::{debug, error, trace, warn};
 
+pub use backend::{Queues, TickScheduler};
 pub use task_monitor::TaskMonitor;
 
 fn block_powered_mut(block: &mut Block) -> Option<&mut bool> {

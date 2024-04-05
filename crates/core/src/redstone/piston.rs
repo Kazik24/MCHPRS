@@ -14,13 +14,17 @@ pub fn should_piston_extend(
     piston: RedstonePiston,
     piston_pos: BlockPos,
 ) -> bool {
-    // normal 
+    // normal
 
-    if piston.facing != BlockFacing::Up && is_powered_in_direction(world, piston_pos, BlockFacing::Up) {
+    if piston.facing != BlockFacing::Up
+        && is_powered_in_direction(world, piston_pos, BlockFacing::Up)
+    {
         return true;
     }
 
-    if piston.facing != BlockFacing::Down && is_powered_in_direction(world, piston_pos, BlockFacing::Down) {
+    if piston.facing != BlockFacing::Down
+        && is_powered_in_direction(world, piston_pos, BlockFacing::Down)
+    {
         return true;
     }
 
@@ -116,7 +120,7 @@ fn extend(
 
     tracing::info!("pushed block: {:?} {:?}", old_block, pushed_pos);
 
-    if old_block.is_simple_cube() {
+    if old_block.is_cube() {
         tracing::info!("pushed block is simple cube");
         destroy(old_block, world, pushed_pos);
         place_in_world(head_block, world, pushed_pos, &None);

@@ -4,7 +4,7 @@ use super::node::{NodeId, NodeType};
 use super::*;
 
 #[inline(always)]
-pub(super) fn update_node(scheduler: &mut TickScheduler, node: &mut Node, node_id: NodeId) {
+pub(super) fn update_node(scheduler: &mut TickScheduler<NodeId>, node: &mut Node, node_id: NodeId) {
     match node.ty {
         NodeType::Repeater {
             delay,

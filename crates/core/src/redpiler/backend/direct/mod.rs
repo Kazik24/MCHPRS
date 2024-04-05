@@ -1,11 +1,11 @@
 //! The direct backend does not do code generation and operates on the `CompileNode` graph directly
 
 mod compile;
-mod node;
+pub mod node;
 mod tick;
 mod update;
 
-use super::JITBackend;
+use super::{JITBackend, TickScheduler};
 use crate::redpiler::compile_graph::CompileGraph;
 use crate::redpiler::task_monitor::TaskMonitor;
 use crate::redpiler::{block_powered_mut, CompilerOptions};
@@ -17,104 +17,20 @@ use mchprs_blocks::BlockPos;
 use mchprs_world::{TickEntry, TickPriority};
 use node::{Node, NodeId, NodeType, Nodes};
 use rustc_hash::FxHashMap;
+use std::fmt;
 use std::sync::Arc;
-use std::{fmt, mem};
 use tracing::{debug, warn};
-
-#[derive(Default, Clone)]
-struct Queues([Vec<NodeId>; TickScheduler::NUM_PRIORITIES]);
-
-impl Queues {
-    fn drain_iter(&mut self) -> impl Iterator<Item = NodeId> + '_ {
-        let [q0, q1, q2, q3] = &mut self.0;
-        let [q0, q1, q2, q3] = [q0, q1, q2, q3].map(|q| q.drain(..));
-        q0.chain(q1).chain(q2).chain(q3)
-    }
-}
-
-#[derive(Default)]
-struct TickScheduler {
-    queues_deque: [Queues; Self::NUM_QUEUES],
-    pos: usize,
-}
-
-// this function calculates fibonacci number sequence
-// todo make this a trait
-#[allow(unused)]
-fn fibonacci(n: usize) -> usize {
-    let mut a = 0;
-    let mut b = 1;
-    for _ in 0..n {
-        let c = a + b;
-        a = b;
-        b = c;
-    }
-    a
-}
-
-impl TickScheduler {
-    const NUM_PRIORITIES: usize = 4;
-    const NUM_QUEUES: usize = 16;
-
-    fn reset<W: World>(&mut self, world: &mut W, blocks: &[Option<(BlockPos, Block)>]) {
-        for (idx, queues) in self.queues_deque.iter().enumerate() {
-            let delay = if self.pos >= idx {
-                idx + Self::NUM_QUEUES
-            } else {
-                idx
-            } - self.pos;
-            for (entries, priority) in queues.0.iter().zip(Self::priorities()) {
-                for node in entries {
-                    let Some((pos, _)) = blocks[node.index()] else {
-                        warn!("Cannot schedule tick for node {:?} because block information is missing", node);
-                        continue;
-                    };
-                    world.schedule_tick(pos, delay as u32, priority);
-                }
-            }
-        }
-        for queues in self.queues_deque.iter_mut() {
-            for queue in queues.0.iter_mut() {
-                queue.clear();
-            }
-        }
-    }
-
-    fn schedule_tick(&mut self, node: NodeId, delay: usize, priority: TickPriority) {
-        self.queues_deque[(self.pos + delay) % Self::NUM_QUEUES].0[priority as usize].push(node);
-    }
-
-    fn queues_this_tick(&mut self) -> Queues {
-        self.pos = (self.pos + 1) % Self::NUM_QUEUES;
-        mem::take(&mut self.queues_deque[self.pos])
-    }
-
-    fn end_tick(&mut self, mut queues: Queues) {
-        for queue in &mut queues.0 {
-            queue.clear();
-        }
-        self.queues_deque[self.pos] = queues;
-    }
-
-    fn priorities() -> [TickPriority; Self::NUM_PRIORITIES] {
-        [
-            TickPriority::Highest,
-            TickPriority::Higher,
-            TickPriority::High,
-            TickPriority::Normal,
-        ]
-    }
-}
 
 #[derive(Default)]
 pub struct DirectBackend {
     nodes: Nodes,
     blocks: Vec<Option<(BlockPos, Block)>>,
     pos_map: FxHashMap<BlockPos, NodeId>,
-    scheduler: TickScheduler,
+    scheduler: TickScheduler<NodeId>,
 }
 
 impl DirectBackend {
+    #[inline]
     fn schedule_tick(&mut self, node_id: NodeId, delay: usize, priority: TickPriority) {
         self.scheduler.schedule_tick(node_id, delay, priority);
     }
@@ -222,7 +138,7 @@ impl JITBackend for DirectBackend {
     }
 
     fn tick(&mut self) {
-        let mut queues = self.scheduler.queues_this_tick();
+        let mut queues = self.scheduler.queues_this_tick_move_next();
 
         for node_id in queues.drain_iter() {
             self.tick_node(node_id);
@@ -275,8 +191,9 @@ fn set_node_locked(node: &mut Node, locked: bool) {
     node.changed = true;
 }
 
+#[inline]
 fn schedule_tick(
-    scheduler: &mut TickScheduler,
+    scheduler: &mut TickScheduler<NodeId>,
     node_id: NodeId,
     node: &mut Node,
     delay: usize,
