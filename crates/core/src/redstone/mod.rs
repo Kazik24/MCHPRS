@@ -290,7 +290,9 @@ pub fn tick(block: Block, world: &mut impl World, pos: BlockPos) {
                 }
             }
         }
-        // piston should tick too?
+        Block::Piston { piston } => {
+            piston::piston_tick(world, piston, pos);
+        }
         _ => {}
     }
 }
