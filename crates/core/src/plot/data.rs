@@ -48,7 +48,7 @@ static EMPTY_PLOT: Lazy<PlotData<PLOT_SECTIONS>> = Lazy::new(|| {
             x: 0,
             z: 0,
             chunks,
-            to_be_ticked: Vec::new(),
+            to_be_ticked: Default::default(),
             packet_senders: Vec::new(),
         };
         let chunk_data: Vec<ChunkData<PLOT_SECTIONS>> =

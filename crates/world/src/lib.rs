@@ -9,6 +9,16 @@ pub enum TickPriority {
     Normal = 3,
 }
 
+impl TickPriority {
+    pub const ALL: [TickPriority; 4] = [
+        TickPriority::Highest,
+        TickPriority::Higher,
+        TickPriority::High,
+        TickPriority::Normal,
+    ];
+    pub const COUNT: usize = Self::ALL.len();
+}
+
 #[derive(Serialize, Deserialize, Debug, Clone, Eq, PartialEq, Hash)]
 pub struct TickEntry {
     pub ticks_left: u32,

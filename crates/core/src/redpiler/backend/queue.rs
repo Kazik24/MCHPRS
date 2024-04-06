@@ -9,26 +9,29 @@ use crate::world::World;
 
 use super::direct::node::NodeId;
 
-const NUM_PRIORITIES: usize = 4;
 const NUM_QUEUES: usize = 16;
 
 #[derive(Debug, Clone)]
-pub struct Queues<T>([Vec<T>; NUM_PRIORITIES]);
+pub struct Queues<T>([Vec<T>; TickPriority::COUNT]);
 
 impl<T> Queues<T> {
     pub fn drain_iter(&mut self) -> impl Iterator<Item = T> + '_ {
-        let [q0, q1, q2, q3] = &mut self.0;
-        let [q0, q1, q2, q3] = [q0, q1, q2, q3].map(|q| q.drain(..));
-        q0.chain(q1).chain(q2).chain(q3)
+        self.0.each_mut().into_iter().flat_map(|q| q.drain(..))
+    }
+
+    pub fn len(&self) -> usize {
+        self.0.iter().map(|v| v.len()).sum()
     }
 
     pub fn iter(&self) -> impl Iterator<Item = (&T, TickPriority)> + '_ {
-        let [q0, q1, q2, q3] = &self.0;
-        let q1 = q1.iter().map(|q| (q, TickPriority::Highest));
-        let q2 = q2.iter().map(|q| (q, TickPriority::Higher));
-        let q3 = q3.iter().map(|q| (q, TickPriority::High));
-        let q4 = q0.iter().map(|q| (q, TickPriority::Normal));
-        q1.chain(q2).chain(q3).chain(q4)
+        self.0
+            .each_ref()
+            .into_iter()
+            .enumerate()
+            .flat_map(|(i, q)| {
+                let priority = TickPriority::ALL[i];
+                q.iter().map(move |n| (n, priority))
+            })
     }
 }
 
@@ -56,22 +59,31 @@ impl<T> Default for TickScheduler<T> {
 
 impl TickScheduler<NodeId> {
     pub fn reset<W: World>(&mut self, world: &mut W, blocks: &[Option<(BlockPos, Block)>]) {
-        for (idx, queues) in self.queues_deque.iter().enumerate() {
-            let delay = if self.pos >= idx {
-                idx + NUM_QUEUES
-            } else {
-                idx
-            } - self.pos;
-            for (entries, priority) in queues.0.iter().zip(Self::priorities()) {
-                for node in entries {
-                    let Some((pos, _)) = blocks[node.index()] else {
-                        warn!("Cannot schedule tick for node {:?} because block information is missing", node);
-                        continue;
-                    };
-                    world.schedule_tick(pos, delay as u32, priority);
-                }
-            }
+        for (node, delay, priority) in self.iter() {
+            let Some((pos, _)) = blocks[node.index()] else {
+                warn!(
+                    "Cannot schedule tick for node {node:?} because block information is missing"
+                );
+                continue;
+            };
+            world.schedule_tick(pos, delay as u32, priority);
         }
+        // for (idx, queues) in self.queues_deque.iter().enumerate() {
+        //     let delay = if self.pos >= idx {
+        //         idx + NUM_QUEUES
+        //     } else {
+        //         idx
+        //     } - self.pos;
+        //     for (entries, priority) in queues.0.iter().zip(TickPriority::ALL) {
+        //         for node in entries {
+        //             let Some((pos, _)) = blocks[node.index()] else {
+        //                 warn!("Cannot schedule tick for node {node:?} because block information is missing");
+        //                 continue;
+        //             };
+        //             world.schedule_tick(pos, delay as u32, priority);
+        //         }
+        //     }
+        // }
         self.clear();
     }
 }
@@ -99,6 +111,7 @@ impl FromIterator<TickEntry> for TickScheduler<BlockPos> {
 impl<T> TickScheduler<T> {
     #[inline]
     pub fn schedule_tick(&mut self, node: T, delay: usize, priority: TickPriority) {
+        debug_assert!(delay < NUM_QUEUES);
         self.queues_deque[(self.pos + delay) % NUM_QUEUES].0[priority as usize].push(node);
     }
 
@@ -177,13 +190,32 @@ impl<T> TickScheduler<T> {
             }
         }
     }
+}
 
-    fn priorities() -> [TickPriority; NUM_PRIORITIES] {
-        [
-            TickPriority::Highest,
-            TickPriority::Higher,
-            TickPriority::High,
-            TickPriority::Normal,
-        ]
+#[cfg(test)]
+mod tests {
+    use std::iter;
+
+    use super::*;
+    use rand::prelude::*;
+
+    #[test]
+    fn test_restet_queue() {
+        let rng = &mut StdRng::seed_from_u64(123456);
+        let mut sch = TickScheduler::default();
+
+        let entries = iter::repeat_with(|| TickEntry {
+            pos: BlockPos::new(
+                rng.gen_range(0..128),
+                rng.gen_range(0..128),
+                rng.gen_range(0..128),
+            ),
+            ticks_left: rng.gen_range(0..16),
+            tick_priority: TickPriority::ALL[rng.gen_range(0..TickPriority::COUNT)],
+        });
+        let entries = entries.take(1000).collect::<Vec<_>>();
+        for e in &entries {
+            sch.schedule_tick(e.pos, e.ticks_left as usize, e.tick_priority);
+        }
     }
 }

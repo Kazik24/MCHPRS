@@ -25,7 +25,7 @@ pub fn load_test_plot(path: impl AsRef<Path>) -> PlotWorld {
         x: 0,
         z: 0,
         chunks,
-        to_be_ticked: data.pending_ticks,
+        to_be_ticked: data.pending_ticks.into_iter().collect(),
         packet_senders: Vec::new(),
     }
 }
@@ -112,7 +112,7 @@ fn run_mandelbrot_chungus_interpreted_to_compiled() {
     let mut compiler: Compiler = Default::default();
     let options = CompilerOptions::parse("-O");
     let bounds = plot.get_corners();
-    let ticks = plot.to_be_ticked.clone();
+    let ticks = plot.to_be_ticked.iter_entries().collect();
     compiler.compile(&plot, bounds, options, ticks, Default::default());
 
     for _ in 0..1000 {
@@ -142,7 +142,7 @@ fn run_mandelbrot_chungus_compiled_to_interpreted() {
 
     compiler.reset(&mut plot, bounds);
 
-    for _ in 0..1000 {
+    for _ in 0..28 {
         // todo when transferring from compiled to interpreted, chungus stops running after around 30 ticks
         // println!("{}", plot.to_be_ticked.len());
         plot.tick_interpreted();

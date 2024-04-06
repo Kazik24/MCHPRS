@@ -9,7 +9,7 @@ pub mod worldedit;
 use crate::chat::ChatComponent;
 use crate::config::CONFIG;
 use crate::player::{EntityId, Gamemode, PacketSender, Player, PlayerPos};
-use crate::redpiler::{Compiler, CompilerOptions};
+use crate::redpiler::{Compiler, CompilerOptions, TickScheduler};
 use crate::redstone;
 use crate::server::{BroadcastMessage, Message, PrivMessage};
 use crate::utils::HyphenatedUUID;
@@ -24,7 +24,7 @@ use mchprs_network::packets::clientbound::*;
 use mchprs_network::packets::SlotData;
 use mchprs_network::PlayerPacketSender;
 use mchprs_save_data::plot_data::{ChunkData, PlotData, Tps, WorldSendRate};
-use mchprs_world::{TickEntry, TickPriority};
+use mchprs_world::TickPriority;
 use monitor::TimingsMonitor;
 use scoreboard::RedpilerState;
 use serde_json::json;
@@ -96,7 +96,7 @@ pub struct PlotWorld {
     pub x: i32,
     pub z: i32,
     pub chunks: Vec<Chunk>,
-    pub to_be_ticked: Vec<TickEntry>,
+    pub to_be_ticked: TickScheduler<BlockPos>,
     pub packet_senders: Vec<PlayerPacketSender>,
 }
 
@@ -140,14 +140,10 @@ impl PlotWorld {
     }
 
     pub fn tick_interpreted(&mut self) {
-        self.to_be_ticked
-            .sort_by_key(|e| (e.ticks_left, e.tick_priority));
-        for pending in &mut self.to_be_ticked {
-            pending.ticks_left = pending.ticks_left.saturating_sub(1);
-        }
-        while self.to_be_ticked.first().map_or(1, |e| e.ticks_left) == 0 {
-            let entry = self.to_be_ticked.remove(0);
-            redstone::tick(self.get_block(entry.pos), self, entry.pos);
+        self.to_be_ticked.end_last_tick_move_next();
+
+        while let Some(pos) = self.to_be_ticked.pop_one_this_tick() {
+            redstone::tick(self.get_block(pos), self, pos);
         }
     }
 }
@@ -235,15 +231,12 @@ impl World for PlotWorld {
     }
 
     fn schedule_tick(&mut self, pos: BlockPos, delay: u32, priority: TickPriority) {
-        self.to_be_ticked.push(TickEntry {
-            pos,
-            ticks_left: delay,
-            tick_priority: priority,
-        });
+        self.to_be_ticked
+            .schedule_tick(pos, delay as usize, priority);
     }
 
     fn pending_tick_at(&mut self, pos: BlockPos) -> bool {
-        self.to_be_ticked.iter().any(|e| e.pos == pos)
+        self.to_be_ticked.contains(&pos)
     }
 }
 
@@ -528,7 +521,8 @@ impl Plot {
         let bounds = self.world.get_corners();
         // TODO: use monitor
         let monitor = Default::default();
-        let ticks = self.world.to_be_ticked.drain(..).collect();
+        let ticks = self.world.to_be_ticked.iter_entries().collect();
+        self.world.to_be_ticked.clear();
 
         let mut players_need_updates = HashSet::new();
         thread::scope(|s| {
@@ -959,7 +953,7 @@ impl Plot {
             x,
             z,
             chunks,
-            to_be_ticked: plot_data.pending_ticks,
+            to_be_ticked: plot_data.pending_ticks.into_iter().collect(),
             packet_senders: Vec::new(),
         };
         let tps = plot_data.tps;
@@ -1017,7 +1011,7 @@ impl Plot {
             tps: self.tps,
             world_send_rate: self.world_send_rate,
             chunk_data,
-            pending_ticks: world.to_be_ticked.clone(),
+            pending_ticks: world.to_be_ticked.iter_entries().collect(),
         };
         data.save_to_file(format!("./world/plots/p{},{}", world.x, world.z))
             .unwrap();
