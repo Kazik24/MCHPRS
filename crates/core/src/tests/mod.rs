@@ -12,6 +12,8 @@ use crate::redstone;
 use crate::world::storage::Chunk;
 use crate::world::World;
 
+const TICK_MUL: u32 = 2;
+
 pub fn load_test_plot(path: impl AsRef<Path>) -> PlotWorld {
     let data = PlotData::load_from_file(path, false).unwrap();
 
@@ -71,7 +73,7 @@ fn run_mandelbrot_chungus() {
     let mut plot = load_test_plot("./benches/chungus_mandelbrot_plot");
     click_floor_button(&mut plot, CHUNGUS_START_BUTTON);
 
-    for _ in 0..1000 {
+    for _ in 0..1000 * TICK_MUL {
         plot.tick_interpreted();
     }
 
@@ -90,7 +92,7 @@ fn run_mandelbrot_chungus_compiled() {
     compiler.compile(&plot, bounds, options, Vec::new(), Default::default());
     compiler.on_use_block(CHUNGUS_START_BUTTON);
 
-    for _ in 0..1000 {
+    for _ in 0..1000 * TICK_MUL {
         compiler.tick();
     }
     compiler.flush(&mut plot);
@@ -105,7 +107,7 @@ fn run_mandelbrot_chungus_interpreted_to_compiled() {
     let mut plot = load_test_plot("./benches/chungus_mandelbrot_plot");
     click_floor_button(&mut plot, CHUNGUS_START_BUTTON);
 
-    for _ in 0..1000 {
+    for _ in 0..1000 * TICK_MUL {
         plot.tick_interpreted();
     }
 
@@ -115,7 +117,7 @@ fn run_mandelbrot_chungus_interpreted_to_compiled() {
     let ticks = plot.to_be_ticked.iter_entries().collect();
     compiler.compile(&plot, bounds, options, ticks, Default::default());
 
-    for _ in 0..1000 {
+    for _ in 0..1000 * TICK_MUL {
         compiler.tick();
     }
     compiler.flush(&mut plot);
@@ -135,14 +137,14 @@ fn run_mandelbrot_chungus_compiled_to_interpreted() {
     compiler.compile(&plot, bounds, options, Vec::new(), Default::default());
     compiler.on_use_block(CHUNGUS_START_BUTTON);
 
-    for _ in 0..1000 {
+    for _ in 0..1000 * TICK_MUL {
         compiler.tick();
     }
     compiler.flush(&mut plot);
 
     compiler.reset(&mut plot, bounds);
 
-    for _ in 0..28 {
+    for _ in 0..28 * TICK_MUL {
         // todo when transferring from compiled to interpreted, chungus stops running after around 30 ticks
         // println!("{}", plot.to_be_ticked.len());
         plot.tick_interpreted();

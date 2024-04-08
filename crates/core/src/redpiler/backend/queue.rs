@@ -9,7 +9,7 @@ use crate::world::World;
 
 use super::direct::node::NodeId;
 
-const NUM_QUEUES: usize = 16;
+const NUM_QUEUES: usize = 32;
 
 #[derive(Debug, Clone)]
 pub struct Queues<T>([Vec<T>; TickPriority::COUNT]);
@@ -66,7 +66,7 @@ impl TickScheduler<NodeId> {
                 );
                 continue;
             };
-            world.schedule_tick(pos, delay as u32, priority);
+            world.schedule_half_tick(pos, delay as u32, priority);
         }
         // for (idx, queues) in self.queues_deque.iter().enumerate() {
         //     let delay = if self.pos >= idx {
@@ -102,7 +102,7 @@ impl FromIterator<TickEntry> for TickScheduler<BlockPos> {
     fn from_iter<T: IntoIterator<Item = TickEntry>>(iter: T) -> Self {
         let mut scheduler = Self::default();
         for entry in iter {
-            scheduler.schedule_tick(entry.pos, entry.ticks_left as usize, entry.tick_priority);
+            scheduler.schedule_half_tick(entry.pos, entry.ticks_left as usize, entry.tick_priority);
         }
         scheduler
     }
@@ -111,6 +111,13 @@ impl FromIterator<TickEntry> for TickScheduler<BlockPos> {
 impl<T> TickScheduler<T> {
     #[inline]
     pub fn schedule_tick(&mut self, node: T, delay: usize, priority: TickPriority) {
+        let delay = delay * 2;
+        debug_assert!(delay < NUM_QUEUES);
+        self.queues_deque[(self.pos + delay) % NUM_QUEUES].0[priority as usize].push(node);
+    }
+
+    #[inline]
+    pub fn schedule_half_tick(&mut self, node: T, delay: usize, priority: TickPriority) {
         debug_assert!(delay < NUM_QUEUES);
         self.queues_deque[(self.pos + delay) % NUM_QUEUES].0[priority as usize].push(node);
     }

@@ -235,6 +235,11 @@ impl World for PlotWorld {
             .schedule_tick(pos, delay as usize, priority);
     }
 
+    fn schedule_half_tick(&mut self, pos: BlockPos, delay: u32, priority: TickPriority) {
+        self.to_be_ticked
+            .schedule_half_tick(pos, delay as usize, priority);
+    }
+
     fn pending_tick_at(&mut self, pos: BlockPos) -> bool {
         self.to_be_ticked.contains(&pos)
     }
