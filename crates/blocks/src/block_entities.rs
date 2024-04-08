@@ -77,7 +77,7 @@ pub struct MovingPistonEntity {
     pub progress: u8,
     pub source: bool,
     pub block_state: u32,
-    pub head_block_id: u32,
+    pub head_block_id: u32, // todo unnecessary
 }
 impl Default for MovingPistonEntity {
     fn default() -> Self {
