@@ -828,6 +828,7 @@ blocks! {
         },
         get_name: if piston.sticky { "sticky_piston" } else { "piston" },
         solid: true,
+        transparent: true,
         cube: true,
     },
     PistonHead {
@@ -850,6 +851,7 @@ blocks! {
         },
         get_name: "piston_head",
         solid: false,
+        transparent: true,
         cube: true,
     },
     MovingPiston {
@@ -871,6 +873,7 @@ blocks! {
         },
         get_name: "moving_piston",
         solid: true,
+        transparent: true,
         cube: true,
     },
     SeaPickle {
