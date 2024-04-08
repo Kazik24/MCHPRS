@@ -57,19 +57,19 @@ pub fn should_piston_extend(
 pub fn update_piston_state(world: &mut impl World, piston: RedstonePiston, piston_pos: BlockPos) {
     let should_extend = should_piston_extend(world, piston, piston_pos);
     if should_extend != piston.extended {
-        tracing::info!("piston update: {} {}", should_extend, piston.extended);
+        // tracing::info!("piston update: {} {}", should_extend, piston.extended);
         if should_extend == false {
             // should retraxt
             retract_block(world, piston, piston_pos, piston.facing);
         }
-        world.schedule_tick(piston_pos, 1, TickPriority::Normal);
+        world.schedule_half_tick(piston_pos, 3, TickPriority::Normal);
     }
 }
 
 pub fn piston_tick(world: &mut impl World, piston: RedstonePiston, piston_pos: BlockPos) {
     let should_extend = should_piston_extend(world, piston, piston_pos);
     if should_extend != piston.extended {
-        tracing::info!("piston tick: {} {}", should_extend, piston.extended);
+        // tracing::info!("piston tick: {} {}", should_extend, piston.extended);
         if should_extend {
             extend(world, piston, piston_pos, piston.facing);
         } else {
@@ -121,30 +121,6 @@ fn extend(
     } else {
         return;
     }
-
-    // match head_block {
-    //     Block::Air {} => {
-    //         tracing::info!("head block is air");
-    //         return;
-    //     }
-    //     _ => {}
-    // }
-
-    // if head_block.has_block_entity() || !head_block.is_simple_cube() {
-    //     tracing::info!("head block is not cube or has block entity");
-    //     return;
-    // }
-
-    // let pushed_pos = head_pos.offset(direction.into());
-    // let old_block = world.get_block(pushed_pos);
-
-    // tracing::info!("pushed block: {:?} {:?}", old_block, pushed_pos);
-
-    // if old_block.is_cube() {
-    //     tracing::info!("pushed block is simple cube");
-    //     destroy(old_block, world, pushed_pos);
-    //     place_in_world(head_block, world, pushed_pos, &None);
-    // }
 }
 
 fn retract_block(
@@ -175,11 +151,11 @@ fn retract_block(
         place_in_world(pull_block, world, head_pos, &None);
     }
 
-    tracing::info!(
-        "retracting piston - setting entity {} {}",
-        piston_pos,
-        pull_block.get_id()
-    );
+    // tracing::info!(
+    //     "retracting piston - setting entity {} {}",
+    //     piston_pos,
+    //     pull_block.get_id()
+    // );
 
     world.set_block_entity(
         piston_pos,
@@ -203,11 +179,11 @@ fn retract_place_block(
 
     // get block entity
     let block_entity = world.get_block_entity(piston_pos);
-    tracing::info!(
-        "retracting piston - block entity {:?} {}",
-        block_entity,
-        head_pos
-    );
+    // tracing::info!(
+    //     "retracting piston - block entity {:?} {}",
+    //     block_entity,
+    //     head_pos
+    // );
     if let Some(BlockEntity::MovingPiston(moving_piston)) = block_entity {
         // set block
         let pull_block = Block::from_id(moving_piston.block_state);
