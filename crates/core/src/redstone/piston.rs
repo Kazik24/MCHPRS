@@ -62,7 +62,9 @@ pub fn update_piston_state(world: &mut impl World, piston: RedstonePiston, pisto
             // should retraxt
             retract_block(world, piston, piston_pos, piston.facing);
         }
-        world.schedule_half_tick(piston_pos, 3, TickPriority::Normal);
+        if !world.pending_tick_at(piston_pos) {
+            world.schedule_half_tick(piston_pos, 3, TickPriority::Normal);
+        }
     }
 }
 
