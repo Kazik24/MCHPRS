@@ -47,6 +47,9 @@ pub trait World {
     /// Schedules a tick in the world with `delay` and `pritority`
     fn schedule_tick(&mut self, pos: BlockPos, delay: u32, priority: TickPriority);
 
+    /// Schedules a tick in the world with `delay` and `pritority`
+    fn schedule_half_tick(&mut self, pos: BlockPos, delay: u32, priority: TickPriority);
+
     /// Returns true if there is a tick entry with `pos`
     fn pending_tick_at(&mut self, pos: BlockPos) -> bool;
 
