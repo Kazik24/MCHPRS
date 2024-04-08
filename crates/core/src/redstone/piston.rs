@@ -58,7 +58,8 @@ pub fn update_piston_state(world: &mut impl World, piston: RedstonePiston, pisto
     let should_extend = should_piston_extend(world, piston, piston_pos);
     if should_extend != piston.extended {
         tracing::info!("piston update: {} {}", should_extend, piston.extended);
-        if should_extend == false { // should retraxt
+        if should_extend == false {
+            // should retraxt
             retract_block(world, piston, piston_pos, piston.facing);
         }
         world.schedule_tick(piston_pos, 1, TickPriority::Normal);
