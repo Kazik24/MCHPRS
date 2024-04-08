@@ -12,7 +12,7 @@ use crate::redpiler::compile_graph::{
     Annotations, CompileGraph, CompileNode, NodeIdx, NodeState, NodeType,
 };
 use crate::redpiler::{CompilerInput, CompilerOptions};
-use crate::redstone::{self, comparator};
+use crate::redstone::{self, comparator, noteblock};
 use crate::world::{for_each_block_optimized, World};
 use itertools::Itertools;
 use mchprs_blocks::block_entities::BlockEntity;
@@ -89,7 +89,10 @@ fn for_pos<W: World>(
         ty,
         NodeType::Button | NodeType::Lever | NodeType::PressurePlate
     );
-    let is_output = matches!(ty, NodeType::Trapdoor | NodeType::Lamp);
+    let is_output = matches!(
+        ty,
+        NodeType::Trapdoor | NodeType::Lamp | NodeType::NoteBlock { .. }
+    );
     // || matches!(block, Block::RedstoneWire { wire } if wire::is_dot(wire));
 
     if ignore_wires && ty == NodeType::Wire && !(is_input | is_output) {
@@ -154,6 +157,17 @@ fn identify_block<W: World>(
         }
         Block::IronTrapdoor { powered, .. } => (NodeType::Trapdoor, NodeState::simple(powered)),
         Block::RedstoneBlock {} => (NodeType::Constant, NodeState::ss(15)),
+        Block::NoteBlock {
+            instrument: _,
+            note,
+            powered,
+        } if noteblock::is_noteblock_unblocked(world, pos) => {
+            let instrument = noteblock::get_noteblock_instrument(world, pos);
+            (
+                NodeType::NoteBlock { instrument, note },
+                NodeState::simple(powered),
+            )
+        }
         block if comparator::has_override(block) => (
             NodeType::Constant,
             NodeState::ss(comparator::get_override(block, world, pos)),

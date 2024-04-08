@@ -1,7 +1,8 @@
 use crate::redpiler::compile_graph::{CompileGraph, LinkType, NodeIdx};
 use crate::redpiler::{CompilerOptions, TaskMonitor};
 use itertools::Itertools;
-use mchprs_blocks::blocks::Block;
+use mchprs_blocks::blocks::{Block, Instrument};
+use mchprs_blocks::BlockPos;
 use mchprs_world::TickEntry;
 use petgraph::visit::EdgeRef;
 use petgraph::Direction;
@@ -26,6 +27,7 @@ fn compile_node(
     node_idx: NodeIdx,
     nodes_len: usize,
     nodes_map: &FxHashMap<NodeIdx, usize>,
+    noteblock_info: &mut Vec<(BlockPos, Instrument, u32)>,
     stats: &mut FinalGraphStats,
 ) -> Node {
     let node = &graph[node_idx];
@@ -114,6 +116,11 @@ fn compile_node(
         CNodeType::Trapdoor => NodeType::Trapdoor,
         CNodeType::Wire => NodeType::Wire,
         CNodeType::Constant => NodeType::Constant,
+        CNodeType::NoteBlock { instrument, note } => {
+            let noteblock_id = noteblock_info.len().try_into().unwrap();
+            noteblock_info.push((node.block.unwrap().0, *instrument, *note));
+            NodeType::NoteBlock { noteblock_id }
+        }
     };
 
     Node {
@@ -148,7 +155,16 @@ pub fn compile(
     let mut stats = FinalGraphStats::default();
     let nodes = graph
         .node_indices()
-        .map(|idx| compile_node(&graph, idx, nodes_len, &nodes_map, &mut stats))
+        .map(|idx| {
+            compile_node(
+                &graph,
+                idx,
+                nodes_len,
+                &nodes_map,
+                &mut backend.noteblock_info,
+                &mut stats,
+            )
+        })
         .collect();
     stats.nodes_bytes = nodes_len * std::mem::size_of::<Node>();
     trace!("{:#?}", stats);

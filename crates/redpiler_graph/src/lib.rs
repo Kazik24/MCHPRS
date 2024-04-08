@@ -42,6 +42,7 @@ pub enum NodeType {
     Wire,
     Constant,
     Piston, //TODO: Implement
+    NoteBlock,
 }
 
 #[derive(Serialize, Deserialize, Clone, PartialEq, Eq, Debug)]

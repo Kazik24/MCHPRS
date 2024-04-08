@@ -3,7 +3,7 @@ use smallvec::SmallVec;
 use std::num::NonZeroU8;
 use std::ops::{Index, IndexMut};
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub struct NodeId(u32);
 
 impl NodeId {
@@ -125,6 +125,23 @@ pub enum NodeType {
     Trapdoor,
     Wire,
     Constant,
+    NoteBlock {
+        noteblock_id: u16,
+    },
+}
+
+impl NodeType {
+    pub fn is_io_block(self) -> bool {
+        matches!(
+            self,
+            NodeType::Lamp
+                | NodeType::Button
+                | NodeType::Lever
+                | NodeType::Trapdoor
+                | NodeType::PressurePlate
+                | NodeType::NoteBlock { .. }
+        )
+    }
 }
 
 #[repr(align(16))]

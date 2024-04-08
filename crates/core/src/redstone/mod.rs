@@ -3,6 +3,7 @@
 //! scenerio (i.e. regular buiding)
 
 pub mod comparator;
+pub mod noteblock;
 mod piston;
 pub mod repeater;
 pub mod wire;
@@ -232,6 +233,32 @@ pub fn update(block: Block, world: &mut impl World, pos: BlockPos) {
         }
         Block::Observer { observer } => {
             tracing::info!("Observer updated, {:?} {:?}", observer, pos);
+        }
+        Block::NoteBlock {
+            instrument: _instrument,
+            note,
+            ..
+        } => {
+            let should_be_powered = redstone_lamp_should_be_lit(world, pos);
+            // We need to recheck if the live version of the block is powered,
+            // because the supplied block is cached and could be outdated
+            let Block::NoteBlock { powered, .. } = world.get_block(pos) else {
+                unreachable!("Underlying block changed, this should never happen")
+            };
+            if powered != should_be_powered {
+                // Hack: Update the instrument only just before the noteblock is updated
+                let instrument = noteblock::get_noteblock_instrument(world, pos);
+                let new_block = Block::NoteBlock {
+                    instrument,
+                    note,
+                    powered: should_be_powered,
+                };
+
+                if should_be_powered && noteblock::is_noteblock_unblocked(world, pos) {
+                    noteblock::play_note(world, pos, instrument, note);
+                }
+                world.set_block(pos, new_block);
+            }
         }
         _ => {}
     }

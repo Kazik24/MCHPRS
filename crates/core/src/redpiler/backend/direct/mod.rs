@@ -10,9 +10,10 @@ use crate::redpiler::compile_graph::CompileGraph;
 use crate::redpiler::task_monitor::TaskMonitor;
 use crate::redpiler::{block_powered_mut, CompilerOptions};
 use crate::redstone::bool_to_ss;
+use crate::redstone::noteblock;
 use crate::world::World;
 use mchprs_blocks::block_entities::BlockEntity;
-use mchprs_blocks::blocks::{Block, ComparatorMode};
+use mchprs_blocks::blocks::{Block, ComparatorMode, Instrument};
 use mchprs_blocks::BlockPos;
 use mchprs_world::{TickEntry, TickPriority};
 use node::{Node, NodeId, NodeType, Nodes};
@@ -21,12 +22,18 @@ use std::fmt;
 use std::sync::Arc;
 use tracing::{debug, warn};
 
+enum Event {
+    NoteBlockPlay { noteblock_id: u16 },
+}
+
 #[derive(Default)]
 pub struct DirectBackend {
     nodes: Nodes,
     blocks: Vec<Option<(BlockPos, Block)>>,
     pos_map: FxHashMap<BlockPos, NodeId>,
     scheduler: TickScheduler<NodeId>,
+    events: Vec<Event>,
+    noteblock_info: Vec<(BlockPos, Instrument, u32)>,
 }
 
 impl DirectBackend {
@@ -69,7 +76,12 @@ impl DirectBackend {
                 *inputs.ss_counts.get_unchecked_mut(new_power as usize) += 1;
             }
 
-            update::update_node(&mut self.scheduler, update_ref, update);
+            update::update_node(
+                &mut self.scheduler,
+                &mut self.events,
+                &mut self.nodes,
+                update,
+            );
         }
     }
 }
@@ -106,6 +118,8 @@ impl JITBackend for DirectBackend {
         }
 
         self.pos_map.clear();
+        self.noteblock_info.clear();
+        self.events.clear();
     }
 
     fn on_use_block(&mut self, pos: BlockPos) {
@@ -148,6 +162,14 @@ impl JITBackend for DirectBackend {
     }
 
     fn flush<W: World>(&mut self, world: &mut W, io_only: bool) {
+        for event in self.events.drain(..) {
+            match event {
+                Event::NoteBlockPlay { noteblock_id } => {
+                    let (pos, instrument, note) = self.noteblock_info[noteblock_id as usize];
+                    noteblock::play_note(world, pos, instrument, note);
+                }
+            }
+        }
         for (i, node) in self.nodes.inner_mut().iter_mut().enumerate() {
             let Some((pos, block)) = &mut self.blocks[i] else {
                 continue;
@@ -270,6 +292,7 @@ impl fmt::Display for DirectBackend {
                 NodeType::Trapdoor => format!("Trapdoor"),
                 NodeType::Wire => format!("Wire"),
                 NodeType::Constant => format!("Constant({})", node.output_power),
+                NodeType::NoteBlock { .. } => format!("NoteBlock"),
             };
             let pos = if let Some((pos, _)) = self.blocks[id] {
                 format!("{}, {}, {}", pos.x, pos.y, pos.z)
