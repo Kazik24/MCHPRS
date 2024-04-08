@@ -205,13 +205,13 @@ fn retract_place_block(
         let pull_block = Block::from_id(moving_piston.block_state);
         place_in_world(pull_block, world, head_pos, &None);
         world.delete_block_entity(piston_pos);
+        world.set_block(
+            piston_pos,
+            Block::Piston {
+                piston: piston.extend(false),
+            },
+        );
     }
-    world.set_block(
-        piston_pos,
-        Block::Piston {
-            piston: piston.extend(false),
-        },
-    );
 }
 
 fn retract(
