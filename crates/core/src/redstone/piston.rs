@@ -56,8 +56,8 @@ pub fn should_piston_extend(
 
 pub fn update_piston_state(world: &mut impl World, piston: RedstonePiston, piston_pos: BlockPos) {
     let should_extend = should_piston_extend(world, piston, piston_pos);
-    tracing::info!("piston update: {} {}", should_extend, piston.extended);
     if should_extend != piston.extended {
+        tracing::info!("piston update: {} {}", should_extend, piston.extended);
         if should_extend == false { // should retraxt
             retract_block(world, piston, piston_pos, piston.facing);
         } 
@@ -67,8 +67,8 @@ pub fn update_piston_state(world: &mut impl World, piston: RedstonePiston, pisto
 
 pub fn piston_tick(world: &mut impl World, piston: RedstonePiston, piston_pos: BlockPos) {
     let should_extend = should_piston_extend(world, piston, piston_pos);
-    tracing::info!("piston tick: {} {}", should_extend, piston.extended);
     if should_extend != piston.extended {
+        tracing::info!("piston tick: {} {}", should_extend, piston.extended);
         if should_extend {
             extend(world, piston, piston_pos, piston.facing);
         } else {
@@ -175,8 +175,14 @@ fn retract_block(
         place_in_world(pull_block, world, head_pos, &None);
     }
 
-    tracing::info!("retracting piston - setting entity {} {}", piston_pos, pull_block.get_id());
+    //tracing::info!("retracting piston - setting entity {} {}", piston_pos, pull_block.get_id());
 
+    let entity = world.get_block_entity(piston_pos).is_some();
+
+    if entity {
+        tracing::info!("retracting piston - block entity exists");
+        return;
+    }
     world.set_block_entity(piston_pos, 
         BlockEntity::MovingPiston(
             MovingPistonEntity {
@@ -201,7 +207,7 @@ fn retract_place_block(
 
     // get block entity
     let block_entity = world.get_block_entity(piston_pos);
-    tracing::info!("retracting piston - block entity {:?} {}", block_entity, head_pos);
+    //tracing::info!("retracting piston - block entity {:?} {}", block_entity, head_pos);
     if let Some(BlockEntity::MovingPiston(moving_piston)) = block_entity {
         // set block
         let pull_block = Block::from_id(moving_piston.block_state);
