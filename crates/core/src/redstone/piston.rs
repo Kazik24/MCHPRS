@@ -184,8 +184,7 @@ fn retract_block(
                 facing: piston.facing.into(),
                 progress: 0,
                 source: false,
-                block_state: 0,
-                head_block_id: pull_block.get_id(),
+                block_state: pull_block.get_id(),
             }
         )
     )
@@ -205,7 +204,7 @@ fn retract_place_block(
     tracing::info!("retracting piston - block entity {:?} {}", block_entity, head_pos);
     if let Some(BlockEntity::MovingPiston(moving_piston)) = block_entity {
         // set block
-        let pull_block = Block::from_id(moving_piston.head_block_id);
+        let pull_block = Block::from_id(moving_piston.block_state);
         place_in_world(pull_block, world, head_pos, &None);
         world.delete_block_entity(piston_pos);
     }
