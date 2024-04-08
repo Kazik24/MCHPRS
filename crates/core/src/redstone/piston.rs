@@ -57,21 +57,31 @@ pub fn should_piston_extend(
 pub fn update_piston_state(world: &mut impl World, piston: RedstonePiston, piston_pos: BlockPos) {
     let should_extend = should_piston_extend(world, piston, piston_pos);
     if should_extend != piston.extended {
-        // tracing::info!("piston update: {} {}", should_extend, piston.extended);
+        tracing::info!(
+            "piston update: {} {} {:?}",
+            should_extend,
+            piston.extended,
+            piston
+        );
         if should_extend == false {
             // should retraxt
             retract_block(world, piston, piston_pos, piston.facing);
         }
-        if !world.pending_tick_at(piston_pos) {
-            world.schedule_half_tick(piston_pos, 3, TickPriority::Normal);
-        }
+        //if !world.pending_tick_at(piston_pos) {
+        world.schedule_half_tick(piston_pos, 3, TickPriority::Normal);
+        //}
     }
 }
 
 pub fn piston_tick(world: &mut impl World, piston: RedstonePiston, piston_pos: BlockPos) {
     let should_extend = should_piston_extend(world, piston, piston_pos);
     if should_extend != piston.extended {
-        // tracing::info!("piston tick: {} {}", should_extend, piston.extended);
+        tracing::info!(
+            "piston tick: {} {} {:?}",
+            should_extend,
+            piston.extended,
+            piston
+        );
         if should_extend {
             extend(world, piston, piston_pos, piston.facing);
         } else {
@@ -90,6 +100,12 @@ fn extend(
     // but consider the true zero-tick pistons with locking updates in same tick
     // as simple as adding last_update_tick: i32 in RedstonePiston
     // and checking here if tick is the same as last_update_tick
+
+    tracing::info!(
+        "extending piston - setting entity {} {:?}",
+        piston_pos,
+        piston
+    );
 
     world.set_block(
         piston_pos,
@@ -150,25 +166,23 @@ fn retract_block(
     //pull block only if its a cube (also half-slab) and without block entity
     if !pull_block.has_block_entity() && pull_block.is_cube() && piston.sticky {
         destroy(pull_block, world, pull_pos);
-        place_in_world(pull_block, world, head_pos, &None);
+        tracing::info!(
+            "retracting piston - setting entity {} {}",
+            piston_pos,
+            pull_block.get_id()
+        );
+
+        world.set_block_entity(
+            piston_pos,
+            BlockEntity::MovingPiston(MovingPistonEntity {
+                extending: false,
+                facing: piston.facing.into(),
+                progress: 0,
+                source: false,
+                block_state: pull_block.get_id(),
+            }),
+        )
     }
-
-    // tracing::info!(
-    //     "retracting piston - setting entity {} {}",
-    //     piston_pos,
-    //     pull_block.get_id()
-    // );
-
-    world.set_block_entity(
-        piston_pos,
-        BlockEntity::MovingPiston(MovingPistonEntity {
-            extending: false,
-            facing: piston.facing.into(),
-            progress: 0,
-            source: false,
-            block_state: pull_block.get_id(),
-        }),
-    )
 }
 
 fn retract_place_block(
@@ -181,11 +195,11 @@ fn retract_place_block(
 
     // get block entity
     let block_entity = world.get_block_entity(piston_pos);
-    // tracing::info!(
-    //     "retracting piston - block entity {:?} {}",
-    //     block_entity,
-    //     head_pos
-    // );
+    tracing::info!(
+        "retracting piston - block entity {:?} {}",
+        block_entity,
+        head_pos
+    );
     if let Some(BlockEntity::MovingPiston(moving_piston)) = block_entity {
         // set block
         let pull_block = Block::from_id(moving_piston.block_state);
