@@ -74,9 +74,10 @@ impl ContainerType {
 pub struct MovingPistonEntity {
     pub extending: bool,
     pub facing: BlockFace,
-    progress: u8,
+    pub progress: u8,
     pub source: bool,
     pub block_state: u32,
+    pub head_block_id: u32,
 }
 impl Default for MovingPistonEntity {
     fn default() -> Self {
@@ -86,6 +87,7 @@ impl Default for MovingPistonEntity {
             progress: 0,
             source: false,
             block_state: 0,
+            head_block_id: 0,
         }
     }
 }
@@ -233,6 +235,7 @@ impl BlockEntity {
                         Value::Float
                     )),
                     source: *nbt_unwrap_val!(&nbt["source"], Value::Byte) != 0,
+                    head_block_id: 0,
                 })
             }),
             _ => None,
