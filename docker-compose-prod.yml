@@ -8,3 +8,4 @@ services:
       - 25562:25565
     volumes:
       - /srv/mchprs/data:/data
+      - /srv/mchprs/target

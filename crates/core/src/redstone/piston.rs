@@ -67,8 +67,9 @@ pub fn update_piston_state(world: &mut impl World, piston: RedstonePiston, pisto
             // should retraxt
             retract_block(world, piston, piston_pos, piston.facing);
         }
+        // 3 brokes pistons
         //if !world.pending_tick_at(piston_pos) {
-        world.schedule_half_tick(piston_pos, 3, TickPriority::Normal);
+        world.schedule_half_tick(piston_pos, 1, TickPriority::Normal);
         //}
     }
 }
@@ -182,6 +183,17 @@ fn retract_block(
                 block_state: pull_block.get_id(),
             }),
         )
+    } else {
+        world.set_block_entity(
+            piston_pos,
+            BlockEntity::MovingPiston(MovingPistonEntity {
+                extending: false,
+                facing: piston.facing.into(),
+                progress: 0,
+                source: false,
+                block_state: 0,
+            }),
+        )
     }
 }
 
@@ -204,7 +216,6 @@ fn retract_place_block(
         // set block
         let pull_block = Block::from_id(moving_piston.block_state);
         place_in_world(pull_block, world, head_pos, &None);
-        world.delete_block_entity(piston_pos);
         world.set_block(
             piston_pos,
             Block::Piston {
