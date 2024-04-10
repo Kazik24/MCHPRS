@@ -1,9 +1,10 @@
 use crate::interaction::{destroy, place_in_world};
 use crate::world::World;
 use mchprs_blocks::block_entities::{BlockEntity, MovingPistonEntity};
-use mchprs_blocks::blocks::{Block, RedstonePiston};
+use mchprs_blocks::blocks::{Block, RedstonePiston, RedstonePistonHead};
 use mchprs_blocks::{BlockFace, BlockFacing, BlockPos};
 use mchprs_world::TickPriority;
+use tracing::info;
 
 fn is_powered_in_direction(world: &impl World, pos: BlockPos, direction: BlockFacing) -> bool {
     let offset = pos.offset(direction.into());
@@ -57,65 +58,49 @@ pub fn should_piston_extend(
 pub fn update_piston_state(world: &mut impl World, piston: RedstonePiston, piston_pos: BlockPos) {
     let should_extend = should_piston_extend(world, piston, piston_pos);
     if should_extend != piston.extended {
-        tracing::info!(
-            "piston update: {} {} {:?}",
-            should_extend,
-            piston.extended,
-            piston
-        );
-        if should_extend == false {
-            // should retraxt
-            retract_block(world, piston, piston_pos, piston.facing);
-        }
-        // 3 brokes pistons
-        //if !world.pending_tick_at(piston_pos) {
-        world.schedule_half_tick(piston_pos, 0, TickPriority::Normal);
-        //}
+        world.schedule_tick(piston_pos, 0, TickPriority::Higher);
     }
 }
 
 pub fn piston_tick(world: &mut impl World, piston: RedstonePiston, piston_pos: BlockPos) {
+    info!("piston tick {piston:?}");
     let should_extend = should_piston_extend(world, piston, piston_pos);
-    if should_extend != piston.extended {
-        tracing::info!(
-            "piston tick: {} {} {:?}",
-            should_extend,
-            piston.extended,
-            piston
-        );
-        if should_extend {
-            extend(world, piston, piston_pos, piston.facing);
-        } else {
-            retract_place_block(world, piston, piston_pos, piston.facing);
-        }
+    if should_extend {
+        schedule_extend(world, piston, piston_pos);
+    } else {
+        schedule_retract(world, piston, piston_pos);
     }
 }
 
-fn extend(
-    world: &mut impl World,
-    piston: RedstonePiston,
-    piston_pos: BlockPos,
-    direction: BlockFacing,
-) {
-    // put world.schedule_tick(piston_pos, 1, priority); somewhere
-    // but consider the true zero-tick pistons with locking updates in same tick
-    // as simple as adding last_update_tick: i32 in RedstonePiston
-    // and checking here if tick is the same as last_update_tick
+pub fn head_tick(world: &mut impl World, head: RedstonePistonHead, head_pos: BlockPos) {
+    let entity = match world.get_block_entity(head_pos) {
+        Some(BlockEntity::MovingPiston(entity)) => *entity,
+        _ => return,
+    };
+    info!("head tick {head:?} entity: {entity:?}");
+    world.delete_block_entity(head_pos);
+    if entity.extending {
+        let pushed_pos = head_pos.offset(entity.facing);
+        place_in_world(Block::from_id(entity.block_state), world, pushed_pos, &None);
+    } else {
+        if head.sticky {
+            place_in_world(Block::from_id(entity.block_state), world, head_pos, &None);
+        } else {
+            place_in_world(Block::Air {}, world, head_pos, &None);
+        }
+        let piston_pos = head_pos.offset(head.facing.opposite().into());
+        let piston = RedstonePiston {
+            extended: false,
+            facing: head.facing,
+            sticky: head.sticky,
+        };
+        world.set_block(piston_pos, Block::Piston { piston });
+    }
+}
 
-    tracing::info!(
-        "extending piston - setting entity {} {:?}",
-        piston_pos,
-        piston
-    );
-
-    world.set_block(
-        piston_pos,
-        Block::Piston {
-            piston: piston.extend(true),
-        },
-    );
-
-    let head_pos = piston_pos.offset(direction.into());
+fn schedule_extend(world: &mut impl World, piston: RedstonePiston, piston_pos: BlockPos) {
+    info!("extending {piston:?}");
+    let head_pos = piston_pos.offset(piston.facing.into());
     let head_block = world.get_block(head_pos);
 
     let has_entity = head_block.has_block_entity();
@@ -123,7 +108,15 @@ fn extend(
 
     //if normal block without entity destroy because it will be moved, when block is not a cube destroy it anyways (and dont move)
     let extend_piston = !has_entity || !is_cube;
+    //push block only if its a cube (also half-slab) and without block entity
+    let move_block = !has_entity && is_cube;
     if extend_piston {
+        world.set_block(
+            piston_pos,
+            Block::Piston {
+                piston: piston.extend(true),
+            },
+        );
         destroy(head_block, world, head_pos);
         world.set_block(
             head_pos,
@@ -131,24 +124,33 @@ fn extend(
                 head: piston.into(),
             },
         );
+
+        if move_block {
+            let entity = MovingPistonEntity {
+                extending: true,
+                facing: piston.facing.into(),
+                progress: 0,
+                block_state: head_block.get_id(),
+                source: true,
+            };
+            world.set_block_entity(head_pos, BlockEntity::MovingPiston(entity));
+            world.schedule_half_tick(head_pos, 3, TickPriority::Normal);
+        }
     }
 
-    //push block only if its a cube (also half-slab) and without block entity
-    if !has_entity && is_cube {
-        let pushed_pos = head_pos.offset(direction.into());
-        place_in_world(head_block, world, pushed_pos, &None)
-    } else {
-        return;
-    }
+    // if move_block {
+
+    //     let pushed_pos = head_pos.offset(direction.into());
+    //     place_in_world(head_block, world, pushed_pos, &None)
+    // } else {
+    //     return;
+    // }
 }
 
-fn retract_block(
-    world: &mut impl World,
-    piston: RedstonePiston,
-    piston_pos: BlockPos,
-    direction: BlockFacing,
-) {
-    let head_pos = piston_pos.offset(direction.into());
+fn schedule_retract(world: &mut impl World, piston: RedstonePiston, piston_pos: BlockPos) {
+    info!("retracting {piston:?}");
+    let direction = piston.facing.into();
+    let head_pos = piston_pos.offset(direction);
     let head_block = world.get_block(head_pos);
 
     match head_block {
@@ -158,105 +160,83 @@ fn retract_block(
         }
     }
 
-    world.delete_block_entity(head_pos); //head can have block entity.
-    world.set_block(head_pos, Block::Air {}); // raw set without update (todo send block updates for BUD switches)
-
-    let pull_pos = head_pos.offset(direction.into());
+    let pull_pos = head_pos.offset(direction);
     let pull_block = world.get_block(pull_pos);
 
     //pull block only if its a cube (also half-slab) and without block entity
-    if !pull_block.has_block_entity() && pull_block.is_cube() && piston.sticky {
-        destroy(pull_block, world, pull_pos);
-        tracing::info!(
-            "retracting piston - setting entity {} {}",
-            piston_pos,
-            pull_block.get_id()
-        );
+    if !pull_block.has_block_entity() && pull_block.is_cube() {
+        if piston.sticky {
+            destroy(pull_block, world, pull_pos);
 
-        world.set_block_entity(
-            piston_pos,
-            BlockEntity::MovingPiston(MovingPistonEntity {
+            let entity = MovingPistonEntity {
                 extending: false,
                 facing: piston.facing.into(),
-                progress: 0,
-                source: false,
+                progress: 255,
+                source: true,
                 block_state: pull_block.get_id(),
-            }),
-        )
-    } else {
-        world.set_block_entity(
-            piston_pos,
-            BlockEntity::MovingPiston(MovingPistonEntity {
-                extending: false,
-                facing: piston.facing.into(),
-                progress: 0,
-                source: false,
-                block_state: 0,
-            }),
-        )
-    }
-}
-
-fn retract_place_block(
-    world: &mut impl World,
-    piston: RedstonePiston,
-    piston_pos: BlockPos,
-    direction: BlockFacing,
-) {
-    let head_pos = piston_pos.offset(direction.into());
-
-    // get block entity
-    let block_entity = world.get_block_entity(piston_pos);
-    tracing::info!(
-        "retracting piston - block entity {:?} {}",
-        block_entity,
-        head_pos
-    );
-    if let Some(BlockEntity::MovingPiston(moving_piston)) = block_entity {
-        // set block
-        let pull_block = Block::from_id(moving_piston.block_state);
-        place_in_world(pull_block, world, head_pos, &None);
-        world.set_block(
-            piston_pos,
-            Block::Piston {
-                piston: piston.extend(false),
-            },
-        );
-    }
-}
-
-fn retract(
-    world: &mut impl World,
-    piston: RedstonePiston,
-    piston_pos: BlockPos,
-    direction: BlockFacing,
-) {
-    let head_pos = piston_pos.offset(direction.into());
-    let head_block = world.get_block(head_pos);
-
-    match head_block {
-        Block::PistonHead { .. } => {}
-        _ => {
-            return;
+            };
+            world.set_block_entity(head_pos, BlockEntity::MovingPiston(entity));
+            world.schedule_half_tick(head_pos, 3, TickPriority::Normal);
+        } else {
         }
     }
-
-    world.delete_block_entity(head_pos); //head can have block entity.
-    world.set_block(head_pos, Block::Air {}); // raw set without update (todo send block updates for BUD switches)
-
-    let pull_pos = head_pos.offset(direction.into());
-    let pull_block = world.get_block(pull_pos);
-
-    //pull block only if its a cube (also half-slab) and without block entity
-    if !pull_block.has_block_entity() && pull_block.is_cube() && piston.sticky {
-        destroy(pull_block, world, pull_pos);
-        place_in_world(pull_block, world, head_pos, &None);
-    }
-
-    world.set_block(
-        piston_pos,
-        Block::Piston {
-            piston: piston.extend(false),
-        },
-    );
 }
+
+// fn retract_place_block(
+//     world: &mut impl World,
+//     piston: RedstonePiston,
+//     piston_pos: BlockPos,
+//     direction: BlockFacing,
+// ) {
+//     let head_pos = piston_pos.offset(direction.into());
+
+//     // get block entity
+//     let block_entity = world.get_block_entity(piston_pos);
+//     if let Some(BlockEntity::MovingPiston(moving_piston)) = block_entity {
+//         // set block
+//         let pull_block = Block::from_id(moving_piston.block_state);
+//         place_in_world(pull_block, world, head_pos, &None);
+//         world.set_block(
+//             piston_pos,
+//             Block::Piston {
+//                 piston: piston.extend(false),
+//             },
+//         );
+//     }
+// }
+
+// fn retract(
+//     world: &mut impl World,
+//     piston: RedstonePiston,
+//     piston_pos: BlockPos,
+//     direction: BlockFacing,
+// ) {
+//     let head_pos = piston_pos.offset(direction.into());
+//     let head_block = world.get_block(head_pos);
+
+//     match head_block {
+//         Block::PistonHead { .. } => {}
+//         _ => {
+//             return;
+//         }
+//     }
+
+//     world.delete_block_entity(head_pos); //head can have block entity.
+//     world.set_block(head_pos, Block::Air {}); // raw set without update (todo send block updates for BUD switches)
+
+//     let pull_pos = head_pos.offset(direction.into());
+//     let pull_block = world.get_block(pull_pos);
+
+//     //pull block only if its a cube (also half-slab) and without block entity
+//     if !pull_block.has_block_entity() && pull_block.is_cube() && piston.sticky {
+//         destroy(pull_block, world, pull_pos);
+//         place_in_world(pull_block, world, head_pos, &None);
+//     }
+
+//     world.set_block(
+//         piston_pos,
+//         Block::Piston {
+//             piston: piston.extend(false),
+//         },
+//     );
+// }

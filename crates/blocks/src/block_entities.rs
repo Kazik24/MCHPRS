@@ -72,10 +72,17 @@ impl ContainerType {
 
 #[derive(Debug, Copy, Clone, Serialize, Deserialize)]
 pub struct MovingPistonEntity {
+    /// true if the piston is extending instead of withdrawing
     pub extending: bool,
+    /// Direction that the piston pushes
     pub facing: BlockFace,
-    pub progress: u8,
+    /// How far the block has been moved. Starts at 0.0, and increments by 0.5 each tick.
+    /// If the value is 1.0 or higher at the start of a tick (before incrementing), then the block transforms into the stored blockState.
+    /// Negative values can be used to increase the time until transformation.
+    pub progress: u8, // (0 => 0.0, 255 => 1.0, linear interpolation)
+    /// true if the block represents the piston head itself, false if it represents a block being pushed.
     pub source: bool,
+    /// The moving block represented by this block entity.
     pub block_state: u32,
 }
 impl Default for MovingPistonEntity {

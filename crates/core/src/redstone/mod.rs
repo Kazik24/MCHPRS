@@ -320,6 +320,9 @@ pub fn tick(block: Block, world: &mut impl World, pos: BlockPos) {
         Block::Piston { piston } => {
             piston::piston_tick(world, piston, pos);
         }
+        Block::PistonHead { head } => {
+            piston::head_tick(world, head, pos);
+        }
         _ => {}
     }
 }

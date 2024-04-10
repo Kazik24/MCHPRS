@@ -91,16 +91,18 @@ impl BlockTransform for BlockDirection {
 
 impl Block {
     pub fn has_block_entity(self) -> bool {
-        matches!(
-            self,
+        match self {
             Block::RedstoneComparator { .. }
-                | Block::Barrel { .. }
-                | Block::Furnace { .. }
-                | Block::Hopper { .. }
-                | Block::Sign { .. }
-                | Block::WallSign { .. }
-                | Block::MovingPiston { .. }
-        )
+            | Block::Barrel { .. }
+            | Block::Furnace { .. }
+            | Block::Hopper { .. }
+            | Block::Sign { .. }
+            | Block::WallSign { .. }
+            | Block::PistonHead { .. }
+            | Block::MovingPiston { .. } => true,
+            Block::Piston { piston } => piston.extended,
+            _ => false,
+        }
     }
 
     pub fn can_place_block_in(self) -> bool {
