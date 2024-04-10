@@ -225,4 +225,13 @@ mod tests {
             sch.schedule_tick(e.pos, e.ticks_left as usize, e.tick_priority);
         }
     }
+
+    #[test]
+    fn test_zero_tick() {
+        let mut sch = TickScheduler::default();
+        let pos = BlockPos::new(1, 1, 1);
+
+        sch.schedule_tick(pos, 0, TickPriority::Normal);
+        assert_eq!(Some(pos), sch.pop_one_this_tick())
+    }
 }

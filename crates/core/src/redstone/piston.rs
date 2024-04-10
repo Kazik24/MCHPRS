@@ -69,7 +69,7 @@ pub fn update_piston_state(world: &mut impl World, piston: RedstonePiston, pisto
         }
         // 3 brokes pistons
         //if !world.pending_tick_at(piston_pos) {
-        world.schedule_half_tick(piston_pos, 1, TickPriority::Normal);
+        world.schedule_half_tick(piston_pos, 0, TickPriority::Normal);
         //}
     }
 }

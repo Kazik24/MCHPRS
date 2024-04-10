@@ -140,6 +140,11 @@ impl PlotWorld {
     }
 
     pub fn tick_interpreted(&mut self) {
+        //handle zero ticks before advancing queue
+        while let Some(pos) = self.to_be_ticked.pop_one_this_tick() {
+            redstone::tick(self.get_block(pos), self, pos);
+        }
+
         self.to_be_ticked.end_last_tick_move_next();
 
         while let Some(pos) = self.to_be_ticked.pop_one_this_tick() {
