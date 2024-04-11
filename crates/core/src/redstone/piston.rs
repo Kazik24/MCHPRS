@@ -110,6 +110,7 @@ fn schedule_extend(world: &mut impl World, piston: RedstonePiston, piston_pos: B
     let extend_piston = !has_entity || !is_cube;
     //push block only if its a cube (also half-slab) and without block entity
     let move_block = !has_entity && is_cube;
+
     if extend_piston {
         world.set_block(
             piston_pos,
@@ -118,6 +119,8 @@ fn schedule_extend(world: &mut impl World, piston: RedstonePiston, piston_pos: B
             },
         );
         destroy(head_block, world, head_pos);
+        // ej kazik to chyba jest źle - Head block powinien pojawiać się po ticku, a nie instantowo. Istantowo powinien blok zniknąć
+        // a head block powinien pojawić się po 3 tickach w tej drugiej części kodu (chyba head-tick u ciebie)
         world.set_block(
             head_pos,
             Block::PistonHead {
