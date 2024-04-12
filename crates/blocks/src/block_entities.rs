@@ -5,6 +5,7 @@ use mchprs_utils::{map, nbt_unwrap_val};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::str::FromStr;
+use thin_vec::ThinVec;
 
 /// A single item in an inventory
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -119,7 +120,7 @@ pub enum BlockEntity {
     },
     Container {
         comparator_override: u8,
-        inventory: Vec<InventoryEntry>,
+        inventory: ThinVec<InventoryEntry>, //reducing size of overall BlockEntity (to 16 bytes from 32 bytes when using Vec)
         ty: ContainerType,
     },
     Sign(Box<SignBlockEntity>),
@@ -145,7 +146,7 @@ impl BlockEntity {
         use nbt::Value;
         let num_slots = ty.num_slots();
         let mut fullness_sum: f32 = 0.0;
-        let mut inventory = Vec::new();
+        let mut inventory = ThinVec::with_capacity(slots_nbt.len());
         for item in slots_nbt {
             let item_compound = nbt_unwrap_val!(item, Value::Compound);
             let count = nbt_unwrap_val!(item_compound["Count"], Value::Byte);

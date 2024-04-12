@@ -6,6 +6,10 @@ use mchprs_blocks::{BlockFace, BlockFacing, BlockPos};
 use mchprs_world::TickPriority;
 use tracing::info;
 
+// Some source code of pistons:
+//https://github.com/Marcelektro/MCP-919/blob/main/src/minecraft/net/minecraft/tileentity/TileEntityPiston.java
+//https://github.com/Marcelektro/MCP-919/blob/main/src/minecraft/net/minecraft/block/BlockPistonBase.java
+
 fn is_powered_in_direction(world: &impl World, pos: BlockPos, direction: BlockFacing) -> bool {
     let offset = pos.offset(direction.into());
     let block = world.get_block(offset);

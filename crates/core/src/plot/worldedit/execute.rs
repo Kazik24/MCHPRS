@@ -1070,7 +1070,7 @@ pub(super) fn execute_replace_container(ctx: CommandExecuteContext<'_>) {
 
                     let new_entity = BlockEntity::Container {
                         comparator_override: ss,
-                        inventory,
+                        inventory: inventory.into(),
                         ty: to,
                     };
                     ctx.plot.set_block_entity(pos, new_entity);
