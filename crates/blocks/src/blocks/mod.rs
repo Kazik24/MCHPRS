@@ -858,19 +858,19 @@ blocks! {
     },
     MovingPiston {
         props: {
-            facing: BlockFacing,
-            sticky: bool,
+            moving: RedstoneMovingPiston,
         },
-        get_id: (facing.get_id() << 1) + (sticky as u32) + 1456,
+        get_id: (moving.facing.get_id() << 1) + (moving.sticky as u32) + 1456,
         from_id_offset: 1456,
         from_id(id): 1456..=1467 => {
-            facing: BlockFacing::from_id(id >> 1),
-            sticky: id & 1 != 0,
+            moving: RedstoneMovingPiston{
+                facing: BlockFacing::from_id(id >> 1),
+                sticky: id & 1 != 0,
+            }
         },
         from_names(_name): {
             "moving_piston" => {
-                facing: Default::default(),
-                sticky: false,
+                moving: Default::default()
             }
         },
         get_name: "moving_piston",

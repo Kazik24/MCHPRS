@@ -127,12 +127,27 @@ pub struct RedstonePistonHead {
     pub short: bool,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default, BlockProperty, BlockTransform)]
+pub struct RedstoneMovingPiston {
+    pub facing: BlockFacing,
+    pub sticky: bool,
+}
+
 impl From<RedstonePiston> for RedstonePistonHead {
     fn from(value: RedstonePiston) -> Self {
-        RedstonePistonHead {
+        Self {
             facing: value.facing,
             sticky: value.sticky,
             short: false,
+        }
+    }
+}
+
+impl From<RedstonePiston> for RedstoneMovingPiston {
+    fn from(value: RedstonePiston) -> Self {
+        Self {
+            facing: value.facing,
+            sticky: value.sticky,
         }
     }
 }
