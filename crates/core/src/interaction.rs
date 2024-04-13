@@ -26,6 +26,18 @@ pub fn on_use(
             ColorCode::DarkAqua,
             format_args!("Block at ({}, {}, {}):\n    {block:?}", pos.x, pos.y, pos.z),
         );
+
+        let power_desc = BlockFace::values()
+            .map(|face| {
+                let power = redstone::get_redstone_power(block, world, pos, face);
+                let name = format!("{face:?}").chars().next().unwrap_or('-');
+                format!("{name}: {power:>2}")
+            })
+            .join(", ");
+        player.send_color_message(
+            ColorCode::Gold,
+            format_args!("  Redstone power: {power_desc}"),
+        );
         match world.get_block_entity(pos) {
             Some(entity) => {
                 player.send_color_message(
