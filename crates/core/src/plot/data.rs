@@ -50,6 +50,7 @@ static EMPTY_PLOT: Lazy<PlotData<PLOT_SECTIONS>> = Lazy::new(|| {
             chunks,
             to_be_ticked: Default::default(),
             packet_senders: Vec::new(),
+            is_cursed: false,
         };
         let chunk_data: Vec<ChunkData<PLOT_SECTIONS>> =
             world.chunks.iter_mut().map(|c| c.save()).collect();

@@ -98,6 +98,7 @@ pub struct PlotWorld {
     pub chunks: Vec<Chunk>,
     pub to_be_ticked: TickScheduler<BlockPos>,
     pub packet_senders: Vec<PlayerPacketSender>,
+    pub is_cursed: bool,
 }
 
 impl PlotWorld {
@@ -991,6 +992,7 @@ impl Plot {
             chunks,
             to_be_ticked: plot_data.pending_ticks.into_iter().collect(),
             packet_senders: Vec::new(),
+            is_cursed: false,
         };
         let tps = plot_data.tps;
         let world_send_rate = plot_data.world_send_rate;

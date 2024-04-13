@@ -131,7 +131,7 @@ pub enum NodeType {
 }
 
 impl NodeType {
-    pub fn is_io_block(self) -> bool {
+    pub fn _is_io_block(self) -> bool {
         matches!(
             self,
             NodeType::Lamp

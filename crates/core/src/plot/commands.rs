@@ -515,6 +515,24 @@ impl Plot {
                 self.reset_timings();
                 self.players[player]
                     .send_system_message("The world send rate was successfully set.");
+            },
+            "/curse" => {
+                if self.world.is_cursed {
+                    self.players[player].send_system_message("The world is already cursed.");
+                } else {
+                    self.world.is_cursed = true;
+                    self.players[player].send_system_message("The world has been cursed. (/bless to undo)");
+                }
+                return false;
+            }
+            "/bless" => {
+                if self.world.is_cursed {
+                    self.world.is_cursed = false;
+                    self.players[player].send_system_message("The world has been blessed.");
+                } else {
+                    self.players[player].send_system_message("The world is not cursed. (/curse to curse)");
+                }
+                return false;
             }
             _ => self.players[player].send_error_message("Command not found!"),
         }
@@ -1209,6 +1227,24 @@ pub static DECLARE_COMMANDS: Lazy<PacketEncoder> = Lazy::new(|| {
                 children: &[],
                 redirect_node: Some(71),
                 name: Some("wsr"),
+                parser: None,
+                suggestions_type: None,
+            },
+            // 74: /curse
+            Node {
+                flags: (CommandFlags::LITERAL | CommandFlags::EXECUTABLE).bits() as i8,
+                children: &[],
+                redirect_node: None,
+                name: Some("curse"),
+                parser: None,
+                suggestions_type: None,
+            },
+            // 75: /bless
+            Node {
+                flags: (CommandFlags::LITERAL | CommandFlags::EXECUTABLE).bits() as i8,
+                children: &[],
+                redirect_node: None,
+                name: Some("bless"),
                 parser: None,
                 suggestions_type: None,
             },
