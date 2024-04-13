@@ -235,7 +235,9 @@ impl BlockEntity {
                 BlockEntity::MovingPiston(MovingPistonEntity {
                     block_state,
                     extending: *nbt_unwrap_val!(nbt.get("extending")?, Value::Byte) != 0,
-                    facing: BlockFace::from_id(*nbt_unwrap_val!(nbt.get("facing")?, Value::Int) as u32),
+                    facing: BlockFace::try_from_id(
+                        *nbt_unwrap_val!(nbt.get("facing")?, Value::Int) as u32,
+                    )?, //todo add error with info
                     progress: MovingPistonEntity::progress_to_u8(*nbt_unwrap_val!(
                         nbt.get("progress")?,
                         Value::Float

@@ -127,8 +127,10 @@ pub fn on_use(
             let block_entity = world.get_block_entity(pos);
             if let Some(BlockEntity::Container { inventory, ty, .. }) = block_entity {
                 player.open_container(inventory, *ty);
+                ActionResult::Success
+            } else {
+                ActionResult::Pass
             }
-            ActionResult::Success
         }
         _ => ActionResult::Pass,
     }

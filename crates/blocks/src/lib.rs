@@ -126,20 +126,23 @@ pub enum BlockFace {
 }
 
 impl BlockFace {
-    pub fn get_id(self) -> u32 {
+    pub const fn get_id(self) -> u32 {
         self as u32
     }
-    pub fn from_id(id: u32) -> BlockFace {
+    pub const fn try_from_id(id: u32) -> Option<BlockFace> {
         match id {
-            0 => BlockFace::Bottom,
-            1 => BlockFace::Top,
-            2 => BlockFace::North,
-            3 => BlockFace::South,
-            4 => BlockFace::West,
-            5 => BlockFace::East,
-            _ => panic!("invalid BlockFace with id {}", id),
+            0 => Some(BlockFace::Bottom),
+            1 => Some(BlockFace::Top),
+            2 => Some(BlockFace::North),
+            3 => Some(BlockFace::South),
+            4 => Some(BlockFace::West),
+            5 => Some(BlockFace::East),
+            _ => None,
         }
     }
+    // pub fn from_id(id: u32) -> BlockFace {
+
+    // }
 
     pub fn values() -> [BlockFace; 6] {
         use BlockFace::*;
@@ -370,18 +373,18 @@ pub enum BlockFacing {
 }
 
 impl BlockFacing {
-    pub fn horizontal_values() -> [Self; 4] {
+    pub const fn horizontal_values() -> [Self; 4] {
         [Self::North, Self::South, Self::East, Self::West]
     }
-    pub fn from_id(id: u32) -> BlockFacing {
+    pub const fn try_from_id(id: u32) -> Option<BlockFacing> {
         match id {
-            0 => BlockFacing::North,
-            1 => BlockFacing::East,
-            2 => BlockFacing::South,
-            3 => BlockFacing::West,
-            4 => BlockFacing::Up,
-            5 => BlockFacing::Down,
-            _ => panic!("invalid BlockFacing with id {}", id),
+            0 => Some(BlockFacing::North),
+            1 => Some(BlockFacing::East),
+            2 => Some(BlockFacing::South),
+            3 => Some(BlockFacing::West),
+            4 => Some(BlockFacing::Up),
+            5 => Some(BlockFacing::Down),
+            _ => None,
         }
     }
 

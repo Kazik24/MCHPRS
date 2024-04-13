@@ -16,7 +16,7 @@ use serde_json::json;
 use std::fs;
 use std::path::PathBuf;
 use std::time::Instant;
-use tracing::error;
+use tracing::{error, warn};
 
 const ERROR_IO_ONLY: &str = "This plot cannot be interacted with while redpiler is active with `--io-only`. To stop redpiler, run `/redpiler reset`.";
 
@@ -169,8 +169,10 @@ impl ServerBoundPacketHandler for Plot {
             player_block_placement.y,
             player_block_placement.z,
         );
-        //FIXME: this panics if face is invalid, player can literally crash the whole server with this, and even corrupt plots if timed well!
-        let block_face = BlockFace::from_id(player_block_placement.face as u32);
+        let Some(block_face) = BlockFace::try_from_id(player_block_placement.face as u32) else {
+            warn!("Invalid block face: {}", player_block_placement.face);
+            return;
+        };
 
         let cancel = |plot: &mut Plot| {
             plot.send_block_change(block_pos, plot.world.get_block_raw(block_pos));

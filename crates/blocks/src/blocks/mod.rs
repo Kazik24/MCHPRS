@@ -781,7 +781,7 @@ blocks! {
         from_id_offset: 9510,
         from_id(id): 9510..=9521 => {
             observer: RedstoneObserver{
-                facing: BlockFacing::from_id(id >> 1),
+                facing: BlockFacing::try_from_id(id >> 1).unwrap(),
                 powered: id & 1 == 0,
             }
         },
@@ -811,12 +811,12 @@ blocks! {
                 1385..=1396 => RedstonePiston{
                     sticky: true,
                     extended: (id - 1385) / 6 == 0,
-                    facing: BlockFacing::from_id((id - 1385) % 6),
+                    facing: BlockFacing::try_from_id((id - 1385) % 6).unwrap(),
                 },
                 _ => RedstonePiston{
                     sticky: false,
                     extended: (id - 1404) / 6 == 0,
-                    facing: BlockFacing::from_id((id - 1404) % 6),
+                    facing: BlockFacing::try_from_id((id - 1404) % 6).unwrap(),
                 },
             }
         },
@@ -841,7 +841,7 @@ blocks! {
         from_id_offset: 1416,
         from_id(id): 1416..=1439 => {
             head: RedstonePistonHead{
-                facing: BlockFacing::from_id(id >> 2),
+                facing: BlockFacing::try_from_id(id >> 2).unwrap(),
                 sticky: id & 1 != 0,
                 short: id & 2 == 0,
             }
@@ -864,7 +864,7 @@ blocks! {
         from_id_offset: 1456,
         from_id(id): 1456..=1467 => {
             moving: RedstoneMovingPiston{
-                facing: BlockFacing::from_id(id >> 1),
+                facing: BlockFacing::try_from_id(id >> 1).unwrap(),
                 sticky: id & 1 != 0,
             }
         },
