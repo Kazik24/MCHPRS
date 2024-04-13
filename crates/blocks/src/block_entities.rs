@@ -202,45 +202,45 @@ impl BlockEntity {
         let id = nbt_unwrap_val!(&nbt.get("Id").or_else(|| nbt.get("id"))?, Value::String);
         match id.as_ref() {
             "minecraft:comparator" => Some(BlockEntity::Comparator {
-                output_strength: *nbt_unwrap_val!(&nbt["OutputSignal"], Value::Int) as u8,
+                output_strength: *nbt_unwrap_val!(nbt.get("OutputSignal")?, Value::Int) as u8,
             }),
             "minecraft:furnace" => BlockEntity::load_container(
-                nbt_unwrap_val!(&nbt["Items"], Value::List),
+                nbt_unwrap_val!(nbt.get("Items")?, Value::List),
                 ContainerType::Furnace,
             ),
             "minecraft:barrel" => BlockEntity::load_container(
-                nbt_unwrap_val!(&nbt["Items"], Value::List),
+                nbt_unwrap_val!(nbt.get("Items")?, Value::List),
                 ContainerType::Barrel,
             ),
             "minecraft:hopper" => BlockEntity::load_container(
-                nbt_unwrap_val!(&nbt["Items"], Value::List),
+                nbt_unwrap_val!(nbt.get("Items")?, Value::List),
                 ContainerType::Hopper,
             ),
             "minecraft:sign" => Some({
                 BlockEntity::Sign(Box::new(SignBlockEntity {
                     rows: [
                         // This cloning is really dumb
-                        nbt_unwrap_val!(nbt["Text1"].clone(), Value::String),
-                        nbt_unwrap_val!(nbt["Text2"].clone(), Value::String),
-                        nbt_unwrap_val!(nbt["Text3"].clone(), Value::String),
-                        nbt_unwrap_val!(nbt["Text4"].clone(), Value::String),
+                        nbt_unwrap_val!(nbt.get("Text1")?.clone(), Value::String),
+                        nbt_unwrap_val!(nbt.get("Text2")?.clone(), Value::String),
+                        nbt_unwrap_val!(nbt.get("Text3")?.clone(), Value::String),
+                        nbt_unwrap_val!(nbt.get("Text4")?.clone(), Value::String),
                     ],
                 }))
             }),
             MovingPistonEntity::ID => Some({
-                let block_state = nbt_unwrap_val!(&nbt["blockState"], Value::Compound);
-                let block_state = nbt_unwrap_val!(&block_state["Name"], Value::String);
+                let block_state = nbt_unwrap_val!(nbt.get("blockState")?, Value::Compound);
+                let block_state = nbt_unwrap_val!(block_state.get("Name")?, Value::String);
                 //todo properties of blocks (low priority)
                 let block_state = Block::from_name(block_state)?.get_id();
                 BlockEntity::MovingPiston(MovingPistonEntity {
                     block_state,
-                    extending: *nbt_unwrap_val!(&nbt["extending"], Value::Byte) != 0,
-                    facing: BlockFace::from_id(*nbt_unwrap_val!(&nbt["facing"], Value::Int) as u32),
+                    extending: *nbt_unwrap_val!(nbt.get("extending")?, Value::Byte) != 0,
+                    facing: BlockFace::from_id(*nbt_unwrap_val!(nbt.get("facing")?, Value::Int) as u32),
                     progress: MovingPistonEntity::progress_to_u8(*nbt_unwrap_val!(
-                        &nbt["progress"],
+                        nbt.get("progress")?,
                         Value::Float
                     )),
-                    source: *nbt_unwrap_val!(&nbt["source"], Value::Byte) != 0,
+                    source: *nbt_unwrap_val!(nbt.get("source")?, Value::Byte) != 0,
                 })
             }),
             _ => None,

@@ -829,7 +829,7 @@ blocks! {
             }
         },
         get_name: if piston.sticky { "sticky_piston" } else { "piston" },
-        solid: true,
+        solid: false,
         transparent: true,
         cube: true,
     },
@@ -874,7 +874,7 @@ blocks! {
             }
         },
         get_name: "moving_piston",
-        solid: true,
+        solid: false,
         transparent: true,
         cube: true,
     },
