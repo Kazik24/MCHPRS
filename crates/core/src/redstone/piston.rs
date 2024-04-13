@@ -184,13 +184,9 @@ fn schedule_retract(world: &mut impl World, piston: RedstonePiston, piston_pos: 
     let pull_block = world.get_block(pull_pos);
 
     //pull block only if its a cube (also half-slab) and without block entity, else use air as placeholder
-    let block_state = if !pull_block.has_block_entity() && pull_block.is_cube() {
-        if piston.sticky {
-            destroy(pull_block, world, pull_pos);
-            pull_block
-        } else {
-            Block::Air {}
-        }
+    let block_state = if !pull_block.has_block_entity() && pull_block.is_cube() && piston.sticky{
+        destroy(pull_block, world, pull_pos);
+        pull_block
     } else {
         Block::Air {}
     };
