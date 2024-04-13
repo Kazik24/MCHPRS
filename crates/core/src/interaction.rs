@@ -1,4 +1,6 @@
+use crate::chat::ColorCode;
 use crate::config::CONFIG;
+use crate::player::PacketSender;
 use crate::player::Player;
 use crate::plot::PlotWorld;
 use crate::plot::PLOT_BLOCK_HEIGHT;
@@ -10,7 +12,6 @@ use mchprs_blocks::items::{Item, ItemStack};
 use mchprs_blocks::{BlockFace, BlockPos};
 use mchprs_network::packets::clientbound::{COpenSignEditor, ClientBoundPacket};
 use mchprs_world::TickPriority;
-use tracing::info;
 
 pub fn on_use(
     block: Block,
@@ -19,6 +20,23 @@ pub fn on_use(
     pos: BlockPos,
     item_in_hand: Option<Item>,
 ) -> ActionResult {
+    if item_in_hand == Some(Item::Stick {}) {
+        //debug info about blocks
+        player.send_color_message(
+            ColorCode::DarkAqua,
+            format_args!("Block at ({}, {}, {}):\n    {block:?}", pos.x, pos.y, pos.z),
+        );
+        match world.get_block_entity(pos) {
+            Some(entity) => {
+                player.send_color_message(
+                    ColorCode::Aqua,
+                    format_args!("  Block entity:\n    {entity:?}"),
+                );
+            }
+            None => {}
+        };
+        return ActionResult::Pass;
+    }
     match block {
         Block::RedstoneRepeater { repeater } => {
             let mut repeater = repeater;
@@ -272,17 +290,7 @@ pub fn get_state_for_placement(
                 short: true,
             },
         },
-        // Block::Piston {
-        //     piston: RedstonePiston {
-        //         facing: context.player.get_block_facing().opposite(),
-        //         extended: false,
-        //         sticky,
-        //     },
-        // },
-        v => {
-            info!("unknown item {:?}", v); //todo remove
-            Block::Stone {}
-        }
+        _ => Block::Stone {},
     };
     if is_valid_position(block, world, pos) {
         block
@@ -486,7 +494,6 @@ pub fn use_item_on_block(
         return false;
     }
     let can_place = item.item_type.is_block() && world.get_block(block_pos).can_place_block_in();
-    info!("unknown item {:?}, can place: {can_place:?}", item);
     if !ctx.player.crouching
         && on_use(
             use_block,

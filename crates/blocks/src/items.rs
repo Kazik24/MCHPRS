@@ -371,6 +371,11 @@ items! {
         },
         block: true,
     },
+    Stick {
+        props: {},
+        get_id: 729,
+        from_id(_id): 729 => {},
+    },
     NoteBlock {
         props: {},
         get_id: 608,

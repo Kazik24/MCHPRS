@@ -1118,14 +1118,7 @@ impl Drop for Plot {
                     Plot::get_center(0, 0)
                 };
                 player.teleport(PlayerPos::new(px, 64.0, pz));
-
-                player.send_raw_system_message(
-                    json!({
-                        "text": "The plot you were previously in has crashed!",
-                        "color": "red"
-                    })
-                    .to_string(),
-                );
+                player.send_error_message("The plot you were previously in has crashed!");
             }
 
             while !self.players.is_empty() {

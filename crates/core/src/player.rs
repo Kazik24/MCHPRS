@@ -1,4 +1,4 @@
-use crate::chat::ChatComponent;
+use crate::chat::{ChatComponent, ColorCode};
 use crate::config::CONFIG;
 use crate::permissions::{self, PlayerPermissionsCache};
 use crate::plot::worldedit::{WorldEditClipboard, WorldEditUndo};
@@ -13,7 +13,7 @@ use mchprs_network::packets::{PacketEncoder, SlotData};
 use mchprs_network::{PlayerConn, PlayerPacketSender};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
-use std::fmt;
+use std::fmt::{self, Display};
 use std::fs::{self, OpenOptions};
 use std::io::{Cursor, Write};
 use std::sync::atomic::{AtomicU32, Ordering};
@@ -417,13 +417,7 @@ impl Player {
 
     /// Sends the player a light purple system message (`message` is not in json format)
     pub fn send_worldedit_message(&self, message: &str) {
-        self.send_raw_system_message(
-            json!({
-                "text": message,
-                "color": "light_purple"
-            })
-            .to_string(),
-        );
+        self.send_color_message(ColorCode::LightPurple, message)
     }
 
     pub fn worldedit_set_first_position(&mut self, pos: BlockPos) {
@@ -561,24 +555,23 @@ pub trait PacketSender {
 
     /// Sends the player a red system message (`message` is not in json format)
     fn send_error_message(&self, message: &str) {
-        self.send_raw_system_message(
-            json!({
-                "text": message,
-                "color": "red"
-            })
-            .to_string(),
-        );
+        self.send_color_message(ColorCode::Red, message)
     }
 
     /// Sends the player a yellow system message (`message` is not in json format)
     fn send_system_message(&self, message: &str) {
+        self.send_color_message(ColorCode::Yellow, message);
+    }
+
+    /// Sends the player a given color message (`message` is not in json format)
+    fn send_color_message(&self, col: ColorCode, message: impl Display) {
         self.send_raw_system_message(
             json!({
-                "text": message,
-                "color": "yellow"
+                "text": message.to_string(),
+                "color": col
             })
             .to_string(),
-        );
+        )
     }
 }
 
