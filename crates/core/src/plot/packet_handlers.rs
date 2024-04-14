@@ -46,7 +46,10 @@ fn traverse_dir(
             if let Some(file_name) = path.file_name() {
                 let file_name = file_name.to_string_lossy();
 
-                if file_name.starts_with(to_complete) && !path.is_dir() {
+                if path
+                    .to_string_lossy()
+                    .starts_with(base.join(to_complete).to_string_lossy().as_ref())
+                {
                     let relative = path.strip_prefix(base)?;
                     let relative = relative.to_str().unwrap();
                     matches.push(CTabCompleteMatch {
