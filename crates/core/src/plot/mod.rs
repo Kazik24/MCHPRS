@@ -99,6 +99,7 @@ pub struct PlotWorld {
     pub to_be_ticked: TickScheduler<BlockPos>,
     pub packet_senders: Vec<PlayerPacketSender>,
     pub is_cursed: bool,
+    pub disable_block_actions: bool,
 }
 
 impl PlotWorld {
@@ -251,6 +252,10 @@ impl World for PlotWorld {
     }
 
     fn block_action(&mut self, pos: BlockPos, block_action: BlockAction) {
+        if self.disable_block_actions {
+            return;
+        }
+
         match block_action {
             BlockAction::Piston { action, piston } => {
                 let piston_action_data = CBlockAction {
@@ -892,6 +897,12 @@ impl Plot {
                 _ => 0,
             };
 
+            self.world.disable_block_actions = match self.tps {
+                Tps::Limited(tps) if tps > 200 => true,
+                Tps::Unlimited => true,
+                _ => false,
+            };
+
             self.last_update_time = now;
             if batch_size != 0 {
                 // 50_000 (= 3.33 MHz) here is arbitrary.
@@ -1012,6 +1023,7 @@ impl Plot {
             to_be_ticked: plot_data.pending_ticks.into_iter().collect(),
             packet_senders: Vec::new(),
             is_cursed: false,
+            disable_block_actions: false,
         };
         let tps = plot_data.tps;
         let world_send_rate = plot_data.world_send_rate;
