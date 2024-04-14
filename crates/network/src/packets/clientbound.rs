@@ -1147,6 +1147,29 @@ impl ClientBoundPacket for CSoundEffect {
     }
 }
 
+/// https://wiki.vg/Block_Actions
+///
+/// "packet_block_action" in https://github.com/PrismarineJS/minecraft-data/blob/master/data/pc/1.18/protocol.json
+pub struct CBlockAction {
+    pub x: i32,
+    pub y: i32,
+    pub z: i32,
+    pub action_id: u8,
+    pub action_param: u8,
+    pub block_id: u32, //block state (protocol wiki says it's ignored by client)
+}
+
+impl ClientBoundPacket for CBlockAction {
+    fn encode(&self) -> PacketEncoder {
+        let mut buf = Vec::new();
+        buf.write_position(self.x, self.y, self.z);
+        buf.write_unsigned_byte(self.action_id);
+        buf.write_unsigned_byte(self.action_param);
+        buf.write_varint(self.block_id as i32);
+        PacketEncoder::new(buf, 0x0b)
+    }
+}
+
 pub struct CEntityTeleport {
     pub entity_id: i32,
     pub x: f64,

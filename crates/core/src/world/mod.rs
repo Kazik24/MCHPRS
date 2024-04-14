@@ -1,7 +1,7 @@
 pub mod storage;
 
 use mchprs_blocks::block_entities::BlockEntity;
-use mchprs_blocks::blocks::Block;
+use mchprs_blocks::blocks::{Block, RedstonePiston};
 use mchprs_blocks::BlockPos;
 use mchprs_world::TickPriority;
 use storage::Chunk;
@@ -57,7 +57,8 @@ pub trait World {
         false
     }
 
-    #[allow(unused_variables)]
+    fn block_action(&mut self, pos: BlockPos, action: BlockAction);
+
     fn play_sound(
         &mut self,
         pos: BlockPos,
@@ -65,8 +66,20 @@ pub trait World {
         sound_category: i32,
         volume: f32,
         pitch: f32,
-    ) {
-    }
+    );
+}
+
+// https://wiki.vg/Block_Actions#Piston
+pub enum PistonAction {
+    Extend = 0,
+    Retract = 1,
+    Cancel = 2,
+}
+pub enum BlockAction {
+    Piston {
+        action: PistonAction,
+        piston: RedstonePiston,
+    },
 }
 
 // TODO: I have no idea how to deduplicate this in a sane way

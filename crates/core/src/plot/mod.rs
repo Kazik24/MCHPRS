@@ -14,7 +14,7 @@ use crate::redstone;
 use crate::server::{BroadcastMessage, Message, PrivMessage};
 use crate::utils::HyphenatedUUID;
 use crate::world::storage::Chunk;
-use crate::world::World;
+use crate::world::{BlockAction, World};
 use anyhow::Context;
 use bus::BusReader;
 use mchprs_blocks::block_entities::BlockEntity;
@@ -248,6 +248,25 @@ impl World for PlotWorld {
 
     fn pending_tick_at(&mut self, pos: BlockPos) -> bool {
         self.to_be_ticked.contains(&pos)
+    }
+
+    fn block_action(&mut self, pos: BlockPos, block_action: BlockAction) {
+        match block_action {
+            BlockAction::Piston { action, piston } => {
+                let piston_action_data = CBlockAction {
+                    x: pos.x,
+                    y: pos.y,
+                    z: pos.z,
+                    action_id: action as u8,
+                    action_param: BlockFace::from(piston.facing) as u8,
+                    block_id: Block::Piston { piston }.get_id(),
+                }
+                .encode();
+                for player in &self.packet_senders {
+                    player.send_packet(&piston_action_data);
+                }
+            }
+        }
     }
 
     fn play_sound(

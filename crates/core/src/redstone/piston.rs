@@ -1,5 +1,5 @@
 use crate::interaction::{destroy, place_in_world};
-use crate::world::World;
+use crate::world::{BlockAction, PistonAction, World};
 use mchprs_blocks::block_entities::{BlockEntity, MovingPistonEntity};
 use mchprs_blocks::blocks::{Block, RedstoneMovingPiston, RedstonePiston, RedstonePistonHead};
 use mchprs_blocks::{BlockFace, BlockFacing, BlockPos};
@@ -166,6 +166,11 @@ fn schedule_extend(world: &mut impl World, piston: RedstonePiston, piston_pos: B
 
         world.set_block_entity(head_pos, BlockEntity::MovingPiston(entity));
         world.schedule_half_tick(head_pos, 3, TickPriority::Normal);
+        let action = BlockAction::Piston {
+            action: PistonAction::Extend,
+            piston,
+        };
+        world.block_action(piston_pos, action)
     }
 }
 
@@ -208,4 +213,9 @@ fn schedule_retract(world: &mut impl World, piston: RedstonePiston, piston_pos: 
     };
     world.set_block_entity(head_pos, BlockEntity::MovingPiston(entity));
     world.schedule_half_tick(head_pos, 3, TickPriority::Normal);
+    let action = BlockAction::Piston {
+        action: PistonAction::Retract,
+        piston,
+    };
+    world.block_action(piston_pos, action);
 }
