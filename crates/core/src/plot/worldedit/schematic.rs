@@ -48,7 +48,9 @@ pub fn load_schematic(file_name: &str) -> Result<WorldEditClipboard> {
     let offset_z = -nbt_unwrap_val!(metadata.get("WEOffsetZ"), Value::Int);
     let mut palette: FxHashMap<u32, u32> = FxHashMap::default();
     for (k, v) in nbt_palette {
-        let Value::Int(id ) = v else { bail!("Palette entry is not an int"); };
+        let Value::Int(id) = v else {
+            bail!("Palette entry is not an int");
+        };
         let block = parse_block(k).with_context(|| format!("error parsing block: {}", k))?;
         palette.insert(*id as u32, block.get_id());
     }
@@ -79,7 +81,9 @@ pub fn load_schematic(file_name: &str) -> Result<WorldEditClipboard> {
     let block_entities = nbt_unwrap_val!(&nbt.get("BlockEntities"), Value::List);
     let mut parsed_block_entities = FxHashMap::default();
     for block_entity in block_entities {
-        let Value::Compound (val) = block_entity else { bail!("Block entity is not a compound") };
+        let Value::Compound(val) = block_entity else {
+            bail!("Block entity is not a compound")
+        };
         let pos_array = nbt_unwrap_val!(val.get("Pos"), Value::IntArray);
         let pos = BlockPos {
             x: pos_array[0],

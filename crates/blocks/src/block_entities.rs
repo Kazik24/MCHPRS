@@ -153,9 +153,7 @@ impl BlockEntity {
             let count = *nbt_unwrap_val!(item_compound.get("Count"), Value::Byte);
             let slot = *nbt_unwrap_val!(item_compound.get("Slot"), Value::Byte);
             let namespaced_name = nbt_unwrap_val!(
-                item_compound
-                    .get("Id")
-                    .or_else(|| item_compound.get("id")),
+                item_compound.get("Id").or_else(|| item_compound.get("id")),
                 Value::String
             );
             let item_type = Item::from_name(
