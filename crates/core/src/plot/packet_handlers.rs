@@ -29,6 +29,44 @@ impl Plot {
     }
 }
 
+fn traverse_dir(
+    path: &std::path::Path,
+    to_complete: &str,
+    matches: &mut Vec<CTabCompleteMatch>,
+    base: &std::path::Path,
+    max_depth: usize,
+) -> anyhow::Result<()> {
+    if max_depth == 0 {
+        return Ok(());
+    }
+    if path.is_dir() {
+        for entry in fs::read_dir(path)? {
+            let entry = entry?;
+            let path = entry.path();
+            if let Some(file_name) = path.file_name() {
+                let file_name = file_name.to_string_lossy();
+
+                if file_name.starts_with(to_complete) && !path.is_dir() {
+                    let relative = path.strip_prefix(base)?;
+                    let relative = relative.to_str().unwrap();
+                    matches.push(CTabCompleteMatch {
+                        match_: relative.to_string(),
+                        tooltip: None,
+                    });
+                }
+                if path.is_dir() {
+                    matches.push(CTabCompleteMatch {
+                        match_: format!("{}/", file_name),
+                        tooltip: None,
+                    });
+                    traverse_dir(&path, to_complete, matches, base, max_depth - 1)?;
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
 impl ServerBoundPacketHandler for Plot {
     fn handle_tab_complete(&mut self, packet: STabComplete, player_idx: usize) {
         if !packet.text.starts_with("//load ") {
@@ -49,30 +87,9 @@ impl ServerBoundPacketHandler for Plot {
             matches: Vec::new(),
         };
 
-        let dir = match fs::read_dir(path) {
-            Ok(dir) => dir,
-            Err(err) => {
-                if err.kind() != std::io::ErrorKind::NotFound {
-                    error!("There was an error completing //load");
-                    error!("{}", err.to_string());
-                }
-                return;
-            }
-        };
-
-        for entry in dir {
-            let entry = entry.unwrap();
-            if entry.file_type().unwrap().is_file() {
-                let name = entry.file_name();
-                let name = name.to_string_lossy();
-                if name.starts_with(current) {
-                    let m = CTabCompleteMatch {
-                        match_: name.to_string(),
-                        tooltip: None,
-                    };
-                    res.matches.push(m);
-                }
-            }
+        if let Err(err) = traverse_dir(&path, &current, &mut res.matches, &path, 5) {
+            error!("Error while tab completing: {:?}", err);
+            return;
         }
 
         self.players[player_idx].send_packet(&res.encode());
