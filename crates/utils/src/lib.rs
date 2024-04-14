@@ -18,8 +18,8 @@ macro_rules! nbt_unwrap_val {
     // It works though!
     ($e:expr, $p:path) => {
         match $e {
-            $p(val) => val,
-            _ => return None,
+            Some($p(val)) => val,
+            _ => anyhow::bail!("Expected {} but got {:?}", stringify!($p), $e),
         }
     };
 }

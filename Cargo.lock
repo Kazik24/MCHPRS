@@ -1368,6 +1368,7 @@ dependencies = [
 name = "mchprs_blocks"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
  "hematite-nbt",
  "mchprs_proc_macros",
  "mchprs_utils",
@@ -1455,6 +1456,9 @@ dependencies = [
 [[package]]
 name = "mchprs_utils"
 version = "0.1.0"
+dependencies = [
+ "anyhow",
+]
 
 [[package]]
 name = "mchprs_world"

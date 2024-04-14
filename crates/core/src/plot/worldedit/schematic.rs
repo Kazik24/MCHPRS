@@ -9,23 +9,13 @@ use itertools::Itertools;
 use mchprs_blocks::block_entities::BlockEntity;
 use mchprs_blocks::blocks::Block;
 use mchprs_blocks::BlockPos;
+use mchprs_utils::nbt_unwrap_val;
 use once_cell::sync::Lazy;
 use regex::Regex;
 use rustc_hash::FxHashMap;
 use serde::Serialize;
 use std::fs::{self, File};
 use std::path::PathBuf;
-
-macro_rules! nbt_as {
-    // I'm not sure if path is the right type here.
-    // It works though!
-    ($e:expr, $p:path) => {
-        match $e {
-            $p(val) => val,
-            _ => bail!(concat!("Could not parse nbt value as ", stringify!($p))),
-        }
-    };
-}
 
 fn parse_block(str: &str) -> Option<Block> {
     static RE: Lazy<Regex> =
@@ -48,21 +38,21 @@ pub fn load_schematic(file_name: &str) -> Result<WorldEditClipboard> {
 
     let mut file = File::open("./schems/".to_owned() + file_name)?;
     let nbt = nbt::Blob::from_gzip_reader(&mut file)?;
-    let size_x = nbt_as!(nbt["Width"], Value::Short) as u32;
-    let size_z = nbt_as!(nbt["Length"], Value::Short) as u32;
-    let size_y = nbt_as!(nbt["Height"], Value::Short) as u32;
-    let nbt_palette = nbt_as!(&nbt["Palette"], Value::Compound);
-    let metadata = nbt_as!(&nbt["Metadata"], Value::Compound);
-    let offset_x = -nbt_as!(metadata["WEOffsetX"], Value::Int);
-    let offset_y = -nbt_as!(metadata["WEOffsetY"], Value::Int);
-    let offset_z = -nbt_as!(metadata["WEOffsetZ"], Value::Int);
+    let size_x = *nbt_unwrap_val!(nbt.get("Width"), Value::Short) as u32;
+    let size_z = *nbt_unwrap_val!(nbt.get("Length"), Value::Short) as u32;
+    let size_y = *nbt_unwrap_val!(nbt.get("Height"), Value::Short) as u32;
+    let nbt_palette = nbt_unwrap_val!(nbt.get("Palette"), Value::Compound);
+    let metadata = nbt_unwrap_val!(nbt.get("Metadata"), Value::Compound);
+    let offset_x = -nbt_unwrap_val!(metadata.get("WEOffsetX"), Value::Int);
+    let offset_y = -nbt_unwrap_val!(metadata.get("WEOffsetY"), Value::Int);
+    let offset_z = -nbt_unwrap_val!(metadata.get("WEOffsetZ"), Value::Int);
     let mut palette: FxHashMap<u32, u32> = FxHashMap::default();
     for (k, v) in nbt_palette {
-        let id = *nbt_as!(v, Value::Int) as u32;
+        let Value::Int(id ) = v else { bail!("Palette entry is not an int"); };
         let block = parse_block(k).with_context(|| format!("error parsing block: {}", k))?;
-        palette.insert(id, block.get_id());
+        palette.insert(*id as u32, block.get_id());
     }
-    let blocks: Vec<u8> = nbt_as!(&nbt["BlockData"], Value::ByteArray)
+    let blocks: Vec<u8> = nbt_unwrap_val!(&nbt.get("BlockData"), Value::ByteArray)
         .iter()
         .map(|b| *b as u8)
         .collect();
@@ -86,17 +76,17 @@ pub fn load_schematic(file_name: &str) -> Result<WorldEditClipboard> {
             }
         }
     }
-    let block_entities = nbt_as!(&nbt["BlockEntities"], Value::List);
+    let block_entities = nbt_unwrap_val!(&nbt.get("BlockEntities"), Value::List);
     let mut parsed_block_entities = FxHashMap::default();
     for block_entity in block_entities {
-        let val = nbt_as!(block_entity, Value::Compound);
-        let pos_array = nbt_as!(&val["Pos"], Value::IntArray);
+        let Value::Compound (val) = block_entity else { bail!("Block entity is not a compound") };
+        let pos_array = nbt_unwrap_val!(val.get("Pos"), Value::IntArray);
         let pos = BlockPos {
             x: pos_array[0],
             y: pos_array[1],
             z: pos_array[2],
         };
-        if let Some(parsed) = BlockEntity::from_nbt(val) {
+        if let Ok(parsed) = BlockEntity::from_nbt(val) {
             parsed_block_entities.insert(pos, parsed);
         }
     }

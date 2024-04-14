@@ -515,13 +515,16 @@ impl Plot {
                 self.reset_timings();
                 self.players[player]
                     .send_system_message("The world send rate was successfully set.");
-            },
+            }
             "/curse" => {
                 if self.world.is_cursed {
                     self.players[player].send_system_message("The world is already cursed.");
                 } else {
                     self.world.is_cursed = true;
-                    self.players[player].send_system_message("The world has been cursed. (/bless to undo)");
+                    self.auto_redpiler = false;
+                    self.players[player].send_system_message(
+                        "The world has been cursed. Redpiler disabled (/bless to undo)",
+                    );
                 }
                 return false;
             }
@@ -530,7 +533,8 @@ impl Plot {
                     self.world.is_cursed = false;
                     self.players[player].send_system_message("The world has been blessed.");
                 } else {
-                    self.players[player].send_system_message("The world is not cursed. (/curse to curse)");
+                    self.players[player]
+                        .send_system_message("The world is not cursed. (/curse to curse)");
                 }
                 return false;
             }

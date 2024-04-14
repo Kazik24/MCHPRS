@@ -1,6 +1,7 @@
 use crate::blocks::Block;
 use crate::items::Item;
 use crate::BlockFace;
+use anyhow::{bail, Result};
 use mchprs_utils::{map, nbt_unwrap_val};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -31,7 +32,7 @@ pub enum ContainerType {
 impl FromStr for ContainerType {
     type Err = ();
 
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
+    fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
         Ok(match s {
             "barrel" => ContainerType::Barrel,
             "furnace" => ContainerType::Furnace,
@@ -142,22 +143,27 @@ impl BlockEntity {
         }
     }
 
-    fn load_container(slots_nbt: &[nbt::Value], ty: ContainerType) -> Option<BlockEntity> {
+    fn load_container(slots_nbt: &[nbt::Value], ty: ContainerType) -> Result<BlockEntity> {
         use nbt::Value;
         let num_slots = ty.num_slots();
         let mut fullness_sum: f32 = 0.0;
         let mut inventory = ThinVec::with_capacity(slots_nbt.len());
         for item in slots_nbt {
-            let item_compound = nbt_unwrap_val!(item, Value::Compound);
-            let count = nbt_unwrap_val!(item_compound["Count"], Value::Byte);
-            let slot = nbt_unwrap_val!(item_compound["Slot"], Value::Byte);
+            let item_compound = nbt_unwrap_val!(Some(item), Value::Compound);
+            let count = *nbt_unwrap_val!(item_compound.get("Count"), Value::Byte);
+            let slot = *nbt_unwrap_val!(item_compound.get("Slot"), Value::Byte);
             let namespaced_name = nbt_unwrap_val!(
                 item_compound
                     .get("Id")
-                    .or_else(|| item_compound.get("id"))?,
+                    .or_else(|| item_compound.get("id")),
                 Value::String
             );
-            let item_type = Item::from_name(namespaced_name.split(':').last()?);
+            let item_type = Item::from_name(
+                namespaced_name
+                    .split(':')
+                    .last()
+                    .ok_or(anyhow::anyhow!("Item compound id missing namespace"))?,
+            );
 
             let mut blob = nbt::Blob::new();
             for (k, v) in item_compound {
@@ -188,7 +194,7 @@ impl BlockEntity {
 
             fullness_sum += count as f32 / item_type.map_or(64, Item::max_stack_size) as f32;
         }
-        Some(BlockEntity::Container {
+        Ok(BlockEntity::Container {
             comparator_override: (if fullness_sum > 0.0 { 1.0 } else { 0.0 }
                 + (fullness_sum / num_slots as f32) * 14.0)
                 .floor() as u8,
@@ -197,55 +203,73 @@ impl BlockEntity {
         })
     }
 
-    pub fn from_nbt(nbt: &HashMap<String, nbt::Value>) -> Option<BlockEntity> {
+    pub fn from_nbt(nbt: &HashMap<String, nbt::Value>) -> anyhow::Result<BlockEntity> {
         use nbt::Value;
-        let id = nbt_unwrap_val!(&nbt.get("Id").or_else(|| nbt.get("id"))?, Value::String);
+        let id = nbt_unwrap_val!(nbt.get("Id").or_else(|| nbt.get("id")), Value::String);
         match id.as_ref() {
-            "minecraft:comparator" => Some(BlockEntity::Comparator {
-                output_strength: *nbt_unwrap_val!(nbt.get("OutputSignal")?, Value::Int) as u8,
+            "minecraft:comparator" => Ok(BlockEntity::Comparator {
+                output_strength: *nbt_unwrap_val!(nbt.get("OutputSignal"), Value::Int) as u8,
             }),
             "minecraft:furnace" => BlockEntity::load_container(
-                nbt_unwrap_val!(nbt.get("Items")?, Value::List),
+                nbt_unwrap_val!(nbt.get("Items"), Value::List),
                 ContainerType::Furnace,
             ),
             "minecraft:barrel" => BlockEntity::load_container(
-                nbt_unwrap_val!(nbt.get("Items")?, Value::List),
+                nbt_unwrap_val!(nbt.get("Items"), Value::List),
                 ContainerType::Barrel,
             ),
             "minecraft:hopper" => BlockEntity::load_container(
-                nbt_unwrap_val!(nbt.get("Items")?, Value::List),
+                nbt_unwrap_val!(nbt.get("Items"), Value::List),
                 ContainerType::Hopper,
             ),
-            "minecraft:sign" => Some({
+            "minecraft:sign" => Ok({
                 BlockEntity::Sign(Box::new(SignBlockEntity {
                     rows: [
                         // This cloning is really dumb
-                        nbt_unwrap_val!(nbt.get("Text1")?.clone(), Value::String),
-                        nbt_unwrap_val!(nbt.get("Text2")?.clone(), Value::String),
-                        nbt_unwrap_val!(nbt.get("Text3")?.clone(), Value::String),
-                        nbt_unwrap_val!(nbt.get("Text4")?.clone(), Value::String),
+                        nbt_unwrap_val!(nbt.get("Text1"), Value::String).clone(),
+                        nbt_unwrap_val!(nbt.get("Text2"), Value::String).clone(),
+                        nbt_unwrap_val!(nbt.get("Text3"), Value::String).clone(),
+                        nbt_unwrap_val!(nbt.get("Text4"), Value::String).clone(),
                     ],
                 }))
             }),
-            MovingPistonEntity::ID => Some({
-                let block_state = nbt_unwrap_val!(nbt.get("blockState")?, Value::Compound);
-                let block_state = nbt_unwrap_val!(block_state.get("Name")?, Value::String);
+            MovingPistonEntity::ID => Ok({
+                let block_state = nbt_unwrap_val!(nbt.get("blockState"), Value::Compound);
+                let block_state = nbt_unwrap_val!(block_state.get("Name"), Value::String);
                 //todo properties of blocks (low priority)
-                let block_state = Block::from_name(block_state)?.get_id();
+
+                let block_state = Block::from_name(block_state)
+                    .ok_or(anyhow::anyhow!(
+                        "Unknown block state in moving piston block entity: {}",
+                        block_state
+                    ))?
+                    .get_id();
+
+                let facing =
+                    BlockFace::try_from_id(*nbt_unwrap_val!(nbt.get("facing"), Value::Int) as u32)
+                        .ok_or(anyhow::anyhow!(
+                            "Unknown block face in moving piston block entity: {}",
+                            *nbt_unwrap_val!(nbt.get("facing"), Value::Int)
+                        ))?;
+
+                let extending = *nbt_unwrap_val!(nbt.get("extending"), Value::Byte) != 0;
+
+                let progress = MovingPistonEntity::progress_to_u8(*nbt_unwrap_val!(
+                    nbt.get("progress"),
+                    Value::Float
+                ));
+
+                let source = *nbt_unwrap_val!(nbt.get("source"), Value::Byte) != 0;
+
                 BlockEntity::MovingPiston(MovingPistonEntity {
                     block_state,
-                    extending: *nbt_unwrap_val!(nbt.get("extending")?, Value::Byte) != 0,
-                    facing: BlockFace::try_from_id(
-                        *nbt_unwrap_val!(nbt.get("facing")?, Value::Int) as u32,
-                    )?, //todo add error with info
-                    progress: MovingPistonEntity::progress_to_u8(*nbt_unwrap_val!(
-                        nbt.get("progress")?,
-                        Value::Float
-                    )),
-                    source: *nbt_unwrap_val!(nbt.get("source")?, Value::Byte) != 0,
+                    extending,
+                    facing,
+                    progress,
+                    source,
                 })
             }),
-            _ => None,
+            _ => bail!("Unknown block entity id: {}", id),
         }
     }
 

@@ -321,8 +321,8 @@ pub fn place_in_world(
 ) {
     if block.has_block_entity() {
         if let Some(nbt) = nbt {
-            if let nbt::Value::Compound(compound) = &nbt["BlockEntityTag"] {
-                if let Some(block_entity) = BlockEntity::from_nbt(compound) {
+            if let Some(nbt::Value::Compound(compound)) = nbt.get("BlockEntityTag") {
+                if let Ok(block_entity) = BlockEntity::from_nbt(compound) {
                     world.set_block_entity(pos, block_entity);
                 }
             }
