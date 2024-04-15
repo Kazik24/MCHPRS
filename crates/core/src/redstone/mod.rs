@@ -64,7 +64,7 @@ fn get_weak_power(
                 }
             }
         },
-        Block::Observer { observer } if observer.facing == side.into() && observer.powered => 15,
+        Block::Observer { observer } if observer.powered => 15,
         _ => 0,
     }
 }
@@ -97,7 +97,7 @@ fn get_strong_power(
         Block::RedstoneWire { .. } => get_weak_power(block, world, pos, side, dust_power),
         Block::RedstoneRepeater { .. } => get_weak_power(block, world, pos, side, dust_power),
         Block::RedstoneComparator { .. } => get_weak_power(block, world, pos, side, dust_power),
-        Block::Observer { observer } if observer.facing == side.into() && observer.powered => 15,
+        Block::Observer { observer } if observer.powered => 15,
         _ => 0,
     }
 }
@@ -351,6 +351,13 @@ pub fn tick(block: Block, world: &mut impl World, pos: BlockPos) {
             let update_dir = observer.facing.opposite();
             let observer_update_pos = pos.offset(update_dir.into());
             let block = world.get_block(observer_update_pos);
+
+            tracing::info!(
+                "Observer tick at {:?} {:?} facing: {:?}",
+                pos,
+                block,
+                observer.facing
+            );
 
             update(block, world, observer_update_pos, Some(update_dir.into()));
         }
