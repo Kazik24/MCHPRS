@@ -103,6 +103,24 @@ pub struct PlotWorld {
 }
 
 impl PlotWorld {
+    #[inline]
+    pub fn from_chunks(
+        x: i32,
+        z: i32,
+        chunks: Vec<Chunk>,
+        to_be_ticked: TickScheduler<BlockPos>,
+    ) -> Self {
+        Self {
+            x,
+            z,
+            chunks,
+            to_be_ticked,
+            packet_senders: Vec::new(),
+            is_cursed: false,
+            disable_block_actions: false,
+        }
+    }
+
     fn get_chunk_index_for_chunk(&self, chunk_x: i32, chunk_z: i32) -> usize {
         let local_x = chunk_x - self.x * PLOT_WIDTH;
         let local_z = chunk_z - self.z * PLOT_WIDTH;
@@ -543,6 +561,8 @@ impl Plot {
                         <= view_distance as u32;
                     let should_be_loaded =
                         Self::get_chunk_distance(x, z, chunk_x, chunk_z) <= view_distance as u32;
+                    // todo make this little bit async, so that chunks dont load all at the same time
+                    // causing lag spikes in client when there is a massive redstone contraption on plot
                     self.set_chunk_loaded_at_player(player_idx, x, z, was_loaded, should_be_loaded);
                 }
             }
@@ -1016,15 +1036,9 @@ impl Plot {
             let possible_scale = (chunks.len() as f64).sqrt().log2();
             error!("Note: it most likely came from a server running plot scale {}, this server is running a plot scale of {}", possible_scale, PLOT_SCALE);
         }
-        let world = PlotWorld {
-            x,
-            z,
-            chunks,
-            to_be_ticked: plot_data.pending_ticks.into_iter().collect(),
-            packet_senders: Vec::new(),
-            is_cursed: false,
-            disable_block_actions: false,
-        };
+
+        let world =
+            PlotWorld::from_chunks(x, z, chunks, plot_data.pending_ticks.into_iter().collect());
         let tps = plot_data.tps;
         let world_send_rate = plot_data.world_send_rate;
         Plot {

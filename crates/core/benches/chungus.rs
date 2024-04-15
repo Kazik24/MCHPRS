@@ -19,14 +19,8 @@ fn load_world(path: impl AsRef<Path>) -> PlotWorld {
         .enumerate()
         .map(|(i, c)| Chunk::load(i as i32 / PLOT_WIDTH, i as i32 % PLOT_WIDTH, c))
         .collect();
-    PlotWorld {
-        x: 0,
-        z: 0,
-        chunks,
-        to_be_ticked: data.pending_ticks.into_iter().collect(),
-        packet_senders: Vec::new(),
-        is_cursed: false,
-    }
+
+    PlotWorld::from_chunks(0, 0, chunks, data.pending_ticks.into_iter().collect())
 }
 
 fn init_compiler() -> Compiler {

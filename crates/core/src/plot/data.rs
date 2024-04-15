@@ -1,4 +1,4 @@
-use super::{Plot, PlotWorld, PLOT_SECTIONS, PLOT_WIDTH};
+use super::{Plot, PLOT_SECTIONS, PLOT_WIDTH};
 use anyhow::{Context, Result};
 use mchprs_save_data::plot_data::{ChunkData, PlotData, Tps, WorldSendRate};
 use once_cell::sync::Lazy;
@@ -44,17 +44,8 @@ static EMPTY_PLOT: Lazy<PlotData<PLOT_SECTIONS>> = Lazy::new(|| {
                 chunks.push(Plot::generate_chunk(8, chunk_x, chunk_z));
             }
         }
-        let mut world = PlotWorld {
-            x: 0,
-            z: 0,
-            chunks,
-            to_be_ticked: Default::default(),
-            packet_senders: Vec::new(),
-            is_cursed: false,
-            disable_block_actions: false,
-        };
         let chunk_data: Vec<ChunkData<PLOT_SECTIONS>> =
-            world.chunks.iter_mut().map(|c| c.save()).collect();
+            chunks.iter_mut().map(|c| c.save()).collect();
         PlotData {
             tps: Tps::Limited(10),
             world_send_rate: WorldSendRate::default(),
