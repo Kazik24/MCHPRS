@@ -26,6 +26,7 @@ fn load_world(path: impl AsRef<Path>) -> PlotWorld {
         to_be_ticked: data.pending_ticks.into_iter().collect(),
         packet_senders: Vec::new(),
         is_cursed: false,
+        disable_block_actions: false,
     }
 }
 
