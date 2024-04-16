@@ -116,21 +116,59 @@ pub struct RedstoneObserver {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default, BlockProperty, BlockTransform)]
 pub struct RedstonePiston {
     pub facing: BlockFacing,
-    pub sticky: bool,
+    pub sticky: bool, // pistons don't have "type" property like e.g head, but this makes code more ergonomic
     pub extended: bool,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Default, BlockProperty, BlockTransform)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default, BlockTransform)]
 pub struct RedstonePistonHead {
     pub facing: BlockFacing,
-    pub sticky: bool,
+    pub sticky: bool, // named "type" in MC
     pub short: bool,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Default, BlockProperty, BlockTransform)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default, BlockTransform)]
 pub struct RedstoneMovingPiston {
     pub facing: BlockFacing,
-    pub sticky: bool,
+    pub sticky: bool, // named "type" in MC
+}
+
+// custom encode/decode because of "type" property
+impl BlockProperty for RedstonePistonHead {
+    fn encode(self, props: &mut nbt::Map<&'static str, String>, _name: &'static str) {
+        BlockProperty::encode(self.facing, props, "facing");
+        BlockProperty::encode(self.short, props, "short");
+        let p_type = if self.sticky { "sticky" } else { "normal" };
+        props.insert("type", p_type.into());
+    }
+
+    fn decode(&mut self, props: &nbt::Map<&str, &str>, _name: &str) {
+        BlockProperty::decode(&mut self.facing, props, "facing");
+        BlockProperty::decode(&mut self.short, props, "short");
+        match props.get("type").copied() {
+            Some("sticky") => self.sticky = true,
+            Some("normal") => self.sticky = false,
+            _ => {}
+        }
+    }
+}
+
+// custom encode/decode because of "type" property
+impl BlockProperty for RedstoneMovingPiston {
+    fn encode(self, props: &mut nbt::Map<&'static str, String>, _name: &'static str) {
+        BlockProperty::encode(self.facing, props, "facing");
+        let p_type = if self.sticky { "sticky" } else { "normal" };
+        props.insert("type", p_type.into());
+    }
+
+    fn decode(&mut self, props: &nbt::Map<&str, &str>, _name: &str) {
+        BlockProperty::decode(&mut self.facing, props, "facing");
+        match props.get("type").copied() {
+            Some("sticky") => self.sticky = true,
+            Some("normal") => self.sticky = false,
+            _ => {}
+        }
+    }
 }
 
 impl From<RedstonePiston> for RedstonePistonHead {

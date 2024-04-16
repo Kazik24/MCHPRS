@@ -224,16 +224,38 @@ impl BlockEntity {
                 BlockEntity::Sign(Box::new(SignBlockEntity {
                     rows: [
                         // This cloning is really dumb
-                        nbt_unwrap_val!(nbt.get("Text1"), Value::String).clone(),
-                        nbt_unwrap_val!(nbt.get("Text2"), Value::String).clone(),
-                        nbt_unwrap_val!(nbt.get("Text3"), Value::String).clone(),
-                        nbt_unwrap_val!(nbt.get("Text4"), Value::String).clone(),
+                        nbt_unwrap_val!(
+                            nbt.get("Text1").or_else(|| nbt.get("text1")),
+                            Value::String
+                        )
+                        .clone(),
+                        nbt_unwrap_val!(
+                            nbt.get("Text2").or_else(|| nbt.get("text2")),
+                            Value::String
+                        )
+                        .clone(),
+                        nbt_unwrap_val!(
+                            nbt.get("Text3").or_else(|| nbt.get("text3")),
+                            Value::String
+                        )
+                        .clone(),
+                        nbt_unwrap_val!(
+                            nbt.get("Text4").or_else(|| nbt.get("text4")),
+                            Value::String
+                        )
+                        .clone(),
                     ],
                 }))
             }),
             MovingPistonEntity::ID => Ok({
-                let block_state = nbt_unwrap_val!(nbt.get("blockState"), Value::Compound);
-                let block_state = nbt_unwrap_val!(block_state.get("Name"), Value::String);
+                let block_state = nbt_unwrap_val!(
+                    nbt.get("BlockState").or_else(|| nbt.get("blockState")),
+                    Value::Compound
+                );
+                let block_state = nbt_unwrap_val!(
+                    block_state.get("Name").or_else(|| block_state.get("name")),
+                    Value::String
+                );
                 //todo properties of blocks (low priority)
 
                 let block_state = Block::from_name(block_state)
@@ -244,20 +266,24 @@ impl BlockEntity {
                     .get_id();
 
                 let facing =
-                    BlockFace::try_from_id(*nbt_unwrap_val!(nbt.get("facing"), Value::Int) as u32)
-                        .ok_or(anyhow::anyhow!(
-                            "Unknown block face in moving piston block entity: {}",
-                            *nbt_unwrap_val!(nbt.get("facing"), Value::Int)
-                        ))?;
+                    *nbt_unwrap_val!(nbt.get("Facing").or_else(|| nbt.get("facing")), Value::Int)
+                        as u32;
+                let facing = BlockFace::try_from_id(facing).ok_or(anyhow::anyhow!(
+                    "Unknown block face in moving piston block entity: {facing}"
+                ))?;
 
-                let extending = *nbt_unwrap_val!(nbt.get("extending"), Value::Byte) != 0;
+                let extending = *nbt_unwrap_val!(
+                    nbt.get("Extending").or_else(|| nbt.get("extending")),
+                    Value::Byte
+                ) != 0;
 
                 let progress = MovingPistonEntity::progress_to_u8(*nbt_unwrap_val!(
-                    nbt.get("progress"),
+                    nbt.get("Progress").or_else(|| nbt.get("progress")),
                     Value::Float
                 ));
-
-                let source = *nbt_unwrap_val!(nbt.get("source"), Value::Byte) != 0;
+                let source =
+                    *nbt_unwrap_val!(nbt.get("Source").or_else(|| nbt.get("source")), Value::Byte)
+                        != 0;
 
                 BlockEntity::MovingPiston(MovingPistonEntity {
                     block_state,
