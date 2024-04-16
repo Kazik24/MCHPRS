@@ -160,12 +160,12 @@ macro_rules! blocks {
     (
         $(
             $name:ident {
-                props: {
+                $(props: {
                     $(
                         $prop_name:ident : $prop_type:ident
                     ),*
                     $(,)?
-                },
+                },)?
                 get_id: $get_id:expr,
                 $( from_id_offset: $get_id_offset:literal, )?
                 from_id($id_name:ident): $from_id_pat:pat => {
@@ -196,11 +196,11 @@ macro_rules! blocks {
         #[derive(Clone, Copy, Debug, PartialEq, Eq)]
         pub enum Block {
             $(
-                $name {
+                $name $({
                     $(
                         $prop_name: $prop_type,
                     )*
-                }
+                })?
             ),*
         }
 
@@ -241,9 +241,9 @@ macro_rules! blocks {
                 match self {
                     $(
                         Block::$name {
-                            $(
+                            $($(
                                 $prop_name,
-                            )*
+                            )*)?
                         } => $get_id,
                     )*
                 }
@@ -289,9 +289,9 @@ macro_rules! blocks {
                 match self {
                     $(
                         Block::$name {
-                            $(
+                            $($(
                                 $prop_name,
-                            )*
+                            )*)?
                         } => $get_name,
                     )*
                 }
@@ -301,13 +301,13 @@ macro_rules! blocks {
                 match self {
                     $(
                         Block::$name {
-                            $(
+                            $($(
                                 $prop_name,
-                            )*
+                            )*)?
                         } => {
-                            $(
+                            $($(
                                 <$prop_type as BlockProperty>::decode($prop_name, &props, stringify!($prop_name));
-                            )*
+                            )*)?
                         },
                     )*
                 }
@@ -318,13 +318,13 @@ macro_rules! blocks {
                 match self {
                     $(
                         Block::$name {
-                            $(
+                            $($(
                                 $prop_name,
-                            )*
+                            )*)?
                         } => {
-                            $(
+                            $($(
                                 <$prop_type as BlockProperty>::encode(*$prop_name, &mut props, stringify!($prop_name));
-                            )*
+                            )*)?
                         },
                     )*
                 }
@@ -335,13 +335,13 @@ macro_rules! blocks {
                 match self {
                     $(
                         Block::$name {
-                            $(
+                            $($(
                                 $prop_name,
-                            )*
+                            )*)?
                         } => {
-                            $(
+                            $($(
                                 <$prop_type as BlockTransform>::rotate($prop_name, amt);
-                            )*
+                            )*)?
                         },
                     )*
                 }
@@ -351,13 +351,13 @@ macro_rules! blocks {
                 match self {
                     $(
                         Block::$name {
-                            $(
+                            $($(
                                 $prop_name,
-                            )*
+                            )*)?
                         } => {
-                            $(
+                            $($(
                                 <$prop_type as BlockTransform>::flip($prop_name, dir);
-                            )*
+                            )*)?
                         },
                     )*
                 }
@@ -369,7 +369,6 @@ macro_rules! blocks {
 // list of block states: https://github.com/PrismarineJS/minecraft-data/blob/master/data/pc/1.18/blocks.json
 blocks! {
     Air {
-        props: {},
         get_id: 0,
         from_id(_id): 0 => {},
         from_names(_name): {
@@ -378,7 +377,6 @@ blocks! {
         get_name: "air",
     },
     Stone {
-        props: {},
         get_id: 1,
         from_id(_id): 1 => {},
         from_names(_name): {
@@ -389,7 +387,6 @@ blocks! {
         cube: true,
     },
     Glass {
-        props: {},
         get_id: 262,
         from_id(_id): 262 => {},
         from_names(_name): {
@@ -400,7 +397,6 @@ blocks! {
         cube: true,
     },
     Glowstone {
-        props: {},
         get_id: 4082,
         from_id(_id): 4082 => {},
         from_names(_name): {
@@ -758,7 +754,6 @@ blocks! {
         get_name: "comparator",
     },
     RedstoneBlock {
-        props: {},
         get_id: 6932,
         from_id(_id): 6932 => {},
         from_names(_name): {
@@ -895,7 +890,6 @@ blocks! {
         get_name: "sea_pickle",
     },
     Target {
-        props: {},
         get_id: 16014,
         from_id(_id): 16014 => {},
         from_names(_name): {
@@ -938,7 +932,6 @@ blocks! {
         get_name: "cake",
     },
     Barrel {
-        props: {},
         get_id: 15042,
         from_id(_id): 15042 => {},
         from_names(_name): {
@@ -949,7 +942,6 @@ blocks! {
         cube: true,
     },
     Hopper {
-        props: {},
         get_id: 6939,
         from_id(_id): 6939 => {},
         from_names(_name): {
@@ -960,7 +952,6 @@ blocks! {
         cube: true,
     },
     Sandstone {
-        props: {},
         get_id: 278,
         from_id(_id): 278 => {},
         from_names(_name): {
@@ -971,7 +962,6 @@ blocks! {
         cube: true,
     },
     StoneBrick {
-        props: {},
         get_id: 4564,
         from_id(_id): 4564 => {},
         from_names(_name): {
@@ -982,7 +972,6 @@ blocks! {
         cube: true,
     },
     CoalBlock {
-        props: {},
         get_id: 8133,
         from_id(_id): 8133 => {},
         from_names(_name): {
@@ -993,7 +982,6 @@ blocks! {
         cube: true,
     },
     Furnace {
-        props: {},
         get_id: 3431,
         from_id(_id): 3431 => {},
         from_names(_name): {
@@ -1004,7 +992,6 @@ blocks! {
         cube: true,
     },
     Quartz {
-        props: {},
         get_id: 6944,
         from_id(_id): 6944 => {},
         from_names(_name): {
@@ -1015,7 +1002,6 @@ blocks! {
         cube: true,
     },
     SmoothQuartz {
-        props: {},
         get_id: 8666,
         from_id(_id): 8666 => {},
         from_names(_name): {
@@ -1026,7 +1012,6 @@ blocks! {
         cube: true,
     },
     SmoothStoneSlab {
-        props: {},
         get_id: 8593,
         from_id(_id): 8593 => {},
         from_names(_name): {
@@ -1037,7 +1022,6 @@ blocks! {
         cube: true,
     },
     QuartzSlab {
-        props: {},
         get_id: 8641,
         from_id(_id): 8641 => {},
         from_names(_name): {
@@ -1187,7 +1171,6 @@ blocks! {
         cube: true,
     },
     Terracotta {
-        props: {},
         get_id: 8132,
         from_id(_id): 8132 => {},
         from_names(_name): {
@@ -1350,7 +1333,6 @@ blocks! {
         cube: true,
     },
     Clay {
-        props: {},
         get_id: 4016,
         from_id(_id): 4016 => {},
         from_names(_name): {
@@ -1361,7 +1343,6 @@ blocks! {
         cube: true,
     },
     GoldBlock {
-        props: {},
         get_id: 1483,
         from_id(_id): 1483 => {},
         from_names(_name): {
@@ -1372,7 +1353,6 @@ blocks! {
         cube: true,
     },
     PackedIce {
-        props: {},
         get_id: 8134,
         from_id(_id): 8134 => {},
         from_names(_name): {
@@ -1383,7 +1363,6 @@ blocks! {
         cube: true,
     },
     BoneBlock {
-        props: {},
         get_id: 9507,
         from_id(_id): 9506..=9508 => {},
         from_names(_name): {
@@ -1394,7 +1373,6 @@ blocks! {
         cube: true,
     },
     IronBlock {
-        props: {},
         get_id: 1484,
         from_id(_id): 1484 => {},
         from_names(_name): {
@@ -1405,7 +1383,6 @@ blocks! {
         cube: true,
     },
     SoulSand {
-        props: {},
         get_id: 4069,
         from_id(_id): 4069 => {},
         from_names(_name): {
@@ -1416,7 +1393,6 @@ blocks! {
         cube: true,
     },
     Pumpkin {
-        props: {},
         get_id: 4067,
         from_id(_id): 4067 => {},
         from_names(_name): {
@@ -1427,7 +1403,6 @@ blocks! {
         cube: true,
     },
     EmeraldBlock {
-        props: {},
         get_id: 5609,
         from_id(_id): 5609 => {},
         from_names(_name): {
@@ -1438,7 +1413,6 @@ blocks! {
         cube: true,
     },
     HayBlock {
-        props: {},
         get_id: 8114,
         from_id(_id): 8113..=8115 => {},
         from_names(_name): {
@@ -1449,7 +1423,6 @@ blocks! {
         cube: true,
     },
     Sand {
-        props: {},
         get_id: 66,
         from_id(_id): 66 => {},
         from_names(_name): {

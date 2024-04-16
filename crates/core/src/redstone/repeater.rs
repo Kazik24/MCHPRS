@@ -82,7 +82,6 @@ pub fn on_neighbor_updated(mut rep: RedstoneRepeater, world: &mut impl World, po
     }
 }
 
-//todo implement tick for pistons
 pub fn tick(mut rep: RedstoneRepeater, world: &mut impl World, pos: BlockPos) {
     if rep.locked {
         return;

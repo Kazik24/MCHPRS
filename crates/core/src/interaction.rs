@@ -20,7 +20,7 @@ pub fn on_use(
     pos: BlockPos,
     item_in_hand: Option<Item>,
 ) -> ActionResult {
-    if item_in_hand == Some(Item::Stick {}) {
+    if item_in_hand == Some(Item::Stick) {
         //debug info about blocks
         player.send_color_message(
             ColorCode::DarkAqua,

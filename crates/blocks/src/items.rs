@@ -62,11 +62,11 @@ macro_rules! items {
     (
         $(
             $name:ident {
-                props: {
+                $(props: {
                     $(
                         $prop_name:ident : $prop_type:ident
                     ),*
-                },
+                },)?
                 get_id: $get_id:expr,
                 $( from_id_offset: $get_id_offset:literal, )?
                 from_id($id_name:ident): $from_id_pat:pat => {
@@ -82,11 +82,11 @@ macro_rules! items {
         #[derive(Clone, Copy, Debug, PartialEq, Eq)]
         pub enum Item {
             $(
-                $name {
+                $name $({
                     $(
                         $prop_name: $prop_type,
                     )*
-                }
+                })?
             ),*
         }
 
@@ -96,9 +96,9 @@ macro_rules! items {
                 match self {
                     $(
                         Item::$name {
-                            $(
+                            $($(
                                 $prop_name,
-                            )*
+                            )*)?
                         } => $get_id,
                     )*
                 }
@@ -145,54 +145,45 @@ macro_rules! items {
 items! {
     // Wooden Axe
     WEWand {
-        props: {},
         get_id: 702,
         from_id(_id): 702 => {},
     },
     Snowball {
-        props: {},
         get_id: 780,
         from_id(_id): 780 => {},
         max_stack: 16,
     },
     TotemOfUndying {
-        props: {},
         get_id: 1010,
         from_id(_id): 1010 => {},
         max_stack: 1,
     },
     MilkBucket {
-        props: {},
         get_id: 782,
         from_id(_id): 782 => {},
         max_stack: 1,
     },
     Stone {
-        props: {},
         get_id: 1,
         from_id(_id): 1 => {},
         block: true,
     },
     Redstone {
-        props: {},
         get_id: 585,
         from_id(_id): 585 => {},
         block: true,
     },
     Glass {
-        props: {},
         get_id: 143,
         from_id(_id): 143 => {},
         block: true,
     },
     Sandstone {
-        props: {},
         get_id: 146,
         from_id(_id): 146 => {},
         block: true,
     },
     SeaPickle {
-        props: {},
         get_id: 156,
         from_id(_id): 156 => {},
         block: true,
@@ -209,61 +200,51 @@ items! {
         block: true,
     },
     Furnace {
-        props: {},
         get_id: 248,
         from_id(_id): 248 => {},
         block: true,
     },
     Lever {
-        props: {},
         get_id: 600,
         from_id(_id): 600 => {},
         block: true,
     },
     StonePressurePlate {
-        props: {},
         get_id: 190,
         from_id(_id): 190 => {},
         block: true,
     },
     RedstoneTorch {
-        props: {},
         get_id: 586,
         from_id(_id): 586 => {},
         block: true,
     },
     StoneButton {
-        props: {},
         get_id: 609,
         from_id(_id): 609 => {},
         block: true,
     },
     RedstoneLamp {
-        props: {},
         get_id: 607,
         from_id(_id): 607 => {},
         block: true,
     },
     RedstoneBlock {
-        props: {},
         get_id: 587,
         from_id(_id): 587 => {},
         block: true,
     },
     Hopper {
-        props: {},
         get_id: 595,
         from_id(_id): 595 => {},
         block: true,
     },
     TripwireHook {
-        props: {},
         get_id: 604,
         from_id(_id): 604 => {},
         block: true,
     },
     Terracotta {
-        props: {},
         get_id: 389,
         from_id(_id): 389 => {},
         block: true,
@@ -302,13 +283,11 @@ items! {
         block: true,
     },
     Repeater {
-        props: {},
         get_id: 588,
         from_id(_id): 588 => {},
         block: true,
     },
     Comparator {
-        props: {},
         get_id: 589,
         from_id(_id): 589 => {},
         block: true,
@@ -325,37 +304,31 @@ items! {
         block: true,
     },
     Barrel {
-        props: {},
         get_id: 1043,
         from_id(_id): 1043 => {},
         block: true,
     },
     Target {
-        props: {},
         get_id: 599,
         from_id(_id): 599 => {},
         block: true,
     },
     SmoothStoneSlab {
-        props: {},
         get_id: 213,
         from_id(_id): 213 => {},
         block: true,
     },
     QuartzSlab {
-        props: {},
         get_id: 221,
         from_id(_id): 221 => {},
         block: true,
     },
     IronTrapdoor {
-        props: {},
         get_id: 640,
         from_id(_id): 640 => {},
         block: true,
     },
     Observer {
-        props: {},
         get_id: 594,
         from_id(_id): 594 => {},
         block: true,
@@ -372,72 +345,60 @@ items! {
         block: true,
     },
     Stick {
-        props: {},
         get_id: 729,
         from_id(_id): 729 => {},
     },
     NoteBlock {
-        props: {},
         get_id: 608,
         from_id(_id): 608 => {},
         block: true,
     },
     Clay {
-        props: {},
         get_id: 255,
         from_id(_id): 255 => {},
         block: true,
     },
     GoldBlock {
-        props: {},
         get_id: 67,
         from_id(_id): 67 => {},
         block: true,
     },
     PackedIce {
-        props: {},
         get_id: 390,
         from_id(_id): 390 => {},
         block: true,
     },
     BoneBlock {
-        props: {},
         get_id: 449,
         from_id(_id): 449 => {},
         block: true,
     },
     IronBlock {
-        props: {},
         get_id: 65,
         from_id(_id): 65 => {},
         block: true,
     },
     SoulSand {
-        props: {},
         get_id: 269,
         from_id(_id): 269 => {},
         block: true,
     },
     Pumpkin {
-        props: {},
         get_id: 265,
         from_id(_id): 265 => {},
         block: true,
     },
     EmeraldBlock {
-        props: {},
         get_id: 317,
         from_id(_id): 317 => {},
         block: true,
     },
     HayBlock {
-        props: {},
         get_id: 372,
         from_id(_id): 372 => {},
         block: true,
     },
     Sand {
-        props: {},
         get_id: 37,
         from_id(_id): 37 => {},
         block: true,
