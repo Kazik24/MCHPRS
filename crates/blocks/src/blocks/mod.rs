@@ -791,7 +791,7 @@ blocks! {
             }
         },
         get_name: "observer",
-        solid: true,
+        transparent: true,
         cube: true,
     },
 

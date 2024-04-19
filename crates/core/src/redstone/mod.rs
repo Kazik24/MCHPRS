@@ -64,7 +64,7 @@ fn get_weak_power(
                 }
             }
         },
-        Block::Observer { observer } if observer.powered => 15,
+        Block::Observer { observer } if observer.facing == side.into() && observer.powered => 15,
         _ => 0,
     }
 }
@@ -235,14 +235,7 @@ pub fn update(block: Block, world: &mut impl World, pos: BlockPos, dir: Option<B
         }
         Block::Observer { observer } => {
             if let Some(dir) = dir {
-                tracing::info!(
-                    "Observer update at {:?} from {:?} facing: {:?}",
-                    pos,
-                    dir,
-                    observer.facing
-                );
-
-                if observer.facing == dir.into() {
+                if observer.facing == dir.into() && !observer.powered {
                     world.schedule_tick(pos, 1, TickPriority::Normal);
                 }
             }
@@ -347,19 +340,16 @@ pub fn tick(block: Block, world: &mut impl World, pos: BlockPos) {
                 );
                 world.schedule_tick(pos, 1, TickPriority::Normal);
             }
-
-            let update_dir = observer.facing.opposite();
-            let observer_update_pos = pos.offset(update_dir.into());
-            let block = world.get_block(observer_update_pos);
-
-            tracing::info!(
-                "Observer tick at {:?} {:?} facing: {:?}",
-                pos,
-                block,
-                observer.facing
-            );
-
-            update(block, world, observer_update_pos, Some(update_dir.into()));
+            let front_pos = pos.offset(observer.facing.opposite().into());
+            let front_block = world.get_block(front_pos);
+            update(front_block, world, front_pos, Some(observer.facing.into()));
+            for direction in &BlockFace::values() {
+                if *direction != observer.facing.into() {
+                    let neighbor_pos = front_pos.offset(*direction);
+                    let block = world.get_block(neighbor_pos);
+                    update(block, world, neighbor_pos, Some(*direction));
+                }
+            }
         }
         Block::Piston { piston } => {
             piston::piston_tick(world, piston, pos);
