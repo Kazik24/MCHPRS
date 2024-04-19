@@ -181,7 +181,7 @@ impl Compiler {
             let (first_pos, second_pos) = bounds;
             for_each_block_mut_optimized(world, first_pos, second_pos, |world, pos| {
                 let block = world.get_block(pos);
-                redstone::update(block, world, pos);
+                redstone::update(block, world, pos, None);
             });
         }
         self.options = Default::default();

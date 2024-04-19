@@ -64,6 +64,7 @@ fn get_weak_power(
                 }
             }
         },
+        Block::Observer { observer } if observer.facing == side.into() && observer.powered => 15,
         _ => 0,
     }
 }
@@ -96,6 +97,7 @@ fn get_strong_power(
         Block::RedstoneWire { .. } => get_weak_power(block, world, pos, side, dust_power),
         Block::RedstoneRepeater { .. } => get_weak_power(block, world, pos, side, dust_power),
         Block::RedstoneComparator { .. } => get_weak_power(block, world, pos, side, dust_power),
+        Block::Observer { observer } if observer.powered => 15,
         _ => 0,
     }
 }
@@ -184,7 +186,7 @@ fn diode_get_input_strength(world: &impl World, pos: BlockPos, facing: BlockDire
     power
 }
 
-pub fn update(block: Block, world: &mut impl World, pos: BlockPos) {
+pub fn update(block: Block, world: &mut impl World, pos: BlockPos, dir: Option<BlockFace>) {
     match block {
         Block::RedstoneWire { wire } => {
             wire::on_neighbor_updated(wire, world, pos);
@@ -232,7 +234,11 @@ pub fn update(block: Block, world: &mut impl World, pos: BlockPos) {
             piston::update_piston_state(world, piston, pos);
         }
         Block::Observer { observer } => {
-            tracing::info!("Observer updated, {:?} {:?}", observer, pos);
+            if let Some(dir) = dir {
+                if observer.facing == dir.into() && !observer.powered {
+                    world.schedule_tick(pos, 1, TickPriority::Normal);
+                }
+            }
         }
         Block::NoteBlock {
             instrument: _instrument,
@@ -317,6 +323,34 @@ pub fn tick(block: Block, world: &mut impl World, pos: BlockPos) {
                 }
             }
         }
+        Block::Observer { observer } => {
+            if observer.powered {
+                world.set_block(
+                    pos,
+                    Block::Observer {
+                        observer: observer.power(false),
+                    },
+                );
+            } else {
+                world.set_block(
+                    pos,
+                    Block::Observer {
+                        observer: observer.power(true),
+                    },
+                );
+                world.schedule_tick(pos, 1, TickPriority::Normal);
+            }
+            let front_pos = pos.offset(observer.facing.opposite().into());
+            let front_block = world.get_block(front_pos);
+            update(front_block, world, front_pos, Some(observer.facing.into()));
+            for direction in &BlockFace::values() {
+                if *direction != observer.facing.into() {
+                    let neighbor_pos = front_pos.offset(*direction);
+                    let block = world.get_block(neighbor_pos);
+                    update(block, world, neighbor_pos, Some(*direction));
+                }
+            }
+        }
         Block::Piston { piston } => {
             piston::piston_tick(world, piston, pos);
         }
@@ -331,11 +365,11 @@ pub fn update_wire_neighbors(world: &mut impl World, pos: BlockPos) {
     for direction in &BlockFace::values() {
         let neighbor_pos = pos.offset(*direction);
         let block = world.get_block(neighbor_pos);
-        update(block, world, neighbor_pos);
+        update(block, world, neighbor_pos, Some(direction.opposite()));
         for n_direction in &BlockFace::values() {
             let n_neighbor_pos = neighbor_pos.offset(*n_direction);
             let block = world.get_block(n_neighbor_pos);
-            update(block, world, n_neighbor_pos);
+            update(block, world, n_neighbor_pos, Some(n_direction.opposite()));
         }
     }
 }
@@ -344,17 +378,17 @@ pub fn update_surrounding_blocks(world: &mut impl World, pos: BlockPos) {
     for direction in &BlockFace::values() {
         let neighbor_pos = pos.offset(*direction);
         let block = world.get_block(neighbor_pos);
-        update(block, world, neighbor_pos);
+        update(block, world, neighbor_pos, Some(direction.opposite()));
 
         // Also update diagonal blocks
 
         let up_pos = neighbor_pos.offset(BlockFace::Top);
         let up_block = world.get_block(up_pos);
-        update(up_block, world, up_pos);
+        update(up_block, world, up_pos, Some(BlockFace::Bottom));
 
         let down_pos = neighbor_pos.offset(BlockFace::Bottom);
         let down_block = world.get_block(down_pos);
-        update(down_block, world, down_pos);
+        update(down_block, world, down_pos, Some(BlockFace::Top));
     }
 }
 

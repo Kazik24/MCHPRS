@@ -127,11 +127,16 @@ fn calculate_output_strength(
 fn on_state_change(comp: RedstoneComparator, world: &mut impl World, pos: BlockPos) {
     let front_pos = pos.offset(comp.facing.opposite().block_face());
     let front_block = world.get_block(front_pos);
-    super::update(front_block, world, front_pos);
+    super::update(
+        front_block,
+        world,
+        front_pos,
+        Some(comp.facing.opposite().block_face()),
+    );
     for direction in &BlockFace::values() {
         let neighbor_pos = front_pos.offset(*direction);
         let block = world.get_block(neighbor_pos);
-        super::update(block, world, neighbor_pos);
+        super::update(block, world, neighbor_pos, Some(*direction));
     }
 }
 

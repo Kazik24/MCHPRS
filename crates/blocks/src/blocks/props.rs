@@ -113,6 +113,12 @@ pub struct RedstoneObserver {
     pub powered: bool,
 }
 
+impl RedstoneObserver {
+    pub fn power(self, powered: bool) -> Self {
+        Self { powered, ..self }
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default, BlockProperty, BlockTransform)]
 pub struct RedstonePiston {
     pub facing: BlockFacing,

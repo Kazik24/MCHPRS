@@ -163,6 +163,17 @@ impl BlockFace {
             _ => panic!("called `unwrap_direction` on {:?}", self),
         }
     }
+    pub fn opposite(self) -> BlockFace {
+        use BlockFace::*;
+        match self {
+            Bottom => Top,
+            Top => Bottom,
+            North => South,
+            South => North,
+            West => East,
+            East => West,
+        }
+    }
 }
 
 //todo remove (not needed anymore)

@@ -1145,6 +1145,6 @@ fn expand_selection(player: &mut Player, amount: BlockPos, contract: bool) {
 fn update(plot: &mut PlotWorld, first_pos: BlockPos, second_pos: BlockPos) {
     for_each_block_mut_optimized(plot, first_pos, second_pos, |plot, pos| {
         let block = plot.get_block(pos);
-        redstone::update(block, plot, pos);
+        redstone::update(block, plot, pos, None)
     });
 }

@@ -306,7 +306,7 @@ impl RedstoneWireTurbo {
                     // This only works because updating any other block than a wire will
                     // never change the state of the block. If that changes in the future,
                     // the cached state will need to be updated
-                    block => redstone::update(block, world, self.nodes[node_id.index].pos),
+                    block => redstone::update(block, world, self.nodes[node_id.index].pos, None),
                 }
             }
 
