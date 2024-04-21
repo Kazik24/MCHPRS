@@ -128,7 +128,20 @@ fn schedule_extend(world: &mut impl World, piston: RedstonePiston, piston_pos: B
     //info!("extending {piston:?}, head block: {head_block:?}");
     // very important condition preventing infinite loops
     match head_block {
-        Block::PistonHead { .. } | Block::MovingPiston { .. } => return,
+        Block::MovingPiston { .. } => {
+            return;
+        }
+        Block::PistonHead { .. } => {
+            if piston.extended == false {
+                world.set_block(
+                    piston_pos,
+                    Block::Piston {
+                        piston: piston.extend(true),
+                    },
+                );
+            }
+            return;
+        }
         _ => {}
     }
 
