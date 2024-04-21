@@ -180,9 +180,23 @@ fn schedule_retract(world: &mut impl World, piston: RedstonePiston, piston_pos: 
     let head_pos = piston_pos.offset(direction);
     let head_block = world.get_block(head_pos);
     // very important condition preventing infinite loops
+
     match head_block {
         Block::PistonHead { .. } => {}
-        _ => return,
+        Block::Air => {
+            if piston.extended == true {
+                let head = RedstonePistonHead {
+                    facing: piston.facing,
+                    sticky: piston.sticky,
+                    short: false,
+                };
+                place_in_world(Block::PistonHead { head }, world, head_pos, &None);
+            }
+            return;
+        }
+        _ => {
+            return;
+        }
     }
 
     let pull_pos = head_pos.offset(direction);
