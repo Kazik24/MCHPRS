@@ -233,13 +233,6 @@ pub fn update(block: Block, world: &mut impl World, pos: BlockPos, dir: Option<B
         Block::Piston { piston } => {
             piston::update_piston_state(world, piston, pos);
         }
-        Block::Observer { observer } => {
-            if let Some(dir) = dir {
-                if observer.facing == dir.into() && !observer.powered {
-                    world.schedule_tick(pos, 1, TickPriority::Normal);
-                }
-            }
-        }
         Block::NoteBlock {
             instrument: _instrument,
             note,
@@ -320,34 +313,6 @@ pub fn tick(block: Block, world: &mut impl World, pos: BlockPos) {
                         world,
                         pos.offset(button.facing.opposite().block_face()),
                     ),
-                }
-            }
-        }
-        Block::Observer { observer } => {
-            if observer.powered {
-                world.set_block(
-                    pos,
-                    Block::Observer {
-                        observer: observer.power(false),
-                    },
-                );
-            } else {
-                world.set_block(
-                    pos,
-                    Block::Observer {
-                        observer: observer.power(true),
-                    },
-                );
-                world.schedule_tick(pos, 1, TickPriority::Normal);
-            }
-            let front_pos = pos.offset(observer.facing.opposite().into());
-            let front_block = world.get_block(front_pos);
-            update(front_block, world, front_pos, Some(observer.facing.into()));
-            for direction in &BlockFace::values() {
-                if *direction != observer.facing.into() {
-                    let neighbor_pos = front_pos.offset(*direction);
-                    let block = world.get_block(neighbor_pos);
-                    update(block, world, neighbor_pos, Some(*direction));
                 }
             }
         }

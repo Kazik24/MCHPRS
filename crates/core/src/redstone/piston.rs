@@ -11,6 +11,8 @@ use tracing::*;
 //https://github.com/Marcelektro/MCP-919/blob/main/src/minecraft/net/minecraft/tileentity/TileEntityPiston.java
 //https://github.com/Marcelektro/MCP-919/blob/main/src/minecraft/net/minecraft/block/BlockPistonBase.java
 
+// TODO - fix animation on fast updates
+
 fn is_powered_in_direction(world: &impl World, pos: BlockPos, direction: BlockFacing) -> bool {
     let offset = pos.offset(direction.into());
     let block = world.get_block(offset);
@@ -68,7 +70,6 @@ pub fn update_piston_state(world: &mut impl World, piston: RedstonePiston, pisto
 }
 
 pub fn piston_tick(world: &mut impl World, piston: RedstonePiston, piston_pos: BlockPos) {
-    //info!("piston tick {piston:?}");
     let should_extend = should_piston_extend(world, piston, piston_pos);
     if should_extend != piston.extended {
         if should_extend {
@@ -76,6 +77,8 @@ pub fn piston_tick(world: &mut impl World, piston: RedstonePiston, piston_pos: B
         } else {
             schedule_retract(world, piston, piston_pos);
         }
+    } else if !piston.extended {
+        schedule_extend(world, piston, piston_pos);
     }
 }
 
@@ -88,7 +91,7 @@ pub fn moving_piston_tick(
         Some(BlockEntity::MovingPiston(entity)) => *entity,
         _ => return,
     };
-    //info!("moving tick {moving:?} entity: {entity:?}");
+
     destroy(Block::MovingPiston { moving }, world, head_pos);
     if entity.extending {
         let pushed_pos = head_pos.offset(entity.facing);
@@ -125,10 +128,24 @@ pub fn moving_piston_tick(
 fn schedule_extend(world: &mut impl World, piston: RedstonePiston, piston_pos: BlockPos) {
     let head_pos = piston_pos.offset(piston.facing.into());
     let head_block = world.get_block(head_pos);
-    //info!("extending {piston:?}, head block: {head_block:?}");
+    // info!("{piston_pos:?} extending {piston:?}, head block: {head_block:?}");
     // very important condition preventing infinite loops
+
     match head_block {
-        Block::PistonHead { .. } | Block::MovingPiston { .. } => return,
+        Block::MovingPiston { .. } => {
+            return;
+        }
+        Block::PistonHead { .. } => {
+            if piston.extended == false {
+                world.set_block(
+                    piston_pos,
+                    Block::Piston {
+                        piston: piston.extend(true),
+                    },
+                );
+            }
+            return;
+        }
         _ => {}
     }
 
@@ -145,7 +162,6 @@ fn schedule_extend(world: &mut impl World, piston: RedstonePiston, piston_pos: B
                 piston: piston.extend(true),
             },
         );
-        //todo check for existing moving piston entity here (maybe not needed)
 
         destroy(head_block, world, head_pos);
 
@@ -175,14 +191,28 @@ fn schedule_extend(world: &mut impl World, piston: RedstonePiston, piston_pos: B
 }
 
 fn schedule_retract(world: &mut impl World, piston: RedstonePiston, piston_pos: BlockPos) {
-    //info!("retracting {piston:?}");
     let direction = piston.facing.into();
     let head_pos = piston_pos.offset(direction);
     let head_block = world.get_block(head_pos);
     // very important condition preventing infinite loops
+    // info!("{piston_pos:?} retracting {piston:?}, head block: {head_block:?}");
+
     match head_block {
         Block::PistonHead { .. } => {}
-        _ => return,
+        Block::Air => {
+            if piston.extended == true {
+                let head = RedstonePistonHead {
+                    facing: piston.facing,
+                    sticky: piston.sticky,
+                    short: false,
+                };
+                place_in_world(Block::PistonHead { head }, world, head_pos, &None);
+            }
+            return;
+        }
+        _ => {
+            return;
+        }
     }
 
     let pull_pos = head_pos.offset(direction);
@@ -211,6 +241,7 @@ fn schedule_retract(world: &mut impl World, piston: RedstonePiston, piston_pos: 
         source: true,
         block_state: block_state.get_id(),
     };
+
     world.set_block_entity(head_pos, BlockEntity::MovingPiston(entity));
     world.schedule_half_tick(head_pos, 3, TickPriority::Normal);
     let action = BlockAction::Piston {
