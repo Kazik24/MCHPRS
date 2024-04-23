@@ -1,6 +1,6 @@
 use crate::world::World;
 use mchprs_blocks::blocks::{Block, RedstoneRepeater};
-use mchprs_blocks::{BlockDirection, BlockFace, BlockPos};
+use mchprs_blocks::{BlockDirection, BlockPos};
 use mchprs_world::TickPriority;
 
 pub fn get_state_for_placement(
@@ -29,17 +29,6 @@ fn get_power_on_side(world: &impl World, pos: BlockPos, side: BlockDirection) ->
         super::get_weak_power(side_block, world, side_pos, side.block_face(), false)
     } else {
         0
-    }
-}
-
-fn on_state_change(rep: RedstoneRepeater, world: &mut impl World, pos: BlockPos) {
-    let front_pos = pos.offset(rep.facing.opposite().block_face());
-    let front_block = world.get_block(front_pos);
-    super::update(front_block, world, front_pos, Some(rep.facing.block_face()));
-    for direction in &BlockFace::values() {
-        let neighbor_pos = front_pos.offset(*direction);
-        let block = world.get_block(neighbor_pos);
-        super::update(block, world, neighbor_pos, Some(*direction));
     }
 }
 
@@ -91,10 +80,10 @@ pub fn tick(mut rep: RedstoneRepeater, world: &mut impl World, pos: BlockPos) {
     if rep.powered && !should_be_powered {
         rep.powered = false;
         world.set_block(pos, Block::RedstoneRepeater { repeater: rep });
-        on_state_change(rep, world, pos);
+        super::on_state_change(rep.facing.block_facing(), world, pos);
     } else if !rep.powered {
         rep.powered = true;
         world.set_block(pos, Block::RedstoneRepeater { repeater: rep });
-        on_state_change(rep, world, pos);
+        super::on_state_change(rep.facing.block_facing(), world, pos);
     }
 }

@@ -11,7 +11,7 @@ pub mod wire;
 use crate::world::World;
 use mchprs_blocks::block_entities::BlockEntity;
 use mchprs_blocks::blocks::{Block, ButtonFace, LeverFace};
-use mchprs_blocks::{BlockDirection, BlockFace, BlockPos};
+use mchprs_blocks::{BlockDirection, BlockFace, BlockFacing, BlockPos};
 use mchprs_world::TickPriority;
 
 pub fn bool_to_ss(b: bool) -> u8 {
@@ -147,6 +147,17 @@ pub fn torch_should_be_off(world: &impl World, pos: BlockPos) -> bool {
     let bottom_pos = pos.offset(BlockFace::Bottom);
     let bottom_block = world.get_block(bottom_pos);
     get_redstone_power(bottom_block, world, bottom_pos, BlockFace::Top) > 0
+}
+
+pub fn on_state_change(facing: BlockFacing, world: &mut impl World, pos: BlockPos) {
+    let front_pos = pos.offset(facing.opposite().into());
+    let front_block = world.get_block(front_pos);
+    update(front_block, world, front_pos, Some(facing.into()));
+    for direction in BlockFace::values() {
+        let neighbor_pos = front_pos.offset(direction);
+        let block = world.get_block(neighbor_pos);
+        update(block, world, neighbor_pos, Some(direction));
+    }
 }
 
 pub fn wall_torch_should_be_off(
@@ -340,16 +351,7 @@ pub fn tick(block: Block, world: &mut impl World, pos: BlockPos) {
                 );
                 world.schedule_tick(pos, 1, TickPriority::Normal);
             }
-            let front_pos = pos.offset(observer.facing.opposite().into());
-            let front_block = world.get_block(front_pos);
-            update(front_block, world, front_pos, Some(observer.facing.into()));
-            for direction in &BlockFace::values() {
-                if *direction != observer.facing.into() {
-                    let neighbor_pos = front_pos.offset(*direction);
-                    let block = world.get_block(neighbor_pos);
-                    update(block, world, neighbor_pos, Some(*direction));
-                }
-            }
+            on_observer_state_change(observer.facing, world, pos);
         }
         Block::Piston { piston } => {
             piston::piston_tick(world, piston, pos);
@@ -358,6 +360,20 @@ pub fn tick(block: Block, world: &mut impl World, pos: BlockPos) {
             piston::moving_piston_tick(world, moving, pos);
         }
         _ => {}
+    }
+}
+
+fn on_observer_state_change(facing: BlockFacing, world: &mut impl World, pos: BlockPos) {
+    let front_pos = pos.offset(facing.opposite().into());
+    let front_block = world.get_block(front_pos);
+    update(front_block, world, front_pos, Some(facing.into()));
+    for direction in BlockFace::values() {
+        if direction == facing.into() {
+            continue;
+        }
+        let neighbor_pos = front_pos.offset(direction);
+        let block = world.get_block(neighbor_pos);
+        update(block, world, neighbor_pos, Some(direction));
     }
 }
 
