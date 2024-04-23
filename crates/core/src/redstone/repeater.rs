@@ -35,12 +35,7 @@ fn get_power_on_side(world: &impl World, pos: BlockPos, side: BlockDirection) ->
 fn on_state_change(rep: RedstoneRepeater, world: &mut impl World, pos: BlockPos) {
     let front_pos = pos.offset(rep.facing.opposite().block_face());
     let front_block = world.get_block(front_pos);
-    super::update(
-        front_block,
-        world,
-        front_pos,
-        Some(rep.facing.block_face()),
-    );
+    super::update(front_block, world, front_pos, Some(rep.facing.block_face()));
     for direction in &BlockFace::values() {
         let neighbor_pos = front_pos.offset(*direction);
         let block = world.get_block(neighbor_pos);
@@ -54,7 +49,7 @@ fn schedule_tick(
     pos: BlockPos,
     should_be_powered: bool,
 ) {
-    let front_block = world.get_block(pos.offset(rep.facing.block_face()));
+    let front_block = world.get_block(pos.offset(rep.facing.opposite().block_face()));
     let priority = if super::is_diode(front_block) {
         TickPriority::Highest
     } else if !should_be_powered {
