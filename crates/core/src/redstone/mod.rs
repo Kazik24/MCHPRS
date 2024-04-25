@@ -244,6 +244,13 @@ pub fn update(block: Block, world: &mut impl World, pos: BlockPos, dir: Option<B
         Block::Piston { piston } => {
             piston::update_piston_state(world, piston, pos);
         }
+        Block::PistonHead { head } => {
+            let piston_pos = pos.offset(head.facing.opposite().into());
+            let piston = world.get_block(piston_pos);
+            if let Block::Piston { piston } = piston {
+                piston::update_piston_state(world, piston, piston_pos);
+            }
+        }
         Block::Observer { observer } => {
             if let Some(dir) = dir {
                 if observer.facing == dir.into() && !observer.powered && !world.pending_tick_at(pos)
@@ -294,20 +301,20 @@ pub fn tick(block: Block, world: &mut impl World, pos: BlockPos) {
             let should_be_off = torch_should_be_off(world, pos);
             if lit && should_be_off {
                 world.set_block(pos, Block::RedstoneTorch { lit: false });
-                update_surrounding_blocks(world, pos);
+                on_torch_state_change(world, pos);
             } else if !lit && !should_be_off {
                 world.set_block(pos, Block::RedstoneTorch { lit: true });
-                update_surrounding_blocks(world, pos);
+                on_torch_state_change(world, pos);
             }
         }
         Block::RedstoneWallTorch { lit, facing } => {
             let should_be_off = wall_torch_should_be_off(world, pos, facing);
             if lit && should_be_off {
                 world.set_block(pos, Block::RedstoneWallTorch { lit: false, facing });
-                update_surrounding_blocks(world, pos);
+                on_torch_state_change(world, pos);
             } else if !lit && !should_be_off {
                 world.set_block(pos, Block::RedstoneWallTorch { lit: true, facing });
-                update_surrounding_blocks(world, pos);
+                on_torch_state_change(world, pos);
             }
         }
         Block::RedstoneLamp { lit } => {
@@ -391,7 +398,20 @@ pub fn update_wire_neighbors(world: &mut impl World, pos: BlockPos) {
     }
 }
 
+// original update_surrounding_blocks
 pub fn update_surrounding_blocks(world: &mut impl World, pos: BlockPos) {
+    skipping_update_surrounding_blocks(world, pos, true);
+}
+
+pub fn on_torch_state_change(world: &mut impl World, pos: BlockPos) {
+    skipping_update_surrounding_blocks(world, pos, false);
+}
+
+pub fn skipping_update_surrounding_blocks(
+    world: &mut impl World,
+    pos: BlockPos,
+    skip_pistons: bool,
+) {
     for direction in &BlockFace::values() {
         let neighbor_pos = pos.offset(*direction);
         let block = world.get_block(neighbor_pos);
@@ -401,11 +421,15 @@ pub fn update_surrounding_blocks(world: &mut impl World, pos: BlockPos) {
 
         let up_pos = neighbor_pos.offset(BlockFace::Top);
         let up_block = world.get_block(up_pos);
-        update(up_block, world, up_pos, Some(BlockFace::Bottom));
+        if !skip_pistons || !matches!(up_block, Block::Piston { .. }) {
+            update(up_block, world, up_pos, Some(BlockFace::Bottom));
+        }
 
         let down_pos = neighbor_pos.offset(BlockFace::Bottom);
         let down_block = world.get_block(down_pos);
-        update(down_block, world, down_pos, Some(BlockFace::Top));
+        if !skip_pistons || !matches!(down_block, Block::Piston { .. }) {
+            update(down_block, world, down_pos, Some(BlockFace::Top));
+        }
     }
 }
 
