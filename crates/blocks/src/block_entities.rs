@@ -325,7 +325,7 @@ impl BlockEntity {
                 for entry in inventory {
                     let nbt = map! {
                         "Count" => nbt::Value::Byte(entry.count),
-                        "id" => nbt::Value::String("minecraft:".to_string() + Item::from_id(entry.id).get_name()),
+                        "id" => nbt::Value::String(format!("minecraft:{}",Item::from_id(entry.id).get_name())),
                         "Slot" => nbt::Value::Byte(entry.slot)
                     };
                     // TODO: item nbt data in containers

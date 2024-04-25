@@ -246,7 +246,8 @@ pub fn update(block: Block, world: &mut impl World, pos: BlockPos, dir: Option<B
         }
         Block::Observer { observer } => {
             if let Some(dir) = dir {
-                if observer.facing == dir.into() && !observer.powered {
+                if observer.facing == dir.into() && !observer.powered && !world.pending_tick_at(pos)
+                {
                     world.schedule_tick(pos, 1, TickPriority::Normal);
                 }
             }
