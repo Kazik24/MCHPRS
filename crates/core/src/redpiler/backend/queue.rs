@@ -153,7 +153,7 @@ impl<T> TickScheduler<T> {
     where
         T: PartialEq,
     {
-        for queues in &self.queues_deque {
+        for queues in self.queues_iter() {
             for queue in &queues.0 {
                 if queue.contains(node) {
                     return true;

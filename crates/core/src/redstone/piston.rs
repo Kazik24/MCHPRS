@@ -159,11 +159,10 @@ fn schedule_extend(world: &mut impl World, piston: RedstonePiston, piston_pos: B
     let extend_piston = !has_entity || !is_cube;
 
     if extend_piston {
-        //place block cause we need to update observers
-        let piston_block = Block::Piston {
-            piston: piston.extend(true),
-        };
-        world.set_block(piston_pos, piston_block); //todo this might cause animation flickering but is needed for update logic
+        // let piston_block = Block::Piston {
+        //     piston: piston.extend(true),
+        // };
+        // world.set_block(piston_pos, piston_block); //todo this might cause animation flickering but is needed for update logic (actually it's not needed at all)
 
         //todo check for existing moving piston entity here (maybe not needed)
         destroy_moved_block(world, head_pos);
