@@ -93,13 +93,13 @@ pub struct Plot {
 }
 
 pub struct PlotWorld {
-    pub x: i32,
-    pub z: i32,
-    pub chunks: Vec<Chunk>,
-    pub to_be_ticked: TickScheduler<BlockPos>,
-    pub packet_senders: Vec<PlayerPacketSender>,
-    pub is_cursed: bool,
-    pub disable_block_actions: bool,
+    x: i32,
+    z: i32,
+    chunks: Vec<Chunk>,
+    to_be_ticked: TickScheduler<BlockPos>,
+    packet_senders: Vec<PlayerPacketSender>,
+    is_cursed: bool,
+    disable_block_actions: bool,
 }
 
 impl PlotWorld {
@@ -157,6 +157,14 @@ impl PlotWorld {
             (self.z + 1) * W - 1,
         );
         (first_pos, second_pos)
+    }
+
+    pub fn get_chunks(&self) -> &[Chunk] {
+        &self.chunks
+    }
+
+    pub fn scheduler(&self) -> &TickScheduler<BlockPos> {
+        &self.to_be_ticked
     }
 
     pub fn tick_interpreted(&mut self) {
@@ -287,6 +295,18 @@ impl World for PlotWorld {
                 .encode();
                 for player in &self.packet_senders {
                     player.send_packet(&piston_action_data);
+                }
+            }
+            BlockAction::BlockChange { pos, block_id } => {
+                let block_action_data = CBlockChange {
+                    x: pos.x,
+                    y: pos.y,
+                    z: pos.z,
+                    block_id: block_id as i32,
+                }
+                .encode();
+                for player in &self.packet_senders {
+                    player.send_packet(&block_action_data);
                 }
             }
         }

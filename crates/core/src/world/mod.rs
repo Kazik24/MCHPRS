@@ -80,6 +80,10 @@ pub enum BlockAction {
         action: PistonAction,
         piston: RedstonePiston,
     },
+    BlockChange {
+        pos: BlockPos,
+        block_id: u32,
+    },
 }
 
 // TODO: I have no idea how to deduplicate this in a sane way

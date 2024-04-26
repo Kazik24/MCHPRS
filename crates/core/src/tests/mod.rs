@@ -49,7 +49,7 @@ fn can_load_chungus_plot() {
 
 fn calculate_world_hash(world: &PlotWorld) -> Box<[u8]> {
     let mut hasher = Sha256::new();
-    for chunk in &world.chunks {
+    for chunk in world.get_chunks() {
         for x in 0..16 {
             for z in 0..16 {
                 for y in 0..256 {
@@ -109,7 +109,7 @@ fn run_mandelbrot_chungus_interpreted_to_compiled() {
     let mut compiler: Compiler = Default::default();
     let options = CompilerOptions::parse("-O");
     let bounds = plot.get_corners();
-    let ticks = plot.to_be_ticked.iter_entries().collect();
+    let ticks = plot.scheduler().iter_entries().collect();
     compiler.compile(&plot, bounds, options, ticks, Default::default());
 
     for _ in 0..1000 * TICK_MUL {
