@@ -126,7 +126,7 @@ pub fn moving_piston_tick(
         on_piston_state_change(world, piston_pos, direction, false);
     }
     //schedule update in next game tick to check if piston state should change again
-    world.schedule_half_tick(piston_pos, 1, TickPriority::Normal);
+    world.schedule_half_tick(piston_pos, 0, TickPriority::Normal);
 }
 
 fn schedule_extend(world: &mut impl World, piston: RedstonePiston, piston_pos: BlockPos) {
@@ -182,7 +182,7 @@ fn schedule_extend(world: &mut impl World, piston: RedstonePiston, piston_pos: B
         };
 
         world.set_block_entity(head_pos, BlockEntity::MovingPiston(entity));
-        world.schedule_tick(head_pos, 1, TickPriority::Normal);
+        world.schedule_half_tick(head_pos, 3, TickPriority::Normal);
         let action = BlockAction::Piston {
             action: PistonAction::Extend,
             piston,
@@ -249,7 +249,7 @@ fn schedule_retract(world: &mut impl World, piston: RedstonePiston, piston_pos: 
         block_state: block_state.get_id(),
     };
     world.set_block_entity(head_pos, BlockEntity::MovingPiston(entity));
-    world.schedule_tick(head_pos, 1, TickPriority::Normal);
+    world.schedule_half_tick(head_pos, 3, TickPriority::Normal);
 
     let full_update = block_state != Block::Air;
     on_piston_state_change(world, piston_pos, direction, full_update);
