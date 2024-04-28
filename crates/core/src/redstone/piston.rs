@@ -65,12 +65,11 @@ pub fn should_piston_extend(
 pub fn update_piston_state(world: &mut impl World, piston: RedstonePiston, piston_pos: BlockPos) {
     let should_extend = should_piston_extend(world, piston, piston_pos);
     if should_extend != piston.extended && !world.pending_tick_at(piston_pos) {
-        world.schedule_tick(piston_pos, 0, TickPriority::Higher);
+        world.schedule_tick(piston_pos, 0, TickPriority::Normal);
     }
 }
 
 pub fn piston_tick(world: &mut impl World, piston: RedstonePiston, piston_pos: BlockPos) {
-    //info!("piston tick {piston:?}");
     let should_extend = should_piston_extend(world, piston, piston_pos);
     if should_extend != piston.extended {
         if should_extend {
@@ -125,8 +124,7 @@ pub fn moving_piston_tick(
         }
         on_piston_state_change(world, piston_pos, direction, false);
     }
-    //schedule update in next game tick to check if piston state should change again
-    world.schedule_half_tick(piston_pos, 0, TickPriority::Normal);
+    //don't send update tick, cause it was already scheduled in schedule_extend/schedule_retract
 }
 
 fn schedule_extend(world: &mut impl World, piston: RedstonePiston, piston_pos: BlockPos) {
@@ -182,7 +180,8 @@ fn schedule_extend(world: &mut impl World, piston: RedstonePiston, piston_pos: B
         };
 
         world.set_block_entity(head_pos, BlockEntity::MovingPiston(entity));
-        world.schedule_half_tick(head_pos, 3, TickPriority::Normal);
+        world.schedule_tick(head_pos, 1, TickPriority::Normal);
+        world.schedule_half_tick(piston_pos, 3, TickPriority::Normal); //locks piston updates until cycle is complete
         let action = BlockAction::Piston {
             action: PistonAction::Extend,
             piston,
@@ -193,7 +192,6 @@ fn schedule_extend(world: &mut impl World, piston: RedstonePiston, piston_pos: B
 }
 
 fn schedule_retract(world: &mut impl World, piston: RedstonePiston, piston_pos: BlockPos) {
-    //info!("retracting {piston:?}");
     let direction = piston.facing.into();
     let head_pos = piston_pos.offset(direction);
     let head_block = world.get_block(head_pos);
@@ -249,7 +247,8 @@ fn schedule_retract(world: &mut impl World, piston: RedstonePiston, piston_pos: 
         block_state: block_state.get_id(),
     };
     world.set_block_entity(head_pos, BlockEntity::MovingPiston(entity));
-    world.schedule_half_tick(head_pos, 3, TickPriority::Normal);
+    world.schedule_tick(head_pos, 1, TickPriority::Normal);
+    world.schedule_half_tick(piston_pos, 3, TickPriority::Normal); //locks piston updates until cycle is complete
 
     let full_update = block_state != Block::Air;
     on_piston_state_change(world, piston_pos, direction, full_update);
