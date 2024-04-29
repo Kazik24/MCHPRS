@@ -115,14 +115,14 @@ pub fn moving_piston_tick(
         if move_block {
             world.set_block(pushed_pos, pushed_block);
         }
-        on_piston_state_change(world, piston_pos, direction, move_block);
+        on_piston_state_change(world, piston_pos, direction, move_block, true);
     } else {
         if moving.sticky {
             world.set_block(head_pos, Block::from_id(entity.block_state));
         } else {
             world.set_block(head_pos, Block::Air);
         }
-        on_piston_state_change(world, piston_pos, direction, false);
+        on_piston_state_change(world, piston_pos, direction, false, true); // TODO
     }
     //don't send update tick, cause it was already scheduled in schedule_extend/schedule_retract
 }
@@ -187,7 +187,7 @@ fn schedule_extend(world: &mut impl World, piston: RedstonePiston, piston_pos: B
             piston,
         };
         world.block_action(piston_pos, action);
-        on_piston_state_change(world, piston_pos, direction, true);
+        on_piston_state_change(world, piston_pos, direction, true, true); // TODO
     }
 }
 
@@ -251,13 +251,29 @@ fn schedule_retract(world: &mut impl World, piston: RedstonePiston, piston_pos: 
     world.schedule_half_tick(piston_pos, 3, TickPriority::Normal); //locks piston updates until cycle is complete
 
     let full_update = block_state != Block::Air;
-    on_piston_state_change(world, piston_pos, direction, full_update);
+    on_piston_state_change(world, piston_pos, direction, full_update, true); // TODO
 }
 
 //version of destroy that doesn't update blocks
 fn destroy_moved_block(world: &mut impl World, pos: BlockPos) {
     world.delete_block_entity(pos);
     world.set_block(pos, Block::Air {});
+}
+
+fn update_neighbors<const N: usize>(
+    world: &mut impl World,
+    pos: BlockPos,
+    skip_faces: [BlockFace; N],
+) {
+    for direction in BlockFace::values() {
+        if skip_faces.contains(&direction) {
+            continue;
+        }
+
+        let neighbor_pos = pos.offset(direction);
+        let block = world.get_block(neighbor_pos);
+        update(block, world, neighbor_pos, Some(direction.opposite()));
+    }
 }
 
 /// Update piston but be smart to not send too many updates
@@ -267,50 +283,30 @@ fn on_piston_state_change(
     world: &mut impl World,
     piston_pos: BlockPos,
     facing: BlockFace,
-    full_update: bool,
+    update_pushed: bool,
+    update_base: bool,
 ) {
     // update base
-    for direction in BlockFace::values() {
-        if direction == facing {
-            continue;
-        }
-        let neighbor_pos = piston_pos.offset(direction);
-        let block = world.get_block(neighbor_pos);
-        //change(block, world, neighbor_pos, direction);
-        update(block, world, neighbor_pos, Some(direction.opposite()));
+    if update_base {
+        update_neighbors(world, piston_pos, [facing]);
     }
-
     // update head
+
     let head_pos = piston_pos.offset(facing.into());
     let block = world.get_block(head_pos);
     update(block, world, head_pos, None); //update block itself, e.g in case of lamps
-    let opposite = facing.opposite();
-    for direction in BlockFace::values() {
-        if direction == opposite {
-            continue;
-        }
-        if direction == facing && !full_update {
-            //if pushed block is not updated, try to update also place where pushed pos is
-            continue;
-        }
-        let neighbor_pos = head_pos.offset(direction);
-        let block = world.get_block(neighbor_pos);
-        update(block, world, neighbor_pos, Some(direction.opposite()));
+    if update_pushed {
+        update_neighbors(world, head_pos, [facing.opposite(), facing]); // for full update skip both
+    } else {
+        update_neighbors(world, head_pos, [facing.opposite()]);
     }
 
-    //update pushed block
-    if full_update {
+    // update pushed block
+    if update_pushed {
         let pushed_pos = head_pos.offset(facing.into());
         let block = world.get_block(head_pos);
         update(block, world, head_pos, None); //update block itself, e.g in case of lamps
-        let opposite = facing.opposite();
-        for direction in BlockFace::values() {
-            if direction == opposite {
-                continue;
-            }
-            let neighbor_pos = pushed_pos.offset(direction);
-            let block = world.get_block(neighbor_pos);
-            update(block, world, neighbor_pos, Some(direction.opposite()));
-        }
+
+        update_neighbors(world, pushed_pos, [facing.opposite()])
     }
 }
