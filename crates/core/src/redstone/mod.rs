@@ -253,16 +253,8 @@ pub fn update(block: Block, world: &mut impl World, pos: BlockPos, dir: Option<B
         }
         Block::Observer { observer } => {
             if let Some(dir) = dir {
-                tracing::info!(
-                    "Observer update: {:?} {:?} {:?} {:?} ",
-                    dir,
-                    pos,
-                    observer,
-                    !world.pending_tick_at(pos)
-                );
                 if observer.facing == dir.into() && !observer.powered && !world.pending_tick_at(pos)
                 {
-                    tracing::info!("Scheduling observer tick at {:?}", pos);
                     world.schedule_tick(pos, 1, TickPriority::Normal);
                 }
             }
@@ -380,18 +372,15 @@ pub fn tick(block: Block, world: &mut impl World, pos: BlockPos) {
 }
 
 fn on_observer_state_change(facing: BlockFacing, world: &mut impl World, pos: BlockPos) {
-    tracing::info!("Observer state change: {:?} {:?}", facing, pos);
     let front_pos = pos.offset(facing.opposite().into());
     let front_block = world.get_block(front_pos);
     update(front_block, world, front_pos, None);
-    tracing::info!("Front block updated, {:?}", front_block);
     for direction in BlockFace::values() {
         if direction == facing.into() {
             continue;
         }
         let neighbor_pos = front_pos.offset(direction);
         let block = world.get_block(neighbor_pos);
-        tracing::info!("Neighbor block updated, {:?}", block);
         update(block, world, neighbor_pos, None);
     }
 }
