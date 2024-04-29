@@ -12,6 +12,7 @@ use mchprs_network::packets::clientbound::*;
 use mchprs_network::packets::SlotData;
 use once_cell::sync::Lazy;
 use schematic::{load_schematic, save_schematic};
+use std::fs::File;
 use std::time::Instant;
 use tracing::error;
 
@@ -271,7 +272,9 @@ pub(super) fn execute_load(ctx: CommandExecuteContext<'_>) {
         file_name.insert_str(0, &prefix);
     }
 
-    let clipboard = load_schematic(&file_name);
+    let clipboard = File::open("./schems/".to_owned() + &file_name)
+        .map_err(anyhow::Error::from)
+        .and_then(load_schematic);
     match clipboard {
         Ok(cb) => {
             ctx.player.worldedit_clipboard = Some(cb);

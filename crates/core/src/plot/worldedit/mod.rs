@@ -22,6 +22,8 @@ use std::fmt;
 use std::ops::RangeInclusive;
 use std::str::FromStr;
 
+pub use schematic::*;
+
 // Attempts to execute a worldedit command. Returns true of the command was handled.
 // The command is not handled if it is not found in the worldedit commands and alias lists.
 pub fn execute_command(
@@ -1037,7 +1039,12 @@ fn clear_area(plot: &mut PlotWorld, first_pos: BlockPos, second_pos: BlockPos) {
     }
 }
 
-fn paste_clipboard(plot: &mut PlotWorld, cb: &WorldEditClipboard, pos: BlockPos, ignore_air: bool) {
+pub fn paste_clipboard(
+    plot: &mut PlotWorld,
+    cb: &WorldEditClipboard,
+    pos: BlockPos,
+    ignore_air: bool,
+) {
     let offset_x = pos.x - cb.offset_x;
     let offset_y = pos.y - cb.offset_y;
     let offset_z = pos.z - cb.offset_z;

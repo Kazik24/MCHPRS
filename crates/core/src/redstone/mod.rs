@@ -439,3 +439,113 @@ pub fn is_diode(block: Block) -> bool {
         Block::RedstoneRepeater { .. } | Block::RedstoneComparator { .. }
     )
 }
+
+#[cfg(test)]
+mod tests {
+    use mchprs_blocks::blocks::Block;
+    use mchprs_blocks::{BlockFace, BlockPos};
+    use std::fs::File;
+    use std::path::PathBuf;
+
+    use crate::plot::worldedit::{load_schematic, paste_clipboard};
+    use crate::plot::{empty_plot, PlotWorld, PLOT_WIDTH};
+    use crate::tests::click_floor_button;
+    use crate::world::storage::Chunk;
+    use crate::world::World;
+
+    pub fn load_world_with_schematic(name: &str, at_pos: BlockPos) -> PlotWorld {
+        let path = ["..", "..", "test_data", name].iter().collect::<PathBuf>();
+        let file = File::open(path).unwrap();
+        let clipboard = load_schematic(file).unwrap();
+
+        let chunks: Vec<Chunk> = empty_plot()
+            .chunk_data
+            .into_iter()
+            .enumerate()
+            .map(|(i, c)| Chunk::load(i as i32 / PLOT_WIDTH, i as i32 % PLOT_WIDTH, c))
+            .collect();
+
+        let mut world = PlotWorld::from_chunks(0, 0, chunks, Default::default());
+        paste_clipboard(&mut world, &clipboard, at_pos, false);
+        world
+    }
+
+    fn is_wire_powered(world: &impl World, pos: BlockPos) -> bool {
+        match world.get_block(pos) {
+            Block::RedstoneWire { wire } => wire.power > 0,
+            _ => false,
+        }
+    }
+
+    #[test]
+    fn test_updates_non_instant() {
+        let expected = [
+            [false, false, false],
+            [false, false, false],
+            [false, false, false],
+            [true, true, true],
+            [true, true, true],
+            [false, false, false],
+            [false, false, false],
+            [false, false, false],
+            [true, true, true],
+            [true, true, true],
+        ];
+
+        let button_pos = BlockPos::new(100, 10, 100);
+        let base_wire = BlockPos::new(100, 10, 102);
+        let head_wire = BlockPos::new(102, 10, 102);
+        let push_wire = BlockPos::new(104, 10, 102);
+
+        let world = &mut load_world_with_schematic("UpdateTesterNonInst.schem", button_pos);
+
+        click_floor_button(world, button_pos);
+
+        for i in 0..10 {
+            world.tick_interpreted();
+
+            let base = is_wire_powered(world, base_wire);
+            let head = is_wire_powered(world, head_wire);
+            let push = is_wire_powered(world, push_wire);
+
+            let got = [base, head, push];
+            assert_eq!(expected[i], got, "tick: {i}");
+        }
+    }
+
+    #[test]
+    fn test_updates_instant() {
+        let expected = [
+            [false, false, false],
+            [false, false, false],
+            [false, false, false],
+            [true, true, true],
+            [true, true, true],
+            [false, false, false],
+            [false, false, false],
+            [false, false, false],
+            [false, true, true],
+            [false, true, true],
+        ];
+
+        let button_pos = BlockPos::new(100, 10, 100);
+        let base_wire = BlockPos::new(100, 10, 102);
+        let head_wire = BlockPos::new(102, 10, 102);
+        let push_wire = BlockPos::new(104, 10, 102);
+
+        let world = &mut load_world_with_schematic("UpdateTesterInst.schem", button_pos);
+
+        click_floor_button(world, button_pos);
+
+        for i in 0..10 {
+            world.tick_interpreted();
+
+            let base = is_wire_powered(world, base_wire);
+            let head = is_wire_powered(world, head_wire);
+            let push = is_wire_powered(world, push_wire);
+
+            let got = [base, head, push];
+            assert_eq!(expected[i], got, "tick: {i}");
+        }
+    }
+}

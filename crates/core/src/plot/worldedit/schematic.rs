@@ -15,6 +15,7 @@ use regex::Regex;
 use rustc_hash::FxHashMap;
 use serde::Serialize;
 use std::fs::{self, File};
+use std::io::Read;
 use std::path::PathBuf;
 
 fn parse_block(str: &str) -> Option<Block> {
@@ -33,10 +34,9 @@ fn parse_block(str: &str) -> Option<Block> {
     Some(block)
 }
 
-pub fn load_schematic(file_name: &str) -> Result<WorldEditClipboard> {
+pub fn load_schematic(mut file: impl Read) -> Result<WorldEditClipboard> {
     use nbt::Value;
 
-    let mut file = File::open("./schems/".to_owned() + file_name)?;
     let nbt = nbt::Blob::from_gzip_reader(&mut file)?;
     let size_x = *nbt_unwrap_val!(nbt.get("Width"), Value::Short) as u32;
     let size_z = *nbt_unwrap_val!(nbt.get("Length"), Value::Short) as u32;
