@@ -260,6 +260,17 @@ fn destroy_moved_block(world: &mut impl World, pos: BlockPos) {
     world.set_block(pos, Block::Air {});
 }
 
+fn update_neighbors(world: &mut impl World, piston_pos: BlockPos, facing: BlockFace) {
+    for direction in BlockFace::values() {
+        if direction == facing {
+            continue;
+        }
+        let neighbor_pos = piston_pos.offset(direction);
+        let block = world.get_block(neighbor_pos);
+        update(block, world, neighbor_pos, Some(direction.opposite()));
+    }
+}
+
 /// Update piston but be smart to not send too many updates
 /// full update set to true will update all 3 blocks of piston (base, head, pushed)
 /// full update set to false will only update base and head
@@ -270,16 +281,7 @@ fn on_piston_state_change(
     full_update: bool,
 ) {
     // update base
-    for direction in BlockFace::values() {
-        if direction == facing {
-            continue;
-        }
-        let neighbor_pos = piston_pos.offset(direction);
-        let block = world.get_block(neighbor_pos);
-        //change(block, world, neighbor_pos, direction);
-        update(block, world, neighbor_pos, Some(direction.opposite()));
-    }
-
+    update_neighbors(world, piston_pos, facing.into());
     // update head
     let head_pos = piston_pos.offset(facing.into());
     let block = world.get_block(head_pos);
@@ -304,13 +306,7 @@ fn on_piston_state_change(
         let block = world.get_block(head_pos);
         update(block, world, head_pos, None); //update block itself, e.g in case of lamps
         let opposite = facing.opposite();
-        for direction in BlockFace::values() {
-            if direction == opposite {
-                continue;
-            }
-            let neighbor_pos = pushed_pos.offset(direction);
-            let block = world.get_block(neighbor_pos);
-            update(block, world, neighbor_pos, Some(direction.opposite()));
-        }
+
+        update_neighbors(world, pushed_pos, facing.into());
     }
 }
