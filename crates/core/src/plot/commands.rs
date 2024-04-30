@@ -336,6 +336,30 @@ impl Plot {
                     start_time.elapsed()
                 ));
             }
+            "/nadv" | "/nanoadvance" => {
+                if args.is_empty() {
+                    self.players[player]
+                        .send_error_message("Please specify a number of nanoticks to advance.");
+                    return false;
+                }
+                let nano = if let Ok(nano) = args[0].parse::<u32>() {
+                    nano
+                } else {
+                    self.players[player].send_error_message("Unable to parse nanoticks!");
+                    return false;
+                };
+                if self.redpiler.is_active() {
+                    self.players[player]
+                        .send_error_message("Cannot advance nanoticks while redpiler is active!");
+                    return false;
+                }
+                let start_time = Instant::now();
+                self.world.nanotick_advance(nano);
+                self.players[player].send_system_message(&format!(
+                    "Plot has been advanced by {nano} nanoticks ({:?})",
+                    start_time.elapsed()
+                ));
+            }
             "/toggleautorp" => {
                 self.auto_redpiler = !self.auto_redpiler;
                 if self.auto_redpiler {
@@ -567,7 +591,7 @@ pub static DECLARE_COMMANDS: Lazy<PacketEncoder> = Lazy::new(|| {
                 flags: CommandFlags::ROOT.bits() as i8,
                 children: &[
                     1, 4, 5, 6, 11, 12, 14, 16, 18, 19, 20, 21, 22, 23, 24, 26, 29, 31, 32, 34, 36,
-                    47, 49, 53, 60, 61, 63, 65, 66, 67, 71, 73,
+                    47, 49, 53, 60, 61, 63, 65, 66, 67, 71, 73, 74, 75, 76, 78,
                 ],
                 redirect_node: None,
                 name: None,
@@ -1236,7 +1260,7 @@ pub static DECLARE_COMMANDS: Lazy<PacketEncoder> = Lazy::new(|| {
             },
             // 74: /curse
             Node {
-                flags: (CommandFlags::LITERAL | CommandFlags::EXECUTABLE).bits() as i8,
+                flags: (CommandFlags::LITERAL).bits() as i8,
                 children: &[],
                 redirect_node: None,
                 name: Some("curse"),
@@ -1245,10 +1269,37 @@ pub static DECLARE_COMMANDS: Lazy<PacketEncoder> = Lazy::new(|| {
             },
             // 75: /bless
             Node {
-                flags: (CommandFlags::LITERAL | CommandFlags::EXECUTABLE).bits() as i8,
+                flags: (CommandFlags::LITERAL).bits() as i8,
                 children: &[],
                 redirect_node: None,
                 name: Some("bless"),
+                parser: None,
+                suggestions_type: None,
+            },
+            // 76: /nanoadvance
+            Node {
+                flags: (CommandFlags::LITERAL).bits() as i8,
+                children: &[77],
+                redirect_node: None,
+                name: Some("nanoadvance"),
+                parser: None,
+                suggestions_type: None,
+            },
+            // 77: /nanoadvance [nticks]
+            Node {
+                flags: (CommandFlags::ARGUMENT | CommandFlags::EXECUTABLE).bits() as i8,
+                children: &[],
+                redirect_node: None,
+                name: Some("nticks"),
+                parser: Some(Parser::Integer(0, 100000)),
+                suggestions_type: None,
+            },
+            // 78: /nadv
+            Node {
+                flags: (CommandFlags::LITERAL | CommandFlags::REDIRECT).bits() as i8,
+                children: &[],
+                redirect_node: Some(76),
+                name: Some("nadv"),
                 parser: None,
                 suggestions_type: None,
             },

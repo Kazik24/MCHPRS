@@ -180,6 +180,20 @@ impl PlotWorld {
             redstone::tick(self.get_block(pos), self, pos);
         }
     }
+
+    pub fn nanotick_advance(&mut self, amount: u32) {
+        for _ in 0..amount {
+            if let Some(pos) = self.to_be_ticked.pop_one_this_tick() {
+                redstone::tick(self.get_block(pos), self, pos);
+            } else {
+                let next_queue = self.to_be_ticked.queues_iter().position(|q| !q.is_empty());
+                for _ in 0..next_queue.unwrap_or(0) {
+                    assert!(self.to_be_ticked.pop_one_this_tick().is_none());
+                    self.to_be_ticked.end_last_tick_move_next();
+                }
+            }
+        }
+    }
 }
 
 impl World for PlotWorld {

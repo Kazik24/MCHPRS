@@ -23,6 +23,10 @@ impl<T> Queues<T> {
         self.0.iter().map(|v| v.len()).sum()
     }
 
+    pub fn is_empty(&self) -> bool {
+        self.0.iter().all(|q| q.is_empty())
+    }
+
     pub fn iter(&self) -> impl Iterator<Item = (&T, TickPriority)> + '_ {
         self.0
             .each_ref()
