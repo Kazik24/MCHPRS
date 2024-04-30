@@ -443,7 +443,7 @@ pub fn is_diode(block: Block) -> bool {
 #[cfg(test)]
 mod tests {
     use mchprs_blocks::blocks::Block;
-    use mchprs_blocks::{BlockFace, BlockPos};
+    use mchprs_blocks::BlockPos;
     use std::fs::File;
     use std::path::PathBuf;
 
@@ -452,6 +452,11 @@ mod tests {
     use crate::tests::click_floor_button;
     use crate::world::storage::Chunk;
     use crate::world::World;
+
+    const BUTTON_POS: BlockPos = BlockPos::new(100, 10, 100);
+    const BASE_WIRE: BlockPos = BlockPos::new(100, 10, 102);
+    const HEAD_WIRE: BlockPos = BlockPos::new(102, 10, 102);
+    const PUSH_WIRE: BlockPos = BlockPos::new(104, 10, 102);
 
     pub fn load_world_with_schematic(name: &str, at_pos: BlockPos) -> PlotWorld {
         let path = ["..", "..", "test_data", name].iter().collect::<PathBuf>();
@@ -490,23 +495,17 @@ mod tests {
             [false, false, false],
             [true, true, true],
             [true, true, true],
+            [false, false, false],
         ];
+        let world = &mut load_world_with_schematic("UpdateTesterNonInst.schem", BUTTON_POS);
+        click_floor_button(world, BUTTON_POS);
 
-        let button_pos = BlockPos::new(100, 10, 100);
-        let base_wire = BlockPos::new(100, 10, 102);
-        let head_wire = BlockPos::new(102, 10, 102);
-        let push_wire = BlockPos::new(104, 10, 102);
-
-        let world = &mut load_world_with_schematic("UpdateTesterNonInst.schem", button_pos);
-
-        click_floor_button(world, button_pos);
-
-        for i in 0..10 {
+        for i in 0..11 {
             world.tick_interpreted();
 
-            let base = is_wire_powered(world, base_wire);
-            let head = is_wire_powered(world, head_wire);
-            let push = is_wire_powered(world, push_wire);
+            let base = is_wire_powered(world, BASE_WIRE);
+            let head = is_wire_powered(world, HEAD_WIRE);
+            let push = is_wire_powered(world, PUSH_WIRE);
 
             let got = [base, head, push];
             assert_eq!(expected[i], got, "tick: {i}");
@@ -526,23 +525,78 @@ mod tests {
             [false, false, false],
             [false, true, true],
             [false, true, true],
+            [false, false, false],
         ];
+        let world = &mut load_world_with_schematic("UpdateTesterInst.schem", BUTTON_POS);
+        click_floor_button(world, BUTTON_POS);
 
-        let button_pos = BlockPos::new(100, 10, 100);
-        let base_wire = BlockPos::new(100, 10, 102);
-        let head_wire = BlockPos::new(102, 10, 102);
-        let push_wire = BlockPos::new(104, 10, 102);
-
-        let world = &mut load_world_with_schematic("UpdateTesterInst.schem", button_pos);
-
-        click_floor_button(world, button_pos);
-
-        for i in 0..10 {
+        for i in 0..11 {
             world.tick_interpreted();
 
-            let base = is_wire_powered(world, base_wire);
-            let head = is_wire_powered(world, head_wire);
-            let push = is_wire_powered(world, push_wire);
+            let base = is_wire_powered(world, BASE_WIRE);
+            let head = is_wire_powered(world, HEAD_WIRE);
+            let push = is_wire_powered(world, PUSH_WIRE);
+
+            let got = [base, head, push];
+            assert_eq!(expected[i], got, "tick: {i}");
+        }
+    }
+
+    #[test]
+    fn test_updates_extend_instant() {
+        let expected = [
+            [false, false, false],
+            [false, false, false],
+            [false, false, false],
+            [true, true, true],
+            [true, true, true],
+            [false, false, false],
+            [false, false, false],
+            [false, false, false],
+            [true, true, true],
+            [true, true, true],
+            [false, false, false],
+        ];
+        let world = &mut load_world_with_schematic("UpdateTesterExtendInst.schem", BUTTON_POS);
+        click_floor_button(world, BUTTON_POS);
+
+        for i in 0..11 {
+            world.tick_interpreted();
+
+            let base = is_wire_powered(world, BASE_WIRE);
+            let head = is_wire_powered(world, HEAD_WIRE);
+            let push = is_wire_powered(world, PUSH_WIRE);
+
+            let got = [base, head, push];
+            assert_eq!(expected[i], got, "tick: {i}");
+        }
+    }
+
+    #[test]
+    fn test_updates_extend_non_instant() {
+        let expected = [
+            [false, false, false],
+            [false, false, false],
+            [false, false, false],
+            [false, false, false],
+            [false, false, false],
+            [true, true, true],
+            [true, true, true],
+            [false, false, false],
+            [false, false, false],
+            [true, true, true],
+            [true, true, true],
+            [false, false, false],
+        ];
+        let world = &mut load_world_with_schematic("UpdateTesterExtendNonInst.schem", BUTTON_POS);
+        click_floor_button(world, BUTTON_POS);
+
+        for i in 0..12 {
+            world.tick_interpreted();
+
+            let base = is_wire_powered(world, BASE_WIRE);
+            let head = is_wire_powered(world, HEAD_WIRE);
+            let push = is_wire_powered(world, PUSH_WIRE);
 
             let got = [base, head, push];
             assert_eq!(expected[i], got, "tick: {i}");
