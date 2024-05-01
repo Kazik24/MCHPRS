@@ -297,9 +297,7 @@ impl World for PlotWorld {
         match block_action {
             BlockAction::Piston { action, piston } => {
                 let piston_action_data = CBlockAction {
-                    x: pos.x,
-                    y: pos.y,
-                    z: pos.z,
+                    pos: pos.packed(),
                     action_id: action as u8,
                     action_param: BlockFace::from(piston.facing) as u8,
                     block_id: Block::Piston { piston }.get_id(),
@@ -311,9 +309,7 @@ impl World for PlotWorld {
             }
             BlockAction::BlockChange { pos, block_id } => {
                 let block_action_data = CBlockChange {
-                    x: pos.x,
-                    y: pos.y,
-                    z: pos.z,
+                    pos: pos.packed(),
                     block_id: block_id as i32,
                 }
                 .encode();
@@ -365,9 +361,7 @@ impl Plot {
     pub fn send_block_change(&mut self, pos: BlockPos, id: u32) {
         let block_change = CBlockChange {
             block_id: id as i32,
-            x: pos.x,
-            y: pos.y,
-            z: pos.z,
+            pos: pos.packed(),
         }
         .encode();
         for player in &mut self.players {

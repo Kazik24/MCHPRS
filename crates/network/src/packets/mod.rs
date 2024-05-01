@@ -231,14 +231,13 @@ pub trait PacketDecoderExt: Read + Sized {
     }
 
     fn read_position(&mut self) -> DecodeResult<(i32, i32, i32)> {
+        let pos = self.read_packed_pos()?;
+        Ok(pos.coords())
+    }
+
+    fn read_packed_pos(&mut self) -> DecodeResult<PackedPos> {
         let val: i64 = self.read_long()?;
-        let x = val >> 38;
-        let mut y = val & 0xFFF;
-        if y >= 0x800 {
-            y -= 0x1000;
-        }
-        let z = val << 26 >> 38;
-        Ok((x as i32, y as i32, z as i32))
+        Ok(PackedPos::from_raw(val))
     }
 
     fn read_nbt_blob(&mut self) -> DecodeResult<Option<nbt::Blob>> {
@@ -247,6 +246,36 @@ pub trait PacketDecoderExt: Read + Sized {
             Err(nbt::Error::NoRootCompound) => Ok(None),
             Err(err) => Err(err.into()),
         }
+    }
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
+#[repr(transparent)]
+pub struct PackedPos {
+    val: i64,
+}
+
+impl PackedPos {
+    pub const fn new(x: i32, y: i32, z: i32) -> Self {
+        let val =
+            ((x as i64 & 0x3FF_FFFF) << 38) | ((z as i64 & 0x3FF_FFFF) << 12) | (y as i64 & 0xFFF);
+        Self { val }
+    }
+    pub const fn coords(self) -> (i32, i32, i32) {
+        let val = self.val;
+        let x = val >> 38;
+        let mut y = val & 0xFFF;
+        if y >= 0x800 {
+            y -= 0x1000;
+        }
+        let z = val << 26 >> 38;
+        (x as i32, y as i32, z as i32)
+    }
+    pub const fn as_raw(self) -> i64 {
+        self.val
+    }
+    pub const fn from_raw(val: i64) -> Self {
+        Self { val }
     }
 }
 
@@ -320,11 +349,12 @@ pub trait PacketEncoderExt: Write {
     }
 
     fn write_position(&mut self, x: i32, y: i32, z: i32) {
-        let long =
-            ((x as i64 & 0x3FF_FFFF) << 38) | ((z as i64 & 0x3FF_FFFF) << 12) | (y as i64 & 0xFFF);
-        self.write_long(long);
+        let pos = PackedPos::new(x, y, z);
+        self.write_packed_pos(pos);
     }
-
+    fn write_packed_pos(&mut self, pos: PackedPos) {
+        self.write_long(pos.as_raw());
+    }
     fn write_bool(&mut self, val: bool) {
         self.write_u8(val as u8).unwrap();
     }

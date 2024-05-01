@@ -2,6 +2,7 @@ pub mod block_entities;
 pub mod blocks;
 pub mod items;
 
+use mchprs_network::packets::PackedPos;
 pub use mchprs_proc_macros::BlockProperty;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -15,15 +16,20 @@ pub struct BlockPos {
 }
 
 impl BlockPos {
-    pub const fn new(x: i32, y: i32, z: i32) -> BlockPos {
-        BlockPos { x, y, z }
+    pub const fn new(x: i32, y: i32, z: i32) -> Self {
+        Self { x, y, z }
     }
-
-    pub fn zero() -> BlockPos {
-        BlockPos::new(0, 0, 0)
+    pub const fn zero() -> Self {
+        Self::new(0, 0, 0)
     }
-
-    pub fn offset(self, face: BlockFace) -> BlockPos {
+    pub const fn from_packed(packed: PackedPos) -> Self {
+        let (x, y, z) = packed.coords();
+        Self::new(x, y, z)
+    }
+    pub const fn packed(self) -> PackedPos {
+        PackedPos::new(self.x, self.y, self.z)
+    }
+    pub const fn offset(self, face: BlockFace) -> Self {
         match face {
             BlockFace::Bottom => BlockPos::new(self.x, self.y.saturating_sub(1), self.z),
             BlockFace::Top => BlockPos::new(self.x, self.y + 1, self.z),
@@ -33,17 +39,16 @@ impl BlockPos {
             BlockFace::East => BlockPos::new(self.x + 1, self.y, self.z),
         }
     }
-
-    pub fn max(self, other: BlockPos) -> BlockPos {
-        BlockPos {
+    pub fn max(self, other: Self) -> Self {
+        Self {
             x: std::cmp::max(self.x, other.x),
             y: std::cmp::max(self.y, other.y),
             z: std::cmp::max(self.z, other.z),
         }
     }
 
-    pub fn min(self, other: BlockPos) -> BlockPos {
-        BlockPos {
+    pub fn min(self, other: Self) -> Self {
+        Self {
             x: std::cmp::min(self.x, other.x),
             y: std::cmp::min(self.y, other.y),
             z: std::cmp::min(self.z, other.z),

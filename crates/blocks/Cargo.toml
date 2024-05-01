@@ -10,5 +10,6 @@ serde = "1"
 hematite-nbt = "0.5"
 mchprs_utils = { path = "../utils" }
 mchprs_proc_macros = { path = "../proc_macros" }
+mchprs_network = { path = "../network" }
 thin-vec = { version = "0.2.13", features = ["serde"] }
 anyhow = "1"

@@ -1370,6 +1370,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "hematite-nbt",
+ "mchprs_network",
  "mchprs_proc_macros",
  "mchprs_utils",
  "serde",
