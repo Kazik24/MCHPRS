@@ -250,9 +250,7 @@ impl World for PlotWorld {
         };
         if let Some(nbt) = block_entity.to_nbt(true) {
             let block_entity_data = CBlockEntityData {
-                x: pos.x,
-                y: pos.y,
-                z: pos.z,
+                pos: pos.packed(),
                 // For now the only nbt we send to the client is sign data
                 ty: block_entity.ty(),
                 nbt,

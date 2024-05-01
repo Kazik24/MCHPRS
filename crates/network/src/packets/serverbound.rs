@@ -1,4 +1,4 @@
-use super::{DecodeResult, PacketDecoderExt, SlotData};
+use super::{DecodeResult, PackedPos, PacketDecoderExt, SlotData};
 
 pub trait ServerBoundPacketHandler {
     fn handle_handshake(&mut self, _packet: SHandshake, _player_idx: usize) {}
@@ -322,9 +322,7 @@ impl ServerBoundPacket for SPlayerAbilities {
 
 pub struct SPlayerDigging {
     pub status: i32,
-    pub x: i32,
-    pub y: i32,
-    pub z: i32,
+    pub pos: PackedPos,
     pub face: i8,
 }
 
@@ -334,9 +332,7 @@ impl ServerBoundPacket for SPlayerDigging {
         let location = decoder.read_position()?;
         let face = decoder.read_byte()?;
         Ok(SPlayerDigging {
-            x: location.0,
-            y: location.1,
-            z: location.2,
+            pos: location,
             status,
             face,
         })
@@ -385,9 +381,7 @@ impl ServerBoundPacket for SAnimation {
 
 pub struct SPlayerBlockPlacemnt {
     pub hand: i32,
-    pub x: i32,
-    pub y: i32,
-    pub z: i32,
+    pub pos: PackedPos,
     pub face: i32,
     pub cursor_x: f32,
     pub cursor_y: f32,
@@ -405,9 +399,7 @@ impl ServerBoundPacket for SPlayerBlockPlacemnt {
         let cursor_z = decoder.read_float()?;
         let inside_block = decoder.read_bool()?;
         Ok(SPlayerBlockPlacemnt {
-            x: location.0,
-            y: location.1,
-            z: location.2,
+            pos: location,
             hand,
             face,
             cursor_x,
@@ -464,22 +456,20 @@ impl ServerBoundPacket for SCreativeInventoryAction {
 }
 
 pub struct SUpdateSign {
-    pub x: i32,
-    pub y: i32,
-    pub z: i32,
+    pub pos: PackedPos,
     pub lines: [String; 4],
 }
 
 impl ServerBoundPacket for SUpdateSign {
     fn decode<T: PacketDecoderExt>(decoder: &mut T) -> DecodeResult<Self> {
-        let (x, y, z) = decoder.read_position()?;
+        let pos = decoder.read_position()?;
         let lines = [
             decoder.read_string()?,
             decoder.read_string()?,
             decoder.read_string()?,
             decoder.read_string()?,
         ];
-        Ok(SUpdateSign { x, y, z, lines })
+        Ok(SUpdateSign { pos, lines })
     }
 
     fn handle(self: Box<Self>, handler: &mut dyn ServerBoundPacketHandler, player_idx: usize) {

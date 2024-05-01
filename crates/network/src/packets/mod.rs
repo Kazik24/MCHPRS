@@ -230,12 +230,7 @@ pub trait PacketDecoderExt: Read + Sized {
         Ok(data)
     }
 
-    fn read_position(&mut self) -> DecodeResult<(i32, i32, i32)> {
-        let pos = self.read_packed_pos()?;
-        Ok(pos.coords())
-    }
-
-    fn read_packed_pos(&mut self) -> DecodeResult<PackedPos> {
+    fn read_position(&mut self) -> DecodeResult<PackedPos> {
         let val: i64 = self.read_long()?;
         Ok(PackedPos::from_raw(val))
     }
@@ -348,11 +343,7 @@ pub trait PacketEncoderExt: Write {
         self.write_i64::<BigEndian>(val).unwrap();
     }
 
-    fn write_position(&mut self, x: i32, y: i32, z: i32) {
-        let pos = PackedPos::new(x, y, z);
-        self.write_packed_pos(pos);
-    }
-    fn write_packed_pos(&mut self, pos: PackedPos) {
+    fn write_position(&mut self, pos: PackedPos) {
         self.write_long(pos.as_raw());
     }
     fn write_bool(&mut self, val: bool) {

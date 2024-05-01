@@ -184,11 +184,7 @@ impl ServerBoundPacketHandler for Plot {
         player_block_placement: SPlayerBlockPlacemnt,
         player: usize,
     ) {
-        let block_pos = BlockPos::new(
-            player_block_placement.x,
-            player_block_placement.y,
-            player_block_placement.z,
-        );
+        let block_pos = BlockPos::from_packed(player_block_placement.pos);
         let Some(block_face) = BlockFace::try_from_id(player_block_placement.face as u32) else {
             warn!("Invalid block face: {}", player_block_placement.face);
             return;
@@ -469,7 +465,7 @@ impl ServerBoundPacketHandler for Plot {
 
     fn handle_player_digging(&mut self, player_digging: SPlayerDigging, player: usize) {
         if player_digging.status == 0 {
-            let block_pos = BlockPos::new(player_digging.x, player_digging.y, player_digging.z);
+            let block_pos = BlockPos::from_packed(player_digging.pos);
             let block = self.world.get_block(block_pos);
 
             if !Plot::in_plot_bounds(self.world.x, self.world.z, block_pos.x, block_pos.z) {
@@ -524,9 +520,7 @@ impl ServerBoundPacketHandler for Plot {
 
             let effect = CEffect {
                 effect_id: 2001,
-                x: player_digging.x,
-                y: player_digging.y,
-                z: player_digging.z,
+                pos: player_digging.pos,
                 data: block.get_id() as i32,
                 disable_relative_volume: false,
             }
@@ -623,7 +617,7 @@ impl ServerBoundPacketHandler for Plot {
     }
 
     fn handle_update_sign(&mut self, packet: SUpdateSign, _player: usize) {
-        let pos = BlockPos::new(packet.x, packet.y, packet.z);
+        let pos = BlockPos::from_packed(packet.pos);
         let mut rows = packet
             .lines
             .iter()

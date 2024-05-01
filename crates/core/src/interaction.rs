@@ -526,9 +526,7 @@ pub fn use_item_on_block(
                     .is_some_and(|blob| blob.content.contains_key("BlockEntityTag"))
                 {
                     let open_sign_editor = COpenSignEditor {
-                        pos_x: block_pos.x,
-                        pos_y: block_pos.y,
-                        pos_z: block_pos.z,
+                        pos: block_pos.packed(),
                     }
                     .encode();
                     ctx.player.client.send_packet(&open_sign_editor);

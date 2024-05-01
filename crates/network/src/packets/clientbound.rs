@@ -182,9 +182,7 @@ impl ClientBoundPacket for CEntityAnimation {
 }
 
 pub struct CBlockEntityData {
-    pub x: i32,
-    pub y: i32,
-    pub z: i32,
+    pub pos: PackedPos,
     pub ty: i32,
     pub nbt: nbt::Blob,
 }
@@ -192,7 +190,7 @@ pub struct CBlockEntityData {
 impl ClientBoundPacket for CBlockEntityData {
     fn encode(&self) -> PacketEncoder {
         let mut buf = Vec::new();
-        buf.write_position(self.x, self.y, self.z);
+        buf.write_position(self.pos);
         buf.write_varint(self.ty);
         buf.write_nbt_blob(&self.nbt);
         PacketEncoder::new(buf, 0x0A)
@@ -207,7 +205,7 @@ pub struct CBlockChange {
 impl ClientBoundPacket for CBlockChange {
     fn encode(&self) -> PacketEncoder {
         let mut buf = Vec::new();
-        buf.write_packed_pos(self.pos);
+        buf.write_position(self.pos);
         buf.write_varint(self.block_id);
         PacketEncoder::new(buf, 0x0C)
     }
@@ -569,9 +567,7 @@ impl ClientBoundPacket for CChunkData {
 
 pub struct CEffect {
     pub effect_id: i32,
-    pub x: i32,
-    pub y: i32,
-    pub z: i32,
+    pub pos: PackedPos,
     pub data: i32,
     pub disable_relative_volume: bool,
 }
@@ -580,7 +576,7 @@ impl ClientBoundPacket for CEffect {
     fn encode(&self) -> PacketEncoder {
         let mut buf = Vec::new();
         buf.write_int(self.effect_id);
-        buf.write_position(self.x, self.y, self.z);
+        buf.write_position(self.pos);
         buf.write_int(self.data);
         buf.write_bool(self.disable_relative_volume);
         PacketEncoder::new(buf, 0x23)
@@ -714,15 +710,13 @@ impl ClientBoundPacket for CJoinGame {
 }
 
 pub struct COpenSignEditor {
-    pub pos_x: i32,
-    pub pos_y: i32,
-    pub pos_z: i32,
+    pub pos: PackedPos,
 }
 
 impl ClientBoundPacket for COpenSignEditor {
     fn encode(&self) -> PacketEncoder {
         let mut buf = Vec::new();
-        buf.write_position(self.pos_x, self.pos_y, self.pos_z);
+        buf.write_position(self.pos);
         PacketEncoder::new(buf, 0x2F)
     }
 }
@@ -1158,7 +1152,7 @@ pub struct CBlockAction {
 impl ClientBoundPacket for CBlockAction {
     fn encode(&self) -> PacketEncoder {
         let mut buf = Vec::new();
-        buf.write_packed_pos(self.pos);
+        buf.write_position(self.pos);
         buf.write_unsigned_byte(self.action_id);
         buf.write_unsigned_byte(self.action_param);
         buf.write_varint(self.block_id as i32);
