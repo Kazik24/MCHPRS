@@ -290,9 +290,9 @@ fn on_piston_state_change(
     if update_base {
         update_neighbors(world, piston_pos, [facing]);
     }
-    // update head
 
-    let head_pos = piston_pos.offset(facing.into());
+    // update head
+    let head_pos = piston_pos.offset(facing);
     let block = world.get_block(head_pos);
     update(block, world, head_pos, None); //update block itself, e.g in case of lamps
     if update_pushed {
@@ -303,9 +303,9 @@ fn on_piston_state_change(
 
     // update pushed block
     if update_pushed {
-        let pushed_pos = head_pos.offset(facing.into());
-        let block = world.get_block(head_pos);
-        update(block, world, head_pos, None); //update block itself, e.g in case of lamps
+        let pushed_pos = head_pos.offset(facing);
+        let block = world.get_block(pushed_pos);
+        update(block, world, pushed_pos, None); //update block itself, e.g in case of lamps
 
         update_neighbors(world, pushed_pos, [facing.opposite()])
     }

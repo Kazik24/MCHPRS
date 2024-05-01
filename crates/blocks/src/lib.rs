@@ -126,9 +126,11 @@ pub enum BlockFace {
 }
 
 impl BlockFace {
+    #[inline]
     pub const fn get_id(self) -> u32 {
         self as u32
     }
+    #[inline]
     pub const fn try_from_id(id: u32) -> Option<BlockFace> {
         match id {
             0 => Some(BlockFace::Bottom),
@@ -163,7 +165,8 @@ impl BlockFace {
             _ => panic!("called `unwrap_direction` on {:?}", self),
         }
     }
-    pub fn opposite(self) -> BlockFace {
+    #[inline]
+    pub const fn opposite(self) -> BlockFace {
         use BlockFace::*;
         match self {
             Bottom => Top,
@@ -178,6 +181,7 @@ impl BlockFace {
 
 //todo remove (not needed anymore)
 impl From<BlockFace> for BlockFacing {
+    #[inline]
     fn from(face: BlockFace) -> BlockFacing {
         match face {
             BlockFace::North => BlockFacing::North,
@@ -190,6 +194,7 @@ impl From<BlockFace> for BlockFacing {
     }
 }
 impl From<BlockFacing> for BlockFace {
+    #[inline]
     fn from(facing: BlockFacing) -> BlockFace {
         match facing {
             BlockFacing::North => BlockFace::North,
@@ -267,6 +272,7 @@ pub enum BlockDirection {
 }
 
 impl BlockDirection {
+    #[inline]
     pub const fn opposite(self) -> BlockDirection {
         use BlockDirection::*;
         match self {
@@ -276,7 +282,7 @@ impl BlockDirection {
             West => East,
         }
     }
-
+    #[inline]
     pub const fn block_face(self) -> BlockFace {
         use BlockDirection::*;
         match self {
@@ -286,7 +292,7 @@ impl BlockDirection {
             West => BlockFace::West,
         }
     }
-
+    #[inline]
     pub const fn block_facing(self) -> BlockFacing {
         use BlockDirection::*;
         match self {
@@ -296,7 +302,7 @@ impl BlockDirection {
             West => BlockFacing::West,
         }
     }
-
+    #[inline]
     pub fn from_id(id: u32) -> BlockDirection {
         match id {
             0 => BlockDirection::North,
@@ -306,7 +312,7 @@ impl BlockDirection {
             _ => panic!("invalid BlockDirection with id {}", id),
         }
     }
-
+    #[inline]
     pub const fn get_id(self) -> u32 {
         match self {
             BlockDirection::North => 0,
@@ -335,7 +341,7 @@ impl BlockDirection {
             East => North,
         }
     }
-
+    #[inline]
     pub fn from_rotation(rotation: u8) -> Option<BlockDirection> {
         match rotation {
             0 => Some(BlockDirection::South),
@@ -387,6 +393,7 @@ impl BlockFacing {
     pub const fn horizontal_values() -> [Self; 4] {
         [Self::North, Self::South, Self::East, Self::West]
     }
+    #[inline]
     pub const fn try_from_id(id: u32) -> Option<BlockFacing> {
         match id {
             0 => Some(BlockFacing::North),
@@ -398,7 +405,7 @@ impl BlockFacing {
             _ => None,
         }
     }
-
+    #[inline]
     pub const fn get_id(self) -> u32 {
         match self {
             BlockFacing::North => 0,
@@ -409,7 +416,7 @@ impl BlockFacing {
             BlockFacing::Down => 5,
         }
     }
-
+    #[inline]
     pub const fn offset_pos(self, mut pos: BlockPos, n: i32) -> BlockPos {
         match self {
             BlockFacing::North => pos.z -= n,
@@ -421,7 +428,7 @@ impl BlockFacing {
         }
         pos
     }
-
+    #[inline]
     pub const fn rotate(self) -> BlockFacing {
         use BlockFacing::*;
         match self {
@@ -432,7 +439,7 @@ impl BlockFacing {
             other => other,
         }
     }
-
+    #[inline]
     pub const fn rotate_ccw(self) -> BlockFacing {
         use BlockFacing::*;
         match self {
@@ -443,7 +450,7 @@ impl BlockFacing {
             other => other,
         }
     }
-
+    #[inline]
     pub const fn opposite(self) -> BlockFacing {
         use BlockFacing::*;
         match self {

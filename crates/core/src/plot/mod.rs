@@ -170,27 +170,24 @@ impl PlotWorld {
 
     pub fn tick_interpreted(&mut self) {
         //handle zero ticks before advancing queue
-        while let Some(pos) = self.to_be_ticked.pop_one_this_tick() {
+        while let Some(pos) = self.to_be_ticked.this_tick().pop_first() {
             redstone::tick(self.get_block(pos), self, pos);
         }
 
         self.to_be_ticked.end_last_tick_move_next();
 
-        while let Some(pos) = self.to_be_ticked.pop_one_this_tick() {
+        while let Some(pos) = self.to_be_ticked.this_tick().pop_first() {
             redstone::tick(self.get_block(pos), self, pos);
         }
     }
 
     pub fn nanotick_advance(&mut self, amount: u32) {
         for _ in 0..amount {
-            if let Some(pos) = self.to_be_ticked.pop_one_this_tick() {
+            if self.to_be_ticked.this_tick_ref().is_empty() {
+                self.to_be_ticked.end_last_tick_move_next();
+            }
+            if let Some(pos) = self.to_be_ticked.this_tick().pop_first() {
                 redstone::tick(self.get_block(pos), self, pos);
-            } else {
-                let next_queue = self.to_be_ticked.queues_iter().position(|q| !q.is_empty());
-                for _ in 0..next_queue.unwrap_or(0) {
-                    assert!(self.to_be_ticked.pop_one_this_tick().is_none());
-                    self.to_be_ticked.end_last_tick_move_next();
-                }
             }
         }
     }

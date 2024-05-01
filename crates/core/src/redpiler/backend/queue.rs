@@ -27,7 +27,27 @@ impl<T> Queues<T> {
         self.0.iter().all(|q| q.is_empty())
     }
 
-    pub fn iter(&self) -> impl Iterator<Item = (&T, TickPriority)> + '_ {
+    pub fn pop_first(&mut self) -> Option<T> {
+        for queue in &mut self.0 {
+            if !queue.is_empty() {
+                return Some(queue.remove(0)); //no need to be fast for now
+            }
+        }
+        None
+    }
+
+    pub fn clear(&mut self) {
+        self.0.iter_mut().for_each(|q| q.clear());
+    }
+
+    pub fn contains(&self, node: &T) -> bool
+    where
+        T: PartialEq,
+    {
+        self.0.iter().any(|q| q.contains(node))
+    }
+
+    pub fn iter(&self) -> impl Iterator<Item = (&T, TickPriority)> {
         self.0
             .each_ref()
             .into_iter()
@@ -130,26 +150,23 @@ impl<T> TickScheduler<T> {
         (self.pos + 1) % NUM_QUEUES
     }
 
+    // for redpiler tick logic
     pub fn queues_this_tick_move_next(&mut self) -> Queues<T> {
         self.pos = self.next_pos();
         mem::take(&mut self.queues_deque[self.pos])
     }
 
     // for interpreted ticks
-    pub fn pop_one_this_tick(&mut self) -> Option<T> {
-        for queue in &mut self.queues_deque[self.pos].0 {
-            if !queue.is_empty() {
-                return Some(queue.remove(0)); //no need to be fast for now
-            }
-        }
-        None
+    pub fn this_tick_ref(&self) -> &Queues<T> {
+        &self.queues_deque[self.pos]
     }
-
+    // for interpreted ticks
+    pub fn this_tick(&mut self) -> &mut Queues<T> {
+        &mut self.queues_deque[self.pos]
+    }
     // for interpreted ticks
     pub fn end_last_tick_move_next(&mut self) {
-        for queue in &mut self.queues_deque[self.pos].0 {
-            queue.clear();
-        }
+        self.this_tick().clear();
         self.pos = self.next_pos();
     }
 
@@ -157,17 +174,10 @@ impl<T> TickScheduler<T> {
     where
         T: PartialEq,
     {
-        for queues in self.queues_iter() {
-            for queue in &queues.0 {
-                if queue.contains(node) {
-                    return true;
-                }
-            }
-        }
-        false
+        self.queues_iter().any(|q| q.contains(node))
     }
 
-    pub fn queues_iter(&self) -> impl Iterator<Item = &Queues<T>> + '_ {
+    pub fn queues_iter(&self) -> impl Iterator<Item = &Queues<T>> {
         let mut i = 0;
         std::iter::from_fn(move || {
             if i < NUM_QUEUES {
@@ -181,25 +191,19 @@ impl<T> TickScheduler<T> {
         })
     }
 
-    pub fn iter(&self) -> impl Iterator<Item = (&T, usize, TickPriority)> + '_ {
+    pub fn iter(&self) -> impl Iterator<Item = (&T, usize, TickPriority)> {
         self.queues_iter()
             .enumerate()
             .flat_map(|(d, q)| q.iter().map(move |(n, p)| (n, d, p)))
     }
 
     pub fn end_tick(&mut self, mut queues: Queues<T>) {
-        for queue in &mut queues.0 {
-            queue.clear();
-        }
+        queues.clear();
         self.queues_deque[self.pos] = queues;
     }
 
     pub fn clear(&mut self) {
-        for queues in &mut self.queues_deque {
-            for queue in &mut queues.0 {
-                queue.clear();
-            }
-        }
+        self.queues_deque.iter_mut().for_each(|q| q.clear());
     }
 }
 
@@ -236,6 +240,6 @@ mod tests {
         let pos = BlockPos::new(1, 1, 1);
 
         sch.schedule_tick(pos, 0, TickPriority::Normal);
-        assert_eq!(Some(pos), sch.pop_one_this_tick())
+        assert_eq!(Some(pos), sch.this_tick().pop_first())
     }
 }
