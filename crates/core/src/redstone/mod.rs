@@ -374,7 +374,7 @@ pub fn tick(block: Block, world: &mut impl World, pos: BlockPos) {
 fn on_observer_state_change(facing: BlockFacing, world: &mut impl World, pos: BlockPos) {
     let front_pos = pos.offset(facing.opposite().into());
     let front_block = world.get_block(front_pos);
-    update(front_block, world, front_pos, None);
+    update(front_block, world, front_pos, Some(facing.into()));
     for direction in BlockFace::values() {
         if direction == facing.into() {
             continue;
