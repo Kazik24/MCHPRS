@@ -65,7 +65,7 @@ pub fn should_piston_extend(
 pub fn update_piston_state(world: &mut impl World, piston: RedstonePiston, piston_pos: BlockPos) {
     let should_extend = should_piston_extend(world, piston, piston_pos);
     if should_extend != piston.extended && !world.pending_tick_at(piston_pos) {
-        world.schedule_tick(piston_pos, 0, TickPriority::Normal);
+        world.schedule_tick(piston_pos, 0, TickPriority::NanoTick);
     }
 }
 

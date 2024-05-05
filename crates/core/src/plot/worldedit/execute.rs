@@ -69,7 +69,7 @@ pub(super) fn execute_set(ctx: CommandExecuteContext<'_>) {
     let blocks_updated = operation.blocks_updated();
 
     ctx.player.send_worldedit_message(&format!(
-        "Operation completed: {} block(s) affected ({:?})",
+        "Operation completed: {} block(s) affected ({:.00?})",
         blocks_updated,
         start_time.elapsed()
     ));
@@ -107,7 +107,7 @@ pub(super) fn execute_replace(ctx: CommandExecuteContext<'_>) {
     let blocks_updated = operation.blocks_updated();
 
     ctx.player.send_worldedit_message(&format!(
-        "Operation completed: {} block(s) affected ({:?})",
+        "Operation completed: {} block(s) affected ({:.00?})",
         blocks_updated,
         start_time.elapsed()
     ));
@@ -132,7 +132,7 @@ pub(super) fn execute_count(ctx: CommandExecuteContext<'_>) {
     }
 
     ctx.player.send_worldedit_message(&format!(
-        "Counted {} block(s) ({:?})",
+        "Counted {} block(s) ({:.00?})",
         blocks_counted,
         start_time.elapsed()
     ));
@@ -151,7 +151,7 @@ pub(super) fn execute_copy(ctx: CommandExecuteContext<'_>) {
     ctx.player.worldedit_clipboard = Some(clipboard);
 
     ctx.player.send_worldedit_message(&format!(
-        "Your selection was copied. ({:?})",
+        "Your selection was copied. ({:.00?})",
         start_time.elapsed()
     ));
 }
@@ -170,7 +170,7 @@ pub(super) fn execute_cut(ctx: CommandExecuteContext<'_>) {
     clear_area(ctx.plot, first_pos, second_pos);
 
     ctx.player.send_worldedit_message(&format!(
-        "Your selection was cut. ({:?})",
+        "Your selection was cut. ({:.00?})",
         start_time.elapsed()
     ));
 }
@@ -220,7 +220,7 @@ pub(super) fn execute_move(mut ctx: CommandExecuteContext<'_>) {
     }
 
     ctx.player.send_worldedit_message(&format!(
-        "Your selection was moved. ({:?})",
+        "Your selection was moved. ({:.00?})",
         start_time.elapsed()
     ));
 }
@@ -247,7 +247,7 @@ pub(super) fn execute_paste(ctx: CommandExecuteContext<'_>) {
             update(ctx.plot, first_pos, second_pos);
         }
         ctx.player.send_worldedit_message(&format!(
-            "Your clipboard was pasted. ({:?})",
+            "Your clipboard was pasted. ({:.00?})",
             start_time.elapsed()
         ));
     } else {
@@ -279,7 +279,7 @@ pub(super) fn execute_load(ctx: CommandExecuteContext<'_>) {
         Ok(cb) => {
             ctx.player.worldedit_clipboard = Some(cb);
             ctx.player.send_worldedit_message(&format!(
-                "The schematic was loaded to your clipboard. Do //paste to birth it into the world. ({:?})",
+                "The schematic was loaded to your clipboard. Do //paste to birth it into the world. ({:.00?})",
                 start_time.elapsed()
             ));
         }
@@ -318,7 +318,7 @@ pub(super) fn execute_save(ctx: CommandExecuteContext<'_>) {
     match save_schematic(&file_name, clipboard) {
         Ok(_) => {
             ctx.player.send_worldedit_message(&format!(
-                "The schematic was saved sucessfuly. ({:?})",
+                "The schematic was saved sucessfuly. ({:.00?})",
                 start_time.elapsed()
             ));
         }
@@ -365,7 +365,7 @@ pub(super) fn execute_stack(ctx: CommandExecuteContext<'_>) {
     ctx.player.worldedit_undo.push(undo);
 
     ctx.player.send_worldedit_message(&format!(
-        "Your selection was stacked. ({:?})",
+        "Your selection was stacked. ({:.00?})",
         start_time.elapsed()
     ));
 }
@@ -628,7 +628,7 @@ pub(super) fn execute_flip(ctx: CommandExecuteContext<'_>) {
 
     ctx.player.worldedit_clipboard = Some(cb);
     ctx.player.send_worldedit_message(&format!(
-        "The clipboard copy has been flipped. ({:?})",
+        "The clipboard copy has been flipped. ({:.00?})",
         start_time.elapsed()
     ));
 }
@@ -734,7 +734,7 @@ pub(super) fn execute_rotate(ctx: CommandExecuteContext<'_>) {
 
     ctx.player.worldedit_clipboard = Some(cb);
     ctx.player.send_worldedit_message(&format!(
-        "The clipboard copy has been rotated. ({:?})",
+        "The clipboard copy has been rotated. ({:.00?})",
         start_time.elapsed()
     ));
 }
@@ -987,7 +987,7 @@ pub(super) fn execute_rstack(ctx: CommandExecuteContext<'_>) {
     player.worldedit_undo.push(undo);
 
     player.send_worldedit_message(&format!(
-        "Your selection was stacked successfully. ({:?})",
+        "Your selection was stacked successfully. ({:.00?})",
         start_time.elapsed()
     ));
 }
@@ -1012,7 +1012,7 @@ pub(super) fn execute_update(ctx: CommandExecuteContext<'_>) {
     update(ctx.plot, first_pos, second_pos);
 
     ctx.player.send_worldedit_message(&format!(
-        "Your selection was updated sucessfully. ({:?})",
+        "Your selection was updated sucessfully. ({:.00?})",
         start_time.elapsed()
     ));
 }
@@ -1084,7 +1084,7 @@ pub(super) fn execute_replace_container(ctx: CommandExecuteContext<'_>) {
     }
 
     ctx.player.send_worldedit_message(&format!(
-        "Your selection was replaced sucessfully. ({:?})",
+        "Your selection was replaced sucessfully. ({:.00?})",
         start_time.elapsed()
     ));
 }

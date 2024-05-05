@@ -182,6 +182,31 @@ impl PlotWorld {
     }
 
     pub fn nanotick_advance(&mut self, amount: u32) {
+        let mut updates = Vec::new();
+        for _ in 0..amount {
+            if self.to_be_ticked.this_tick_ref().is_empty() {
+                self.to_be_ticked.end_last_tick_move_next();
+            }
+
+            // handle only current updates, they might schedule zero-ticks which we don't want to handle in the same iteration.
+            // NOTE: If nano-ticks were scheduled with multiple priorities, this code would not work, since some updates might
+            // be 'in-between' others, it would make it impossible to track nano-tick boundaries, and this piece of code
+            // will handle ticks wrong. But that's why there is TickPriority::NanoTick which is the only valid priority to
+            // schedule 0 delay ticks with.
+            updates.extend(self.to_be_ticked.this_tick().drain_iter());
+            for pos in updates.drain(..) {
+                redstone::tick(self.get_block(pos), self, pos);
+            }
+            //assert that only nano-ticks can be scheduled after initial updates
+            let queue = self.to_be_ticked.this_tick_ref();
+            assert!(
+                queue.len() == queue.count_for(TickPriority::NanoTick),
+                "Only nano-ticks can be scheduled after initial updates"
+            );
+        }
+    }
+
+    pub fn picotick_advance(&mut self, amount: u32) {
         for _ in 0..amount {
             if self.to_be_ticked.this_tick_ref().is_empty() {
                 self.to_be_ticked.end_last_tick_move_next();
@@ -1145,7 +1170,7 @@ impl Plot {
 
             let before = Instant::now();
             self.update();
-            let delta = Instant::now().duration_since(before);
+            let delta = before.elapsed();
 
             if delta < self.sleep_time {
                 let sleep_time = self.sleep_time - delta;

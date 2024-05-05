@@ -89,7 +89,7 @@ server_context = "global"
 | `/redpiler compile` | `/rp c` | Manually starts redpiler compilation. Available flags: --io-only --optimize --export --update (or in short: -ioeu) |
 | `/redpiler reset` | `/rp r` | Stops redpiler. |
 | `/toggleautorp` | None | Toggles automatic redpiler compilation. |
-| `/nanoadvance [ticks]` | `/nadv` | Advances the plot by `[ticks]` redstone nano-ticks, useful for debugging piston circuits. |
+| `/radvance nano/pico [ticks]` | `/radv nano/pico` | Advances the plot by `[ticks]` redstone nano or pico-ticks, useful for debugging piston circuits. |
 | `/stop` | None | Stops the server. |
 
 ### Plot Ownership

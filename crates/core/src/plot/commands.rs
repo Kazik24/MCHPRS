@@ -315,48 +315,67 @@ impl Plot {
                 self.players[player].send_system_message("The rtps was successfully set.");
             }
             "/radv" | "/radvance" => {
-                if args.is_empty() {
+                let Some(arg0) = args.get(0) else {
                     self.players[player]
                         .send_error_message("Please specify a number of ticks to advance.");
                     return false;
-                }
-                let ticks = if let Ok(ticks) = args[0].parse::<u32>() {
-                    ticks
-                } else {
-                    self.players[player].send_error_message("Unable to parse ticks!");
-                    return false;
                 };
                 let start_time = Instant::now();
-                for _ in 0..ticks {
-                    self.tick();
-                }
-                self.players[player].send_system_message(&format!(
-                    "Plot has been advanced by {} ticks ({:?})",
-                    ticks,
-                    start_time.elapsed()
-                ));
-            }
-            "/nadv" | "/nanoadvance" => {
-                if args.is_empty() {
-                    self.players[player]
-                        .send_error_message("Please specify a number of nanoticks to advance.");
-                    return false;
-                }
-                let nano = if let Ok(nano) = args[0].parse::<u32>() {
-                    nano
-                } else {
-                    self.players[player].send_error_message("Unable to parse nanoticks!");
-                    return false;
+                let unit = match arg0.to_lowercase().as_str() {
+                    "nano" => {
+                        let Some(num) = args.get(1) else {
+                            self.players[player].send_error_message(
+                                "Please specify a number of nano-ticks to advance.",
+                            );
+                            return false;
+                        };
+                        let Ok(ticks) = num.parse::<u32>() else {
+                            self.players[player].send_error_message("Unable to parse nano-ticks!");
+                            return false;
+                        };
+                        if self.redpiler.is_active() {
+                            self.players[player].send_error_message(
+                                "Cannot advance nano-ticks while redpiler is active!",
+                            );
+                            return false;
+                        }
+                        self.world.nanotick_advance(ticks);
+                        format!("{ticks} nano-ticks")
+                    }
+                    "pico" => {
+                        let Some(num) = args.get(1) else {
+                            self.players[player].send_error_message(
+                                "Please specify a number of pico-ticks to advance.",
+                            );
+                            return false;
+                        };
+                        let Ok(ticks) = num.parse::<u32>() else {
+                            self.players[player].send_error_message("Unable to parse pico-ticks!");
+                            return false;
+                        };
+                        if self.redpiler.is_active() {
+                            self.players[player].send_error_message(
+                                "Cannot advance pico-ticks while redpiler is active!",
+                            );
+                            return false;
+                        }
+                        self.world.picotick_advance(ticks);
+                        format!("{ticks} pico-ticks")
+                    }
+                    num => {
+                        let Ok(ticks) = num.parse::<u32>() else {
+                            self.players[player].send_error_message("Unable to parse ticks!");
+                            return false;
+                        };
+                        for _ in 0..ticks {
+                            self.tick();
+                        }
+                        format!("{ticks} ticks")
+                    }
                 };
-                if self.redpiler.is_active() {
-                    self.players[player]
-                        .send_error_message("Cannot advance nanoticks while redpiler is active!");
-                    return false;
-                }
-                let start_time = Instant::now();
-                self.world.nanotick_advance(nano);
+
                 self.players[player].send_system_message(&format!(
-                    "Plot has been advanced by {nano} nanoticks ({:?})",
+                    "Plot has been advanced by {unit} ({:.00?})",
                     start_time.elapsed()
                 ));
             }
@@ -591,7 +610,7 @@ pub static DECLARE_COMMANDS: Lazy<PacketEncoder> = Lazy::new(|| {
                 flags: CommandFlags::ROOT.bits() as i8,
                 children: &[
                     1, 4, 5, 6, 11, 12, 14, 16, 18, 19, 20, 21, 22, 23, 24, 26, 29, 31, 32, 34, 36,
-                    47, 49, 53, 60, 61, 63, 65, 66, 67, 71, 73, 74, 75, 76, 78,
+                    47, 49, 53, 60, 61, 63, 65, 66, 67, 71, 73, 74, 75,
                 ],
                 redirect_node: None,
                 name: None,
@@ -853,7 +872,7 @@ pub static DECLARE_COMMANDS: Lazy<PacketEncoder> = Lazy::new(|| {
             // 29: /radvance
             Node {
                 flags: (CommandFlags::LITERAL).bits() as i8,
-                children: &[30],
+                children: &[30, 76, 78],
                 redirect_node: None,
                 name: Some("radvance"),
                 parser: None,
@@ -1276,16 +1295,16 @@ pub static DECLARE_COMMANDS: Lazy<PacketEncoder> = Lazy::new(|| {
                 parser: None,
                 suggestions_type: None,
             },
-            // 76: /nanoadvance
+            // 76: /radvance nano
             Node {
                 flags: (CommandFlags::LITERAL).bits() as i8,
                 children: &[77],
                 redirect_node: None,
-                name: Some("nanoadvance"),
+                name: Some("nano"),
                 parser: None,
                 suggestions_type: None,
             },
-            // 77: /nanoadvance [nticks]
+            // 77: /radvance nano [nticks]
             Node {
                 flags: (CommandFlags::ARGUMENT | CommandFlags::EXECUTABLE).bits() as i8,
                 children: &[],
@@ -1294,13 +1313,22 @@ pub static DECLARE_COMMANDS: Lazy<PacketEncoder> = Lazy::new(|| {
                 parser: Some(Parser::Integer(0, 100000)),
                 suggestions_type: None,
             },
-            // 78: /nadv
+            // 78: /radvance pico
             Node {
-                flags: (CommandFlags::LITERAL | CommandFlags::REDIRECT).bits() as i8,
-                children: &[],
-                redirect_node: Some(76),
-                name: Some("nadv"),
+                flags: (CommandFlags::LITERAL).bits() as i8,
+                children: &[79],
+                redirect_node: None,
+                name: Some("pico"),
                 parser: None,
+                suggestions_type: None,
+            },
+            // 79: /radvance pico [pticks]
+            Node {
+                flags: (CommandFlags::ARGUMENT | CommandFlags::EXECUTABLE).bits() as i8,
+                children: &[],
+                redirect_node: None,
+                name: Some("pticks"),
+                parser: Some(Parser::Integer(0, 100000)),
                 suggestions_type: None,
             },
         ],

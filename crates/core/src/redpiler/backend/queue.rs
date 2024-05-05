@@ -18,11 +18,19 @@ impl<T> Queues<T> {
     pub fn drain_iter(&mut self) -> impl Iterator<Item = T> + '_ {
         self.0.each_mut().into_iter().flat_map(|q| q.drain(..))
     }
-
+    #[inline]
     pub fn len(&self) -> usize {
         self.0.iter().map(|v| v.len()).sum()
     }
-
+    #[inline]
+    pub fn count_for(&self, priority: TickPriority) -> usize {
+        self.0[priority as usize].len()
+    }
+    #[inline]
+    pub fn is_empty_for(&self, priority: TickPriority) -> bool {
+        self.count_for(priority) == 0
+    }
+    #[inline]
     pub fn is_empty(&self) -> bool {
         self.0.iter().all(|q| q.is_empty())
     }
@@ -135,14 +143,18 @@ impl FromIterator<TickEntry> for TickScheduler<BlockPos> {
 impl<T> TickScheduler<T> {
     #[inline]
     pub fn schedule_tick(&mut self, node: T, delay: usize, priority: TickPriority) {
-        let delay = delay * 2;
-        debug_assert!(delay < NUM_QUEUES);
-        self.queues_deque[(self.pos + delay) % NUM_QUEUES].0[priority as usize].push(node);
+        self.schedule_half_tick(node, delay * 2, priority);
     }
 
     #[inline]
     pub fn schedule_half_tick(&mut self, node: T, delay: usize, priority: TickPriority) {
         debug_assert!(delay < NUM_QUEUES);
+        if delay == 0 {
+            debug_assert!(
+                priority == TickPriority::NanoTick,
+                "0 delay can only be scheduled with NanoTick priority"
+            );
+        }
         self.queues_deque[(self.pos + delay) % NUM_QUEUES].0[priority as usize].push(node);
     }
 
@@ -215,7 +227,7 @@ mod tests {
     use rand::prelude::*;
 
     #[test]
-    fn test_restet_queue() {
+    fn test_reset_queue() {
         let rng = &mut StdRng::seed_from_u64(123456);
         let mut sch = TickScheduler::default();
 
@@ -239,7 +251,7 @@ mod tests {
         let mut sch = TickScheduler::default();
         let pos = BlockPos::new(1, 1, 1);
 
-        sch.schedule_tick(pos, 0, TickPriority::Normal);
+        sch.schedule_tick(pos, 0, TickPriority::NanoTick);
         assert_eq!(Some(pos), sch.this_tick().pop_first())
     }
 }
