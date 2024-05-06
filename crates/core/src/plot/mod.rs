@@ -182,7 +182,6 @@ impl PlotWorld {
     }
 
     pub fn nanotick_advance(&mut self, amount: u32) {
-        let mut updates = Vec::new();
         for _ in 0..amount {
             if self.to_be_ticked.this_tick_ref().is_empty() {
                 self.to_be_ticked.end_last_tick_move_next();
@@ -193,16 +192,23 @@ impl PlotWorld {
             // be 'in-between' others, it would make it impossible to track nano-tick boundaries, and this piece of code
             // will handle ticks wrong. But that's why there is TickPriority::NanoTick which is the only valid priority to
             // schedule 0 delay ticks with.
-            updates.extend(self.to_be_ticked.this_tick().drain_iter());
-            for pos in updates.drain(..) {
-                redstone::tick(self.get_block(pos), self, pos);
+
+            //count how many ticks to pop so that we advance by one nano-tick
+            let mut ticks_to_pop = 0;
+            for prio in TickPriority::ALL {
+                let count = self.to_be_ticked.this_tick_ref().count_for(prio);
+                ticks_to_pop += count;
+                if prio == TickPriority::NanoTick && count != 0 {
+                    //last priority to count
+                    break;
+                }
             }
-            //assert that only nano-ticks can be scheduled after initial updates
-            let queue = self.to_be_ticked.this_tick_ref();
-            assert!(
-                queue.len() == queue.count_for(TickPriority::NanoTick),
-                "Only nano-ticks can be scheduled after initial updates"
-            );
+
+            for _ in 0..ticks_to_pop {
+                if let Some(pos) = self.to_be_ticked.this_tick().pop_first() {
+                    redstone::tick(self.get_block(pos), self, pos);
+                }
+            }
         }
     }
 

@@ -12,7 +12,8 @@ pub enum TickPriority {
 impl TickPriority {
     #[allow(non_upper_case_globals)]
     /// Indicates that we want to schedule nano-tick
-    pub const NanoTick: Self = Self::Normal; //is normal priority ok?
+    pub const NanoTick: Self = Self::Normal; //probably the lowest priority is best here
+    /// All tick priorities in update order, from highest to lowest
     pub const ALL: [TickPriority; 4] = [
         TickPriority::Highest,
         TickPriority::Higher,
