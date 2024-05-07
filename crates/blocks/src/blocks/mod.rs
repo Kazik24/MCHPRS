@@ -54,7 +54,6 @@ noop_block_transform!(
     u32,
     bool,
     BlockColorVariant,
-    BlockFacing,
     TrapdoorHalf,
     SignType,
     ButtonFace,
@@ -85,6 +84,31 @@ impl BlockTransform for BlockDirection {
             BlockDirection::East => BlockDirection::South,
             BlockDirection::South => BlockDirection::West,
             BlockDirection::West => BlockDirection::North,
+        }
+    }
+}
+impl BlockTransform for BlockFacing {
+    fn flip(&mut self, dir: FlipDirection) {
+        match dir {
+            FlipDirection::FlipX => match self {
+                Self::East => *self = Self::West,
+                Self::West => *self = Self::East,
+                _ => {}
+            },
+            FlipDirection::FlipZ => match self {
+                Self::North => *self = Self::South,
+                Self::South => *self = Self::North,
+                _ => {}
+            },
+        }
+    }
+    fn rotate90(&mut self) {
+        *self = match self {
+            Self::North => Self::East,
+            Self::East => Self::South,
+            Self::South => Self::West,
+            Self::West => Self::North,
+            _ => *self,
         }
     }
 }

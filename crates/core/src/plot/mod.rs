@@ -193,18 +193,18 @@ impl PlotWorld {
             // will handle ticks wrong. But that's why there is TickPriority::NanoTick which is the only valid priority to
             // schedule 0 delay ticks with.
 
-            //count how many ticks to pop so that we advance by one nano-tick
-            let mut ticks_to_pop = 0;
+            //count how many updates to pop so that we advance by one nano-tick
+            let mut updates_to_pop = 0;
             for prio in TickPriority::ALL {
                 let count = self.to_be_ticked.this_tick_ref().count_for(prio);
-                ticks_to_pop += count;
+                updates_to_pop += count;
                 if prio == TickPriority::NanoTick && count != 0 {
                     //last priority to count
                     break;
                 }
             }
 
-            for _ in 0..ticks_to_pop {
+            for _ in 0..updates_to_pop {
                 if let Some(pos) = self.to_be_ticked.this_tick().pop_first() {
                     redstone::tick(self.get_block(pos), self, pos);
                 }
