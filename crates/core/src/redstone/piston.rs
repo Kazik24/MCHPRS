@@ -115,14 +115,14 @@ pub fn moving_piston_tick(
         if move_block {
             world.set_block(pushed_pos, pushed_block);
         }
-        on_piston_state_change(world, piston_pos, direction, move_block, true);
+        on_piston_state_change(world, piston_pos, direction, move_block, false);
     } else {
         if moving.sticky {
             world.set_block(head_pos, Block::from_id(entity.block_state));
         } else {
             world.set_block(head_pos, Block::Air);
         }
-        on_piston_state_change(world, piston_pos, direction, false, true); // TODO
+        on_piston_state_change(world, piston_pos, direction, false, true);
     }
     //don't send update tick, cause it was already scheduled in schedule_extend/schedule_retract
 }
@@ -187,7 +187,8 @@ fn schedule_extend(world: &mut impl World, piston: RedstonePiston, piston_pos: B
             piston,
         };
         world.block_action(piston_pos, action);
-        on_piston_state_change(world, piston_pos, direction, true, true); // TODO
+        let move_block = !has_entity && is_cube;
+        on_piston_state_change(world, piston_pos, direction, move_block, true);
     }
 }
 
@@ -251,7 +252,7 @@ fn schedule_retract(world: &mut impl World, piston: RedstonePiston, piston_pos: 
     world.schedule_half_tick(piston_pos, 3, TickPriority::Normal); //locks piston updates until cycle is complete
 
     let full_update = block_state != Block::Air;
-    on_piston_state_change(world, piston_pos, direction, full_update, true); // TODO
+    on_piston_state_change(world, piston_pos, direction, full_update, true);
 }
 
 //version of destroy that doesn't update blocks
@@ -277,36 +278,30 @@ fn update_neighbors<const N: usize>(
 }
 
 /// Update piston but be smart to not send too many updates
-/// full update set to true will update all 3 blocks of piston (base, head, pushed)
-/// full update set to false will only update base and head
+/// head block is always updated, for base and pushed blocks the parameters `update_base` and `update_pushed`
+/// can be set to indicate if those blocks should be updated.
 fn on_piston_state_change(
     world: &mut impl World,
-    piston_pos: BlockPos,
+    base_pos: BlockPos,
     facing: BlockFace,
     update_pushed: bool,
     update_base: bool,
 ) {
-    // update base
-    if update_base {
-        update_neighbors(world, piston_pos, [facing]);
-    }
-
     // update head
-    let head_pos = piston_pos.offset(facing);
+    let head_pos = base_pos.offset(facing);
     let block = world.get_block(head_pos);
+    let opposite = facing.opposite();
     update(block, world, head_pos, None); //update block itself, e.g in case of lamps
-    if update_pushed {
-        update_neighbors(world, head_pos, [facing.opposite(), facing]); // for full update skip both
-    } else {
-        update_neighbors(world, head_pos, [facing.opposite()]);
-    }
+    update_neighbors(world, head_pos, [opposite]);
 
-    // update pushed block
+    // update pushed block (the block itself was updated by head update)
     if update_pushed {
         let pushed_pos = head_pos.offset(facing);
-        let block = world.get_block(pushed_pos);
-        update(block, world, pushed_pos, None); //update block itself, e.g in case of lamps
+        update_neighbors(world, pushed_pos, [opposite])
+    }
 
-        update_neighbors(world, pushed_pos, [facing.opposite()])
+    // update base
+    if update_base {
+        update_neighbors(world, base_pos, [facing]);
     }
 }
