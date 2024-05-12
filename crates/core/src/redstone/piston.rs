@@ -13,6 +13,19 @@ use super::update;
 //https://github.com/Marcelektro/MCP-919/blob/main/src/minecraft/net/minecraft/tileentity/TileEntityPiston.java
 //https://github.com/Marcelektro/MCP-919/blob/main/src/minecraft/net/minecraft/block/BlockPistonBase.java
 
+// Profiling report (all in profile --release, commit hash: 7843ee5):
+//
+// * full Plot.tick: ~98% time
+// * (get/set/delete)_block_entity: only ~0.34% time
+// * (get/set)_block together with block entities: ~29% time
+// * pending_tick_at: ~1% time
+// * schedule_(tick/half_tick): ~0.17% time
+// * update_piston_state: ~14% time
+// * piston_tick: ~61% time
+// * moving_piston_tick: 30% time
+// * on_piston_state_change: 88% time
+// * should_piston_extend: 13.5% time
+
 fn is_powered_in_direction(world: &impl World, pos: BlockPos, direction: BlockFacing) -> bool {
     let offset = pos.offset(direction.into());
     let block = world.get_block(offset);
