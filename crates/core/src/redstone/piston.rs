@@ -21,25 +21,25 @@ fn is_powered_in_direction(world: &impl World, pos: BlockPos, direction: BlockFa
 
 pub fn should_piston_extend(
     world: &impl World,
-    piston: RedstonePiston,
+    piston_facing: BlockFacing,
     piston_pos: BlockPos,
 ) -> bool {
     // normal
 
-    if piston.facing != BlockFacing::Up
+    if piston_facing != BlockFacing::Up
         && is_powered_in_direction(world, piston_pos, BlockFacing::Up)
     {
         return true;
     }
 
-    if piston.facing != BlockFacing::Down
+    if piston_facing != BlockFacing::Down
         && is_powered_in_direction(world, piston_pos, BlockFacing::Down)
     {
         return true;
     }
 
     for direction in BlockFacing::horizontal_values() {
-        if piston.facing != direction && is_powered_in_direction(world, piston_pos, direction) {
+        if piston_facing != direction && is_powered_in_direction(world, piston_pos, direction) {
             return true;
         }
     }
@@ -63,14 +63,14 @@ pub fn should_piston_extend(
 }
 
 pub fn update_piston_state(world: &mut impl World, piston: RedstonePiston, piston_pos: BlockPos) {
-    let should_extend = should_piston_extend(world, piston, piston_pos);
+    let should_extend = should_piston_extend(world, piston.facing, piston_pos);
     if should_extend != piston.extended && !world.pending_tick_at(piston_pos) {
         world.schedule_tick(piston_pos, 0, TickPriority::NanoTick);
     }
 }
 
 pub fn piston_tick(world: &mut impl World, piston: RedstonePiston, piston_pos: BlockPos) {
-    let should_extend = should_piston_extend(world, piston, piston_pos);
+    let should_extend = should_piston_extend(world, piston.facing, piston_pos);
     if should_extend != piston.extended {
         if should_extend {
             schedule_extend(world, piston, piston_pos);
@@ -92,23 +92,34 @@ pub fn moving_piston_tick(
 
     world.delete_block_entity(head_pos); //delete moving block entity, block at this place will always be set later in this function
 
-    //set piston state anyway
     let direction = BlockFace::from(moving.facing);
     let piston_pos = head_pos.offset(direction.opposite());
-    let piston = RedstonePiston {
-        extended: entity.extending,
-        facing: moving.facing,
-        sticky: moving.sticky,
-    };
-    world.set_block(piston_pos, Block::Piston { piston });
     if entity.extending {
+        if false
+            && entity.block_state != Block::Air.get_id()
+            && !should_piston_extend(world, moving.facing, piston_pos)
+        {
+            //todo this is ok for slow pistons, but makes 3.3hz instant drop blocks...
+            //let go of pushed block
+            let piston = moving.to_piston(false);
+            world.set_block(piston_pos, Block::Piston { piston });
+            let cancel_action = BlockAction::Piston {
+                action: PistonAction::Cancel,
+                piston,
+            };
+            world.block_action(piston_pos, cancel_action);
+            world.set_block(head_pos, Block::Air);
+        } else {
+            let piston = moving.to_piston(true);
+            world.set_block(piston_pos, Block::Piston { piston });
+            let head = RedstonePistonHead {
+                facing: moving.facing,
+                sticky: moving.sticky,
+                short: false,
+            };
+            world.set_block(head_pos, Block::PistonHead { head });
+        }
         let pushed_pos = head_pos.offset(entity.facing);
-        let head = RedstonePistonHead {
-            facing: moving.facing,
-            sticky: moving.sticky,
-            short: false,
-        };
-        world.set_block(head_pos, Block::PistonHead { head });
         let pushed_block = Block::from_id(entity.block_state);
         //push block only if its a cube (also half-slab) and without block entity
         let move_block = !pushed_block.has_block_entity() && pushed_block.is_cube();
@@ -117,6 +128,8 @@ pub fn moving_piston_tick(
         }
         on_piston_state_change(world, piston_pos, direction, move_block, false);
     } else {
+        let piston = moving.to_piston(false);
+        world.set_block(piston_pos, Block::Piston { piston });
         if moving.sticky {
             world.set_block(head_pos, Block::from_id(entity.block_state));
         } else {

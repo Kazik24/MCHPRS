@@ -139,6 +139,16 @@ pub struct RedstoneMovingPiston {
     pub sticky: bool, // named "type" in MC
 }
 
+impl RedstoneMovingPiston {
+    pub fn to_piston(self, extended: bool) -> RedstonePiston {
+        RedstonePiston {
+            facing: self.facing,
+            sticky: self.sticky,
+            extended,
+        }
+    }
+}
+
 // custom encode/decode because of "type" property
 impl BlockProperty for RedstonePistonHead {
     fn encode(self, props: &mut nbt::Map<&'static str, String>, _name: &'static str) {
