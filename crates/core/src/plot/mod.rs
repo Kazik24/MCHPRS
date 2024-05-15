@@ -319,6 +319,8 @@ impl World for PlotWorld {
     }
 
     fn block_action(&mut self, pos: BlockPos, block_action: BlockAction) {
+        return;
+
         if self.disable_block_actions {
             return;
         }

@@ -180,8 +180,14 @@ fn test_piston_observers_id_conversions() {
     }
 }
 
-macro_rules! blocks {
+
+
+macro_rules! blocks { 
     (
+        $(
+            #simple $simple_name:ident($simple_d:expr, $simple_t:expr)
+        ),*
+        $(,)?
         $(
             $name:ident {
                 $(props: {
@@ -220,6 +226,9 @@ macro_rules! blocks {
         #[derive(Clone, Copy, Debug, PartialEq, Eq)]
         pub enum Block {
             $(
+                $simple_name {},
+            )*
+            $(
                 $name $({
                     $(
                         $prop_name: $prop_type,
@@ -233,6 +242,9 @@ macro_rules! blocks {
             pub fn is_solid(self) -> bool {
                 match self {
                     $(
+                        Block::$simple_name {} => true,
+                    )*
+                    $(
                         $( Block::$name { .. } => $solid, )?
                     )*
                     _ => false
@@ -242,6 +254,9 @@ macro_rules! blocks {
             pub fn is_transparent(self) -> bool {
                 match self {
                     $(
+                        Block::$simple_name {} => true,
+                    )*
+                    $(
                         $( Block::$name { .. } => $transparent, )?
                     )*
                     _ => false
@@ -250,6 +265,9 @@ macro_rules! blocks {
 
             pub fn is_cube(self) -> bool {
                 match self {
+                    $(
+                        Block::$simple_name {} => true,
+                    )*
                     $(
                         $( Block::$name { .. } => $cube, )?
                     )*
@@ -264,6 +282,9 @@ macro_rules! blocks {
             pub const fn get_id(self) -> u32 {
                 match self {
                     $(
+                        Block::$simple_name {} => $simple_d,
+                    )*
+                    $(
                         Block::$name {
                             $($(
                                 $prop_name,
@@ -275,6 +296,9 @@ macro_rules! blocks {
 
             pub fn from_id(mut id: u32) -> Block {
                 match id {
+                    $(
+                        $simple_d => Block::$simple_name {},
+                    )*
                     $(
                         $from_id_pat => {
                             $( id -= $get_id_offset; )?
@@ -292,6 +316,9 @@ macro_rules! blocks {
             pub fn from_name(name: &str) -> Option<Block> {
                 match name {
                     $(
+                        $simple_t => Some(Block::$simple_name {}),
+                    )*
+                    $(
                         $(
                             $from_name_pat => {
                                 let $name_name = name;
@@ -307,10 +334,13 @@ macro_rules! blocks {
                 }
             }
 
-            // Not all props will be part of the name
+             // Not all props will be part of the name
             #[allow(unused_variables)]
             pub fn get_name(self) -> &'static str {
                 match self {
+                    $(
+                        Block::$simple_name {} => $simple_t,
+                    )*
                     $(
                         Block::$name {
                             $($(
@@ -323,6 +353,9 @@ macro_rules! blocks {
 
             pub fn set_properties(&mut self, props: HashMap<&str, &str>) {
                 match self {
+                    $(
+                        Block::$simple_name {} => {},
+                    )*
                     $(
                         Block::$name {
                             $($(
@@ -341,6 +374,9 @@ macro_rules! blocks {
                 let mut props = HashMap::new();
                 match self {
                     $(
+                        Block::$simple_name {} => {},
+                    )*
+                    $(
                         Block::$name {
                             $($(
                                 $prop_name,
@@ -358,6 +394,9 @@ macro_rules! blocks {
             pub fn rotate(&mut self, amt: RotateAmt) {
                 match self {
                     $(
+                        Block::$simple_name {} => {},
+                    )*
+                    $(
                         Block::$name {
                             $($(
                                 $prop_name,
@@ -373,6 +412,9 @@ macro_rules! blocks {
 
             pub fn flip(&mut self, dir: FlipDirection) {
                 match self {
+                    $(
+                        Block::$simple_name {} => {},
+                    )*
                     $(
                         Block::$name {
                             $($(
@@ -392,6 +434,152 @@ macro_rules! blocks {
 
 // list of block states: https://github.com/PrismarineJS/minecraft-data/blob/master/data/pc/1.18/blocks.json
 blocks! {
+    // Stone {
+    //     get_id: 1,
+    //     from_id(_id): 1 => {},
+    //     from_names(_name): {
+    //         "stone" => {}
+    //     },
+    //     get_name: "stone",
+    //     solid: true,
+    //     cube: true,
+    // },
+    #simple Stone(1, "stone"),
+    #simple Bedrock(25, "bedrock"),
+    #simple TNT(143, "tnt"),
+    #simple OakPlanks(13, "oak_planks"),
+    #simple SprucePlanks(14, "spruce_planks"),
+    #simple BirchPlanks(15, "birch_planks"),
+    #simple JunglePlanks(16, "jungle_planks"),
+    #simple AcaciaPlanks(17, "acacia_planks"),
+    #simple DarkOakPlanks(18, "dark_oak_planks"),
+    #simple OakLog(38, "oak_log"),
+    #simple SpruceLog(39, "spruce_log"),
+    #simple BirchLog(40, "birch_log"),
+    #simple JungleLog(41, "jungle_log"),
+    #simple AcaciaLog(42, "acacia_log"),
+    #simple DarkOakLog(43, "dark_oak_log"),
+    #simple StrippedSpruceLog(44, "stripped_spruce_log"),
+    #simple StrippedBirchLog(45, "stripped_birch_log"),
+    #simple StrippedJungleLog(46, "stripped_jungle_log"),
+    #simple StrippedAcaciaLog(47, "stripped_acacia_log"),
+    #simple StrippedDarkOakLog(48, "stripped_dark_oak_log"),
+    #simple StrippedOakLog(49, "stripped_oak_log"),
+    #simple OakWood(50, "oak_wood"),
+    #simple SpruceWood(51, "spruce_wood"),
+    #simple BirchWood(52, "birch_wood"),
+    #simple JungleWood(53, "jungle_wood"),
+    #simple AcaciaWood(54, "acacia_wood"),
+    #simple DarkOakWood(55, "dark_oak_wood"),
+    #simple StrippedOakWood(56, "stripped_oak_wood"),
+    #simple StrippedSpruceWood(57, "stripped_spruce_wood"),
+    #simple StrippedBirchWood(58, "stripped_birch_wood"),
+    #simple StrippedJungleWood(59, "stripped_jungle_wood"),
+    #simple StrippedAcaciaWood(60, "stripped_acacia_wood"),
+    #simple StrippedDarkOakWood(61, "stripped_dark_oak_wood"),
+    #simple Bookshelf(144, "bookshelf"),
+    #simple Sponge(70, "sponge"),
+    #simple HayBale(404, "hay_block"),
+    #simple MossBlock(865, "moss_block"),
+    #simple Granite(2, "granite"),
+    #simple PolishedGranite(3, "polished_granite"),
+    #simple Diorite(4, "diorite"),
+    #simple PolishedDiorite(5, "polished_diorite"),
+    #simple Andesite(6, "andesite"),
+    #simple PolishedAndesite(7, "polished_andesite"),
+    #simple Cobblestone(12, "cobblestone"),
+    #simple GoldOre(31, "gold_ore"),
+    #simple DeepslateGoldOre(32, "deepslate_gold_ore"),
+    #simple IronOre(33, "iron_ore"),
+    #simple DeepslateIronOre(34, "deepslate_iron_ore"),
+    #simple CoalOre(35, "coal_ore"),
+    #simple DeepslateCoalOre(36, "deepslate_coal_ore"),
+    #simple NetherGoldOre(37, "nether_gold_ore"),
+    #simple LapisLazuliOre(73, "lapis_ore"),
+    #simple DeepslateLapisLazuliOre(74, "deepslate_lapis_ore"),
+    #simple BlockofLapisLazuli(75, "lapis_block"),
+    #simple ChiseledSandstone(78, "chiseled_sandstone"),
+    #simple CutSandstone(79, "cut_sandstone"),
+    #simple BlockofGold(140, "gold_block"),
+    #simple BlockofIron(141, "iron_block"),
+    #simple Bricks(142, "bricks"),
+    #simple MossyCobblestone(145, "mossy_cobblestone"),
+    #simple Obsidian(146, "obsidian"),
+    #simple DiamondOre(155, "diamond_ore"),
+    #simple DeepslateDiamondOre(156, "deepslate_diamond_ore"),
+    #simple BlockofDiamond(157, "diamond_block"),
+    #simple RedstoneOre(187, "redstone_ore"),
+    #simple DeepslateRedstoneOre(188, "deepslate_redstone_ore"),
+    #simple Ice(193, "ice"),
+    #simple Netherrack(201, "netherrack"),
+    #simple Basalt(204, "basalt"),
+    #simple PolishedBasalt(205, "polished_basalt"),
+    #simple StoneBricks(236, "stone_bricks"),
+    #simple MossyStoneBricks(237, "mossy_stone_bricks"),
+    #simple CrackedStoneBricks(238, "cracked_stone_bricks"),
+    #simple ChiseledStoneBricks(239, "chiseled_stone_bricks"),
+    #simple BlockofQuartz(350, "quartz_block"),
+    #simple ChiseledQuartzBlock(351, "chiseled_quartz_block"),
+    #simple QuartzPillar(352, "quartz_pillar"),
+    #simple BlockofCoal(422, "coal_block"),
+    #simple RedSandstone(462, "red_sandstone"),
+    #simple ChiseledRedSandstone(463, "chiseled_red_sandstone"),
+    #simple CutRedSandstone(464, "cut_red_sandstone"),
+    #simple SmoothStone(485, "smooth_stone"),
+    #simple SmoothSandstone(486, "smooth_sandstone"),
+    #simple SmoothQuartzBlock(487, "smooth_quartz"),
+    #simple SmoothRedSandstone(488, "smooth_red_sandstone"),
+    #simple PurpurBlock(507, "purpur_block"),
+    #simple PurpurPillar(508, "purpur_pillar"),
+    #simple RedNetherBricks(519, "red_nether_bricks"),
+    #simple BrickWall(668, "brick_wall"),
+    #simple PrismarineWall(669, "prismarine_wall"),
+    #simple RedSandstoneWall(670, "red_sandstone_wall"),
+    #simple MossyStoneBrickWall(671, "mossy_stone_brick_wall"),
+    #simple GraniteWall(672, "granite_wall"),
+    #simple StoneBrickWall(673, "stone_brick_wall"),
+    #simple NetherBrickWall(674, "nether_brick_wall"),
+    #simple AndesiteWall(675, "andesite_wall"),
+    #simple RedNetherBrickWall(676, "red_nether_brick_wall"),
+    #simple SandstoneWall(677, "sandstone_wall"),
+    #simple EndStoneBrickWall(678, "end_stone_brick_wall"),
+    #simple DioriteWall(679, "diorite_wall"),
+    #simple BlockofNetherite(748, "netherite_block"),
+    #simple AncientDebris(749, "ancient_debris"),
+    #simple CryingObsidian(750, "crying_obsidian"),
+    #simple ChiseledNetherBricks(774, "chiseled_nether_bricks"),
+    #simple CrackedNetherBricks(775, "cracked_nether_bricks"),
+    #simple QuartzBricks(776, "quartz_bricks"),
+    #simple OxidizedCopper(822, "oxidized_copper"),
+    #simple WeatheredCopper(823, "weathered_copper"),
+    #simple ExposedCopper(824, "exposed_copper"),
+    #simple BlockofCopper(825, "copper_block"),
+    #simple CopperOre(826, "copper_ore"),
+    #simple DeepslateCopperOre(827, "deepslate_copper_ore"),
+    #simple OxidizedCutCopper(828, "oxidized_cut_copper"),
+    #simple WeatheredCutCopper(829, "weathered_cut_copper"),
+    #simple ExposedCutCopper(830, "exposed_cut_copper"),
+    #simple CutCopper(831, "cut_copper"),
+    #simple WaxedBlockofCopper(840, "waxed_copper_block"),
+    #simple WaxedWeatheredCopper(841, "waxed_weathered_copper"),
+    #simple WaxedExposedCopper(842, "waxed_exposed_copper"),
+    #simple WaxedOxidizedCopper(843, "waxed_oxidized_copper"),
+    #simple WaxedOxidizedCutCopper(844, "waxed_oxidized_cut_copper"),
+    #simple WaxedWeatheredCutCopper(845, "waxed_weathered_cut_copper"),
+    #simple WaxedExposedCutCopper(846, "waxed_exposed_cut_copper"),
+    #simple PointedDripstone(857, "pointed_dripstone"),
+    #simple DripstoneBlock(858, "dripstone_block"),
+    #simple Deepslate(871, "deepslate"),
+    #simple CobbledDeepslate(872, "cobbled_deepslate"),
+    #simple DeepslateTiles(880, "deepslate_tiles"),
+    #simple DeepslateBricks(884, "deepslate_bricks"),
+    #simple CrackedDeepslateBricks(889, "cracked_deepslate_bricks"),
+    #simple GrassBlock(8, "grass_block"),
+    #simple Dirt(9, "dirt"),
+    #simple CoarseDirt(10, "coarse_dirt"),
+    #simple Podzol(11, "podzol"),
+    #simple SnowBlock(194, "snow_block"),
+    
     Air {
         get_id: 0,
         from_id(_id): 0 => {},
@@ -400,16 +588,7 @@ blocks! {
         },
         get_name: "air",
     },
-    Stone {
-        get_id: 1,
-        from_id(_id): 1 => {},
-        from_names(_name): {
-            "stone" => {}
-        },
-        get_name: "stone",
-        solid: true,
-        cube: true,
-    },
+
     Glass {
         get_id: 262,
         from_id(_id): 262 => {},
