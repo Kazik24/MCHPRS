@@ -258,6 +258,22 @@ impl ClientBoundPacket for CTabComplete {
     }
 }
 
+// packet_entity_status
+// https://github.com/PrismarineJS/minecraft-data/blob/master/data/pc/1.18/protocol.json#L2238
+pub struct CEntityStatus {
+    pub entity_id: i32,
+    pub entity_status: i8,
+}
+
+impl ClientBoundPacket for CEntityStatus {
+    fn encode(&self) -> PacketEncoder {
+        let mut buf = Vec::new();
+        buf.write_int(self.entity_id);
+        buf.write_byte(self.entity_status);
+        PacketEncoder::new(buf, 0x1b)
+    }
+}
+
 pub enum CDeclareCommandsNodeParser {
     Entity(i8),
     Vec2,

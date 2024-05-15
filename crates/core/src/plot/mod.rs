@@ -489,6 +489,12 @@ impl Plot {
             metadata: metadata_entries,
         }
         .encode();
+        let status = CEntityStatus {
+            entity_id: player.entity_id as i32,
+            entity_status: 26, // op level 2 to use F3+N, this is `24 + op_level` (there are 4 possible levels)
+        }
+        .encode();
+        player.client.send_packet(&status);
         for other_player in &mut self.players {
             other_player.client.send_packet(&spawn_player);
             other_player.client.send_packet(&metadata);
