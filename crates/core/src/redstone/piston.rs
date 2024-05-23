@@ -100,7 +100,16 @@ pub fn moving_piston_tick(
 ) {
     let entity = match world.get_block_entity(head_pos) {
         Some(BlockEntity::MovingPiston(entity)) => *entity,
-        _ => return,
+        _ => {
+            tracing::error!("Missing moving piston entity at {:?}", head_pos);
+            MovingPistonEntity {
+                extending: false,
+                facing: moving.facing.into(),
+                progress: 0,
+                block_state: 0,
+                source: false,
+            }
+        }, 
     };
 
     world.delete_block_entity(head_pos); //delete moving block entity, block at this place will always be set later in this function
@@ -108,30 +117,30 @@ pub fn moving_piston_tick(
     let direction = BlockFace::from(moving.facing);
     let piston_pos = head_pos.offset(direction.opposite());
     if entity.extending {
-        if false
-            && entity.block_state != Block::Air.get_id()
-            && !should_piston_extend(world, moving.facing, piston_pos)
-        {
-            //todo this is ok for slow pistons, but makes 3.3hz instant drop blocks...
-            //let go of pushed block
-            let piston = moving.to_piston(false);
-            world.set_block(piston_pos, Block::Piston { piston });
-            let cancel_action = BlockAction::Piston {
-                action: PistonAction::Cancel,
-                piston,
-            };
-            world.block_action(piston_pos, cancel_action);
-            world.set_block(head_pos, Block::Air);
-        } else {
-            let piston = moving.to_piston(true);
-            world.set_block(piston_pos, Block::Piston { piston });
-            let head = RedstonePistonHead {
-                facing: moving.facing,
-                sticky: moving.sticky,
-                short: false,
-            };
-            world.set_block(head_pos, Block::PistonHead { head });
-        }
+        // if false
+        //     && entity.block_state != Block::Air.get_id()
+        //     && !should_piston_extend(world, moving.facing, piston_pos)
+        // {
+        //     //todo this is ok for slow pistons, but makes 3.3hz instant drop blocks...
+        //     //let go of pushed block
+        //     let piston = moving.to_piston(false);
+        //     world.set_block(piston_pos, Block::Piston { piston });
+        //     let cancel_action = BlockAction::Piston {
+        //         action: PistonAction::Cancel,
+        //         piston,
+        //     };
+        //     world.block_action(piston_pos, cancel_action);
+        //     world.set_block(head_pos, Block::Air);
+        // } else {
+        let piston = moving.to_piston(true);
+        world.set_block(piston_pos, Block::Piston { piston });
+        let head = RedstonePistonHead {
+            facing: moving.facing,
+            sticky: moving.sticky,
+            short: false,
+        };
+        world.set_block(head_pos, Block::PistonHead { head });
+        // }
         let pushed_pos = head_pos.offset(entity.facing);
         let pushed_block = Block::from_id(entity.block_state);
         //push block only if its a cube (also half-slab) and without block entity
@@ -160,10 +169,17 @@ fn schedule_extend(world: &mut impl World, piston: RedstonePiston, piston_pos: B
     // very important condition preventing infinite loops
     match head_block {
         Block::MovingPiston { .. } => {
+            if !world.pending_tick_at(head_pos) {
+                tracing::info!("Piston head block is MovingPiston, scheduling tick to recover.");
+                world.schedule_tick(head_pos, 1, TickPriority::Normal);
+
+                on_piston_state_change(world, piston_pos, direction, false, true);
+            }
             return;
         }
         Block::PistonHead { .. } => {
             if piston.extended == false {
+                tracing::info!("Extending... Piston head block is PistonHead, scheduling tick to recover.");
                 world.set_block(
                     piston_pos,
                     Block::Piston {
@@ -237,6 +253,17 @@ fn schedule_retract(world: &mut impl World, piston: RedstonePiston, piston_pos: 
             }
             return;
         }
+        Block::MovingPiston { .. } => {
+            if !world.pending_tick_at(head_pos) {
+                // illigal state, recover by scheduling tick & update
+                world.schedule_tick(head_pos, 1, TickPriority::Normal);
+
+                tracing::info!("Piston head block is MovingPiston, scheduling tick to recover.");
+
+                on_piston_state_change(world, piston_pos, direction, false, true);
+            }
+            return;
+        }
         _ => {
             return;
         }
@@ -296,9 +323,9 @@ fn update_neighbors<const N: usize>(
         if skip_faces.contains(&direction) {
             continue;
         }
-
         let neighbor_pos = pos.offset(direction);
         let block = world.get_block(neighbor_pos);
+        // tracing::info!("  update_neighbors {:?} {:?} {:?}", pos, neighbor_pos, block);
         update(block, world, neighbor_pos, Some(direction.opposite()));
     }
 }
@@ -313,6 +340,7 @@ fn on_piston_state_change(
     update_pushed: bool,
     update_base: bool,
 ) {
+    // tracing::info!("on_piston_state_change {:?} {:?} {:?} {:?} ------", base_pos, facing, update_pushed, update_base);
     // update head
     let head_pos = base_pos.offset(facing);
     let block = world.get_block(head_pos);
