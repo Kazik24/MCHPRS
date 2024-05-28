@@ -180,9 +180,7 @@ fn test_piston_observers_id_conversions() {
     }
 }
 
-
-
-macro_rules! blocks { 
+macro_rules! blocks {
     (
         $(
             #simple $simple_name:ident($simple_d:expr, $simple_t:expr)
@@ -579,7 +577,7 @@ blocks! {
     #simple CoarseDirt(10, "coarse_dirt"),
     #simple Podzol(11, "podzol"),
     #simple SnowBlock(194, "snow_block"),
-    
+
     Air {
         get_id: 0,
         from_id(_id): 0 => {},

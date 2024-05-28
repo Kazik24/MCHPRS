@@ -239,6 +239,12 @@ mod tests {
             ),
             ticks_left: rng.gen_range(0..16),
             tick_priority: TickPriority::ALL[rng.gen_range(0..TickPriority::COUNT)],
+        })
+        .filter(|e| {
+            if e.ticks_left == 0 {
+                return e.tick_priority == TickPriority::NanoTick;
+            }
+            true
         });
         let entries = entries.take(1000).collect::<Vec<_>>();
         for e in &entries {

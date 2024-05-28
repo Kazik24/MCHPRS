@@ -109,7 +109,7 @@ pub fn moving_piston_tick(
                 block_state: 0,
                 source: false,
             }
-        }, 
+        }
     };
 
     world.delete_block_entity(head_pos); //delete moving block entity, block at this place will always be set later in this function
@@ -179,7 +179,9 @@ fn schedule_extend(world: &mut impl World, piston: RedstonePiston, piston_pos: B
         }
         Block::PistonHead { .. } => {
             if piston.extended == false {
-                tracing::info!("Extending... Piston head block is PistonHead, scheduling tick to recover.");
+                tracing::info!(
+                    "Extending... Piston head block is PistonHead, scheduling tick to recover."
+                );
                 world.set_block(
                     piston_pos,
                     Block::Piston {
