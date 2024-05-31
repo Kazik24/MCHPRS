@@ -448,40 +448,68 @@ mod tests {
     use mchprs_blocks::blocks::Block;
     use mchprs_blocks::BlockPos;
     use std::fs::File;
+    use std::ops::{Deref, DerefMut};
     use std::path::PathBuf;
 
+    use crate::interaction::place_in_world;
     use crate::plot::worldedit::{load_schematic, paste_clipboard};
     use crate::plot::{empty_plot, PlotWorld, PLOT_WIDTH};
     use crate::tests::click_floor_button;
     use crate::world::storage::Chunk;
     use crate::world::World;
 
-    const BUTTON_POS: BlockPos = BlockPos::new(100, 10, 100);
-    const BASE_WIRE: BlockPos = BlockPos::new(100, 10, 102);
-    const HEAD_WIRE: BlockPos = BlockPos::new(102, 10, 102);
-    const PUSH_WIRE: BlockPos = BlockPos::new(104, 10, 102);
+    const BUTTON_POS: BlockPos = BlockPos::new(100, 30, 100);
+    const BASE_WIRE: BlockPos = BlockPos::new(100, 30, 102);
+    const HEAD_WIRE: BlockPos = BlockPos::new(102, 30, 102);
+    const PUSH_WIRE: BlockPos = BlockPos::new(104, 30, 102);
 
-    pub fn load_world_with_schematic(name: &str, at_pos: BlockPos) -> PlotWorld {
-        let path = ["..", "..", "test_data", name].iter().collect::<PathBuf>();
-        let file = File::open(path).unwrap();
-        let clipboard = load_schematic(file).unwrap();
+    pub struct TestWorld(PlotWorld);
 
-        let chunks: Vec<Chunk> = empty_plot()
-            .chunk_data
-            .into_iter()
-            .enumerate()
-            .map(|(i, c)| Chunk::load(i as i32 / PLOT_WIDTH, i as i32 % PLOT_WIDTH, c))
-            .collect();
-
-        let mut world = PlotWorld::from_chunks(0, 0, chunks, Default::default());
-        paste_clipboard(&mut world, &clipboard, at_pos, false);
-        world
+    impl Deref for TestWorld {
+        type Target = PlotWorld;
+        fn deref(&self) -> &Self::Target {
+            &self.0
+        }
     }
+    impl DerefMut for TestWorld {
+        fn deref_mut(&mut self) -> &mut Self::Target {
+            &mut self.0
+        }
+    }
+    impl TestWorld {
+        pub fn load_with_schematic(name: &str, at_pos: BlockPos) -> Self {
+            let path = ["..", "..", "test_data", name].iter().collect::<PathBuf>();
+            let file = File::open(path).unwrap();
+            let clipboard = load_schematic(file).unwrap();
 
-    fn is_wire_powered(world: &impl World, pos: BlockPos) -> bool {
-        match world.get_block(pos) {
-            Block::RedstoneWire { wire } => wire.power > 0,
-            _ => false,
+            let chunks: Vec<Chunk> = empty_plot()
+                .chunk_data
+                .into_iter()
+                .enumerate()
+                .map(|(i, c)| Chunk::load(i as i32 / PLOT_WIDTH, i as i32 % PLOT_WIDTH, c))
+                .collect();
+
+            let mut world = PlotWorld::from_chunks(0, 0, chunks, Default::default());
+            paste_clipboard(&mut world, &clipboard, at_pos, false);
+            Self(world)
+        }
+        pub fn is_wire_powered(&self, pos: BlockPos) -> bool {
+            match self.get_block(pos) {
+                Block::RedstoneWire { wire } => wire.power > 0,
+                _ => false,
+            }
+        }
+        pub fn click_floor_button(&mut self, pos: BlockPos) {
+            click_floor_button(self, pos);
+        }
+        pub fn place(&mut self, pos: BlockPos, block: Block) {
+            place_in_world(block, &mut self.0, pos, &None);
+        }
+        pub fn get_piston_extended(&self, pos: BlockPos) -> bool {
+            match self.get_block(pos) {
+                Block::Piston { piston } => piston.extended,
+                _ => false,
+            }
         }
     }
 
@@ -500,15 +528,15 @@ mod tests {
             [true, true, true],
             [false, false, false],
         ];
-        let world = &mut load_world_with_schematic("UpdateTesterNonInst.schem", BUTTON_POS);
-        click_floor_button(world, BUTTON_POS);
+        let world = &mut TestWorld::load_with_schematic("UpdateTesterNonInst.schem", BUTTON_POS);
+        world.click_floor_button(BUTTON_POS);
 
         for i in 0..11 {
             world.tick_interpreted();
 
-            let base = is_wire_powered(world, BASE_WIRE);
-            let head = is_wire_powered(world, HEAD_WIRE);
-            let push = is_wire_powered(world, PUSH_WIRE);
+            let base = world.is_wire_powered(BASE_WIRE);
+            let head = world.is_wire_powered(HEAD_WIRE);
+            let push = world.is_wire_powered(PUSH_WIRE);
 
             let got = [base, head, push];
             assert_eq!(expected[i], got, "tick: {i}");
@@ -530,15 +558,15 @@ mod tests {
             [false, true, true],
             [false, false, false],
         ];
-        let world = &mut load_world_with_schematic("UpdateTesterInst.schem", BUTTON_POS);
-        click_floor_button(world, BUTTON_POS);
+        let world = &mut TestWorld::load_with_schematic("UpdateTesterInst.schem", BUTTON_POS);
+        world.click_floor_button(BUTTON_POS);
 
         for i in 0..11 {
             world.tick_interpreted();
 
-            let base = is_wire_powered(world, BASE_WIRE);
-            let head = is_wire_powered(world, HEAD_WIRE);
-            let push = is_wire_powered(world, PUSH_WIRE);
+            let base = world.is_wire_powered(BASE_WIRE);
+            let head = world.is_wire_powered(HEAD_WIRE);
+            let push = world.is_wire_powered(PUSH_WIRE);
 
             let got = [base, head, push];
             assert_eq!(expected[i], got, "tick: {i}");
@@ -560,15 +588,15 @@ mod tests {
             [true, true, true],
             [false, false, false],
         ];
-        let world = &mut load_world_with_schematic("UpdateTesterExtendInst.schem", BUTTON_POS);
-        click_floor_button(world, BUTTON_POS);
+        let world = &mut TestWorld::load_with_schematic("UpdateTesterExtendInst.schem", BUTTON_POS);
+        world.click_floor_button(BUTTON_POS);
 
         for i in 0..11 {
             world.tick_interpreted();
 
-            let base = is_wire_powered(world, BASE_WIRE);
-            let head = is_wire_powered(world, HEAD_WIRE);
-            let push = is_wire_powered(world, PUSH_WIRE);
+            let base = world.is_wire_powered(BASE_WIRE);
+            let head = world.is_wire_powered(HEAD_WIRE);
+            let push = world.is_wire_powered(PUSH_WIRE);
 
             let got = [base, head, push];
             assert_eq!(expected[i], got, "tick: {i}");
@@ -591,17 +619,37 @@ mod tests {
             [true, true, true],
             [false, false, false],
         ];
-        let world = &mut load_world_with_schematic("UpdateTesterExtendNonInst.schem", BUTTON_POS);
-        click_floor_button(world, BUTTON_POS);
+        let world =
+            &mut TestWorld::load_with_schematic("UpdateTesterExtendNonInst.schem", BUTTON_POS);
+        world.click_floor_button(BUTTON_POS);
 
         for i in 0..12 {
             world.tick_interpreted();
 
-            let base = is_wire_powered(world, BASE_WIRE);
-            let head = is_wire_powered(world, HEAD_WIRE);
-            let push = is_wire_powered(world, PUSH_WIRE);
+            let base = world.is_wire_powered(BASE_WIRE);
+            let head = world.is_wire_powered(HEAD_WIRE);
+            let push = world.is_wire_powered(PUSH_WIRE);
 
             let got = [base, head, push];
+            assert_eq!(expected[i], got, "tick: {i}");
+        }
+    }
+
+    #[test]
+    fn test_memory_cell_unaligned_nanoticks() {
+        let expected = [
+            //todo, get the data from real minecraft
+            true, false, false, false, false, false, false, false, false, false,
+        ];
+        let cell_pos = BlockPos::new(97, 30, 107);
+        let world =
+            &mut TestWorld::load_with_schematic("MemCellUnalignedNanoTicks.schem", BUTTON_POS);
+        assert!(!world.get_piston_extended(cell_pos));
+
+        world.place(BUTTON_POS, Block::Air);
+        for i in 0..10 {
+            world.tick_interpreted();
+            let got = world.get_piston_extended(cell_pos);
             assert_eq!(expected[i], got, "tick: {i}");
         }
     }

@@ -169,7 +169,7 @@ impl PlotWorld {
     }
 
     pub fn tick_interpreted(&mut self) {
-        //handle zero ticks before advancing queue
+        //handle zero ticks from block placements before advancing queue
         while let Some(pos) = self.to_be_ticked.this_tick().pop_first() {
             redstone::tick(self.get_block(pos), self, pos);
         }
@@ -319,8 +319,6 @@ impl World for PlotWorld {
     }
 
     fn block_action(&mut self, pos: BlockPos, block_action: BlockAction) {
-        return;
-
         if self.disable_block_actions {
             return;
         }
