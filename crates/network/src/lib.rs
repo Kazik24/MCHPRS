@@ -1,4 +1,4 @@
-mod nbt_map;
+mod nbt_util;
 pub mod packets;
 
 use packets::serverbound::ServerBoundPacket;
@@ -8,6 +8,8 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{mpsc, Arc};
 use std::thread;
 use tracing::warn;
+
+pub use nbt_util::NBTCompound;
 
 #[derive(Debug)]
 pub struct PlayerPacketSender {
@@ -39,9 +41,10 @@ impl PlayerPacketSender {
 /// The minecraft protocol has these 4 different states.
 #[derive(PartialEq, Eq, Clone)]
 pub enum NetworkState {
-    Handshake,
+    Handshaking,
     Status,
     Login,
+    Configuration,
     Play,
 }
 
@@ -118,7 +121,7 @@ impl NetworkClient {
         sender: mpsc::Sender<Box<dyn ServerBoundPacket>>,
         compressed: Arc<AtomicBool>,
     ) {
-        let mut state = NetworkState::Handshake;
+        let mut state = NetworkState::Handshaking;
         loop {
             let packet = match read_packet(&mut stream, &compressed, &mut state) {
                 Ok(packet) => packet,

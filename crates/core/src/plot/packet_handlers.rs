@@ -3,7 +3,7 @@ use crate::config::CONFIG;
 use crate::interaction::{self, UseOnBlockContext};
 use crate::player::{PacketSender, PlayerPos, SkinParts};
 use crate::server::Message;
-use crate::utils::HyphenatedUUID;
+use crate::utils::{self, HyphenatedUUID};
 use crate::world::World;
 use mchprs_blocks::block_entities::{BlockEntity, SignBlockEntity};
 use mchprs_blocks::blocks::Block;
@@ -11,7 +11,6 @@ use mchprs_blocks::items::{Item, ItemStack};
 use mchprs_blocks::{BlockFace, BlockPos};
 use mchprs_network::packets::clientbound::*;
 use mchprs_network::packets::serverbound::*;
-use mchprs_network::packets::SlotData;
 use serde_json::json;
 use std::fs;
 use std::path::PathBuf;
@@ -32,7 +31,7 @@ impl Plot {
 fn traverse_dir(
     path: &std::path::Path,
     to_complete: &str,
-    matches: &mut Vec<CTabCompleteMatch>,
+    matches: &mut Vec<CCommandSuggestionsResponseMatch>,
     base: &std::path::Path,
     max_depth: usize,
 ) -> anyhow::Result<()> {
@@ -52,13 +51,13 @@ fn traverse_dir(
                 {
                     let relative = path.strip_prefix(base)?;
                     let relative = relative.to_str().unwrap();
-                    matches.push(CTabCompleteMatch {
+                    matches.push(CCommandSuggestionsResponseMatch {
                         match_: relative.to_string(),
                         tooltip: None,
                     });
                 }
                 if path.is_dir() {
-                    matches.push(CTabCompleteMatch {
+                    matches.push(CCommandSuggestionsResponseMatch {
                         match_: format!("{}/", file_name),
                         tooltip: None,
                     });
@@ -71,7 +70,11 @@ fn traverse_dir(
 }
 
 impl ServerBoundPacketHandler for Plot {
-    fn handle_tab_complete(&mut self, packet: STabComplete, player_idx: usize) {
+    fn handle_command_suggestions_request(
+        &mut self,
+        packet: SCommandSuggestionsRequest,
+        player_idx: usize,
+    ) {
         if !packet.text.starts_with("//load ") {
             return;
         }
@@ -83,16 +86,37 @@ impl ServerBoundPacketHandler for Plot {
         }
 
         let current = &packet.text[7..];
-        let mut res = CTabComplete {
+        let mut res = CCommandSuggestionsResponse {
             id: packet.transaction_id,
             start: 7,
             length: current.len() as i32,
             matches: Vec::new(),
         };
 
-        if let Err(err) = traverse_dir(&path, &current, &mut res.matches, &path, 5) {
-            error!("Error while tab completing: {:?}", err);
-            return;
+        let dir = match fs::read_dir(path) {
+            Ok(dir) => dir,
+            Err(err) => {
+                if err.kind() != std::io::ErrorKind::NotFound {
+                    error!("There was an error completing //load");
+                    error!("{}", err.to_string());
+                }
+                return;
+            }
+        };
+
+        for entry in dir {
+            let entry = entry.unwrap();
+            if entry.file_type().unwrap().is_file() {
+                let name = entry.file_name();
+                let name = name.to_string_lossy();
+                if name.starts_with(current) {
+                    let m = CCommandSuggestionsResponseMatch {
+                        match_: name.to_string(),
+                        tooltip: None,
+                    };
+                    res.matches.push(m);
+                }
+            }
         }
 
         self.players[player_idx].send_packet(&res.encode());
@@ -102,9 +126,9 @@ impl ServerBoundPacketHandler for Plot {
         self.players[player_idx].last_keep_alive_received = Instant::now();
     }
 
-    fn handle_creative_inventory_action(
+    fn handle_set_creative_mode_slot(
         &mut self,
-        creative_inventory_action: SCreativeInventoryAction,
+        creative_inventory_action: SSetCreativeModeSlot,
         player: usize,
     ) {
         if let Some(slot_data) = creative_inventory_action.clicked_item {
@@ -114,22 +138,18 @@ impl ServerBoundPacketHandler for Plot {
             let item = ItemStack {
                 count: slot_data.item_count as u8,
                 item_type: Item::from_id(slot_data.item_id as u32),
-                nbt: slot_data.nbt,
+                nbt: slot_data.nbt.map(|nbt| nbt::Blob::with_content(nbt)),
             };
             self.players[player].inventory[creative_inventory_action.slot as usize] = Some(item);
             if creative_inventory_action.slot as u32 == self.players[player].selected_slot + 36 {
-                let entity_equipment = CEntityEquipment {
+                let entity_equipment = CSetEquipment {
                     entity_id: self.players[player].entity_id as i32,
-                    equipment: vec![CEntityEquipmentEquipment {
+                    equipment: vec![CSetEquipmentEquipment {
                         slot: 0, // Main hand
                         item: self.players[player].inventory
                             [creative_inventory_action.slot as usize]
                             .as_ref()
-                            .map(|item| SlotData {
-                                item_count: item.count as i8,
-                                item_id: item.item_type.get_id() as i32,
-                                nbt: item.nbt.clone(),
-                            }),
+                            .map(|item| utils::encode_slot_data(&item)),
                     }],
                 }
                 .encode();
@@ -158,7 +178,7 @@ impl ServerBoundPacketHandler for Plot {
         self.players[player].flying = player_abilities.is_flying;
     }
 
-    fn handle_animation(&mut self, animation: SAnimation, player: usize) {
+    fn handle_swing_arm(&mut self, animation: SSwingArm, player: usize) {
         let animation_id = match animation.hand {
             0 => 0,
             1 => 3,
@@ -179,9 +199,9 @@ impl ServerBoundPacketHandler for Plot {
         }
     }
 
-    fn handle_player_block_placement(
+    fn handle_use_item_on(
         &mut self,
-        player_block_placement: SPlayerBlockPlacemnt,
+        player_block_placement: SUseItemOn,
         player: usize,
     ) {
         let block_pos = BlockPos::from_packed(player_block_placement.pos);
@@ -303,16 +323,16 @@ impl ServerBoundPacketHandler for Plot {
         }
     }
 
-    fn handle_client_settings(&mut self, client_settings: SClientSettings, player: usize) {
+    fn handle_client_information(&mut self, client_settings: SClientInformation, player: usize) {
         let player = &mut self.players[player];
         player.skin_parts =
             SkinParts::from_bits_truncate(client_settings.displayed_skin_parts as u32);
-        let metadata_entry = CEntityMetadataEntry {
+        let metadata_entry = CSetEntityMetadataEntry {
             index: 17,
             metadata_type: 0,
             value: vec![player.skin_parts.bits() as u8],
         };
-        let entity_metadata = CEntityMetadata {
+        let entity_metadata = CSetEntityMetadata {
             entity_id: player.entity_id as i32,
             metadata: vec![metadata_entry],
         }
@@ -328,7 +348,7 @@ impl ServerBoundPacketHandler for Plot {
         }
     }
 
-    fn handle_player_position(&mut self, player_position: SPlayerPosition, player: usize) {
+    fn handle_set_player_position(&mut self, player_position: SSetPlayerPosition, player: usize) {
         let old = self.players[player].pos;
         let new = PlayerPos::new(player_position.x, player_position.y, player_position.z);
         self.players[player].pos = new;
@@ -369,9 +389,9 @@ impl ServerBoundPacketHandler for Plot {
         self.on_player_move(player, old, new);
     }
 
-    fn handle_player_position_and_rotation(
+    fn handle_set_player_position_and_rotation(
         &mut self,
-        player_position_and_rotation: SPlayerPositionAndRotation,
+        player_position_and_rotation: SSetPlayerPositionAndRotation,
         player: usize,
     ) {
         let old = self.players[player].pos;
@@ -413,9 +433,9 @@ impl ServerBoundPacketHandler for Plot {
             }
             .encode()
         };
-        let entity_head_look = CEntityHeadLook {
+        let entity_head_look = CSetHeadRotation {
             entity_id: self.players[player].entity_id as i32,
-            yaw: player_position_and_rotation.yaw,
+            head_yaw: player_position_and_rotation.yaw,
         }
         .encode();
         for other_player in 0..self.players.len() {
@@ -441,9 +461,9 @@ impl ServerBoundPacketHandler for Plot {
             on_ground: player_rotation.on_ground,
         }
         .encode();
-        let entity_head_look = CEntityHeadLook {
+        let entity_head_look = CSetHeadRotation {
             entity_id: self.players[player].entity_id as i32,
-            yaw: player_rotation.yaw,
+            head_yaw: player_rotation.yaw,
         }
         .encode();
         for other_player in 0..self.players.len() {
@@ -459,11 +479,11 @@ impl ServerBoundPacketHandler for Plot {
         }
     }
 
-    fn handle_player_movement(&mut self, player_movement: SPlayerMovement, player: usize) {
+    fn handle_set_player_on_ground(&mut self, player_movement: SSetPlayerOnGround, player: usize) {
         self.players[player].on_ground = player_movement.on_ground;
     }
 
-    fn handle_player_digging(&mut self, player_digging: SPlayerDigging, player: usize) {
+    fn handle_player_action(&mut self, player_digging: SPlayerAction, player: usize) {
         if player_digging.status == 0 {
             let block_pos = BlockPos::from_packed(player_digging.pos);
             let block = self.world.get_block(block_pos);
@@ -518,8 +538,8 @@ impl ServerBoundPacketHandler for Plot {
             interaction::destroy(block, &mut self.world, block_pos);
             self.world.flush_block_changes();
 
-            let effect = CEffect {
-                effect_id: 2001,
+            let effect = CWorldEvent {
+                event: 2001,
                 pos: player_digging.pos,
                 data: block.get_id() as i32,
                 disable_relative_volume: false,
@@ -548,7 +568,7 @@ impl ServerBoundPacketHandler for Plot {
         }
     }
 
-    fn handle_entity_action(&mut self, entity_action: SEntityAction, player: usize) {
+    fn handle_player_command(&mut self, entity_action: SPlayerCommand, player: usize) {
         match entity_action.action_id {
             0 => self.players[player].crouching = true,
             1 => self.players[player].crouching = false,
@@ -564,18 +584,18 @@ impl ServerBoundPacketHandler for Plot {
             bitfield |= 0x08;
         };
         let metadata_entries = vec![
-            CEntityMetadataEntry {
+            CSetEntityMetadataEntry {
                 index: 0,
                 metadata_type: 0,
                 value: vec![bitfield],
             },
-            CEntityMetadataEntry {
+            CSetEntityMetadataEntry {
                 index: 6,
                 metadata_type: 18,
                 value: vec![if self.players[player].crouching { 5 } else { 0 }],
             },
         ];
-        let entity_metadata = CEntityMetadata {
+        let entity_metadata = CSetEntityMetadata {
             entity_id: self.players[player].entity_id as i32,
             metadata: metadata_entries,
         }
@@ -590,18 +610,14 @@ impl ServerBoundPacketHandler for Plot {
         }
     }
 
-    fn handle_held_item_change(&mut self, held_item_change: SHeldItemChange, player: usize) {
-        let entity_equipment = CEntityEquipment {
+    fn handle_set_held_item(&mut self, held_item_change: SSetHeldItem, player: usize) {
+        let entity_equipment = CSetEquipment {
             entity_id: self.players[player].entity_id as i32,
-            equipment: vec![CEntityEquipmentEquipment {
+            equipment: vec![CSetEquipmentEquipment {
                 slot: 0, // Main hand
                 item: self.players[player].inventory[held_item_change.slot as usize + 36]
                     .as_ref()
-                    .map(|item| SlotData {
-                        item_count: item.count as i8,
-                        item_id: item.item_type.get_id() as i32,
-                        nbt: item.nbt.clone(),
-                    }),
+                    .map(|item| utils::encode_slot_data(item)),
             }],
         }
         .encode();

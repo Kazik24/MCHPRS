@@ -1,4 +1,3 @@
-use crate::chat::ColorCode;
 use crate::config::CONFIG;
 use crate::player::PacketSender;
 use crate::player::Player;
@@ -12,6 +11,7 @@ use mchprs_blocks::blocks::*;
 use mchprs_blocks::items::{Item, ItemStack};
 use mchprs_blocks::{BlockFace, BlockPos};
 use mchprs_network::packets::clientbound::{COpenSignEditor, ClientBoundPacket};
+use mchprs_text::ColorCode;
 use mchprs_world::TickPriority;
 
 pub fn on_use(
@@ -532,6 +532,8 @@ pub fn use_item_on_block(
                 {
                     let open_sign_editor = COpenSignEditor {
                         pos: block_pos.packed(),
+                        // TODO: editing back text
+                        is_front_text: true,
                     }
                     .encode();
                     ctx.player.client.send_packet(&open_sign_editor);

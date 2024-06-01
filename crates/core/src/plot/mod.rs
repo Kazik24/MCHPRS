@@ -6,25 +6,24 @@ mod packet_handlers;
 mod scoreboard;
 pub mod worldedit;
 
-use crate::chat::ChatComponent;
 use crate::config::CONFIG;
 use crate::player::{EntityId, Gamemode, PacketSender, Player, PlayerPos};
 use crate::redpiler::{Compiler, CompilerOptions, TickScheduler};
-use crate::redstone;
 use crate::server::{BroadcastMessage, Message, PrivMessage};
 use crate::utils::HyphenatedUUID;
 use crate::world::storage::Chunk;
 use crate::world::{BlockAction, World};
+use crate::{redstone, utils};
 use anyhow::Context;
 use bus::BusReader;
 use mchprs_blocks::block_entities::BlockEntity;
 use mchprs_blocks::blocks::Block;
 use mchprs_blocks::{BlockFace, BlockPos};
 use mchprs_network::packets::clientbound::*;
-use mchprs_network::packets::SlotData;
 use mchprs_network::PlayerPacketSender;
 use mchprs_save_data::plot_data::{ChunkData, PlotData, Tps, WorldSendRate};
-use mchprs_world::TickPriority;
+use mchprs_text::TextComponent;
+use mchprs_world::{TickEntry, TickPriority};
 use monitor::TimingsMonitor;
 use scoreboard::RedpilerState;
 use serde_json::json;
@@ -284,7 +283,7 @@ impl World for PlotWorld {
                 pos: pos.packed(),
                 // For now the only nbt we send to the client is sign data
                 ty: block_entity.ty(),
-                nbt,
+                nbt: nbt.content,
             }
             .encode();
             for player in &self.packet_senders {
@@ -337,7 +336,7 @@ impl World for PlotWorld {
                 }
             }
             BlockAction::BlockChange { pos, block_id } => {
-                let block_action_data = CBlockChange {
+                let block_action_data = CBlockUpdate {
                     pos: pos.packed(),
                     block_id: block_id as i32,
                 }
@@ -361,12 +360,17 @@ impl World for PlotWorld {
         // A notchian server would only send to players in hearing distance (volume.clamp(0.0, 1.0) * 16.0)
         let sound_effect_data = CSoundEffect {
             sound_id,
+            sound_name: None,
+            has_fixed_range: None,
+            range: None,
             sound_category,
             x: pos.x * 8 + 4,
             y: pos.y * 8 + 4,
             z: pos.z * 8 + 4,
             volume,
             pitch,
+            // FIXME: How do we decide this?
+            seed: 0,
         }
         .encode();
 
@@ -388,7 +392,7 @@ impl Plot {
 
     /// Send a block change to all connected players
     pub fn send_block_change(&mut self, pos: BlockPos, id: u32) {
-        let block_change = CBlockChange {
+        let block_change = CBlockUpdate {
             block_id: id as i32,
             pos: pos.packed(),
         }
@@ -409,7 +413,7 @@ impl Plot {
 
     pub fn broadcast_plot_chat_message(&mut self, message: &str) {
         for player in &mut self.players {
-            player.send_chat_message(0, &ChatComponent::from_legacy_text(message));
+            player.send_chat_message(0, &TextComponent::from_legacy_text(message));
         }
     }
 
@@ -467,22 +471,13 @@ impl Plot {
 
     fn enter_plot(&mut self, player: Player) {
         self.save();
-        let spawn_player = CSpawnPlayer {
-            entity_id: player.entity_id as i32,
-            uuid: player.uuid,
-            pitch: player.pitch,
-            yaw: player.yaw,
-            x: player.pos.x,
-            y: player.pos.y,
-            z: player.pos.z,
-        }
-        .encode();
-        let metadata_entries = vec![CEntityMetadataEntry {
+        let spawn_player = player.spawn_packet().encode();
+        let metadata_entries = vec![CSetEntityMetadataEntry {
             index: 17,
             metadata_type: 0,
             value: vec![player.skin_parts.bits() as u8],
         }];
-        let metadata = CEntityMetadata {
+        let metadata = CSetEntityMetadata {
             entity_id: player.entity_id as i32,
             metadata: metadata_entries,
         }
@@ -497,40 +492,27 @@ impl Plot {
             other_player.client.send_packet(&spawn_player);
             other_player.client.send_packet(&metadata);
 
-            let spawn_other_player = CSpawnPlayer {
-                entity_id: other_player.entity_id as i32,
-                uuid: other_player.uuid,
-                pitch: other_player.pitch,
-                yaw: other_player.yaw,
-                x: other_player.pos.x,
-                y: other_player.pos.y,
-                z: other_player.pos.z,
-            }
-            .encode();
+            let spawn_other_player = other_player.spawn_packet().encode();
             player.client.send_packet(&spawn_other_player);
 
             if let Some(item) = &other_player.inventory[other_player.selected_slot as usize + 36] {
-                let other_entity_equipment = CEntityEquipment {
+                let other_entity_equipment = CSetEquipment {
                     entity_id: other_player.entity_id as i32,
-                    equipment: vec![CEntityEquipmentEquipment {
+                    equipment: vec![CSetEquipmentEquipment {
                         slot: 0, // Main hand
-                        item: Some(SlotData {
-                            item_count: item.count as i8,
-                            item_id: item.item_type.get_id() as i32,
-                            nbt: item.nbt.clone(),
-                        }),
+                        item: Some(utils::encode_slot_data(item)),
                     }],
                 }
                 .encode();
                 player.client.send_packet(&other_entity_equipment);
             }
 
-            let other_metadata_entries = vec![CEntityMetadataEntry {
+            let other_metadata_entries = vec![CSetEntityMetadataEntry {
                 index: 17,
                 metadata_type: 0,
                 value: vec![other_player.skin_parts.bits() as u8],
             }];
-            let other_metadata = CEntityMetadata {
+            let other_metadata = CSetEntityMetadata {
                 entity_id: other_player.entity_id as i32,
                 metadata: other_metadata_entries,
             }
@@ -539,15 +521,11 @@ impl Plot {
         }
 
         if let Some(item) = &player.inventory[player.selected_slot as usize + 36] {
-            let entity_equipment = CEntityEquipment {
+            let entity_equipment = CSetEquipment {
                 entity_id: player.entity_id as i32,
-                equipment: vec![CEntityEquipmentEquipment {
+                equipment: vec![CSetEquipmentEquipment {
                     slot: 0, // Main hand
-                    item: Some(SlotData {
-                        item_count: item.count as i8,
-                        item_id: item.item_type.get_id() as i32,
-                        nbt: item.nbt.clone(),
-                    }),
+                    item: Some(utils::encode_slot_data(item)),
                 }],
             }
             .encode();
@@ -583,8 +561,8 @@ impl Plot {
         should_be_loaded: bool,
     ) {
         if was_loaded && !should_be_loaded {
-            let unload_chunk = CUnloadChunk { chunk_x, chunk_z }.encode();
-            self.players[player_idx].client.send_packet(&unload_chunk);
+            // let unload_chunk = CUnloadChunk { chunk_x, chunk_z }.encode();
+            // self.players[player_idx].client.send_packet(&unload_chunk);
         } else if !was_loaded && should_be_loaded {
             if !Plot::chunk_in_plot_bounds(self.world.x, self.world.z, chunk_x, chunk_z) {
                 self.players[player_idx]
@@ -605,7 +583,7 @@ impl Plot {
         let last_chunk_x = self.players[player_idx].last_chunk_x;
         let last_chunk_z = self.players[player_idx].last_chunk_z;
 
-        let update_view = CUpdateViewPosition { chunk_x, chunk_z }.encode();
+        let update_view = CSetCenterChunk { chunk_x, chunk_z }.encode();
         self.players[player_idx].client.send_packet(&update_view);
 
         if ((last_chunk_x - chunk_x).abs() <= view_distance * 2
@@ -714,7 +692,7 @@ impl Plot {
     }
 
     fn destroy_entity(&mut self, entity_id: u32) {
-        let destroy_entity = CDestroyEntities {
+        let destroy_entity = CRemoveEntities {
             entity_ids: vec![entity_id as i32],
         }
         .encode();
@@ -728,7 +706,7 @@ impl Plot {
         self.world.packet_senders.remove(player_idx);
         let player = self.players.remove(player_idx);
 
-        let destroy_other_entities = CDestroyEntities {
+        let destroy_other_entities = CRemoveEntities {
             entity_ids: self.players.iter().map(|p| p.entity_id as i32).collect(),
         }
         .encode();
@@ -827,25 +805,32 @@ impl Plot {
             match message {
                 BroadcastMessage::Chat(sender, message) => {
                     for player in &mut self.players {
-                        player.send_chat_message(sender, &message);
+                        player.send_chat_message(sender, message.as_slice());
                     }
                 }
                 BroadcastMessage::PlayerJoinedInfo(player_join_info) => {
-                    let player_info = CPlayerInfo::AddPlayer(vec![CPlayerInfoAddPlayer {
-                        name: player_join_info.username,
-                        properties: Vec::new(),
-                        gamemode: 1,
-                        ping: 0,
-                        uuid: player_join_info.uuid,
-                        display_name: None,
-                    }])
-                    .encode();
+                    let player_info = CPlayerInfoUpdate {
+                        players: vec![CPlayerInfoUpdatePlayer {
+                            uuid: player_join_info.uuid,
+                            actions: {
+                                let mut actions: CPlayerInfoActions = Default::default();
+                                actions.add_player = Some(CPlayerInfoAddPlayer {
+                                    name: player_join_info.username,
+                                    properties: Vec::new(),
+                                });
+                                actions.update_gamemode = Some(player_join_info.gamemode.get_id());
+                                actions
+                            }
+                        }]
+                    }.encode();
                     for player in &mut self.players {
                         player.client.send_packet(&player_info);
                     }
                 }
                 BroadcastMessage::PlayerLeft(uuid) => {
-                    let player_info = CPlayerInfo::RemovePlayer(vec![uuid]).encode();
+                    let player_info = CPlayerInfoRemove {
+                        players: vec![uuid],
+                    }.encode();
                     for player in &mut self.players {
                         player.client.send_packet(&player_info);
                     }
@@ -866,7 +851,16 @@ impl Plot {
                     return;
                 }
                 BroadcastMessage::PlayerUpdateGamemode(uuid, gamemode) => {
-                    let player_info = CPlayerInfo::UpdateGamemode(uuid, gamemode.get_id()).encode();
+                    let player_info = CPlayerInfoUpdate {
+                        players: vec![CPlayerInfoUpdatePlayer {
+                            uuid,
+                            actions: {
+                                let mut actions: CPlayerInfoActions = Default::default();
+                                actions.update_gamemode = Some(gamemode.get_id());
+                                actions
+                            }
+                        }]
+                    }.encode();
                     for player in &mut self.players {
                         player.client.send_packet(&player_info);
                     }
