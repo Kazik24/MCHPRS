@@ -49,8 +49,8 @@ pub const PLOT_WIDTH: i32 = 2i32.pow(PLOT_SCALE);
 pub const PLOT_BLOCK_WIDTH: i32 = PLOT_WIDTH * 16;
 pub const NUM_CHUNKS: usize = PLOT_WIDTH.pow(2) as usize;
 
-/// The height of the world in sections (Default: 16, Max: 127)
-pub const PLOT_SECTIONS: usize = 16;
+/// The height of the world in sections (Default: 24, Max: 127)
+pub const PLOT_SECTIONS: usize = 24;
 /// The plot height in blocks
 pub const PLOT_BLOCK_HEIGHT: i32 = PLOT_SECTIONS as i32 * 16;
 
@@ -820,9 +820,10 @@ impl Plot {
                                 });
                                 actions.update_gamemode = Some(player_join_info.gamemode.get_id());
                                 actions
-                            }
-                        }]
-                    }.encode();
+                            },
+                        }],
+                    }
+                    .encode();
                     for player in &mut self.players {
                         player.client.send_packet(&player_info);
                     }
@@ -830,7 +831,8 @@ impl Plot {
                 BroadcastMessage::PlayerLeft(uuid) => {
                     let player_info = CPlayerInfoRemove {
                         players: vec![uuid],
-                    }.encode();
+                    }
+                    .encode();
                     for player in &mut self.players {
                         player.client.send_packet(&player_info);
                     }
@@ -839,12 +841,7 @@ impl Plot {
                     let mut players: Vec<Player> = self.players.drain(..).collect();
                     for player in players.iter_mut() {
                         player.save();
-                        player.kick(
-                            json!({
-                                "text": "Server closed"
-                            })
-                            .to_string(),
-                        );
+                        player.kick("Server closed".into());
                     }
                     self.always_running = false;
                     self.running = false;
@@ -858,9 +855,10 @@ impl Plot {
                                 let mut actions: CPlayerInfoActions = Default::default();
                                 actions.update_gamemode = Some(gamemode.get_id());
                                 actions
-                            }
-                        }]
-                    }.encode();
+                            },
+                        }],
+                    }
+                    .encode();
                     for player in &mut self.players {
                         player.client.send_packet(&player_info);
                     }
