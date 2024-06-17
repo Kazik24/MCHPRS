@@ -49,4 +49,3 @@ tracing = {version = "0.1", features = ["release_max_level_info", "max_level_deb
 
 [patch.crates-io]
 hematite-nbt = { git = "https://github.com/StackDoubleFlow/hematite_nbt" }
-# hematite-nbt = { path = "../hematite_nbt" }
