@@ -222,13 +222,13 @@ impl Plot {
         );
 
         // Handle worldedit commands
-        if worldedit::execute_command(self, player, &command[1..], &mut args) {
+        if worldedit::execute_command(self, player, command, &mut args) {
             // If the command was handled, there is no need to continue;
             return false;
         }
 
         match command {
-            "/whitelist" => match args.as_slice() {
+            "whitelist" => match args.as_slice() {
                 ["add", username] => {
                     let username = username.to_string();
                     let sender = self.message_sender.clone();
@@ -269,7 +269,7 @@ impl Plot {
                     return false;
                 }
             },
-            "/rtps" => {
+            "rtps" => {
                 if args.is_empty() {
                     let report = self.timings.generate_report();
                     if let Some(report) = report {
@@ -313,7 +313,7 @@ impl Plot {
                 self.reset_timings();
                 self.players[player].send_system_message("The rtps was successfully set.");
             }
-            "/radv" | "/radvance" => {
+            "radv" | "radvance" => {
                 let Some(arg0) = args.get(0) else {
                     self.players[player]
                         .send_error_message("Please specify a number of ticks to advance.");
@@ -378,7 +378,7 @@ impl Plot {
                     start_time.elapsed()
                 ));
             }
-            "/toggleautorp" => {
+            "toggleautorp" => {
                 self.auto_redpiler = !self.auto_redpiler;
                 if self.auto_redpiler {
                     self.players[player]
@@ -388,7 +388,7 @@ impl Plot {
                         .send_system_message("Automatic redpiler compilation has been disabled.");
                 }
             }
-            "/teleport" | "/tp" => {
+            "teleport" | "tp" => {
                 if args.len() == 3 {
                     let player_pos = self.players[player].pos;
                     let x;
@@ -429,10 +429,10 @@ impl Plot {
                         .send_error_message("Invalid number of arguments for teleport command!");
                 }
             }
-            "/stop" => {
+            "stop" => {
                 let _ = self.message_sender.send(Message::Shutdown);
             }
-            "/plot" | "/p" => {
+            "plot" | "p" => {
                 if args.is_empty() {
                     self.players[player].send_error_message("Invalid number of arguments!");
                     return false;
@@ -440,7 +440,7 @@ impl Plot {
                 let command = args.remove(0);
                 self.handle_plot_command(player, command, &args);
             }
-            "/redpiler" | "/rp" => {
+            "redpiler" | "rp" => {
                 if args.is_empty() {
                     self.players[player].send_error_message("Invalid number of arguments!");
                     return false;
@@ -448,7 +448,7 @@ impl Plot {
                 let command = args.remove(0);
                 self.handle_redpiler_command(player, command, &args);
             }
-            "/speed" => {
+            "speed" => {
                 if args.len() != 1 {
                     self.players[player].send_error_message("/speed <0-10>");
                     return false;
@@ -481,9 +481,9 @@ impl Plot {
                     self.players[player].send_error_message("Unable to parse speed value");
                 }
             }
-            "/gmsp" => self.change_player_gamemode(player, Gamemode::Spectator),
-            "/gmc" => self.change_player_gamemode(player, Gamemode::Creative),
-            "/gamemode" => {
+            "gmsp" => self.change_player_gamemode(player, Gamemode::Spectator),
+            "gmc" => self.change_player_gamemode(player, Gamemode::Creative),
+            "gamemode" => {
                 if args.is_empty() {
                     self.players[player].send_error_message("Invalid number of arguments!");
                     return false;
@@ -499,7 +499,7 @@ impl Plot {
                 };
                 self.change_player_gamemode(player, gamemode);
             }
-            "/container" => {
+            "container" => {
                 if args.len() != 2 {
                     self.players[player].send_error_message("Usage: /container [type] [power]");
                     return false;
@@ -533,7 +533,7 @@ impl Plot {
                 let slot = 36 + self.players[player].selected_slot;
                 self.players[player].set_inventory_slot(slot, Some(item));
             }
-            "/worldsendrate" | "/wsr" => {
+            "worldsendrate" | "wsr" => {
                 if args.len() != 1 {
                     self.players[player].send_error_message("Usage: /worldsendrate <hertz>");
                     return false;
