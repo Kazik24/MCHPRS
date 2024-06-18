@@ -10,7 +10,7 @@ use mchprs_blocks::{BlockDirection, BlockFacing, BlockPos};
 use mchprs_network::packets::clientbound::*;
 use mchprs_network::packets::{PacketEncoder, SlotData};
 use mchprs_network::{PlayerConn, PlayerPacketSender};
-use mchprs_text::{ColorCode, TextComponent};
+use mchprs_text::{ChatComponentBuilder, ColorCode, TextComponent};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::fmt::{self, Display};
@@ -550,13 +550,9 @@ pub trait PacketSender {
 
     /// Sends the `ChatMessage` packet containing the raw json data.
     /// Position 1: system message (chat box)
-    fn send_raw_system_message(&self, message: String) {
+    fn send_raw_system_message(&self, message: TextComponent) {
         let chat_message = CSystemChatMessage {
-            content: {
-                let mut component: TextComponent = Default::default();
-                component.text = message;
-                component
-            },
+            content: message,
             overlay: false,
         }
         .encode();
@@ -576,11 +572,9 @@ pub trait PacketSender {
     /// Sends the player a given color message (`message` is not in json format)
     fn send_color_message(&self, col: ColorCode, message: impl Display) {
         self.send_raw_system_message(
-            json!({
-                "text": message.to_string(),
-                "color": col
-            })
-            .to_string(),
+            ChatComponentBuilder::new(message.to_string())
+                .color_code(col)
+                .finish(),
         )
     }
 }
