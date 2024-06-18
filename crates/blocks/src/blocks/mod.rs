@@ -1029,16 +1029,6 @@ blocks! {
         solid: true,
         cube: true,
     },
-    StoneBrick {
-        get_id: 4564,
-        from_id(_id): 4564 => {},
-        from_names(_name): {
-            "stone_bricks" => {}
-        },
-        get_name: "stone_bricks",
-        solid: true,
-        cube: true,
-    },
     CoalBlock {
         get_id: 10745,
         from_id(_id): 10745 => {},
@@ -1497,6 +1487,17 @@ blocks! {
             "sand" => {}
         },
         get_name: "sand",
+        solid: true,
+        cube: true,
+    },
+    StoneBricks {
+        props: {},
+        get_id: 6537,
+        from_id(_id): 6537 => {},
+        from_names(_name): {
+            "stone_bricks" => {}
+        },
+        get_name: "stone_bricks",
         solid: true,
         cube: true,
     },

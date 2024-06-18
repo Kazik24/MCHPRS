@@ -1035,7 +1035,7 @@ impl Plot {
     }
 
     fn generate_chunk(layers: i32, x: i32, z: i32) -> Chunk {
-        const BORDER: u32 = Block::StoneBrick {}.get_id();
+        const BORDER: u32 = Block::StoneBricks {}.get_id();
         const FILL: u32 = Block::Sandstone {}.get_id();
 
         let mut chunk = Chunk::empty(x, z);

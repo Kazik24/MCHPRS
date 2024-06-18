@@ -289,6 +289,7 @@ pub fn get_state_for_placement(
         Item::EmeraldBlock {} => Block::EmeraldBlock {},
         Item::HayBlock {} => Block::HayBlock {},
         Item::Sand {} => Block::Sand {},
+        Item::StoneBricks {} => Block::StoneBricks {},
         Item::Observer {} => Block::Observer {
             observer: RedstoneObserver {
                 facing: context.player.get_block_facing(),
