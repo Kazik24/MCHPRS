@@ -12,7 +12,6 @@ use mchprs_network::packets::{PacketEncoder, SlotData};
 use mchprs_network::{PlayerConn, PlayerPacketSender};
 use mchprs_text::{ColorCode, TextComponent, TextComponentBuilder};
 use serde::{Deserialize, Serialize};
-use serde_json::json;
 use std::fmt::{self, Display};
 use std::fs::{self, OpenOptions};
 use std::io::{Cursor, Write};
