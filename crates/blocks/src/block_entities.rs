@@ -4,6 +4,7 @@ use crate::BlockFace;
 use anyhow::{bail, Result};
 use mchprs_utils::{map, nbt_unwrap_val};
 use serde::{Deserialize, Serialize};
+use std::any;
 use std::collections::HashMap;
 use std::str::FromStr;
 use thin_vec::ThinVec;
@@ -17,9 +18,10 @@ pub struct InventoryEntry {
     pub nbt: Option<Vec<u8>>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Default, Debug, Clone, Serialize, Deserialize)]
 pub struct SignBlockEntity {
-    pub rows: [String; 4],
+    pub front_rows: [String; 4],
+    pub back_rows: [String; 4],
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
@@ -132,11 +134,11 @@ impl BlockEntity {
     /// The protocol id for the block entity
     pub fn ty(&self) -> i32 {
         match self {
-            BlockEntity::Comparator { .. } => 17,
+            BlockEntity::Comparator { .. } => 18,
             BlockEntity::Container { ty, .. } => match ty {
                 ContainerType::Furnace => 0,
-                ContainerType::Barrel => 25,
-                ContainerType::Hopper => 16,
+                ContainerType::Barrel => 26,
+                ContainerType::Hopper => 17,
             },
             BlockEntity::Sign(_) => 7,
             BlockEntity::MovingPiston(_) => 67, //idk if this is correct, found it at https://github.com/PrismarineJS/minecraft-data/tree/master
@@ -221,31 +223,49 @@ impl BlockEntity {
                 ContainerType::Hopper,
             ),
             "minecraft:sign" => Ok({
-                BlockEntity::Sign(Box::new(SignBlockEntity {
-                    rows: [
-                        // This cloning is really dumb
-                        nbt_unwrap_val!(
-                            nbt.get("Text1").or_else(|| nbt.get("text1")),
-                            Value::String
-                        )
-                        .clone(),
-                        nbt_unwrap_val!(
-                            nbt.get("Text2").or_else(|| nbt.get("text2")),
-                            Value::String
-                        )
-                        .clone(),
-                        nbt_unwrap_val!(
-                            nbt.get("Text3").or_else(|| nbt.get("text3")),
-                            Value::String
-                        )
-                        .clone(),
-                        nbt_unwrap_val!(
-                            nbt.get("Text4").or_else(|| nbt.get("text4")),
-                            Value::String
-                        )
-                        .clone(),
-                    ],
-                }))
+                let sign = if nbt.contains_key("Text1") || nbt.contains_key("text1") {
+                    // This is the pre-1.20 encoding
+                    SignBlockEntity {
+                        front_rows: [
+                            // This cloning is really dumb
+                            nbt_unwrap_val!(
+                                nbt.get("Text1").or_else(|| nbt.get("text1")),
+                                Value::String
+                            )
+                            .clone(),
+                            nbt_unwrap_val!(
+                                nbt.get("Text2").or_else(|| nbt.get("text2")),
+                                Value::String
+                            )
+                            .clone(),
+                            nbt_unwrap_val!(
+                                nbt.get("Text3").or_else(|| nbt.get("text3")),
+                                Value::String
+                            )
+                            .clone(),
+                            nbt_unwrap_val!(
+                                nbt.get("Text4").or_else(|| nbt.get("text4")),
+                                Value::String
+                            )
+                            .clone(),
+                        ],
+                        back_rows: Default::default(),
+                    }
+                } else {
+                    fn get_side(nbt: &HashMap<String, Value>, side: &str) -> anyhow::Result<[String; 4]> {
+                        let side = nbt_unwrap_val!(nbt.get(side), Value::Compound);
+                        let messages = nbt_unwrap_val!(side.get("messages"), Value::List);
+                        let [Value::String(a), Value::String(b), Value::String(c), Value::String(d)] = messages.as_slice() else {
+                            bail!("Invalid sign text");
+                        };
+                        Ok([a.to_string(), b.to_string(), c.to_string(), d.to_string()])
+                    }
+                    SignBlockEntity {
+                        front_rows: get_side(nbt, "front_text")?,
+                        back_rows: get_side(nbt, "back_text")?,
+                    }
+                };
+                BlockEntity::Sign(Box::new(sign))
             }),
             MovingPistonEntity::ID => Ok({
                 let block_state = nbt_unwrap_val!(
@@ -305,12 +325,20 @@ impl BlockEntity {
         use nbt::Value;
         match self {
             BlockEntity::Sign(sign) => Some({
-                let [r1, r2, r3, r4] = sign.rows.clone();
+                let front = sign.front_rows.iter().map(|str| Value::String(str.clone()));
+                let back = sign.front_rows.iter().map(|str| Value::String(str.clone()));
                 nbt::Blob::with_content(map! {
-                    "Text1" => Value::String(r1),
-                    "Text2" => Value::String(r2),
-                    "Text3" => Value::String(r3),
-                    "Text4" => Value::String(r4),
+                    "is_waxed" => Value::Byte(0),
+                    "front_text" => Value::Compound(map! {
+                        "has_glowing_text" => Value::Byte(0),
+                        "color" => Value::String("black".into()),
+                        "messages" => Value::List(front.collect())
+                    }),
+                    "back_text" => Value::Compound(map! {
+                        "has_glowing_text" => Value::Byte(0),
+                        "color" => Value::String("black".into()),
+                        "messages" => Value::List(back.collect())
+                    }),
                     "id" => Value::String("minecraft:sign".to_owned())
                 })
             }),

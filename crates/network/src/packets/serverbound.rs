@@ -591,19 +591,21 @@ impl ServerBoundPacket for SSetCreativeModeSlot {
 #[derive(Debug)]
 pub struct SUpdateSign {
     pub pos: PackedPos,
+    pub is_front_text: bool,
     pub lines: [String; 4],
 }
 
 impl ServerBoundPacket for SUpdateSign {
     fn decode<T: PacketDecoderExt>(decoder: &mut T) -> DecodeResult<Self> {
         let pos = decoder.read_position()?;
+        let is_front_text = decoder.read_bool()?;
         let lines = [
             decoder.read_string()?,
             decoder.read_string()?,
             decoder.read_string()?,
             decoder.read_string()?,
         ];
-        Ok(SUpdateSign { pos, lines })
+        Ok(SUpdateSign { pos, is_front_text, lines })
     }
 
     fn handle(self: Box<Self>, handler: &mut dyn ServerBoundPacketHandler, player_idx: usize) {

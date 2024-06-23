@@ -622,7 +622,7 @@ blocks! {
             rotation: u8
         },
         get_id: ((sign_type.to_item_type() << 5) as u32) + (rotation << 1) as u32 + match sign_type.0 {
-            0..=5 => 3438,
+            0..=5 => 4303,
             6..=7 => 19277 - (6 << 5),
             _ => unreachable!(),
         },
