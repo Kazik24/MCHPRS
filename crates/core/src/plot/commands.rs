@@ -372,6 +372,9 @@ impl Plot {
                         format!("{ticks} ticks")
                     }
                 };
+                if self.redpiler.is_active() {
+                    self.redpiler.flush(&mut self.world);
+                }
 
                 self.players[player].send_system_message(&format!(
                     "Plot has been advanced by {unit} ({:.00?})",
