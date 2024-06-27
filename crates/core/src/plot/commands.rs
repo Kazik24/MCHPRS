@@ -46,6 +46,7 @@ impl Plot {
             "visit" | "v" => "plots.visit",
             "teleport" | "tp" => "plots.visit",
             "lock" | "unlock" => "plots.lock",
+            "sel" | "select" => "plots.select",
             _ => {
                 self.players[player].send_error_message("Invalid argument for /plot");
                 return;
@@ -161,6 +162,11 @@ impl Plot {
                 } else {
                     self.players[player].send_system_message("You are not locked to this plot.");
                 }
+            }
+            "select" | "sel" => {
+                let corners = self.world.get_corners();
+                self.players[player].worldedit_set_first_position(corners.0);
+                self.players[player].worldedit_set_second_position(corners.1);
             }
             _ => self.players[player].send_error_message("Invalid argument for /plot"),
         }
@@ -612,7 +618,7 @@ pub static DECLARE_COMMANDS: Lazy<PacketEncoder> = Lazy::new(|| {
                 flags: CommandFlags::ROOT.bits() as i8,
                 children: &[
                     1, 4, 5, 6, 11, 12, 14, 16, 18, 19, 20, 21, 22, 23, 24, 26, 29, 31, 32, 34, 36,
-                    47, 49, 53, 60, 61, 63, 65, 66, 67, 71, 73, 74, 75,
+                    47, 49, 53, 60, 61, 63, 65, 66, 67, 71, 73, 76, 77,
                 ],
                 redirect_node: None,
                 name: None,
@@ -667,7 +673,7 @@ pub static DECLARE_COMMANDS: Lazy<PacketEncoder> = Lazy::new(|| {
             // 6: /plot
             Node {
                 flags: (CommandFlags::LITERAL).bits() as i8,
-                children: &[7, 8, 9, 10, 38, 39, 40, 41, 43, 44, 46, 58, 59],
+                children: &[7, 8, 9, 10, 38, 39, 40, 41, 43, 44, 46, 58, 59, 74, 75],
                 redirect_node: None,
                 name: Some("plot"),
                 parser: None,
@@ -874,7 +880,7 @@ pub static DECLARE_COMMANDS: Lazy<PacketEncoder> = Lazy::new(|| {
             // 29: /radvance
             Node {
                 flags: (CommandFlags::LITERAL).bits() as i8,
-                children: &[30, 76, 78],
+                children: &[30, 78, 80],
                 redirect_node: None,
                 name: Some("radvance"),
                 parser: None,
@@ -1279,7 +1285,25 @@ pub static DECLARE_COMMANDS: Lazy<PacketEncoder> = Lazy::new(|| {
                 parser: None,
                 suggestions_type: None,
             },
-            // 74: /curse
+            // 74: /p select
+            Node {
+                flags: (CommandFlags::LITERAL | CommandFlags::EXECUTABLE).bits() as i8,
+                children: &[],
+                redirect_node: None,
+                name: Some("select"),
+                parser: None,
+                suggestions_type: None,
+            },
+            // 75: /p sel
+            Node {
+                flags: (CommandFlags::LITERAL | CommandFlags::REDIRECT).bits() as i8,
+                children: &[],
+                redirect_node: Some(74),
+                name: Some("sel"),
+                parser: None,
+                suggestions_type: None,
+            },
+            // 76: /curse
             Node {
                 flags: (CommandFlags::LITERAL).bits() as i8,
                 children: &[],
@@ -1288,7 +1312,7 @@ pub static DECLARE_COMMANDS: Lazy<PacketEncoder> = Lazy::new(|| {
                 parser: None,
                 suggestions_type: None,
             },
-            // 75: /bless
+            // 77: /bless
             Node {
                 flags: (CommandFlags::LITERAL).bits() as i8,
                 children: &[],
@@ -1297,16 +1321,16 @@ pub static DECLARE_COMMANDS: Lazy<PacketEncoder> = Lazy::new(|| {
                 parser: None,
                 suggestions_type: None,
             },
-            // 76: /radvance nano
+            // 78: /radvance nano
             Node {
                 flags: (CommandFlags::LITERAL).bits() as i8,
-                children: &[77],
+                children: &[79],
                 redirect_node: None,
                 name: Some("nano"),
                 parser: None,
                 suggestions_type: None,
             },
-            // 77: /radvance nano [nticks]
+            // 79: /radvance nano [nticks]
             Node {
                 flags: (CommandFlags::ARGUMENT | CommandFlags::EXECUTABLE).bits() as i8,
                 children: &[],
@@ -1315,16 +1339,16 @@ pub static DECLARE_COMMANDS: Lazy<PacketEncoder> = Lazy::new(|| {
                 parser: Some(Parser::Integer(0, 100000)),
                 suggestions_type: None,
             },
-            // 78: /radvance pico
+            // 80: /radvance pico
             Node {
                 flags: (CommandFlags::LITERAL).bits() as i8,
-                children: &[79],
+                children: &[81],
                 redirect_node: None,
                 name: Some("pico"),
                 parser: None,
                 suggestions_type: None,
             },
-            // 79: /radvance pico [pticks]
+            // 81: /radvance pico [pticks]
             Node {
                 flags: (CommandFlags::ARGUMENT | CommandFlags::EXECUTABLE).bits() as i8,
                 children: &[],
