@@ -476,16 +476,8 @@ impl Plot {
     fn enter_plot(&mut self, player: Player) {
         self.save();
         let spawn_player = player.spawn_packet().encode();
-        let metadata_entries = vec![CSetEntityMetadataEntry {
-            index: 17,
-            metadata_type: 0,
-            value: vec![player.skin_parts.bits() as u8],
-        }];
-        let metadata = CSetEntityMetadata {
-            entity_id: player.entity_id as i32,
-            metadata: metadata_entries,
-        }
-        .encode();
+        let metadata = player.metadata_packet().encode();
+        let entity_equipment = player.equippment_packet();
         // TODO: FIXME: send correct packet to change client permissions and allow F3+N
         // let status = CEntityStatus {
         //     entity_id: player.entity_id as i32,

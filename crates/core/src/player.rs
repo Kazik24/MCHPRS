@@ -71,6 +71,7 @@ impl Default for PlayerData {
 }
 
 bitflags! {
+    #[derive(Debug)]
     pub struct SkinParts: u32 {
         const CAPE = 0x01;
         const JACKET = 0x02;
