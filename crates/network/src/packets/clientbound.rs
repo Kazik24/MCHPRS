@@ -379,7 +379,7 @@ impl ClientBoundPacket for CEntityStatus {
         let mut buf = Vec::new();
         buf.write_int(self.entity_id);
         buf.write_byte(self.entity_status);
-        PacketEncoder::new(buf, 0x1b)
+        PacketEncoder::new(buf, 0x1c)
     }
 }
 
