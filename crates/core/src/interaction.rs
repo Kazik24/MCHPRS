@@ -507,6 +507,12 @@ pub fn use_item_on_block(
     {
         return false;
     }
+    tracing::info!(
+        "Player {} used item {:?} on block {:?}",
+        ctx.player.username,
+        item,
+        block_pos
+    );
     let can_place = item.item_type.is_block() && world.get_block(block_pos).can_place_block_in();
     if !ctx.player.crouching
         && on_use(
@@ -523,7 +529,7 @@ pub fn use_item_on_block(
 
     if can_place && (0..PLOT_BLOCK_HEIGHT).contains(&block_pos.y) {
         let block = get_state_for_placement(world, block_pos, item.item_type, &ctx);
-
+        tracing::info!("Placing block {:?}", block);
         match block {
             Block::Sign { .. } | Block::WallSign { .. } => {
                 if !item

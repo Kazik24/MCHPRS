@@ -45,7 +45,7 @@ lto = "fat"
 mchprs_core = { path = "./crates/core" }
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 tracing-appender = "0.2"
-tracing = {version = "0.1", features = ["release_max_level_info", "max_level_debug"] }
+tracing = {version = "0.1", features = ["release_max_level_info", "max_level_trace"] }
 
 [patch.crates-io]
 hematite-nbt = { git = "https://github.com/StackDoubleFlow/hematite_nbt" }

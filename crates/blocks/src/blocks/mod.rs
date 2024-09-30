@@ -864,22 +864,23 @@ blocks! {
             piston: RedstonePiston
         },
         get_id: match (piston.sticky, piston.extended) {
-            (true, true) => piston.facing.get_id() + 1385,
-            (true, false) => piston.facing.get_id() + 1391,
-            (false, true) => piston.facing.get_id() + 1404,
-            (false, false) => piston.facing.get_id() + 1410,
+            (true, true) => piston.facing.get_id() + 1992,
+            (true, false) => piston.facing.get_id() + 1992 + 6,
+            (false, true) => piston.facing.get_id() + 2011,
+            (false, false) => piston.facing.get_id() + 2011 + 6,
         },
-        from_id(id): 1385..=1396 | 1404..=1415 => {
+        //om_id(id): 1385..=1396 | 1404..=1415 => {
+        from_id(id): 1992..=2003 | 2011..=2022  => {
             piston: match id {
-                1385..=1396 => RedstonePiston{
+                1992..=2003 => RedstonePiston{
                     sticky: true,
-                    extended: (id - 1385) / 6 == 0,
-                    facing: BlockFacing::try_from_id((id - 1385) % 6).unwrap(),
+                    extended: (id - 1992) / 6 == 0,
+                    facing: BlockFacing::try_from_id((id - 1992) % 6).unwrap(),
                 },
                 _ => RedstonePiston{
                     sticky: false,
-                    extended: (id - 1404) / 6 == 0,
-                    facing: BlockFacing::try_from_id((id - 1404) % 6).unwrap(),
+                    extended: (id - 2011) / 6 == 0,
+                    facing: BlockFacing::try_from_id((id - 2011) % 6).unwrap(),
                 },
             }
         },
@@ -900,9 +901,9 @@ blocks! {
         props: {
             head: RedstonePistonHead
         },
-        get_id: (head.facing.get_id() * 4) + (head.sticky as u32) + (((!head.short) as u32) * 2) + 1416,
-        from_id_offset: 1416,
-        from_id(id): 1416..=1439 => {
+        get_id: (head.facing.get_id() * 4) + (head.sticky as u32) + (((!head.short) as u32) * 2) + 2023,
+        from_id_offset: 2023,
+        from_id(id): 2023..=2046 => {
             head: RedstonePistonHead{
                 facing: BlockFacing::try_from_id(id >> 2).unwrap(),
                 sticky: id & 1 != 0,
@@ -923,9 +924,9 @@ blocks! {
         props: {
             moving: RedstoneMovingPiston,
         },
-        get_id: (moving.facing.get_id() << 1) + (moving.sticky as u32) + 1456,
-        from_id_offset: 1456,
-        from_id(id): 1456..=1467 => {
+        get_id: (moving.facing.get_id() << 1) + (moving.sticky as u32) + 2063,
+        from_id_offset: 2063,
+        from_id(id): 2063..=2074 => {
             moving: RedstoneMovingPiston{
                 facing: BlockFacing::try_from_id(id >> 1).unwrap(),
                 sticky: id & 1 != 0,

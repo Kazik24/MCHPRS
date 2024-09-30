@@ -337,9 +337,9 @@ items! {
         props: {
             sticky: bool
         },
-        get_id: if sticky { 591 } else { 590 },
-        from_id_offset: 590,
-        from_id(id): 590..=591 => {
+        get_id: if sticky { 662 } else { 661 },
+        from_id_offset: 661,
+        from_id(id): 661..=662 => {
             sticky: id != 0
         },
         block: true,
