@@ -835,14 +835,14 @@ blocks! {
             observer: RedstoneObserver
         },
         get_id: if observer.powered {
-            (observer.facing.get_id() << 1) + 12551
+            (observer.facing.get_id() << 1) + 12550
         } else {
-            (observer.facing.get_id() << 1) + 12552
+            (observer.facing.get_id() << 1) + 12551
         },
         // todo why this is 12551, not 12550 as in "minStateId": 12550, "maxStateId": 12561
         // https://github.com/PrismarineJS/minecraft-data/blob/master/data/pc/1.20.4/blocks.json#L22062
-        from_id_offset: 12551,
-        from_id(id): 12551..=12561 => {
+        from_id_offset: 12550,
+        from_id(id): 12550..=12561 => {
             observer: RedstoneObserver{
                 facing: BlockFacing::try_from_id(id >> 1).unwrap(),
                 powered: id & 1 == 0,

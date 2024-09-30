@@ -329,8 +329,8 @@ items! {
         block: true,
     },
     Observer {
-        get_id: 594,
-        from_id(_id): 594 => {},
+        get_id: 665,
+        from_id(_id): 665 => {},
         block: true,
     },
     Piston {
