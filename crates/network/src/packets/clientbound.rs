@@ -1329,7 +1329,7 @@ impl ClientBoundPacket for CBlockAction {
         buf.write_unsigned_byte(self.action_id);
         buf.write_unsigned_byte(self.action_param);
         buf.write_varint(self.block_id as i32);
-        PacketEncoder::new(buf, 0x0b)
+        PacketEncoder::new(buf, 0x08)
     }
 }
 
