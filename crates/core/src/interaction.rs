@@ -507,7 +507,7 @@ pub fn use_item_on_block(
     {
         return false;
     }
-    tracing::info!(
+    tracing::debug!(
         "Player {} used item {:?} on block {:?}",
         ctx.player.username,
         item,
@@ -529,7 +529,7 @@ pub fn use_item_on_block(
 
     if can_place && (0..PLOT_BLOCK_HEIGHT).contains(&block_pos.y) {
         let block = get_state_for_placement(world, block_pos, item.item_type, &ctx);
-        tracing::info!("Placing block {:?}", block);
+        tracing::debug!("Placing block {:?}", block);
         match block {
             Block::Sign { .. } | Block::WallSign { .. } => {
                 if !item
