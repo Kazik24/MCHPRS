@@ -71,7 +71,6 @@ impl Default for PlayerData {
 }
 
 bitflags! {
-    #[derive(Default)]
     pub struct SkinParts: u32 {
         const CAPE = 0x01;
         const JACKET = 0x02;
@@ -80,6 +79,12 @@ bitflags! {
         const LEFT_PANTS_LEG = 0x10;
         const RIGHT_PANTS_LEG = 0x20;
         const HAT = 0x40;
+    }
+}
+
+impl Default for SkinParts {
+    fn default() -> Self {
+        Self::from_bits(0b1111111).unwrap()
     }
 }
 
@@ -541,6 +546,52 @@ impl Player {
             velocity_y: 0,
             velocity_z: 0,
         }
+    }
+
+    pub fn metadata_packet(&self) -> CSetEntityMetadata {
+        CSetEntityMetadata {
+            entity_id: self.entity_id as i32,
+            metadata: vec![
+                CSetEntityMetadataEntry {
+                    index: 0,
+                    metadata_type: 0,
+                    value: vec![{
+                        let mut bitfield = 0;
+                        if self.crouching {
+                            bitfield |= 0x02;
+                        };
+                        if self.sprinting {
+                            bitfield |= 0x08;
+                        };
+                        bitfield
+                    }],
+                },
+                CSetEntityMetadataEntry {
+                    index: 6,
+                    metadata_type: 20,
+                    value: vec![if self.crouching { 5 } else { 0 }],
+                },
+                CSetEntityMetadataEntry {
+                    index: 17,
+                    metadata_type: 0,
+                    value: vec![self.skin_parts.bits() as u8],
+                },
+            ],
+        }
+    }
+
+    pub fn equippment_packet(&self) -> Option<CSetEquipment> {
+        self.inventory[self.selected_slot as usize + 36]
+            .as_ref()
+            .map(|item| {
+                CSetEquipment {
+                    entity_id: self.entity_id as i32,
+                    equipment: vec![CSetEquipmentEquipment {
+                        slot: 0, // Main hand
+                        item: Some(utils::encode_slot_data(item)),
+                    }],
+                }
+            })
     }
 }
 
