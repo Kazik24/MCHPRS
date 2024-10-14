@@ -1,9 +1,8 @@
-version: '3'
 services:
   mchprs:
     build:
       context: .
-      dockerfile: docker/Dockerfile-plot-scale-5
+      dockerfile: docker/Dockerfile
     ports:
       - 25562:25565
     volumes:
