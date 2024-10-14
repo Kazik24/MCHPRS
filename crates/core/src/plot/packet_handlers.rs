@@ -89,6 +89,12 @@ impl ServerBoundPacketHandler for Plot {
             matches: Vec::new(),
         };
 
+        if let Err(err) = traverse_dir(&path, &current, &mut res.matches, &path, 5) {
+            error!("Error while tab completing: {:?}", err);
+            return;
+        }
+
+
         let dir = match fs::read_dir(path) {
             Ok(dir) => dir,
             Err(err) => {
