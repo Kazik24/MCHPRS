@@ -13,7 +13,7 @@ use once_cell::sync::Lazy;
 use schematic::{load_schematic, save_schematic};
 use std::fs::File;
 use std::time::Instant;
-use tracing::error;
+use tracing::{error, info};
 
 pub(super) fn execute_wand(ctx: CommandExecuteContext<'_>) {
     let item = ItemStack {
@@ -266,6 +266,9 @@ pub(super) fn execute_load(ctx: CommandExecuteContext<'_>) {
         let prefix = HyphenatedUUID(ctx.player.uuid).to_string() + "/";
         file_name.insert_str(0, &prefix);
     }
+
+
+    info!("Filename: {}", file_name);
 
     let clipboard = File::open("./schems/".to_owned() + &file_name)
         .map_err(anyhow::Error::from)

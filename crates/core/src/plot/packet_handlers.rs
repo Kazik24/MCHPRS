@@ -89,30 +89,10 @@ impl ServerBoundPacketHandler for Plot {
             matches: Vec::new(),
         };
 
-        let dir = match fs::read_dir(path) {
-            Ok(dir) => dir,
-            Err(err) => {
-                if err.kind() != std::io::ErrorKind::NotFound {
-                    error!("There was an error completing //load");
-                    error!("{}", err.to_string());
-                }
-                return;
-            }
-        };
-
-        for entry in dir {
-            let entry = entry.unwrap();
-            if entry.file_type().unwrap().is_file() {
-                let name = entry.file_name();
-                let name = name.to_string_lossy();
-                if name.starts_with(current) {
-                    let m = CCommandSuggestionsResponseMatch {
-                        match_: name.to_string(),
-                        tooltip: None,
-                    };
-                    res.matches.push(m);
-                }
-            }
+        
+        if let Err(err) = traverse_dir(&path, &current, &mut res.matches, &path, 5) {
+            error!("Error while tab completing: {:?}", err);
+            return;
         }
 
         self.players[player_idx].send_packet(&res.encode());
