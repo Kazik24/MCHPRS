@@ -267,7 +267,6 @@ pub(super) fn execute_load(ctx: CommandExecuteContext<'_>) {
         file_name.insert_str(0, &prefix);
     }
 
-
     info!("Filename: {}", file_name);
 
     let clipboard = File::open("./schems/".to_owned() + &file_name)

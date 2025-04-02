@@ -13,7 +13,7 @@ use serde_json::json;
 use std::fs;
 use std::path::PathBuf;
 use std::time::Instant;
-use tracing::{error, warn};
+use tracing::error;
 
 impl Plot {
     pub(super) fn handle_packets_for_player(&mut self, player: usize) {
@@ -89,7 +89,6 @@ impl ServerBoundPacketHandler for Plot {
             matches: Vec::new(),
         };
 
-        
         if let Err(err) = traverse_dir(&path, &current, &mut res.matches, &path, 5) {
             error!("Error while tab completing: {:?}", err);
             return;
