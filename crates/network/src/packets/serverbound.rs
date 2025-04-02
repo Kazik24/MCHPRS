@@ -605,7 +605,11 @@ impl ServerBoundPacket for SUpdateSign {
             decoder.read_string()?,
             decoder.read_string()?,
         ];
-        Ok(SUpdateSign { pos, is_front_text, lines })
+        Ok(SUpdateSign {
+            pos,
+            is_front_text,
+            lines,
+        })
     }
 
     fn handle(self: Box<Self>, handler: &mut dyn ServerBoundPacketHandler, player_idx: usize) {

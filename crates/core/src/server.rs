@@ -7,7 +7,12 @@ use crate::{permissions, utils};
 use backtrace::Backtrace;
 use bus::Bus;
 use mchprs_network::packets::clientbound::{
-    CConfigurationPluginMessage, CDisconnectLogin, CFinishConfiguration, CGameEvent, CGameEventType, CLogin, CLoginSuccess, CPlayerInfoActions, CPlayerInfoAddPlayer, CPlayerInfoUpdate, CPlayerInfoUpdatePlayer, CPong, CRegistryBiome, CRegistryBiomeEffects, CRegistryDamageType, CRegistryData, CRegistryDataCodec, CRegistryDimensionType, CResponse, CSetCompression, CSetContainerContent, CSetHeldItem, CSynchronizePlayerPosition, ClientBoundPacket, UpdateTime
+    CConfigurationPluginMessage, CDisconnectLogin, CFinishConfiguration, CGameEvent,
+    CGameEventType, CLogin, CLoginSuccess, CPlayerInfoActions, CPlayerInfoAddPlayer,
+    CPlayerInfoUpdate, CPlayerInfoUpdatePlayer, CPong, CRegistryBiome, CRegistryBiomeEffects,
+    CRegistryDamageType, CRegistryData, CRegistryDataCodec, CRegistryDimensionType, CResponse,
+    CSetCompression, CSetContainerContent, CSetHeldItem, CSynchronizePlayerPosition,
+    ClientBoundPacket, UpdateTime,
 };
 use mchprs_network::packets::serverbound::{
     SAcknowledgeFinishConfiguration, SHandshake, SLoginAcknowledged, SLoginStart, SPing, SRequest,
@@ -887,7 +892,7 @@ impl ServerBoundPacketHandler for MinecraftServer {
                     scaling: "always".into(),
                     exhaustion: 0.0,
                 },
-            }
+            },
         };
         let registry_data = CRegistryData {
             registry_codec: codec,

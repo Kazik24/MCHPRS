@@ -207,7 +207,7 @@ impl CRegistryDataCodec {
             "stalagmite",
             "outside_border",
             "generic_kill",
-            "player_attack", 
+            "player_attack",
         ];
         let mut damage_map = NBTMap::new("minecraft:damage_type".to_owned());
         for ty in required_types {

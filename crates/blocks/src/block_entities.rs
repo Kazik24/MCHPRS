@@ -252,10 +252,15 @@ impl BlockEntity {
                         back_rows: Default::default(),
                     }
                 } else {
-                    fn get_side(nbt: &HashMap<String, Value>, side: &str) -> anyhow::Result<[String; 4]> {
+                    fn get_side(
+                        nbt: &HashMap<String, Value>,
+                        side: &str,
+                    ) -> anyhow::Result<[String; 4]> {
                         let side = nbt_unwrap_val!(nbt.get(side), Value::Compound);
                         let messages = nbt_unwrap_val!(side.get("messages"), Value::List);
-                        let [Value::String(a), Value::String(b), Value::String(c), Value::String(d)] = messages.as_slice() else {
+                        let [Value::String(a), Value::String(b), Value::String(c), Value::String(d)] =
+                            messages.as_slice()
+                        else {
                             bail!("Invalid sign text");
                         };
                         Ok([a.to_string(), b.to_string(), c.to_string(), d.to_string()])
