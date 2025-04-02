@@ -148,9 +148,9 @@ pub struct CRegistryBiome {
 
 #[derive(Serialize, Clone, Default)]
 pub struct CRegistryDamageType {
-    message_id: String,
-    scaling: String,
-    exhaustion: f32,
+    pub message_id: String,
+    pub scaling: String,
+    pub exhaustion: f32,
 }
 
 pub struct CRegistryDataCodec {
@@ -158,6 +158,7 @@ pub struct CRegistryDataCodec {
     pub dimension_types: HashMap<String, CRegistryDimensionType>,
     /// The `minecraft:worldgen/biome` registry. It defines several aesthetic characteristics of the biomes present in the game.
     pub biomes: HashMap<String, CRegistryBiome>,
+    pub damage_types: HashMap<String, CRegistryDamageType>,
 }
 
 #[derive(Serialize)]
@@ -169,7 +170,6 @@ struct CRegistryDataCodecInner {
     #[serde(rename = "minecraft:damage_type")]
     pub damage_types: NBTMap<CRegistryDamageType>,
 }
-
 impl CRegistryDataCodec {
     fn encode(&self, buf: &mut Vec<u8>) {
         let mut dimension_map: NBTMap<CRegistryDimensionType> =
@@ -182,7 +182,6 @@ impl CRegistryDataCodec {
             biome_map.push_element(name.clone(), element.clone());
         }
 
-        // The game will throw if it doesn't have these. See MC-267103.
         let required_types = [
             "in_fire",
             "lightning_bolt",
@@ -208,13 +207,19 @@ impl CRegistryDataCodec {
             "stalagmite",
             "outside_border",
             "generic_kill",
+            "player_attack", 
         ];
         let mut damage_map = NBTMap::new("minecraft:damage_type".to_owned());
         for ty in required_types {
+            let message_id = if ty == "player_attack" {
+                "player.attack"
+            } else {
+                "generic"
+            };
             damage_map.push_element(
                 format!("minecraft:{ty}"),
                 CRegistryDamageType {
-                    message_id: "generic".into(),
+                    message_id: message_id.into(),
                     scaling: "always".into(),
                     ..Default::default()
                 },
@@ -377,7 +382,7 @@ pub struct CEntityStatus {
 impl ClientBoundPacket for CEntityStatus {
     fn encode(&self) -> PacketEncoder {
         let mut buf = Vec::new();
-        buf.write_int(self.entity_id);
+        buf.write_varint(self.entity_id as i32); // Changed from write_int to write_varint
         buf.write_byte(self.entity_status);
         PacketEncoder::new(buf, 0x1c)
     }

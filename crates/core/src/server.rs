@@ -7,11 +7,7 @@ use crate::{permissions, utils};
 use backtrace::Backtrace;
 use bus::Bus;
 use mchprs_network::packets::clientbound::{
-    CConfigurationPluginMessage, CDisconnectLogin, CFinishConfiguration, CGameEvent,
-    CGameEventType, CLogin, CLoginSuccess, CPlayerInfoActions, CPlayerInfoAddPlayer,
-    CPlayerInfoUpdate, CPlayerInfoUpdatePlayer, CPong, CRegistryBiome, CRegistryBiomeEffects,
-    CRegistryData, CRegistryDataCodec, CRegistryDimensionType, CResponse, CSetCompression,
-    CSetContainerContent, CSetHeldItem, CSynchronizePlayerPosition, ClientBoundPacket, UpdateTime,
+    CConfigurationPluginMessage, CDisconnectLogin, CFinishConfiguration, CGameEvent, CGameEventType, CLogin, CLoginSuccess, CPlayerInfoActions, CPlayerInfoAddPlayer, CPlayerInfoUpdate, CPlayerInfoUpdatePlayer, CPong, CRegistryBiome, CRegistryBiomeEffects, CRegistryDamageType, CRegistryData, CRegistryDataCodec, CRegistryDimensionType, CResponse, CSetCompression, CSetContainerContent, CSetHeldItem, CSynchronizePlayerPosition, ClientBoundPacket, UpdateTime
 };
 use mchprs_network::packets::serverbound::{
     SAcknowledgeFinishConfiguration, SHandshake, SLoginAcknowledged, SLoginStart, SPing, SRequest,
@@ -765,6 +761,133 @@ impl ServerBoundPacketHandler for MinecraftServer {
                     },
                 }
             },
+            damage_types: map! {
+                "minecraft:in_fire" => CRegistryDamageType {
+                    message_id: "entity.onFire".into(),
+                    scaling: "always".into(),
+                    exhaustion: 0.0,
+                },
+                "minecraft:lightning_bolt" => CRegistryDamageType {
+                    message_id: "entity.lightningBolt".into(),
+                    scaling: "always".into(),
+                    exhaustion: 0.0,
+                },
+                "minecraft:on_fire" => CRegistryDamageType {
+                    message_id: "entity.onFire".into(),
+                    scaling: "always".into(),
+                    exhaustion: 0.0,
+                },
+                "minecraft:lava" => CRegistryDamageType {
+                    message_id: "damage.lava".into(),
+                    scaling: "always".into(),
+                    exhaustion: 0.0,
+                },
+                "minecraft:hot_floor" => CRegistryDamageType {
+                    message_id: "damage.hotFloor".into(),
+                    scaling: "always".into(),
+                    exhaustion: 0.0,
+                },
+                "minecraft:in_wall" => CRegistryDamageType {
+                    message_id: "damage.cramming".into(),
+                    scaling: "always".into(),
+                    exhaustion: 0.0,
+                },
+                "minecraft:cramming" => CRegistryDamageType {
+                    message_id: "damage.cramming".into(),
+                    scaling: "always".into(),
+                    exhaustion: 0.0,
+                },
+                "minecraft:drown" => CRegistryDamageType {
+                    message_id: "damage.drown".into(),
+                    scaling: "always".into(),
+                    exhaustion: 0.0,
+                },
+                "minecraft:starve" => CRegistryDamageType {
+                    message_id: "damage.starve".into(),
+                    scaling: "always".into(),
+                    exhaustion: 0.0,
+                },
+                "minecraft:cactus" => CRegistryDamageType {
+                    message_id: "damage.cactus".into(),
+                    scaling: "always".into(),
+                    exhaustion: 0.0,
+                },
+                "minecraft:fall" => CRegistryDamageType {
+                    message_id: "damage.fall".into(),
+                    scaling: "always".into(),
+                    exhaustion: 0.0,
+                },
+                "minecraft:fly_into_wall" => CRegistryDamageType {
+                    message_id: "damage.flyIntoWall".into(),
+                    scaling: "always".into(),
+                    exhaustion: 0.0,
+                },
+                "minecraft:out_of_world" => CRegistryDamageType {
+                    message_id: "damage.outOfWorld".into(),
+                    scaling: "always".into(),
+                    exhaustion: 0.0,
+                },
+                "minecraft:fell_out_of_world" => CRegistryDamageType {
+                    message_id: "damage.fell".into(),
+                    scaling: "always".into(),
+                    exhaustion: 0.0,
+                },
+                "minecraft:generic" => CRegistryDamageType {
+                    message_id: "damage.generic".into(),
+                    scaling: "always".into(),
+                    exhaustion: 0.0,
+                },
+                "minecraft:magic" => CRegistryDamageType {
+                    message_id: "damage.magic".into(),
+                    scaling: "always".into(),
+                    exhaustion: 0.0,
+                },
+                "minecraft:wither" => CRegistryDamageType {
+                    message_id: "damage.wither".into(),
+                    scaling: "always".into(),
+                    exhaustion: 0.0,
+                },
+                "minecraft:dragon_breath" => CRegistryDamageType {
+                    message_id: "damage.dragonBreath".into(),
+                    scaling: "always".into(),
+                    exhaustion: 0.0,
+                },
+                "minecraft:dry_out" => CRegistryDamageType {
+                    message_id: "damage.dryOut".into(),
+                    scaling: "always".into(),
+                    exhaustion: 0.0,
+                },
+                "minecraft:sweet_berry_bush" => CRegistryDamageType {
+                    message_id: "damage.sweetBerryBush".into(),
+                    scaling: "always".into(),
+                    exhaustion: 0.0,
+                },
+                "minecraft:freeze" => CRegistryDamageType {
+                    message_id: "damage.freeze".into(),
+                    scaling: "always".into(),
+                    exhaustion: 0.0,
+                },
+                "minecraft:stalagmite" => CRegistryDamageType {
+                    message_id: "damage.stalagmite".into(),
+                    scaling: "always".into(),
+                    exhaustion: 0.0,
+                },
+                "minecraft:outside_border" => CRegistryDamageType {
+                    message_id: "damage.outsideBorder".into(),
+                    scaling: "always".into(),
+                    exhaustion: 0.0,
+                },
+                "minecraft:generic_kill" => CRegistryDamageType {
+                    message_id: "entity.die".into(),
+                    scaling: "always".into(),
+                    exhaustion: 0.0,
+                },
+                "minecraft:player_attack" => CRegistryDamageType {
+                    message_id: "player.attack".into(),
+                    scaling: "always".into(),
+                    exhaustion: 0.0,
+                },
+            }
         };
         let registry_data = CRegistryData {
             registry_codec: codec,
