@@ -1,4 +1,4 @@
-mod backend;
+pub(crate) mod backend;
 mod compile_graph;
 mod task_monitor;
 // mod debug_graph;

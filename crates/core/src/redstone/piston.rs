@@ -1,363 +1,280 @@
-use crate::interaction::place_in_world;
-use crate::world::{BlockAction, PistonAction, World};
+use crate::world::{BlockAction, World};
 use mchprs_blocks::block_entities::{BlockEntity, MovingPistonEntity};
 use mchprs_blocks::blocks::{Block, RedstoneMovingPiston, RedstonePiston, RedstonePistonHead};
 use mchprs_blocks::{BlockFace, BlockFacing, BlockPos};
-use mchprs_world::TickPriority;
-#[allow(unused)]
-use tracing::*;
+use mchprs_world::{AdvancePhase, PistonAction, PistonEvent};
 
-use super::update;
+#[cfg(test)]
+mod tests;
 
-// Some source code of pistons:
-//https://github.com/Marcelektro/MCP-919/blob/main/src/minecraft/net/minecraft/tileentity/TileEntityPiston.java
-//https://github.com/Marcelektro/MCP-919/blob/main/src/minecraft/net/minecraft/block/BlockPistonBase.java
+const NEIGHBORS: [BlockFace; 6] = [BlockFace::West, BlockFace::East,
+    BlockFace::Bottom, BlockFace::Top, BlockFace::North, BlockFace::South];
 
-// Profiling report (all in profile --release, commit hash: 7843ee5):
-//
-// * full Plot.tick: ~98% time
-// * (get/set/delete)_block_entity: only ~0.34% time
-// * (get/set)_block together with block entities: ~29% time
-// * pending_tick_at: ~1% time
-// * schedule_(tick/half_tick): ~0.17% time
-// * update_piston_state: ~14% time
-// * piston_tick: ~61% time
-// * moving_piston_tick: 30% time
-// * on_piston_state_change: 88% time
-// * should_piston_extend: 13.5% time
-
-fn is_powered_in_direction(world: &impl World, pos: BlockPos, direction: BlockFacing) -> bool {
-    let offset = pos.offset(direction.into());
-    let block = world.get_block(offset);
-    super::get_redstone_power(block, world, offset, direction.into()) > 0
+fn powered(world: &impl World, pos: BlockPos, face: BlockFace) -> bool {
+    let p = pos.offset(face);
+    super::get_redstone_power(world.get_block(p), world, p, face) > 0
 }
 
-pub fn should_piston_extend(
-    world: &impl World,
-    piston_facing: BlockFacing,
-    piston_pos: BlockPos,
-) -> bool {
-    // normal
-
-    if piston_facing != BlockFacing::Up
-        && is_powered_in_direction(world, piston_pos, BlockFacing::Up)
-    {
+pub fn should_piston_extend(world: &impl World, facing: BlockFacing, pos: BlockPos) -> bool {
+    let front: BlockFace = facing.into();
+    if NEIGHBORS.into_iter().any(|f| f != front && powered(world, pos, f)) {
         return true;
     }
-
-    if piston_facing != BlockFacing::Down
-        && is_powered_in_direction(world, piston_pos, BlockFacing::Down)
-    {
-        return true;
-    }
-
-    for direction in BlockFacing::horizontal_values() {
-        if piston_facing != direction && is_powered_in_direction(world, piston_pos, direction) {
-            return true;
-        }
-    }
-
-    // bud
-    if is_powered_in_direction(world, piston_pos.offset(BlockFace::Top), BlockFacing::Down) {
-        return true;
-    }
-
-    if is_powered_in_direction(world, piston_pos.offset(BlockFace::Top), BlockFacing::Up) {
-        return true;
-    }
-
-    for direction in BlockFacing::horizontal_values() {
-        if is_powered_in_direction(world, piston_pos.offset(BlockFace::Top), direction) {
-            return true;
-        }
-    }
-
-    return false;
+    // Direct signal from below, and quasi-connectivity around the block above.
+    powered(world, pos.offset(BlockFace::Top), BlockFace::Bottom)
+        || NEIGHBORS.into_iter().any(|f| f != BlockFace::Bottom
+            && powered(world, pos.offset(BlockFace::Top), f))
 }
 
-pub fn update_piston_state(world: &mut impl World, piston: RedstonePiston, piston_pos: BlockPos) {
-    let should_extend = should_piston_extend(world, piston.facing, piston_pos);
-    if should_extend != piston.extended && !world.pending_tick_at(piston_pos) {
-        world.schedule_tick(piston_pos, 0, TickPriority::NanoTick);
-    }
-}
-
-pub fn piston_tick(world: &mut impl World, piston: RedstonePiston, piston_pos: BlockPos) {
-    let should_extend = should_piston_extend(world, piston.facing, piston_pos);
-    if should_extend != piston.extended {
-        if should_extend {
-            schedule_extend(world, piston, piston_pos);
-        } else {
-            schedule_retract(world, piston, piston_pos);
-        }
-    }
-}
-
-pub fn moving_piston_tick(
-    world: &mut impl World,
-    moving: RedstoneMovingPiston,
-    head_pos: BlockPos,
-) {
-    let entity = match world.get_block_entity(head_pos) {
-        Some(BlockEntity::MovingPiston(entity)) => *entity,
-        _ => {
-            tracing::error!("Missing moving piston entity at {:?}", head_pos);
-            MovingPistonEntity {
-                extending: false,
-                facing: moving.facing.into(),
-                progress: 0,
-                block_state: 0,
-                source: false,
-            }
-        }
-    };
-
-    world.delete_block_entity(head_pos); //delete moving block entity, block at this place will always be set later in this function
-
-    let direction = BlockFace::from(moving.facing);
-    let piston_pos = head_pos.offset(direction.opposite());
-    if entity.extending {
-        // if false
-        //     && entity.block_state != Block::Air.get_id()
-        //     && !should_piston_extend(world, moving.facing, piston_pos)
-        // {
-        //     //todo this is ok for slow pistons, but makes 3.3hz instant drop blocks...
-        //     //let go of pushed block
-        //     let piston = moving.to_piston(false);
-        //     world.set_block(piston_pos, Block::Piston { piston });
-        //     let cancel_action = BlockAction::Piston {
-        //         action: PistonAction::Cancel,
-        //         piston,
-        //     };
-        //     world.block_action(piston_pos, cancel_action);
-        //     world.set_block(head_pos, Block::Air);
-        // } else {
-        let piston = moving.to_piston(true);
-        world.set_block(piston_pos, Block::Piston { piston });
-        let head = RedstonePistonHead {
-            facing: moving.facing,
-            sticky: moving.sticky,
-            short: false,
-        };
-        world.set_block(head_pos, Block::PistonHead { head });
-        // }
-        let pushed_pos = head_pos.offset(entity.facing);
-        let pushed_block = Block::from_id(entity.block_state);
-        //push block only if its a cube (also half-slab) and without block entity
-        let move_block = !pushed_block.has_block_entity() && pushed_block.is_cube();
-        if move_block {
-            world.set_block(pushed_pos, pushed_block);
-        }
-        on_piston_state_change(world, piston_pos, direction, move_block, false);
+pub fn update_piston_state(world: &mut impl World, piston: RedstonePiston, pos: BlockPos) {
+    let extending = should_piston_extend(world, piston.facing, pos);
+    if extending == piston.extended { return; }
+    let facing = piston.facing.into();
+    let action = if extending {
+        if payload_line(world, pos.offset(facing), facing).is_none() { return; }
+        PistonAction::Extend
     } else {
-        let piston = moving.to_piston(false);
-        world.set_block(piston_pos, Block::Piston { piston });
-        if moving.sticky {
-            world.set_block(head_pos, Block::from_id(entity.block_state));
-        } else {
-            world.set_block(head_pos, Block::Air);
-        }
-        on_piston_state_change(world, piston_pos, direction, false, true);
+        let ahead = pos.offset(facing).offset(facing);
+        let early = match world.get_block_entity(ahead) {
+            Some(BlockEntity::MovingPiston(e)) if e.extending && e.facing == facing => {
+                let s = world.piston_state();
+                s.motions.iter().find(|m| m.pos == ahead).is_some_and(|m|
+                    m.previous_progress < 0.5 || m.last_tick == s.logical_tick
+                    || matches!(s.phase, AdvancePhase::ScheduledTicks | AdvancePhase::PistonEvents))
+            }
+            _ => false,
+        };
+        if early { PistonAction::RetractWithoutPull } else { PistonAction::Retract }
+    };
+    let event = PistonEvent { pos, sticky: piston.sticky, facing, action };
+    if !world.piston_state().events.contains(&event) {
+        world.piston_state_mut().events.push_back(event);
     }
-    //don't send update tick, cause it was already scheduled in schedule_extend/schedule_retract
 }
 
-fn schedule_extend(world: &mut impl World, piston: RedstonePiston, piston_pos: BlockPos) {
-    let direction = piston.facing.into();
-    let head_pos = piston_pos.offset(direction);
-    let head_block = world.get_block(head_pos);
-    // very important condition preventing infinite loops
-    match head_block {
-        Block::MovingPiston { .. } => {
-            if !world.pending_tick_at(head_pos) {
-                tracing::info!("Piston head block is MovingPiston, scheduling tick to recover.");
-                world.schedule_tick(head_pos, 1, TickPriority::Normal);
+// Legacy scheduled base ticks become requests, never movement completion or cooldowns.
+pub fn piston_tick(world: &mut impl World, piston: RedstonePiston, pos: BlockPos) {
+    update_piston_state(world, piston, pos);
+}
 
-                on_piston_state_change(world, piston_pos, direction, false, true);
-            }
-            return;
+pub(crate) fn execute_event(world: &mut impl World, event: PistonEvent) {
+    let Block::Piston { piston } = world.get_block(event.pos) else { return; };
+    if piston.sticky != event.sticky { return; }
+    let power = should_piston_extend(world, piston.facing, event.pos);
+    match event.action {
+        PistonAction::Extend if power && !piston.extended => {
+            if !extend(world, piston, event.pos) { return; }
         }
-        Block::PistonHead { .. } => {
-            if piston.extended == false {
-                tracing::info!(
-                    "Extending... Piston head block is PistonHead, scheduling tick to recover."
-                );
-                world.set_block(
-                    piston_pos,
-                    Block::Piston {
-                        piston: piston.extend(true),
-                    },
-                );
+        PistonAction::Retract | PistonAction::RetractWithoutPull if !power && piston.extended => {
+            retract(world, piston, event.pos, event.action, event.facing);
+        }
+        _ => return,
+    }
+    world.block_action(event.pos, BlockAction::Piston {
+        action: event.action,
+        piston: RedstonePiston { facing: event.facing.into(), ..piston },
+    });
+}
+
+fn moving(world: &mut impl World, pos: BlockPos, piston: RedstonePiston,
+          carried: Block, extending: bool, source: bool, carried_entity: Option<BlockEntity>) {
+    world.delete_block_entity(pos);
+    world.set_block(pos, Block::MovingPiston { moving: RedstoneMovingPiston {
+        facing: piston.facing, sticky: piston.sticky,
+    }});
+    world.set_block_entity(pos, BlockEntity::MovingPiston(MovingPistonEntity {
+        facing: piston.facing.into(), progress: 0, block_state: carried.get_id(), extending, source,
+    }));
+    if let Some(motion) = world.piston_state_mut().motions.iter_mut().find(|m| m.pos == pos) {
+        motion.carried_entity = carried_entity.map(Box::new);
+    }
+}
+
+fn extend(world: &mut impl World, piston: RedstonePiston, pos: BlockPos) -> bool {
+    let facing = piston.facing.into();
+    let Some(line) = payload_line(world, pos.offset(facing), facing) else { return false; };
+    // Snapshot before writing overlapping source and destination cells.
+    let payloads: Vec<_> = line.iter().map(|&p| (p, world.get_block(p), world.get_block_entity(p).cloned())).collect();
+    for (p, block, entity) in payloads.iter().rev() { moving(world, p.offset(facing), piston, *block, true, false, entity.clone()); }
+    for &(p, _, _) in &payloads {
+        if !payloads.iter().any(|&(s, _, _)| s.offset(facing) == p) {
+            world.delete_block_entity(p);
+            world.set_block(p, Block::Air);
+        }
+    }
+    moving(world, pos.offset(facing), piston, Block::PistonHead { head: RedstonePistonHead {
+        facing: piston.facing, sticky: piston.sticky, short: false,
+    }}, true, true, None);
+    // Destination writes notify watched faces as well as vacated sources.
+    for &(p, _, _) in payloads.iter().rev() { shape_changed(world, p.offset(facing)); }
+    for &(p, _, _) in payloads.iter().rev() { notify(world, p); }
+    notify(world, pos.offset(facing));
+    world.set_block(pos, Block::Piston { piston: piston.extend(true) });
+    notify(world, pos);
+    true
+}
+
+fn retract(world: &mut impl World, piston: RedstonePiston, pos: BlockPos,
+           action: PistonAction, captured_facing: BlockFace) {
+    let facing: BlockFace = piston.facing.into();
+    let head = pos.offset(facing);
+    if matches!(world.get_block(head), Block::MovingPiston { .. }) { finish(world, head, true); }
+    let carried_base = RedstonePiston { facing: captured_facing.into(), extended: false, ..piston };
+    moving(world, pos, piston, Block::Piston { piston: carried_base }, false, true, None);
+    notify(world, pos);
+    let ahead = head.offset(facing);
+    let moving_extension = matches!(world.get_block(ahead), Block::MovingPiston { .. })
+        && matches!(world.get_block_entity(ahead), Some(BlockEntity::MovingPiston(e))
+            if e.extending && e.facing == facing);
+    world.delete_block_entity(head);
+    world.set_block(head, Block::Air);
+    if piston.sticky && moving_extension {
+        // Java finalizes an in-flight payload here even for a normal retract event.
+        finish(world, ahead, true);
+    } else if piston.sticky && action == PistonAction::Retract {
+        // For this timing repair, the front payload is assumed to stick.
+        // Slime/honey side attachments and push reactions are deliberately deferred.
+        let block = world.get_block(ahead);
+        if block != Block::Air && !matches!(block, Block::MovingPiston { .. }) {
+            let entity = world.get_block_entity(ahead).cloned();
+            moving(world, head, piston, block, false, false, entity);
+            world.delete_block_entity(ahead);
+            world.set_block(ahead, Block::Air);
+            notify(world, ahead);
+        }
+    }
+
+    notify(world, head);
+}
+
+pub(crate) fn tick_motion(world: &mut impl World, pos: BlockPos, identity: u64) {
+    let Some(i) = world.piston_state().motions.iter().position(|m| m.pos == pos && m.identity == identity) else { return; };
+    if !matches!(world.get_block(pos), Block::MovingPiston { .. })
+        || !matches!(world.get_block_entity(pos), Some(BlockEntity::MovingPiston(_))) {
+        world.piston_state_mut().motions.remove(i);
+        return;
+    }
+    let complete;
+    let progress;
+    {
+        let s = world.piston_state_mut();
+        let motion = &mut s.motions[i];
+        motion.last_tick = s.logical_tick;
+        motion.previous_progress = motion.progress;
+        complete = motion.progress >= 1.0;
+        if !complete { motion.progress = (motion.progress + 0.5).min(1.0); }
+        progress = motion.progress;
+    }
+    if complete { finish(world, pos, false); }
+    else if let Some(BlockEntity::MovingPiston(e)) = world.get_block_entity_mut(pos) { e.set_progress(progress); }
+}
+
+fn finish(world: &mut impl World, pos: BlockPos, interrupted: bool) {
+    if !matches!(world.get_block(pos), Block::MovingPiston { .. }) { return; }
+    let Some(BlockEntity::MovingPiston(entity)) = world.get_block_entity(pos).cloned() else { return; };
+    let mut block = if interrupted && entity.source { Block::Air } else { Block::from_id(entity.block_state) };
+    if !interrupted {
+        block.set_properties(std::collections::HashMap::from([("waterlogged", "false")]));
+    }
+    let carried_entity = world.piston_state().motions.iter().find(|m| m.pos == pos)
+        .and_then(|m| m.carried_entity.clone());
+    world.delete_block_entity(pos);
+    world.set_block(pos, block);
+    if let Some(entity) = carried_entity { world.set_block_entity(pos, *entity); }
+    if let Block::PistonHead { head } = block {
+        let base = world.get_block(pos.offset(BlockFace::from(head.facing).opposite()));
+        if !matches!(base, Block::Piston { piston } if piston.extended && piston.facing == head.facing && piston.sticky == head.sticky) {
+            block = Block::Air;
+            world.set_block(pos, block);
+        }
+    }
+    if let Block::Observer { mut observer } = block {
+        if observer.powered && !world.pending_tick_at(pos) {
+            observer.powered = false;
+            block = Block::Observer { observer };
+            world.set_block(pos, block);
+            super::on_observer_state_change(observer.facing, world, pos);
+        }
+    }
+    if !crate::interaction::is_valid_position(block, world, pos) {
+        world.set_block(pos, Block::Air);
+    }
+    notify(world, pos);
+}
+
+fn shape_changed(world: &mut impl World, pos: BlockPos) {
+    for face in NEIGHBORS {
+        let neighbor = pos.offset(face);
+        crate::interaction::change(world.get_block(neighbor), world, neighbor, face.opposite());
+        // Observers watch shape/state changes, not ordinary neighbor power callbacks.
+        let block = world.get_block(neighbor);
+        if matches!(block, Block::Observer { .. }) {
+            super::update(block, world, neighbor, Some(face.opposite()));
+        }
+    }
+}
+
+fn notify(world: &mut impl World, pos: BlockPos) {
+    shape_changed(world, pos);
+    let block = world.get_block(pos);
+    if !matches!(block, Block::Observer { .. }) { super::update(block, world, pos, None); }
+    for face in NEIGHBORS {
+        let neighbor = pos.offset(face);
+        let block = world.get_block(neighbor);
+        if !matches!(block, Block::Observer { .. }) {
+            super::update(block, world, neighbor, Some(face.opposite()));
+        }
+    }
+}
+
+/// Breaking an owned source/head removes its counterpart. Payload movement is
+/// independent and can finish without rewriting or resurrecting that source.
+pub(crate) fn remove_owned_parts(world: &mut impl World, block: Block, pos: BlockPos) {
+    match block {
+        Block::Piston { piston } if piston.extended => {
+            let head_pos = pos.offset(piston.facing.into());
+            let owned = matches!(world.get_block(head_pos), Block::PistonHead { head }
+                if head.facing == piston.facing && head.sticky == piston.sticky)
+                || matches!(world.get_block(head_pos), Block::MovingPiston { .. })
+                    && matches!(world.get_block_entity(head_pos), Some(BlockEntity::MovingPiston(e))
+                        if e.source && e.extending && e.facing == BlockFace::from(piston.facing));
+            if owned {
+                world.delete_block_entity(head_pos);
+                world.set_block(head_pos, Block::Air);
+                // The caller removes the base before issuing normal notifications.
             }
-            return;
+        }
+        Block::PistonHead { head } => remove_matching_base(world, pos, head.facing.into(), head.sticky),
+        Block::MovingPiston { moving } => {
+            if matches!(world.get_block_entity(pos), Some(BlockEntity::MovingPiston(e)) if e.source && e.extending) {
+                remove_matching_base(world, pos, moving.facing.into(), moving.sticky);
+            }
         }
         _ => {}
     }
+}
 
-    let has_entity = head_block.has_block_entity();
-    let is_cube = head_block.is_cube();
-
-    //if normal block without entity destroy because it will be moved, when block is not a cube destroy it anyways (and dont move)
-    let extend_piston = !has_entity || !is_cube;
-
-    if extend_piston {
-        // let piston_block = Block::Piston {
-        //     piston: piston.extend(true),
-        // };
-        // world.set_block(piston_pos, piston_block); //todo this might cause animation flickering but is needed for update logic (actually it's not needed at all)
-
-        //todo check for existing moving piston entity here (maybe not needed)
-        destroy_moved_block(world, head_pos);
-        world.set_block(
-            head_pos,
-            Block::MovingPiston {
-                moving: piston.into(),
-            },
-        );
-
-        let entity = MovingPistonEntity {
-            extending: true,
-            facing: direction,
-            progress: 0,
-            block_state: head_block.get_id(),
-            source: true,
-        };
-
-        world.set_block_entity(head_pos, BlockEntity::MovingPiston(entity));
-        world.schedule_tick(head_pos, 1, TickPriority::Normal);
-        world.schedule_half_tick(piston_pos, 3, TickPriority::Normal); //locks piston updates until cycle is complete
-        let action = BlockAction::Piston {
-            action: PistonAction::Extend,
-            piston,
-        };
-        world.block_action(piston_pos, action);
-        let move_block = !has_entity && is_cube;
-        on_piston_state_change(world, piston_pos, direction, move_block, true);
+fn remove_matching_base(world: &mut impl World, head: BlockPos, facing: BlockFace, sticky: bool) {
+    let base = head.offset(facing.opposite());
+    if matches!(world.get_block(base), Block::Piston { piston }
+        if piston.extended && BlockFace::from(piston.facing) == facing && piston.sticky == sticky) {
+        world.delete_block_entity(base);
+        world.set_block(base, Block::Air);
     }
 }
 
-fn schedule_retract(world: &mut impl World, piston: RedstonePiston, piston_pos: BlockPos) {
-    let direction = piston.facing.into();
-    let head_pos = piston_pos.offset(direction);
-    let head_block = world.get_block(head_pos);
-
-    // very important condition preventing infinite loops
-    match head_block {
-        Block::PistonHead { .. } => {}
-        Block::Air => {
-            if piston.extended == true {
-                let head = RedstonePistonHead {
-                    facing: piston.facing,
-                    sticky: piston.sticky,
-                    short: false,
-                };
-                place_in_world(Block::PistonHead { head }, world, head_pos, &None);
-            }
-            return;
+fn payload_line(world: &impl World, start: BlockPos, facing: BlockFace) -> Option<Vec<BlockPos>> {
+    let mut line = Vec::new();
+    let mut pos = start;
+    loop {
+        if !(0..crate::plot::PLOT_BLOCK_HEIGHT).contains(&pos.y)
+            || world.get_chunk(pos.x.div_euclid(16), pos.z.div_euclid(16)).is_none() { return None; }
+        match world.get_block(pos) {
+            Block::Air => return Some(line),
+            // A moving entity belongs to another operation; do not nest its state.
+            Block::MovingPiston { .. } | Block::PistonHead { .. } => return None,
+            _ => line.push(pos),
         }
-        Block::MovingPiston { .. } => {
-            if !world.pending_tick_at(head_pos) {
-                // illigal state, recover by scheduling tick & update
-                world.schedule_tick(head_pos, 1, TickPriority::Normal);
-
-                tracing::info!("Piston head block is MovingPiston, scheduling tick to recover.");
-
-                on_piston_state_change(world, piston_pos, direction, false, true);
-            }
-            return;
-        }
-        _ => {
-            return;
-        }
-    }
-
-    let pull_pos = head_pos.offset(direction);
-    let pull_block = world.get_block(pull_pos);
-
-    let action = BlockAction::Piston {
-        action: PistonAction::Retract,
-        piston,
-    };
-    world.block_action(piston_pos, action);
-
-    //pull block only if its a cube (also half-slab) and without block entity, else use air as placeholder
-    let block_state = if !pull_block.has_block_entity() && pull_block.is_cube() && piston.sticky {
-        destroy_moved_block(world, pull_pos);
-        pull_block
-    } else {
-        Block::Air
-    };
-
-    //temporary moving block at head position
-    world.set_block(
-        head_pos,
-        Block::MovingPiston {
-            moving: piston.into(),
-        },
-    );
-    let entity = MovingPistonEntity {
-        extending: false,
-        facing: direction,
-        progress: 0,
-        source: true,
-        block_state: block_state.get_id(),
-    };
-    world.set_block_entity(head_pos, BlockEntity::MovingPiston(entity));
-    world.schedule_tick(head_pos, 1, TickPriority::Normal);
-    world.schedule_half_tick(piston_pos, 3, TickPriority::Normal); //locks piston updates until cycle is complete
-
-    let full_update = block_state != Block::Air;
-    on_piston_state_change(world, piston_pos, direction, full_update, true);
-}
-
-//version of destroy that doesn't update blocks
-fn destroy_moved_block(world: &mut impl World, pos: BlockPos) {
-    world.delete_block_entity(pos);
-    world.set_block(pos, Block::Air {});
-}
-
-fn update_neighbors<const N: usize>(
-    world: &mut impl World,
-    pos: BlockPos,
-    skip_faces: [BlockFace; N],
-) {
-    for direction in BlockFace::values() {
-        if skip_faces.contains(&direction) {
-            continue;
-        }
-        let neighbor_pos = pos.offset(direction);
-        let block = world.get_block(neighbor_pos);
-        // tracing::info!("  update_neighbors {:?} {:?} {:?}", pos, neighbor_pos, block);
-        update(block, world, neighbor_pos, Some(direction.opposite()));
-    }
-}
-
-/// Update piston but be smart to not send too many updates
-/// head block is always updated, for base and pushed blocks the parameters `update_base` and `update_pushed`
-/// can be set to indicate if those blocks should be updated.
-fn on_piston_state_change(
-    world: &mut impl World,
-    base_pos: BlockPos,
-    facing: BlockFace,
-    update_pushed: bool,
-    update_base: bool,
-) {
-    // tracing::info!("on_piston_state_change {:?} {:?} {:?} {:?} ------", base_pos, facing, update_pushed, update_base);
-    // update head
-    let head_pos = base_pos.offset(facing);
-    let block = world.get_block(head_pos);
-    let opposite = facing.opposite();
-    update(block, world, head_pos, None); //update block itself, e.g in case of lamps
-    update_neighbors(world, head_pos, [opposite]);
-
-    // update pushed block (the block itself was updated by head update)
-    if update_pushed {
-        let pushed_pos = head_pos.offset(facing);
-        update_neighbors(world, pushed_pos, [opposite])
-    }
-
-    // update base
-    if update_base {
-        update_neighbors(world, base_pos, [facing]);
+        pos = pos.offset(facing);
     }
 }

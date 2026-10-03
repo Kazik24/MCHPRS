@@ -6,6 +6,7 @@ with tempfile.TemporaryDirectory(prefix='mchprs-1.21.5-smoke-') as directory:
     (run/'Config.toml').write_text('bind_address = "127.0.0.1:25580"\nview_distance = 2\nauto_redpiler = false\n')
     (run/'schems/rf').mkdir(parents=True)
     shutil.copyfile(ROOT/'test_data/ADDER_GWIEZDNY_TEST.schem',run/'schems/rf/ADDER_GWIEZDNY_TEST.schem')
+    shutil.copyfile(ROOT/'test_data/sign_mixed_text_v2.schem',run/'schems/rf/sign_mixed_text_v2.schem')
     (run/'schems/BadInput.schem').write_bytes(b'not gzip NBT')
     env=os.environ.copy()
     modules=ROOT/'tools/node_modules'

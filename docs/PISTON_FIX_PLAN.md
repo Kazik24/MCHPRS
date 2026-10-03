@@ -2,9 +2,23 @@
 
 Prepared: **2026-10-03**. Status: **plan only; no simulation changes made by this task**.
 
+Implementation update, **2026-10-04**: the [focused live-testing patch](LIVE_PATCH_2026_10_04.md) implements phase 1's directional observer strong power and its complete facing/side/powered input regression. The piston event/movement engine phases and live Java circuit traces remain outstanding. The original plan preparation did not change simulation code.
+
 This implements the findings in [the piston audit](PISTON_AUDIT.md). The repair covers delayed base-state transitions, the artificial cooldown, missing retract-and-drop behavior, overwritten push-chain blocks and observer strong-power direction. Success requires matching intermediate states and event ordering, in addition to final block positions.
 
 The follow-up [deep Java 1.21.5 audit](PISTON_DEEP_AUDIT.md) adds verified movement reactions, ordinary tick identity, head/replacement lifecycle, observer relocation, support updates and waterlogging to the repair scope. Its 31 diagnostics have four passing controls and 27 failing expectations on the current source snapshot.
+
+## Current repair priorities
+
+Priority updated **2026-10-04** following the user's selection. The immediate repair focuses on these three issue documents:
+
+| Priority | Required result | Relevant phases below |
+| --- | --- | --- |
+| [Lifecycle](piston-audit/LIFECYCLE.md) | Old movement cannot overwrite replacements; heads and bases retain valid ownership and removal behavior | 2–4, 6 |
+| [Scheduled ticks](piston-audit/SCHEDULED_TICKS.md) | Work retains its expected block type and cannot dispatch into a replacement component | 2, 6 |
+| [Completion updates](piston-audit/COMPLETION_UPDATES.md) | Restoration executes correct placement, support and state-normalization callbacks | 3, 5–6 |
+
+Use the phase descriptions as the dependency map for those repairs. The broader movement-rule and timing findings remain a secondary backlog; they do not all need to be bundled into the first repair. Changes to event/moving-state representation are still required where they establish ownership or correct completion. Pin the reference, preserve save compatibility and run the selected acceptance checks before expanding scope.
 
 ## Baseline, target and scope
 
@@ -128,7 +142,9 @@ Test pulses before an extension event executes, immediately after it, at the hal
 
 **Acceptance:** new saves round-trip in-flight motion, conversion preserves supported old data or reports its limitation safely, nano/pico commands and edits remain coherent, and compiler handoffs do not drop piston work.
 
-## Commit sequence and release checks
+## Broader commit sequence and release checks
+
+The sequence below describes the complete earlier compliance plan. Select and regroup the required changes around the three current priorities above; it does not require an unrelated observer-power or full movement-rule repair to ship first.
 
 | Commit group | Reviewable deliverable |
 | --- | --- |

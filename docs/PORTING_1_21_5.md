@@ -73,7 +73,7 @@ python tools/run_protocol_smoke.py
 python tools/run_plot_load_smoke.py
 ```
 
-Final workspace result: **37 passed, 1 failed**, with no ignored tests. Formatting, locked debug/release builds, generator reproducibility and the independent integration test passed.
+Current workspace result: **41 passed, 1 failed**, with no ignored tests. Formatting, locked debug/release builds, generator reproducibility and the independent integration test passed. The latest [focused live-testing patch](LIVE_PATCH_2026_10_04.md) fixes mixed sign-row NBT encoding and directional observer strong power; the broader piston engine repair remains outstanding.
 
 The complete suite preserves the single known failure: `redstone::tests::test_memory_cell_unaligned_nanoticks`, tick 0. All four piston update fixtures, Chungus interpreter/compiler cases, registry round trips, codec, migration and schematic tests pass. Expected Chungus hashes are unchanged; hashing normalizes target states to their corresponding legacy IDs so registry renumbering does not alter the semantic circuit comparison.
 

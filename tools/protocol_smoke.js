@@ -114,11 +114,35 @@ function command(client,command) { client.write('chat_command',{command}); }
     await we('/save SmokeRoundtrip.schem','saved sucessfuly');
     await we('/load SmokeRoundtrip.schem','loaded to your clipboard');
     await we('/paste','clipboard was pasted');
+    // This exact production schematic used to panic while encoding mixed sign rows.
+    await we('/load rf/sign_mixed_text_v2.schem','loaded to your clipboard');
+    const entityStart=a.entities.length;
+    await we('/paste','clipboard was pasted');
+    await until(()=>a.entities.slice(entityStart).filter(p=>p.action===7).length===2,'mixed sign row packets');
+    function render(component) {
+      if(typeof component==='string')return component;
+      if(Array.isArray(component))return component.map(render).join('');
+      if(Object.hasOwn(component,''))return render(component['']);
+      return (component.text||'')+(component.extra||[]).map(render).join('');
+    }
+    const signs=a.entities.slice(entityStart).filter(p=>p.action===7).map(p=>nbt.simplify(p.nbtData));
+    assert(signs.some(s=>JSON.stringify(s.front_text.messages.map(render))===JSON.stringify(['Addery ','by','Lord225',''])));
+    assert(signs.some(s=>JSON.stringify(s.front_text.messages.map(render))===JSON.stringify(['Dodawanie','Update','',''])));
+    assert(signs.every(s=>s.back_text.messages.every(m=>render(m)==='')));
+    const mixedPosition=a.entities[entityStart].location;
+    command(a,'/undo');
+    await until(()=>state(a,mixedPosition.x,mixedPosition.y,mixedPosition.z)===0,'mixed sign undo');
+    const redoStart=a.entities.length;
+    command(a,'/redo');
+    await until(()=>a.entities.slice(redoStart).filter(p=>p.action===7).length===2,'mixed sign redo packets');
+    await we('/save MixedSignsRoundtrip.schem','saved sucessfuly');
+    await we('/load MixedSignsRoundtrip.schem','loaded to your clipboard');
+    await we('/paste','clipboard was pasted');
     a.end(); await delay(600);
     const again=await connect('PortSmokeOne');
     assert.equal(again.slots.get(37).components[1].data,16);
     command(again,'rtps');
-    console.log('PASS: configuration, two players, deep chunks, commands, components, placement, piston events, acknowledgements, Sponge v3 load/paste/undo/redo/v2 save/reload and reconnect.');
+    console.log('PASS: configuration, two players, deep chunks, commands, components, placement, piston events, acknowledgements, Sponge v3 and production mixed-sign v2 paste/undo/redo/save/reload and reconnect.');
     stopping=true; command(again,'stop'); await delay(800);
   } else {
     assert.equal(a.slots.get(37).components[1].data,16);

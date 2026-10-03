@@ -337,6 +337,7 @@ pub fn place_in_world(
 }
 
 pub fn destroy(block: Block, world: &mut impl World, pos: BlockPos) {
+    redstone::piston::remove_owned_parts(world, block, pos);
     if block.has_block_entity() {
         world.delete_block_entity(pos);
     }
@@ -380,6 +381,16 @@ pub fn destroy(block: Block, world: &mut impl World, pos: BlockPos) {
     }
 }
 
+// Center support geometry needed by torches and attachments around moving pistons.
+fn supports_attachment(block: Block, face: BlockFace) -> bool {
+    match block {
+        Block::MovingPiston { .. } => false,
+        Block::PistonHead { head } => BlockFace::from(head.facing) == face,
+        Block::Piston { piston } if piston.extended => BlockFace::from(piston.facing) != face,
+        _ => block.is_cube(),
+    }
+}
+
 pub fn is_valid_position(block: Block, world: &impl World, pos: BlockPos) -> bool {
     if world.is_cursed() {
         return true;
@@ -392,46 +403,53 @@ pub fn is_valid_position(block: Block, world: &impl World, pos: BlockPos) -> boo
         | Block::Sign { .. }
         | Block::RedstoneTorch { .. } => {
             let bottom_block = world.get_block(pos.offset(BlockFace::Bottom));
-            bottom_block.is_cube()
+            supports_attachment(bottom_block, BlockFace::Top)
         }
         Block::RedstoneWallTorch { facing, .. } | Block::WallSign { facing, .. } => {
             let parent_block = world.get_block(pos.offset(facing.opposite().block_face()));
-            parent_block.is_cube()
+            supports_attachment(parent_block, facing.block_face())
         }
         Block::TripwireHook { direction, .. } => {
             let parent_block = world.get_block(pos.offset(direction.opposite().block_face()));
-            parent_block.is_cube()
+            supports_attachment(parent_block, direction.block_face())
         }
         Block::Lever { lever } => match lever.face {
             LeverFace::Floor => {
                 let bottom_block = world.get_block(pos.offset(BlockFace::Bottom));
-                bottom_block.is_cube()
+                supports_attachment(bottom_block, BlockFace::Top)
             }
             LeverFace::Ceiling => {
                 let top_block = world.get_block(pos.offset(BlockFace::Top));
-                top_block.is_cube()
+                supports_attachment(top_block, BlockFace::Bottom)
             }
             LeverFace::Wall => {
                 let parent_block =
                     world.get_block(pos.offset(lever.facing.opposite().block_face()));
-                parent_block.is_cube()
+                supports_attachment(parent_block, lever.facing.block_face())
             }
         },
         Block::StoneButton { button } => match button.face {
             ButtonFace::Floor => {
                 let bottom_block = world.get_block(pos.offset(BlockFace::Bottom));
-                bottom_block.is_cube()
+                supports_attachment(bottom_block, BlockFace::Top)
             }
             ButtonFace::Ceiling => {
                 let top_block = world.get_block(pos.offset(BlockFace::Top));
-                top_block.is_cube()
+                supports_attachment(top_block, BlockFace::Bottom)
             }
             ButtonFace::Wall => {
                 let parent_block =
                     world.get_block(pos.offset(button.facing.opposite().block_face()));
-                parent_block.is_cube()
+                supports_attachment(parent_block, button.facing.block_face())
             }
         },
+        Block::PistonHead { head } => matches!(
+            world.get_block(pos.offset(BlockFace::from(head.facing).opposite())),
+            Block::Piston { piston } if piston.extended && piston.facing == head.facing && piston.sticky == head.sticky
+        ) || matches!(
+            world.get_block_entity(pos.offset(BlockFace::from(head.facing).opposite())),
+            Some(BlockEntity::MovingPiston(e)) if !e.extending && e.source && e.facing == BlockFace::from(head.facing)
+        ),
         _ => true,
     }
 }

@@ -1,6 +1,6 @@
 # Deeper piston audit against Java 1.21.5
 
-Prepared **2026-10-03**. This follows [the original audit](PISTON_AUDIT.md) and extends [the repair plan](PISTON_FIX_PLAN.md). No shared simulation fixes were applied.
+Audit started **2026-10-03** and completed **2026-10-04**. This follows [the original audit](PISTON_AUDIT.md) and extends [the repair plan](PISTON_FIX_PLAN.md). No shared simulation fixes were applied.
 
 ## Scope and evidence
 
@@ -90,10 +90,15 @@ These show working portions of ordinary final-state movement and input detection
 
 ## Repair priorities
 
-1. **Prevent destructive moves:** movement reactions, full resolver, bounded destinations, push limit, side attachments and unknown/block-entity handling. Include existing chain preservation and the new trapdoor/sign cases.
-2. **Protect transition ownership:** typed ordinary ticks, typed piston events, separate moving entities, correct source states, replacement guards and head lifecycle.
-3. **Match Java timing and notifications:** base transitions, progress, interrupted movement/drop, observer relocation, support/shape updates and waterlogging.
-4. **Verify integration:** game/nano/pico traces, save/load in flight, editing, compiler handoffs and target-client animation, followed by the version-matched memory-cell run.
+The user selected these three areas as the main repair priorities on **2026-10-04**. Each has a focused issue document:
+
+1. [**Lifecycle**](piston-audit/LIFECYCLE.md): preserve replaced bases, validate head/backing relationships, remove orphan heads and make each transition own its completion work.
+2. [**Scheduled ticks**](piston-audit/SCHEDULED_TICKS.md): retain the requesting block type, reject cross-type dispatch and preserve that identity through saves and compiler handoffs.
+3. [**Completion updates**](piston-audit/COMPLETION_UPDATES.md): execute placement and structural callbacks, reset moved observers correctly, normalize waterlogging and remove unsupported attachments.
+
+The other discrepancies remain recorded as a secondary backlog. Their ordering should not displace these priorities. Movement representation and event handling may still require changes where they are dependencies of the three selected repairs.
+
+Verify the selected repairs with game/nano/pico traces, save/load in flight, editing and compiler handoffs. Keep the version-matched memory-cell run as a separate reference-validation gate.
 
 Slime/honey remains an explicitly separate milestone if the first repair is scoped to the original supported block set; conservative behavior must still preserve unsupported circuits. No claim of complete vanilla compliance is justified by the existing four passing schematic fixtures.
 
@@ -112,4 +117,4 @@ Run `cargo test -p mchprs_core --lib --locked --offline piston_deep_audit -- --n
 
 The Java property probe uses the inner server JAR and libraries extracted from the verified bundler, then runs the included source with Java 21. Its obfuscated names are pinned specifically to 1.21.5 and must be regenerated for another version.
 
-Not validated: a running Java memory-cell schematic, exact nano/pico correspondence to Java phases, player/entity collision physics, sounds/drops in a live client, save/restart equivalence, or the full workspace/release suite. The 1.21.5 release also changes piston destruction sounds; that presentation behavior is outside these simulation diagnostics. Existing memory-cell expectations remain provisional.
+Not validated: a running Java memory-cell schematic, exact nano/pico correspondence to Java phases, player/entity collision physics, sounds/drops in a live client, save/restart equivalence, or the full workspace/release suite. The [official 1.21.5 release notes](https://www.minecraft.net/en-us/article/minecraft-java-edition-1-21-5) also describe piston destruction sounds; that presentation behavior is outside these simulation diagnostics. Existing memory-cell expectations remain provisional.

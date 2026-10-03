@@ -16,7 +16,7 @@ use std::path::Path;
 use std::{fmt, io};
 use thiserror::Error;
 
-pub const VERSION: u32 = 3;
+pub const VERSION: u32 = 4;
 pub const MC_DATA_VERSION: u32 = 4325;
 
 #[derive(Error, Debug)]
@@ -108,6 +108,7 @@ pub struct PlotData<const NUM_CHUNK_SECTIONS: usize> {
     pub world_send_rate: WorldSendRate,
     pub chunk_data: Vec<ChunkData<NUM_CHUNK_SECTIONS>>,
     pub pending_ticks: Vec<TickEntry>,
+    pub piston_state: mchprs_world::PistonState,
 }
 
 impl<const NUM_CHUNK_SECTIONS: usize> PlotData<NUM_CHUNK_SECTIONS> {
@@ -174,6 +175,47 @@ impl<const NUM_CHUNK_SECTIONS: usize> PlotData<NUM_CHUNK_SECTIONS> {
                     }
                     _ => (),
                 }
+            }
+        }
+        let registry_count = mchprs_blocks::generated::BLOCKS.len() as u32;
+        for tick in &self.pending_ticks {
+            if tick.ticks_left >= 32
+                || tick.block_type.is_some_and(|id| id >= registry_count)
+                || (tick.ticks_left == 0 && tick.tick_priority != mchprs_world::TickPriority::NanoTick) {
+                return Err(invalid("invalid scheduled block tick"));
+            }
+        }
+        let state = &self.piston_state;
+        if state.movement_cursor > state.movement_work.len()
+            || (state.phase != mchprs_world::AdvancePhase::MovingEntities
+                && (!state.movement_work.is_empty() || state.movement_cursor != 0)) {
+            return Err(invalid("invalid piston movement phase"));
+        }
+        let mut ids = std::collections::HashSet::new();
+        let mut positions = std::collections::HashSet::new();
+        for motion in &state.motions {
+            if motion.identity == 0 || motion.identity > state.next_identity
+                || !ids.insert(motion.identity) || !positions.insert(motion.pos)
+                || !motion.progress.is_finite() || !motion.previous_progress.is_finite()
+                || !(0.0..=1.0).contains(&motion.progress)
+                || !(0.0..=motion.progress).contains(&motion.previous_progress)
+                || motion.last_tick > state.logical_tick
+                || !(0..NUM_CHUNK_SECTIONS as i32 * 16).contains(&motion.pos.y) {
+                return Err(invalid("invalid piston motion"));
+            }
+        }
+        for (pos, id) in &state.movement_work {
+            // A replaced/deleted entity may remain in the snapshot; its identity
+            // is discarded when stepping rather than applied to the replacement.
+            if *id == 0 || *id > state.next_identity
+                || !(0..NUM_CHUNK_SECTIONS as i32 * 16).contains(&pos.y) {
+                return Err(invalid("invalid piston movement snapshot"));
+            }
+        }
+        for (i, event) in state.events.iter().enumerate() {
+            if !(0..NUM_CHUNK_SECTIONS as i32 * 16).contains(&event.pos.y)
+                || state.events.iter().take(i).any(|previous| previous == event) {
+                return Err(invalid("invalid or duplicate piston event"));
             }
         }
         Ok(())

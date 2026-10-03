@@ -123,7 +123,13 @@ impl MovingPistonEntity {
     pub const ID: &'static str = "minecraft:piston";
     pub const MAX_PROGRESS: u8 = u8::MAX;
     pub fn get_progress(&self) -> f32 {
-        self.progress as f32 / Self::MAX_PROGRESS as f32
+        // The legacy byte layout is retained; the simulation also stores exact
+        // current/previous progress. Preserve the exact half-step on the wire.
+        if self.progress == 127 {
+            0.5
+        } else {
+            self.progress as f32 / Self::MAX_PROGRESS as f32
+        }
     }
     pub fn set_progress(&mut self, progress: f32) {
         self.progress = Self::progress_to_u8(progress);
@@ -395,7 +401,7 @@ impl BlockEntity {
             BlockEntity::Sign(sign) => Some({
                 let text = |rows: &[String; 4], color: &str, glow: bool| {
                     Value::Compound(map! {
-                        "messages"=>Value::List(rows.iter().map(|s|mchprs_network::text::from_json(s)).collect()),
+                        "messages"=>mchprs_network::text::list(rows.iter().map(|s|mchprs_network::text::from_json(s)).collect()),
                         "color"=>Value::String(color.into()),"has_glowing_text"=>Value::Byte(glow as i8)
                     })
                 };

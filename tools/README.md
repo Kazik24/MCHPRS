@@ -28,3 +28,5 @@ On Windows, `py` can replace `python`. If your npm installation does not resolve
 These clients independently decode the wire formats; they do not replace graphical vanilla-client checks of registry codecs, appearance and animations. The known memory-cell simulation regression remains visible in `cargo test --workspace --locked --no-fail-fast`.
 
 The plot-load runner uses localhost port 25582 and a separate temporary world. It checks repeated attempts to enter an unsupported plot, failed spawn/template loading, disconnect reasons, continued access to healthy plots, preservation of rejected files and graceful shutdown across three server processes.
+
+The protocol smoke runner also includes the exact production mixed-sign fixture (`test_data/sign_mixed_text_v2.schem`). It checks both sign sides' message contents, paste, undo/redo and v2 export/reload, covering the reported `HeterogeneousList` crash.

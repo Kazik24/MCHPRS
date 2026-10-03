@@ -3,6 +3,7 @@ pub mod storage;
 use mchprs_blocks::block_entities::BlockEntity;
 use mchprs_blocks::blocks::{Block, RedstonePiston};
 use mchprs_blocks::BlockPos;
+pub use mchprs_world::PistonAction;
 use mchprs_world::TickPriority;
 use storage::Chunk;
 
@@ -32,6 +33,9 @@ pub trait World {
     /// Returns a reference to the block entity at `pos` if it exists.
     /// Returns None if there is no block entity at `pos`.
     fn get_block_entity(&self, pos: BlockPos) -> Option<&BlockEntity>;
+    fn get_block_entity_mut(&mut self, pos: BlockPos) -> Option<&mut BlockEntity>;
+    fn piston_state(&self) -> &mchprs_world::PistonState;
+    fn piston_state_mut(&mut self) -> &mut mchprs_world::PistonState;
 
     /// Sets the block entity at `pos`, overwriting any other block entity that was there prior.
     fn set_block_entity(&mut self, pos: BlockPos, block_entity: BlockEntity);
@@ -70,11 +74,6 @@ pub trait World {
 }
 
 // https://wiki.vg/Block_Actions#Piston
-pub enum PistonAction {
-    Extend = 0,
-    Retract = 1,
-    Cancel = 2,
-}
 pub enum BlockAction {
     Piston {
         action: PistonAction,

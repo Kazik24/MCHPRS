@@ -120,21 +120,35 @@ impl TickScheduler<NodeId> {
     }
 }
 
-impl TickScheduler<BlockPos> {
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ScheduledBlockTick {
+    pub pos: BlockPos,
+    pub block_type: Option<u32>,
+}
+
+impl TickScheduler<ScheduledBlockTick> {
     pub fn iter_entries(&self) -> impl Iterator<Item = TickEntry> + '_ where {
-        self.iter().map(|(pos, d, p)| TickEntry {
-            pos: *pos,
+        self.iter().map(|(node, d, p)| TickEntry {
+            pos: node.pos,
+            block_type: node.block_type,
             ticks_left: d as u32,
             tick_priority: p,
         })
     }
 }
 
-impl FromIterator<TickEntry> for TickScheduler<BlockPos> {
+impl FromIterator<TickEntry> for TickScheduler<ScheduledBlockTick> {
     fn from_iter<T: IntoIterator<Item = TickEntry>>(iter: T) -> Self {
         let mut scheduler = Self::default();
         for entry in iter {
-            scheduler.schedule_half_tick(entry.pos, entry.ticks_left as usize, entry.tick_priority);
+            scheduler.schedule_half_tick(
+                ScheduledBlockTick {
+                    pos: entry.pos,
+                    block_type: entry.block_type,
+                },
+                entry.ticks_left as usize,
+                entry.tick_priority,
+            );
         }
         scheduler
     }
@@ -232,6 +246,7 @@ mod tests {
         let mut sch = TickScheduler::default();
 
         let entries = iter::repeat_with(|| TickEntry {
+            block_type: None,
             pos: BlockPos::new(
                 rng.gen_range(0..128),
                 rng.gen_range(0..128),

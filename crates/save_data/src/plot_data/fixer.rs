@@ -14,6 +14,7 @@ use std::path::Path;
 use tracing::debug;
 
 pub mod legacy_1_18;
+pub mod legacy_1_21_5;
 
 #[derive(Debug)]
 pub enum FixInfo {
@@ -28,6 +29,15 @@ pub fn try_fix<const NUM_SECTIONS: usize>(
 ) -> Result<Option<PlotData<NUM_SECTIONS>>, PlotLoadError> {
     debug!("Trying to fix plot with {:?}", info);
     let result = match info {
+        FixInfo::OldVersion { version: 3 } => {
+            let data = fs::read(&path)?;
+            if data.len() < 16
+                || u32::from_le_bytes(data[12..16].try_into().unwrap()) != super::MC_DATA_VERSION
+            {
+                return Err(PlotLoadError::ConversionFailed(3));
+            }
+            Some(legacy_1_21_5::decode(&data[16..])?)
+        }
         FixInfo::OldVersion { version: 1 } => {
             let data = fs::read(&path)?;
             Some(legacy_1_18::decode(&data[12..])?)

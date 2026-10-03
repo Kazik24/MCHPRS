@@ -66,6 +66,7 @@ static EMPTY_PLOT: Lazy<Result<PlotData<PLOT_SECTIONS>, String>> = Lazy::new(|| 
             world_send_rate: WorldSendRate::default(),
             chunk_data,
             pending_ticks: Vec::new(),
+            piston_state: Default::default(),
         })
     }
 });

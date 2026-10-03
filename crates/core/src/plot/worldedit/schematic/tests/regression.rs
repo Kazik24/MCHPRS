@@ -109,6 +109,35 @@ fn all_existing_v2_fixtures_import_and_export() {
     .unwrap();
     assert_eq!((cb.size_x, cb.size_y, cb.size_z), (7, 3, 7));
 }
+
+#[test]
+fn mixed_sign_rows_paste_and_roundtrip_without_encoding_failure() {
+    let cb = load_schematic(Cursor::new(include_bytes!(
+        "../../../../../../../test_data/sign_mixed_text_v2.schem"
+    )))
+    .unwrap();
+    assert_eq!((cb.size_x, cb.size_y, cb.size_z), (16, 8, 33));
+    assert_eq!(cb.block_entities.len(), 2);
+    let chunks = (0..PLOT_WIDTH)
+        .flat_map(|x| (0..PLOT_WIDTH).map(move |z| Chunk::empty(x, z)))
+        .collect();
+    let mut world = PlotWorld::from_chunks(0, 0, chunks, Default::default());
+    let origin = BlockPos::new(100, 60, 100);
+    // set_block_entity encodes the same update packet even with no connected players.
+    paste_clipboard(&mut world, &cb, origin, false);
+    for (pos, entity) in &cb.block_entities {
+        let at = origin + *pos - BlockPos::new(cb.offset_x, cb.offset_y, cb.offset_z);
+        let Some(BlockEntity::Sign(sign)) = world.get_block_entity(at) else {
+            panic!("missing pasted sign at {at:?}");
+        };
+        let BlockEntity::Sign(expected) = entity else {
+            panic!("not a sign")
+        };
+        assert_eq!(sign.rows, expected.rows);
+        assert_eq!(sign.back_rows, expected.back_rows);
+    }
+    assert_roundtrip(&cb);
+}
 #[test]
 fn paste_capture_restore_and_reapply_keep_blocks_and_sign_positions() {
     let cb = load_schematic(Cursor::new(ADDER)).unwrap();

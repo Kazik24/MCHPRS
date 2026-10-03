@@ -101,7 +101,7 @@ fn migrates_palette_and_direct_states_with_pistons_signs_and_backup() {
         );
         assert_eq!(fs::read(temp.0.join("plot.bak.1")).unwrap(), original);
         let bytes = fs::read(&path).unwrap();
-        assert_eq!(&bytes[8..16], &[3, 0, 0, 0, 229, 16, 0, 0]);
+        assert_eq!(&bytes[8..16], &[4, 0, 0, 0, 229, 16, 0, 0]);
         PlotData::<1>::load_from_file(&path, true).unwrap();
         converted.save_to_file(&path).unwrap(); // Existing destination replacement on Windows.
     }

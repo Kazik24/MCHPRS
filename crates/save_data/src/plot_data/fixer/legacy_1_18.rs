@@ -1,10 +1,10 @@
 //! Frozen format-1 bincode layout. Never add/reorder fields or enum variants here.
+use super::legacy_1_21_5::LegacyTick;
 use crate::plot_data::{ChunkData, ChunkSectionData, PlotData, PlotLoadError, Tps, WorldSendRate};
 use mchprs_blocks::block_entities::{
     self as current, ContainerType, InventoryEntry, MovingPistonEntity,
 };
 use mchprs_blocks::BlockPos;
-use mchprs_world::TickEntry;
 use rustc_hash::FxHashMap;
 use serde::{Deserialize, Serialize};
 use serde_big_array::BigArray;
@@ -37,7 +37,7 @@ pub struct Plot<const N: usize> {
     pub tps: Tps,
     pub world_send_rate: WorldSendRate,
     pub chunk_data: Vec<Chunk<N>>,
-    pub pending_ticks: Vec<TickEntry>,
+    pub pending_ticks: Vec<LegacyTick>,
 }
 pub fn state(id: u32) -> Result<u32, PlotLoadError> {
     mchprs_blocks::generated::LEGACY_BLOCK_STATES
@@ -125,12 +125,15 @@ pub fn convert<const N: usize>(old: Plot<N>) -> Result<PlotData<N>, PlotLoadErro
             block_entities: entities,
         });
     }
-    Ok(PlotData {
+    let mut result = PlotData {
         tps: old.tps,
         world_send_rate: old.world_send_rate,
         chunk_data: chunks,
-        pending_ticks: old.pending_ticks,
-    })
+        pending_ticks: old.pending_ticks.into_iter().map(Into::into).collect(),
+        piston_state: Default::default(),
+    };
+    super::legacy_1_21_5::convert_motion(&mut result)?;
+    Ok(result)
 }
 pub fn decode<const N: usize>(data: &[u8]) -> Result<PlotData<N>, PlotLoadError> {
     convert(bincode::deserialize::<Plot<N>>(data)?)
@@ -140,7 +143,7 @@ pub fn decode<const N: usize>(data: &[u8]) -> Result<PlotData<N>, PlotLoadError>
 struct PlotBeforeSendRate<const N: usize> {
     tps: Tps,
     chunk_data: Vec<Chunk<N>>,
-    pending_ticks: Vec<TickEntry>,
+    pending_ticks: Vec<LegacyTick>,
 }
 pub fn decode_v0<const N: usize>(data: &[u8]) -> Result<PlotData<N>, PlotLoadError> {
     let old: PlotBeforeSendRate<N> = bincode::deserialize(data)?;

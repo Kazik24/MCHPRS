@@ -1,5 +1,5 @@
 {
-  "audit_date": "2026-10-03",
+  "audit_date": "2026-10-04",
   "branch": "port/piston-1.21.5",
   "git_base": "cb3d4e27a67737abad990932ce94b5461368d45f",
   "scope": "Snapshot of uncommitted current port sources; isolated Rust diagnostics and official Java runtime block-property probe. No live Java circuit trace.",
@@ -7,7 +7,7 @@
   "reference_directory": "C:\\Users\\Maciej\\AppData\\Local\\Temp\\mchprs-piston-audit-fd86695a\\audit-references",
   "source_sha256": {
     "crates/core/src/redstone/piston.rs": "41b6aa96e9f5006795b52eb722ea1ab9b938df569abb660da0db003616c04361",
-    "crates/core/src/redstone/mod.rs": "e3fd4d6e9890daf52dd5b89bea954329bb1028ac3b78eccf89826fc4ac3bdc23",
+    "crates/core/src/redstone/mod.rs": "56726e56218d1b026f7d6398534ce188a950972506e261f72e35bf3d8075c2db",
     "crates/core/src/redpiler/backend/queue.rs": "053649eedd607ce4b5011814ecc3b5458208cf287e5cd3207bfe5277062042ee",
     "crates/core/src/plot/mod.rs": "4e27e3a5190661620003c1f0397f90f78f5ffdc0306a802533dc53f28272fc94",
     "crates/core/src/interaction.rs": "25d8f665fbcd534a4b84c3cc11b8c061425b09c95160a4e5232d784c2c9bfaab",
@@ -225,5 +225,7 @@
     "Progress quantization is a representation defect; short-pulse code does not yet read this field.",
     "Memory-cell expected trace remains provisional.",
     "No full workspace/release/client/save-roundtrip or live Java circuit validation."
-  ]
+  ],
+  "source_hash_note": "redstone/mod.rs hash excludes appended diagnostic module registrations; other hashes are exact snapshot files.",
+  "audit_started": "2026-10-03"
 }

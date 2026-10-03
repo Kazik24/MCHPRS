@@ -23,7 +23,7 @@ Two existing exporter/paste defects were fixed: palette VarInts now use a seven-
 
 ## Verified results
 
-`cargo test -p mchprs_core plot::worldedit::schematic --locked`: **9 passed**.
+Schematic tests in the full workspace run: **10 passed**, including the production mixed-sign-row crash fixture added on 2026-10-04. See [the focused patch report](LIVE_PATCH_2026_10_04.md).
 
 | Check | Result |
 | --- | --- |
