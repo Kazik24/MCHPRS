@@ -54,7 +54,13 @@ fn calculate_world_hash(world: &PlotWorld) -> Box<[u8]> {
             for z in 0..16 {
                 for y in 0..256 {
                     let ch = chunk.get_block(x, y, z);
-                    hasher.update(ch.to_le_bytes());
+                    let legacy = mchprs_blocks::generated::TARGET_TO_LEGACY[ch as usize];
+                    assert_ne!(
+                        legacy,
+                        u32::MAX,
+                        "unexpected target-only state in legacy circuit fixture"
+                    );
+                    hasher.update(legacy.to_le_bytes());
                 }
             }
         }

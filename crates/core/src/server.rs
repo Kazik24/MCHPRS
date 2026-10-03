@@ -3,14 +3,12 @@ use crate::config::CONFIG;
 use crate::permissions;
 use crate::player::{Gamemode, PacketSender, Player};
 use crate::plot::commands::DECLARE_COMMANDS;
-use crate::plot::{self, database, Plot, PLOT_BLOCK_HEIGHT};
+use crate::plot::{self, database, Plot};
 use crate::utils::HyphenatedUUID;
 use backtrace::Backtrace;
 use bus::Bus;
 use mchprs_network::packets::clientbound::{
-    CDisconnectLogin, CHeldItemChange, CJoinGame, CJoinGameBiomeEffects,
-    CJoinGameBiomeEffectsMoodSound, CJoinGameBiomeElement, CJoinGameDimensionCodec,
-    CJoinGameDimensionElement, CLoginSuccess, CPlayerInfo, CPlayerInfoAddPlayer,
+    CDisconnectLogin, CHeldItemChange, CJoinGame, CLoginSuccess, CPlayerInfo, CPlayerInfoAddPlayer,
     CPlayerPositionAndLook, CPluginMessage, CPong, CResponse, CSetCompression, CTimeUpdate,
     CWindowItems, ClientBoundPacket,
 };
@@ -19,19 +17,19 @@ use mchprs_network::packets::serverbound::{
 };
 use mchprs_network::packets::{PacketEncoderExt, SlotData};
 use mchprs_network::{NetworkServer, NetworkState, PlayerPacketSender};
-use mchprs_utils::map;
 use rustc_hash::FxHashMap;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
+use std::convert::TryInto;
 use std::fs::{self, File};
 use std::path::Path;
 use std::sync::mpsc::{self, Receiver, Sender};
 use std::time::{Duration, Instant};
 use tracing::{debug, error, info, warn};
 
-pub const MC_VERSION: &str = "1.18.2";
-pub const MC_DATA_VERSION: i32 = 2975;
-pub const PROTOCOL_VERSION: i32 = 758;
+pub const MC_VERSION: &str = "1.21.5";
+pub const MC_DATA_VERSION: i32 = 4325;
+pub const PROTOCOL_VERSION: i32 = 770;
 
 /// `Message` gets send from a plot thread to the server thread.
 #[derive(Debug)]
@@ -51,6 +49,8 @@ pub enum Message {
     PlayerUpdateGamemode(u128, Gamemode),
     /// This message is sent to the server thread when a plot unloads itself.
     PlotUnload(i32, i32),
+    /// Retains queued players until the server removes the failed plot's sender.
+    PlotLoadFailed(i32, i32, String, Option<Player>, Receiver<PrivMessage>),
     /// This message is sent to the server thread when a player runs /whitelist add.
     WhitelistAdd(u128, String, PlayerPacketSender),
     /// This message is sent to the server thread when a player runs /whitelist remove.
@@ -234,8 +234,10 @@ impl MinecraftServer {
         // Wait for all plots to save and unload
         while !self.running_plots.is_empty() {
             while let Ok(message) = self.receiver.try_recv() {
-                if let Message::PlotUnload(plot_x, plot_z) = message {
-                    self.handle_plot_unload(plot_x, plot_z);
+                match message {
+                    Message::PlotUnload(plot_x, plot_z) => self.handle_plot_unload(plot_x, plot_z),
+                    message @ Message::PlotLoadFailed(..) => self.handle_message(message),
+                    _ => {}
                 }
                 std::thread::sleep(Duration::from_millis(2));
             }
@@ -319,6 +321,8 @@ impl MinecraftServer {
                 }
                 .encode();
                 clients[client_idx].send_packet(&disconnect);
+                clients[client_idx].close_connection();
+                return;
             }
         }
 
@@ -333,88 +337,29 @@ impl MinecraftServer {
         .encode();
         clients[client_idx].send_packet(&login_success);
 
-        let client = clients.remove(client_idx);
+        clients[client_idx].uuid = Some(uuid);
+        clients[client_idx].protocol_phase = 1;
+    }
 
-        let player = Player::load_player(uuid, username, client.into());
+    fn finish_player_login(&mut self, client_idx: usize) {
+        let client = self.network.handshaking_clients.remove(client_idx);
+        let username = client.username.clone().unwrap();
+        let uuid = client.uuid.unwrap();
 
-        let dimension = CJoinGameDimensionElement {
-            natural: 1,
-            ambient_light: 1.0,
-            has_ceiling: 0,
-            has_skylight: 1,
-            fixed_time: 6000,
-            shrunk: 0,
-            ultrawarm: 0,
-            has_raids: 0,
-            min_y: 0,
-            height: PLOT_BLOCK_HEIGHT,
-            respawn_anchor_works: 0,
-            bed_works: 0,
-            coordinate_scale: 1.0,
-            piglin_safe: 0,
-            logical_height: PLOT_BLOCK_HEIGHT,
-            infiniburn: "#minecraft:infiniburn_overworld".to_owned(),
+        let Some(player) = Player::load_player(uuid, username, client.into()) else {
+            return;
         };
 
         let join_game = CJoinGame {
             entity_id: player.entity_id as i32,
             is_hardcore: false,
             gamemode: player.gamemode.get_id() as u8,
-            previous_gamemode: 1,
+            previous_gamemode: 255,
             world_count: 1,
             world_names: vec!["mchprs:world".to_owned()],
-            dimension_codec: CJoinGameDimensionCodec {
-                dimensions: map! {
-                    "mchprs:dimension" => dimension.clone()
-                },
-                biomes: map! {
-                    "mchprs:plot" => CJoinGameBiomeElement {
-                        precipitation: "none".to_owned(),
-                        effects: CJoinGameBiomeEffects {
-                            sky_color: 0x7BA4FF,
-                            water_fog_color: 0x050533,
-                            fog_color: 0xC0D8FF,
-                            water_color: 0x3F76E4,
-                            mood_sound: CJoinGameBiomeEffectsMoodSound {
-                                tick_delay: 6000,
-                                offset: 2.0,
-                                sound: "minecraft:ambient.cave".to_owned(),
-                                block_search_extent: 8,
-                            }
-                        },
-                        depth: 0.1,
-                        temperature: 0.5,
-                        scale: 0.2,
-                        downfall: 0.5,
-                        category: "none".to_owned(),
-                    },
-                    // Apparently the client NEEDS this to exist
-                    "minecraft:plains" => CJoinGameBiomeElement {
-                        precipitation: "none".to_owned(),
-                        effects: CJoinGameBiomeEffects {
-                            sky_color: 7907327,
-                            water_fog_color: 329011,
-                            fog_color: 12638463,
-                            water_color: 4159204,
-                            mood_sound: CJoinGameBiomeEffectsMoodSound {
-                                tick_delay: 6000,
-                                offset: 2.0,
-                                sound: "minecraft:ambient.cave".to_owned(),
-                                block_search_extent: 8,
-                            }
-                        },
-                        depth: 0.125,
-                        temperature: 0.8,
-                        scale: 0.5,
-                        downfall: 0.4,
-                        category: "none".to_owned(),
-                    }
-                },
-            },
-            dimension,
             world_name: "mchprs:world".to_owned(),
             hashed_seed: 0,
-            max_players: 0,
+            max_players: CONFIG.max_players as i32,
             view_distance: CONFIG.view_distance as i32,
             simulation_distance: CONFIG.view_distance as i32,
             reduced_debug_info: false,
@@ -424,6 +369,13 @@ impl MinecraftServer {
         }
         .encode();
         player.client.send_packet(&join_game);
+        // Tell 1.21 clients to finish their loading screen once the chunks arrive.
+        let mut loading = Vec::new();
+        loading.write_unsigned_byte(13);
+        loading.write_float(0.0);
+        player
+            .client
+            .send_packet(&mchprs_network::packets::PacketEncoder::new(loading, 34));
 
         // Sends the custom brand name to the player
         // (This can be seen in the f3 debug menu in-game)
@@ -543,6 +495,25 @@ impl MinecraftServer {
                     .broadcast(BroadcastMessage::PlayerLeft(uuid));
             }
             Message::PlotUnload(plot_x, plot_z) => self.handle_plot_unload(plot_x, plot_z),
+            Message::PlotLoadFailed(x, z, reason, initial_player, queued) => {
+                error!(
+                    "Could not load plot {},{}: {}. Original save preserved.",
+                    x, z, reason
+                );
+                // Drop the sender before draining: no player can be queued after this point.
+                self.handle_plot_unload(x, z);
+                let players = initial_player
+                    .into_iter()
+                    .chain(queued.try_iter().map(|message| match message {
+                        PrivMessage::PlayerEnterPlot(player)
+                        | PrivMessage::PlayerTeleportOther(player, _) => player,
+                    }));
+                for mut player in players {
+                    player.kick(json!({"text": format!("Could not load plot {},{}. Please contact the server administrator.", x, z)}).to_string());
+                    player.client.close_connection();
+                    self.handle_message(Message::PlayerLeft(player.uuid));
+                }
+            }
             Message::ChatInfo(uuid, username, message) => {
                 info!("<{}> {}", username, message);
                 self.broadcaster.broadcast(BroadcastMessage::Chat(
@@ -675,6 +646,61 @@ impl MinecraftServer {
 }
 
 impl ServerBoundPacketHandler for MinecraftServer {
+    fn handle_login_acknowledged(
+        &mut self,
+        _: mchprs_network::packets::serverbound::SLoginAcknowledged,
+        idx: usize,
+    ) {
+        let c = &mut self.network.handshaking_clients[idx];
+        if c.protocol_phase != 1 {
+            c.close_connection();
+            return;
+        }
+        c.protocol_phase = 2;
+        let mut flags = Vec::new();
+        flags.write_varint(1);
+        flags.write_string(32767, "minecraft:vanilla");
+        c.send_packet(&mchprs_network::packets::PacketEncoder::new(flags, 0x0c));
+        c.send_packet(&mchprs_network::packets::PacketEncoder::new(vec![0], 0x0e));
+    }
+    fn handle_known_packs(
+        &mut self,
+        _: mchprs_network::packets::serverbound::SKnownPacks,
+        idx: usize,
+    ) {
+        let c = &mut self.network.handshaking_clients[idx];
+        if c.protocol_phase != 2 {
+            c.close_connection();
+            return;
+        }
+        c.protocol_phase = 3;
+        let mut data = mchprs_network::generated::REGISTRIES;
+        while !data.is_empty() {
+            let n = u32::from_be_bytes(data[..4].try_into().unwrap()) as usize;
+            c.send_packet(&mchprs_network::packets::PacketEncoder::new(
+                data[5..4 + n].to_vec(),
+                7,
+            ));
+            data = &data[4 + n..];
+        }
+        c.send_packet(&mchprs_network::packets::PacketEncoder::new(
+            mchprs_network::generated::TAGS.to_vec(),
+            0x0d,
+        ));
+        c.send_packet(&mchprs_network::packets::PacketEncoder::new(vec![], 3));
+    }
+    fn handle_configuration_finished(
+        &mut self,
+        _: mchprs_network::packets::serverbound::SConfigurationFinished,
+        idx: usize,
+    ) {
+        if self.network.handshaking_clients[idx].protocol_phase != 3 {
+            self.network.handshaking_clients[idx].close_connection();
+            return;
+        }
+        self.finish_player_login(idx);
+    }
+
     fn handle_handshake(&mut self, handshake: SHandshake, client_idx: usize) {
         let clients = &mut self.network.handshaking_clients;
         let client = &mut clients[client_idx];

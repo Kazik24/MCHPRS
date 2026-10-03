@@ -11,6 +11,7 @@ use mchprs_blocks::items::{Item, ItemStack};
 use mchprs_blocks::{BlockFace, BlockPos};
 use mchprs_network::packets::clientbound::*;
 use mchprs_network::packets::serverbound::*;
+use mchprs_network::packets::PacketEncoderExt;
 use mchprs_network::packets::SlotData;
 use serde_json::json;
 use std::fs;
@@ -107,6 +108,9 @@ impl ServerBoundPacketHandler for Plot {
         creative_inventory_action: SCreativeInventoryAction,
         player: usize,
     ) {
+        if !(0..46).contains(&creative_inventory_action.slot) {
+            return;
+        }
         if let Some(slot_data) = creative_inventory_action.clicked_item {
             if creative_inventory_action.slot < 0 || creative_inventory_action.slot >= 46 {
                 return;
@@ -184,6 +188,14 @@ impl ServerBoundPacketHandler for Plot {
         player_block_placement: SPlayerBlockPlacemnt,
         player: usize,
     ) {
+        let mut acknowledgement = Vec::new();
+        acknowledgement.write_varint(player_block_placement.sequence);
+        self.players[player]
+            .client
+            .send_packet(&mchprs_network::packets::PacketEncoder::new(
+                acknowledgement,
+                4,
+            ));
         let block_pos = BlockPos::from_packed(player_block_placement.pos);
         let Some(block_face) = BlockFace::try_from_id(player_block_placement.face as u32) else {
             warn!("Invalid block face: {}", player_block_placement.face);
@@ -464,6 +476,14 @@ impl ServerBoundPacketHandler for Plot {
     }
 
     fn handle_player_digging(&mut self, player_digging: SPlayerDigging, player: usize) {
+        let mut acknowledgement = Vec::new();
+        acknowledgement.write_varint(player_digging.sequence);
+        self.players[player]
+            .client
+            .send_packet(&mchprs_network::packets::PacketEncoder::new(
+                acknowledgement,
+                4,
+            ));
         if player_digging.status == 0 {
             let block_pos = BlockPos::from_packed(player_digging.pos);
             let block = self.world.get_block(block_pos);
@@ -571,7 +591,7 @@ impl ServerBoundPacketHandler for Plot {
             },
             CEntityMetadataEntry {
                 index: 6,
-                metadata_type: 18,
+                metadata_type: 21,
                 value: vec![if self.players[player].crouching { 5 } else { 0 }],
             },
         ];
@@ -591,6 +611,9 @@ impl ServerBoundPacketHandler for Plot {
     }
 
     fn handle_held_item_change(&mut self, held_item_change: SHeldItemChange, player: usize) {
+        if !(0..9).contains(&held_item_change.slot) {
+            return;
+        }
         let entity_equipment = CEntityEquipment {
             entity_id: self.players[player].entity_id as i32,
             equipment: vec![CEntityEquipmentEquipment {
@@ -622,14 +645,25 @@ impl ServerBoundPacketHandler for Plot {
             .lines
             .iter()
             .map(|line| json!({ "text": line }).to_string());
-        let block_entity = BlockEntity::Sign(Box::new(SignBlockEntity {
-            rows: [
-                rows.next().unwrap(),
-                rows.next().unwrap(),
-                rows.next().unwrap(),
-                rows.next().unwrap(),
-            ],
-        }));
+        let mut sign = match self.world.get_block_entity(pos) {
+            Some(BlockEntity::Sign(sign)) => (**sign).clone(),
+            _ => SignBlockEntity::default(),
+        };
+        if sign.waxed {
+            return;
+        }
+        let updated = [
+            rows.next().unwrap(),
+            rows.next().unwrap(),
+            rows.next().unwrap(),
+            rows.next().unwrap(),
+        ];
+        if packet.front {
+            sign.rows = updated;
+        } else {
+            sign.back_rows = updated;
+        }
+        let block_entity = BlockEntity::Sign(Box::new(sign));
         self.world.set_block_entity(pos, block_entity);
     }
 }

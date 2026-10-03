@@ -15,3 +15,4 @@ mchprs_world = { path = "../world" }
 mchprs_blocks = { path = "../blocks" }
 serde-big-array = "0.5"
 tracing = "0.1"
+hematite-nbt = "0.5"

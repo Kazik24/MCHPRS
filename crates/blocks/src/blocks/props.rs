@@ -582,22 +582,22 @@ impl Instrument {
 
     pub const fn to_sound_id(&self) -> i32 {
         match self {
-            Instrument::Harp => 705,
-            Instrument::Basedrum => 699,
-            Instrument::Snare => 708,
-            Instrument::Hat => 706,
-            Instrument::Bass => 700,
-            Instrument::Flute => 703,
-            Instrument::Bell => 701,
-            Instrument::Guitar => 704,
-            Instrument::Chime => 702,
-            Instrument::Xylophone => 709,
-            Instrument::IronXylophone => 710,
-            Instrument::CowBell => 711,
-            Instrument::Didgeridoo => 712,
-            Instrument::Bit => 713,
-            Instrument::Banjo => 714,
-            Instrument::Pling => 707,
+            Instrument::Harp => 1031,
+            Instrument::Basedrum => 1025,
+            Instrument::Snare => 1034,
+            Instrument::Hat => 1032,
+            Instrument::Bass => 1026,
+            Instrument::Flute => 1029,
+            Instrument::Bell => 1027,
+            Instrument::Guitar => 1030,
+            Instrument::Chime => 1028,
+            Instrument::Xylophone => 1035,
+            Instrument::IronXylophone => 1036,
+            Instrument::CowBell => 1037,
+            Instrument::Didgeridoo => 1038,
+            Instrument::Bit => 1039,
+            Instrument::Banjo => 1040,
+            Instrument::Pling => 1033,
         }
     }
 }

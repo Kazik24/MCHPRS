@@ -7,3 +7,5 @@ Config.toml
 world/
 logs/
 schems/
+tools/node_modules/
+tools/__pycache__/

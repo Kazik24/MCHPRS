@@ -1,0 +1,229 @@
+{
+  "audit_date": "2026-10-03",
+  "branch": "port/piston-1.21.5",
+  "git_base": "cb3d4e27a67737abad990932ce94b5461368d45f",
+  "scope": "Snapshot of uncommitted current port sources; isolated Rust diagnostics and official Java runtime block-property probe. No live Java circuit trace.",
+  "snapshot_directory": "C:\\Users\\Maciej\\AppData\\Local\\Temp\\mchprs-piston-deep-7267e7c146f9474b9c401cd5d2a879f0",
+  "reference_directory": "C:\\Users\\Maciej\\AppData\\Local\\Temp\\mchprs-piston-audit-fd86695a\\audit-references",
+  "source_sha256": {
+    "crates/core/src/redstone/piston.rs": "41b6aa96e9f5006795b52eb722ea1ab9b938df569abb660da0db003616c04361",
+    "crates/core/src/redstone/mod.rs": "e3fd4d6e9890daf52dd5b89bea954329bb1028ac3b78eccf89826fc4ac3bdc23",
+    "crates/core/src/redpiler/backend/queue.rs": "053649eedd607ce4b5011814ecc3b5458208cf287e5cd3207bfe5277062042ee",
+    "crates/core/src/plot/mod.rs": "4e27e3a5190661620003c1f0397f90f78f5ffdc0306a802533dc53f28272fc94",
+    "crates/core/src/interaction.rs": "25d8f665fbcd534a4b84c3cc11b8c061425b09c95160a4e5232d784c2c9bfaab",
+    "crates/blocks/src/blocks/mod.rs": "25b0048de2da90ab3db00a46498c817155152108d3bfc277d2ee43ee3dcadd4e",
+    "crates/blocks/src/block_entities.rs": "3845aff0eabe34267f7421a7b0efcf80b36c7a7abaf69cde045c32fdba45c3ec",
+    "crates/blocks/src/generated.rs": "1cbde998b202b26bf556917f4e1157cb9e48dcbdabc3d8ce77fb0e487acc06db",
+    "Cargo.lock": "64aa04a0dedca22b53499081c4fba53303c3c608d52969b019c0498ebf9159cd"
+  },
+  "deep_tests": {
+    "passed": 4,
+    "failed": 27,
+    "total": 31,
+    "tests": [
+      {
+        "name": "half_progress_is_exactly_representable",
+        "outcome": "FAILED"
+      },
+      {
+        "name": "moved_powered_observer_does_not_stay_powered_forever",
+        "outcome": "FAILED"
+      },
+      {
+        "name": "untyped_chest_blocks_extension",
+        "outcome": "FAILED"
+      },
+      {
+        "name": "completion_cannot_recreate_replaced_base",
+        "outcome": "FAILED"
+      },
+      {
+        "name": "thirteenth_block_prevents_extension",
+        "outcome": "FAILED"
+      },
+      {
+        "name": "breaking_stationary_head_removes_base",
+        "outcome": "FAILED"
+      },
+      {
+        "name": "control_typed_barrel_blocks_extension",
+        "outcome": "ok"
+      },
+      {
+        "name": "moving_payload_has_its_own_destination_entity",
+        "outcome": "FAILED"
+      },
+      {
+        "name": "movement_cannot_lose_payload_at_height_boundary",
+        "outcome": "FAILED"
+      },
+      {
+        "name": "moved_waterlogged_stairs_are_not_still_waterlogged",
+        "outcome": "FAILED"
+      },
+      {
+        "name": "movement_cannot_lose_payload_at_plot_boundary",
+        "outcome": "FAILED"
+      },
+      {
+        "name": "control_quasi_connected_power_detected_after_base_update",
+        "outcome": "ok"
+      },
+      {
+        "name": "honey_moves_side_attachment",
+        "outcome": "FAILED"
+      },
+      {
+        "name": "crying_obsidian_blocks_extension",
+        "outcome": "FAILED"
+      },
+      {
+        "name": "sign_blocks_extension_without_losing_text",
+        "outcome": "FAILED"
+      },
+      {
+        "name": "respawn_anchor_blocks_extension",
+        "outcome": "FAILED"
+      },
+      {
+        "name": "slime_moves_side_attachment",
+        "outcome": "FAILED"
+      },
+      {
+        "name": "removing_base_removes_stationary_head",
+        "outcome": "FAILED"
+      },
+      {
+        "name": "movement_progress_advances_before_completion",
+        "outcome": "FAILED"
+      },
+      {
+        "name": "sticky_retraction_cannot_pull_obsidian",
+        "outcome": "FAILED"
+      },
+      {
+        "name": "bedrock_blocks_extension",
+        "outcome": "FAILED"
+      },
+      {
+        "name": "sticky_retraction_cannot_pull_glazed_terracotta",
+        "outcome": "FAILED"
+      },
+      {
+        "name": "moving_support_breaks_torch_above_old_payload",
+        "outcome": "FAILED"
+      },
+      {
+        "name": "normal_retraction_uses_moving_source_at_base",
+        "outcome": "FAILED"
+      },
+      {
+        "name": "mismatched_head_does_not_mark_base_extended",
+        "outcome": "FAILED"
+      },
+      {
+        "name": "immovable_destination_preserves_chain",
+        "outcome": "FAILED"
+      },
+      {
+        "name": "old_observer_tick_cannot_complete_new_moving_head",
+        "outcome": "FAILED"
+      },
+      {
+        "name": "control_front_power_is_excluded",
+        "outcome": "ok"
+      },
+      {
+        "name": "obsidian_blocks_extension",
+        "outcome": "FAILED"
+      },
+      {
+        "name": "movable_trapdoor_is_preserved",
+        "outcome": "FAILED"
+      },
+      {
+        "name": "control_single_stone_extension_all_six_directions",
+        "outcome": "ok"
+      }
+    ]
+  },
+  "previous_regressions": {
+    "passed": 0,
+    "failed": 5
+  },
+  "existing_piston_fixtures": {
+    "passed": 4,
+    "failed": 1,
+    "failure": "memory cell, index 0"
+  },
+  "rust_observations": [
+    "HALF_PROGRESS encoded=127 decoded=0.49803922",
+    "MOVED_OBSERVER destination=Observer { observer: RedstoneObserver { facing: Down, powered: true } }",
+    "REPLACED_BASE current=Piston { piston: RedstonePiston { facing: East, sticky: true, extended: true } }",
+    "BROKEN_HEAD base=Piston { piston: RedstonePiston { facing: East, sticky: true, extended: true } } head=Air",
+    "LIMIT base=Piston { piston: RedstonePiston { facing: East, sticky: true, extended: true } }",
+    "BLOCKED chest base=Piston { piston: RedstonePiston { facing: East, sticky: true, extended: true } } head=PistonHead { head: RedstonePistonHead { facing: East, sticky: true, short: false } } destination=Unknown { id: 3019 }",
+    "MOVING_DESTINATION block=Air entity=None",
+    "HEIGHT_EDGE base=Piston { piston: RedstonePiston { facing: Up, sticky: true, extended: true } } last_cell=PistonHead { head: RedstonePistonHead { facing: Up, sticky: true, short: false } }",
+    "WATERLOGGED destination=Unknown { id: 2948 } properties={\"waterlogged\": \"true\", \"half\": \"bottom\", \"shape\": \"straight\", \"facing\": \"north\"}",
+    "BLOCKED oak_sign base=Piston { piston: RedstonePiston { facing: East, sticky: true, extended: true } } head=PistonHead { head: RedstonePistonHead { facing: East, sticky: true, short: false } } destination=Air",
+    "PULL_OBSIDIAN head=Obsidian target=Air",
+    "PLOT_EDGE base=Piston { piston: RedstonePiston { facing: East, sticky: true, extended: true } } last_cell=PistonHead { head: RedstonePistonHead { facing: East, sticky: true, short: false } }",
+    "BLOCKED crying_obsidian base=Piston { piston: RedstonePiston { facing: East, sticky: true, extended: true } } head=PistonHead { head: RedstonePistonHead { facing: East, sticky: true, short: false } } destination=CryingObsidian",
+    "ORPHAN_HEAD current=PistonHead { head: RedstonePistonHead { facing: East, sticky: true, short: false } }",
+    "SUPPORT_REMOVED torch=RedstoneTorch { lit: true }",
+    "PULL_GLAZED head=Unknown { id: 13687 } target=Air",
+    "OLD_TICK head_after_one_game_tick=PistonHead { head: RedstonePistonHead { facing: East, sticky: true, short: false } }",
+    "BLOCKED respawn_anchor base=Piston { piston: RedstonePiston { facing: East, sticky: true, extended: true } } head=PistonHead { head: RedstonePistonHead { facing: East, sticky: true, short: false } } destination=Unknown { id: 20478 }",
+    "PROGRESS entity=Some(MovingPiston(MovingPistonEntity { extending: true, facing: East, progress: 0, source: true, block_state: 1 }))",
+    "BLOCKED bedrock base=Piston { piston: RedstonePiston { facing: East, sticky: true, extended: true } } head=PistonHead { head: RedstonePistonHead { facing: East, sticky: true, short: false } } destination=Bedrock",
+    "ATTACHMENT slime_block source=GoldBlock target=Air",
+    "RETRACT_SOURCE base=Piston { piston: RedstonePiston { facing: East, sticky: true, extended: true } } entity=None",
+    "ATTACHMENT honey_block source=GoldBlock target=Air",
+    "MISMATCHED_HEAD base=Piston { piston: RedstonePiston { facing: East, sticky: true, extended: true } }",
+    "TRAPDOOR destination=Air",
+    "BLOCKED_CHAIN base=Piston { piston: RedstonePiston { facing: East, sticky: true, extended: true } } destination=Stone",
+    "BLOCKED obsidian base=Piston { piston: RedstonePiston { facing: East, sticky: true, extended: true } } head=PistonHead { head: RedstonePistonHead { facing: East, sticky: true, short: false } } destination=Obsidian"
+  ],
+  "java_runtime_block_properties": [
+    "WHITE_GLAZED_TERRACOTTA reaction=PUSH_ONLY entity=false",
+    "STONE reaction=NORMAL entity=false",
+    "BEDROCK reaction=NORMAL entity=false",
+    "WATER reaction=DESTROY entity=false",
+    "PISTON_HEAD reaction=BLOCK entity=false",
+    "OBSIDIAN reaction=NORMAL entity=false",
+    "TORCH reaction=DESTROY entity=false",
+    "CHEST reaction=NORMAL entity=true",
+    "REDSTONE_WIRE reaction=DESTROY entity=false",
+    "OAK_SIGN reaction=NORMAL entity=true",
+    "REPEATER reaction=DESTROY entity=false",
+    "COMPARATOR reaction=DESTROY entity=true",
+    "SLIME_BLOCK reaction=NORMAL entity=false",
+    "IRON_TRAPDOOR reaction=NORMAL entity=false",
+    "OBSERVER reaction=NORMAL entity=false",
+    "BARREL reaction=NORMAL entity=true",
+    "HONEY_BLOCK reaction=NORMAL entity=false",
+    "CRYING_OBSIDIAN reaction=NORMAL entity=false",
+    "RESPAWN_ANCHOR reaction=NORMAL entity=false"
+  ],
+  "reference_classes": {
+    "net.minecraft.core.Direction": "jc",
+    "net.minecraft.server.level.ServerLevel": "asb",
+    "net.minecraft.world.level.block.ObserverBlock": "dtg",
+    "net.minecraft.world.level.block.piston.MovingPistonBlock": "ebh",
+    "net.minecraft.world.level.block.piston.PistonBaseBlock": "ebi",
+    "net.minecraft.world.level.block.piston.PistonHeadBlock": "ebj",
+    "net.minecraft.world.level.block.piston.PistonMovingBlockEntity": "ebl",
+    "net.minecraft.world.level.block.piston.PistonStructureResolver": "ebm",
+    "net.minecraft.world.level.block.state.BlockBehaviour": "ebp",
+    "net.minecraft.world.level.material.PushReaction": "eyf",
+    "net.minecraft.world.level.redstone.CollectingNeighborUpdater": "ezc",
+    "net.minecraft.world.level.redstone.NeighborUpdater": "ezh"
+  },
+  "limits": [
+    "Plot-edge rejection is a fork storage requirement, not Java overworld geography.",
+    "Progress quantization is a representation defect; short-pulse code does not yet read this field.",
+    "Memory-cell expected trace remains provisional.",
+    "No full workspace/release/client/save-roundtrip or live Java circuit validation."
+  ]
+}

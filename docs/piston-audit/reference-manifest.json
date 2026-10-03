@@ -1,0 +1,23 @@
+[
+  {
+    "version": "1.18.2",
+    "server_url": "https://piston-data.mojang.com/v1/objects/c8f83c5655308435b3dcf03c06d9fe8740a77469/server.jar",
+    "server_sha1": "c8f83c5655308435b3dcf03c06d9fe8740a77469",
+    "mappings_url": "https://piston-data.mojang.com/v1/objects/e562f588fea155d96291267465dc3323bfe1551b/server.txt",
+    "mappings_sha1": "e562f588fea155d96291267465dc3323bfe1551b"
+  },
+  {
+    "version": "1.21.1",
+    "server_url": "https://piston-data.mojang.com/v1/objects/59353fb40c36d304f2035d51e7d6e6baa98dc05c/server.jar",
+    "server_sha1": "59353fb40c36d304f2035d51e7d6e6baa98dc05c",
+    "mappings_url": "https://piston-data.mojang.com/v1/objects/03f8985492bda0afc0898465341eb0acef35f570/server.txt",
+    "mappings_sha1": "03f8985492bda0afc0898465341eb0acef35f570"
+  },
+  {
+    "version": "1.21.5",
+    "server_url": "https://piston-data.mojang.com/v1/objects/e6ec2f64e6080b9b5d9b471b291c33cc7f509733/server.jar",
+    "server_sha1": "e6ec2f64e6080b9b5d9b471b291c33cc7f509733",
+    "mappings_url": "https://piston-data.mojang.com/v1/objects/f4812c1d66d0098a94616b19c21829e591d0af3a/server.txt",
+    "mappings_sha1": "f4812c1d66d0098a94616b19c21829e591d0af3a"
+  }
+]

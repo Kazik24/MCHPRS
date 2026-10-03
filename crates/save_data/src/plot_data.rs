@@ -1,4 +1,6 @@
 mod fixer;
+#[cfg(test)]
+mod tests;
 
 use self::fixer::FixInfo;
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
@@ -8,16 +10,19 @@ use mchprs_world::TickEntry;
 use rustc_hash::FxHashMap;
 use serde::{Deserialize, Serialize};
 use serde_big_array::BigArray;
-use std::fs::{File, OpenOptions};
+use std::fs::File;
 use std::io::{Read, Write};
 use std::path::Path;
 use std::{fmt, io};
 use thiserror::Error;
 
-pub const VERSION: u32 = 1;
+pub const VERSION: u32 = 3;
+pub const MC_DATA_VERSION: u32 = 4325;
 
 #[derive(Error, Debug)]
 pub enum PlotLoadError {
+    #[error("unmappable or invalid legacy data: {0}")]
+    InvalidLegacyId(String),
     #[error("plot data deserialization error")]
     Deserialize(#[from] bincode::Error),
 
@@ -33,7 +38,7 @@ pub enum PlotLoadError {
     #[error(transparent)]
     Io(#[from] io::Error),
 
-    #[error("plot data version {0} too new to be loaded")]
+    #[error("no migration reader for plot save version {0}; original preserved")]
     ConversionUnavailable(u32),
 }
 
@@ -106,6 +111,73 @@ pub struct PlotData<const NUM_CHUNK_SECTIONS: usize> {
 }
 
 impl<const NUM_CHUNK_SECTIONS: usize> PlotData<NUM_CHUNK_SECTIONS> {
+    pub(crate) fn validate(&self) -> Result<(), PlotLoadError> {
+        let invalid = |message: &str| PlotLoadError::InvalidLegacyId(message.into());
+        let states = mchprs_blocks::generated::TARGET_TO_LEGACY.len() as u32;
+        for chunk in &self.chunk_data {
+            for section in chunk.sections.iter().flatten() {
+                let bits = section.bits_per_block;
+                if !((4..=8).contains(&bits) || bits == 15)
+                    || section.entries != 4096
+                    || !(0..=4096).contains(&section.block_count)
+                {
+                    return Err(invalid("invalid section geometry or block count"));
+                }
+                let per = 64 / bits as usize;
+                if section.data.len() != 4096usize.div_ceil(per) {
+                    return Err(invalid("invalid section data length"));
+                }
+                if bits < 9
+                    && (section.palette.is_empty()
+                        || section.palette.len() > 1usize << bits
+                        || section
+                            .palette
+                            .iter()
+                            .any(|id| *id < 0 || *id as u32 >= states))
+                {
+                    return Err(invalid("invalid section palette"));
+                }
+                for i in 0..4096 {
+                    let value = ((section.data[i / per] as u64 >> ((i % per) * bits as usize))
+                        & ((1 << bits) - 1)) as usize;
+                    if (bits < 9 && value >= section.palette.len())
+                        || (bits == 15 && value >= states as usize)
+                    {
+                        return Err(invalid("invalid packed section entry"));
+                    }
+                }
+            }
+            for (pos, entity) in &chunk.block_entities {
+                if !(0..NUM_CHUNK_SECTIONS as i32 * 16).contains(&pos.y) {
+                    return Err(invalid("invalid block entity height"));
+                }
+                match entity {
+                    BlockEntity::MovingPiston(p) if p.block_state >= states => {
+                        return Err(invalid("invalid carried piston block state"))
+                    }
+                    BlockEntity::Container { inventory, ty, .. } => {
+                        let mut slots = std::collections::HashSet::new();
+                        for entry in inventory {
+                            if entry.slot < 0
+                                || entry.slot as u8 >= ty.num_slots()
+                                || entry.count <= 0
+                                || entry.id as usize >= mchprs_blocks::generated::ITEMS.len()
+                                || !slots.insert(entry.slot)
+                            {
+                                return Err(invalid("invalid container inventory"));
+                            }
+                            if let Some(nbt) = &entry.nbt {
+                                nbt::Blob::from_reader(&mut std::io::Cursor::new(nbt))
+                                    .map_err(|_| invalid("invalid container item NBT"))?;
+                            }
+                        }
+                    }
+                    _ => (),
+                }
+            }
+        }
+        Ok(())
+    }
     pub fn load_from_file(
         path: impl AsRef<Path>,
         save_if_plot_fixed: bool,
@@ -115,12 +187,14 @@ impl<const NUM_CHUNK_SECTIONS: usize> PlotData<NUM_CHUNK_SECTIONS> {
         let mut magic = [0; 8];
         file.read_exact(&mut magic)?;
         if &magic != PLOT_MAGIC {
+            drop(file);
             return fixer::try_fix(path, FixInfo::InvalidHeader, save_if_plot_fixed)?
                 .ok_or(PlotLoadError::InvalidHeader);
         }
 
         let version = file.read_u32::<LittleEndian>()?;
         if version < VERSION {
+            drop(file);
             return fixer::try_fix(path, FixInfo::OldVersion { version }, save_if_plot_fixed)?
                 .ok_or(PlotLoadError::ConversionFailed(version));
         }
@@ -128,19 +202,26 @@ impl<const NUM_CHUNK_SECTIONS: usize> PlotData<NUM_CHUNK_SECTIONS> {
             return Err(PlotLoadError::TooNew(version));
         }
 
+        let data_version = file.read_u32::<LittleEndian>()?;
+        if data_version != MC_DATA_VERSION {
+            return Err(PlotLoadError::InvalidLegacyId(format!(
+                "unsupported Minecraft data version {data_version}; expected {MC_DATA_VERSION}"
+            )));
+        }
         let mut buf = Vec::new();
         file.read_to_end(&mut buf)?;
-        Ok(bincode::deserialize(&buf)?)
+        let data: Self = bincode::deserialize(&buf)?;
+        data.validate()?;
+        Ok(data)
     }
 
     pub fn save_to_file(&self, path: impl AsRef<Path>) -> Result<(), PlotSaveError> {
-        let mut file = OpenOptions::new().write(true).create(true).open(path)?;
-
-        file.write_all(PLOT_MAGIC)?;
-        file.write_u32::<LittleEndian>(VERSION)?;
-        let data = bincode::serialize(self)?;
-        file.write_all(&data)?;
-        file.sync_data()?;
+        let mut bytes = Vec::new();
+        bytes.write_all(PLOT_MAGIC)?;
+        bytes.write_u32::<LittleEndian>(VERSION)?;
+        bytes.write_u32::<LittleEndian>(MC_DATA_VERSION)?;
+        bytes.write_all(&bincode::serialize(self)?)?;
+        crate::atomic::write(path.as_ref(), &bytes)?;
         Ok(())
     }
 }

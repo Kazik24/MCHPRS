@@ -20,6 +20,26 @@ pub struct InventoryEntry {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SignBlockEntity {
     pub rows: [String; 4],
+    pub back_rows: [String; 4],
+    pub waxed: bool,
+    pub front_color: String,
+    pub back_color: String,
+    pub front_glow: bool,
+    pub back_glow: bool,
+}
+
+impl Default for SignBlockEntity {
+    fn default() -> Self {
+        Self {
+            rows: std::array::from_fn(|_| "{\"text\":\"\"}".into()),
+            back_rows: std::array::from_fn(|_| "{\"text\":\"\"}".into()),
+            waxed: false,
+            front_color: "black".into(),
+            back_color: "black".into(),
+            front_glow: false,
+            back_glow: false,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
@@ -63,11 +83,11 @@ impl ContainerType {
     }
 
     pub fn window_type(self) -> u8 {
-        // https://wiki.vg/Inventory
+        // Minecraft 1.21.5 minecraft:menu registry (official generated report).
         match self {
-            ContainerType::Furnace => 13,
+            ContainerType::Furnace => 14,
             ContainerType::Barrel => 2,
-            ContainerType::Hopper => 15,
+            ContainerType::Hopper => 16,
         }
     }
 }
@@ -100,7 +120,7 @@ impl Default for MovingPistonEntity {
 }
 
 impl MovingPistonEntity {
-    pub const ID: &'static str = "minecraft:moving_piston";
+    pub const ID: &'static str = "minecraft:piston";
     pub const MAX_PROGRESS: u8 = u8::MAX;
     pub fn get_progress(&self) -> f32 {
         self.progress as f32 / Self::MAX_PROGRESS as f32
@@ -132,26 +152,42 @@ impl BlockEntity {
     /// The protocol id for the block entity
     pub fn ty(&self) -> i32 {
         match self {
-            BlockEntity::Comparator { .. } => 17,
+            BlockEntity::Comparator { .. } => crate::generated::block_entity_types::COMPARATOR,
             BlockEntity::Container { ty, .. } => match ty {
-                ContainerType::Furnace => 0,
-                ContainerType::Barrel => 25,
-                ContainerType::Hopper => 16,
+                ContainerType::Furnace => crate::generated::block_entity_types::FURNACE,
+                ContainerType::Barrel => crate::generated::block_entity_types::BARREL,
+                ContainerType::Hopper => crate::generated::block_entity_types::HOPPER,
             },
-            BlockEntity::Sign(_) => 7,
-            BlockEntity::MovingPiston(_) => 67, //idk if this is correct, found it at https://github.com/PrismarineJS/minecraft-data/tree/master
+            BlockEntity::Sign(_) => crate::generated::block_entity_types::SIGN,
+            BlockEntity::MovingPiston(_) => crate::generated::block_entity_types::PISTON,
         }
     }
 
     fn load_container(slots_nbt: &[nbt::Value], ty: ContainerType) -> Result<BlockEntity> {
         use nbt::Value;
         let num_slots = ty.num_slots();
+        let mut seen_slots = std::collections::HashSet::new();
         let mut fullness_sum: f32 = 0.0;
         let mut inventory = ThinVec::with_capacity(slots_nbt.len());
         for item in slots_nbt {
             let item_compound = nbt_unwrap_val!(Some(item), Value::Compound);
-            let count = *nbt_unwrap_val!(item_compound.get("Count"), Value::Byte);
+            let count = match item_compound
+                .get("count")
+                .or_else(|| item_compound.get("Count"))
+            {
+                Some(Value::Byte(n)) => *n,
+                Some(Value::Int(n)) if (1..=127).contains(n) => *n as i8,
+                _ => bail!("invalid container item count"),
+            };
+            if let Some(value) = item_compound.get("components") {
+                if !matches!(value,Value::Compound(c) if c.is_empty()) {
+                    bail!("modern persisted inventory components are not supported by this schematic importer");
+                }
+            }
             let slot = *nbt_unwrap_val!(item_compound.get("Slot"), Value::Byte);
+            if slot < 0 || slot as u8 >= num_slots || !seen_slots.insert(slot) || count <= 0 {
+                bail!("invalid container slot or count");
+            }
             let namespaced_name = nbt_unwrap_val!(
                 item_compound.get("Id").or_else(|| item_compound.get("id")),
                 Value::String
@@ -162,13 +198,6 @@ impl BlockEntity {
                     .last()
                     .ok_or(anyhow::anyhow!("Item compound id missing namespace"))?,
             );
-
-            let mut blob = nbt::Blob::new();
-            for (k, v) in item_compound {
-                blob.insert(k, v.clone()).unwrap();
-            }
-            let mut data = Vec::new();
-            blob.to_writer(&mut data).unwrap();
 
             let tag = match item_compound.get("tag") {
                 Some(nbt::Value::Compound(map)) => {
@@ -186,7 +215,9 @@ impl BlockEntity {
             inventory.push(InventoryEntry {
                 slot,
                 count,
-                id: item_type.unwrap_or(Item::Redstone {}).get_id(),
+                id: item_type
+                    .ok_or_else(|| anyhow::anyhow!("unknown item {namespaced_name}"))?
+                    .get_id(),
                 nbt: tag,
             });
 
@@ -205,65 +236,122 @@ impl BlockEntity {
         use nbt::Value;
         let id = nbt_unwrap_val!(nbt.get("Id").or_else(|| nbt.get("id")), Value::String);
         match id.as_ref() {
-            "minecraft:comparator" => Ok(BlockEntity::Comparator {
-                output_strength: *nbt_unwrap_val!(nbt.get("OutputSignal"), Value::Int) as u8,
-            }),
-            "minecraft:furnace" => BlockEntity::load_container(
-                nbt_unwrap_val!(nbt.get("Items"), Value::List),
-                ContainerType::Furnace,
-            ),
-            "minecraft:barrel" => BlockEntity::load_container(
-                nbt_unwrap_val!(nbt.get("Items"), Value::List),
-                ContainerType::Barrel,
-            ),
-            "minecraft:hopper" => BlockEntity::load_container(
-                nbt_unwrap_val!(nbt.get("Items"), Value::List),
-                ContainerType::Hopper,
-            ),
+            "minecraft:comparator" => {
+                let output_strength = match nbt.get("OutputSignal") {
+                    None => 0,
+                    Some(Value::Int(n)) if (0..=15).contains(n) => *n as u8,
+                    _ => bail!("OutputSignal: expected strength 0..15"),
+                };
+                Ok(BlockEntity::Comparator { output_strength })
+            }
+            "minecraft:furnace" | "minecraft:barrel" | "minecraft:hopper" => {
+                let ty = match id.as_str() {
+                    "minecraft:furnace" => ContainerType::Furnace,
+                    "minecraft:hopper" => ContainerType::Hopper,
+                    _ => ContainerType::Barrel,
+                };
+                let items = match nbt.get("Items") {
+                    None => &[][..],
+                    Some(Value::List(v)) => v.as_slice(),
+                    _ => bail!("Items: expected List"),
+                };
+                BlockEntity::load_container(items, ty)
+            }
             "minecraft:sign" => Ok({
-                BlockEntity::Sign(Box::new(SignBlockEntity {
-                    rows: [
-                        // This cloning is really dumb
-                        nbt_unwrap_val!(
-                            nbt.get("Text1").or_else(|| nbt.get("text1")),
-                            Value::String
-                        )
-                        .clone(),
-                        nbt_unwrap_val!(
-                            nbt.get("Text2").or_else(|| nbt.get("text2")),
-                            Value::String
-                        )
-                        .clone(),
-                        nbt_unwrap_val!(
-                            nbt.get("Text3").or_else(|| nbt.get("text3")),
-                            Value::String
-                        )
-                        .clone(),
-                        nbt_unwrap_val!(
-                            nbt.get("Text4").or_else(|| nbt.get("text4")),
-                            Value::String
-                        )
-                        .clone(),
-                    ],
-                }))
+                let mut sign = SignBlockEntity::default();
+                for (side, rows, color, glow) in [
+                    (
+                        "front_text",
+                        &mut sign.rows,
+                        &mut sign.front_color,
+                        &mut sign.front_glow,
+                    ),
+                    (
+                        "back_text",
+                        &mut sign.back_rows,
+                        &mut sign.back_color,
+                        &mut sign.back_glow,
+                    ),
+                ] {
+                    match nbt.get(side) {
+                        Some(Value::Compound(text)) => {
+                            if let Some(messages) = text.get("messages") {
+                                let Value::List(messages) = messages else {
+                                    bail!("{side}.messages: expected List")
+                                };
+                                if messages.len() != 4 {
+                                    bail!("{side}.messages: expected exactly four text components");
+                                }
+                                for (dst, src) in rows.iter_mut().zip(messages) {
+                                    if !matches!(
+                                        src,
+                                        Value::String(_) | Value::Compound(_) | Value::List(_)
+                                    ) {
+                                        bail!("{side}.messages: invalid text component");
+                                    }
+                                    *dst = mchprs_network::text::to_json(src);
+                                }
+                            }
+                            match text.get("color") {
+                                None => (),
+                                Some(Value::String(c)) => *color = c.clone(),
+                                _ => bail!("{side}.color: expected String"),
+                            }
+                            match text.get("has_glowing_text") {
+                                None => (),
+                                Some(Value::Byte(b)) if *b == 0 || *b == 1 => *glow = *b != 0,
+                                _ => bail!("{side}.has_glowing_text: expected boolean Byte"),
+                            }
+                        }
+                        None if side == "front_text" => {
+                            for (i, row) in rows.iter_mut().enumerate() {
+                                match nbt
+                                    .get(&format!("Text{}", i + 1))
+                                    .or_else(|| nbt.get(&format!("text{}", i + 1)))
+                                {
+                                    None => (),
+                                    Some(Value::String(s)) => *row = s.clone(),
+                                    _ => bail!("Text{}: expected String", i + 1),
+                                }
+                            }
+                        }
+                        None => (),
+                        _ => bail!("{side}: expected Compound"),
+                    }
+                }
+                sign.waxed = match nbt.get("is_waxed") {
+                    None => false,
+                    Some(Value::Byte(b)) if *b == 0 || *b == 1 => *b != 0,
+                    _ => bail!("is_waxed: expected boolean Byte"),
+                };
+                BlockEntity::Sign(Box::new(sign))
             }),
-            MovingPistonEntity::ID => Ok({
-                let block_state = nbt_unwrap_val!(
+            MovingPistonEntity::ID | "minecraft:moving_piston" => Ok({
+                let state = nbt_unwrap_val!(
                     nbt.get("BlockState").or_else(|| nbt.get("blockState")),
                     Value::Compound
                 );
-                let block_state = nbt_unwrap_val!(
-                    block_state.get("Name").or_else(|| block_state.get("name")),
+                let name = nbt_unwrap_val!(
+                    state.get("Name").or_else(|| state.get("name")),
                     Value::String
                 );
-                //todo properties of blocks (low priority)
-
-                let block_state = Block::from_name(block_state)
-                    .ok_or(anyhow::anyhow!(
-                        "Unknown block state in moving piston block entity: {}",
-                        block_state
-                    ))?
-                    .get_id();
+                let mut block = Block::from_name(name.trim_start_matches("minecraft:"))
+                    .ok_or_else(|| anyhow::anyhow!("unknown carried block {name}"))?;
+                if let Some(Value::Compound(props)) = state.get("Properties") {
+                    block.set_properties(
+                        props
+                            .iter()
+                            .filter_map(|(k, v)| {
+                                if let Value::String(s) = v {
+                                    Some((k.as_str(), s.as_str()))
+                                } else {
+                                    None
+                                }
+                            })
+                            .collect(),
+                    );
+                }
+                let block_state = block.get_id();
 
                 let facing =
                     *nbt_unwrap_val!(nbt.get("Facing").or_else(|| nbt.get("facing")), Value::Int)
@@ -305,13 +393,16 @@ impl BlockEntity {
         use nbt::Value;
         match self {
             BlockEntity::Sign(sign) => Some({
-                let [r1, r2, r3, r4] = sign.rows.clone();
+                let text = |rows: &[String; 4], color: &str, glow: bool| {
+                    Value::Compound(map! {
+                        "messages"=>Value::List(rows.iter().map(|s|mchprs_network::text::from_json(s)).collect()),
+                        "color"=>Value::String(color.into()),"has_glowing_text"=>Value::Byte(glow as i8)
+                    })
+                };
                 nbt::Blob::with_content(map! {
-                    "Text1" => Value::String(r1),
-                    "Text2" => Value::String(r2),
-                    "Text3" => Value::String(r3),
-                    "Text4" => Value::String(r4),
-                    "id" => Value::String("minecraft:sign".to_owned())
+                    "front_text"=>text(&sign.rows,&sign.front_color,sign.front_glow),
+                    "back_text"=>text(&sign.back_rows,&sign.back_color,sign.back_glow),
+                    "is_waxed"=>Value::Byte(sign.waxed as i8),"id"=>Value::String("minecraft:sign".into())
                 })
             }),
             BlockEntity::Comparator { output_strength } => Some({
@@ -323,15 +414,20 @@ impl BlockEntity {
             BlockEntity::Container { inventory, ty, .. } => Some({
                 let mut items = Vec::new();
                 for entry in inventory {
-                    let nbt = map! {
-                        "Count" => nbt::Value::Byte(entry.count),
+                    let mut nbt = map! {
+                        "count" => nbt::Value::Int(entry.count as i32),
                         "id" => nbt::Value::String(format!("minecraft:{}",Item::from_id(entry.id).get_name())),
                         "Slot" => nbt::Value::Byte(entry.slot)
                     };
-                    // TODO: item nbt data in containers
-                    // if let Some(tag) = &entry.nbt {
-                    //     let blob = nbt::Blob::from_reader(&mut Cursor::new(tag)).unwrap();
-                    // }
+                    // Preserve tags/components used by inventory entries across schematic round trips.
+                    if let Some(tag) = &entry.nbt {
+                        match nbt::Blob::from_reader(&mut std::io::Cursor::new(tag)) {
+                            Ok(blob) => {
+                                nbt.insert("tag".into(), Value::Compound(blob.content));
+                            }
+                            Err(_) => return None,
+                        }
+                    }
                     items.push(nbt::Value::Compound(nbt));
                 }
                 nbt::Blob::with_content(map! {
@@ -342,7 +438,7 @@ impl BlockEntity {
             BlockEntity::MovingPiston(mp) => Some({
                 let block_state = map! {
                     "Name" => Value::String(format!("minecraft:{}",Block::from_id(mp.block_state).get_name())),
-                    //todo properties of blocks (low priority)
+                    "Properties" => Value::Compound(crate::generated::STATE_PROPERTIES[mp.block_state as usize].iter().map(|(k,v)|((*k).to_owned(),Value::String((*v).to_owned()))).collect()),
                 };
                 nbt::Blob::with_content(map! {
                     "id" => Value::String(MovingPistonEntity::ID.into()),

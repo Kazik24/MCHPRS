@@ -350,7 +350,7 @@ impl ChunkSection {
             biomes: PalettedContainer {
                 bits_per_entry: 0,
                 data_array: vec![],
-                palette: Some(vec![0]),
+                palette: Some(vec![mchprs_network::generated::PLAINS_BIOME]),
             },
         }
     }
@@ -417,6 +417,28 @@ pub struct Chunk {
 }
 
 impl Chunk {
+    pub fn requires_interpreter(&self) -> bool {
+        let piston = |id| {
+            matches!(
+                mchprs_blocks::blocks::Block::from_id(id),
+                mchprs_blocks::blocks::Block::Piston { .. }
+                    | mchprs_blocks::blocks::Block::PistonHead { .. }
+                    | mchprs_blocks::blocks::Block::MovingPiston { .. }
+                    | mchprs_blocks::blocks::Block::Observer { .. }
+            )
+        };
+        self.sections.iter().any(|s| {
+            s.changed_blocks
+                .iter()
+                .any(|id| *id >= 0 && piston(*id as u32))
+                || if s.buffer.use_palette {
+                    s.buffer.palette.iter().any(|id| piston(*id))
+                } else {
+                    (0..4096).any(|i| piston(s.buffer.get_entry(i)))
+                }
+        })
+    }
+
     pub fn encode_packet(&self) -> PacketEncoder {
         // Integer arithmetic trick: ceil(log2(x)) can be calculated with 32 - (x - 1).leading_zeros().
         // See also: https://wiki.vg/Protocol#Chunk_Data_and_Update_Light
@@ -426,7 +448,7 @@ impl Chunk {
         for x in 0..16 {
             for z in 0..16 {
                 heightmap_buffer
-                    .set_entry((x * 16) + z, self.get_top_most_block(x as u32, z as u32));
+                    .set_entry((z * 16) + x, self.get_top_most_block(x as u32, z as u32));
             }
         }
 
@@ -441,11 +463,14 @@ impl Chunk {
             .map(|x| x as i64)
             .collect();
         heightmaps
+            .insert("WORLD_SURFACE", heightmap_longs.clone())
+            .unwrap();
+        heightmaps
             .insert("MOTION_BLOCKING", heightmap_longs)
             .unwrap();
         let mut block_entities = Vec::new();
         for (pos, block_entity) in &self.block_entities {
-            if let Some(nbt) = block_entity.to_nbt(true) {
+            if let Some(nbt) = block_entity.to_nbt(false) {
                 block_entities.push(CChunkDataBlockEntity {
                     x: pos.x as i8,
                     z: pos.z as i8,
@@ -472,13 +497,13 @@ impl Chunk {
                     block_count: 0,
                     block_states: PalettedContainer {
                         bits_per_entry: 0,
-                        data_array: vec![0],
+                        data_array: vec![],
                         palette: Some(vec![0]),
                     },
                     biomes: PalettedContainer {
                         bits_per_entry: 0,
-                        data_array: vec![0],
-                        palette: Some(vec![0]),
+                        data_array: vec![],
+                        palette: Some(vec![mchprs_network::generated::PLAINS_BIOME]),
                     },
                 })
                 .collect(),
@@ -491,16 +516,14 @@ impl Chunk {
     }
 
     fn get_top_most_block(&self, x: u32, z: u32) -> u32 {
-        let mut top_most = 0;
-        for (section_y, section) in self.sections.iter().enumerate() {
+        for (section_y, section) in self.sections.iter().enumerate().rev() {
             for y in (0..16).rev() {
-                let block_state = section.get_block(x, y, z);
-                if block_state != 0 && top_most < y + section_y as u32 * 16 {
-                    top_most = section_y as u32 * 16;
+                if section.get_block(x, y, z) != 0 {
+                    return y + section_y as u32 * 16 + 1;
                 }
             }
         }
-        top_most
+        0
     }
 
     /// Sets a block in the chunk. Returns true if a block was changed.
@@ -589,5 +612,21 @@ impl Chunk {
         for section in &mut self.sections {
             section.multi_block.records.clear();
         }
+    }
+}
+
+#[cfg(test)]
+mod heightmap_tests {
+    use super::*;
+    #[test]
+    fn heightmap_uses_first_air_above_top_block() {
+        let mut chunk = Chunk::empty(0, 0);
+        assert_eq!(chunk.get_top_most_block(1, 2), 0);
+        chunk.set_block(1, 0, 2, 1);
+        assert_eq!(chunk.get_top_most_block(1, 2), 1);
+        chunk.set_block(1, 20, 2, 1);
+        assert_eq!(chunk.get_top_most_block(1, 2), 21);
+        chunk.set_block(1, 255, 2, 1);
+        assert_eq!(chunk.get_top_most_block(1, 2), 256);
     }
 }

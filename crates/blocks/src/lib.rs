@@ -1,5 +1,6 @@
 pub mod block_entities;
 pub mod blocks;
+pub mod generated;
 pub mod items;
 
 use mchprs_network::packets::PackedPos;
@@ -503,7 +504,11 @@ pub struct SignType(pub u8);
 
 impl SignType {
     pub const fn to_item_type(self) -> u32 {
-        self.0 as u32
+        match self.0 {
+            3 => 4,
+            4 => 3,
+            n => n as u32,
+        }
     }
     pub const fn from_item_type(sign_type: u32) -> Self {
         Self(match sign_type {

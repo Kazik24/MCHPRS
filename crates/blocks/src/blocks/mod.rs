@@ -114,6 +114,35 @@ impl BlockTransform for BlockFacing {
 }
 
 impl Block {
+    pub fn get_id(self) -> u32 {
+        if let Block::Unknown { id } = self {
+            return id;
+        }
+        crate::generated::LEGACY_BLOCK_STATES[self.legacy_id() as usize]
+    }
+    pub fn from_id(id: u32) -> Self {
+        let legacy = crate::generated::TARGET_TO_LEGACY
+            .get(id as usize)
+            .copied()
+            .unwrap_or(u32::MAX);
+        if legacy == u32::MAX {
+            Self::Unknown { id }
+        } else {
+            match Self::from_legacy_id(legacy) {
+                Self::Unknown { .. } => Self::Unknown { id },
+                block if block.get_id() == id => block,
+                _ => Self::Unknown { id },
+            }
+        }
+    }
+    pub fn registry_id(self) -> u32 {
+        let state = self.get_id();
+        crate::generated::BLOCKS
+            .iter()
+            .find(|b| state >= b.2 && state <= b.3)
+            .expect("invalid block state")
+            .1
+    }
     pub fn has_block_entity(self) -> bool {
         match self {
             Block::RedstoneComparator { .. }
@@ -130,7 +159,7 @@ impl Block {
     }
 
     pub fn can_place_block_in(self) -> bool {
-        matches!(self.get_id(),
+        matches!(crate::generated::TARGET_TO_LEGACY.get(self.get_id() as usize).copied().unwrap_or(u32::MAX),
             0             // Air
             | 9915..=9916 // Void and Cave air
             | 34..=49     // Water
@@ -152,7 +181,7 @@ fn repeater_id_test() {
         repeater: RedstoneRepeater::new(3, BlockDirection::West, true, false),
     };
     let id = original.get_id();
-    assert_eq!(id, 4141);
+    assert_eq!(id, crate::generated::LEGACY_BLOCK_STATES[4141]);
     let new = Block::from_id(id);
     assert_eq!(new, original);
 }
@@ -163,7 +192,7 @@ fn comparator_id_test() {
         comparator: RedstoneComparator::new(BlockDirection::West, ComparatorMode::Subtract, false),
     };
     let id = original.get_id();
-    assert_eq!(id, 6895);
+    assert_eq!(id, crate::generated::LEGACY_BLOCK_STATES[6895]);
     let new = Block::from_id(id);
     assert_eq!(new, original);
 }
@@ -174,6 +203,7 @@ fn test_piston_observers_id_conversions() {
         .chain(9510..=9521) // observers
         .chain(1416..=1439); // piston heads
     for i in ids {
+        let i = crate::generated::LEGACY_BLOCK_STATES[i as usize];
         let block = Block::from_id(i);
         let id = block.get_id();
         assert_eq!(id, i);
@@ -277,7 +307,7 @@ macro_rules! blocks {
                 !self.has_block_entity() || self.is_cube()
             }
 
-            pub const fn get_id(self) -> u32 {
+            fn legacy_id(self) -> u32 {
                 match self {
                     $(
                         Block::$simple_name {} => $simple_d,
@@ -292,7 +322,7 @@ macro_rules! blocks {
                 }
             }
 
-            pub fn from_id(mut id: u32) -> Block {
+            pub(crate) fn from_legacy_id(mut id: u32) -> Block {
                 match id {
                     $(
                         $simple_d => Block::$simple_name {},
@@ -328,28 +358,25 @@ macro_rules! blocks {
                             },
                         )*
                     )*
-                    _ => None,
+                    _ => crate::generated::BLOCKS.iter().find(|b| b.0 == name.trim_start_matches("minecraft:")).map(|b|Self::Unknown{id:b.4}),
                 }
             }
 
-             // Not all props will be part of the name
-            #[allow(unused_variables)]
             pub fn get_name(self) -> &'static str {
-                match self {
-                    $(
-                        Block::$simple_name {} => $simple_t,
-                    )*
-                    $(
-                        Block::$name {
-                            $($(
-                                $prop_name,
-                            )*)?
-                        } => $get_name,
-                    )*
-                }
+                let id=self.get_id();
+                crate::generated::BLOCKS.iter().find(|b|id>=b.2 && id<=b.3).map_or("air",|b|b.0)
             }
 
             pub fn set_properties(&mut self, props: HashMap<&str, &str>) {
+                if let Self::Unknown{id}=self {
+                    let block=crate::generated::BLOCKS.iter().find(|b| *id>=b.2 && *id<=b.3);
+                    if let Some(block)=block {
+                        let mut wanted:HashMap<&str,&str>=crate::generated::STATE_PROPERTIES[*id as usize].iter().copied().collect();
+                        wanted.extend(props);
+                        if let Some(state)=(block.2..=block.3).find(|i|crate::generated::STATE_PROPERTIES[*i as usize].iter().all(|(k,v)|wanted.get(k)==Some(v))) {*id=state;}
+                    }
+                    return;
+                }
                 match self {
                     $(
                         Block::$simple_name {} => {},
@@ -369,6 +396,7 @@ macro_rules! blocks {
             }
 
             pub fn properties(&self) -> HashMap<&'static str, String> {
+                if let Self::Unknown{id}=self {return crate::generated::STATE_PROPERTIES.get(*id as usize).map_or_else(HashMap::new,|p|p.iter().map(|(k,v)|(*k,(*v).to_owned())).collect());}
                 let mut props = HashMap::new();
                 match self {
                     $(
@@ -443,140 +471,133 @@ blocks! {
     //     cube: true,
     // },
     #simple Stone(1, "stone"),
-    #simple Bedrock(25, "bedrock"),
-    #simple TNT(143, "tnt"),
-    #simple OakPlanks(13, "oak_planks"),
-    #simple SprucePlanks(14, "spruce_planks"),
-    #simple BirchPlanks(15, "birch_planks"),
-    #simple JunglePlanks(16, "jungle_planks"),
-    #simple AcaciaPlanks(17, "acacia_planks"),
-    #simple DarkOakPlanks(18, "dark_oak_planks"),
-    #simple OakLog(38, "oak_log"),
-    #simple SpruceLog(39, "spruce_log"),
-    #simple BirchLog(40, "birch_log"),
-    #simple JungleLog(41, "jungle_log"),
-    #simple AcaciaLog(42, "acacia_log"),
-    #simple DarkOakLog(43, "dark_oak_log"),
-    #simple StrippedSpruceLog(44, "stripped_spruce_log"),
-    #simple StrippedBirchLog(45, "stripped_birch_log"),
-    #simple StrippedJungleLog(46, "stripped_jungle_log"),
-    #simple StrippedAcaciaLog(47, "stripped_acacia_log"),
-    #simple StrippedDarkOakLog(48, "stripped_dark_oak_log"),
-    #simple StrippedOakLog(49, "stripped_oak_log"),
-    #simple OakWood(50, "oak_wood"),
-    #simple SpruceWood(51, "spruce_wood"),
-    #simple BirchWood(52, "birch_wood"),
-    #simple JungleWood(53, "jungle_wood"),
-    #simple AcaciaWood(54, "acacia_wood"),
-    #simple DarkOakWood(55, "dark_oak_wood"),
-    #simple StrippedOakWood(56, "stripped_oak_wood"),
-    #simple StrippedSpruceWood(57, "stripped_spruce_wood"),
-    #simple StrippedBirchWood(58, "stripped_birch_wood"),
-    #simple StrippedJungleWood(59, "stripped_jungle_wood"),
-    #simple StrippedAcaciaWood(60, "stripped_acacia_wood"),
-    #simple StrippedDarkOakWood(61, "stripped_dark_oak_wood"),
-    #simple Bookshelf(144, "bookshelf"),
-    #simple Sponge(70, "sponge"),
-    #simple HayBale(404, "hay_block"),
-    #simple MossBlock(865, "moss_block"),
+    #simple Bedrock(33, "bedrock"),
+    #simple TNT(1487, "tnt"),
+    #simple OakPlanks(15, "oak_planks"),
+    #simple SprucePlanks(16, "spruce_planks"),
+    #simple BirchPlanks(17, "birch_planks"),
+    #simple JunglePlanks(18, "jungle_planks"),
+    #simple AcaciaPlanks(19, "acacia_planks"),
+    #simple DarkOakPlanks(20, "dark_oak_planks"),
+    #simple OakLog(77, "oak_log"),
+    #simple SpruceLog(80, "spruce_log"),
+    #simple BirchLog(83, "birch_log"),
+    #simple JungleLog(86, "jungle_log"),
+    #simple AcaciaLog(89, "acacia_log"),
+    #simple DarkOakLog(92, "dark_oak_log"),
+    #simple StrippedSpruceLog(95, "stripped_spruce_log"),
+    #simple StrippedBirchLog(98, "stripped_birch_log"),
+    #simple StrippedJungleLog(101, "stripped_jungle_log"),
+    #simple StrippedAcaciaLog(104, "stripped_acacia_log"),
+    #simple StrippedDarkOakLog(107, "stripped_dark_oak_log"),
+    #simple StrippedOakLog(110, "stripped_oak_log"),
+    #simple OakWood(113, "oak_wood"),
+    #simple SpruceWood(116, "spruce_wood"),
+    #simple BirchWood(119, "birch_wood"),
+    #simple JungleWood(122, "jungle_wood"),
+    #simple AcaciaWood(125, "acacia_wood"),
+    #simple DarkOakWood(128, "dark_oak_wood"),
+    #simple StrippedOakWood(131, "stripped_oak_wood"),
+    #simple StrippedSpruceWood(134, "stripped_spruce_wood"),
+    #simple StrippedBirchWood(137, "stripped_birch_wood"),
+    #simple StrippedJungleWood(140, "stripped_jungle_wood"),
+    #simple StrippedAcaciaWood(143, "stripped_acacia_wood"),
+    #simple StrippedDarkOakWood(146, "stripped_dark_oak_wood"),
+    #simple Bookshelf(1488, "bookshelf"),
+    #simple Sponge(260, "sponge"),
+    #simple MossBlock(18623, "moss_block"),
     #simple Granite(2, "granite"),
     #simple PolishedGranite(3, "polished_granite"),
     #simple Diorite(4, "diorite"),
     #simple PolishedDiorite(5, "polished_diorite"),
     #simple Andesite(6, "andesite"),
     #simple PolishedAndesite(7, "polished_andesite"),
-    #simple Cobblestone(12, "cobblestone"),
-    #simple GoldOre(31, "gold_ore"),
-    #simple DeepslateGoldOre(32, "deepslate_gold_ore"),
-    #simple IronOre(33, "iron_ore"),
-    #simple DeepslateIronOre(34, "deepslate_iron_ore"),
-    #simple CoalOre(35, "coal_ore"),
-    #simple DeepslateCoalOre(36, "deepslate_coal_ore"),
-    #simple NetherGoldOre(37, "nether_gold_ore"),
-    #simple LapisLazuliOre(73, "lapis_ore"),
-    #simple DeepslateLapisLazuliOre(74, "deepslate_lapis_ore"),
-    #simple BlockofLapisLazuli(75, "lapis_block"),
-    #simple ChiseledSandstone(78, "chiseled_sandstone"),
-    #simple CutSandstone(79, "cut_sandstone"),
-    #simple BlockofGold(140, "gold_block"),
-    #simple BlockofIron(141, "iron_block"),
-    #simple Bricks(142, "bricks"),
-    #simple MossyCobblestone(145, "mossy_cobblestone"),
-    #simple Obsidian(146, "obsidian"),
-    #simple DiamondOre(155, "diamond_ore"),
-    #simple DeepslateDiamondOre(156, "deepslate_diamond_ore"),
-    #simple BlockofDiamond(157, "diamond_block"),
-    #simple RedstoneOre(187, "redstone_ore"),
-    #simple DeepslateRedstoneOre(188, "deepslate_redstone_ore"),
-    #simple Ice(193, "ice"),
-    #simple Netherrack(201, "netherrack"),
-    #simple Basalt(204, "basalt"),
-    #simple PolishedBasalt(205, "polished_basalt"),
-    #simple StoneBricks(236, "stone_bricks"),
-    #simple MossyStoneBricks(237, "mossy_stone_bricks"),
-    #simple CrackedStoneBricks(238, "cracked_stone_bricks"),
-    #simple ChiseledStoneBricks(239, "chiseled_stone_bricks"),
-    #simple BlockofQuartz(350, "quartz_block"),
-    #simple ChiseledQuartzBlock(351, "chiseled_quartz_block"),
-    #simple QuartzPillar(352, "quartz_pillar"),
-    #simple BlockofCoal(422, "coal_block"),
-    #simple RedSandstone(462, "red_sandstone"),
-    #simple ChiseledRedSandstone(463, "chiseled_red_sandstone"),
-    #simple CutRedSandstone(464, "cut_red_sandstone"),
-    #simple SmoothStone(485, "smooth_stone"),
-    #simple SmoothSandstone(486, "smooth_sandstone"),
-    #simple SmoothQuartzBlock(487, "smooth_quartz"),
-    #simple SmoothRedSandstone(488, "smooth_red_sandstone"),
-    #simple PurpurBlock(507, "purpur_block"),
-    #simple PurpurPillar(508, "purpur_pillar"),
-    #simple RedNetherBricks(519, "red_nether_bricks"),
-    #simple BrickWall(668, "brick_wall"),
-    #simple PrismarineWall(669, "prismarine_wall"),
-    #simple RedSandstoneWall(670, "red_sandstone_wall"),
-    #simple MossyStoneBrickWall(671, "mossy_stone_brick_wall"),
-    #simple GraniteWall(672, "granite_wall"),
-    #simple StoneBrickWall(673, "stone_brick_wall"),
-    #simple NetherBrickWall(674, "nether_brick_wall"),
-    #simple AndesiteWall(675, "andesite_wall"),
-    #simple RedNetherBrickWall(676, "red_nether_brick_wall"),
-    #simple SandstoneWall(677, "sandstone_wall"),
-    #simple EndStoneBrickWall(678, "end_stone_brick_wall"),
-    #simple DioriteWall(679, "diorite_wall"),
-    #simple BlockofNetherite(748, "netherite_block"),
-    #simple AncientDebris(749, "ancient_debris"),
-    #simple CryingObsidian(750, "crying_obsidian"),
-    #simple ChiseledNetherBricks(774, "chiseled_nether_bricks"),
-    #simple CrackedNetherBricks(775, "cracked_nether_bricks"),
-    #simple QuartzBricks(776, "quartz_bricks"),
-    #simple OxidizedCopper(822, "oxidized_copper"),
-    #simple WeatheredCopper(823, "weathered_copper"),
-    #simple ExposedCopper(824, "exposed_copper"),
-    #simple BlockofCopper(825, "copper_block"),
-    #simple CopperOre(826, "copper_ore"),
-    #simple DeepslateCopperOre(827, "deepslate_copper_ore"),
-    #simple OxidizedCutCopper(828, "oxidized_cut_copper"),
-    #simple WeatheredCutCopper(829, "weathered_cut_copper"),
-    #simple ExposedCutCopper(830, "exposed_cut_copper"),
-    #simple CutCopper(831, "cut_copper"),
-    #simple WaxedBlockofCopper(840, "waxed_copper_block"),
-    #simple WaxedWeatheredCopper(841, "waxed_weathered_copper"),
-    #simple WaxedExposedCopper(842, "waxed_exposed_copper"),
-    #simple WaxedOxidizedCopper(843, "waxed_oxidized_copper"),
-    #simple WaxedOxidizedCutCopper(844, "waxed_oxidized_cut_copper"),
-    #simple WaxedWeatheredCutCopper(845, "waxed_weathered_cut_copper"),
-    #simple WaxedExposedCutCopper(846, "waxed_exposed_cut_copper"),
-    #simple PointedDripstone(857, "pointed_dripstone"),
-    #simple DripstoneBlock(858, "dripstone_block"),
-    #simple Deepslate(871, "deepslate"),
-    #simple CobbledDeepslate(872, "cobbled_deepslate"),
-    #simple DeepslateTiles(880, "deepslate_tiles"),
-    #simple DeepslateBricks(884, "deepslate_bricks"),
-    #simple CrackedDeepslateBricks(889, "cracked_deepslate_bricks"),
-    #simple GrassBlock(8, "grass_block"),
-    #simple Dirt(9, "dirt"),
-    #simple CoarseDirt(10, "coarse_dirt"),
-    #simple Podzol(11, "podzol"),
-    #simple SnowBlock(194, "snow_block"),
+    #simple Cobblestone(14, "cobblestone"),
+    #simple GoldOre(69, "gold_ore"),
+    #simple DeepslateGoldOre(70, "deepslate_gold_ore"),
+    #simple IronOre(71, "iron_ore"),
+    #simple DeepslateIronOre(72, "deepslate_iron_ore"),
+    #simple CoalOre(73, "coal_ore"),
+    #simple DeepslateCoalOre(74, "deepslate_coal_ore"),
+    #simple NetherGoldOre(75, "nether_gold_ore"),
+    #simple LapisLazuliOre(263, "lapis_ore"),
+    #simple DeepslateLapisLazuliOre(264, "deepslate_lapis_ore"),
+    #simple BlockofLapisLazuli(265, "lapis_block"),
+    #simple ChiseledSandstone(279, "chiseled_sandstone"),
+    #simple CutSandstone(280, "cut_sandstone"),
+    #simple Bricks(1485, "bricks"),
+    #simple MossyCobblestone(1489, "mossy_cobblestone"),
+    #simple Obsidian(1490, "obsidian"),
+    #simple DiamondOre(3410, "diamond_ore"),
+    #simple DeepslateDiamondOre(3411, "deepslate_diamond_ore"),
+    #simple BlockofDiamond(3412, "diamond_block"),
+    #simple RedstoneOre(3953, "redstone_ore"),
+    #simple DeepslateRedstoneOre(3955, "deepslate_redstone_ore"),
+    #simple Ice(3998, "ice"),
+    #simple Netherrack(4068, "netherrack"),
+    #simple Basalt(4072, "basalt"),
+    #simple PolishedBasalt(4075, "polished_basalt"),
+    #simple MossyStoneBricks(4565, "mossy_stone_bricks"),
+    #simple CrackedStoneBricks(4566, "cracked_stone_bricks"),
+    #simple ChiseledStoneBricks(4567, "chiseled_stone_bricks"),
+    #simple ChiseledQuartzBlock(6945, "chiseled_quartz_block"),
+    #simple QuartzPillar(6947, "quartz_pillar"),
+    #simple RedSandstone(8467, "red_sandstone"),
+    #simple ChiseledRedSandstone(8468, "chiseled_red_sandstone"),
+    #simple CutRedSandstone(8469, "cut_red_sandstone"),
+    #simple SmoothStone(8664, "smooth_stone"),
+    #simple SmoothSandstone(8665, "smooth_sandstone"),
+    #simple SmoothRedSandstone(8667, "smooth_red_sandstone"),
+    #simple PurpurBlock(9384, "purpur_block"),
+    #simple PurpurPillar(9386, "purpur_pillar"),
+    #simple RedNetherBricks(9505, "red_nether_bricks"),
+    #simple BrickWall(11120, "brick_wall"),
+    #simple PrismarineWall(11444, "prismarine_wall"),
+    #simple RedSandstoneWall(11768, "red_sandstone_wall"),
+    #simple MossyStoneBrickWall(12092, "mossy_stone_brick_wall"),
+    #simple GraniteWall(12416, "granite_wall"),
+    #simple StoneBrickWall(12740, "stone_brick_wall"),
+    #simple NetherBrickWall(13064, "nether_brick_wall"),
+    #simple AndesiteWall(13388, "andesite_wall"),
+    #simple RedNetherBrickWall(13712, "red_nether_brick_wall"),
+    #simple SandstoneWall(14036, "sandstone_wall"),
+    #simple EndStoneBrickWall(14360, "end_stone_brick_wall"),
+    #simple DioriteWall(14684, "diorite_wall"),
+    #simple BlockofNetherite(16080, "netherite_block"),
+    #simple AncientDebris(16081, "ancient_debris"),
+    #simple CryingObsidian(16082, "crying_obsidian"),
+    #simple ChiseledNetherBricks(17355, "chiseled_nether_bricks"),
+    #simple CrackedNetherBricks(17356, "cracked_nether_bricks"),
+    #simple QuartzBricks(17357, "quartz_bricks"),
+    #simple OxidizedCopper(17814, "oxidized_copper"),
+    #simple WeatheredCopper(17815, "weathered_copper"),
+    #simple ExposedCopper(17816, "exposed_copper"),
+    #simple BlockofCopper(17817, "copper_block"),
+    #simple CopperOre(17818, "copper_ore"),
+    #simple DeepslateCopperOre(17819, "deepslate_copper_ore"),
+    #simple OxidizedCutCopper(17820, "oxidized_cut_copper"),
+    #simple WeatheredCutCopper(17821, "weathered_cut_copper"),
+    #simple ExposedCutCopper(17822, "exposed_cut_copper"),
+    #simple CutCopper(17823, "cut_copper"),
+    #simple WaxedBlockofCopper(18168, "waxed_copper_block"),
+    #simple WaxedWeatheredCopper(18169, "waxed_weathered_copper"),
+    #simple WaxedExposedCopper(18170, "waxed_exposed_copper"),
+    #simple WaxedOxidizedCopper(18171, "waxed_oxidized_copper"),
+    #simple WaxedOxidizedCutCopper(18172, "waxed_oxidized_cut_copper"),
+    #simple WaxedWeatheredCutCopper(18173, "waxed_weathered_cut_copper"),
+    #simple WaxedExposedCutCopper(18174, "waxed_exposed_cut_copper"),
+    #simple PointedDripstone(18549, "pointed_dripstone"),
+    #simple DripstoneBlock(18564, "dripstone_block"),
+    #simple Deepslate(18684, "deepslate"),
+    #simple CobbledDeepslate(18686, "cobbled_deepslate"),
+    #simple DeepslateTiles(19508, "deepslate_tiles"),
+    #simple DeepslateBricks(19919, "deepslate_bricks"),
+    #simple CrackedDeepslateBricks(20331, "cracked_deepslate_bricks"),
+    #simple GrassBlock(9, "grass_block"),
+    #simple Dirt(10, "dirt"),
+    #simple CoarseDirt(11, "coarse_dirt"),
+    #simple Podzol(13, "podzol"),
+    #simple SnowBlock(3999, "snow_block"),
 
     Air {
         get_id: 0,
@@ -1640,7 +1661,7 @@ blocks! {
         get_id: id,
         from_id(id): _ => { id: id },
         from_names(name): {},
-        get_name: "unknown",
+        get_name: crate::generated::BLOCKS.iter().find(|b| id >= b.2 && id <= b.3).map_or("unknown",|b|b.0),
         solid: true,
         cube: true,
     }

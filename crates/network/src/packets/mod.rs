@@ -1,4 +1,5 @@
 pub mod clientbound;
+pub mod components;
 pub mod serverbound;
 
 use super::NetworkState;
@@ -61,16 +62,35 @@ fn read_compressed<T: PacketDecoderExt>(
     reader: &mut T,
     network_state: &mut NetworkState,
 ) -> DecodeResult<Box<dyn ServerBoundPacket>> {
-    let decompressed_length = reader.read_varint()? as usize;
+    let length = reader.read_varint()?;
+    if !(0..=2097152).contains(&length) {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "invalid compressed packet length",
+        )
+        .into());
+    }
     let data = PacketDecoderExt::read_to_end(reader)?;
-    // `data` is not compressed if `decompressed_length` is 0
-    if decompressed_length == 0 {
+    if length == 0 {
         read_decompressed(&mut Cursor::new(data), network_state)
     } else {
-        let mut decompresser = ZlibDecoder::new(data.as_slice());
-        let mut decompressed_data = Vec::with_capacity(decompressed_length);
-        decompresser.read_to_end(&mut decompressed_data)?;
-        read_decompressed(&mut Cursor::new(decompressed_data), network_state)
+        if length < 256 {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "compressed packet below threshold",
+            )
+            .into());
+        }
+        let mut decompressed = Vec::new();
+        Read::take(ZlibDecoder::new(data.as_slice()), 2097153).read_to_end(&mut decompressed)?;
+        if decompressed.len() != length as usize {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "compressed packet length mismatch",
+            )
+            .into());
+        }
+        read_decompressed(&mut Cursor::new(decompressed), network_state)
     }
 }
 
@@ -79,42 +99,91 @@ fn read_decompressed<T: PacketDecoderExt>(
     state: &mut NetworkState,
 ) -> DecodeResult<Box<dyn ServerBoundPacket>> {
     let packet_id = reader.read_varint()?;
+    let unknown = || -> Box<dyn ServerBoundPacket> { Box::new(SUnknown) };
     Ok(match *state {
-        NetworkState::Handshake if packet_id == 0x00 => {
-            let handshake = SHandshake::decode(reader)?;
-            match handshake.next_state {
-                1 => *state = NetworkState::Status,
-                2 => *state = NetworkState::Login,
-                _ => {}
-            }
-            Box::new(handshake)
+        NetworkState::Handshake if packet_id == 0 => {
+            let p = SHandshake::decode(reader)?;
+            *state = match p.next_state {
+                1 => NetworkState::Status,
+                2 => NetworkState::Login,
+                _ => {
+                    return Err(io::Error::new(
+                        io::ErrorKind::InvalidData,
+                        "invalid handshake state",
+                    )
+                    .into())
+                }
+            };
+            Box::new(p)
         }
-        NetworkState::Status if packet_id == 0x00 => Box::new(SRequest::decode(reader)?),
-        NetworkState::Status if packet_id == 0x01 => Box::new(SPing::decode(reader)?),
-        NetworkState::Login if packet_id == 0x00 => {
-            *state = NetworkState::Play;
-            Box::new(SLoginStart::decode(reader)?)
-        }
-        _ => match packet_id {
-            0x03 => Box::new(SChatMessage::decode(reader)?),
-            0x05 => Box::new(SClientSettings::decode(reader)?),
-            0x06 => Box::new(STabComplete::decode(reader)?),
-            0x0A => Box::new(SPluginMessage::decode(reader)?),
-            0x0F => Box::new(SKeepAlive::decode(reader)?),
-            0x11 => Box::new(SPlayerPosition::decode(reader)?),
-            0x12 => Box::new(SPlayerPositionAndRotation::decode(reader)?),
-            0x13 => Box::new(SPlayerRotation::decode(reader)?),
-            0x14 => Box::new(SPlayerMovement::decode(reader)?),
-            0x19 => Box::new(SPlayerAbilities::decode(reader)?),
-            0x1A => Box::new(SPlayerDigging::decode(reader)?),
-            0x1B => Box::new(SEntityAction::decode(reader)?),
-            0x25 => Box::new(SHeldItemChange::decode(reader)?),
-            0x28 => Box::new(SCreativeInventoryAction::decode(reader)?),
-            0x2B => Box::new(SUpdateSign::decode(reader)?),
-            0x2C => Box::new(SAnimation::decode(reader)?),
-            0x2E => Box::new(SPlayerBlockPlacemnt::decode(reader)?),
-            _ => Box::new(SUnknown),
+        NetworkState::Status => match packet_id {
+            0 => Box::new(SRequest::decode(reader)?),
+            1 => Box::new(SPing::decode(reader)?),
+            _ => unknown(),
         },
+        NetworkState::Login if packet_id == 0 => {
+            let p = SLoginStart::decode(reader)?;
+            *state = NetworkState::LoginAcknowledgement;
+            Box::new(p)
+        }
+        NetworkState::LoginAcknowledgement if packet_id == 3 => {
+            *state = NetworkState::Configuration;
+            Box::new(SLoginAcknowledged)
+        }
+        NetworkState::Configuration | NetworkState::ConfigurationFinish => match packet_id {
+            0 => Box::new(SClientSettings::decode(reader)?),
+            2 => Box::new(SPluginMessage::decode(reader)?),
+            7 if *state == NetworkState::Configuration => {
+                let count = reader.read_varint()?;
+                if count != 0 {
+                    return Err(io::Error::new(
+                        io::ErrorKind::InvalidData,
+                        "unexpected known packs",
+                    )
+                    .into());
+                }
+                *state = NetworkState::ConfigurationFinish;
+                Box::new(SKnownPacks)
+            }
+            3 if *state == NetworkState::ConfigurationFinish => {
+                *state = NetworkState::Play;
+                Box::new(SConfigurationFinished)
+            }
+            4 => Box::new(SKeepAlive::decode(reader)?),
+            _ => unknown(),
+        },
+        NetworkState::Play => match packet_id {
+            0x05 => {
+                let message = format!("/{}", reader.read_string()?);
+                Box::new(SChatMessage { message })
+            }
+            0x06 => Box::new(SChatCommand::decode(reader)?),
+            0x07 => Box::new(SChatMessage::decode(reader)?),
+            0x0c => Box::new(SClientSettings::decode(reader)?),
+            0x0d => Box::new(STabComplete::decode(reader)?),
+            0x14 => Box::new(SPluginMessage::decode(reader)?),
+            0x1a => Box::new(SKeepAlive::decode(reader)?),
+            0x1c => Box::new(SPlayerPosition::decode(reader)?),
+            0x1d => Box::new(SPlayerPositionAndRotation::decode(reader)?),
+            0x1e => Box::new(SPlayerRotation::decode(reader)?),
+            0x1f => Box::new(SPlayerMovement::decode(reader)?),
+            0x26 => Box::new(SPlayerAbilities::decode(reader)?),
+            0x27 => Box::new(SPlayerDigging::decode(reader)?),
+            0x28 => Box::new(SEntityAction::decode(reader)?),
+            0x33 => Box::new(SHeldItemChange::decode(reader)?),
+            0x36 => Box::new(SCreativeInventoryAction::decode(reader)?),
+            0x3a => Box::new(SUpdateSign::decode(reader)?),
+            0x3b => Box::new(SAnimation::decode(reader)?),
+            0x3e => Box::new(SPlayerBlockPlacemnt::decode(reader)?),
+            _ => unknown(),
+        },
+        _ => {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "packet in invalid connection state",
+            )
+            .into())
+        }
     })
 }
 
@@ -124,6 +193,9 @@ pub fn read_packet<T: PacketDecoderExt>(
     network_state: &mut NetworkState,
 ) -> DecodeResult<Box<dyn ServerBoundPacket>> {
     let length = reader.read_varint()?;
+    if !(1..=2097152).contains(&length) {
+        return Err(io::Error::new(io::ErrorKind::InvalidData, "invalid packet length").into());
+    }
     let data = reader.read_bytes(length as usize)?;
     let mut cursor = Cursor::new(data);
     if compressed.load(Ordering::Relaxed) {
@@ -149,6 +221,10 @@ pub trait PacketDecoderExt: Read + Sized {
         let mut read = vec![0; bytes];
         self.read_exact(&mut read)?;
         Ok(read)
+    }
+
+    fn read_uuid(&mut self) -> DecodeResult<u128> {
+        Ok(self.read_u128::<BigEndian>()?)
     }
 
     fn read_long(&mut self) -> DecodeResult<i64> {
@@ -180,47 +256,38 @@ pub trait PacketDecoderExt: Read + Sized {
     }
 
     fn read_varint(&mut self) -> DecodeResult<i32> {
-        let mut num_read = 0;
-        let mut result = 0i32;
-        let mut read;
-        loop {
-            read = self.read_byte()? as u8;
-            let value = (read & 0b0111_1111) as i32;
-            result |= value << (7 * num_read);
-
-            num_read += 1;
-            if num_read > 5 {
-                panic!("VarInt is too big!");
+        let mut result = 0u32;
+        for n in 0..5 {
+            let byte = self.read_unsigned_byte()?;
+            if n == 4 && byte & 0xf0 != 0 {
+                return Err(io::Error::new(io::ErrorKind::InvalidData, "VarInt too big").into());
             }
-            if read & 0b1000_0000 == 0 {
-                break;
+            result |= ((byte & 127) as u32) << (7 * n);
+            if byte & 128 == 0 {
+                return Ok(result as i32);
             }
         }
-        Ok(result)
+        Err(io::Error::new(io::ErrorKind::InvalidData, "VarInt too big").into())
     }
-
     fn read_varlong(&mut self) -> DecodeResult<i64> {
-        let mut num_read = 0;
-        let mut result = 0i64;
-        let mut read;
-        loop {
-            read = self.read_byte()? as u8;
-            let value = (read & 0b0111_1111) as i64;
-            result |= value << (7 * num_read);
-
-            num_read += 1;
-            if num_read > 5 {
-                panic!("VarInt is too big!");
+        let mut result = 0u64;
+        for n in 0..10 {
+            let byte = self.read_unsigned_byte()?;
+            if n == 9 && byte & 0xfe != 0 {
+                return Err(io::Error::new(io::ErrorKind::InvalidData, "VarLong too big").into());
             }
-            if read & 0b1000_0000 == 0 {
-                break;
+            result |= ((byte & 127) as u64) << (7 * n);
+            if byte & 128 == 0 {
+                return Ok(result as i64);
             }
         }
-        Ok(result)
+        Err(io::Error::new(io::ErrorKind::InvalidData, "VarLong too big").into())
     }
-
     fn read_string(&mut self) -> DecodeResult<String> {
         let length = self.read_varint()?;
+        if !(0..=131068).contains(&length) {
+            return Err(io::Error::new(io::ErrorKind::InvalidData, "invalid string length").into());
+        }
         Ok(String::from_utf8(self.read_bytes(length as usize)?)?)
     }
 
@@ -274,7 +341,7 @@ impl PackedPos {
     }
 }
 
-pub trait PacketEncoderExt: Write {
+pub trait PacketEncoderExt: Write + Sized {
     fn write_boolean(&mut self, val: bool) {
         self.write_all(&[val as u8]).unwrap();
     }
@@ -285,7 +352,8 @@ pub trait PacketEncoderExt: Write {
         let _ = self.write_all(&PacketEncoder::varint(val));
     }
 
-    fn write_varlong(&mut self, mut val: i64) {
+    fn write_varlong(&mut self, val: i64) {
+        let mut val = val as u64;
         loop {
             let mut temp = (val & 0b1111_1111) as u8;
             val >>= 7;
@@ -350,47 +418,40 @@ pub trait PacketEncoderExt: Write {
         self.write_u8(val as u8).unwrap();
     }
 
-    fn write_nbt<T: Serialize>(&mut self, nbt: &T) {
-        let _ = nbt::to_writer(self, nbt, None);
+    fn write_nbt<T: Serialize>(&mut self, value: &T) {
+        let mut named = Vec::new();
+        nbt::to_writer(&mut named, value, None).unwrap();
+        self.write_bytes(&named[..1]);
+        self.write_bytes(&named[3..]);
     }
-
-    fn write_nbt_blob(&mut self, blob: &nbt::Blob)
-    where
-        Self: Sized,
-    {
-        blob.to_writer(self).unwrap();
+    fn write_nbt_blob(&mut self, blob: &nbt::Blob) {
+        let mut named = Vec::new();
+        blob.to_writer(&mut named).unwrap();
+        let n = u16::from_be_bytes([named[1], named[2]]) as usize;
+        self.write_bytes(&named[..1]);
+        self.write_bytes(&named[3 + n..]);
     }
-
-    fn write_slot_data(&mut self, slot_data: &Option<SlotData>)
-    where
-        Self: Sized,
-    {
-        if let Some(slot) = slot_data {
-            self.write_bool(true);
-            self.write_varint(slot.item_id);
-            self.write_byte(slot.item_count);
-            if let Some(nbt) = &slot.nbt {
-                self.write_nbt_blob(nbt);
-            } else {
-                self.write_byte(0); // End tag
-            }
-        } else {
-            self.write_bool(false);
+    fn write_text(&mut self, text: &str) {
+        let value = crate::text::from_json(text);
+        if let nbt::Value::Compound(c) = value {
+            self.write_nbt_blob(&nbt::Blob::with_content(c));
+        } else if let nbt::Value::String(s) = value {
+            self.write_bytes(&[8]);
+            self.write_unsigned_short(s.len() as u16);
+            self.write_bytes(s.as_bytes());
         }
     }
+    fn write_slot_data(&mut self, slot: &Option<SlotData>) {
+        components::write_slot(self, slot);
+    }
 }
-
 impl PacketEncoderExt for Vec<u8> {}
-
 pub struct PacketEncoder {
-    buffer: Vec<u8>,
-    packet_id: u32,
-    // c_cache: Option<Vec<u8>>,
-    // unc_cache: Option<Vec<u8>>,
+    pub buffer: Vec<u8>,
+    pub packet_id: u32,
 }
-
 impl PacketEncoder {
-    fn new(buffer: Vec<u8>, packet_id: u32) -> PacketEncoder {
+    pub fn new(buffer: Vec<u8>, packet_id: u32) -> PacketEncoder {
         PacketEncoder { buffer, packet_id }
     }
 
@@ -415,7 +476,7 @@ impl PacketEncoder {
         // TODO: zero allocation
         let packet_id = PacketEncoder::varint(self.packet_id as i32);
         let data = [packet_id.as_slice(), self.buffer.as_slice()].concat();
-        if self.buffer.len() < 256 {
+        if data.len() < 256 {
             // Data Length adds another byte
             let packet_length = PacketEncoder::varint((1 + data.len()) as i32);
 
@@ -461,3 +522,6 @@ impl PacketEncoder {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests;

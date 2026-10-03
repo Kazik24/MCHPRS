@@ -13,12 +13,13 @@ use mchprs_network::packets::{PacketEncoder, SlotData};
 use mchprs_network::{PlayerConn, PlayerPacketSender};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
+use std::convert::TryInto;
 use std::fmt::{self, Display};
-use std::fs::{self, OpenOptions};
-use std::io::{Cursor, Write};
+use std::fs;
+use std::io::Cursor;
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::time::{Instant, SystemTime};
-use tracing::{error, warn};
+use tracing::error;
 
 pub type EntityId = u32;
 static ENTITY_ID_COUNTER: AtomicU32 = AtomicU32::new(0);
@@ -243,34 +244,79 @@ impl Player {
 
     /// This will load the player from the file. If the file does not exist,
     /// It will be created.
-    pub fn load_player(uuid: u128, username: String, client: PlayerConn) -> Player {
+    pub fn load_player(uuid: u128, username: String, mut client: PlayerConn) -> Option<Player> {
         let filename = format!("./world/players/{:032x}", uuid);
-        if let Ok(data) = fs::read(&filename) {
-            let player_data: PlayerData = match bincode::deserialize(&data) {
-                Ok(data) => data,
-                Err(_) => {
-                    warn!("There was an error loading the player data for {}, player data will be backed up and reset.", username);
-                    if let Err(err) = fs::rename(&filename, filename.clone() + ".bak") {
-                        error!("Failed to back up player data: {}", err);
-                    }
-                    return Player::from_data(Default::default(), uuid, username, client);
-                }
+        let path = std::path::Path::new(&filename);
+        let result = (|| -> anyhow::Result<PlayerData> {
+            let data = match fs::read(path) {
+                Ok(d) => d,
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(Default::default()),
+                Err(e) => return Err(e.into()),
             };
-
-            Player::from_data(player_data, uuid, username, client)
-        } else {
-            Player::from_data(Default::default(), uuid, username, client)
+            let legacy = !data.starts_with(b"MCHPLY\0");
+            let mut player: PlayerData = if legacy {
+                bincode::deserialize(&data)?
+            } else {
+                if data.len() < 15 || u32::from_le_bytes(data[7..11].try_into()?) != 3 {
+                    anyhow::bail!("unsupported player save version");
+                }
+                if u32::from_le_bytes(data[11..15].try_into()?)
+                    != crate::server::MC_DATA_VERSION as u32
+                {
+                    anyhow::bail!("player Minecraft data version mismatch");
+                }
+                bincode::deserialize(&data[15..])?
+            };
+            if !(0..9).contains(&player.selected_item_slot) {
+                anyhow::bail!("invalid hotbar slot");
+            }
+            let mut inventory_slots = std::collections::HashSet::new();
+            for entry in &mut player.inventory {
+                if !(0..46).contains(&entry.slot)
+                    || entry.count <= 0
+                    || !inventory_slots.insert(entry.slot)
+                {
+                    anyhow::bail!("invalid inventory entry");
+                }
+                if legacy {
+                    entry.id = *mchprs_blocks::generated::LEGACY_ITEMS
+                        .get(entry.id as usize)
+                        .ok_or_else(|| anyhow::anyhow!("unmappable legacy item {}", entry.id))?;
+                }
+                if entry.id as usize >= mchprs_blocks::generated::ITEMS.len() {
+                    anyhow::bail!("invalid item ID");
+                }
+                if let Some(data) = &entry.nbt {
+                    nbt::Blob::from_reader(&mut Cursor::new(data))?;
+                }
+            }
+            if legacy {
+                let mut bytes = b"MCHPLY\0".to_vec();
+                bytes.extend_from_slice(&3u32.to_le_bytes());
+                bytes.extend_from_slice(&(crate::server::MC_DATA_VERSION as u32).to_le_bytes());
+                bytes.extend_from_slice(&bincode::serialize(&player)?);
+                mchprs_save_data::atomic::backup(path)?;
+                mchprs_save_data::atomic::write(path, &bytes)?;
+            }
+            Ok(player)
+        })();
+        match result {
+            Ok(data) => Some(Self::from_data(data, uuid, username, client)),
+            Err(err) => {
+                error!(
+                    "Refusing player login; original save preserved for {}: {}",
+                    username, err
+                );
+                client.send_packet(&CDisconnect{reason:json!({"text":"Your player save could not be loaded. Ask the administrator to inspect the server log; your original file was preserved."}).to_string()}.encode());
+                client.close_connection();
+                None
+            }
         }
     }
 
     /// Saves the player to `./world/players/{uuid}`. This will create
     /// the file if it does not already exist.
     pub fn save(&self) {
-        let mut file = OpenOptions::new()
-            .write(true)
-            .create(true)
-            .open(format!("./world/players/{:032x}", self.uuid))
-            .unwrap();
         let mut inventory: Vec<InventoryEntry> = Vec::new();
         for (slot, item_option) in self.inventory.iter().enumerate() {
             if let Some(item) = item_option {
@@ -300,7 +346,14 @@ impl Player {
             walk_speed: self.walk_speed,
         })
         .unwrap();
-        file.write_all(&data).unwrap();
+        let mut bytes = b"MCHPLY\0".to_vec();
+        bytes.extend_from_slice(&3u32.to_le_bytes());
+        bytes.extend_from_slice(&(crate::server::MC_DATA_VERSION as u32).to_le_bytes());
+        bytes.extend_from_slice(&data);
+        let filename = format!("./world/players/{:032x}", self.uuid);
+        if let Err(err) = mchprs_save_data::atomic::write(std::path::Path::new(&filename), &bytes) {
+            error!("Failed to save player {}: {}", self.username, err);
+        }
     }
 
     /// Manages keep alives and packet reading. Return true if the view position should be updated.

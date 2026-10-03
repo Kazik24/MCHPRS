@@ -30,7 +30,6 @@ use scoreboard::RedpilerState;
 use serde_json::json;
 use std::cmp::Ordering;
 use std::collections::HashSet;
-use std::path::Path;
 use std::sync::mpsc::{Receiver, Sender};
 use std::thread;
 use std::time::{Duration, Instant};
@@ -329,7 +328,7 @@ impl World for PlotWorld {
                     pos: pos.packed(),
                     action_id: action as u8,
                     action_param: BlockFace::from(piston.facing) as u8,
-                    block_id: Block::Piston { piston }.get_id(),
+                    block_id: Block::Piston { piston }.registry_id(),
                 }
                 .encode();
                 for player in &self.packet_senders {
@@ -654,6 +653,12 @@ impl Plot {
     }
 
     fn start_redpiler(&mut self, options: CompilerOptions) {
+        if self.world.chunks.iter().any(Chunk::requires_interpreter) {
+            for player in &self.players {
+                player.send_system_message("This plot contains pistons or observers and runs with the interpreter to preserve their behavior.");
+            }
+            return;
+        }
         debug!("Starting redpiler");
         self.scoreboard
             .set_redpiler_state(&self.players, RedpilerState::Compiling);
@@ -1008,6 +1013,7 @@ impl Plot {
             }
 
             if self.auto_redpiler
+                && !self.world.chunks.iter().any(Chunk::requires_interpreter)
                 && !self.redpiler.is_active()
                 && (self.tps == Tps::Unlimited || self.timings.is_running_behind())
             {
@@ -1043,8 +1049,8 @@ impl Plot {
     }
 
     fn generate_chunk(layers: i32, x: i32, z: i32) -> Chunk {
-        const BORDER: u32 = Block::StoneBrick {}.get_id();
-        const FILL: u32 = Block::Sandstone {}.get_id();
+        let border: u32 = Block::StoneBrick {}.get_id();
+        let fill: u32 = Block::Sandstone {}.get_id();
 
         let mut chunk = Chunk::empty(x, z);
 
@@ -1059,9 +1065,9 @@ impl Plot {
                         || (block_x + 1) % PLOT_BLOCK_WIDTH == 0
                         || (block_z + 1) % PLOT_BLOCK_WIDTH == 0
                     {
-                        chunk.set_block(rx as u32, ry as u32, rz as u32, BORDER);
+                        chunk.set_block(rx as u32, ry as u32, rz as u32, border);
                     } else {
-                        chunk.set_block(rx as u32, ry as u32, rz as u32, FILL);
+                        chunk.set_block(rx as u32, ry as u32, rz as u32, fill);
                     }
                 }
             }
@@ -1128,25 +1134,6 @@ impl Plot {
         }
     }
 
-    fn load(
-        x: i32,
-        z: i32,
-        rx: BusReader<BroadcastMessage>,
-        tx: Sender<Message>,
-        priv_rx: Receiver<PrivMessage>,
-        always_running: bool,
-    ) -> Plot {
-        let plot_path = format!("./world/plots/p{},{}", x, z);
-        if Path::new(&plot_path).exists() {
-            let data = data::load_plot(plot_path)
-                .with_context(|| format!("error loading plot {},{}", x, z))
-                .unwrap();
-            Plot::from_data(data, x, z, rx, tx, priv_rx, always_running)
-        } else {
-            Plot::from_data(data::empty_plot(), x, z, rx, tx, priv_rx, always_running)
-        }
-    }
-
     fn save(&mut self) {
         let world = &mut self.world;
         let chunk_data: Vec<ChunkData<PLOT_SECTIONS>> =
@@ -1205,7 +1192,22 @@ impl Plot {
         thread::Builder::new()
             .name(format!("p{},{}", x, z))
             .spawn(move || {
-                let mut plot = Plot::load(x, z, rx, tx, priv_rx, always_running);
+                let loaded = data::load_plot(format!("./world/plots/p{},{}", x, z))
+                    .with_context(|| format!("error loading plot {},{}", x, z));
+                let data = match loaded {
+                    Ok(data) => data,
+                    Err(error) => {
+                        let _ = tx.send(Message::PlotLoadFailed(
+                            x,
+                            z,
+                            format!("{:#}", error),
+                            initial_player,
+                            priv_rx,
+                        ));
+                        return;
+                    }
+                };
+                let mut plot = Plot::from_data(data, x, z, rx, tx, priv_rx, always_running);
                 plot.run(initial_player);
             })
             .unwrap();

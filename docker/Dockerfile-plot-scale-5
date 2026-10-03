@@ -1,15 +1,56 @@
-FROM rust:slim
+# syntax=docker/dockerfile:1
+
+# Keep the compiler stable so a new Rust release does not invalidate the cache.
+ARG RUST_VERSION=1.98.1
+FROM rust:${RUST_VERSION}-slim-bookworm AS builder
+ARG RUST_VERSION
+ARG TARGETARCH
 
 RUN apt-get update \
-    && apt-get install -y \
-    git pkg-config libssl-dev
+    && apt-get install -y --no-install-recommends \
+        git pkg-config libssl-dev \
+    && rm -rf /var/lib/apt/lists/*
 
-COPY ./ ./
-RUN sed -i 's/pub const PLOT_SCALE: u32 = 4/pub const PLOT_SCALE: u32 = 5/g' crates/core/src/plot/mod.rs
+WORKDIR /app
+ENV CARGO_HOME=/var/cache/cargo \
+    CARGO_TARGET_DIR=/app/target
 
-RUN cargo build --release
+# The adjacent .dockerignore includes only build inputs, including optional
+# mc_data assets embedded by the 1.21.1 port. Runtime data/docs stay excluded.
+COPY . ./
+RUN sed -i 's/pub const PLOT_SCALE: u32 = 4;/pub const PLOT_SCALE: u32 = 5;/' crates/core/src/plot/mod.rs \
+    && grep -q '^pub const PLOT_SCALE: u32 = 5;' crates/core/src/plot/mod.rs
 
-VOLUME ["/data"]
+# BuildKit stores both caches on the builder selected by the Docker context.
+# Lock the mounts to prevent concurrent builds from changing cached artifacts.
+# Cargo checks source mtimes. Preserve them for unchanged content, and refresh
+# changed files even when COPY brings in timestamps older than cached artifacts.
+# Copy the executable out in this RUN: cache mounts are absent in later layers.
+RUN --mount=type=cache,id=mchprs-cargo,target=/var/cache/cargo,sharing=locked \
+    --mount=type=cache,id=mchprs-plot-scale-5-${RUST_VERSION}-${TARGETARCH},target=/app/target,sharing=locked \
+    find . -path ./target -prune -o -type f -exec sh -c ' \
+        for source do \
+            cached="$CARGO_TARGET_DIR/.mchprs-sources/$source"; \
+            if [ -f "$cached" ] && cmp -s "$source" "$cached"; then \
+                touch -r "$cached" "$source"; \
+            else \
+                touch "$source"; \
+                mkdir -p "$(dirname "$cached")"; \
+                cp -p "$source" "$cached"; \
+            fi; \
+        done \
+    ' sh {} + \
+    && cargo build --release --locked --bin mchprs \
+    && install -D /app/target/release/mchprs /out/mchprs
+
+FROM debian:bookworm-slim AS runtime
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends ca-certificates libssl3 \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY --from=builder /out/mchprs /usr/local/bin/mchprs
 WORKDIR /data
+VOLUME ["/data"]
+EXPOSE 25565
 
-CMD ["/target/release/mchprs"]
+CMD ["/usr/local/bin/mchprs"]

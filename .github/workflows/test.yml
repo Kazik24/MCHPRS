@@ -2,9 +2,9 @@ name: Test
 
 on:
   push:
-    branches: [ master ]
+    branches: [master, 'port/**']
   pull_request:
-    branches: [ master ]
+    branches: [master, 'port/**']
 
 env:
   CARGO_TERM_COLOR: always
@@ -12,22 +12,36 @@ env:
 jobs:
   build:
     runs-on: ubuntu-latest
-
     steps:
-    - uses: actions/checkout@v2
-    - uses: actions-rs/toolchain@v1
-      with:
-          toolchain: stable
-    - uses: Swatinem/rust-cache@v1
-    
-    - name: Build
-      uses: actions-rs/cargo@v1
-      with:
-        command: test
-        args: --verbose
-
-    - name: Check formatting
-      uses: actions-rs/cargo@v1
-      with:
-        command: fmt
-        args: --all -- --check
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+      - name: Check generated target data
+        run: |
+          python tools/generate_mc_data.py
+          git diff --exit-code -- crates/blocks/src/generated.rs crates/network/src/generated.rs mc_data/1.21.5/registries.bin mc_data/1.21.5/tags.bin
+      - name: Check formatting
+        run: cargo fmt --all -- --check
+      - name: Build release
+        run: cargo build --release --locked
+      - name: Test workspace (known memory-cell failure remains visible)
+        run: cargo test --workspace --locked --no-fail-fast
+  protocol:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+      - run: npm ci --prefix tools --ignore-scripts --no-audit --no-fund
+      - run: cargo build --locked
+      - run: python tools/run_protocol_smoke.py
+      - run: python tools/run_plot_load_smoke.py

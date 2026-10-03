@@ -1,12 +1,11 @@
-version: '3'
 services:
   mchprs:
     build:
+      # Cargo/target caches live in the prod server's BuildKit builder.
       context: .
       dockerfile: docker/Dockerfile-plot-scale-5
     ports:
       - 25562:25565
     volumes:
       - /srv/mchprs/data:/data
-      - /srv/redstonefun_server/plugins/WorldEdit/schematics:/data/schems/rf
-      - /srv/mchprs/target
+      - /home/minecraft/redstonefun_server/plugins/WorldEdit/schematics:/data/schems/rf

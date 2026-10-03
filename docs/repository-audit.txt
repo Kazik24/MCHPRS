@@ -1,0 +1,419 @@
+MCHPRS repository assessment - 2026-10-03
+
+Agreed work sequence
+1. Recover and build the original Minecraft 1.18.2 piston fork.
+2. Port that implementation to Minecraft 1.21.1, using upstream changes and
+   version-specific open-source protocol implementations as references.
+3. Bring this fork's piston implementation into full agreement with reference
+   piston behavior. The existing memory-cell failure is an implementation
+   discrepancy, not an inherent limitation of Minecraft pistons.
+
+Current workspace
+Branch: recovery/piston-1.18.2
+Base: cb3d4e2 (tag p0.1.0, 2024-05-31)
+MC version: 1.18.2; protocol: 758
+The two previous uncommitted network edits were discarded with user authorization.
+Existing branches, the existing stash, and runtime world/config files were retained.
+Cargo.lock was updated for modern Rust compatibility: time 0.3.20 -> 0.3.36,
+including dependency updates required by Cargo resolution. No simulation source
+or test expectations were changed. Changes remain uncommitted.
+Executable: F:\rustrepos\MCHPRS\target\debug\mchprs.exe
+
+Validation
+Rust: rustc 1.98.1; Windows MSVC
+cargo build --locked: PASS in the current working directory (development profile).
+cargo check --workspace --all-targets --locked: PASS for the recovered baseline.
+Piston tests: 4 PASS, 1 FAIL (test_memory_cell_unaligned_nanoticks at tick 0:
+expected extended=true, actual=false). The original and later 1.20.4 fork both
+reproduce this failure. Test retained unchanged for the later compliance work.
+Scheduler tests: test_zero_tick and test_reset_queue PASS. The reset test has
+limited coverage: it schedules entries without asserting reset behavior.
+Isolated server startup/status check: PASS; returned 1.18.2 / protocol 758.
+Full workspace tests, real-client login, and reference piston compliance were
+not validated. Build warnings include overlapping/stale block/item mappings.
+
+Branch map
+p0.1.0 / cb3d4e2: original 1.18.2 feature baseline; selected starting point.
+master and origin/master / 76b9b8c: 2024-09-20 upstream snapshot, 1.20.4.
+  cargo check --workspace --all-targets --locked --offline: PASS.
+merge_piston / 56ad793: September 2024 large integration attempt, 1.20.4.
+  All-target check FAILS because tests/components.rs imports mchprs_redstone
+  and mchprs_redpiler, while that branch retains those modules inside core.
+  Its libraries and executable target passed checking before the test errors.
+  The commit bae6a55 called "Merge freaking >70 commits" has one parent,
+  cb3d4e2, so Git does not record the upstream snapshot as a merged parent.
+cherrypick_piston / 26f1028: selective 1.20.4 integration with real upstream
+  merge parents, reaching adb426a; retains the original core architecture.
+piston / a0a7efb: later 1.20.4 continuation; local branch is five commits behind
+  origin/piston / dd01a49 (2025-04-02).
+origin/piston / dd01a49: all-target check PASS. Later changes fix entity spawn
+  and attack handling, schematic subdirectory traversal, and target block ID,
+  plus formatting. A useful source of individual fixes for the new port.
+piston_cherrypick_cd / c1d2544: October 2024 selective integration attempt.
+  Committed tree passes all-target checking; piston tests give 4 PASS / 1 FAIL.
+  Its old uncommitted edits removed PackedPos and CBlockAction and introduced
+  bitvec imports without declaring bitvec, causing the immediate build failure.
+observer, instant-piston, piston-auto-instant, update-piston, and remove:
+  earlier feature experiments. update-piston's remote tip and the remote
+  instant-piston fixes are already ancestors of p0.1.0.
+  Local instant-piston is two commits behind its remote; update-piston one.
+upstream/master / d492e43: freshly fetched current upstream; still declares
+  Minecraft 1.20.4, protocol 765. Not built in this assessment.
+upstream/dev/stack/mc-1.21.8 / 4660d75: work-in-progress 1.21.8 port (protocol
+  772), not the requested 1.21.1 implementation. Not built in this assessment.
+No 1.21.1 implementation was found in the named fork branches inspected.
+
+History and why integration became difficult
+Shared ancestor of original piston fork and fork master: 1f33340 (2024-04-05).
+Fork master has 70 subsequent commits; p0.1.0 has 116 divergent commits.
+The 1.20.4 piston branches incorporate networking changes but keep redstone,
+redpiler, and the World trait/storage inside core. Upstream moved those APIs
+into independent crates in 21c694f and 75f3718. The large merge branch mixes
+these architectures, including upstream tests expecting crates it removed.
+Reflog also records attempted world extraction and resets during October 2024.
+The piston engine, redstone update tests, scheduler, and core tests remain
+identical between p0.1.0 and the later piston lineage, apart from a comparator
+empty-container fix. The protocol and block tables were where most port work
+occurred.
+
+Features to preserve from the original fork
+Pistons and moving piston entities; piston block actions/animation; observers;
+zero-delay scheduling; game/nano/pico tick advancement; piston update ordering,
+BUD/instant-circuit behavior and recovery logic; WorldEdit piston rotate/flip;
+debug stick and redstone power display; cursed/instant repeater behavior;
+block entity memory improvements; schematic error handling and completion.
+Pistons and observers are handled by the interpreted engine; Redpiler's
+identify_block does not create graph nodes for them. A Piston enum value in
+redpiler_graph remains marked TODO. Automatic Redpiler behavior therefore needs
+attention during later validation, separately from protocol compatibility.
+
+Relevant changes in the fork's master snapshot
+Protocol foundation: 166b922, 2e92c7c, 709923f, 678dae1 update block/item tables,
+login/configuration state, registries, packet encodings, and world height.
+Protocol fixes: c30c8bb commands; 9b62b41/404aeca text; f69a4fe scoreboards;
+4d649aa equipment; 47bb8ad sign NBT; 7eff4fd block-change acknowledgements;
+48d688b player list; c83a79d pose metadata; 83e3803 profile properties.
+Persistence: dd37ceb plot format version 2; 93d8149 load/save errors;
+feae35e graceful-shutdown saving. Ported saves must translate state IDs and
+moving piston block_state data in addition to normal chunk palettes.
+WorldEdit: b5d751c count fix; bce8883 plot select; 0364b17 Sponge v3;
+680a8f0 lowercase block-entity IDs.
+Simulation/compiler fixes: 68213ab empty containers; 15a93a6 trapdoor defaults;
+68d8c59 flush ordering; a02d76f pending tick checks; 21b62fc coalescing;
+ae72401 wire-dot-out. Review semantics before adapting these to the fork.
+Architecture: 21c694f World extraction and 75f3718 redstone/redpiler extraction
+are independent refactors, not prerequisites for updating the wire protocol.
+Infrastructure: dependencies, Docker/CI fixes, larger default plots, Velocity
+modern forwarding, and backend/component integration tests.
+Current upstream adds another 159 commits beyond fork master. They include
+block data generation, additional graph/compiler changes, RIL tooling, world
+export, schematic offset/bounds fixes, and newer persistence/timing fixes.
+The complete commit lists follow below, distinguishing the 2024 snapshot from
+subsequent upstream work.
+
+Protocol references for stage 2
+Target: Minecraft 1.21.1, protocol 767.
+https://raw.githubusercontent.com/PrismarineJS/minecraft-data/master/data/pc/1.21.1/version.json
+Version-specific packet schemas and login/registry data:
+https://github.com/PrismarineJS/minecraft-data/tree/master/data/pc/1.21.1
+https://raw.githubusercontent.com/PrismarineJS/minecraft-data/master/data/dataPaths.json
+Codec implementation reference: MCProtocolLib tag 1.21-1. Cross-check each
+codec against the exact 1.21.1 schema rather than using its current master.
+https://github.com/GeyserMC/MCProtocolLib/tree/1.21-1
+Glowstone's dev gradle.properties declares mcVersion=1.19, so it should not be
+our primary 1.21.1 packet-format reference.
+https://raw.githubusercontent.com/GlowstoneMC/Glowstone/dev/gradle.properties
+
+Proposed port sequence
+1. Use version-pinned block/item/entity/sound IDs, preserving fork-specific
+   block properties and migrating save data explicitly.
+2. Implement login/configuration/play transitions, configuration registry data,
+   known-pack exchange, and version-specific packet IDs and fields.
+3. Implement anonymous NBT/text encoding and structured item components;
+   update creative inventory, equipment, metadata, chat, commands, signs,
+   scoreboard packets, chunk data, and block-action encodings.
+4. Verify client join, chunk rendering, placement/breaking, reconnect, save/load,
+   WorldEdit, and piston animation with a real 1.21.1 client. Keep existing
+   simulation behavior and its known failing test visible during the port.
+5. After the port, establish reference fixtures and address piston implementation
+   discrepancies toward full reference compliance.
+The 1.21.1 protocol implementation has not started in this assessment.
+
+Fork master commits after common ancestor (70 commits)
+e9bea82 2024-06-14 StackDoubleFlow | Create nix devshell
+bd63fca 2024-06-09 Copper | Another two-letter addition
+b5d751c 2024-04-25 Piet Schirm | Fixed //count incorrectly uwraping arguments The execute_count function unwraped the argument to a pattern instead of a mask fixes #115
+066dffb 2024-04-23 Bram Otte | play note when adjusting noteblock pitch
+bef7065 2024-04-23 Bram Otte | don't play note when tuning a noteblock if it is blocked
+72d4227 2022-09-15 Olek47 | Fix issue #72
+1d5817b 2022-09-25 Olek47 | Handle the issue another way
+568d0d1 2024-07-22 dependabot[bot] | Bump openssl from 0.10.60 to 0.10.66
+07f4c32 2024-07-30 StackDoubleFlow | Make all crates inherit the same workspace package fields
+970b3c8 2024-07-30 StackDoubleFlow | redpiler: remove NodeType::is_io_block
+166b922 2024-04-09 StackDoubleFlow | Update blocks and items for 1.20.4
+2e92c7c 2024-06-01 StackDoubleFlow | More 1.20.4 changes
+06c25f5 2024-06-09 Copper | Literally just add two letters (option->optional)
+10ec94c 2024-06-17 StackDoubleFlow | Switch back to my nbt fork on github
+709923f 2024-06-17 StackDoubleFlow | Increase default world height and more 1.20 fixes
+678dae1 2024-06-18 StackDoubleFlow | The client is finally able to connect with 1.20.4
+81b54a2 2024-06-18 StackDoubleFlow | Add placeable stone bricks and fix plot generation
+c30c8bb 2024-06-18 StackDoubleFlow | Fix executing commands
+9b62b41 2024-06-18 StackDoubleFlow | Fix chat color codes
+9efcdb2 2024-06-18 StackDoubleFlow | Rename ChatComponentBuilder -> TextComponentBuilder
+abd700a 2024-06-22 StackDoubleFlow | Add trace logging for network traffic
+404aeca 2024-06-22 StackDoubleFlow | Fix TextComponent::extra not being written
+f69a4fe 2024-06-22 StackDoubleFlow | Fix scoreboard packets for 1.20
+dd37ceb 2024-06-22 StackDoubleFlow | Bump plot data version to 2
+68213ab 2024-06-22 StackDoubleFlow | Fix crashes caused by comparators and empty containers
+4d649aa 2024-06-22 StackDoubleFlow | Fix Set Equipment packet
+47bb8ad 2024-06-22 StackDoubleFlow | Update sign NBT
+7eff4fd 2024-06-23 StackDoubleFlow | Send AcknowledgeBlockChange packet after interaction
+e6624ec 2024-06-23 StackDoubleFlow | Fix io-only flag also showing as update in scoreboard
+651f016 2024-06-23 StackDoubleFlow | Fix block id for target
+68d8c59 2024-06-23 StackDoubleFlow | Flush redpiler on /radv and use block
+48d688b 2024-06-26 StackDoubleFlow | Show players in player list
+d04b87b 2024-06-26 StackDoubleFlow | Set default redpiler scoreboard state to stopped
+93d8149 2024-06-26 StackDoubleFlow | Better handle errors when failing to load or save plot
+bce8883 2024-06-26 StackDoubleFlow | Add /plot select command
+adb426a 2024-06-30 StackDoubleFlow | Remove old deprecated vscode rust-analyzer setting
+21c694f 2024-06-30 StackDoubleFlow | Fully seperate world module from core and rip out rotted code
+5d6531d 2024-06-30 StackDoubleFlow | Remove sender arg from send_chat_message
+75f3718 2024-06-30 StackDoubleFlow | Split out redstone and redpiler crate
+0fd5d75 2024-06-30 StackDoubleFlow | Update dependencies
+9b9d054 2024-06-30 StackDoubleFlow | Fix some fields not public in network crate
+da77c08 2024-06-30 StackDoubleFlow | Make the default plot scale 5
+feae35e 2024-06-30 StackDoubleFlow | Fix plot not saving in graceful shutdown
+62d2963 2024-06-30 StackDoubleFlow | Fix dockerfile and CI
+15a93a6 2024-06-30 StackDoubleFlow | Fix default trapdoor half
+181251e 2024-06-30 StackDoubleFlow | Fix compiling world crate without networking feature enabled
+ae72401 2024-07-01 StackDoubleFlow | redpiler: Add wire-dot-out flag
+a02d76f 2024-07-04 StackDoubleFlow | Add JITBackend::has_pending_ticks()
+9116f7a 2024-07-06 StackDoubleFlow | Remove support for legacy ip forwarding
+df8dbe7 2024-07-21 StackDoubleFlow | network: add login plugin request and response packets
+21b62fc 2024-07-21 StackDoubleFlow | redpiler: rerun coalesce pass logic to help with repeating patterns
+43019f5 2024-08-12 StackDoubleFlow | Resolve merge conflicts that slipped through the rebase
+9d12cef 2024-08-18 StackDoubleFlow | Implement velocity modern forwarding support
+83e3803 2024-08-18 StackDoubleFlow | Propogate player properties
+cebe4ca 2024-08-18 StackDoubleFlow | Make all skin parts shown as default
+c83a79d 2024-08-18 StackDoubleFlow | Fix pose metadata type and send metadata when player joins
+ff473fa 2024-08-19 StackDoubleFlow | Remove unused import
+0364b17 2024-08-19 StackDoubleFlow | Implement Sponge v3 schematic loading
+680a8f0 2024-08-23 StackDoubleFlow | Fix lowercase block entity id tag in schematic
+96c8bc6 2024-08-27 Bram Otte | Remove rtps limit
+87bca1f 2024-09-03 dependabot[bot] | Bump actions/download-artifact from 3 to 4.1.7 in /.github/workflows
+62748da 2024-09-03 StackDoubleFlow | ci: bump upload-artifact version for macos
+ab76784 2024-09-16 StackDoubleFlow | tests: add tests for lever, trapdoor, lamp, and torches
+6e2d211 2024-09-16 StackDoubleFlow | tests: include backend information when assert fails
+012df2d 2024-09-17 StackDoubleFlow | tests: add repeater test
+b44851b 2024-09-17 StackDoubleFlow | ci: update macos build to use upload-artifact@v4
+8ed2e5e 2024-09-17 StackDoubleFlow | ci: update rust-chache to v2
+a85046b 2024-09-17 StackDoubleFlow | rustfmt
+dcae6f9 2024-09-18 StackDoubleFlow | Document velocity support in readme
+76b9b8c 2024-09-20 StackDoubleFlow | tests: seperate test backends into individual tests
+
+Subsequent upstream/master commits (159 commits)
+59ee1b8 2024-12-25 StackDoubleFlow | Document redpiler usage in README
+565564f 2024-12-21 StackDoubleFlow | Turn off auto_redpiler by default in config
+8f4f074 2024-12-22 StackDoubleFlow | worldedit: generate command completion from worldedit
+7a9f460 2024-12-22 StackDoubleFlow | worldedit: show correct command name in help
+12fc9c8 2024-12-22 StackDoubleFlow | worldedit: add completion for command aliases
+c98bc6d 2024-12-25 Bram Otte | Add tickn method to redpiler JITBackend trait
+f618a10 2024-12-25 Bram Otte | run cargo fmt
+af56a3e 2024-07-16 Drew Smith | add glowstone placement (only broken noteblock instrument)
+e1705bf 2025-01-07 StackDoubleFlow | Fix 1.20.4 item id for glowstone
+2545b25 2025-01-14 Paul1365972 | Improve github action workflows
+10d5953 2025-01-15 Paul1365972 | Make clippy stop complaining about noteblock pitch LUT
+e63c7b1 2025-01-18 StackDoubleFlow | tests: add test for repetaer t-flip-flop
+c7b0960 2025-01-19 StackDoubleFlow | tests: add test for 2t pulse gen using comparator
+45d80d2 2025-01-19 StackDoubleFlow | tests: add test for 1t pulse gen using comparator
+c8655b0 2025-01-25 StackDoubleFlow | redpiler: input_search: stop searching wire after distance > 15
+5a014da 2025-01-25 StackDoubleFlow | tests: add tests for wire signal strength
+bdeb5a9 2025-01-30 StackDoubleFlow | Move all dependencies into workspace
+100a5a1 2025-01-30 StackDoubleFlow | Add missing serde feature to redpiler_graph and text crates
+2305be6 2025-01-30 StackDoubleFlow | Remove unused dependencies
+70cecfd 2025-01-30 StackDoubleFlow | Properly switch to using git version of hematite-nbt
+931cd3b 2025-01-30 StackDoubleFlow | Update dependencies
+3d240d2 2025-01-30 StackDoubleFlow | Remove use of deprecated rand functions
+283cd7f 2025-04-15 StackDoubleFlow | core: fix player entity id
+8285803 2025-04-15 StackDoubleFlow | network: add player_attack damage type to resolve client crash
+a1f9213 2025-05-01 StackDoubleFlow | Remove inaccurate AnalogRepeaters pass
+ef8cba6 2025-05-01 StackDoubleFlow | flake update
+557b28b 2025-05-01 StackDoubleFlow | Fix repeater inaccuracy in non-redpiler backend
+b333b2c 2025-05-01 StackDoubleFlow | nix: remove flake-utils input from rust-overlay
+a2afaca 2025-08-02 StackDoubleFlow | redpiler: add ss range analysis, and rustfmt
+32121af 2025-08-02 StackDoubleFlow | redpiler: add RIL dumping
+17b66f8 2025-08-02 StackDoubleFlow | redpiler: fix constant coalesce removing newly added constant
+bce71dd 2025-08-02 StackDoubleFlow | redpiler: print block locations in RIL
+3601be3 2025-08-02 StackDoubleFlow | redpiler: fix SSRangeAnalysis not propogating
+cc95682 2025-08-02 StackDoubleFlow | redpiler: remove unused includes in UnreachaableOutput pass
+b7a0981 2025-08-02 StackDoubleFlow | redpiler: add --print-after-all flag to dump RIL after every pass
+c1e3463 2025-08-02 StackDoubleFlow | redpiler: add --print-before-backend option
+ff58993 2025-08-02 StackDoubleFlow | redpiler: fix crash in ConstantCoalesce if there are many subgraphs
+059b285 2025-08-02 StackDoubleFlow | redpiler: fix issues with SSRangeAnalysis and support transient state
+75de766 2025-08-02 StackDoubleFlow | redpiler: allow unknown inputs when propogating in last stage of SSRangeAnalysis
+5c0afc6 2025-06-20 Piecuu | Fix spelling mistake in Redpiler.md
+9718694 2025-01-21 Bram Otte | Optimize get_bool_input and get_bool_side by making sure signal strength buckets add up to 255
+8870d40 2025-08-03 StackDoubleFlow | Update dependencies
+618d9fd 2025-02-22 Astrid Lauenstein | Fix the clippy warnings
+b70e906 2025-08-03 StackDoubleFlow | Fix more clippy warnings
+46160d4 2024-08-27 Bram Otte | Fix parsing of combined flags in worldedit commands crashing the plot
+7c16aaa 2025-09-09 StackDoubleFlow | redpiler: add lexer for ril
+1b8d5d6 2025-09-09 StackDoubleFlow | core: fix //rstack undo clipboards being applied in reverse order
+a423ac4 2025-09-11 StackDoubleFlow | blocks: add end_portal_frame block and ss override
+ebc330c 2025-09-27 StackDoubleFlow | [world_exporter] create world conversion tool
+5de3ec2 2025-10-04 Paul1365972 | docs: add worldsenrate command documentation
+6361659 2025-10-04 Paul1365972 | core: improve worldsenrate command ergonomics
+9fd7b70 2025-10-04 Paul1365972 | docs: use correct bracket notation for commands
+a515f81 2025-10-04 Paul1365972 | docs: add new redpiler flags
+31eb350 2025-10-04 Paul1365972 | core: fix sound id off-by-one error from 1.20.4 update
+c782842 2025-02-05 Paul1365972 | Improve docker build process
+5b109d5 2025-10-04 Paul1365972 | dockerfile: correct paths and add rust-toolchain
+0994f4b 2025-10-04 Paul1365972 | dockerfile: advertise port
+57d7686 2024-12-25 Valerio Lomanto | feat(world): implement iterators over a region
+57c1aab 2024-12-25 Valerio Lomanto | tests(world): add tests for `for_each_block_optimized`
+605508e 2024-12-25 Valerio Lomanto | fix(world): `for_each_block(_mut)_optimized`
+f8b7b03 2025-08-10 Valerio Lomanto | fix: mark stub methods in mock world as unimplemented
+6327147 2025-11-29 KonaeAkira | Store forward links separate from nodes
+44f0b02 2025-11-29 KonaeAkira | Remove smallvec from dependencies
+bd66655 2025-11-30 KonaeAkira | Clear forward links on reset
+1e59bae 2025-12-01 KonaeAkira | Align Node to 64 bytes to fit in most cache lines
+a179ab1 2025-11-28 KonaeAkira | Optimize Queues::drain_iter
+5c95c71 2025-11-29 KonaeAkira | Remove noteblock pitch LUT
+a7373bc 2025-12-02 KonaeAkira | Make provides_weak_power and provides_strong_power free functions
+47b4660 2025-12-02 KonaeAkira | Fix ground torch providing weak power to block below (fixes #218)
+7e070aa 2025-12-02 KonaeAkira | Use linear search instead of hashmap lookup for deduping
+03f443c 2025-12-02 KonaeAkira | Add block lookup cache
+39ae5d6 2025-08-31 Bram Otte | Add -s flag to //paste
+b9ff0b5 2025-09-01 Bram Otte | Add bounds check to //paste
+75bf614 2025-12-29 Bram Otte | run cargo fmt
+64ad5bf 2026-03-05 Bram Otte | revert: Add bounds check to //paste
+1a6a142 2026-03-05 Bram Otte | Fix get_chunk_index_for_block to resolve issues with out of bound paste
+df0f3d1 2026-03-05 Bram Otte | fix off-by-one error for second_pos in execute_paste
+5026ba4 2026-03-04 StackDoubleFlow | Do the refactor
+3dc1dff 2026-03-04 StackDoubleFlow | Implement and fix dynamic attributes
+db1f62f 2026-03-04 StackDoubleFlow | Use proc macro to read ids instead of hardcoding them
+4c437bb 2026-03-05 StackDoubleFlow | Remove some unsued imports
+e15ea3a 2026-03-06 StackDoubleFlow | Fix block and item name namespacing changes
+4760869 2026-03-06 StackDoubleFlow | Missed a minecraft: case
+d7e389b 2026-03-06 StackDoubleFlow | Add a little bit of docs for the block data generator
+f4b4c39 2026-03-06 StackDoubleFlow | Attempt to fix docker build
+636e987 2026-03-06 StackDoubleFlow | Prefix unused params with _ in world::test
+f2a91a9 2026-03-06 StackDoubleFlow | Add all wooden pressure plate types and polished blackstone pressure plate
+49ec9b8 2026-03-10 StackDoubleFlow | Implement RIL parser
+f4bec38 2026-03-11 StackDoubleFlow | Make item count NBT in containers accept both `Count` and `count`
+8549127 2026-03-12 StackDoubleFlow | Add /version command
+2c98fca 2026-03-12 StackDoubleFlow | Update deps
+cdc6f73 2026-03-16 StackDoubleFlow | nix flake update
+ab8503c 2026-03-18 StackDoubleFlow | Be even more lenient with container nbt data
+ab176d8 2026-03-11 StackDoubleFlow | Start working on rilc redpiler driver
+c950bf5 2026-03-17 StackDoubleFlow | Implement pass pipeline builder
+b099ff2 2026-03-17 StackDoubleFlow | Implement running redpiler through rilc
+5beeead 2026-03-17 StackDoubleFlow | Reorganize pass directory structure
+5908bc3 2026-03-17 StackDoubleFlow | Skip searching nodes without blocks in InputSearch
+dee2f25 2026-03-18 StackDoubleFlow | Implement test result comparison and automatic updating
+5f52ba5 2026-03-18 StackDoubleFlow | Add colors for test results
+5e5c5cc 2026-03-18 StackDoubleFlow | Count number of tests passed or updated
+2b1d83e 2026-03-18 StackDoubleFlow | Add tests for constant fold
+04f9488 2026-03-21 StackDoubleFlow | Allow analysis passes to depend on other passes
+99f041c 2026-03-25 StackDoubleFlow | Add redpiler tests to CI
+48f4d7e 2026-03-25 Bram Otte | PassPipelineBuilder: insert available analysis after pass is completed
+8672cd8 2026-03-21 dependabot[bot] | build(deps): bump rustls-webpki from 0.103.9 to 0.103.10
+2212f96 2025-10-11 Bram Otte | Fix axiom schematics crashing the server, by also checking for Offset property for sponge version 2
+b5f17bb 2025-12-29 Bram Otte | Handle the case where a schematic does not provide an Offset or WEOffset, and remove inaccurate Axiom comment also makes the project rust 2024 to make use of new `if let` syntax
+1b8bb48 2025-12-29 Bram Otte | Use old style_edition to prevent needless merge conflicts
+3a04526 2025-12-29 Bram Otte | Prioritize Metadata.WEOffset over offset
+f844965 2026-03-25 Bram Otte | rilc: fix updated test results from replacing the wrong part of the source text when multiple tests are updated in the same file
+279bd2c 2026-03-25 Bram Otte | Make index map dependency consistent with the rest
+245b44c 2025-09-29 Bram Otte | Add aarch64-pc-windows-msvc target
+7dce713 2025-10-03 Bram Otte | Add aarch64 linux to build.yml This uses the ubuntu-24.04-arm os since using ubuntu-latest-arm doesn't seem to resolve a runner
+38a78f9 2026-03-25 StackDoubleFlow | redpiler: avoid bounds checking in TickScheduler::end_tick
+6f8a38b 2026-03-26 Bram Otte | TickScheduler: replace Queues.drain_iter with drain_each to replace a flat_map with a loop and speedup iteration
+b8b430f 2026-03-26 StackDoubleFlow | redpiler: clear vec instead of using drain iter
+8da4759 2026-03-26 StackDoubleFlow | redpiler: remove extra queue clear in tick
+1b1e2ed 2026-03-26 StackDoubleFlow | redpiler: use get_unchecked when finding node forward links in set_node
+d878ea3 2026-03-27 StackDoubleFlow | rilc: add compile subcommand
+52248de 2026-03-27 StackDoubleFlow | rilc: add version subcommand
+6beb8da 2026-03-28 StackDoubleFlow | docs: add argument types to RIL docs
+8604d33 2026-03-30 StackDoubleFlow | docs: forgot to add a couple periods in last commit
+f376fe9 2026-04-03 StackDoubleFlow | Add bamboo_sign, cherry_sign, and mangrove_sign
+8236461 2026-04-04 StackDoubleFlow | redpiler: allow nodes to map to multiple blocks
+13e5c8e 2026-04-05 StackDoubleFlow | redpiler: significantly speed up constant fold pass on large builds
+7a4df4c 2026-04-06 StackDoubleFlow | redpiler: avoid hashmap in PruneOrphans pass
+b28d8b0 2026-04-06 StackDoubleFlow | Synchronize all package fields to workspace
+892d95d 2026-04-06 StackDoubleFlow | Fix clippy warnings
+a7aa1e2 2026-04-06 StackDoubleFlow | Add newline in comment
+8440fd5 2026-04-06 StackDoubleFlow | ci: create tar.gz or zip files for build artifacts
+7e5d0d1 2026-04-06 StackDoubleFlow | rustfmt
+be4469b 2026-04-06 StackDoubleFlow | ci: avoid matching directories for artifacts
+1772c14 2026-04-14 dependabot[bot] | build(deps): bump rand from 0.10.0 to 0.10.1
+99e2bf6 2026-04-17 StackDoubleFlow | redpiler: start work on new graph implementation
+d0ffffb 2026-04-17 StackDoubleFlow | redpiler: move compile_graph module into it's own dir
+d2eb535 2026-04-17 StackDoubleFlow | rustfmt
+50f9197 2026-04-18 StackDoubleFlow | redpiler: use u32 for node indices
+86bf221 2026-04-24 dependabot[bot] | build(deps): bump rustls-webpki from 0.103.10 to 0.103.13
+37d2578 2026-05-03 StackDoubleFlow | Fix trapdoors not opening
+8734f72 2026-04-26 Bram Otte | mchprs_world: remove networking from default features
+dcf57b4 2026-07-01 Maxwellm34 | fix: correct typo 'folowing' to 'following' in README.md
+9707ab8 2026-08-06 StackDoubleFlow | Use rayon to make world exports faster
+b3faf91 2026-08-07 dependabot[bot] | build(deps): bump quinn-proto from 0.11.14 to 0.11.16
+28ef846 2026-08-10 Bram Otte | Retain input nodes in prune_orphans pass
+0dbfa12 2026-08-14 zPippo | Add support for hex color codes in the scoreboard (#251)
+a74fb61 2025-12-04 KonaeAkira | Allocate ChunkSection::changed_blocks on demand
+5ef69fa 2026-08-22 CarrotRob | Fix typos in README.md
+42928f7 2026-08-22 CarrotRob | Fixed README.md typo
+fe21721 2026-08-25 zPippo | Add the --illegal-states-out and --wire-cross-out flags (#250)
+8d0463c 2026-09-09 Quantum Branching | Removed outdated AnalogRepeater Pass documentation
+ef85327 2026-09-06 Paul1365972 | blocks: fix stale block ids in tests and run the whole workspace in CI
+8957df9 2026-09-16 Paul1365972 | fix(rilc): report RIL test failures correctly
+0098867 2026-09-06 Paul1365972 | fix(save_data): advance the backup suffix when migration backups exist
+e339210 2026-09-12 Paul1365972 | feat(plot): support fractional tick and world send rates
+a056d7f 2026-09-06 Paul1365972 | fix(plot): prevent timing monitor reset counter underflow
+0a44537 2026-09-06 Paul1365972 | fix(redpiler): preserve pending ticks and initial state through optimization
+54cfe75 2026-09-06 Paul1365972 | feat(redpiler): replace signal ranges with signal sets
+d492e43 2026-09-06 Paul1365972 | docs(redpiler): explain signal-set pruning and its limitations
+
+Full branch inventory after fetch and baseline recovery
+cherrypick_piston | 26f1028 | 2024-09-30 | observer draft
+instant-piston | 21b39da | 2024-04-09 | Refactor piston update and tick handling in redstone piston module
+master | 76b9b8c | 2024-09-20 | tests: seperate test backends into individual tests
+merge_piston | 56ad793 | 2024-09-26 | finish freaking merge uwu
+observer | 83a463d | 2024-04-19 | observers
+piston | a0a7efb | 2024-10-14 | docker compose cleanup
+piston-auto-instant | 471a9a7 | 2024-04-21 | /
+piston_cherrypick_cd | c1d2544 | 2024-10-14 | cherrypick clean up
+recovery/piston-1.18.2 | cb3d4e2 | 2024-05-31 | Add test_memory_cell_unaligned_nanoticks
+remove | f4c3833 | 2024-04-08 | .
+update-piston | fc2e2f2 | 2024-04-29 | Refactor piston update logic to only update necessary blocks
+origin | 76b9b8c | 2024-09-20 | tests: seperate test backends into individual tests
+origin/cherrypick_piston | 26f1028 | 2024-09-30 | observer draft
+origin/instant-piston | 07a5376 | 2024-04-10 | Refactor logging and tick handling in redstone piston module
+origin/master | 76b9b8c | 2024-09-20 | tests: seperate test backends into individual tests
+origin/merge_piston | 56ad793 | 2024-09-26 | finish freaking merge uwu
+origin/observer | 83a463d | 2024-04-19 | observers
+origin/piston | dd01a49 | 2025-04-02 | fix target
+origin/piston-auto-instant | 471a9a7 | 2024-04-21 | /
+origin/piston-instant | f4c3833 | 2024-04-08 | .
+origin/piston_cherrypick_cd | c1d2544 | 2024-10-14 | cherrypick clean up
+origin/update-piston | 2726145 | 2024-04-29 | Add tests for (non)instant piston observer interactions
+upstream | d492e43 | 2026-09-28 | docs(redpiler): explain signal-set pruning and its limitations
+upstream/bad_opt_experiment | 4d9cee5 | 2021-11-26 | Add optimized backend
+upstream/colored-lamps | 6bed8d8 | 2021-02-11 | Add ColoredLamp and Randomizer
+upstream/cranelift-dev | 4bcb935 | 2021-10-05 | [cranelift] Implement inlining for redstone wire updates
+upstream/cursed_redstone | 464128a | 2020-06-25 | Cursed redstone
+upstream/dev/stack/mc-1.21.8 | 4660d75 | 2026-09-10 | WIP 1.21.8 signs
+upstream/experiment-tick-concurrency | f041de9 | 2020-06-19 | Use threadpool for ticks
+upstream/master | d492e43 | 2026-09-28 | docs(redpiler): explain signal-set pruning and its limitations
+upstream/mc-1.18.2 | 970b3c8 | 2024-07-30 | redpiler: remove NodeType::is_io_block
+upstream/permissions-refactor | 67e5428 | 2025-03-05 | core/permissions: fix group inheritence with server context
+upstream/plugins | 86b3fa2 | 2020-07-24 | broadcast_chat and cancelable events
+upstream/redpiler-dev | fe21721 | 2026-08-25 | Add the --illegal-states-out and --wire-cross-out flags (#250)
+upstream/redpiler_save_cg | 8e8b22c | 2024-06-23 | Save compile graph to bitcode
+upstream/v0.5.1 | e374662 | 2024-09-03 | bump version to v0.5.1
+upstream/v0.5.2 | 3b166ec | 2026-08-14 | v0.5.2
+
+Additional experiment to retain for later review
+piston-auto-instant has one unique commit, 471a9a7, outside p0.1.0. It removes
+observer tick/update handling and experiments with automatic piston extension.
+It is preserved as a separate branch and was not included in the baseline.
+observer, remote instant-piston, remote update-piston, and piston-instant are
+already ancestors of p0.1.0.

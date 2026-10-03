@@ -274,7 +274,8 @@ pub(super) fn execute_load(ctx: CommandExecuteContext<'_>) {
 
     let clipboard = File::open("./schems/".to_owned() + &file_name)
         .map_err(anyhow::Error::from)
-        .and_then(load_schematic);
+        .and_then(load_schematic)
+        .map_err(|e| e.context(format!("loading schematic ./schems/{file_name}")));
     match clipboard {
         Ok(cb) => {
             ctx.player.worldedit_clipboard = Some(cb);
@@ -292,7 +293,7 @@ pub(super) fn execute_load(ctx: CommandExecuteContext<'_>) {
                 }
             }
             error!("There was an error loading a schematic:");
-            error!("{}", e);
+            error!("{:#}", e);
             ctx.player.send_error_message(
                 "There was an error loading the schematic. Check console for more details.",
             );

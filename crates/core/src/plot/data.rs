@@ -1,5 +1,5 @@
-use super::{Plot, PLOT_SECTIONS, PLOT_WIDTH};
-use anyhow::{Context, Result};
+use super::{Plot, NUM_CHUNKS, PLOT_SCALE, PLOT_SECTIONS, PLOT_WIDTH};
+use anyhow::{anyhow, ensure, Context, Result};
 use mchprs_save_data::plot_data::{ChunkData, PlotData, Tps, WorldSendRate};
 use once_cell::sync::Lazy;
 use std::path::Path;
@@ -21,22 +21,37 @@ pub fn sleep_time_for_tps(tps: Tps) -> Duration {
 
 pub fn load_plot(path: impl AsRef<Path>) -> Result<PlotData<PLOT_SECTIONS>> {
     let path = path.as_ref();
-    if path.exists() {
-        Ok(PlotData::load_from_file(path, true)
-            .with_context(|| format!("error loading plot save file at {}", path.display()))?)
+    let data = if path.exists() {
+        PlotData::load_from_file(path, true)
+            .with_context(|| format!("error loading plot save file at {}", path.display()))?
     } else {
-        Ok(EMPTY_PLOT.clone())
-    }
+        EMPTY_PLOT
+            .as_ref()
+            .map_err(|error| anyhow!("{}", error))?
+            .clone()
+    };
+    ensure!(
+        data.chunk_data.len() == NUM_CHUNKS,
+        "plot contains {} chunks; plot scale {} requires {}",
+        data.chunk_data.len(),
+        PLOT_SCALE,
+        NUM_CHUNKS
+    );
+    Ok(data)
 }
 
 pub fn empty_plot() -> PlotData<PLOT_SECTIONS> {
-    EMPTY_PLOT.clone()
+    EMPTY_PLOT
+        .as_ref()
+        .expect("failed to read template plot")
+        .clone()
 }
 
-static EMPTY_PLOT: Lazy<PlotData<PLOT_SECTIONS>> = Lazy::new(|| {
+static EMPTY_PLOT: Lazy<Result<PlotData<PLOT_SECTIONS>, String>> = Lazy::new(|| {
     let template_path = Path::new("./world/plots/pTEMPLATE");
     if template_path.exists() {
-        PlotData::load_from_file(template_path, true).expect("failed to read template plot")
+        PlotData::load_from_file(template_path, true)
+            .map_err(|error| format!("failed to read template plot: {}", error))
     } else {
         let mut chunks = Vec::new();
         for chunk_x in 0..PLOT_WIDTH {
@@ -46,11 +61,11 @@ static EMPTY_PLOT: Lazy<PlotData<PLOT_SECTIONS>> = Lazy::new(|| {
         }
         let chunk_data: Vec<ChunkData<PLOT_SECTIONS>> =
             chunks.iter_mut().map(|c| c.save()).collect();
-        PlotData {
+        Ok(PlotData {
             tps: Tps::Limited(10),
             world_send_rate: WorldSendRate::default(),
             chunk_data,
             pending_ticks: Vec::new(),
-        }
+        })
     }
 });

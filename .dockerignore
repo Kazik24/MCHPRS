@@ -1,1 +1,15 @@
 target/
+**/target/
+.git/
+.github/
+.vscode/
+.idea/
+/docs/
+/world/
+/logs/
+/schems/
+/test_data/
+/run/
+/test_proxy/
+/Config.toml
+docker-compose*.yml

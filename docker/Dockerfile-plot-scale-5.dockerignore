@@ -1,0 +1,15 @@
+# Allow only compilation inputs, including generated assets when present.
+**
+!Cargo.toml
+!Cargo.lock
+!build.rs
+!src/
+!src/**
+!crates/
+!crates/**
+!mc_data/
+!mc_data/**
+!.cargo/
+!.cargo/config
+!.cargo/config.toml
+**/target/

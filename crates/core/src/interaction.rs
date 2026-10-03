@@ -304,7 +304,7 @@ pub fn get_state_for_placement(
                 short: true,
             },
         },
-        _ => Block::Stone {},
+        _ => Block::from_name(item.get_name()).unwrap_or(Block::Air {}),
     };
     if is_valid_position(block, world, pos) {
         block
@@ -516,7 +516,23 @@ pub fn use_item_on_block(
     }
 
     if can_place && (0..PLOT_BLOCK_HEIGHT).contains(&block_pos.y) {
-        let block = get_state_for_placement(world, block_pos, item.item_type, &ctx);
+        let mut block = get_state_for_placement(world, block_pos, item.item_type, &ctx);
+        if let Some(nbt::Value::Compound(props)) =
+            item.nbt.as_ref().and_then(|n| n.get("BlockStateTag"))
+        {
+            block.set_properties(
+                props
+                    .iter()
+                    .filter_map(|(k, v)| {
+                        if let nbt::Value::String(s) = v {
+                            Some((k.as_str(), s.as_str()))
+                        } else {
+                            None
+                        }
+                    })
+                    .collect(),
+            );
+        }
 
         match block {
             Block::Sign { .. } | Block::WallSign { .. } => {

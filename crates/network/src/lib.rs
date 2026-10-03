@@ -1,5 +1,6 @@
-mod nbt_map;
+pub mod generated;
 pub mod packets;
+pub mod text;
 
 use packets::serverbound::ServerBoundPacket;
 use packets::{read_packet, PacketEncoder};
@@ -42,6 +43,9 @@ pub enum NetworkState {
     Handshake,
     Status,
     Login,
+    LoginAcknowledgement,
+    Configuration,
+    ConfigurationFinish,
     Play,
 }
 
@@ -49,6 +53,7 @@ pub struct HandshakingConn {
     client: NetworkClient,
     pub username: Option<String>,
     pub uuid: Option<u128>,
+    pub protocol_phase: u8,
 }
 
 impl HandshakingConn {
@@ -123,7 +128,11 @@ impl NetworkClient {
             let packet = match read_packet(&mut stream, &compressed, &mut state) {
                 Ok(packet) => packet,
                 // This will cause the client to disconnect
-                Err(_) => return,
+                Err(error) => {
+                    warn!("Client packet decode failed: {:?}", error);
+                    let _ = stream.shutdown(Shutdown::Both);
+                    return;
+                }
             };
             if sender.send(packet).is_err() {
                 return;
@@ -209,6 +218,7 @@ impl NetworkServer {
                     client,
                     username: None,
                     uuid: None,
+                    protocol_phase: 0,
                 }),
                 Err(mpsc::TryRecvError::Empty) => break,
                 Err(mpsc::TryRecvError::Disconnected) => {

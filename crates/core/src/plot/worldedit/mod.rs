@@ -1067,7 +1067,9 @@ pub fn paste_clipboard(
                 if ignore_air && entry == 0 {
                     continue;
                 }
-                plot.set_block_raw(BlockPos::new(x, y, z), entry);
+                let block_pos = BlockPos::new(x, y, z);
+                plot.delete_block_entity(block_pos);
+                plot.set_block_raw(block_pos, entry);
             }
         }
     }
