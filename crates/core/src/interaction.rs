@@ -1,7 +1,7 @@
 use crate::chat::ColorCode;
 use crate::config::CONFIG;
 use crate::player::PacketSender;
-use crate::player::Player;
+use crate::player::{Gamemode, Player};
 use crate::plot::PlotWorld;
 use crate::plot::PLOT_BLOCK_HEIGHT;
 use crate::redstone;
@@ -613,20 +613,26 @@ pub struct UseOnBlockContext<'a> {
     pub cursor_y: f32,
 }
 
-/// returns true if cancelled
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum PlacementOutcome {
+    Cancelled,
+    Handled,
+    Placed(BlockPos),
+}
+
 pub fn use_item_on_block(
     item: &ItemStack,
     world: &mut PlotWorld,
     ctx: UseOnBlockContext<'_>,
-) -> bool {
+) -> PlacementOutcome {
     let use_pos = ctx.block_pos;
     let use_block = world.get_block(use_pos);
-    let block_pos = ctx.block_pos.offset(ctx.block_face);
+    let block_pos = placement_position(item, world, ctx.block_pos, ctx.block_face);
     let mut top_pos = ctx.player.pos.block_pos();
     top_pos.y += 1;
     if (block_pos == ctx.player.pos.block_pos() || block_pos == top_pos) && !CONFIG.block_in_hitbox
     {
-        return false;
+        return PlacementOutcome::Handled;
     }
     let can_place = item.item_type.is_block() && world.get_block(block_pos).can_place_block_in();
     if !ctx.player.crouching
@@ -639,10 +645,10 @@ pub fn use_item_on_block(
         )
         .is_success()
     {
-        return false;
+        return PlacementOutcome::Handled;
     }
 
-    if can_place && (0..PLOT_BLOCK_HEIGHT).contains(&block_pos.y) {
+    if can_place && world.contains_position(block_pos) {
         let mut block = get_state_for_placement(world, block_pos, item.item_type, &ctx);
         if let Some(nbt::Value::Compound(props)) =
             item.nbt.as_ref().and_then(|n| n.get("BlockStateTag"))
@@ -679,8 +685,55 @@ pub fn use_item_on_block(
         }
 
         place_in_world(block, world, block_pos, &item.nbt);
-        false
+        if ctx.player.redstone_tools.autowire && matches!(ctx.player.gamemode, Gamemode::Creative) {
+            place_optional_wire(world, block_pos);
+        }
+        PlacementOutcome::Placed(block_pos)
     } else {
-        true
+        PlacementOutcome::Cancelled
     }
+}
+
+fn placement_position(
+    item: &ItemStack,
+    world: &PlotWorld,
+    clicked: BlockPos,
+    face: BlockFace,
+) -> BlockPos {
+    let special = item.nbt.as_ref()
+        .and_then(|blob| blob.get("custom_data"))
+        .is_some_and(|value| matches!(value,
+            nbt::Value::Compound(data) if data.get("mchprs:top_slab") == Some(&nbt::Value::Byte(1))
+        ));
+    let clicked_block = world.get_block(clicked);
+    let below = clicked.offset(BlockFace::Bottom);
+    if special
+        && item.item_type.get_name().ends_with("_slab")
+        && clicked_block.get_name().ends_with("_slab")
+        && clicked_block.property("type") == Some("top")
+        && world.contains_position(below)
+        && world.get_block(below) == (Block::Air {})
+    {
+        return below;
+    }
+    clicked.offset(face)
+}
+
+fn place_optional_wire(world: &mut PlotWorld, support: BlockPos) {
+    let block = world.get_block(support);
+    let above = support.offset(BlockFace::Top);
+    if !block.is_solid() || is_gravity_block(block) || !world.contains_position(above) {
+        return;
+    }
+    if world.get_block(above) != (Block::Air {}) {
+        return;
+    }
+    let wire = Block::RedstoneWire { wire: Default::default() };
+    place_in_world(wire, world, above, &None);
+}
+
+fn is_gravity_block(block: Block) -> bool {
+    matches!(block.get_name(),
+        "sand" | "red_sand" | "gravel" | "anvil" | "chipped_anvil" | "damaged_anvil" | "dragon_egg"
+    ) || block.get_name().ends_with("_concrete_powder")
 }

@@ -1024,6 +1024,7 @@ pub(super) fn execute_replace_container(ctx: CommandExecuteContext<'_>) {
         ContainerType::Furnace => Block::from_name("furnace").unwrap(),
         ContainerType::Barrel => Block::from_name("barrel").unwrap(),
         ContainerType::Hopper => Block::from_name("hopper").unwrap(),
+        ContainerType::Chest => Block::from_name("chest").unwrap(),
     };
     let slots = to.num_slots() as u32;
 
@@ -1034,10 +1035,7 @@ pub(super) fn execute_replace_container(ctx: CommandExecuteContext<'_>) {
                 let pos = BlockPos::new(x, y, z);
                 let block = ctx.plot.get_block(pos);
 
-                if !matches!(
-                    block,
-                    Block::Furnace { .. } | Block::Barrel { .. } | Block::Hopper { .. }
-                ) {
+                if ContainerType::from_block(block).is_none() {
                     continue;
                 }
                 let block_entity = ctx.plot.get_block_entity(pos);

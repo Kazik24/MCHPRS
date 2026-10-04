@@ -8,6 +8,120 @@ use std::sync::OnceLock;
 const RAW: &str = "__mchprs_components_770";
 const MAX_STACK_SIZE: &str = "__mchprs_max_stack_size";
 
+/// Decorate a generated tool item without changing its inventory component.
+pub fn set_tool_display(
+    item_id: i32,
+    blob: &mut nbt::Blob,
+    name: &str,
+    lore: &str,
+) -> DecodeResult<()> {
+    let mut custom_name = Vec::new();
+    custom_name.write_text(&serde_json::json!({"text": name, "italic": false}).to_string());
+    let mut description = Vec::new();
+    description.write_varint(1);
+    description.write_text(&serde_json::json!({"text": lore, "color": "gray", "italic": false}).to_string());
+    patch_components(item_id, blob, &[(5, custom_name), (8, description), (18, vec![1])])
+}
+
+/// Set top placement while retaining unrelated protocol components and custom data.
+pub fn set_top_slab(item_id: i32, blob: &mut nbt::Blob) -> DecodeResult<()> {
+    let mut properties = match blob.get("BlockStateTag") {
+        Some(nbt::Value::Compound(properties)) => properties.clone(),
+        _ => Default::default(),
+    };
+    properties.insert("type".into(), nbt::Value::String("top".into()));
+    let mut state = Vec::new();
+    state.write_varint(properties.len() as i32);
+    let mut ordered: Vec<_> = properties.iter().collect();
+    ordered.sort_by_key(|(name, _)| *name);
+    for (name, value) in ordered {
+        let nbt::Value::String(value) = value else {
+            return Err(invalid("block state properties must be strings"));
+        };
+        state.write_string(name);
+        state.write_string(value);
+    }
+    let mut custom_data = match blob.get("custom_data") {
+        Some(nbt::Value::Compound(data)) => data.clone(),
+        _ => Default::default(),
+    };
+    custom_data.insert("mchprs:top_slab".into(), nbt::Value::Byte(1));
+    let mut custom = Vec::new();
+    custom.write_nbt_blob(&nbt::Blob::with_content(custom_data.clone()));
+    patch_components(item_id, blob, &[(0, custom), (67, state)])?;
+    blob.insert("BlockStateTag", nbt::Value::Compound(properties))?;
+    blob.insert("custom_data", nbt::Value::Compound(custom_data))?;
+    Ok(())
+}
+
+/// Protocol boundary: preserve each validated component's bytes, replacing only
+/// explicitly supplied components. Prepare the complete patch before changing NBT.
+fn patch_components(
+    item_id: i32,
+    blob: &mut nbt::Blob,
+    replacements: &[(i32, Vec<u8>)],
+) -> DecodeResult<()> {
+    let mut encoded = Vec::new();
+    write_slot(&mut encoded, &Some(SlotData {
+        item_id,
+        item_count: 1,
+        nbt: Some(blob.clone()),
+    }));
+    let mut cursor = Cursor::new(encoded);
+    cursor.read_varint()?;
+    cursor.read_varint()?;
+    let added = bounded(cursor.read_varint()?)?;
+    let removed = bounded(cursor.read_varint()?)?;
+    let names = &schema()["types"]["SlotComponentType"][1]["mappings"];
+    let mut components = std::collections::BTreeMap::new();
+    for _ in 0..added {
+        let id = cursor.read_varint()?;
+        let name = names[id.to_string()].as_str().ok_or_else(|| invalid("unknown component ID"))?;
+        let mut recording = Recording { reader: &mut cursor, bytes: Vec::new() };
+        consume(&mut recording, &component_type(name), &Map::new(), 1)?;
+        components.insert(id, recording.bytes);
+    }
+    let mut removals = Vec::new();
+    for _ in 0..removed {
+        let id = cursor.read_varint()?;
+        if !replacements.iter().any(|(replacement, _)| *replacement == id) {
+            removals.push(id);
+        }
+    }
+    for (id, data) in replacements {
+        components.insert(*id, data.clone());
+    }
+    let mut patch = Vec::new();
+    patch.write_varint(components.len() as i32);
+    patch.write_varint(removals.len() as i32);
+    for (id, data) in components {
+        patch.write_varint(id);
+        patch.write_bytes(&data);
+    }
+    for id in removals {
+        patch.write_varint(id);
+    }
+    blob.insert(RAW, nbt::Value::ByteArray(patch.into_iter().map(|byte| byte as i8).collect()))?;
+    Ok(())
+}
+
+fn component_type(name: &str) -> Value {
+    // Corrections cross-checked with MCProtocolLib 290d84c.
+    match name {
+        "intangible_projectile" => Value::String("void".into()),
+        "chicken/variant" => serde_json::json!([
+            "container", [
+                {"name": "hasHolder", "type": "bool"},
+                {"name": "value", "type": ["switch", {
+                    "compareTo": "hasHolder",
+                    "fields": {"true": "varint", "false": "string"}
+                }]}
+            ]
+        ]),
+        _ => schema()["types"]["SlotComponent"][1][1]["type"][1]["fields"][name].clone(),
+    }
+}
+
 pub fn max_stack_size(nbt: &Option<nbt::Blob>, default: u8) -> u8 {
     match nbt.as_ref().and_then(|blob| blob.get(MAX_STACK_SIZE)) {
         Some(nbt::Value::Int(value)) if (1..=99).contains(value) => *value as u8,
@@ -279,7 +393,6 @@ fn read_slot_depth<T: PacketDecoderExt>(
     if added + removed > crate::generated::COMPONENT_COUNT as usize {
         return Err(invalid("too many components"));
     }
-    let types = &schema()["types"]["SlotComponent"][1][1]["type"][1]["fields"];
     let names = &schema()["types"]["SlotComponentType"][1]["mappings"];
     let mut raw = Vec::new();
     raw.write_varint(added as i32);
@@ -295,15 +408,7 @@ fn read_slot_depth<T: PacketDecoderExt>(
         let name = names[component_id.to_string()]
             .as_str()
             .ok_or_else(|| invalid("unknown component ID"))?;
-        // Cross-checked with MCProtocolLib 290d84c: intangible_projectile is a unit
-        // component; chicken/variant has a boolean holder discriminator.
-        let component_type = if name == "intangible_projectile" {
-            Value::String("void".into())
-        } else if name == "chicken/variant" {
-            serde_json::json!(["container",[{"name":"hasHolder","type":"bool"},{"name":"value","type":["switch",{"compareTo":"hasHolder","fields":{"true":"varint","false":"string"}}]}]])
-        } else {
-            types[name].clone()
-        };
+        let component_type = component_type(name);
         let data = if untrusted {
             let n = bounded(r.read_varint()?)?;
             let data = r.read_bytes(n)?;

@@ -1,5 +1,9 @@
 # Port validation tools
 
+LuckPerms read-only database tests and the isolated localhost:25588 permission
+smoke runner are described in [LuckPerms setup](../docs/LUCKPERMS.md). They require
+private connection/UUID fixtures and do not alter shared permission data.
+
 The container runner uses port 25586 and an isolated temporary world. It checks barrel, hopper and furnace menus, inventories, schematic round trips, comparator outputs, cake bites and restart persistence. See [container repair](../docs/CONTAINERS.md).
 
 The target is Minecraft Java 1.21.5, protocol 770, Minecraft DataVersion 4325.

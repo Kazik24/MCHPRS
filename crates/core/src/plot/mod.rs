@@ -9,6 +9,7 @@ mod history;
 mod monitor;
 mod packet_handlers;
 mod picking;
+pub(crate) mod redstone_tools;
 #[cfg(test)]
 mod piston_tests;
 mod scoreboard;
@@ -768,6 +769,10 @@ impl Plot {
     }
 
     fn enter_plot(&mut self, player: Player) {
+        // Another running plot can claim this plot before teleporting here.
+        // Refresh the cached owner so permission checks reflect that claim.
+        self.owner = database::get_plot_owner(self.world.x, self.world.z)
+            .map(|s| s.parse::<HyphenatedUUID>().unwrap().0);
         self.save();
         let spawn_player = CSpawnPlayer {
             entity_id: player.entity_id as i32,
@@ -1046,7 +1051,7 @@ impl Plot {
         let player_idx = self.players.iter().position(|p| p.uuid == uuid).unwrap();
         self.close_open_container(player_idx);
         self.world.packet_senders.remove(player_idx);
-        let player = self.players.remove(player_idx);
+        let mut player = self.players.remove(player_idx);
 
         let destroy_other_entities = CDestroyEntities {
             entity_ids: self.players.iter().map(|p| p.entity_id as i32).collect(),
@@ -1068,6 +1073,7 @@ impl Plot {
         self.destroy_entity(player.entity_id);
         self.locked_players.remove(&player.entity_id);
         self.scoreboard.remove_player(&player);
+        redstone_tools::selection::remove(&mut player);
         player
     }
 
@@ -1083,6 +1089,9 @@ impl Plot {
     pub fn claim_plot(&mut self, plot_x: i32, plot_z: i32, player: usize) {
         let player = &mut self.players[player];
         database::claim_plot(plot_x, plot_z, &format!("{:032x}", player.uuid));
+        if self.world.x == plot_x && self.world.z == plot_z {
+            self.owner = Some(player.uuid);
+        }
         let center = Plot::get_center(plot_x, plot_z);
         player.teleport(PlayerPos::new(center.0, 64.0, center.1));
         player.send_system_message(&format!("Claimed plot {},{}", plot_x, plot_z));
@@ -1364,6 +1373,9 @@ impl Plot {
         // Handle commands before removing players just in case they ran a command before leaving
         self.handle_commands();
         self.update_open_containers();
+        for player in &mut self.players {
+            redstone_tools::selection::update(player);
+        }
 
         for command in self.world.command_messages.drain(..) {
             self.message_sender

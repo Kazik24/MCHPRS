@@ -1019,7 +1019,7 @@ fn worldedit_start_operation(player: &mut Player) -> WorldEditOperation {
     WorldEditOperation::new(first_pos, second_pos)
 }
 
-fn create_clipboard(
+pub(super) fn create_clipboard(
     plot: &mut PlotWorld,
     origin: BlockPos,
     first_pos: BlockPos,
@@ -1134,6 +1134,31 @@ pub fn paste_clipboard(
             redstone::command_block::update(plot, new_pos);
         }
     }
+}
+
+/// All destinations must be validated before calling. Snapshot every target before
+/// the first paste so overlapping copies remain reversible in a single undo.
+pub(super) fn stack_prepared(
+    plot: &mut PlotWorld,
+    start: BlockPos,
+    end: BlockPos,
+    destinations: &[(BlockPos, BlockPos)],
+    ignore_air: bool,
+) -> WorldEditUndo {
+    let source = create_clipboard(plot, start, start, end);
+    let clipboards = destinations.iter()
+        .map(|&(first, second)| create_clipboard(plot, start, first, second))
+        .collect();
+    let undo = WorldEditUndo {
+        clipboards,
+        pos: start,
+        plot_x: plot.x,
+        plot_z: plot.z,
+    };
+    for &(first, _) in destinations {
+        paste_clipboard(plot, &source, first, ignore_air);
+    }
+    undo
 }
 
 fn capture_undo(

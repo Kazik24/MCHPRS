@@ -163,6 +163,7 @@ pub struct Player {
     /// Commands are stored so they can be handled after packets
     pub command_queue: Vec<String>,
     pub(crate) open_container: Option<crate::container::OpenContainer>,
+    pub(crate) redstone_tools: crate::plot::redstone_tools::PlayerTools,
     next_window_id: u8,
     permissions_cache: Option<PlayerPermissionsCache>,
 }
@@ -207,7 +208,12 @@ impl Player {
         let permissions_cache = CONFIG
             .luckperms
             .is_some()
-            .then(|| permissions::load_player_cache(uuid).unwrap());
+            .then(|| {
+                permissions::load_player_cache(uuid).unwrap_or_else(|error| {
+                    tracing::error!("Could not load LuckPerms permissions: {error}; denying permissions for this session");
+                    PlayerPermissionsCache::default()
+                })
+            });
         Player {
             uuid,
             username,
@@ -241,6 +247,7 @@ impl Player {
             worldedit_redo: Vec::new(),
             command_queue: Vec::new(),
             open_container: None,
+            redstone_tools: Default::default(),
             next_window_id: 0,
             permissions_cache,
         }
@@ -563,6 +570,7 @@ impl Player {
             ContainerType::Barrel => "container.barrel",
             ContainerType::Furnace => "container.furnace",
             ContainerType::Hopper => "container.hopper",
+            ContainerType::Chest => "container.chest",
         };
         self.open_container = Some(crate::container::OpenContainer {
             pos,

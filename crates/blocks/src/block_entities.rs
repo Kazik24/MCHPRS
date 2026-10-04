@@ -47,6 +47,8 @@ pub enum ContainerType {
     Furnace,
     Barrel,
     Hopper,
+    // Append new variants: the previous indices are part of the bincode save format.
+    Chest,
 }
 
 impl FromStr for ContainerType {
@@ -57,6 +59,7 @@ impl FromStr for ContainerType {
             "barrel" => ContainerType::Barrel,
             "furnace" => ContainerType::Furnace,
             "hopper" => ContainerType::Hopper,
+            "chest" => ContainerType::Chest,
             _ => return Err(()),
         })
     }
@@ -68,6 +71,7 @@ impl ToString for ContainerType {
             ContainerType::Furnace => "minecraft:furnace",
             ContainerType::Barrel => "minecraft:barrel",
             ContainerType::Hopper => "minecraft:hopper",
+            ContainerType::Chest => "minecraft:chest",
         }
         .to_owned()
     }
@@ -79,6 +83,7 @@ impl ContainerType {
             Block::Barrel { .. } => Some(Self::Barrel),
             Block::Hopper { .. } => Some(Self::Hopper),
             Block::Furnace { .. } => Some(Self::Furnace),
+            block if block.get_name() == "chest" => Some(Self::Chest),
             _ => None,
         }
     }
@@ -88,6 +93,7 @@ impl ContainerType {
             ContainerType::Furnace => 3,
             ContainerType::Barrel => 27,
             ContainerType::Hopper => 5,
+            ContainerType::Chest => 27,
         }
     }
 
@@ -97,6 +103,7 @@ impl ContainerType {
             ContainerType::Furnace => 14,
             ContainerType::Barrel => 2,
             ContainerType::Hopper => 16,
+            ContainerType::Chest => 2,
         }
     }
 }
@@ -281,6 +288,7 @@ impl BlockEntity {
                 ContainerType::Furnace => crate::generated::block_entity_types::FURNACE,
                 ContainerType::Barrel => crate::generated::block_entity_types::BARREL,
                 ContainerType::Hopper => crate::generated::block_entity_types::HOPPER,
+                ContainerType::Chest => crate::generated::block_entity_types::CHEST,
             },
             BlockEntity::Sign(_) => crate::generated::block_entity_types::SIGN,
             BlockEntity::MovingPiston(_) => crate::generated::block_entity_types::PISTON,
@@ -380,10 +388,11 @@ impl BlockEntity {
                 };
                 Ok(BlockEntity::Comparator { output_strength })
             }
-            "minecraft:furnace" | "minecraft:barrel" | "minecraft:hopper" => {
+            "minecraft:furnace" | "minecraft:barrel" | "minecraft:hopper" | "minecraft:chest" => {
                 let ty = match id.as_str() {
                     "minecraft:furnace" => ContainerType::Furnace,
                     "minecraft:hopper" => ContainerType::Hopper,
+                    "minecraft:chest" => ContainerType::Chest,
                     _ => ContainerType::Barrel,
                 };
                 let items = match nbt.get("Items") {

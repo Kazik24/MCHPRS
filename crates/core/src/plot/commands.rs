@@ -6,7 +6,6 @@ use crate::profile::PlayerProfile;
 use crate::redpiler::CompilerOptions;
 use crate::server::Message;
 use bitflags::_core::i32::MAX;
-use mchprs_blocks::items::ItemStack;
 use mchprs_network::packets::clientbound::{
     CDeclareCommands, CDeclareCommandsNode as Node, CDeclareCommandsNodeParser as Parser,
     ClientBoundPacket,
@@ -231,6 +230,20 @@ impl Plot {
             command,
             args.join(" ")
         );
+
+        let admin_permission = match command {
+            "/stop" => Some("minecraft.command.stop"),
+            "/whitelist" => Some("minecraft.command.whitelist"),
+            _ => None,
+        };
+        if admin_permission.is_some_and(|node| !self.players[player].has_permission(node)) {
+            self.players[player].send_no_permission_message();
+            return false;
+        }
+
+        if self.handle_redstone_tools_command(player, command, &args) {
+            return false;
+        }
 
         // Handle worldedit commands
         if worldedit::execute_command(self, player, &command[1..], &mut args) {
@@ -592,40 +605,6 @@ impl Plot {
                     }
                 };
                 self.change_player_gamemode(player, gamemode);
-            }
-            "/container" => {
-                if args.len() != 2 {
-                    self.players[player].send_error_message("Usage: /container [type] [power]");
-                    return false;
-                }
-
-                let power = if let Ok(p) = args[1].parse() {
-                    p
-                } else {
-                    self.players[player].send_error_message("Unable to parse power!");
-                    return false;
-                };
-
-                let container_ty = match args[0].parse() {
-                    Ok(ty) => ty,
-                    Err(()) => {
-                        self.players[player].send_error_message(
-                            "Container type must be one of [barrel, furnace, hopper]",
-                        );
-                        return false;
-                    }
-                };
-
-                if !(1..=15).contains(&power) {
-                    self.players[player].send_error_message(
-                        "Container power must be greater than 0 and lower than 15!",
-                    );
-                    return false;
-                }
-
-                let item = ItemStack::container_with_ss(container_ty, power);
-                let slot = 36 + self.players[player].selected_slot;
-                self.players[player].set_inventory_slot(slot, Some(item));
             }
             "/worldsendrate" | "/wsr" => {
                 if args.is_empty() {

@@ -1,132 +1,609 @@
-use crate::config::CONFIG;
 use crate::utils::HyphenatedUUID;
-use anyhow::{anyhow, Context, Result};
+use anyhow::{anyhow, bail, Context, Result};
 use mysql::prelude::*;
-use mysql::{OptsBuilder, Pool, PooledConn, Row};
+use mysql::{OptsBuilder, Pool};
 use once_cell::sync::OnceCell;
+use postgres::{Client, NoTls};
 use serde::{Deserialize, Serialize};
+use std::collections::{HashMap, HashSet, VecDeque};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-static POOL: OnceCell<Pool> = OnceCell::new();
+static DATABASE: OnceCell<Database> = OnceCell::new();
 
-fn conn() -> Result<PooledConn> {
-    Ok(POOL
-        .get()
-        .context("Tried to get conn before permissions init")?
-        .get_conn()?)
+#[derive(Default, Serialize, Deserialize, Clone, Copy)]
+#[serde(rename_all = "lowercase")]
+enum Storage {
+    #[default]
+    Mysql,
+    #[serde(alias = "postgresql")]
+    Postgres,
 }
-
-fn config() -> &'static PermissionsConfig {
-    CONFIG.luckperms.as_ref().unwrap()
+fn default_prefix() -> String {
+    "luckperms_".into()
 }
-
-#[derive(Debug)]
-enum PathSegment {
-    WildCard,
-    Named(String),
-}
-
-#[derive(Debug)]
-struct PermissionNode {
-    path: Vec<PathSegment>,
-    value: i32,
-    server_context: String,
-}
-
-impl PermissionNode {
-    fn matches(&self, str: &str) -> bool {
-        if self.server_context != "global" && self.server_context != config().server_context {
-            return false;
-        }
-
-        for (i, segment) in str.split('.').enumerate() {
-            match &self.path[i] {
-                PathSegment::WildCard => return true,
-                PathSegment::Named(name) => {
-                    if name != segment {
-                        return false;
-                    }
-                }
-            }
-        }
-        true
-    }
-}
-
-#[derive(Debug)]
-pub struct PlayerPermissionsCache {
-    nodes: Vec<PermissionNode>,
-}
-
-impl PlayerPermissionsCache {
-    pub fn get_node_val(&self, name: &str) -> Option<i32> {
-        for node in &self.nodes {
-            if node.matches(name) {
-                return Some(node.value);
-            }
-        }
-        None
-    }
+fn global_context() -> String {
+    "global".into()
 }
 
 #[derive(Serialize, Deserialize, Clone)]
 pub struct PermissionsConfig {
+    #[serde(default)]
+    storage: Storage,
     host: String,
+    #[serde(default)]
+    port: Option<u16>,
     db_name: String,
     username: String,
     password: String,
+    #[serde(default = "default_prefix")]
+    table_prefix: String,
     server_context: String,
+    #[serde(default = "global_context")]
+    world_context: String,
+    #[serde(default)]
+    plotsquared_compat: bool,
 }
-
-pub fn init(config: PermissionsConfig) -> Result<()> {
-    let opts = OptsBuilder::new()
-        .ip_or_hostname(Some(config.host))
-        .db_name(Some(config.db_name))
-        .user(Some(config.username))
-        .pass(Some(config.password));
-    let pool = Pool::new(opts)?;
-    POOL.set(pool)
-        .map_err(|_| anyhow!("Tried to init permissions more than once"))?;
-
-    Ok(())
+struct Database {
+    config: PermissionsConfig,
+    mysql: Option<Pool>,
 }
-
-pub fn load_player_cache(uuid: u128) -> Result<PlayerPermissionsCache> {
-    let uuid = HyphenatedUUID(uuid).to_string();
-    let mut conn = conn()?;
-    let res: Vec<Row> = conn.exec(
-        "
-        WITH RECURSIVE groups_inherited AS (
-            SELECT *
-            FROM luckperms_user_permissions
-            WHERE uuid LIKE ?
-            UNION
-            SELECT luckperms_group_permissions.*
-            FROM groups_inherited, luckperms_group_permissions
-            WHERE luckperms_group_permissions.name = SUBSTR(groups_inherited.permission, 7)
-        )
-        SELECT *
-        FROM groups_inherited;
-    ",
-        (&uuid,),
-    )?;
-
-    let mut nodes = Vec::new();
-    for row in res {
-        let path_str = String::from_value(row[2].clone());
-        let path = path_str
-            .split('.')
-            .map(|s| match s {
-                "*" => PathSegment::WildCard,
-                s => PathSegment::Named(s.to_owned()),
+impl Database {
+    fn new(config: PermissionsConfig) -> Result<Self> {
+        if config.table_prefix.is_empty()
+            || !config
+                .table_prefix
+                .bytes()
+                .all(|c| c.is_ascii_alphanumeric() || c == b'_')
+        {
+            bail!("LuckPerms table_prefix must contain only ASCII letters, digits and underscores");
+        }
+        let mysql = match config.storage {
+            Storage::Mysql => Some(Pool::new(
+                OptsBuilder::new()
+                    .ip_or_hostname(Some(config.host.clone()))
+                    .tcp_port(config.port.unwrap_or(3306))
+                    .db_name(Some(config.db_name.clone()))
+                    .user(Some(config.username.clone()))
+                    .pass(Some(config.password.clone())),
+            )?),
+            Storage::Postgres => None,
+        };
+        Ok(Self { config, mysql })
+    }
+    fn postgres(&self) -> Result<Client> {
+        Ok(postgres::Config::new()
+            .host(&self.config.host)
+            .port(self.config.port.unwrap_or(5432))
+            .dbname(&self.config.db_name)
+            .user(&self.config.username)
+            .password(&self.config.password)
+            .application_name("mchprs-luckperms")
+            .connect_timeout(Duration::from_secs(5))
+            .options("-c default_transaction_read_only=on -c statement_timeout=5000 -c lock_timeout=1000")
+            .connect(NoTls)?)
+    }
+    /// Read a consistent snapshot using SELECT only. Resolve inheritance locally,
+    /// avoiding backend differences in boolean columns and recursive SQL types.
+    fn read_nodes(&self, uuid: &str) -> Result<(Vec<RawNode>, Vec<RawNode>)> {
+        let columns = "permission, value, server, world, expiry, contexts";
+        let users = format!("{}user_permissions", self.config.table_prefix);
+        let groups = format!("{}group_permissions", self.config.table_prefix);
+        match self.config.storage {
+            Storage::Postgres => {
+                let mut conn = self.postgres()?;
+                let mut tx = conn
+                    .build_transaction()
+                    .isolation_level(postgres::IsolationLevel::RepeatableRead)
+                    .read_only(true)
+                    .start()?;
+                let user_rows = tx.query(
+                    &format!("SELECT {columns} FROM {users} WHERE uuid = $1"),
+                    &[&uuid],
+                )?;
+                let group_rows = tx.query(&format!("SELECT name, {columns} FROM {groups}"), &[])?;
+                let convert = |row: &postgres::Row, group: bool| -> Result<RawNode> {
+                    Ok(RawNode {
+                        group: if group {
+                            row.try_get("name")?
+                        } else {
+                            String::new()
+                        },
+                        permission: row.try_get("permission")?,
+                        value: row.try_get("value")?,
+                        server: row.try_get("server")?,
+                        world: row.try_get("world")?,
+                        expiry: row.try_get("expiry")?,
+                        contexts: row.try_get("contexts")?,
+                    })
+                };
+                let nodes = (
+                    user_rows
+                        .iter()
+                        .map(|r| convert(r, false))
+                        .collect::<Result<_>>()?,
+                    group_rows
+                        .iter()
+                        .map(|r| convert(r, true))
+                        .collect::<Result<_>>()?,
+                );
+                tx.commit()?;
+                Ok(nodes)
+            }
+            Storage::Mysql => {
+                let mut conn = self
+                    .mysql
+                    .as_ref()
+                    .context("Missing MySQL pool")?
+                    .get_conn()?;
+                let mut tx = conn.start_transaction(
+                    mysql::TxOpts::default()
+                        .set_isolation_level(Some(mysql::IsolationLevel::RepeatableRead))
+                        .set_access_mode(Some(mysql::AccessMode::ReadOnly)),
+                )?;
+                let user_rows: Vec<mysql::Row> = tx.exec(
+                    format!("SELECT {columns} FROM {users} WHERE uuid = ?"),
+                    (uuid,),
+                )?;
+                let group_rows: Vec<mysql::Row> =
+                    tx.query(format!("SELECT name, {columns} FROM {groups}"))?;
+                fn column<T: FromValue>(row: &mysql::Row, name: &str) -> Result<T> {
+                    row.get_opt(name)
+                        .context("Missing LuckPerms column")?
+                        .map_err(|_| anyhow!("Invalid LuckPerms column: {name}"))
+                }
+                let convert = |row: &mysql::Row, group: bool| -> Result<RawNode> {
+                    Ok(RawNode {
+                        group: if group {
+                            column(row, "name")?
+                        } else {
+                            String::new()
+                        },
+                        permission: column(row, "permission")?,
+                        value: column::<i32>(row, "value")? > 0,
+                        server: column(row, "server")?,
+                        world: column(row, "world")?,
+                        expiry: column(row, "expiry")?,
+                        contexts: column(row, "contexts")?,
+                    })
+                };
+                let nodes = (
+                    user_rows
+                        .iter()
+                        .map(|r| convert(r, false))
+                        .collect::<Result<_>>()?,
+                    group_rows
+                        .iter()
+                        .map(|r| convert(r, true))
+                        .collect::<Result<_>>()?,
+                );
+                tx.commit()?;
+                Ok(nodes)
+            }
+        }
+    }
+}
+#[derive(Clone, Debug)]
+struct RawNode {
+    group: String,
+    permission: String,
+    value: bool,
+    server: String,
+    world: String,
+    expiry: i64,
+    contexts: String,
+}
+fn now() -> i64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs() as i64
+}
+impl RawNode {
+    fn applies(&self, config: &PermissionsConfig, time: i64) -> bool {
+        if (self.expiry != 0 && self.expiry <= time)
+            || (self.server != "global" && self.server != config.server_context)
+            || (self.world != "global" && self.world != config.world_context)
+        {
+            return false;
+        }
+        let Ok(serde_json::Value::Object(contexts)) = serde_json::from_str(&self.contexts) else {
+            return false;
+        };
+        contexts.iter().all(|(key, value)| {
+            let expected = match key.as_str() {
+                "server" => &config.server_context,
+                "world" => &config.world_context,
+                _ => return false, // Unsupported dynamic contexts cannot grant access.
+            };
+            value.as_str() == Some(expected.as_str())
+                || value.as_array().is_some_and(|values| {
+                    values.iter().any(|v| v.as_str() == Some(expected.as_str()))
+                })
+        })
+    }
+}
+#[derive(Debug)]
+struct PermissionNode {
+    permission: String,
+    value: bool,
+    // Direct grants, scopes, specificity, group distance and weight.
+    priority: (bool, usize, usize, bool, std::cmp::Reverse<usize>, i64),
+    expiry: i64,
+}
+impl PermissionNode {
+    fn matches(&self, query: &str) -> bool {
+        let mut query = query.split('.');
+        for segment in self.permission.split('.') {
+            if segment == "*" {
+                return true;
+            }
+            if query.next() != Some(segment) {
+                return false;
+            }
+        }
+        query.next().is_none()
+    }
+}
+#[derive(Default, Debug)]
+pub struct PlayerPermissionsCache {
+    nodes: Vec<PermissionNode>,
+    plotsquared_compat: bool,
+}
+impl PlayerPermissionsCache {
+    fn stored_node_val(&self, name: &str) -> Option<i32> {
+        let time = now();
+        self.nodes
+            .iter()
+            .filter(|n| (n.expiry == 0 || n.expiry > time) && n.matches(name))
+            .max_by_key(|n| (n.priority, !n.value)) // Deny wins an equal tie.
+            .map(|n| i32::from(n.value))
+    }
+    pub fn get_node_val(&self, name: &str) -> Option<i32> {
+        if let Some(value) = self.stored_node_val(name) {
+            return Some(value);
+        }
+        if !self.plotsquared_compat {
+            return None;
+        }
+        // PlotSquared 7.3.11 plugin.yml children used by MCHPRS. Keep explicit
+        // grants/denials above, and never infer administrative permissions.
+        let basic = matches!(
+            name,
+            "plots.info" | "plots.claim" | "plots.auto" | "plots.visit" | "plots.middle"
+        );
+        if basic {
+            return self.stored_node_val("plots.permpack.basic");
+        }
+        let equivalent = match name {
+            "plots.lock" => "plots.flag",
+            "plots.select" => "worldedit.selection.pos",
+            "commands.rhistory" | "commands.rback" => "plots.set",
+            _ => return None,
+        };
+        self.stored_node_val(equivalent).or_else(|| {
+            if matches!(equivalent, "plots.flag" | "plots.set") {
+                self.stored_node_val("plots.permpack.basic")
+            } else {
+                None
+            }
+        })
+    }
+    fn resolve(
+        users: Vec<RawNode>,
+        groups: Vec<RawNode>,
+        config: &PermissionsConfig,
+        time: i64,
+    ) -> Self {
+        let users: Vec<_> = users
+            .into_iter()
+            .filter(|n| n.applies(config, time))
+            .collect();
+        let mut grouped: HashMap<String, Vec<RawNode>> = HashMap::new();
+        for node in groups.into_iter().filter(|n| n.applies(config, time)) {
+            grouped.entry(node.group.clone()).or_default().push(node);
+        }
+        let denied: HashSet<_> = users
+            .iter()
+            .filter(|n| !n.value)
+            .filter_map(|n| n.permission.strip_prefix("group.").map(str::to_owned))
+            .collect();
+        let mut roots: VecDeque<_> = users
+            .iter()
+            .filter(|n| n.value)
+            .filter_map(|n| {
+                n.permission
+                    .strip_prefix("group.")
+                    .map(|g| (g.to_owned(), 0))
             })
             .collect();
-        let node = PermissionNode {
-            path,
-            server_context: FromValue::from_value(row[4].clone()),
-            value: FromValue::from_value(row[3].clone()),
+        if roots.is_empty() && !denied.contains("default") {
+            roots.push_back(("default".to_owned(), 0));
+        }
+        let mut result = Self {
+            nodes: Vec::new(),
+            plotsquared_compat: config.plotsquared_compat,
         };
-        nodes.push(node);
+        let mut add = |node: &RawNode, direct: bool, depth: usize, weight: i64| {
+            if ["group.", "weight.", "prefix.", "suffix."]
+                .iter()
+                .any(|prefix| node.permission.starts_with(prefix))
+            {
+                return;
+            }
+            let segments = node.permission.split('.').take_while(|s| *s != "*").count();
+            result.nodes.push(PermissionNode {
+                permission: node.permission.clone(),
+                value: node.value,
+                expiry: node.expiry,
+                priority: (
+                    direct,
+                    usize::from(node.server != "global")
+                        + usize::from(node.world != "global")
+                        + usize::from(node.contexts != "{}"),
+                    segments,
+                    !node.permission.contains('*'),
+                    std::cmp::Reverse(depth),
+                    weight,
+                ),
+            });
+        };
+        for node in &users {
+            add(node, true, 0, 0);
+        }
+        let mut visited = HashSet::new();
+        while let Some((name, depth)) = roots.pop_front() {
+            if denied.contains(&name) || !visited.insert(name.clone()) {
+                continue;
+            }
+            let Some(nodes) = grouped.get(&name) else {
+                continue;
+            };
+            let weight = nodes
+                .iter()
+                .filter(|n| n.value)
+                .filter_map(|n| n.permission.strip_prefix("weight.")?.parse::<i64>().ok())
+                .max()
+                .unwrap_or(0);
+            for node in nodes {
+                if let Some(parent) = node.permission.strip_prefix("group.") {
+                    if node.value {
+                        roots.push_back((parent.to_owned(), depth + 1));
+                    }
+                } else {
+                    add(node, false, depth, weight);
+                }
+            }
+        }
+        result
     }
+}
+pub fn init(config: PermissionsConfig) -> Result<()> {
+    let database = Database::new(config)?;
+    // Validate connection/schema/SELECT access before accepting players.
+    database.read_nodes("00000000-0000-0000-0000-000000000000")?;
+    DATABASE
+        .set(database)
+        .map_err(|_| anyhow!("Tried to init permissions more than once"))?;
+    Ok(())
+}
+pub fn load_player_cache(uuid: u128) -> Result<PlayerPermissionsCache> {
+    let database = DATABASE
+        .get()
+        .context("Tried to load permissions before init")?;
+    let (users, groups) = database.read_nodes(&HyphenatedUUID(uuid).to_string())?;
+    Ok(PlayerPermissionsCache::resolve(
+        users,
+        groups,
+        &database.config,
+        now(),
+    ))
+}
 
-    Ok(PlayerPermissionsCache { nodes })
+#[cfg(test)]
+mod tests {
+    use super::*;
+    fn config() -> PermissionsConfig {
+        toml::from_str("host='localhost'\ndb_name='rf'\nusername='reader'\npassword='unused'\nserver_context='global'\nworld_context='redstoneplots'").unwrap()
+    }
+    fn node(group: &str, permission: &str, value: bool) -> RawNode {
+        RawNode {
+            group: group.into(),
+            permission: permission.into(),
+            value,
+            server: "global".into(),
+            world: "global".into(),
+            expiry: 0,
+            contexts: "{}".into(),
+        }
+    }
+    #[test]
+    fn exact_permissions_do_not_match_prefixes_or_panic() {
+        let cache = PlayerPermissionsCache::resolve(
+            vec![node("", "plots.info", true)],
+            vec![],
+            &config(),
+            now(),
+        );
+        assert_eq!(cache.get_node_val("plots.info"), Some(1));
+        assert_eq!(cache.get_node_val("plots"), None);
+        assert_eq!(cache.get_node_val("plots.info.other"), None);
+    }
+    #[test]
+    fn default_group_and_recursive_inheritance_are_read_without_writes() {
+        let groups = vec![
+            node("default", "plots.info", true),
+            node("builder", "group.default", true),
+            node("builder", "worldedit.*", true),
+            node("default", "group.builder", true),
+        ];
+        let cache = PlayerPermissionsCache::resolve(vec![], groups.clone(), &config(), now());
+        assert_eq!(cache.get_node_val("plots.info"), Some(1));
+        let cache = PlayerPermissionsCache::resolve(
+            vec![node("", "group.builder", true)],
+            groups,
+            &config(),
+            now(),
+        );
+        assert_eq!(cache.get_node_val("worldedit.region.set"), Some(1));
+        assert_eq!(cache.get_node_val("plots.admin"), None);
+    }
+    #[test]
+    fn specific_denials_and_direct_permissions_override_wildcards() {
+        let cache = PlayerPermissionsCache::resolve(
+            vec![
+                node("", "group.admin", true),
+                node("", "plots.claim", false),
+            ],
+            vec![node("admin", "*", true), node("admin", "plots.info", false)],
+            &config(),
+            now(),
+        );
+        assert_eq!(cache.get_node_val("plots.claim"), Some(0));
+        assert_eq!(cache.get_node_val("plots.info"), Some(0));
+        assert_eq!(cache.get_node_val("plots.admin.interact.other"), Some(1));
+    }
+    #[test]
+    fn expired_wrong_world_and_unknown_contexts_cannot_grant_groups() {
+        let mut expired = node("", "group.admin", true);
+        expired.expiry = 1;
+        let mut wrong = node("", "group.admin", true);
+        wrong.world = "other".into();
+        let mut context = node("", "group.admin", true);
+        context.contexts = "{\"gamemode\":\"creative\"}".into();
+        let cache = PlayerPermissionsCache::resolve(
+            vec![expired, wrong, context],
+            vec![
+                node("admin", "*", true),
+                node("default", "plots.info", true),
+            ],
+            &config(),
+            now(),
+        );
+        assert_eq!(cache.get_node_val("plots.admin"), None);
+        assert_eq!(cache.get_node_val("plots.info"), Some(1));
+    }
+    #[test]
+    fn denied_group_edges_and_metadata_do_not_grant_permissions() {
+        let cache = PlayerPermissionsCache::resolve(
+            vec![node("", "group.builder", true)],
+            vec![
+                node("builder", "group.admin", false),
+                node("builder", "weight.5", true),
+                node("admin", "*", true),
+            ],
+            &config(),
+            now(),
+        );
+        assert_eq!(cache.get_node_val("plots.admin"), None);
+        assert_eq!(cache.get_node_val("weight.5"), None);
+    }
+    #[test]
+    fn legacy_mysql_config_loads_and_invalid_prefix_is_rejected() {
+        let config = config();
+        assert!(matches!(config.storage, Storage::Mysql));
+        assert_eq!(config.port, None);
+        assert_eq!(config.table_prefix, "luckperms_");
+        let mut config = config;
+        config.table_prefix = "luckperms_;DROP TABLE x".into();
+        assert!(Database::new(config).is_err());
+    }
+    #[test]
+    fn plotsquared_packs_preserve_denials_and_do_not_grant_admin() {
+        let mut config = config();
+        config.plotsquared_compat = true;
+        let cache = PlayerPermissionsCache::resolve(
+            vec![node("", "plots.claim", false)],
+            vec![node("default", "plots.permpack.basic", true)],
+            &config,
+            now(),
+        );
+        assert_eq!(cache.get_node_val("plots.info"), Some(1));
+        assert_eq!(cache.get_node_val("plots.claim"), Some(0));
+        assert_eq!(cache.get_node_val("commands.rback"), Some(1));
+        assert_eq!(cache.get_node_val("plots.admin.interact.other"), None);
+        assert_eq!(cache.get_node_val("plots.admin.rewind.unlimited"), None);
+        assert_eq!(cache.get_node_val("worldedit.region.set"), None);
+        assert_eq!(cache.get_node_val("commands.stop"), None);
+    }
+    #[test]
+    fn world_contexts_and_direct_denials_override_inherited_grants() {
+        let mut scoped = node("builder", "worldedit.*", true);
+        scoped.world = "redstoneplots".into();
+        scoped.contexts = "{\"world\":[\"redstoneplots\"]}".into();
+        let cache = PlayerPermissionsCache::resolve(
+            vec![
+                node("", "group.builder", true),
+                node("", "worldedit.region.set", false),
+            ],
+            vec![scoped],
+            &config(),
+            now(),
+        );
+        assert_eq!(cache.get_node_val("worldedit.clipboard.copy"), Some(1));
+        assert_eq!(cache.get_node_val("worldedit.region.set"), Some(0));
+    }
+    #[test]
+    #[ignore = "Requires MCHPRS_LUCKPERMS_TEST_CONFIG pointing to a private read-only config"]
+    fn live_postgres_read_only_permissions() {
+        #[derive(Deserialize)]
+        struct TestConfig {
+            luckperms: PermissionsConfig,
+        }
+        let path = std::env::var("MCHPRS_LUCKPERMS_TEST_CONFIG").unwrap();
+        let config: TestConfig = toml::from_str(&std::fs::read_to_string(path).unwrap()).unwrap();
+        let db = Database::new(config.luckperms).unwrap();
+        let mut conn = db.postgres().unwrap();
+        let mode: String = conn
+            .query_one("SHOW default_transaction_read_only", &[])
+            .unwrap()
+            .get(0);
+        assert_eq!(mode, "on");
+        let prefix = &db.config.table_prefix;
+        for table in [
+            "user_permissions",
+            "group_permissions",
+            "players",
+            "groups",
+            "tracks",
+            "actions",
+        ] {
+            let table = format!("{prefix}{table}");
+            let row = conn
+                .query_one(
+                    "SELECT has_table_privilege(current_user, $1, 'INSERT,UPDATE,DELETE,TRUNCATE')",
+                    &[&table],
+                )
+                .unwrap();
+            assert!(!row.get::<_, bool>(0), "Writer privileges on {table}");
+        }
+        let players = conn
+            .query(
+                &format!("SELECT uuid, primary_group FROM {prefix}players"),
+                &[],
+            )
+            .unwrap();
+        let mut checked = 0;
+        for player in players {
+            let uuid: String = player.get(0);
+            let group: String = player.get(1);
+            let (users, groups) = db.read_nodes(&uuid).unwrap();
+            let cache = PlayerPermissionsCache::resolve(users, groups, &db.config, now());
+            assert_eq!(
+                cache.get_node_val("plots.admin.interact.other") == Some(1),
+                matches!(group.as_str(), "admin" | "moderator")
+            );
+            if group == "default" {
+                assert_eq!(cache.get_node_val("plots.plot.1"), Some(1));
+            }
+            if matches!(
+                group.as_str(),
+                "builder" | "advanced" | "expert" | "engineer"
+            ) {
+                assert_eq!(cache.get_node_val("worldedit.clipboard.copy"), Some(1));
+            }
+            checked += 1;
+        }
+        assert!(checked > 0);
+        println!("Verified read-only access and existing ranks for {checked} players");
+    }
 }

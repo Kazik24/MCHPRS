@@ -396,7 +396,7 @@ impl ServerBoundPacketHandler for Plot {
         self.close_open_container(player);
 
         if let Some(item) = item_in_hand {
-            let cancelled = interaction::use_item_on_block(
+            let outcome = interaction::use_item_on_block(
                 &item,
                 &mut self.world,
                 UseOnBlockContext {
@@ -406,7 +406,7 @@ impl ServerBoundPacketHandler for Plot {
                     cursor_y: player_block_placement.cursor_y,
                 },
             );
-            if cancelled {
+            if outcome == interaction::PlacementOutcome::Cancelled {
                 cancel(self);
             }
             self.world.flush_block_changes();

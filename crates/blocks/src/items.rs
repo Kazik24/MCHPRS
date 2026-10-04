@@ -16,6 +16,7 @@ impl ItemStack {
             ContainerType::Barrel => Item::Barrel {},
             ContainerType::Hopper => Item::Hopper {},
             ContainerType::Furnace => Item::Furnace {},
+            ContainerType::Chest => Item::from_name("chest").expect("generated chest item"),
         };
         let slots = container_ty.num_slots() as u32;
 

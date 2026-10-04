@@ -1,5 +1,5 @@
 use crate::world::World;
-use mchprs_blocks::block_entities::BlockEntity;
+use mchprs_blocks::block_entities::{BlockEntity, ContainerType};
 use mchprs_blocks::blocks::{Block, ComparatorMode, RedstoneComparator};
 use mchprs_blocks::{BlockDirection, BlockFace, BlockPos};
 use mchprs_world::TickPriority;
@@ -34,7 +34,8 @@ pub fn has_override(block: Block) -> bool {
             | Block::Cauldron { .. }
             | Block::Composter { .. }
             | Block::Cake { .. }
-    ) || block.get_name() == "end_portal_frame"
+    ) || ContainerType::from_block(block).is_some()
+        || block.get_name() == "end_portal_frame"
         || block.is_command_block()
 }
 
@@ -44,7 +45,7 @@ pub fn get_override(block: Block, world: &impl World, pos: BlockPos) -> u8 {
             Some(BlockEntity::CommandBlock(entity)) => entity.success_count.clamp(0, 15) as u8,
             _ => 0,
         },
-        Block::Barrel { .. } | Block::Furnace { .. } | Block::Hopper { .. } => {
+        block if ContainerType::from_block(block).is_some() => {
             match world.get_block_entity(pos) {
                 Some(BlockEntity::Container {
                     comparator_override,

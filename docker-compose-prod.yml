@@ -6,6 +6,15 @@ services:
       dockerfile: docker/Dockerfile-plot-scale-5
     ports:
       - 25562:25565
+    stop_grace_period: 60s
+    networks:
+      - default
+      - redstonefun
     volumes:
       - /srv/mchprs/data:/data
       - /home/minecraft/redstonefun_server/plugins/WorldEdit/schematics:/data/schems/rf:ro
+
+networks:
+  redstonefun:
+    external: true
+    name: redstonefun-network

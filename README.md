@@ -58,14 +58,21 @@ To change the plot size edit the constants defined in [plot/mod.rs](./crates/cor
 
 ### LuckPerms
 
-MCHPRS has basic support for LuckPerms with MySQL or MariaDB remote database storage. This implementation has no commands or interface and would have to be manged through LuckPerms running on a proxy (`/lpb`) or other server (`/lp`)
+MCHPRS reads existing LuckPerms permission data from PostgreSQL, MySQL or MariaDB.
+Manage permissions through LuckPerms on another server (`/lp`) or proxy (`/lpb`).
+Use a database login with SELECT access only. See [LuckPerms setup](docs/LUCKPERMS.md)
+for PostgreSQL configuration, account UUID requirements and compatibility details.
 
 To use LuckPerms, append this to your `Config.toml`:
 
 ```toml
 [luckperms]
+# Optional; defaults to "mysql". PostgreSQL accepts "postgres" or "postgresql".
+storage = "mysql"
 # Define the address for the database.
 host = "localhost"
+# Optional; defaults to 3306 for MySQL or 5432 for PostgreSQL.
+port = 3306
 # The name of the database the LuckPerms data is in.
 db_name = "minecraft"
 # Credentials for the database.
@@ -74,6 +81,10 @@ password = "minecraft"
 # The name of the server, used for server specific permissions.
 # See: https://luckperms.net/wiki/Context
 server_context = "global"
+# Optional settings, shown with their defaults:
+world_context = "global"
+table_prefix = "luckperms_"
+plotsquared_compat = false
 ```
 
 ## Usage
