@@ -5,6 +5,130 @@ use crate::world::{storage::Chunk, World};
 use std::io::Cursor;
 
 const ADDER: &[u8] = include_bytes!("../../../../../../../test_data/ADDER_GWIEZDNY_TEST.schem");
+
+#[test]
+fn supplied_potados_preserves_all_command_blocks_and_supported_messages() {
+    let cb = load_schematic(Cursor::new(include_bytes!(
+        "../../../../../../../test_data/potados_27072024.schem"
+    )))
+    .unwrap();
+    let mut count = 0;
+    let mut supported = 0;
+    for entity in cb.block_entities.values() {
+        if let BlockEntity::CommandBlock(entity) = entity {
+            count += 1;
+            if crate::chat_commands::parse(&entity.command, "@", None).is_ok() {
+                supported += 1;
+            }
+        }
+    }
+    assert_eq!(count, 425);
+    assert_eq!(supported, 29);
+    let mut world = PlotWorld::from_chunks(
+        0,
+        0,
+        (0..PLOT_WIDTH)
+            .flat_map(|x| (0..PLOT_WIDTH).map(move |z| Chunk::empty(x, z)))
+            .collect(),
+        Default::default(),
+    );
+    let pos = BlockPos::new(40, 30, 40);
+    for entity in cb.block_entities.values() {
+        let BlockEntity::CommandBlock(entity) = entity else {
+            continue;
+        };
+        if crate::chat_commands::parse(&entity.command, "@", None).is_err() {
+            continue;
+        }
+        let mut copied = (**entity).clone();
+        copied.powered = false;
+        copied.last_execution = -1;
+        world.set_block(pos, Block::from_name("command_block").unwrap());
+        world.set_block_entity(pos, BlockEntity::CommandBlock(Box::new(copied)));
+        world.set_block(
+            pos.offset(mchprs_blocks::BlockFace::Bottom),
+            Block::RedstoneBlock {},
+        );
+        crate::redstone::command_block::update(&mut world, pos);
+        world.tick_interpreted();
+        world.tick_interpreted();
+    }
+    assert_eq!(world.command_messages.len(), 29);
+    assert!(world
+        .command_messages
+        .iter()
+        .any(|message| message.message.contains("div by zero")));
+    assert!(world
+        .command_messages
+        .iter()
+        .all(|message| !message.message.contains("clickEvent")
+            && !message.message.contains("hoverEvent")
+            && !message.message.contains("\"score\"")));
+    assert_roundtrip(&cb);
+}
+
+#[test]
+fn sponge_v2_and_v3_command_entities_keep_text_flags_and_validate_types() {
+    for version in [2, 3] {
+        let mut blob = base(version);
+        blocks(&mut blob).insert(
+            "Palette".into(),
+            Value::Compound(Compound::from([(
+                "minecraft:command_block[conditional=false,facing=east]".into(),
+                Value::Int(128),
+            )])),
+        );
+        let entity = Compound::from([
+            ("Id".into(), Value::String("minecraft:command_block".into())),
+            ("Pos".into(), Value::IntArray(vec![0, 0, 0])),
+            ("Command".into(), Value::String("say imported".into())),
+            ("auto".into(), Value::Byte(1)),
+        ]);
+        let entity = if version == 3 {
+            Compound::from([
+                ("Id".into(), entity["Id"].clone()),
+                ("Pos".into(), entity["Pos"].clone()),
+                ("Data".into(), Value::Compound(entity)),
+            ])
+        } else {
+            entity
+        };
+        blocks(&mut blob).insert(
+            "BlockEntities".into(),
+            Value::List(vec![Value::Compound(entity)]),
+        );
+        let cb = load_blob(&blob).unwrap();
+        let BlockEntity::CommandBlock(entity) = cb.block_entities.values().next().unwrap() else {
+            panic!()
+        };
+        assert_eq!(entity.command, "say imported");
+        assert!(entity.automatic);
+        assert_roundtrip(&cb);
+        let mut world = PlotWorld::from_chunks(
+            0,
+            0,
+            (0..PLOT_WIDTH)
+                .flat_map(|x| (0..PLOT_WIDTH).map(move |z| Chunk::empty(x, z)))
+                .collect(),
+            Default::default(),
+        );
+        paste_clipboard(
+            &mut world,
+            &cb,
+            BlockPos::new(cb.offset_x + 40, cb.offset_y + 30, cb.offset_z + 40),
+            false,
+        );
+        world.tick_interpreted();
+        world.tick_interpreted();
+        assert_eq!(world.command_messages.len(), 1);
+        assert!(world.command_messages[0].message.contains("imported"));
+    }
+    let data = Compound::from([
+        ("id".into(), Value::String("minecraft:command_block".into())),
+        ("Command".into(), Value::Int(42)),
+    ]);
+    assert!(BlockEntity::from_nbt(&data).is_err());
+}
 fn load_blob(blob: &nbt::Blob) -> Result<WorldEditClipboard> {
     let mut bytes = vec![];
     blob.to_gzip_writer(&mut bytes).unwrap();

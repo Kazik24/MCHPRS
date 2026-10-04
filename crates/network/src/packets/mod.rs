@@ -173,6 +173,7 @@ fn read_decompressed<T: PacketDecoderExt>(
             0x27 => Box::new(SPlayerDigging::decode(reader)?),
             0x28 => Box::new(SEntityAction::decode(reader)?),
             0x33 => Box::new(SHeldItemChange::decode(reader)?),
+            0x34 => Box::new(SUpdateCommandBlock::decode(reader)?),
             0x36 => Box::new(SCreativeInventoryAction::decode(reader)?),
             0x3a => Box::new(SUpdateSign::decode(reader)?),
             0x3b => Box::new(SAnimation::decode(reader)?),

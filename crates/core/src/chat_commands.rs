@@ -38,15 +38,18 @@ fn component(value: &Value, depth: usize) -> Result<Value, String> {
                 .map(|v| component(v, depth + 1))
                 .transpose()?
                 .unwrap_or_else(|| json!({"text":""}));
-            let extra = first
-                .as_object_mut()
-                .unwrap()
-                .entry("extra")
-                .or_insert_with(|| json!([]))
-                .as_array_mut()
-                .unwrap();
-            for value in values {
-                extra.push(component(value, depth + 1)?);
+            let remaining = values
+                .map(|value| component(value, depth + 1))
+                .collect::<Result<Vec<_>, _>>()?;
+            if !remaining.is_empty() {
+                let extra = first
+                    .as_object_mut()
+                    .unwrap()
+                    .entry("extra")
+                    .or_insert_with(|| json!([]))
+                    .as_array_mut()
+                    .unwrap();
+                extra.extend(remaining);
             }
             first
         }
@@ -99,7 +102,10 @@ fn component(value: &Value, depth: usize) -> Result<Value, String> {
                     result.insert("color".into(), color.into());
                 }
             }
-            if let Some(Value::Array(extra)) = object.get("extra") {
+            if let Some(Value::Array(extra)) = object
+                .get("extra")
+                .filter(|value| value.as_array().is_some_and(|extra| !extra.is_empty()))
+            {
                 result.insert(
                     "extra".into(),
                     Value::Array(
@@ -213,5 +219,12 @@ mod tests {
         assert_eq!(value["extra"][1]["extra"][0]["text"], "kept");
         assert!(!command.message.contains("score"));
         assert!(!command.message.contains("Event"));
+        for input in [
+            r#"tellraw @a []"#,
+            r#"tellraw @a ["hello"]"#,
+            r#"tellraw @a {"text":"hello","extra":[]}"#,
+        ] {
+            assert!(!parse(input, "@", None).unwrap().message.contains("extra"));
+        }
     }
 }

@@ -15,6 +15,7 @@ fn copy_saved(world: &mut PlotWorld) -> PlotWorld {
         chunk_data: world.chunks.iter_mut().map(Chunk::save).collect(),
         pending_ticks: world.scheduler().iter_entries().collect(),
         piston_state: world.piston_state.clone(),
+        piston_animation: Default::default(),
     };
     let bytes = bincode::serialize(&data).unwrap();
     let data: PlotData<PLOT_SECTIONS> = bincode::deserialize(&bytes).unwrap();

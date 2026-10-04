@@ -137,6 +137,26 @@ pub fn on_use(
             }
             ActionResult::Success
         }
+        b if b.is_command_block() => {
+            if !player.has_permission("commands.commandblock.edit") {
+                player.send_no_permission_message();
+                return ActionResult::Success;
+            }
+            if let Some(entity) = world.get_block_entity(pos) {
+                if let Some(nbt) = entity.to_nbt(false) {
+                    use mchprs_network::packets::clientbound::CBlockEntityData;
+                    player.send_packet(
+                        &CBlockEntityData {
+                            pos: pos.packed(),
+                            ty: entity.ty(),
+                            nbt,
+                        }
+                        .encode(),
+                    );
+                }
+            }
+            ActionResult::Success
+        }
         b if b.has_block_entity() => {
             // Open container
             let block_entity = world.get_block_entity(pos);
@@ -365,6 +385,9 @@ pub fn place_in_world(
         };
     }
     world.set_block(pos, block);
+    if block.is_command_block() {
+        redstone::command_block::update(world, pos);
+    }
     change_surrounding_blocks(world, pos);
     if let Block::RedstoneWire { .. } = block {
         redstone::update_wire_neighbors(world, pos);

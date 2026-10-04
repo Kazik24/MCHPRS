@@ -67,6 +67,7 @@ static EMPTY_PLOT: Lazy<Result<PlotData<PLOT_SECTIONS>, String>> = Lazy::new(|| 
             chunk_data,
             pending_ticks: Vec::new(),
             piston_state: Default::default(),
+            piston_animation: Default::default(),
         })
     }
 });

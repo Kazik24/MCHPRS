@@ -239,6 +239,34 @@ impl Plot {
         }
 
         match command {
+            "/piston_anim" | "/bisdon_anim" => {
+                if !self.players[player].has_permission("commands.piston_anim") {
+                    self.players[player].send_no_permission_message();
+                    return false;
+                }
+                if !args.is_empty() {
+                    self.piston_animation = match args.as_slice() {
+                        ["auto"] => mchprs_save_data::plot_data::PistonAnimation::Auto,
+                        ["on"] => mchprs_save_data::plot_data::PistonAnimation::On,
+                        ["off"] => mchprs_save_data::plot_data::PistonAnimation::Off,
+                        _ => {
+                            self.players[player]
+                                .send_error_message("Usage: /piston_anim [auto|on|off]");
+                            return false;
+                        }
+                    };
+                    self.update_render_mode();
+                }
+                self.players[player].send_system_message(&format!(
+                    "Piston animation: {} (effective {})",
+                    self.piston_animation,
+                    if self.world.fast_rendering {
+                        "off"
+                    } else {
+                        "on"
+                    }
+                ));
+            }
             "/tellraw" | "/say" => {
                 let permission = if command == "/say" {
                     "commands.say"
@@ -647,7 +675,7 @@ pub static DECLARE_COMMANDS: Lazy<PacketEncoder> = Lazy::new(|| {
                 flags: CommandFlags::ROOT.bits() as i8,
                 children: &[
                     1, 4, 5, 6, 11, 12, 14, 16, 18, 19, 20, 21, 22, 23, 24, 26, 29, 31, 32, 34, 36,
-                    47, 49, 53, 60, 61, 63, 65, 66, 67, 71, 73, 74, 75, 82, 83, 85,
+                    47, 49, 53, 60, 61, 63, 65, 66, 67, 71, 73, 74, 75, 82, 83, 85, 88, 90,
                 ],
                 redirect_node: None,
                 name: None,
@@ -1434,6 +1462,32 @@ pub static DECLARE_COMMANDS: Lazy<PacketEncoder> = Lazy::new(|| {
                 redirect_node: None,
                 name: Some("message"),
                 parser: Some(Parser::String(2)),
+                suggestions_type: None,
+            },
+            // 88–90: animation preference and alias
+            Node {
+                flags: (CommandFlags::LITERAL | CommandFlags::EXECUTABLE).bits() as i8,
+                children: &[89],
+                redirect_node: None,
+                name: Some("piston_anim"),
+                parser: None,
+                suggestions_type: None,
+            },
+            Node {
+                flags: (CommandFlags::ARGUMENT | CommandFlags::EXECUTABLE).bits() as i8,
+                children: &[],
+                redirect_node: None,
+                name: Some("mode"),
+                parser: Some(Parser::String(0)),
+                suggestions_type: None,
+            },
+            Node {
+                flags: (CommandFlags::LITERAL | CommandFlags::REDIRECT | CommandFlags::EXECUTABLE)
+                    .bits() as i8,
+                children: &[],
+                redirect_node: Some(88),
+                name: Some("bisdon_anim"),
+                parser: None,
                 suggestions_type: None,
             },
         ],

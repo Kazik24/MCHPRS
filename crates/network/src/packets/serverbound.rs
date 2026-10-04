@@ -31,6 +31,7 @@ pub trait ServerBoundPacketHandler {
     fn handle_held_item_change(&mut self, _packet: SHeldItemChange, _player_idx: usize) {}
     fn handle_pick_item_from_block(&mut self, _packet: SPickItemFromBlock, _player_idx: usize) {}
     fn handle_pick_item_from_entity(&mut self, _packet: SPickItemFromEntity, _player_idx: usize) {}
+    fn handle_update_command_block(&mut self, _packet: SUpdateCommandBlock, _player_idx: usize) {}
     fn handle_creative_inventory_action(
         &mut self,
         _packet: SCreativeInventoryAction,
@@ -54,6 +55,38 @@ pub struct SUnknown;
 pub struct SPickItemFromBlock {
     pub pos: PackedPos,
     pub include_data: bool,
+}
+
+pub struct SUpdateCommandBlock {
+    pub pos: PackedPos,
+    pub command: String,
+    pub mode: i32,
+    pub flags: u8,
+}
+
+impl ServerBoundPacket for SUpdateCommandBlock {
+    fn decode<T: PacketDecoderExt>(reader: &mut T) -> DecodeResult<Self> {
+        let packet = Self {
+            pos: reader.read_position()?,
+            command: reader.read_string()?,
+            mode: reader.read_varint()?,
+            flags: reader.read_unsigned_byte()?,
+        };
+        if !(0..=2).contains(&packet.mode)
+            || packet.flags & !7 != 0
+            || packet.command.chars().count() > 32767
+        {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                "invalid command block update",
+            )
+            .into());
+        }
+        Ok(packet)
+    }
+    fn handle(self: Box<Self>, handler: &mut dyn ServerBoundPacketHandler, player_idx: usize) {
+        handler.handle_update_command_block(*self, player_idx);
+    }
 }
 
 impl ServerBoundPacket for SPickItemFromBlock {

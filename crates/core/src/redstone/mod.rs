@@ -4,6 +4,7 @@
 
 #[cfg(test)]
 mod adder_tests;
+pub(crate) mod command_block;
 pub mod comparator;
 #[cfg(test)]
 mod master_tests;
@@ -206,6 +207,10 @@ fn diode_get_input_strength(world: &impl World, pos: BlockPos, facing: BlockDire
 }
 
 pub fn update(block: Block, world: &mut impl World, pos: BlockPos, dir: Option<BlockFace>) {
+    if block.is_command_block() {
+        command_block::update(world, pos);
+        return;
+    }
     match block {
         Block::RedstoneWire { wire } => {
             wire::on_neighbor_updated(wire, world, pos);
@@ -301,6 +306,10 @@ pub fn update(block: Block, world: &mut impl World, pos: BlockPos, dir: Option<B
 }
 
 pub fn tick(block: Block, world: &mut impl World, pos: BlockPos) {
+    if block.is_command_block() {
+        command_block::tick(world, pos);
+        return;
+    }
     match block {
         Block::RedstoneRepeater { repeater } => {
             repeater::tick(repeater, world, pos);

@@ -37,6 +37,34 @@ fn pick_packets_dispatch_and_reject_truncated_payloads() {
 }
 
 #[test]
+fn command_block_updates_validate_mode_flags_and_dispatch() {
+    use super::serverbound::*;
+    struct Handler(bool);
+    impl ServerBoundPacketHandler for Handler {
+        fn handle_update_command_block(&mut self, packet: SUpdateCommandBlock, _: usize) {
+            self.0 = packet.command == "say test" && packet.mode == 2 && packet.flags == 1;
+        }
+    }
+    let mut prefix = vec![0x34];
+    prefix.write_long(0);
+    prefix.write_string(32767, "say test");
+    for (mode, flags) in [(2, 1), (3, 1), (0, 8)] {
+        let mut bytes = prefix.clone();
+        bytes.write_varint(mode);
+        bytes.write_unsigned_byte(flags);
+        let result = read_decompressed(&mut Cursor::new(bytes), &mut NetworkState::Play);
+        if mode == 2 {
+            let mut handler = Handler(false);
+            result.unwrap().handle(&mut handler, 0);
+            assert!(handler.0);
+        } else {
+            assert!(result.is_err());
+        }
+    }
+    assert!(read_decompressed(&mut Cursor::new(prefix), &mut NetworkState::Play).is_err());
+}
+
+#[test]
 fn integer_boundaries_and_malformed_lengths() {
     for n in [0, 1, 127, 128, 16384, i32::MAX, i32::MIN, -1] {
         let mut data = vec![];

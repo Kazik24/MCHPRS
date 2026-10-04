@@ -26,6 +26,7 @@ function connect(name) {
       if (meta.name === 'map_chunk') {
         const chunk = new Chunk({minY:0,worldHeight:256}); chunk.load(p.chunkData);
         client.chunks.set(`${p.x},${p.z}`, chunk);
+        client.chunkEntities=(client.chunkEntities||[]).concat(p.blockEntities.map(entity=>nbt.simplify(entity.nbtData)));
         // Force palette reads through the full vertical range, including empty sections.
         for (let y=0;y<256;y++) assert(data.blocksByStateId[chunk.getBlockStateId(new Vec3(2,y,2))]);
       }
@@ -141,8 +142,55 @@ function command(client,command) { client.write('chat_command',{command}); }
     await until(()=>data.blocksByStateId[state(a,137,y,134)]?.name==='piston_head','fast static piston head');
     assert.equal(a.actions.length,actionsBefore,'high TPS sends no piston animation actions');
     assert.equal(a.movingUpdates,movingBefore,'high TPS sends no moving piston states');
-    await we('rtps 20','successfully set');
+    await we('piston_anim on','on (effective on)');
     await we('wsr','effective 20 Hz');
+    await creative(a,36,item('piston',[{type:'block_state',data:facing}]));
+    await place(a,150,y,134,107);
+    await creative(a,36,item('redstone_block'));
+    await place(a,149,y,134,108);
+    await until(()=>a.actions.length>actionsBefore,'animation command overrides high TPS');
+    await we('rtps 20','successfully set');
+    await we('bisdon_anim off','off (effective off)');
+    await we('wsr','effective 10 Hz');
+    const offActions=a.actions.length;
+    await creative(a,36,item('piston',[{type:'block_state',data:facing}]));
+    await place(a,155,y,134,109);
+    await creative(a,36,item('redstone_block'));
+    await place(a,154,y,134,110);
+    await until(()=>data.blocksByStateId[state(a,156,y,134)]?.name==='piston_head','forced static piston head');
+    assert.equal(a.actions.length,offActions,'off command suppresses low TPS animations');
+    await we('piston_anim auto','auto (effective on)');
+    await we('wsr','effective 20 Hz');
+    // Creative command-block placement, editor update and a single redstone activation.
+    a.write('position',{x:142,y,z:136,flags:{onGround:false,hasHorizontalCollision:false}});
+    a.write('held_item_slot',{slotId:0});
+    await creative(a,36,item('command_block'));
+    await place(a,142,y,138,105);
+    await until(()=>data.blocksByStateId[state(a,142,y,138)]?.name==='command_block','command block placement');
+    a.write('update_command_block',{location:{x:142,y,z:138},command:'tellraw @a[distance=..1] {"text":"Command smoke","bold":true,"color":"gold","clickEvent":{"action":"run_command","value":"/stop"}}',mode:2,flags:1});
+    await until(()=>a.entities.some(p=>p.location.x===142 && p.location.y===y && p.location.z===138 && nbt.simplify(p.nbtData).Command?.includes('Command smoke')),'command editor data update');
+    await creative(a,36,item('redstone_block'));
+    await place(a,141,y,138,106);
+    await until(()=>a.messages.some(m=>m.includes('Command smoke')) && b.messages.some(m=>m.includes('Command smoke')),'powered command block broadcasts');
+    const commandsBefore=a.messages.filter(m=>m.includes('Command smoke')).length;
+    await delay(200);
+    assert.equal(a.messages.filter(m=>m.includes('Command smoke')).length,commandsBefore,'powered impulse runs once');
+    a.write('update_command_block',{location:{x:142,y,z:138},command:'scoreboard players add x y 1',mode:2,flags:1});
+    await until(()=>a.entities.some(p=>p.location.x===142 && nbt.simplify(p.nbtData).Command==='scoreboard players add x y 1'),'unsupported command retained');
+    a.write('update_command_block',{location:{x:142,y,z:138},command:'say saved command',mode:2,flags:1});
+    await until(()=>a.entities.some(p=>p.location.x===142 && nbt.simplify(p.nbtData).Command==='say saved command'),'saved command data');
+    await select([142,y,138],[142,y,138]);
+    await we('/copy','selection was copied');
+    await we('/save CommandRoundtrip.schem','saved sucessfuly');
+    await we('/load CommandRoundtrip.schem','loaded to your clipboard');
+    a.write('position',{x:148,y,z:138,flags:{onGround:false,hasHorizontalCollision:false}});
+    await we('/paste','clipboard was pasted');
+    await until(()=>a.entities.some(p=>p.location.x===148 && p.location.y===y && p.location.z===138 && nbt.simplify(p.nbtData).Command==='say saved command'),'schematic retains command text');
+    command(a,'/undo'); await until(()=>state(a,148,y,138)===0,'command schematic undo');
+    command(a,'/redo'); await until(()=>data.blocksByStateId[state(a,148,y,138)]?.name==='command_block','command schematic redo');
+    await creative(a,36,item('redstone_block'));
+    await place(a,147,y,138,111);
+    await until(()=>a.messages.some(m=>m.includes('[@] saved command')),'imported command runs on power');
     a.write('position',{x:130,y,z:129,flags:{onGround:false,hasHorizontalCollision:false}});
     a.write('pick_item_from_block',{position:{x:130,y,z:130},includeData:false});
     await until(()=>a.heldSlot===2 && a.slots.get(38)?.itemId===data.itemsByName.piston.id,'middle click creates/selects piston');
@@ -217,10 +265,13 @@ function command(client,command) { client.write('chat_command',{command}); }
     await we('/save MixedSignsRoundtrip.schem','saved sucessfuly');
     await we('/load MixedSignsRoundtrip.schem','loaded to your clipboard');
     await we('/paste','clipboard was pasted');
+    await we('piston_anim off','off (effective off)');
     a.end(); await delay(600);
     const again=await connect('PortSmokeOne');
     assert.equal(again.slots.get(37).components[1].data,16);
     command(again,'rtps');
+    command(again,'piston_anim');
+    await until(()=>again.messages.some(m=>m.includes('Piston animation: off')),'animation choice survives reconnect');
     console.log('PASS: configuration, two players, deep chunks, version/rate/selection commands, combined flags, overlapping undo/redo, components, placement, piston events, acknowledgements, Sponge v3 and production mixed-sign v2 paste/undo/redo/save/reload and reconnect.');
     stopping=true; command(again,'stop'); await delay(800);
   } else {
@@ -228,10 +279,14 @@ function command(client,command) { client.write('chat_command',{command}); }
     const pstate=state(a,x,y,z);
     assert.equal(data.blocksByStateId[pstate].name,'piston');
     assert.equal(data.blocksByStateId[state(a,x+1,y,z)].name,'piston_head');
+    assert.equal(data.blocksByStateId[state(a,142,y,138)].name,'command_block');
+    assert(a.chunkEntities.some(e=>e.Command==='say saved command'),'restart retained command text');
+    command(a,'bisdon_anim');
+    await until(()=>a.messages.some(m=>m.includes('Piston animation: off')),'animation choice survives process restart');
     console.log('PASS: process restart retained structured item components and extended piston/head states.');
     stopping=true;command(a,'stop');await delay(800);
   }
   for(const c of clients)c.end();
   process.exit(failed?1:0);
 })().catch(e=>{console.error(e);for(const c of clients)c.end();process.exit(1);});
-setTimeout(()=>{console.error('TIMEOUT');process.exit(1);},25000);
+setTimeout(()=>{console.error('TIMEOUT');process.exit(1);},40000);

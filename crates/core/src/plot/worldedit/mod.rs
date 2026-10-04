@@ -1099,6 +1099,9 @@ pub fn paste_clipboard(
             z: pos.z + offset_z,
         };
         plot.set_block_entity(new_pos, block_entity.clone());
+        if plot.get_block(new_pos).is_command_block() {
+            redstone::command_block::update(plot, new_pos);
+        }
     }
 }
 

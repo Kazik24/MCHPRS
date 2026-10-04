@@ -203,9 +203,16 @@ impl Block {
             | Block::PistonHead { .. }
             | Block::MovingPiston { .. } => true,
             Block::Piston { piston } => piston.extended,
-            Self::Unknown { .. } => self.is_sign(),
+            Self::Unknown { .. } => self.is_sign() || self.is_command_block(),
             _ => false,
         }
+    }
+
+    pub fn is_command_block(self) -> bool {
+        matches!(
+            self.get_name(),
+            "command_block" | "repeating_command_block" | "chain_command_block"
+        )
     }
 
     pub fn can_place_block_in(self) -> bool {
@@ -356,6 +363,7 @@ macro_rules! blocks {
         #[allow(clippy::redundant_field_names)]
         impl Block {
             pub fn is_solid(self) -> bool {
+                if self.is_command_block() { return true; }
                 match self {
                     $(
                         Block::$simple_name {} => true,
@@ -380,6 +388,7 @@ macro_rules! blocks {
             }
 
             pub fn is_cube(self) -> bool {
+                if self.is_command_block() { return true; }
                 match self {
                     $(
                         Block::$simple_name {} => true,

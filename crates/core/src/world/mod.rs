@@ -63,6 +63,11 @@ pub trait World {
 
     fn block_action(&mut self, pos: BlockPos, action: BlockAction);
 
+    /// Runs the supported command-block subset. Test worlds may leave it disabled.
+    fn execute_command_block(&mut self, _command: &str, _source: &str) -> Result<(), String> {
+        Err("Command block execution is unavailable in this world".into())
+    }
+
     fn play_sound(
         &mut self,
         pos: BlockPos,

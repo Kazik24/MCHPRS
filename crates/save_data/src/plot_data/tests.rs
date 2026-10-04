@@ -7,6 +7,62 @@ use std::iter::FromIterator;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 static NEXT: AtomicUsize = AtomicUsize::new(0);
+
+#[test]
+fn format_four_migration_preserves_original_and_command_blocks_save_in_five() {
+    use mchprs_blocks::block_entities::CommandBlockEntity;
+    let temp = Temp::new();
+    let path = temp.0.join("plot");
+    let mut data = PlotData::<1> {
+        tps: Tps::Limited(20),
+        world_send_rate: WorldSendRate(60),
+        chunk_data: vec![ChunkData {
+            sections: [None],
+            block_entities: Default::default(),
+        }],
+        pending_ticks: vec![],
+        piston_state: Default::default(),
+        piston_animation: PistonAnimation::Off,
+    };
+    let mut old = PLOT_MAGIC.to_vec();
+    old.extend_from_slice(&4u32.to_le_bytes());
+    old.extend_from_slice(&MC_DATA_VERSION.to_le_bytes());
+    old.extend_from_slice(
+        &bincode::serialize(&(
+            data.tps,
+            data.world_send_rate,
+            &data.chunk_data,
+            &data.pending_ticks,
+            &data.piston_state,
+        ))
+        .unwrap(),
+    );
+    fs::write(&path, &old).unwrap();
+    assert_eq!(
+        PlotData::<1>::load_from_file(&path, true)
+            .unwrap()
+            .piston_animation,
+        PistonAnimation::Auto
+    );
+    assert_eq!(fs::read(temp.0.join("plot.bak")).unwrap(), old);
+    data.chunk_data[0].block_entities.insert(
+        BlockPos::new(1, 2, 3),
+        BlockEntity::CommandBlock(Box::new(CommandBlockEntity {
+            command: "say saved".into(),
+            ..Default::default()
+        })),
+    );
+    data.save_to_file(&path).unwrap();
+    assert_eq!(
+        u32::from_le_bytes(fs::read(&path).unwrap()[8..12].try_into().unwrap()),
+        5
+    );
+    let loaded = PlotData::<1>::load_from_file(&path, false).unwrap();
+    assert_eq!(loaded.piston_animation, PistonAnimation::Off);
+    assert!(
+        matches!(loaded.chunk_data[0].block_entities.get(&BlockPos::new(1,2,3)), Some(BlockEntity::CommandBlock(entity)) if entity.command == "say saved")
+    );
+}
 struct Temp(std::path::PathBuf);
 impl Temp {
     fn new() -> Self {
@@ -102,7 +158,14 @@ fn migrates_palette_and_direct_states_with_pistons_signs_and_backup() {
         );
         assert_eq!(fs::read(temp.0.join("plot.bak.1")).unwrap(), original);
         let bytes = fs::read(&path).unwrap();
-        assert_eq!(&bytes[8..16], &[4, 0, 0, 0, 229, 16, 0, 0]);
+        assert_eq!(
+            u32::from_le_bytes(bytes[8..12].try_into().unwrap()),
+            VERSION
+        );
+        assert_eq!(
+            u32::from_le_bytes(bytes[12..16].try_into().unwrap()),
+            MC_DATA_VERSION
+        );
         PlotData::<1>::load_from_file(&path, true).unwrap();
         converted.save_to_file(&path).unwrap(); // Existing destination replacement on Windows.
     }

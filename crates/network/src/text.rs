@@ -66,12 +66,8 @@ pub fn to_json(value: &nbt::Value) -> String {
             _ => serde_json::Value::Null,
         }
     }
-    // Earlier schematics stored JSON strings; retain those verbatim internally.
-    if let nbt::Value::String(s) = value {
-        if serde_json::from_str::<serde_json::Value>(s).is_ok() {
-            return s.clone();
-        }
-    }
+    // Modern NBT strings are literal text, even when they resemble JSON.
+    // The schematic importer converts legacy JSON fields using DataVersion.
     convert(value, "").to_string()
 }
 
@@ -79,6 +75,18 @@ pub fn to_json(value: &nbt::Value) -> String {
 mod tests {
     use super::*;
     use crate::packets::PacketEncoderExt;
+
+    #[test]
+    fn numeric_and_boolean_text_stays_text_on_roundtrip() {
+        for text in ["32", "true", "false", "null", "-1"] {
+            let original = nbt::Value::String(text.into());
+            assert_eq!(from_json(&to_json(&original)), original);
+        }
+        for text in ["\"quoted text\"", "{\"text\":\"literal\"}"] {
+            let literal = nbt::Value::String(text.into());
+            assert_eq!(from_json(&to_json(&literal)), literal);
+        }
+    }
 
     #[test]
     fn nested_mixed_text_lists_encode_and_keep_style_and_translation_arguments() {

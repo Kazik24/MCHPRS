@@ -35,10 +35,15 @@ pub fn has_override(block: Block) -> bool {
             | Block::Composter { .. }
             | Block::Cake { .. }
     ) || block.get_name() == "end_portal_frame"
+        || block.is_command_block()
 }
 
 pub fn get_override(block: Block, world: &impl World, pos: BlockPos) -> u8 {
     match block {
+        block if block.is_command_block() => match world.get_block_entity(pos) {
+            Some(BlockEntity::CommandBlock(entity)) => entity.success_count.clamp(0, 15) as u8,
+            _ => 0,
+        },
         Block::Barrel { .. } | Block::Furnace { .. } | Block::Hopper { .. } => {
             match world.get_block_entity(pos) {
                 Some(BlockEntity::Container {

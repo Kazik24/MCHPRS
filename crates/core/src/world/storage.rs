@@ -439,6 +439,9 @@ pub struct Chunk {
 impl Chunk {
     pub fn requires_interpreter(&self) -> bool {
         let piston = |id| {
+            if mchprs_blocks::blocks::Block::from_id(id).is_command_block() {
+                return true;
+            }
             matches!(
                 mchprs_blocks::blocks::Block::from_id(id),
                 mchprs_blocks::blocks::Block::Piston { .. }

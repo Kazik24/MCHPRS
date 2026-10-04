@@ -37,6 +37,7 @@ pub fn decode<const N: usize>(data: &[u8]) -> Result<PlotData<N>, PlotLoadError>
         chunk_data: old.chunk_data,
         pending_ticks: old.pending_ticks.into_iter().map(Into::into).collect(),
         piston_state: Default::default(),
+        piston_animation: Default::default(),
     };
     convert_motion(&mut plot)?;
     Ok(plot)

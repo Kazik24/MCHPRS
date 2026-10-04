@@ -296,9 +296,30 @@ fn decode_schematic(schema: &Schema<'_>) -> Result<WorldEditClipboard> {
         };
         entity.remove("Id");
         entity.insert("id".into(), Value::String(id.clone()));
+        if schema.data_version < 4325 {
+            // Earlier versions stored JSON strings rather than NBT text components.
+            for side in ["front_text", "back_text"] {
+                if let Some(Value::Compound(text)) = entity.get_mut(side) {
+                    if let Some(Value::List(messages)) = text.get_mut("messages") {
+                        for message in messages {
+                            if let Value::String(json) = message {
+                                *message = mchprs_network::text::from_json(json);
+                            }
+                        }
+                    }
+                }
+            }
+            for key in ["CustomName", "LastOutput"] {
+                if let Some(Value::String(json)) = entity.get(key) {
+                    let value = mchprs_network::text::from_json(json);
+                    entity.insert(key.into(), value);
+                }
+            }
+        }
         if matches!(
             id.as_str(),
             "minecraft:comparator"
+                | "minecraft:command_block"
                 | "minecraft:barrel"
                 | "minecraft:furnace"
                 | "minecraft:hopper"

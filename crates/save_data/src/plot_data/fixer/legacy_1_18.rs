@@ -131,6 +131,7 @@ pub fn convert<const N: usize>(old: Plot<N>) -> Result<PlotData<N>, PlotLoadErro
         chunk_data: chunks,
         pending_ticks: old.pending_ticks.into_iter().map(Into::into).collect(),
         piston_state: Default::default(),
+        piston_animation: Default::default(),
     };
     super::legacy_1_21_5::convert_motion(&mut result)?;
     Ok(result)

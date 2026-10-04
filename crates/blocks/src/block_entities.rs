@@ -141,6 +141,113 @@ impl MovingPistonEntity {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CommandBlockEntity {
+    pub command: String,
+    pub custom_name: String,
+    pub success_count: i32,
+    pub track_output: bool,
+    pub last_output: Option<String>,
+    pub powered: bool,
+    pub automatic: bool,
+    pub condition_met: bool,
+    pub last_execution: i64,
+    pub update_last_execution: bool,
+}
+
+impl Default for CommandBlockEntity {
+    fn default() -> Self {
+        Self {
+            command: String::new(),
+            custom_name: "\"@\"".into(),
+            success_count: 0,
+            track_output: true,
+            last_output: None,
+            powered: false,
+            automatic: false,
+            condition_met: false,
+            last_execution: -1,
+            update_last_execution: true,
+        }
+    }
+}
+
+impl CommandBlockEntity {
+    pub fn from_nbt(data: &HashMap<String, nbt::Value>) -> Result<Self> {
+        let string = |key: &str, default: &str| -> Result<String> {
+            match data.get(key) {
+                None => Ok(default.into()),
+                Some(nbt::Value::String(s)) => Ok(s.clone()),
+                _ => bail!("{key}: expected String"),
+            }
+        };
+        let boolean = |key: &str, default: bool| -> Result<bool> {
+            match data.get(key) {
+                None => Ok(default),
+                Some(nbt::Value::Byte(0)) => Ok(false),
+                Some(nbt::Value::Byte(1)) => Ok(true),
+                _ => bail!("{key}: expected boolean Byte"),
+            }
+        };
+        let command = string("Command", "")?;
+        if command.len() > 131068 || command.chars().count() > 32767 {
+            bail!("Command: too long");
+        }
+        let success_count = match data.get("SuccessCount") {
+            None => 0,
+            Some(nbt::Value::Int(n)) if *n >= 0 => *n,
+            _ => bail!("SuccessCount: expected nonnegative Int"),
+        };
+        let last_execution = match data.get("LastExecution") {
+            None => -1,
+            Some(nbt::Value::Long(n)) => *n,
+            _ => bail!("LastExecution: expected Long"),
+        };
+        let text = |key: &str| -> Result<Option<String>> {
+            match data.get(key) {
+                None => Ok(None),
+                Some(
+                    value @ (nbt::Value::String(_) | nbt::Value::Compound(_) | nbt::Value::List(_)),
+                ) => Ok(Some(mchprs_network::text::to_json(value))),
+                _ => bail!("{key}: expected text component"),
+            }
+        };
+        Ok(Self {
+            command,
+            success_count,
+            last_execution,
+            custom_name: text("CustomName")?.unwrap_or_else(|| "\"@\"".into()),
+            last_output: text("LastOutput")?,
+            track_output: boolean("TrackOutput", true)?,
+            powered: boolean("powered", false)?,
+            automatic: boolean("auto", false)?,
+            condition_met: boolean("conditionMet", false)?,
+            update_last_execution: boolean("UpdateLastExecution", true)?,
+        })
+    }
+
+    fn to_nbt(&self) -> nbt::Blob {
+        use nbt::Value;
+        let mut result = nbt::Blob::with_content(map! {
+            "id" => Value::String("minecraft:command_block".into()),
+            "Command" => Value::String(self.command.clone()),
+            "CustomName" => mchprs_network::text::from_json(&self.custom_name),
+            "SuccessCount" => Value::Int(self.success_count),
+            "TrackOutput" => Value::Byte(self.track_output as i8),
+            "powered" => Value::Byte(self.powered as i8), "auto" => Value::Byte(self.automatic as i8),
+            "conditionMet" => Value::Byte(self.condition_met as i8),
+            "LastExecution" => Value::Long(self.last_execution),
+            "UpdateLastExecution" => Value::Byte(self.update_last_execution as i8)
+        });
+        if let Some(output) = &self.last_output {
+            result
+                .insert("LastOutput", mchprs_network::text::from_json(output))
+                .unwrap();
+        }
+        result
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum BlockEntity {
     Comparator {
         output_strength: u8,
@@ -152,6 +259,8 @@ pub enum BlockEntity {
     },
     Sign(Box<SignBlockEntity>),
     MovingPiston(MovingPistonEntity),
+    // Append variants to retain the format-4 enum discriminants during migration.
+    CommandBlock(Box<CommandBlockEntity>),
 }
 
 impl BlockEntity {
@@ -166,6 +275,7 @@ impl BlockEntity {
             },
             BlockEntity::Sign(_) => crate::generated::block_entity_types::SIGN,
             BlockEntity::MovingPiston(_) => crate::generated::block_entity_types::PISTON,
+            BlockEntity::CommandBlock(_) => crate::generated::block_entity_types::COMMAND_BLOCK,
         }
     }
 
@@ -242,6 +352,9 @@ impl BlockEntity {
         use nbt::Value;
         let id = nbt_unwrap_val!(nbt.get("Id").or_else(|| nbt.get("id")), Value::String);
         match id.as_ref() {
+            "minecraft:command_block" => Ok(BlockEntity::CommandBlock(Box::new(
+                CommandBlockEntity::from_nbt(nbt)?,
+            ))),
             "minecraft:comparator" => {
                 let output_strength = match nbt.get("OutputSignal") {
                     None => 0,
@@ -402,6 +515,7 @@ impl BlockEntity {
 
         use nbt::Value;
         match self {
+            BlockEntity::CommandBlock(entity) => Some(entity.to_nbt()),
             BlockEntity::Sign(sign) => Some({
                 let text = |rows: &[String; 4], color: &str, glow: bool| {
                     Value::Compound(map! {

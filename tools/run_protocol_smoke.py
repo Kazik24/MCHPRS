@@ -17,7 +17,7 @@ with tempfile.TemporaryDirectory(prefix='mchprs-1.21.5-smoke-') as directory:
             server=subprocess.Popen([str(ROOT/('target/debug/mchprs.exe' if os.name=='nt' else 'target/debug/mchprs'))],cwd=run,stdout=log,stderr=subprocess.STDOUT,creationflags=getattr(subprocess,'CREATE_NO_WINDOW',0))
             try:
                 time.sleep(2)
-                result=subprocess.run(['node',str(ROOT/'tools/protocol_smoke.js'),'25580',*phase],env=env,timeout=30)
+                result=subprocess.run(['node',str(ROOT/'tools/protocol_smoke.js'),'25580',*phase],env=env,timeout=45)
                 if result.returncode==0:
                     server.wait(timeout=10)
                     assert server.returncode==0, f"Server exited with {server.returncode}"

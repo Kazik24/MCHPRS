@@ -16,7 +16,7 @@ use std::path::Path;
 use std::{fmt, io};
 use thiserror::Error;
 
-pub const VERSION: u32 = 4;
+pub const VERSION: u32 = 5;
 pub const MC_DATA_VERSION: u32 = 4325;
 
 #[derive(Error, Debug)]
@@ -87,6 +87,24 @@ pub enum Tps {
 #[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq)]
 pub struct WorldSendRate(pub u32);
 
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum PistonAnimation {
+    #[default]
+    Auto,
+    On,
+    Off,
+}
+
+impl fmt::Display for PistonAnimation {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(match self {
+            Self::Auto => "auto",
+            Self::On => "on",
+            Self::Off => "off",
+        })
+    }
+}
+
 impl Default for WorldSendRate {
     fn default() -> Self {
         Self(60)
@@ -109,6 +127,7 @@ pub struct PlotData<const NUM_CHUNK_SECTIONS: usize> {
     pub chunk_data: Vec<ChunkData<NUM_CHUNK_SECTIONS>>,
     pub pending_ticks: Vec<TickEntry>,
     pub piston_state: mchprs_world::PistonState,
+    pub piston_animation: PistonAnimation,
 }
 
 impl<const NUM_CHUNK_SECTIONS: usize> PlotData<NUM_CHUNK_SECTIONS> {
@@ -153,6 +172,13 @@ impl<const NUM_CHUNK_SECTIONS: usize> PlotData<NUM_CHUNK_SECTIONS> {
                     return Err(invalid("invalid block entity height"));
                 }
                 match entity {
+                    BlockEntity::CommandBlock(entity)
+                        if entity.command.len() > 131068
+                            || entity.command.chars().count() > 32767
+                            || entity.success_count < 0 =>
+                    {
+                        return Err(invalid("invalid command block data"));
+                    }
                     BlockEntity::MovingPiston(p) if p.block_state >= states => {
                         return Err(invalid("invalid carried piston block state"))
                     }

@@ -1,3 +1,4 @@
+use mchprs_save_data::plot_data::PistonAnimation;
 use mchprs_save_data::plot_data::Tps;
 
 pub(super) fn fast_rendering(tps: Tps, threshold: i64) -> bool {
@@ -6,6 +7,14 @@ pub(super) fn fast_rendering(tps: Tps, threshold: i64) -> bool {
             Tps::Limited(rate) => i64::from(rate) > threshold,
             Tps::Unlimited => true,
         }
+}
+
+pub(super) fn static_pistons(mode: PistonAnimation, tps: Tps, threshold: i64) -> bool {
+    match mode {
+        PistonAnimation::Auto => fast_rendering(tps, threshold),
+        PistonAnimation::On => false,
+        PistonAnimation::Off => true,
+    }
 }
 
 pub(super) fn send_rate(configured: u32, fast: bool, cap: i64) -> u32 {
@@ -21,6 +30,13 @@ mod tests {
     use super::*;
     #[test]
     fn rendering_threshold_and_rate_preserve_user_limits() {
+        assert!(!static_pistons(PistonAnimation::On, Tps::Unlimited, 100));
+        assert!(static_pistons(PistonAnimation::Off, Tps::Limited(20), 0));
+        assert!(!static_pistons(
+            PistonAnimation::Auto,
+            Tps::Limited(20),
+            100
+        ));
         assert!(!fast_rendering(Tps::Limited(100), 100));
         assert!(fast_rendering(Tps::Limited(101), 100));
         assert!(fast_rendering(Tps::Unlimited, 100));

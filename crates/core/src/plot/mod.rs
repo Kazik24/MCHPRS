@@ -1,3 +1,5 @@
+#[cfg(test)]
+mod command_block_tests;
 pub mod commands;
 mod data;
 pub mod database;
@@ -28,7 +30,7 @@ use mchprs_blocks::{BlockFace, BlockPos};
 use mchprs_network::packets::clientbound::*;
 use mchprs_network::packets::SlotData;
 use mchprs_network::PlayerPacketSender;
-use mchprs_save_data::plot_data::{ChunkData, PlotData, Tps, WorldSendRate};
+use mchprs_save_data::plot_data::{ChunkData, PistonAnimation, PlotData, Tps, WorldSendRate};
 use mchprs_world::{AdvancePhase, PistonMotion, PistonState, TickPriority};
 use monitor::TimingsMonitor;
 use scoreboard::RedpilerState;
@@ -75,6 +77,7 @@ pub struct Plot {
     // Timings
     tps: Tps,
     world_send_rate: WorldSendRate,
+    piston_animation: PistonAnimation,
     last_update_time: Instant,
     lag_time: Duration,
     last_nspt: Option<Duration>,
@@ -106,6 +109,7 @@ pub struct PlotWorld {
     packet_senders: Vec<PlayerPacketSender>,
     is_cursed: bool,
     fast_rendering: bool,
+    command_messages: Vec<crate::chat_commands::ChatCommand>,
 }
 
 impl PlotWorld {
@@ -125,6 +129,7 @@ impl PlotWorld {
             packet_senders: Vec::new(),
             is_cursed: false,
             fast_rendering: false,
+            command_messages: Vec::new(),
         };
         // Position-only old saves bind to the loaded type once. They never
         // dispatch an observer tick into a subsequently moved/replaced block.
@@ -164,6 +169,24 @@ impl PlotWorld {
         entities.sort_by_key(|(p, _)| (p.x, p.y, p.z));
         for (pos, progress) in entities {
             world.register_motion(pos, progress);
+        }
+        let repeating: Vec<_> = world
+            .chunks
+            .iter()
+            .flat_map(|chunk| {
+                chunk
+                    .block_entities
+                    .iter()
+                    .filter_map(move |(local, entity)| {
+                        let pos =
+                            BlockPos::new(chunk.x * 16 + local.x, local.y, chunk.z * 16 + local.z);
+                        matches!(entity, BlockEntity::CommandBlock(_)).then_some(pos)
+                    })
+            })
+            .filter(|&pos| world.get_block(pos).get_name() == "repeating_command_block")
+            .collect();
+        for pos in repeating {
+            redstone::command_block::update(&mut world, pos);
         }
         world
     }
@@ -379,6 +402,11 @@ impl PlotWorld {
 }
 
 impl World for PlotWorld {
+    fn execute_command_block(&mut self, command: &str, source: &str) -> Result<(), String> {
+        let message = crate::chat_commands::parse(command, source, None)?;
+        self.command_messages.push(message);
+        Ok(())
+    }
     /// Sets a block in storage. Returns true if a block was changed.
     fn set_block_raw(&mut self, pos: BlockPos, block: u32) -> bool {
         let chunk_index = match self.get_chunk_index_for_block(pos.x, pos.z) {
@@ -456,10 +484,11 @@ impl World for PlotWorld {
         if let BlockEntity::MovingPiston(e) = &block_entity {
             self.register_motion(pos, e.get_progress());
         }
-        if let Some(nbt) = block_entity.to_nbt(true) {
+        let send_command = matches!(&block_entity, BlockEntity::CommandBlock(_));
+        if let Some(nbt) = block_entity.to_nbt(!send_command) {
             let block_entity_data = CBlockEntityData {
                 pos: pos.packed(),
-                // For now the only nbt we send to the client is sign data
+                // Signs and command editors need their current block data.
                 ty: block_entity.ty(),
                 nbt,
             }
@@ -579,7 +608,11 @@ impl Plot {
     }
 
     fn update_render_mode(&mut self) {
-        let fast = visuals::fast_rendering(self.tps, CONFIG.fast_render_threshold);
+        let fast = visuals::static_pistons(
+            self.piston_animation,
+            self.tps,
+            CONFIG.fast_render_threshold,
+        );
         if fast == self.world.fast_rendering {
             return;
         }
@@ -894,7 +927,7 @@ impl Plot {
             || !self.world.piston_state.motions.is_empty()
         {
             for player in &self.players {
-                player.send_system_message("This plot contains pistons or observers and runs with the interpreter to preserve their behavior.");
+                player.send_system_message("This plot contains pistons, observers or command blocks and runs with the interpreter to preserve their behavior.");
             }
             return;
         }
@@ -1282,6 +1315,12 @@ impl Plot {
         // Handle commands before removing players just in case they ran a command before leaving
         self.handle_commands();
 
+        for command in self.world.command_messages.drain(..) {
+            self.message_sender
+                .send(Message::CommandChat(command))
+                .unwrap();
+        }
+
         self.remove_dc_players();
         self.remove_oob_players();
     }
@@ -1356,7 +1395,11 @@ impl Plot {
             world.piston_state = plot_data.piston_state;
         }
         let tps = plot_data.tps;
-        world.fast_rendering = visuals::fast_rendering(tps, CONFIG.fast_render_threshold);
+        world.fast_rendering = visuals::static_pistons(
+            plot_data.piston_animation,
+            tps,
+            CONFIG.fast_render_threshold,
+        );
         let world_send_rate = plot_data.world_send_rate;
         Plot {
             last_player_time: Instant::now(),
@@ -1374,6 +1417,7 @@ impl Plot {
             auto_redpiler: CONFIG.auto_redpiler,
             tps,
             world_send_rate,
+            piston_animation: plot_data.piston_animation,
             always_running,
             redpiler: Default::default(),
             timings: TimingsMonitor::new(tps),
@@ -1394,6 +1438,7 @@ impl Plot {
             chunk_data,
             pending_ticks: world.to_be_ticked.iter_entries().collect(),
             piston_state: world.piston_state.clone(),
+            piston_animation: self.piston_animation,
         };
         data.save_to_file(format!("./world/plots/p{},{}", world.x, world.z))
             .unwrap();

@@ -48,8 +48,9 @@ Generated item mappings use explicit legacy IDs; legacy data starts at ID 1, whi
 | Plot format 1, 1.18.2 piston layout | Frozen reader preserves tick data, moving pistons, inventories and legacy signs |
 | Plot format 2, broken/other port histories | Explicit refusal; no safe reader is defined |
 | Headerless plot files | Explicit refusal |
-| This branch's earlier 1.21.5 plot format 3 | Frozen reader reconstructs legacy movement ownership and writes a backed-up format-4 save |
-| Current plot format 4 | Magic + save version + Minecraft DataVersion 4325 + bincode payload including piston runtime state and tick identities |
+| This branch's earlier 1.21.5 plot format 3 | Frozen reader reconstructs legacy movement ownership and writes a backed-up current save |
+| Plot format 4 | Explicit reader preserves existing fields and defaults piston animation to auto; backs up before conversion |
+| Current plot format 5 | Magic + save version + Minecraft DataVersion 4325 + bincode payload including piston runtime state, tick identities, command-block entities and animation preference |
 | Legacy unversioned player files | Validate, remap items once, back up, write current header |
 | Current player files | `MCHPLY\0` + save version 3 + DataVersion 4325 + bincode payload |
 | Different Minecraft DataVersion | Refuse before deserialization |
@@ -74,7 +75,7 @@ python tools/run_protocol_smoke.py
 python tools/run_plot_load_smoke.py
 ```
 
-Current workspace result: **97 unit tests pass**, with no ignored tests. The former memory-cell failure now matches a recorded Java 1.21.5 trace. Five timing fixtures, 34 focused piston cases, lifecycle/scheduling/completion issues, partial-step restarts and legacy motion conversion are covered. See [task progress](TASK_PROGRESS.md), [the master audit](MASTER_FEATURE_AUDIT.md) and [performance evidence](PISTON_PERFORMANCE.md).
+Current workspace result: **116 unit tests pass**, with no ignored tests. The former memory-cell failure now matches a recorded Java 1.21.5 trace. Five timing fixtures, 34 focused piston cases, lifecycle/scheduling/completion issues, partial-step restarts and legacy motion conversion are covered, along with block picking, command blocks and animation controls. See [the current task list](TASK_LIST_PROGRESS.md), [earlier task progress](TASK_PROGRESS.md), [the master audit](MASTER_FEATURE_AUDIT.md) and [performance evidence](PISTON_PERFORMANCE.md).
 
 Three historical Chungus hashes remain unchanged. The interpreter-to-compiler handoff now compares visible circuit outputs with uninterrupted interpreted execution, because short-pulse and pending-state fixes change internal optimized-away state. Dedicated handoff tests also require the pending pulse to occur and finish with and without optimization.
 
@@ -84,7 +85,7 @@ A graphical 1.21.5 client reported missing enchantment exclusive-set tags during
 
 Remaining acceptance work is **graphical vanilla-client verification** of registry codecs, rendering, lighting, sign appearance and piston animations, plus operational proxy/forwarding validation. Independent protocol clients do not validate all vanilla registry semantics. CI runs the full passing suite, and the separate protocol job can pass independently.
 
-Piston/observer plots stay on the interpreter because the recovered compiler does not provide their required behavior. Detection scans palettes/direct states and can add overhead on large plots. New registry blocks can be represented and transferred, but this creative redstone server does not implement every new vanilla block's gameplay.
+Piston/observer/command-block plots stay on the interpreter because the recovered compiler does not provide their required behavior. Detection scans palettes/direct states and can add overhead on large plots. New registry blocks can be represented and transferred, but this creative redstone server does not implement every new vanilla block's gameplay.
 
 General nonempty modern persisted item-component maps in external schematic inventories are explicitly unsupported; see the Sponge report. Wire components and the server's own component persistence have separate coverage.
 

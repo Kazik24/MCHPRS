@@ -29,6 +29,32 @@ pub fn try_fix<const NUM_SECTIONS: usize>(
 ) -> Result<Option<PlotData<NUM_SECTIONS>>, PlotLoadError> {
     debug!("Trying to fix plot with {:?}", info);
     let result = match info {
+        FixInfo::OldVersion { version: 4 } => {
+            // Keep the old field layout and BlockEntity discriminants intact.
+            #[derive(serde::Deserialize)]
+            struct PlotV4<const N: usize> {
+                tps: super::Tps,
+                world_send_rate: super::WorldSendRate,
+                chunk_data: Vec<super::ChunkData<N>>,
+                pending_ticks: Vec<mchprs_world::TickEntry>,
+                piston_state: mchprs_world::PistonState,
+            }
+            let data = fs::read(&path)?;
+            if data.len() < 16
+                || u32::from_le_bytes(data[12..16].try_into().unwrap()) != super::MC_DATA_VERSION
+            {
+                return Err(PlotLoadError::ConversionFailed(4));
+            }
+            let old: PlotV4<NUM_SECTIONS> = bincode::deserialize(&data[16..])?;
+            Some(PlotData {
+                tps: old.tps,
+                world_send_rate: old.world_send_rate,
+                chunk_data: old.chunk_data,
+                pending_ticks: old.pending_ticks,
+                piston_state: old.piston_state,
+                piston_animation: Default::default(),
+            })
+        }
         FixInfo::OldVersion { version: 3 } => {
             let data = fs::read(&path)?;
             if data.len() < 16
