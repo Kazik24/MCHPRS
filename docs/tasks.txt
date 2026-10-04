@@ -1,9 +1,0 @@
-1) Add the none-java compatible optimalization that will remove the animations of the piston at high TPS. 
-
-2) Add explicit support for middle mouse button click events in server - it should copy the bahevior of the miecraft: 'probe' selected/pointed item.
-
-3) Add explicit support for subset of the commandblock command one command in particualr: Basic support for /tellraw and /say - it should have basic subset of the functionality of the minecraft and ignore any unsupported features,
-   - Basic selectors (@a), ignore extra features liee @a[R>100] ect
-   - Basic support for JSON formatting, ignore any unsupported features like hover events, click events, etc.
-   - Basic support for text components, ignore any unsupported features like scoreboards, etc.
-

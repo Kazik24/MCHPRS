@@ -11,8 +11,25 @@ use mchprs_network::packets::clientbound::{
 };
 use mchprs_network::packets::{PacketEncoder, PalettedContainer};
 use rustc_hash::FxHashMap;
+use serde::Serialize;
 use std::convert::TryInto;
 use std::mem;
+
+// Match ChunkData's binary layout while borrowing buffers and entities.
+#[derive(Serialize)]
+pub(crate) struct ChunkHistoryView<'a> {
+    sections: [Option<SectionHistoryView<'a>>; PLOT_SECTIONS],
+    block_entities: &'a FxHashMap<BlockPos, BlockEntity>,
+}
+
+#[derive(Serialize)]
+struct SectionHistoryView<'a> {
+    data: &'a [u64],
+    palette: &'a [u32],
+    bits_per_block: i8,
+    block_count: i32,
+    entries: usize,
+}
 
 #[derive(Clone)]
 pub struct BitBuffer {
@@ -437,6 +454,33 @@ pub struct Chunk {
 }
 
 impl Chunk {
+    pub(crate) fn prepare_history(&mut self) {
+        for section in &mut self.sections {
+            section.flush();
+        }
+    }
+
+    pub(crate) fn history_view(&self) -> ChunkHistoryView<'_> {
+        ChunkHistoryView {
+            sections: std::array::from_fn(|index| {
+                let section = &self.sections[index];
+                let buffer = &section.buffer;
+                if buffer.use_palette && buffer.palette == [0] {
+                    None
+                } else {
+                    Some(SectionHistoryView {
+                        data: &buffer.data.longs,
+                        palette: &buffer.palette,
+                        bits_per_block: buffer.data.bits_per_entry as i8,
+                        block_count: section.block_count as i32,
+                        entries: buffer.entries(),
+                    })
+                }
+            }),
+            block_entities: &self.block_entities,
+        }
+    }
+
     pub fn requires_interpreter(&self) -> bool {
         let piston = |id| {
             if mchprs_blocks::blocks::Block::from_id(id).is_command_block() {

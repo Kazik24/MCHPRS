@@ -1,5 +1,7 @@
 # Port validation tools
 
+The container runner uses port 25586 and an isolated temporary world. It checks barrel, hopper and furnace menus, inventories, schematic round trips, comparator outputs, cake bites and restart persistence. See [container repair](../docs/CONTAINERS.md).
+
 The target is Minecraft Java 1.21.5, protocol 770, Minecraft DataVersion 4325.
 
 `python tools/generate_mc_data.py` rebuilds Rust state/item mappings and configuration registry packets from the checked-in inputs. Rust builds do not download or execute generators.
@@ -21,6 +23,7 @@ npm ci --prefix tools --ignore-scripts
 cargo build --locked
 python tools/run_protocol_smoke.py
 python tools/run_plot_load_smoke.py
+python tools/run_barrel_smoke.py
 ```
 
 On Windows, `py` can replace `python`. If your npm installation does not resolve `--prefix`, run `npm ci --ignore-scripts` inside `tools`. The runner binds localhost port 25580 and creates a temporary world. It tests two clients, configuration/login, deep chunk palette decoding, inventory components, commands, piston extension, prediction acknowledgements, Sponge v3 load/paste/undo/redo, v2 save/reload, reconnect and process restart. Both processes stop through `/stop`. It never opens the repository's existing world or configuration.

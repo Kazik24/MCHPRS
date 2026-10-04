@@ -18,7 +18,7 @@ use std::path::Path;
 type Compound = std::collections::HashMap<String, nbt::Value>;
 const MAX_BLOCKS: u32 = 16_777_216;
 
-fn parse_block(input: &str) -> Option<Block> {
+pub(super) fn parse_block(input: &str) -> Option<Block> {
     static RE: Lazy<Regex> = Lazy::new(|| {
         Regex::new(r"^(?:minecraft:)?([a-z_0-9]+)(?:\[([a-z_0-9]+=[a-z_0-9]+(?:,[a-z_0-9]+=[a-z_0-9]+)*)\])?$").unwrap()
     });

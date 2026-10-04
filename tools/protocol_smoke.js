@@ -185,8 +185,13 @@ function command(client,command) { client.write('chat_command',{command}); }
     }
     await we('rtps 0','successfully set');
     await we('rhistory on','History enabled: up to');
-    assert(a.messages.some(m=>m.includes('Estimated memory at full capacity:')),'enable memory projection');
+    assert(a.messages.some(m=>m.includes('Estimated size:')),'enable memory projection');
     console.log('History memory estimate:',a.messages.at(-1));
+    await we('rhistory limit','Server history:');
+    assert(a.messages.at(-1).includes('/ 2.00 GiB'),'default server history limit');
+    await we('rhistory limit 1','Requires plots.admin.rewind.memory');
+    await we('rhistory limit','Server history:');
+    assert(a.messages.at(-1).includes('/ 2.00 GiB'),'denied change preserves history limit');
     // Normal commands work without LuckPerms, but the cap bypass requires a grant.
     await we('rhistory on 1000','up to 1000 game ticks');
     await we('rhistory on 1001','requires plots.admin.rewind.unlimited');
@@ -206,6 +211,8 @@ function command(client,command) { client.write('chat_command',{command}); }
     await until(()=>data.blocksByStateId[state(b,141,y,142)]?.name==='piston_head','second viewer sees fixture');
     await we('rback 1001','requires plots.admin.rewind.unlimited');
     await we('rhistory status','Available: 4/4 game ticks');
+    assert(a.messages.at(-1).includes('Uncompressed:') && a.messages.at(-1).includes('Compressed:'),'history reports both sizes');
+    console.log('History recorded sizes:',a.messages.at(-1));
     await we('rback 5','Only 4 game ticks');
     await we('wsr 0','successfully set');
     const beforeRefresh=[a.seen.map_chunk,b.seen.map_chunk];
@@ -231,7 +238,7 @@ function command(client,command) { client.write('chat_command',{command}); }
     await until(()=>data.blocksByStateId[state(a,143,y,142)]?.name==='gold_block','post-snapshot edit');
     await we('rback','rewound by 1 game ticks and paused');
     assert.equal(data.blocksByStateId[state(a,143,y,142)]?.name,'air','rewind undoes later edit');
-    await we('rhistory off','Released approximately');
+    await we('rhistory off','Released');
     await we('rhistory','Tick history: off');
     await we('rback','Tick history is disabled');
     // Automatic whole ticks use the same capture path as manual advancement.
@@ -241,7 +248,7 @@ function command(client,command) { client.write('chat_command',{command}); }
     await we('rtps 0','successfully set');
     await we('rhistory','Available: 4/4 game ticks');
     await we('rback 2','rewound by 2 game ticks and paused');
-    await we('rhistory off','Released approximately');
+    await we('rhistory off','Released');
     await we('rtps 20','successfully set');
     // Creative command-block placement, editor update and a single redstone activation.
     a.write('position',{x:142,y,z:136,flags:{onGround:false,hasHorizontalCollision:false}});

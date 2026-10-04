@@ -1,10 +1,13 @@
 use super::*;
 use crate::redstone;
+use crate::world::storage::Chunk;
 use crate::world::World;
-use mchprs_blocks::block_entities::{CommandBlockEntity, ContainerType, SignBlockEntity};
+use mchprs_blocks::block_entities::{
+    BlockEntity, CommandBlockEntity, ContainerType, SignBlockEntity,
+};
 use mchprs_blocks::blocks::{Block, RedstonePiston};
-use mchprs_blocks::{BlockFace, BlockFacing};
-use mchprs_world::TickPriority;
+use mchprs_blocks::{BlockFace, BlockFacing, BlockPos};
+use mchprs_world::{TickEntry, TickPriority};
 
 fn world() -> PlotWorld {
     // One chunk is sufficient for these circuits and keeps snapshots small.
@@ -17,7 +20,7 @@ struct State {
     entities: Vec<(BlockPos, Vec<u8>)>,
     counts: Vec<u32>,
     piston: Vec<u8>,
-    scheduler: String,
+    scheduler: Vec<TickEntry>,
 }
 
 fn state(world: &PlotWorld) -> State {
@@ -40,8 +43,8 @@ fn state(world: &PlotWorld) -> State {
             .map(|section| section.block_count())
             .collect(),
         piston: bincode::serialize(&world.piston_state).unwrap(),
-        // Includes the actual bucket cursor, FIFO contents, priorities and expected types.
-        scheduler: format!("{:?}", world.to_be_ticked),
+        // Relative delays, FIFO contents, priorities and expected types are observable.
+        scheduler: world.to_be_ticked.iter_entries().collect(),
     }
 }
 
@@ -313,9 +316,9 @@ fn partial_stepping_is_excluded_and_partial_enable_is_rejected() {
 }
 
 #[test]
-fn memory_estimate_includes_owned_entity_payloads() {
+fn memory_stats_include_serialized_entity_payloads_and_compressed_storage() {
     let mut world = world();
-    let plain = Snapshot::capture(&mut world).heap_bytes;
+    let plain = capture_raw(&mut world, &budget::WORK).unwrap().data.len();
     let pos = BlockPos::new(4, 30, 4);
     world.set_block_entity(
         pos,
@@ -325,11 +328,194 @@ fn memory_estimate_includes_owned_entity_payloads() {
             ..Default::default()
         })),
     );
-    let command = Snapshot::capture(&mut world).heap_bytes;
+    let command = capture_raw(&mut world, &budget::WORK).unwrap().data.len();
     assert!(command >= plain + 17000);
     world.enable_history(3, false).unwrap();
     world.tick_interpreted();
-    assert_eq!(world.history.heap_bytes, command);
+    assert_eq!(world.history.raw_bytes, command);
+    assert!(world.history.heap_bytes < command);
     world.rewind_ticks(1, false).unwrap();
     assert_eq!(world.history.heap_bytes, 0);
+}
+
+fn limited_world(limit: usize) -> PlotWorld {
+    let mut world = world();
+    world.history = TickHistory::with_budgets(Budget::new(limit), Budget::new(8 * 1024 * 1024));
+    world
+}
+
+#[test]
+fn compressed_admission_uses_stored_size_and_accounts_for_dictionary() {
+    let mut world = limited_world(256 * 1024);
+    world.set_block_entity(
+        BlockPos::new(4, 30, 4),
+        BlockEntity::CommandBlock(Box::new(CommandBlockEntity {
+            command: "repeated pattern ".repeat(65536),
+            ..Default::default()
+        })),
+    );
+    world.enable_history(10, false).unwrap();
+    world.tick_interpreted();
+    assert!(world.history.raw_bytes > world.history.budget.stats().1);
+    assert!(world.history.heap_bytes < world.history.raw_bytes / 10);
+    let dictionary = world.history.dictionary().to_vec();
+    assert_eq!(dictionary.len(), 65535);
+    for _ in 0..20 {
+        world.tick_interpreted();
+    }
+    assert_eq!(world.history.dictionary(), dictionary);
+    assert_eq!(world.history.len(), 10);
+    let before = state(&world);
+    world.rewind_ticks(1, false).unwrap();
+    world.tick_interpreted();
+    assert_eq!(state(&world), before);
+    let budget = world.history.budget.clone();
+    assert_eq!(budget.stats().0, world.history.memory_bytes());
+    world.history.disable();
+    assert_eq!(budget.stats().0, 0);
+    assert_eq!(world.history.work.stats().0, 0);
+}
+
+#[test]
+fn byte_limit_evicts_oldest_ticks_without_gaps_and_oversized_capture_stops() {
+    let mut world = limited_world(1024 * 1024);
+    world.enable_history(8, false).unwrap();
+    let work = world.history.work.clone();
+    let raw = capture_raw(&mut world, &work).unwrap();
+    let sample = Encoded::encode(raw, world.history.dictionary(), &world.history.work).unwrap();
+    let limit = world.history.memory_bytes() + sample.bytes.data.len() * 2 + 8;
+    drop(sample);
+    world.history.budget.set_limit(limit, || Ok(())).unwrap();
+    for _ in 0..20 {
+        world.tick_interpreted();
+    }
+    let depth = world.history.len();
+    assert!(depth > 0 && depth < 8);
+    assert!(world.history.memory_bytes() <= limit);
+    world.rewind_ticks(depth, false).unwrap();
+    assert_eq!(world.piston_state.logical_tick, 20 - depth as u64);
+    // Grow the circuit so one raw-fallback record cannot fit, even with no older ticks.
+    let mut rng = rand::rngs::StdRng::seed_from_u64(19);
+    use rand::{Rng, SeedableRng};
+    let command: String = (0..8000).map(|_| rng.gen_range('a'..='z')).collect();
+    world.set_block_entity(
+        BlockPos::new(4, 30, 4),
+        BlockEntity::CommandBlock(Box::new(CommandBlockEntity {
+            command,
+            ..Default::default()
+        })),
+    );
+    let tick = world.piston_state.logical_tick;
+    world.tick_interpreted();
+    assert_eq!(world.piston_state.logical_tick, tick + 1);
+    assert!(!world.history.enabled());
+    assert_eq!(world.history.budget.stats().0, 0);
+}
+
+#[test]
+fn shared_limits_release_on_drop_and_reenable_rejection_preserves_history() {
+    let budget = Budget::new(1024 * 1024);
+    let work = Budget::new(1024 * 1024);
+    let mut first = world();
+    let mut second = world();
+    first.history = TickHistory::with_budgets(budget.clone(), work.clone());
+    second.history = TickHistory::with_budgets(budget.clone(), work.clone());
+    first.enable_history(3, false).unwrap();
+    second.enable_history(3, false).unwrap();
+    first.tick_interpreted();
+    second.tick_interpreted();
+    assert_eq!(
+        budget.stats().0,
+        first.history.memory_bytes() + second.history.memory_bytes()
+    );
+    let memory = first.history.memory_bytes();
+    let before = state(&first);
+    budget.set_limit(budget.stats().0, || Ok(())).unwrap();
+    assert!(first.enable_history(4, false).is_err());
+    assert_eq!(first.history.memory_bytes(), memory);
+    assert_eq!(state(&first), before);
+    assert_eq!(first.history.len(), 1);
+    assert!(first.enable_history(i32::MAX as usize, true).is_err());
+    drop(second);
+    assert_eq!(budget.stats().0, memory);
+    drop(first);
+    assert_eq!(budget.stats().0, 0);
+    assert_eq!(work.stats().0, 0);
+}
+
+#[test]
+fn corrupt_snapshot_or_exhausted_workspace_preserves_rewind_state() {
+    let mut world = limited_world(1024 * 1024);
+    world.enable_history(3, false).unwrap();
+    world.tick_interpreted();
+    let before = state(&world);
+    let memory = world.history.memory_bytes();
+    let slot = world.history.slots[0].as_mut().unwrap();
+    slot.checksum ^= 1;
+    assert!(world.rewind_ticks(1, false).is_err());
+    assert_eq!(state(&world), before);
+    assert_eq!(world.history.len(), 1);
+    assert_eq!(world.history.memory_bytes(), memory);
+    world.history.slots[0].as_mut().unwrap().checksum ^= 1;
+    world.history.work.set_limit(0, || Ok(())).unwrap();
+    assert!(world.rewind_ticks(1, false).is_err());
+    assert_eq!(state(&world), before);
+    assert_eq!(world.history.len(), 1);
+    world.tick_interpreted(); // Stops recording and frees it rather than leaving a missing tick.
+    assert!(!world.history.enabled());
+    assert_eq!(world.history.budget.stats().0, 0);
+}
+
+#[test]
+fn raw_fallback_and_concurrent_reservations_obey_exact_limits() {
+    use rand::{RngCore, SeedableRng};
+    use std::sync::{
+        atomic::{AtomicUsize, Ordering},
+        Barrier,
+    };
+    let work = Budget::new(16384);
+    let mut raw = Bytes::zeroed(&work, 2048).unwrap();
+    rand::rngs::StdRng::seed_from_u64(21).fill_bytes(&mut raw.data);
+    let encoded = Encoded::encode(raw, &[], &work).unwrap();
+    assert!(!encoded.compressed);
+    let stored = Budget::new(2048);
+    assert!(Bytes::copy(&stored, &encoded.bytes.data).is_ok());
+    let held = Bytes::copy(&stored, &encoded.bytes.data).unwrap();
+    assert!(stored.reserve(1).is_err());
+    assert!(stored.set_limit(2047, || Ok(())).is_err());
+    assert!(stored.set_limit(4096, || Err("disk error".into())).is_err());
+    assert_eq!(stored.stats().1, 2048);
+    drop(held);
+    stored.set_limit(0, || Ok(())).unwrap();
+    assert!(stored.reserve(1).is_err());
+
+    let budget = Budget::new(4);
+    let barrier = Arc::new(Barrier::new(17));
+    let accepted = Arc::new(AtomicUsize::new(0));
+    let threads: Vec<_> = (0..16)
+        .map(|_| {
+            let budget = budget.clone();
+            let barrier = barrier.clone();
+            let accepted = accepted.clone();
+            std::thread::spawn(move || {
+                barrier.wait();
+                let held = budget.reserve(1).ok();
+                if held.is_some() {
+                    accepted.fetch_add(1, Ordering::Relaxed);
+                }
+                barrier.wait();
+                barrier.wait();
+                drop(held);
+            })
+        })
+        .collect();
+    barrier.wait();
+    barrier.wait();
+    assert_eq!(budget.stats().0, 4);
+    assert_eq!(accepted.load(Ordering::Relaxed), 4);
+    barrier.wait();
+    for thread in threads {
+        thread.join().unwrap();
+    }
+    assert_eq!(budget.stats().0, 0);
 }

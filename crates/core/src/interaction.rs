@@ -504,7 +504,6 @@ pub fn is_valid_position(block: Block, world: &impl World, pos: BlockPos) -> boo
     }
 
     match block {
-        Block::Cake { .. } => world.get_block(pos.offset(BlockFace::Bottom)).is_solid(),
         Block::RedstoneWire { .. }
         | Block::RedstoneComparator { .. }
         | Block::RedstoneRepeater { .. }

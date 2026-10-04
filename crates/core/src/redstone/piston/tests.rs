@@ -54,7 +54,9 @@ fn containers_cannot_be_pushed_or_pulled_in_any_state() {
         let actual = world.get_block(ahead);
         // Neighbor notifications may legitimately unlock a hopper, without moving it.
         match (block, actual) {
-            (Block::Hopper { facing, .. }, Block::Hopper { facing: actual, .. }) => assert_eq!(facing, actual),
+            (Block::Hopper { facing, .. }, Block::Hopper { facing: actual, .. }) => {
+                assert_eq!(facing, actual)
+            }
             _ => assert_eq!(actual, block, "container state {id} was pulled"),
         }
         assert!(matches!(

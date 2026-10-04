@@ -127,6 +127,14 @@ async function setBlock(c,x,y,name,z=130) {
     assert.equal(count(menu(a).carriedItem),0);
     assert(menu(a).items[2].components.some(c => c.type === 'unbreakable'), 'stored item components survived restart');
     await close(a);
+    for (const [x,type,size,facing] of [[146,16,5,'east'],[150,14,3,'west']]) {
+      move(a,x,y);
+      await open(a,x,y,130,type,size);
+      assert.equal(count(menu(a).items[0]),64,'hopper/furnace contents survive restart');
+      assert(menu(a).items[0].components.some(c => c.type === 'unbreakable'));
+      assert.equal(props(a,x,y).facing,facing);
+      await close(a);
+    }
   } else {
     await cmd(a,'rtps 0','successfully set');
     a.write('look',{yaw:90,pitch:0,flags:{onGround:false,hasHorizontalCollision:false}});
@@ -187,9 +195,18 @@ async function setBlock(c,x,y,name,z=130) {
     await close(a);
     // Non-default hopper/furnace states need real entities, menus and comparator data.
     for (const [name,x,type,size,power] of [
-      ['hopper[facing=east,enabled=true]',146,16,5,3],
+      ['hopper[facing=east,enabled=false]',146,16,5,3],
       ['furnace[facing=west,lit=true]',150,14,3,5],
     ]) {
+      const plainName = name.split('[')[0];
+      move(a,x-2,y);
+      await creative(a,36,item(plainName));
+      await use(a,x,y,130,true);
+      await until(() => data.blocksByStateId[state(a,x,y)]?.name === plainName,'ordinary '+plainName+' placement');
+      await creative(a,36,{itemCount:0});
+      await open(a,x,y,130,type,size);
+      assert.equal(sum(menu(a).items.slice(0,size)),0,'ordinary placement opens empty '+plainName);
+      await close(a);
       await setBlock(a,x,y,name);
       await creative(a,38,item('redstone',64,[{type:'unbreakable',data:Buffer.alloc(0)}]));
       await open(a,x,y,130,type,size);
@@ -271,6 +288,6 @@ async function setBlock(c,x,y,name,z=130) {
   const active = clients.find(c => c.username === 'BarrelSmokeOne');
   stopping = true; active.write('chat_command',{command:'stop'});
   await delay(200); for (const c of clients) c.end();
-  console.log('PASS: '+(restart?'barrel inventories, item components, closed lids and returned cursor survive restart.':
+  console.log('PASS: '+(restart?'barrel/hopper/furnace inventories, item components, closed lids and returned cursor survive restart.':
     'barrel/hopper/furnace menus, transfers, comparator updates, furnace slot rules, cake bites, two viewers, prediction rejection, schematic data, rewind and menu lifecycle.'));
 })().catch(error => { console.error(error); for (const c of clients) c.end(); process.exitCode=1; });

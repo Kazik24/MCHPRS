@@ -47,13 +47,13 @@ This affects only clients animations, piston tick and update behaviour stays the
 /wsr shows configured and effective block-update rates. /wsr 20 sends up to 20 updates per second; /wsr 0 stops periodic block updates.\n\
 Static rendering caps the send rate at 10 per second by default. A lower /wsr still applies.",
         "rewind" | "history" | "tick_rewind" | "rhistory" | "rback" => "Tick rewind\n\
-/rhistory on [ticks] records whole game ticks, keeping 100 by default. /rhistory on 500 starts a fresh 500-tick history. Enabling shows approximate current and full-buffer memory.\n\
-Values above 1000 ticks require plots.admin.rewind.unlimited granted through LuckPerms. Without LuckPerms, the 1000-tick limit applies to everyone.\n\
-/rhistory shows available ticks and approximate memory use. /rhistory off frees the buffer and reports approximate memory released.\n\
-/rback goes back one game tick; /rback 10 goes back exactly ten. Successful rewind pauses the plot; /rtps resumes it.\n\
-Rewind restores the entire plot, including later edits, and clears WorldEdit undo/redo.\n\
-History uses the interpreter only, without nano/pico stepping while recording. Compilation disables history. History does not survive restart.\n\
-Start with /rtps 0, /rhistory on, /radvance 10, then /rback 5.",
+/rhistory on [ticks] starts recording; the default is 100 ticks.\n\
+/rhistory shows ticks and compressed/uncompressed sizes. /rhistory off frees the buffer.\n\
+/rback rewinds one tick; /rback 10 rewinds ten. Rewind pauses the plot and clears WorldEdit undo/redo. Use /rtps 20 to resume.\n\
+All plots share a 2 GiB memory limit by default. Older ticks drop when memory fills. Admins can use /rhistory limit <MiB> to change it.\n\
+More than 1000 ticks requires plots.admin.rewind.unlimited; changing memory requires plots.admin.rewind.memory. Grant these through LuckPerms.\n\
+History needs the interpreter and whole ticks. Compilation or restart clears it.\n\
+Try /rtps 0, /rhistory on, /radvance 10, then /rback 5.",
         "chat" | "commands" | "commandblocks" | "command_blocks" | "say" | "tellraw" => "Messages and command blocks\n\
 /say Hello everyone sends a message to all players.\n\
 /tellraw @a {\"text\":\"Hello\",\"color\":\"gold\",\"bold\":true} sends formatted text.\n\

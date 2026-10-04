@@ -1607,7 +1607,7 @@ pub static DECLARE_COMMANDS: Lazy<PacketEncoder> = Lazy::new(|| {
             // 101–107: tick history and whole-game-tick rewind
             Node {
                 flags: (CommandFlags::LITERAL | CommandFlags::EXECUTABLE).bits() as i8,
-                children: &[102, 104, 105],
+                children: &[102, 104, 105, 108],
                 redirect_node: None,
                 name: Some("rhistory"),
                 parser: None,
@@ -1659,6 +1659,23 @@ pub static DECLARE_COMMANDS: Lazy<PacketEncoder> = Lazy::new(|| {
                 redirect_node: None,
                 name: Some("ticks"),
                 parser: Some(Parser::Integer(1, MAX)),
+                suggestions_type: None,
+            },
+            // 108–109: server history memory limit, in MiB
+            Node {
+                flags: (CommandFlags::LITERAL | CommandFlags::EXECUTABLE).bits() as i8,
+                children: &[109],
+                redirect_node: None,
+                name: Some("limit"),
+                parser: None,
+                suggestions_type: None,
+            },
+            Node {
+                flags: (CommandFlags::ARGUMENT | CommandFlags::EXECUTABLE).bits() as i8,
+                children: &[],
+                redirect_node: None,
+                name: Some("MiB"),
+                parser: Some(Parser::Integer(0, MAX)),
                 suggestions_type: None,
             },
         ],

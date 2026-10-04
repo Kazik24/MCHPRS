@@ -7,6 +7,17 @@ use toml_edit::{value, Document};
 
 pub static CONFIG: Lazy<ServerConfig> = Lazy::new(|| ServerConfig::load("Config.toml"));
 
+pub(crate) fn save_history_limit(mib: i64) -> Result<(), String> {
+    let text = fs::read_to_string("Config.toml").map_err(|e| e.to_string())?;
+    let mut doc = text.parse::<Document>().map_err(|e| e.to_string())?;
+    doc["rhistory_memory_limit_mib"] = value(mib);
+    mchprs_save_data::atomic::write(
+        std::path::Path::new("Config.toml"),
+        doc.to_string().as_bytes(),
+    )
+    .map_err(|e| format!("Cannot save history limit: {e}"))
+}
+
 trait ConfigSerializeDefault {
     fn fix_config(self, name: &str, doc: &mut Document);
 }
@@ -76,5 +87,7 @@ gen_config! {
     block_in_hitbox: bool = true,
     auto_redpiler: bool = false,
     fast_render_threshold: i64 = 100,
-    fast_render_send_rate: i64 = 10
+    fast_render_send_rate: i64 = 10,
+    rhistory_memory_limit_mib: i64 = 2048,
+    rhistory_work_memory_limit_mib: i64 = 256
 }

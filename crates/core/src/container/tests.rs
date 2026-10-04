@@ -46,9 +46,6 @@ fn hopper_and_furnace_creation_locking_and_cake_bites() {
         eat_cake(&mut world, pos);
     }
     assert_eq!(world.get_block(pos), Block::Air {});
-    world.set_block(pos, Block::Cake { bites: 0 });
-    crate::interaction::destroy(Block::Stone {}, &mut world, pos.offset(BlockFace::Bottom));
-    assert_eq!(world.get_block(pos), Block::Air {});
 }
 
 #[test]

@@ -826,7 +826,15 @@ impl FromStr for WorldEditPattern {
 
     fn from_str(pattern_str: &str) -> PatternParseResult<WorldEditPattern> {
         let mut pattern = WorldEditPattern { parts: Vec::new() };
-        for part in pattern_str.split(',') {
+        let mut depth = 0;
+        for part in pattern_str.split(|c| {
+            match c {
+                '[' => depth += 1,
+                ']' => depth -= 1,
+                _ => {}
+            }
+            c == ',' && depth == 0
+        }) {
             static RE: Lazy<Regex> = Lazy::new(|| {
                 Regex::new(r"^(([0-9]+(\.[0-9]+)?)%)?(=)?([0-9]+|(minecraft:)?[a-zA-Z_]+)(:([0-9]+)|\[(([a-zA-Z_]+=[a-zA-Z0-9]+,?)+?)\])?((\|([^|]*?)){1,4})?$").unwrap()
             });
@@ -835,7 +843,7 @@ impl FromStr for WorldEditPattern {
                 .captures(part)
                 .ok_or_else(|| PatternParseError::InvalidPattern(part.to_owned()))?;
 
-            let block = if pattern_match.get(4).is_some() {
+            let mut block = if pattern_match.get(4).is_some() {
                 Block::from_id(
                     pattern_match
                         .get(5)
@@ -852,6 +860,12 @@ impl FromStr for WorldEditPattern {
                 Block::from_name(block_name)
                     .ok_or_else(|| PatternParseError::UnknownBlock(part.to_owned()))?
             };
+
+            if let Some(props) = pattern_match.get(9) {
+                block =
+                    schematic::parse_block(&format!("{}[{}]", block.get_name(), props.as_str()))
+                        .ok_or_else(|| PatternParseError::InvalidPattern(part.to_owned()))?;
+            }
 
             let weight = pattern_match
                 .get(2)
@@ -899,6 +913,22 @@ impl WorldEditPattern {
         }
 
         Block::from_id(selected.block_id)
+    }
+}
+
+#[test]
+fn container_patterns_apply_properties_and_split_only_between_blocks() {
+    let pattern = WorldEditPattern::from_str(
+        "25%hopper[facing=east,enabled=false],75%furnace[facing=west,lit=true]",
+    )
+    .unwrap_or_else(|e| panic!("{e}"));
+    assert_eq!(pattern.parts.len(), 2);
+    assert_eq!(pattern.parts[0].block_id, 10043);
+    assert_eq!(pattern.parts[1].block_id, 4362);
+    assert_eq!(pattern.parts[0].weight, 0.25);
+    assert_eq!(pattern.parts[1].weight, 0.75);
+    for invalid in ["hopper[facing=up]", "furnace[lit=maybe]", "cake[bites=7]"] {
+        assert!(WorldEditPattern::from_str(invalid).is_err());
     }
 }
 

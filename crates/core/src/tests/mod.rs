@@ -54,13 +54,6 @@ fn calculate_world_hash(world: &PlotWorld) -> Box<[u8]> {
             for z in 0..16 {
                 for y in 0..256 {
                     let ch = chunk.get_block(x, y, z);
-                    // The historical fixture checksum predates hopper lock updates.
-                    // Normalize that cosmetic flag while retaining outlet orientation.
-                    // Dedicated container tests verify the live lock state.
-                    let ch = match Block::from_id(ch) {
-                        Block::Hopper { facing, .. } => Block::Hopper { facing, enabled: false }.get_id(),
-                        _ => ch,
-                    };
                     let legacy = mchprs_blocks::generated::TARGET_TO_LEGACY[ch as usize];
                     assert_ne!(
                         legacy,
@@ -86,8 +79,10 @@ fn run_mandelbrot_chungus() {
     }
 
     let hash = calculate_world_hash(&plot);
-    //hash after 1000 ticks for interpreted engine (master commit 33cfc6dd84)
-    assert_eq!(hash.as_ref(),b"\xaf\xe1\xb6\xf2\xe9\xfa\xe4\x5b\xa9\x68\xc1\x0a\x6e\x4b\xf7\xb0\x29\x78\xc5\xb3\x9c\xc3\xec\xb4\xe0\x73\x0a\xf3\x8e\x94\x20\x05");
+    // Full hopper/furnace state semantics and hopper lock updates change the old
+    // checksum. Restoring the former Unknown classification reproduces the old
+    // circuit checksum; the new one includes the corrected states (CONTAINERS.md).
+    assert_eq!(hash.as_ref(),b"\xd2\x56\x77\x9f\xe2\x5a\x9c\x0b\x70\x61\xd3\xea\x64\xf2\x0e\x58\xd3\x9e\x01\x42\x7a\xbb\x44\x72\xbc\x69\xf3\x0e\x36\x85\xd9\x15");
 }
 
 #[test]

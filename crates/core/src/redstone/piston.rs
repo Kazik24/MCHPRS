@@ -254,13 +254,8 @@ fn retract(
         // Slime/honey side attachments and push reactions are deliberately deferred.
         let block = world.get_block(ahead);
         if block != Block::Air
-            && !matches!(
-                block,
-                Block::MovingPiston { .. }
-                    | Block::Barrel { .. }
-                    | Block::Hopper { .. }
-                    | Block::Furnace { .. }
-            )
+            && !matches!(block, Block::MovingPiston { .. })
+            && !immovable_container(block)
         {
             let entity = world.get_block_entity(ahead).cloned();
             moving(world, head, piston, block, false, false, entity);
@@ -445,6 +440,10 @@ fn remove_matching_base(
     }
 }
 
+fn immovable_container(block: Block) -> bool {
+    mchprs_blocks::block_entities::ContainerType::from_block(block).is_some()
+}
+
 fn payload_line(world: &impl World, start: BlockPos, facing: BlockFace) -> Option<Vec<BlockPos>> {
     let mut line = Vec::new();
     let mut pos = start;
@@ -456,14 +455,14 @@ fn payload_line(world: &impl World, start: BlockPos, facing: BlockFace) -> Optio
         {
             return None;
         }
-        match world.get_block(pos) {
+        let block = world.get_block(pos);
+        if immovable_container(block) {
+            return None;
+        }
+        match block {
             Block::Air => return Some(line),
             // A moving entity belongs to another operation; do not nest its state.
-            Block::MovingPiston { .. }
-            | Block::PistonHead { .. }
-            | Block::Barrel { .. }
-            | Block::Hopper { .. }
-            | Block::Furnace { .. } => return None,
+            Block::MovingPiston { .. } | Block::PistonHead { .. } => return None,
             _ => line.push(pos),
         }
         pos = pos.offset(facing);
