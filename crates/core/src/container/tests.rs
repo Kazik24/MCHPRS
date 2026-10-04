@@ -285,6 +285,68 @@ fn drag_even_and_one_each_and_invalid_sequences() {
 }
 
 #[test]
+fn creative_drag_fills_compatible_slots_without_consuming_cursor() {
+    let mut slots = vec![None; 63];
+    slots[0] = stack(12);
+    slots[2] = Some(ItemStack {
+        item_type: Item::Stone {},
+        count: 10,
+        nbt: None,
+    });
+    let mut menu = menu();
+    menu.cursor = stack(7);
+    let mut offhand = None;
+
+    click(&mut menu, &mut slots, &mut offhand, -999, 8, 5, true);
+    for slot in [0, 1, 2, 1] {
+        click(&mut menu, &mut slots, &mut offhand, slot, 9, 5, true);
+    }
+    click(&mut menu, &mut slots, &mut offhand, -999, 10, 5, true);
+
+    assert_eq!(count(&slots[0]), 64);
+    assert_eq!(count(&slots[1]), 64);
+    assert_eq!(count(&slots[2]), 10);
+    assert_eq!(count(&menu.cursor), 7);
+    assert!(menu.drag.is_none());
+}
+
+#[test]
+fn rejected_drag_sequences_preserve_items_and_cancel_the_drag() {
+    // A mismatched kind, invalid phase/button, noncreative fill, or another
+    // click mode cancels the active drag. A later finish must not move items.
+    for (button, mode, creative) in [
+        (5, 5, true),
+        (3, 5, true),
+        (-1, 5, true),
+        (11, 5, true),
+        (8, 5, false),
+        (0, 99, true),
+    ] {
+        let mut slots = vec![None; 63];
+        let mut menu = menu();
+        menu.cursor = stack(10);
+        let mut offhand = None;
+        let before = signature(&slots, &menu.cursor);
+
+        click(&mut menu, &mut slots, &mut offhand, -999, 0, 5, true);
+        click(&mut menu, &mut slots, &mut offhand, 0, 1, 5, true);
+        click(
+            &mut menu,
+            &mut slots,
+            &mut offhand,
+            0,
+            button,
+            mode,
+            creative,
+        );
+        assert!(menu.drag.is_none());
+
+        click(&mut menu, &mut slots, &mut offhand, -999, 2, 5, true);
+        assert_eq!(signature(&slots, &menu.cursor), before);
+    }
+}
+
+#[test]
 fn collect_clone_throw_and_component_limits() {
     let mut slots = vec![None; 63];
     let mut menu = menu();

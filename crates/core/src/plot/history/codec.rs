@@ -32,6 +32,7 @@ impl Snapshot {
 }
 
 struct Chunks<'a>(&'a [Chunk]);
+
 impl Serialize for Chunks<'_> {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         let mut sequence = serializer.serialize_seq(Some(self.0.len()))?;
@@ -41,7 +42,9 @@ impl Serialize for Chunks<'_> {
         sequence.end()
     }
 }
+
 struct Ticks<'a>(&'a TickScheduler<ScheduledBlockTick>);
+
 impl Serialize for Ticks<'_> {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         let mut sequence = serializer.serialize_seq(Some(self.0.iter().count()))?;
@@ -63,13 +66,14 @@ pub(super) fn capture_raw(world: &mut PlotWorld, work: &Arc<Budget>) -> Result<B
     for chunk in &mut world.chunks {
         chunk.prepare_history();
     }
+
     let view = View {
         chunks: Chunks(&world.chunks),
         ticks: Ticks(&world.to_be_ticked),
         piston_state: &world.piston_state,
     };
-    let size = usize::try_from(bincode::serialized_size(&view).map_err(|e| e.to_string())?)
-        .map_err(|_| "Snapshot is too large.".to_owned())?;
+    let serialized_size = bincode::serialized_size(&view).map_err(|error| error.to_string())?;
+    let size = usize::try_from(serialized_size).map_err(|_| "Snapshot is too large.".to_owned())?;
     let mut raw =
         Bytes::zeroed(work, size).map_err(|e| format!("History capture workspace: {e}"))?;
     bincode::serialize_into(Cursor::new(&mut raw.data[..]), &view).map_err(|e| e.to_string())?;
@@ -82,6 +86,7 @@ pub(super) struct Encoded {
     pub checksum: u32,
     pub compressed: bool,
 }
+
 impl Encoded {
     pub fn encode(raw: Bytes, dict: &[u8], work: &Arc<Budget>) -> Result<Self, String> {
         let raw_len = raw.data.len();
@@ -95,6 +100,7 @@ impl Encoded {
             .map_err(|e| format!("History compression workspace: {e}"))?;
         let size = lz4_flex::block::compress_into_with_dict(&raw.data, &mut output.data, dict)
             .map_err(|e| e.to_string())?;
+
         if size < raw_len {
             output.data.truncate(size);
             Ok(Self {
@@ -120,36 +126,40 @@ pub(super) struct Stored {
     pub checksum: u32,
     pub compressed: bool,
 }
+
 impl Stored {
     pub fn decode(&self, dict: &[u8], work: &Arc<Budget>) -> Result<Snapshot, String> {
-        let raw;
+        // Keep the workspace reservation alive until deserialization finishes.
+        let decompressed;
         let data = if self.compressed {
-            raw = {
-                let mut buffer = Bytes::zeroed(work, self.raw_len)
-                    .map_err(|e| format!("History rewind workspace: {e}"))?;
-                let count = lz4_flex::block::decompress_into_with_dict(
-                    &self.bytes.data,
-                    &mut buffer.data,
-                    dict,
-                )
-                .map_err(|e| format!("Invalid history compression: {e}"))?;
-                if count != self.raw_len {
-                    return Err("Invalid history size.".into());
-                }
-                buffer
-            };
-            &raw.data
+            decompressed = self.decompress(dict, work)?;
+            &decompressed.data
         } else {
             &self.bytes.data
         };
+
         if data.len() != self.raw_len || crc32fast::hash(data) != self.checksum {
             return Err("Invalid history checksum or size.".into());
         }
+
         bincode::DefaultOptions::new()
             .with_fixint_encoding()
             .reject_trailing_bytes()
             .with_limit(data.len() as u64)
             .deserialize(data)
             .map_err(|e| format!("Invalid history snapshot: {e}"))
+    }
+
+    fn decompress(&self, dict: &[u8], work: &Arc<Budget>) -> Result<Bytes, String> {
+        let mut buffer = Bytes::zeroed(work, self.raw_len)
+            .map_err(|error| format!("History rewind workspace: {error}"))?;
+        let count =
+            lz4_flex::block::decompress_into_with_dict(&self.bytes.data, &mut buffer.data, dict)
+                .map_err(|error| format!("Invalid history compression: {error}"))?;
+        if count != self.raw_len {
+            return Err("Invalid history size.".into());
+        }
+
+        Ok(buffer)
     }
 }

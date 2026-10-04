@@ -3,6 +3,7 @@ mod budget;
 mod codec;
 #[cfg(test)]
 mod tests;
+
 use super::data::sleep_time_for_tps;
 use super::{Plot, PlotWorld, PLOT_SECTIONS};
 use crate::config::CONFIG;
@@ -23,8 +24,12 @@ const MEMORY_PERMISSION: &str = "plots.admin.rewind.memory";
 
 fn validate_tick_limit(ticks: usize, unlimited: bool) -> Result<(), String> {
     if ticks > NORMAL_HISTORY_LIMIT && !unlimited {
-        return Err(format!("More than {NORMAL_HISTORY_LIMIT} game ticks requires {UNLIMITED_HISTORY_PERMISSION} permission."));
+        return Err(format!(
+            "More than {NORMAL_HISTORY_LIMIT} game ticks requires \
+             {UNLIMITED_HISTORY_PERMISSION} permission."
+        ));
     }
+
     Ok(())
 }
 
@@ -39,11 +44,13 @@ pub(super) struct TickHistory {
     heap_bytes: usize,
     raw_bytes: usize,
 }
+
 impl Default for TickHistory {
     fn default() -> Self {
         Self::with_budgets(budget::STORED.clone(), budget::WORK.clone())
     }
 }
+
 impl TickHistory {
     fn with_budgets(budget: Arc<Budget>, work: Arc<Budget>) -> Self {
         Self {
@@ -58,33 +65,49 @@ impl TickHistory {
             raw_bytes: 0,
         }
     }
+
     pub fn enabled(&self) -> bool {
         !self.slots.is_empty()
     }
+
     pub fn capacity(&self) -> usize {
         self.slots.len()
     }
+
     pub fn len(&self) -> usize {
         self.len
     }
+
     pub fn memory_bytes(&self) -> usize {
         self.slots.capacity() * size_of::<Option<Stored>>()
             + self.heap_bytes
             + self.dictionary.as_ref().map_or(0, |d| d.data.capacity())
     }
+
     fn dictionary(&self) -> &[u8] {
         self.dictionary.as_ref().map_or(&[], |d| &d.data)
     }
 
     fn status(&self) -> String {
         let (used, limit) = self.budget.stats();
+        let state = match self.enabled() {
+            true => "on",
+            false => "off",
+        };
+
         format!(
-            "Tick history: {}. Available: {}/{} game ticks.\nUncompressed: {} | Compressed: {} | Server: {} / {}",
-            if self.enabled() { "on" } else { "off" }, self.len(), self.capacity(),
-            format_memory(self.raw_bytes), format_memory(self.heap_bytes),
-            format_memory(used), format_memory(limit)
+            "Tick history: {}. Available: {}/{} game ticks.\n\
+             Uncompressed: {} | Compressed: {} | Server: {} / {}",
+            state,
+            self.len(),
+            self.capacity(),
+            format_memory(self.raw_bytes),
+            format_memory(self.heap_bytes),
+            format_memory(used),
+            format_memory(limit)
         )
     }
+
     fn prepare(capacity: usize, budget: Arc<Budget>, work: Arc<Budget>) -> Result<Self, String> {
         if capacity == 0 || capacity > i32::MAX as usize {
             return Err("History capacity must be between 1 and 2147483647 game ticks.".into());
@@ -105,20 +128,24 @@ impl TickHistory {
             ..Self::with_budgets(budget, work)
         })
     }
+
     pub fn disable(&mut self) -> usize {
         let bytes = self.memory_bytes();
         *self = Self::with_budgets(self.budget.clone(), self.work.clone());
         bytes
     }
+
     fn release(&mut self, index: usize) {
         let old = self.slots[index].take().expect("occupied history slot");
         self.heap_bytes -= old.bytes.data.capacity();
         self.raw_bytes -= old.raw_len;
         self.len -= 1;
     }
+
     fn release_oldest(&mut self) {
         self.release((self.next_write + self.capacity() - self.len) % self.capacity());
     }
+
     fn push(&mut self, encoded: Encoded) -> Result<(), String> {
         if self.len == self.capacity() {
             self.release_oldest();
@@ -143,6 +170,7 @@ impl TickHistory {
         self.next_write = (self.next_write + 1) % self.capacity();
         Ok(())
     }
+
     pub fn validate_rewind(&self, ticks: usize) -> Result<(), String> {
         if !self.enabled() {
             return Err("Tick history is disabled. Use /rhistory on [ticks].".into());
@@ -158,6 +186,7 @@ impl TickHistory {
         }
         Ok(())
     }
+
     fn decode_back(&mut self, ticks: usize) -> Result<codec::Snapshot, String> {
         let index = (self.next_write + self.capacity() - ticks) % self.capacity();
         let snapshot = self.slots[index]
@@ -210,13 +239,17 @@ impl PlotWorld {
         self.history = history;
         Ok(projected)
     }
+
     fn require_tick_boundary(&self) -> Result<(), String> {
         if self.piston_state.phase != AdvancePhase::BetweenTicks {
-            Err("Finish the partial tick with /radvance 1 before using tick history.".into())
-        } else {
-            Ok(())
+            return Err(
+                "Finish the partial tick with /radvance 1 before using tick history.".into(),
+            );
         }
+
+        Ok(())
     }
+
     pub(super) fn record_tick(&mut self) {
         if !self.history.enabled() {
             return;
@@ -228,16 +261,29 @@ impl PlotWorld {
         if let Err(error) = result {
             self.history.disable();
             tracing::warn!("Tick history stopped: {error}");
-            let packet = CChatMessage { message: serde_json::json!({"text":format!("Tick history stopped: {error}"),"color":"red"}).to_string(), position: 1, sender: 0 }.encode();
+            let message = serde_json::json!({
+                "text": format!("Tick history stopped: {error}"),
+                "color": "red",
+            })
+            .to_string();
+            let packet = CChatMessage {
+                message,
+                position: 1,
+                sender: 0,
+            }
+            .encode();
+
             for sender in &self.packet_senders {
                 sender.send_packet(&packet);
             }
         }
     }
+
     pub(super) fn validate_rewind(&self, ticks: usize) -> Result<(), String> {
         self.require_tick_boundary()?;
         self.history.validate_rewind(ticks)
     }
+
     pub(super) fn rewind_ticks(&mut self, ticks: usize, unlimited: bool) -> Result<(), String> {
         validate_tick_limit(ticks, unlimited)?;
         self.validate_rewind(ticks)?;

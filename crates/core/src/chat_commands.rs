@@ -28,98 +28,105 @@ fn component(value: &Value, depth: usize) -> Result<Value, String> {
     if depth > 64 {
         return Err("Text component nesting is too deep".into());
     }
-    Ok(match value {
-        Value::String(text) => json!({"text":text}),
-        Value::Array(values) => {
-            // Minecraft arrays inherit the first component's style for subsequent siblings.
-            let mut values = values.iter();
-            let mut first = values
-                .next()
-                .map(|v| component(v, depth + 1))
-                .transpose()?
-                .unwrap_or_else(|| json!({"text":""}));
-            let remaining = values
+
+    match value {
+        Value::String(text) => Ok(json!({"text": text})),
+        Value::Array(values) => component_array(values, depth),
+        Value::Object(object) => component_object(object, depth),
+        _ => Err("Expected a text string, object or array".into()),
+    }
+}
+
+fn component_array(values: &[Value], depth: usize) -> Result<Value, String> {
+    // Minecraft arrays inherit the first component's style for subsequent siblings.
+    let mut values = values.iter();
+    let mut first = match values.next() {
+        Some(value) => component(value, depth + 1)?,
+        None => json!({"text": ""}),
+    };
+    let remaining = values
+        .map(|value| component(value, depth + 1))
+        .collect::<Result<Vec<_>, _>>()?;
+    if remaining.is_empty() {
+        return Ok(first);
+    }
+
+    let object = first.as_object_mut().unwrap();
+    let extra = object.entry("extra").or_insert_with(|| json!([]));
+    extra.as_array_mut().unwrap().extend(remaining);
+
+    Ok(first)
+}
+
+fn component_object(object: &Map<String, Value>, depth: usize) -> Result<Value, String> {
+    let text = object
+        .get("text")
+        .and_then(Value::as_str)
+        .or_else(|| object.get("fallback").and_then(Value::as_str))
+        .unwrap_or("");
+    let mut result = Map::new();
+    result.insert("text".into(), text.into());
+
+    for key in [
+        "bold",
+        "italic",
+        "underlined",
+        "strikethrough",
+        "obfuscated",
+    ] {
+        if let Some(value) = object.get(key).and_then(Value::as_bool) {
+            result.insert(key.into(), value.into());
+        }
+    }
+
+    if let Some(color) = object.get("color").and_then(Value::as_str) {
+        if valid_color(color) {
+            result.insert("color".into(), color.into());
+        }
+    }
+
+    if let Some(Value::Array(extra)) = object.get("extra") {
+        if !extra.is_empty() {
+            let children = extra
+                .iter()
                 .map(|value| component(value, depth + 1))
                 .collect::<Result<Vec<_>, _>>()?;
-            if !remaining.is_empty() {
-                let extra = first
-                    .as_object_mut()
-                    .unwrap()
-                    .entry("extra")
-                    .or_insert_with(|| json!([]))
-                    .as_array_mut()
-                    .unwrap();
-                extra.extend(remaining);
-            }
-            first
+            result.insert("extra".into(), Value::Array(children));
         }
-        Value::Object(object) => {
-            let mut result = Map::new();
-            result.insert(
-                "text".into(),
-                object
-                    .get("text")
-                    .and_then(Value::as_str)
-                    .or_else(|| object.get("fallback").and_then(Value::as_str))
-                    .unwrap_or("")
-                    .into(),
-            );
-            for key in [
-                "bold",
-                "italic",
-                "underlined",
-                "strikethrough",
-                "obfuscated",
-            ] {
-                if let Some(value) = object.get(key).and_then(Value::as_bool) {
-                    result.insert(key.into(), value.into());
-                }
-            }
-            if let Some(color) = object.get("color").and_then(Value::as_str) {
-                let valid = matches!(
-                    color,
-                    "black"
-                        | "dark_blue"
-                        | "dark_green"
-                        | "dark_aqua"
-                        | "dark_red"
-                        | "dark_purple"
-                        | "gold"
-                        | "gray"
-                        | "dark_gray"
-                        | "blue"
-                        | "green"
-                        | "aqua"
-                        | "red"
-                        | "light_purple"
-                        | "yellow"
-                        | "white"
-                        | "reset"
-                ) || (color.len() == 7
-                    && color.starts_with('#')
-                    && color[1..].bytes().all(|b| b.is_ascii_hexdigit()));
-                if valid {
-                    result.insert("color".into(), color.into());
-                }
-            }
-            if let Some(Value::Array(extra)) = object
-                .get("extra")
-                .filter(|value| value.as_array().is_some_and(|extra| !extra.is_empty()))
-            {
-                result.insert(
-                    "extra".into(),
-                    Value::Array(
-                        extra
-                            .iter()
-                            .map(|v| component(v, depth + 1))
-                            .collect::<Result<_, _>>()?,
-                    ),
-                );
-            }
-            Value::Object(result)
-        }
-        _ => return Err("Expected a text string, object or array".into()),
-    })
+    }
+
+    Ok(Value::Object(result))
+}
+
+fn valid_color(color: &str) -> bool {
+    if matches!(
+        color,
+        "black"
+            | "dark_blue"
+            | "dark_green"
+            | "dark_aqua"
+            | "dark_red"
+            | "dark_purple"
+            | "gold"
+            | "gray"
+            | "dark_gray"
+            | "blue"
+            | "green"
+            | "aqua"
+            | "red"
+            | "light_purple"
+            | "yellow"
+            | "white"
+            | "reset"
+    ) {
+        return true;
+    }
+
+    let Some(hex) = color.strip_prefix('#') else {
+        return false;
+    };
+
+    hex.len() == 6 && hex.bytes().all(|byte| byte.is_ascii_hexdigit())
 }
 
 fn target<'a>(input: &'a str, player: Option<&str>) -> Result<(Recipient, &'a str), String> {
@@ -143,10 +150,8 @@ pub(crate) fn parse(
     source: &str,
     player: Option<&str>,
 ) -> Result<ChatCommand, String> {
-    let command = command
-        .trim_start()
-        .strip_prefix('/')
-        .unwrap_or(command.trim_start());
+    let command = command.trim_start();
+    let command = command.strip_prefix('/').unwrap_or(command);
     let (name, args) = command
         .split_once(char::is_whitespace)
         .unwrap_or((command, ""));
@@ -173,6 +178,7 @@ pub(crate) fn parse(
 #[cfg(test)]
 mod tests {
     use super::*;
+
     #[test]
     fn selectors_and_literal_say_preserve_text() {
         let command = parse(
@@ -210,9 +216,53 @@ mod tests {
             assert!(parse(command, "@", None).is_err(), "{command}");
         }
     }
+
+    #[test]
+    fn colors_and_nesting_limits_preserve_supported_component_behavior() {
+        for (color, accepted) in [
+            ("red", true),
+            ("reset", true),
+            ("#ff00AA", true),
+            ("RED", false),
+            ("#12345", false),
+            ("#1234567", false),
+            ("#gg0000", false),
+            ("#é0000", false),
+        ] {
+            let text = json!({"text": "hello", "color": color});
+            let input = format!("tellraw @a {text}");
+            let command = parse(&input, "@", None).unwrap();
+            let output: Value = serde_json::from_str(&command.message).unwrap();
+
+            assert_eq!(output["text"], "hello");
+            assert_eq!(output.get("color").is_some(), accepted, "{color}");
+        }
+
+        let mut text = json!("nested");
+        for _ in 0..64 {
+            text = Value::Array(vec![text]);
+        }
+        let input = format!("tellraw @a {text}");
+        assert!(parse(&input, "@", None).is_ok());
+
+        text = Value::Array(vec![text]);
+        let input = format!("tellraw @a {text}");
+        assert_eq!(
+            parse(&input, "@", None).unwrap_err(),
+            "Text component nesting is too deep"
+        );
+    }
+
     #[test]
     fn formatting_arrays_and_extra_ignore_unsupported_fields() {
-        let command = parse(r##"tellraw @a [{"text":"parent","color":"#FFCB17","bold":true,"extra":[{"text":"child","bold":false}]},{"score":{"name":"x","objective":"y"},"extra":["kept"]},{"text":"end","clickEvent":{"action":"run_command","value":"/stop"},"hoverEvent":{}}]"##, "@", None).unwrap();
+        let input = concat!(
+            r##"tellraw @a [{"text":"parent","color":"#FFCB17","bold":true,"##,
+            r#""extra":[{"text":"child","bold":false}]},"#,
+            r#"{"score":{"name":"x","objective":"y"},"extra":["kept"]},"#,
+            r#"{"text":"end","clickEvent":{"action":"run_command","value":"/stop"},"#,
+            r#""hoverEvent":{}}]"#,
+        );
+        let command = parse(input, "@", None).unwrap();
         let value: Value = serde_json::from_str(&command.message).unwrap();
         assert_eq!(value["color"], "#FFCB17");
         assert_eq!(value["extra"][0]["bold"], false);

@@ -8,67 +8,91 @@ pub fn list(values: Vec<nbt::Value>) -> nbt::Value {
             .iter()
             .any(|value| std::mem::discriminant(value) != std::mem::discriminant(first))
     });
-    nbt::Value::List(if mixed {
-        values
-            .into_iter()
-            .map(|value| match value {
-                nbt::Value::Compound(_) => value,
-                value => {
-                    nbt::Value::Compound(std::collections::HashMap::from([(String::new(), value)]))
-                }
-            })
-            .collect()
-    } else {
-        values
-    })
-}
-pub fn from_json(text: &str) -> nbt::Value {
-    fn convert(v: &serde_json::Value) -> nbt::Value {
-        match v {
-            serde_json::Value::String(s) => nbt::Value::String(s.clone()),
-            serde_json::Value::Bool(b) => nbt::Value::Byte(*b as i8),
-            serde_json::Value::Number(n) => nbt::Value::Int(n.as_i64().unwrap_or(0) as i32),
-            serde_json::Value::Array(a) => list(a.iter().map(convert).collect()),
-            serde_json::Value::Object(o) => {
-                nbt::Value::Compound(o.iter().map(|(k, v)| (k.clone(), convert(v))).collect())
-            }
-            _ => nbt::Value::String(String::new()),
-        }
+    if !mixed {
+        return nbt::Value::List(values);
     }
+
+    let entries = values
+        .into_iter()
+        .map(|value| match value {
+            nbt::Value::Compound(_) => value,
+            value => {
+                let wrapper = std::collections::HashMap::from([(String::new(), value)]);
+                nbt::Value::Compound(wrapper)
+            }
+        })
+        .collect();
+
+    nbt::Value::List(entries)
+}
+
+pub fn from_json(text: &str) -> nbt::Value {
     let mut json = serde_json::from_str::<serde_json::Value>(text)
         .unwrap_or_else(|_| serde_json::json!({"text":text}));
     if json.is_array() {
         json = serde_json::json!({"text":"","extra":json});
     }
-    convert(&json)
+    json_to_nbt(&json)
 }
+
 pub fn to_json(value: &nbt::Value) -> String {
-    fn convert(v: &nbt::Value, key: &str) -> serde_json::Value {
-        match v {
-            nbt::Value::String(s) => s.clone().into(),
-            nbt::Value::Byte(b)
-                if matches!(
-                    key,
-                    "bold" | "italic" | "underlined" | "strikethrough" | "obfuscated"
-                ) =>
-            {
-                (*b != 0).into()
-            }
-            nbt::Value::Byte(b) => (*b).into(),
-            nbt::Value::Int(i) => (*i).into(),
-            nbt::Value::Compound(c) if c.len() == 1 && c.contains_key("") => convert(&c[""], key),
-            nbt::Value::Compound(c) => serde_json::Value::Object(
-                c.iter().map(|(k, v)| (k.clone(), convert(v, k))).collect(),
-            ),
-            nbt::Value::List(l) => {
-                serde_json::Value::Array(l.iter().map(|v| convert(v, "")).collect())
-            }
-            _ => serde_json::Value::Null,
-        }
-    }
     // Modern NBT strings are literal text, even when they resemble JSON.
     // The schematic importer converts legacy JSON fields using DataVersion.
-    convert(value, "").to_string()
+    nbt_to_json(value, "").to_string()
+}
+
+fn json_to_nbt(value: &serde_json::Value) -> nbt::Value {
+    match value {
+        serde_json::Value::String(text) => nbt::Value::String(text.clone()),
+        serde_json::Value::Bool(value) => nbt::Value::Byte(*value as i8),
+        serde_json::Value::Number(number) => {
+            let value = number.as_i64().unwrap_or(0) as i32;
+            nbt::Value::Int(value)
+        }
+        serde_json::Value::Array(values) => {
+            let entries = values.iter().map(json_to_nbt).collect();
+            list(entries)
+        }
+        serde_json::Value::Object(object) => {
+            let entries = object
+                .iter()
+                .map(|(key, value)| (key.clone(), json_to_nbt(value)))
+                .collect();
+            nbt::Value::Compound(entries)
+        }
+        _ => nbt::Value::String(String::new()),
+    }
+}
+
+fn nbt_to_json(value: &nbt::Value, key: &str) -> serde_json::Value {
+    match value {
+        nbt::Value::String(text) => text.clone().into(),
+        nbt::Value::Byte(value)
+            if matches!(
+                key,
+                "bold" | "italic" | "underlined" | "strikethrough" | "obfuscated"
+            ) =>
+        {
+            (*value != 0).into()
+        }
+        nbt::Value::Byte(value) => (*value).into(),
+        nbt::Value::Int(value) => (*value).into(),
+        nbt::Value::Compound(object) if object.len() == 1 && object.contains_key("") => {
+            nbt_to_json(&object[""], key)
+        }
+        nbt::Value::Compound(object) => {
+            let entries = object
+                .iter()
+                .map(|(key, value)| (key.clone(), nbt_to_json(value, key)))
+                .collect();
+            serde_json::Value::Object(entries)
+        }
+        nbt::Value::List(values) => {
+            let entries = values.iter().map(|value| nbt_to_json(value, "")).collect();
+            serde_json::Value::Array(entries)
+        }
+        _ => serde_json::Value::Null,
+    }
 }
 
 #[cfg(test)]

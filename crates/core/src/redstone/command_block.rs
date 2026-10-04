@@ -24,6 +24,24 @@ fn condition_met(world: &impl World, pos: BlockPos) -> bool {
         && matches!(world.get_block_entity(previous), Some(BlockEntity::CommandBlock(entity)) if entity.success_count > 0)
 }
 
+fn plain_text(value: &serde_json::Value) -> String {
+    match value {
+        serde_json::Value::String(text) => text.clone(),
+        serde_json::Value::Array(values) => values.iter().map(plain_text).collect(),
+        serde_json::Value::Object(object) => {
+            let text = object
+                .get("text")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or("")
+                .to_owned();
+            let extra = object.get("extra").map(plain_text).unwrap_or_default();
+
+            text + &extra
+        }
+        _ => String::new(),
+    }
+}
+
 pub(crate) fn update(world: &mut impl World, pos: BlockPos) {
     let block = world.get_block(pos);
     if !block.is_command_block() {
@@ -73,23 +91,8 @@ fn execute(world: &mut impl World, pos: BlockPos) -> bool {
     }
     entity.success_count = 0;
     if entity.condition_met && !entity.command.trim().is_empty() {
-        fn text(value: &serde_json::Value) -> String {
-            match value {
-                serde_json::Value::String(text) => text.clone(),
-                serde_json::Value::Array(values) => values.iter().map(text).collect(),
-                serde_json::Value::Object(object) => {
-                    object
-                        .get("text")
-                        .and_then(serde_json::Value::as_str)
-                        .unwrap_or("")
-                        .to_owned()
-                        + &object.get("extra").map(text).unwrap_or_default()
-                }
-                _ => String::new(),
-            }
-        }
         let source = serde_json::from_str(&entity.custom_name)
-            .map(|v| text(&v))
+            .map(|value| plain_text(&value))
             .unwrap_or_else(|_| "@".into());
         match world.execute_command_block(&entity.command, &source) {
             Ok(()) => {

@@ -4,15 +4,15 @@ use once_cell::sync::Lazy;
 use std::sync::{Arc, Mutex};
 
 pub(super) static STORED: Lazy<Arc<Budget>> = Lazy::new(|| {
-    Budget::new(
-        mib_to_bytes(CONFIG.rhistory_memory_limit_mib).expect("invalid rhistory_memory_limit_mib"),
-    )
+    let limit =
+        mib_to_bytes(CONFIG.rhistory_memory_limit_mib).expect("invalid rhistory_memory_limit_mib");
+    Budget::new(limit)
 });
+
 pub(super) static WORK: Lazy<Arc<Budget>> = Lazy::new(|| {
-    Budget::new(
-        mib_to_bytes(CONFIG.rhistory_work_memory_limit_mib)
-            .expect("invalid rhistory_work_memory_limit_mib"),
-    )
+    let limit = mib_to_bytes(CONFIG.rhistory_work_memory_limit_mib)
+        .expect("invalid rhistory_work_memory_limit_mib");
+    Budget::new(limit)
 });
 
 pub(super) fn mib_to_bytes(mib: i64) -> Result<usize, String> {
@@ -35,26 +35,32 @@ pub(super) struct Budget {
 impl Budget {
     pub fn new(limit: usize) -> Arc<Self> {
         Arc::new(Self {
-            usage: Mutex::new(Usage { limit, used: 0 }),
+            usage: Mutex::new(Usage { used: 0, limit }),
         })
     }
+
     pub fn stats(&self) -> (usize, usize) {
         let usage = self.usage.lock().unwrap();
         (usage.used, usage.limit)
     }
+
     pub fn reserve(self: &Arc<Self>, bytes: usize) -> Result<Reservation, String> {
         let mut usage = self.usage.lock().unwrap();
         let total = usage
             .used
             .checked_add(bytes)
-            .filter(|total| *total <= usage.limit)
             .ok_or_else(|| "Tick-history memory limit reached.".to_owned())?;
+        if total > usage.limit {
+            return Err("Tick-history memory limit reached.".to_owned());
+        }
+
         usage.used = total;
         Ok(Reservation {
             budget: self.clone(),
             bytes,
         })
     }
+
     pub fn set_limit(
         &self,
         limit: usize,
@@ -67,6 +73,7 @@ impl Budget {
                 super::format_memory(usage.used)
             ));
         }
+
         persist()?;
         usage.limit = limit;
         Ok(())
@@ -77,6 +84,7 @@ pub(super) struct Reservation {
     budget: Arc<Budget>,
     bytes: usize,
 }
+
 impl Drop for Reservation {
     fn drop(&mut self) {
         self.budget.usage.lock().unwrap().used -= self.bytes;
@@ -88,6 +96,7 @@ pub(super) struct Bytes {
     pub data: Vec<u8>,
     _reservation: Reservation,
 }
+
 impl Bytes {
     pub fn zeroed(budget: &Arc<Budget>, size: usize) -> Result<Self, String> {
         let reservation = budget.reserve(size)?;
@@ -96,11 +105,13 @@ impl Bytes {
             .map_err(|_| "Unable to allocate history bytes.".to_owned())?;
         debug_assert_eq!(data.capacity(), size);
         data.resize(size, 0);
+
         Ok(Self {
             data,
             _reservation: reservation,
         })
     }
+
     pub fn copy(budget: &Arc<Budget>, data: &[u8]) -> Result<Self, String> {
         let mut bytes = Self::zeroed(budget, data.len())?;
         bytes.data.copy_from_slice(data);
