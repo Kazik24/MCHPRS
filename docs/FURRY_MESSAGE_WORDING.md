@@ -42,7 +42,7 @@ Use named notice payloads for the values shown here. Keep the original colors an
 | [commands.rs:400](../crates/core/src/plot/commands.rs#L400) | `The rtps was successfully set.` | `The circuit's new tick pace is set. Awoo!` |  |
 | [commands.rs:414](../crates/core/src/plot/commands.rs#L414) | `Please specify a number of ticks to advance.` | `How many game-tick pawsteps should I take? Specify a tick count.` |  |
 | [commands.rs:421](../crates/core/src/plot/commands.rs#L421) | `Please specify a number of nano-ticks to advance.` | `Tiny steps need a count: specify how many nano-ticks to advance.` |  |
-| [commands.rs:427](../crates/core/src/plot/commands.rs#L427) | `Unable to parse nano-ticks!` | `Can't count those nano-tick pawsteps. Use a nonnegative integer.` |  |
+| [commands.rs:427](../crates/core/src/plot/commands.rs#L427) | `Unable to parse nano-ticks!` | `Unable to parse those nano-ticks!` |  |
 | [commands.rs:431](../crates/core/src/plot/commands.rs#L431) | `Cannot advance nano-ticks while redpiler is active!` | `Redpiler has the leash; nano-ticks need the interpreter. Run /redpiler reset first.` |  |
 | [commands.rs:437](../crates/core/src/plot/commands.rs#L437) | `Disable tick history before nano/pico advancement.` | `Tick history follows whole pawprints. Run /rhistory off before nano/pico advancement.` |  |
 | [commands.rs:447](../crates/core/src/plot/commands.rs#L447) | `Please specify a number of pico-ticks to advance.` | `Give these tiny toe beans a pico-tick count to advance.` |  |

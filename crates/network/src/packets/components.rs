@@ -29,37 +29,6 @@ pub fn set_tool_display(
     )
 }
 
-/// Set top placement while retaining unrelated protocol components and custom data.
-pub fn set_top_slab(item_id: i32, blob: &mut nbt::Blob) -> DecodeResult<()> {
-    let mut properties = match blob.get("BlockStateTag") {
-        Some(nbt::Value::Compound(properties)) => properties.clone(),
-        _ => Default::default(),
-    };
-    properties.insert("type".into(), nbt::Value::String("top".into()));
-    let mut state = Vec::new();
-    state.write_varint(properties.len() as i32);
-    let mut ordered: Vec<_> = properties.iter().collect();
-    ordered.sort_by_key(|(name, _)| *name);
-    for (name, value) in ordered {
-        let nbt::Value::String(value) = value else {
-            return Err(invalid("block state properties must be strings"));
-        };
-        state.write_string(name.len(), name);
-        state.write_string(value.len(), value);
-    }
-    let mut custom_data = match blob.get("custom_data") {
-        Some(nbt::Value::Compound(data)) => data.clone(),
-        _ => Default::default(),
-    };
-    custom_data.insert("mchprs:top_slab".into(), nbt::Value::Byte(1));
-    let mut custom = Vec::new();
-    custom.write_nbt_blob(&nbt::Blob::with_content(custom_data.clone()));
-    patch_components(item_id, blob, &[(0, custom), (67, state)])?;
-    blob.insert("BlockStateTag", nbt::Value::Compound(properties))?;
-    blob.insert("custom_data", nbt::Value::Compound(custom_data))?;
-    Ok(())
-}
-
 /// Protocol boundary: preserve each validated component's bytes, replacing only
 /// explicitly supplied components. Prepare the complete patch before changing NBT.
 fn patch_components(
@@ -153,7 +122,7 @@ mod tool_component_tests {
     use super::*;
 
     #[test]
-    fn top_slab_preserves_existing_components_and_custom_data() {
+    fn tool_display_preserves_existing_components_and_custom_data() {
         let item_id = item_names()
             .iter()
             .position(|name| name == "oak_slab")
@@ -173,7 +142,6 @@ mod tool_component_tests {
         slot.write_bytes(&raw);
         let mut decoded = read_slot(&mut Cursor::new(slot)).unwrap().unwrap();
         let blob = decoded.nbt.as_mut().unwrap();
-        set_top_slab(item_id, blob).unwrap();
         set_tool_display(item_id, blob, "Top slab", "Test lore").unwrap();
         let mut bytes = Vec::new();
         write_slot(&mut bytes, &Some(decoded));
@@ -181,32 +149,16 @@ mod tool_component_tests {
         assert_eq!(restored.item_count, 8);
         assert_eq!(max_stack_size(&restored.nbt, 64), 16);
         let blob = restored.nbt.as_ref().unwrap();
-        assert!(
-            matches!(blob.get("custom_data"), Some(nbt::Value::Compound(data))
-            if data.get("owner") == Some(&nbt::Value::String("kitten".into()))
-                && data.get("mchprs:top_slab") == Some(&nbt::Value::Byte(1)))
-        );
-        assert!(
-            matches!(blob.get("BlockStateTag"), Some(nbt::Value::Compound(properties))
-            if properties.get("type") == Some(&nbt::Value::String("top".into())))
+        let Some(nbt::Value::Compound(data)) = blob.get("custom_data") else {
+            panic!("tool display must retain custom data");
+        };
+        assert_eq!(
+            data.get("owner"),
+            Some(&nbt::Value::String("kitten".into()))
         );
         let mut again = Vec::new();
         write_slot(&mut again, &Some(restored));
         assert_eq!(bytes, again);
-    }
-
-    #[test]
-    fn invalid_slab_properties_leave_components_unchanged() {
-        let mut blob = nbt::Blob::with_content(std::collections::HashMap::from([(
-            "BlockStateTag".into(),
-            nbt::Value::Compound(std::collections::HashMap::from([(
-                "waterlogged".into(),
-                nbt::Value::Int(42),
-            )])),
-        )]));
-        let before = blob.clone();
-        assert!(set_top_slab(1, &mut blob).is_err());
-        assert_eq!(blob, before);
     }
 }
 

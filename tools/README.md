@@ -58,6 +58,6 @@ Tick rewind coverage checks `/rhistory` default/custom capacity and memory repor
 The RedstoneTools runner uses localhost port 25589 and a temporary world. It
 checks command declarations and completion, cached block/sign searches,
 Unicode highlights and generated click actions, inventory preservation on
-invalid input/full inventory, top-slab components and placement, chest menus
+invalid input/full inventory, ordinary top-slab placement on top/bottom/side clicks, chest menus
 and contents across restart, diagonal stacking with undo/redo, and independent
 selection sidebars for two clients. Autowire is excluded from this port.

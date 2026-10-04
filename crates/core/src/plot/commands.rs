@@ -687,7 +687,7 @@ pub static DECLARE_COMMANDS: Lazy<PacketEncoder> = Lazy::new(|| {
                 children: &[
                     1, 4, 5, 6, 11, 12, 14, 16, 18, 19, 20, 21, 22, 23, 24, 26, 29, 31, 32, 34, 36,
                     47, 49, 53, 60, 61, 63, 65, 66, 67, 71, 73, 74, 75, 82, 83, 85, 88, 90, 91,
-                    101, 106, 111, 112, 113, 114, 115, 116, 117,
+                    101, 106, 111, 112, 113, 114, 115, 116,
                 ],
                 redirect_node: None,
                 name: None,
@@ -1714,16 +1714,7 @@ pub static DECLARE_COMMANDS: Lazy<PacketEncoder> = Lazy::new(|| {
                 parser: None,
                 suggestions_type: None,
             },
-            // 116: /slab
-            Node {
-                flags: (CommandFlags::LITERAL | CommandFlags::EXECUTABLE).bits() as i8,
-                children: &[110],
-                redirect_node: None,
-                name: Some("slab"),
-                parser: None,
-                suggestions_type: None,
-            },
-            // 117: /cursel
+            // 116: /cursel
             Node {
                 flags: (CommandFlags::LITERAL | CommandFlags::EXECUTABLE).bits() as i8,
                 children: &[110],

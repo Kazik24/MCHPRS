@@ -35,12 +35,11 @@ Claim a plot with /p auto.\n\
 This server supports subset of WorldEdit commands, check autofill with // to check what is available.\n
 ",
         "tools" | "redstonetools" | "find" | "signsearch" | "ss" | "rstack" | "rs"
-        | "container" | "slab" | "cursel" => "RedstoneTools, nya~\n\
+        | "container" | "cursel" => "RedstoneTools, nya~\n\
 //find <block> finds blocks in your selection.\n\
 //ss <regex> searches signs. Use -p <page> for more results.\n\
 //rs [direction] [count] [spacing] stacks copies. -e expands selection; -w includes air.\n\
 /container <type> <0..15> gives a comparator container.\n\
-/slab [type] gives a top slab or converts the held slab.\n\
 /cursel toggles your selection sidebar.",
         "schematics" | "schematic" | "load" | "save" => "Schematics\n\
 //load my_schematic.schem reads a schematic into your clipboard. \n\

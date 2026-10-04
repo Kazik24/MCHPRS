@@ -2,7 +2,7 @@ use super::*;
 use crate::plot::{PlotWorld, PLOT_WIDTH};
 use crate::redpiler::{Compiler, CompilerOptions};
 use crate::world::storage::Chunk;
-use mchprs_blocks::blocks::RedstoneRepeater;
+use mchprs_blocks::blocks::{Lever, RedstoneRepeater, RedstoneWire, SlabType};
 
 fn world() -> PlotWorld {
     let chunks = (0..PLOT_WIDTH)
@@ -181,5 +181,133 @@ fn new_sign_species_require_support_and_keep_block_entities() {
         world.set_block(pos.offset(BlockFace::Bottom), Block::Stone {});
         assert!(crate::interaction::is_valid_position(block, &world, pos));
         world.set_block(pos.offset(BlockFace::Bottom), Block::Air);
+    }
+}
+
+#[test]
+fn slab_tops_support_dust_without_conducting_to_the_lamp_below() {
+    let mut world = world();
+    let support = BlockPos::new(40, 30, 40);
+    let dust = support.offset(BlockFace::Top);
+    let lamp = support.offset(BlockFace::Bottom);
+    world.set_block(dust.offset(BlockFace::East), Block::RedstoneBlock {});
+    world.set_block(
+        dust,
+        Block::RedstoneWire {
+            wire: RedstoneWire {
+                power: 15,
+                ..Default::default()
+            },
+        },
+    );
+    world.set_block(lamp, Block::RedstoneLamp { lit: false });
+
+    for name in [
+        "smooth_stone_slab",
+        "quartz_slab",
+        "oak_slab",
+        "pale_oak_slab",
+        "cut_copper_slab",
+        "tuff_slab",
+    ] {
+        let slab = Block::from_name(name)
+            .unwrap()
+            .with_slab_type(SlabType::Top)
+            .unwrap();
+        world.set_block(support, slab);
+        assert!(
+            crate::interaction::is_valid_position(world.get_block(dust), &world, dust),
+            "{name}"
+        );
+        assert_eq!(
+            get_redstone_power(slab, &world, support, BlockFace::Bottom),
+            0,
+            "{name}"
+        );
+        assert!(!redstone_lamp_should_be_lit(&world, lamp), "{name}");
+    }
+    for name in ["iron_block", "dirt", "netherite_block"] {
+        let block = Block::from_name(name).unwrap();
+        world.set_block(support, block);
+        assert_eq!(
+            get_redstone_power(block, &world, support, BlockFace::Bottom),
+            15,
+            "{name}"
+        );
+        assert!(redstone_lamp_should_be_lit(&world, lamp), "{name}");
+    }
+}
+
+#[test]
+fn dust_steps_over_opaque_blocks_and_powers_the_block_below_in_both_backends() {
+    for name in ["iron_block", "stone", "dirt", "netherite_block"] {
+        for backend in ["interpreted", "", "-O", "-O -io"] {
+            let mut world = world();
+            let step = BlockPos::new(40, 30, 40);
+            let high_dust = step.offset(BlockFace::Top);
+            let low_dust = step.offset(BlockFace::West);
+            let support = low_dust.offset(BlockFace::Bottom);
+            let lamp = support.offset(BlockFace::Bottom);
+            let source = high_dust.offset(BlockFace::East);
+            world.set_block(step, Block::from_name(name).unwrap());
+            world.set_block(
+                source,
+                Block::Lever {
+                    lever: Lever::new(LeverFace::Floor, BlockDirection::North, false),
+                },
+            );
+            world.set_block(
+                high_dust,
+                Block::RedstoneWire {
+                    wire: RedstoneWire::default(),
+                },
+            );
+            world.set_block(
+                low_dust,
+                Block::RedstoneWire {
+                    wire: RedstoneWire::default(),
+                },
+            );
+            world.set_block(support, Block::from_name(name).unwrap());
+            world.set_block(lamp, Block::RedstoneLamp { lit: false });
+
+            if backend == "interpreted" {
+                world.set_block(
+                    source,
+                    Block::Lever {
+                        lever: Lever::new(LeverFace::Floor, BlockDirection::North, true),
+                    },
+                );
+                update_surrounding_blocks(&mut world, source);
+                for _ in 0..4 {
+                    world.tick_interpreted();
+                }
+            } else {
+                let mut compiler = Compiler::default();
+                compiler.compile(
+                    &world,
+                    world.get_corners(),
+                    CompilerOptions::parse(backend),
+                    Vec::new(),
+                    Default::default(),
+                );
+                compiler.on_use_block(source);
+                for _ in 0..4 {
+                    compiler.tick();
+                }
+                compiler.flush(&mut world);
+            }
+            if backend == "interpreted" || backend.is_empty() {
+                assert!(
+                    matches!(world.get_block(low_dust), Block::RedstoneWire { wire } if wire.power == 14),
+                    "{name}: {backend}"
+                );
+            }
+            assert_eq!(
+                world.get_block(lamp),
+                Block::RedstoneLamp { lit: true },
+                "{name}: {backend}"
+            );
+        }
     }
 }

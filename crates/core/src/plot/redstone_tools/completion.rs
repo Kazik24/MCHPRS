@@ -31,11 +31,6 @@ impl Plot {
                 .map(|power| power.to_string())
                 .chain(["a", "b", "c", "d", "e", "f"].map(str::to_owned))
                 .collect(),
-            ToolCommand::Slab => mchprs_blocks::generated::BLOCKS
-                .iter()
-                .filter(|definition| definition.0.ends_with("_slab"))
-                .map(|definition| definition.0.to_owned())
-                .collect(),
             ToolCommand::RStack => [
                 "me", "north", "south", "east", "west", "up", "down", "ne", "nw", "se", "sw",
                 "neu", "ned", "forward", "back", "left", "right", "-e", "-w", "-a",

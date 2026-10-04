@@ -1,8 +1,9 @@
 # RedstoneTools command adaptation plan
 
 This document records the RedstoneToolsRF comparison and the native Rust port.
-The six command families below are implemented. Autowire was removed from scope
-at the user's request. The original comparison and implementation sequence are
+The five command families below are implemented. Autowire and the redundant
+`/slab` command were removed at the user's request. Slab placement is now a
+server-wide rule. The original comparison and implementation sequence are
 retained below for context.
 
 The reference is RedstoneToolsRF commit
@@ -28,10 +29,16 @@ The original MCHPRS comparison was based on commit `507e058`.
   before writing. Overlap uses one source snapshot, including with air; this
   preserves MCHPRS copying semantics rather than claiming full WorldEdit parity.
   Limits are 4,096 copies and 16,777,216 copied blocks.
-- Container and slab commands insert into an empty slot. Omitted slab type
-  converts a held slab while preserving its count and unrelated components.
-  Special top slabs can place beneath an existing top slab when the lower cell
-  is air and inside the plot.
+- Container commands insert into an empty slot.
+- Every slab item places as a top slab, without a command or special item
+  components. Face offsets follow normal placement; top clicks place above,
+  bottom clicks below, and side clicks beside the clicked block. Saved items
+  also follow this rule. Existing world and schematic slab states are preserved.
+- All slab materials share the same redstone and support rules: single slabs
+  are transparent and do not conduct; top slabs support dust, bottom slabs do
+  not, and double slabs conduct. A generated state-ID lookup supplies this
+  classification; simulation never searches slab names. Opaque simple blocks,
+  including dirt and netherite, no longer use a transparent-block flag.
 - Containers accept chest/barrel/hopper/furnace, unambiguous prefixes, decimal
   powers 0–15, and lowercase `a`–`f`. `SignalStrength` validates powers before
   item construction. Names, lore, glint, block state and container contents use
@@ -44,7 +51,7 @@ The original MCHPRS comparison was based on commit `507e058`.
   uses one stable objective, and updates when selection lines change. Hiding it
   restores Redpiler status without clearing search caches.
 - `/help tools` and `//help <tool>` show concise usage. Commands and aliases are
-  declared to clients, with server completion for masks, pages, slab IDs,
+  declared to clients, with server completion for masks, pages,
   container names/powers and stacking directions/flags.
 
 Trusted result actions use the `click_event` and `hover_event` forms required by
@@ -60,10 +67,10 @@ existing filtering policy. Feedback uses deterministic furry wording.
 | `//find <mask>` | Search the selection and display matching block locations. `-p <page>` retrieves saved results. | Implemented mask subset and cached pages. |
 | `//signsearch <regex>`, `//ss` | Search sign lines and display highlighted matches. `-p <page>` retrieves saved results. | Implemented on both sign sides. |
 | `/container <type> <power>` | Give a container filled to produce the requested comparator signal. | Implemented; see compatibility limits above. |
-| `/slab [type]` | Give a special top slab, or convert the held slab when no type is supplied. | Implemented with inventory preservation. |
 | `/cursel` | Toggle the selection sidebar showing dimensions and volume. | Implemented as an individual sidebar mode. |
 
-The reference registers seven command families; six remain in this port.
+The reference registers seven command families; five commands remain in this
+port. Slab behavior is built into placement instead of a separate command.
 `/cursel` is absent from the
 README's command list. Its implementation is in
 [WorldEditHelper.kt](https://github.com/Lord225/RedstoneToolsRF/blob/3bcb69f3d6018f875f01cf20f3eda81550ff0dba/src/main/kotlin/WorldEditHelper.kt).
@@ -174,13 +181,11 @@ a smooth-stone slab. A separate listener attempts placement beneath an existing
 top slab when the replacement would otherwise remain a top slab.
 [Slab.kt](https://github.com/Lord225/RedstoneToolsRF/blob/3bcb69f3d6018f875f01cf20f3eda81550ff0dba/src/main/kotlin/Slab.kt)
 
-Proposed implementation: validate slab IDs through generated registry data,
-encode the top property using the item component machinery, and test placement
-for modeled and generic slab states. MCHPRS reads `BlockStateTag` during
-placement, but that alone does not prove correct slab merging or placement
-beneath existing slabs. Treat the special placement behavior as a separate
-tested step. Define inventory handling explicitly instead of silently discarding
-an occupied slot or a stack's remaining items.
+Adaptation: omit the command and special-item listener. All slab items place
+on top through the shared placement path, including newer registry materials
+and items saved with earlier components. Keep placed and imported world states
+unchanged. Typed `SlabType` values and generated state-ID classification own
+slab redstone/support behavior.
 
 ### Selection display
 
@@ -203,7 +208,8 @@ instances; use one owner here.
 2. Add `//find` with a documented mask subset, bounded results, and pagination.
 3. Add `//signsearch` and `//ss`, reusing the pagination and tested text extraction.
 4. Bring `//rstack` syntax into compatibility while retaining current aliases.
-5. Add `/slab` item creation, then its separately tested placement behavior.
+5. Force top placement for every slab item and use state-ID slab classification
+   for redstone and support checks.
 6. Improve `/container` input and inventory handling; implement chest support
    as its own feature with persistence checks.
 7. Add `/cursel` without disrupting the Redpiler sidebar.

@@ -626,7 +626,7 @@ pub fn use_item_on_block(
 ) -> bool {
     let use_pos = ctx.block_pos;
     let use_block = world.get_block(use_pos);
-    let block_pos = placement_position(item, world, ctx.block_pos, ctx.block_face);
+    let block_pos = ctx.block_pos.offset(ctx.block_face);
     let mut top_pos = ctx.player.pos.block_pos();
     top_pos.y += 1;
     if (block_pos == ctx.player.pos.block_pos() || block_pos == top_pos) && !CONFIG.block_in_hitbox
@@ -648,23 +648,8 @@ pub fn use_item_on_block(
     }
 
     if can_place && world.contains_position(block_pos) {
-        let mut block = get_state_for_placement(world, block_pos, item.item_type, &ctx);
-        if let Some(nbt::Value::Compound(props)) =
-            item.nbt.as_ref().and_then(|n| n.get("BlockStateTag"))
-        {
-            block.set_properties(
-                props
-                    .iter()
-                    .filter_map(|(k, v)| {
-                        if let nbt::Value::String(s) = v {
-                            Some((k.as_str(), s.as_str()))
-                        } else {
-                            None
-                        }
-                    })
-                    .collect(),
-            );
-        }
+        let block = get_state_for_placement(world, block_pos, item.item_type, &ctx);
+        let block = apply_item_properties(block, &item.nbt);
 
         match block {
             block if block.is_sign() => {
@@ -690,80 +675,66 @@ pub fn use_item_on_block(
     }
 }
 
-fn placement_position(
-    item: &ItemStack,
-    world: &PlotWorld,
-    clicked: BlockPos,
-    face: BlockFace,
-) -> BlockPos {
-    let special = item.nbt.as_ref()
-        .and_then(|blob| blob.get("custom_data"))
-        .is_some_and(|value| matches!(value,
-            nbt::Value::Compound(data) if data.get("mchprs:top_slab") == Some(&nbt::Value::Byte(1))
-        ));
-    let clicked_block = world.get_block(clicked);
-    let below = clicked.offset(BlockFace::Bottom);
-    if special
-        && item.item_type.get_name().ends_with("_slab")
-        && clicked_block.get_name().ends_with("_slab")
-        && clicked_block.property("type") == Some("top")
-        && world.contains_position(below)
-        && world.get_block(below) == (Block::Air {})
+fn apply_item_properties(mut block: Block, nbt: &Option<nbt::Blob>) -> Block {
+    if let Some(nbt::Value::Compound(properties)) =
+        nbt.as_ref().and_then(|blob| blob.get("BlockStateTag"))
     {
-        return below;
+        block.set_properties(
+            properties
+                .iter()
+                .filter_map(|(name, value)| {
+                    if let nbt::Value::String(value) = value {
+                        Some((name.as_str(), value.as_str()))
+                    } else {
+                        None
+                    }
+                })
+                .collect(),
+        );
     }
-    clicked.offset(face)
+
+    // Slab items always place on top, including items saved with older components.
+    block.with_slab_type(SlabType::Top).unwrap_or(block)
 }
 
 #[cfg(test)]
-mod tool_placement_tests {
+mod slab_placement_tests {
     use super::*;
-    use mchprs_network::packets::components;
 
     #[test]
-    fn special_slabs_choose_air_beneath_a_top_slab_within_bounds() {
-        let mut world = PlotWorld::from_chunks(
-            0,
-            0,
-            vec![crate::world::storage::Chunk::empty(0, 0)],
-            Default::default(),
-        );
-        let clicked = BlockPos::new(4, 30, 4);
-        for name in ["smooth_stone_slab", "oak_slab"] {
-            let item_type = Item::from_name(name).unwrap();
-            let mut tag = nbt::Blob::new();
-            components::set_top_slab(item_type.get_id() as i32, &mut tag).unwrap();
-            let item = ItemStack {
-                item_type,
-                count: 16,
-                nbt: Some(tag),
-            };
-            let definition = mchprs_blocks::generated::BLOCKS
-                .iter()
-                .find(|block| block.0 == name)
-                .unwrap();
-            let top = (definition.2..=definition.3)
-                .map(Block::from_id)
-                .find(|block| block.property("type") == Some("top"))
-                .unwrap();
-            let below = clicked.offset(BlockFace::Bottom);
-            world.set_block(clicked, top);
-            world.set_block(below, Block::Air {});
-            assert_eq!(
-                placement_position(&item, &world, clicked, BlockFace::Top),
-                below
-            );
-            world.set_block(below, Block::Stone {});
-            assert_eq!(
-                placement_position(&item, &world, clicked, BlockFace::Top),
-                clicked.offset(BlockFace::Top)
-            );
-            let floor = BlockPos::new(4, 0, 4);
-            world.set_block(floor, top);
-            assert_eq!(
-                placement_position(&item, &world, floor, BlockFace::Top),
-                floor.offset(BlockFace::Top)
-            );
+    fn every_slab_item_places_on_top_without_special_components() {
+        for &(name, _, _, _, _) in mchprs_blocks::generated::BLOCKS {
+            let block = Block::from_name(name).unwrap();
+            if block.slab_type().is_none() {
+                continue;
+            }
+            assert!(Item::from_name(name).unwrap().is_block());
+            let placed = apply_item_properties(block, &None);
+            assert_eq!(placed.slab_type(), Some(SlabType::Top), "{name}");
+            assert_eq!(placed.get_name(), name);
+            assert!(!placed.is_solid(), "{name} must not conduct redstone");
+            assert!(placed.is_transparent(), "{name}");
         }
+    }
+
+    #[test]
+    fn saved_slab_properties_cannot_override_top_placement() {
+        let nbt = Some(nbt::Blob::with_content(std::collections::HashMap::from([
+            (
+                "BlockStateTag".into(),
+                nbt::Value::Compound(std::collections::HashMap::from([
+                    ("type".into(), nbt::Value::String("bottom".into())),
+                    ("waterlogged".into(), nbt::Value::String("true".into())),
+                ])),
+            ),
+        ])));
+        let block = Block::from_name("oak_slab").unwrap();
+        let placed = apply_item_properties(block, &nbt);
+        assert_eq!(placed.slab_type(), Some(SlabType::Top));
+        assert_eq!(placed.property("waterlogged"), Some("true"));
+        assert_eq!(
+            apply_item_properties(Block::Stone {}, &None),
+            Block::Stone {}
+        );
     }
 }

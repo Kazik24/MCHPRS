@@ -200,14 +200,14 @@ async function creative(c, slot, item) {
   c.write("set_creative_slot", { slot, item });
   await until(() => c.slotCount > previous, "creative inventory echo");
 }
-async function use(c, x, y, z = 130) {
+async function use(c, x, y, z = 130, { face = 1, cursorY = 1 } = {}) {
   const seq = sequence++;
   c.write("block_place", {
     hand: 0,
     location: { x, y, z },
-    direction: 1,
+    direction: face,
     cursorX: 0.5,
-    cursorY: 1,
+    cursorY,
     cursorZ: 0.5,
     insideBlock: false,
     worldBorderHit: false,
@@ -291,7 +291,6 @@ function component(slot, name) {
     "/ss",
     "/rstack",
     "/rs",
-    "slab",
     "container",
     "cursel",
   ]) {
@@ -301,6 +300,8 @@ function component(slot, name) {
     !names.includes("autowire") && !names.includes("aw"),
     "autowire removed",
   );
+
+  assert(!names.includes("slab"), "redundant slab command removed");
 
   if (restart) {
     assert.equal(
@@ -312,11 +313,13 @@ function component(slot, name) {
     assert.equal(
       a.inventory.get(36).itemCount,
       32,
-      "converted slab count survives restart",
+      "ordinary slab count survives restart",
     );
-    assert(
-      component(a.inventory.get(36), "block_state"),
-      "top slab state survives restart",
+    move(a, 142, y, 136);
+    await place(a, 144, y, 136);
+    await until(
+      () => props(a, 144, y, 136).type === "top",
+      "ordinary slab still places on top after restart",
     );
     assert(
       component(a.inventory.get(36), "unbreakable"),
@@ -392,11 +395,6 @@ function component(slot, name) {
         (match) => match.match === "f",
       ),
     );
-    assert(
-      (await complete(a, "/slab oak")).matches.some(
-        (match) => match.match === "oak_slab",
-      ),
-    );
     await cmd(a, "/find repeater[facing=north]", "8 matches");
     await cmd(a, "/find diamond_block", "No matches");
     await cmd(a, "/find -p 1", "No matches");
@@ -455,7 +453,6 @@ function component(slot, name) {
     const inventoryBefore = JSON.stringify([...a.inventory]);
     await cmd(a, "container unknown 1", "Unknown container type");
     await cmd(a, "container chest 16", "Power must be between");
-    await cmd(a, "slab nonexistent", "Unknown slab type");
     assert.equal(
       JSON.stringify([...a.inventory]),
       inventoryBefore,
@@ -467,10 +464,8 @@ function component(slot, name) {
       36,
       item("oak_slab", 32, [{ type: "unbreakable", data: Buffer.alloc(0) }]),
     );
-    await cmd(a, "slab", "Your item is ready");
-    const savedSlab = a.inventory.get(36);
-    assert.equal(savedSlab.itemCount, 32);
-    assert(component(savedSlab, "unbreakable"));
+    assert.equal(a.inventory.get(36).itemCount, 32);
+    assert(component(a.inventory.get(36), "unbreakable"));
     move(a, 142, y, 130);
     await place(a, 144, y, 130);
     await until(() => props(a, 144, y).type === "top", "top slab placed");
@@ -478,9 +473,36 @@ function component(slot, name) {
     move(a, 142, y, 130);
     await use(a, 144, y);
     await until(
-      () => props(a, 144, y - 1).type === "top",
-      "special slab places below existing top",
+      () => props(a, 144, y + 1).type === "top",
+      "top click places above existing slab",
     );
+    assert.equal(state(a, 144, y - 1), 0, "top click leaves lower cell empty");
+    await use(a, 144, y, 130, { face: 0, cursorY: 0.5 });
+    await until(
+      () => props(a, 144, y - 1).type === "top",
+      "bottom click places top slab beneath existing slab",
+    );
+    await use(a, 144, y, 130, { face: 5, cursorY: 0.25 });
+    await until(
+      () => props(a, 145, y).type === "top",
+      "lower side click still places on top",
+    );
+
+    for (const [index, name] of [
+      "smooth_stone_slab",
+      "quartz_slab",
+      "pale_oak_slab",
+      "cut_copper_slab",
+      "tuff_slab",
+    ].entries()) {
+      await creative(a, 36, item(name));
+      move(a, 142, y, 134);
+      await place(a, 144 + index, y, 134);
+      await until(
+        () => props(a, 144 + index, y, 134).type === "top",
+        name + " places on top without components",
+      );
+    }
 
     await creative(a, 36, { itemCount: 0 });
     await cmd(a, "container c f", "Your item is ready");
@@ -507,7 +529,6 @@ function component(slot, name) {
     }
     const fullInventory = JSON.stringify([...a.inventory]);
     await cmd(a, "container chest 1", "inventory is full");
-    await cmd(a, "slab oak", "inventory is full");
     assert.equal(
       JSON.stringify([...a.inventory]),
       fullInventory,
@@ -519,7 +540,6 @@ function component(slot, name) {
       36,
       item("oak_slab", 32, [{ type: "unbreakable", data: Buffer.alloc(0) }]),
     );
-    await cmd(a, "slab", "Your item is ready");
     await creative(a, 37, { itemCount: 0 });
     await cmd(a, "container chest f", "Your item is ready");
 

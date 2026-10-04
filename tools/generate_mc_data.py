@@ -46,6 +46,14 @@ state_blocks = [index for index, block in enumerate(load("blocks"))
                 for _ in range(block["minStateId"], block["maxStateId"] + 1)]
 assert len(state_blocks) == len(new) and max(state_blocks) <= 65535
 text += array("STATE_TO_BLOCK_INDEX", state_blocks, "u16")
+# Slab classification is resolved here, never by name in the simulation loop.
+# Codes: 0 = other block, 1 = top, 2 = bottom, 3 = double.
+slab_codes = {"top": 1, "bottom": 2, "double": 3}
+slab_types = [
+    slab_codes[dict(properties)["type"]] if name.endswith("_slab") else 0
+    for _, name, properties in new
+]
+text += array("STATE_SLAB_TYPES", slab_types, "u8")
 text += "#[rustfmt::skip]\npub static BLOCKS: &[(&str,u32,u32,u32,u32)] = &[\n" + "\n".join(f'    ("{b["name"]}",{b["id"]},{b["minStateId"]},{b["maxStateId"]},{b["defaultState"]}),' for b in load("blocks")) + "\n];\n"
 text += "#[rustfmt::skip]\npub static STATE_PROPERTIES: &[&[(&str,&str)]] = &[\n" + "\n".join("    &[" + ",".join(f'(\"{k}\",\"{v}\")' for k,v in props) + "]," for _,_,props in new) + "\n];\n"
 old_items = load("legacy_items")

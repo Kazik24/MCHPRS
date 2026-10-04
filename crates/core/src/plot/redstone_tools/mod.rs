@@ -29,7 +29,6 @@ enum ToolCommand {
     SignSearch,
     RStack,
     Container,
-    Slab,
     CurrentSelection,
 }
 
@@ -40,7 +39,6 @@ impl ToolCommand {
             "//signsearch" | "//ss" => Some(Self::SignSearch),
             "//rstack" | "//rs" => Some(Self::RStack),
             "/container" => Some(Self::Container),
-            "/slab" => Some(Self::Slab),
             "/cursel" => Some(Self::CurrentSelection),
             _ => None,
         }
@@ -52,7 +50,6 @@ impl ToolCommand {
             Self::SignSearch => "redstonetools.signsearch",
             Self::RStack => "redstonetools.rstack",
             Self::Container => "redstonetools.container",
-            Self::Slab => "redstonetools.slab",
             Self::CurrentSelection => "redstonetools.cursel",
         }
     }
@@ -202,7 +199,6 @@ impl Plot {
             ToolCommand::SignSearch => self.search_signs(player, args),
             ToolCommand::RStack => self.redstone_stack(player, args),
             ToolCommand::Container => items::give_container(&mut self.players[player], args),
-            ToolCommand::Slab => items::give_slab(&mut self.players[player], args),
             ToolCommand::CurrentSelection => selection::toggle(&mut self.players[player], args),
         }
     }

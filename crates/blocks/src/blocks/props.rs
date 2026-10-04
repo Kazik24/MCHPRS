@@ -4,6 +4,36 @@ use super::{Block, BlockDirection, BlockProperty, BlockTransform, FlipDirection}
 use std::collections::HashMap;
 use std::str::FromStr;
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum SlabType {
+    Top,
+    Bottom,
+    Double,
+}
+
+impl SlabType {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Top => "top",
+            Self::Bottom => "bottom",
+            Self::Double => "double",
+        }
+    }
+}
+
+impl FromStr for SlabType {
+    type Err = ();
+
+    fn from_str(token: &str) -> Result<Self, Self::Err> {
+        match token {
+            "top" => Ok(Self::Top),
+            "bottom" => Ok(Self::Bottom),
+            "double" => Ok(Self::Double),
+            _ => Err(()),
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum ChestType {
     #[default]

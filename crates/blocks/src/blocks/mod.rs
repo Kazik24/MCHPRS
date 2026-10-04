@@ -130,6 +130,32 @@ impl Block {
         name.ends_with("_sign") && !name.ends_with("_hanging_sign")
     }
 
+    #[inline]
+    pub fn slab_type(self) -> Option<SlabType> {
+        match self {
+            Self::SmoothStoneSlab {} | Self::QuartzSlab {} => Some(SlabType::Top),
+            Self::Unknown { id } => match crate::generated::STATE_SLAB_TYPES.get(id as usize)? {
+                1 => Some(SlabType::Top),
+                2 => Some(SlabType::Bottom),
+                3 => Some(SlabType::Double),
+                _ => None,
+            },
+            _ => None,
+        }
+    }
+
+    pub fn with_slab_type(self, slab_type: SlabType) -> Option<Self> {
+        self.slab_type()?;
+        let definition = self.definition()?;
+        let waterlogged = self.property("waterlogged");
+        let state = (definition.2..=definition.3).find(|&state| {
+            let block = Self::from_id(state);
+            block.property("type") == Some(slab_type.as_str())
+                && block.property("waterlogged") == waterlogged
+        })?;
+        Some(Self::from_id(state))
+    }
+
     /// Binary plates supported by this creative server; weighted plates use power instead.
     pub fn pressure_plate_powered(self) -> Option<bool> {
         match self {
@@ -230,6 +256,65 @@ impl Block {
             | 8143..=8144 // Tall Grass
             | 8145..=8146 // Tall Fern
         )
+    }
+}
+
+#[test]
+fn slab_geometry_and_redstone_flags_cover_every_registry_state() {
+    for &(name, _, first, last, _) in crate::generated::BLOCKS {
+        if !name.ends_with("_slab") {
+            continue;
+        }
+        for id in first..=last {
+            let block = Block::from_id(id);
+            let slab_type = block.property("type").unwrap().parse::<SlabType>().unwrap();
+            assert_eq!(block.slab_type(), Some(slab_type), "{name}: {id}");
+            assert_eq!(
+                block.is_solid(),
+                slab_type == SlabType::Double,
+                "{name}: {id}"
+            );
+            assert_eq!(
+                block.is_transparent(),
+                slab_type != SlabType::Double,
+                "{name}: {id}"
+            );
+            assert_eq!(
+                block.is_cube(),
+                slab_type != SlabType::Bottom,
+                "{name}: {id}"
+            );
+
+            let top = block.with_slab_type(SlabType::Top).unwrap();
+            assert_eq!(top.slab_type(), Some(SlabType::Top), "{name}: {id}");
+            assert_eq!(top.property("waterlogged"), block.property("waterlogged"));
+        }
+    }
+    assert_eq!(Block::Stone {}.slab_type(), None);
+    assert!(Block::Stone {}.with_slab_type(SlabType::Top).is_none());
+}
+
+#[test]
+fn opaque_simple_blocks_have_the_same_flags_as_iron() {
+    for name in [
+        "stone",
+        "dirt",
+        "coarse_dirt",
+        "netherite_block",
+        "diamond_block",
+        "copper_block",
+    ] {
+        let block = Block::from_name(name).unwrap();
+        assert_eq!(block.is_solid(), Block::IronBlock {}.is_solid(), "{name}");
+        assert_eq!(
+            block.is_transparent(),
+            Block::IronBlock {}.is_transparent(),
+            "{name}"
+        );
+        assert_eq!(block.is_cube(), Block::IronBlock {}.is_cube(), "{name}");
+    }
+    for name in ["glass", "ice", "brick_wall", "pointed_dripstone"] {
+        assert!(Block::from_name(name).unwrap().is_transparent(), "{name}");
     }
 }
 
@@ -366,9 +451,19 @@ fn hopper_furnace_and_cake_states_match_registry_properties() {
 }
 
 macro_rules! blocks {
+    (@transparent) => {
+        false
+    };
+    (@transparent $transparent:literal) => {
+        $transparent
+    };
     (
         $(
-            #simple $simple_name:ident($simple_d:expr, $simple_t:expr)
+            #simple $simple_name:ident(
+                $simple_d:expr,
+                $simple_t:expr
+                $(, transparent: $simple_transparent:literal)?
+            )
         ),*
         $(,)?
         $(
@@ -422,7 +517,11 @@ macro_rules! blocks {
 
         #[allow(clippy::redundant_field_names)]
         impl Block {
+            #[inline]
             pub fn is_solid(self) -> bool {
+                if let Some(slab_type) = self.slab_type() {
+                    return slab_type == SlabType::Double;
+                }
                 if self.is_command_block() { return true; }
                 match self {
                     $(
@@ -435,10 +534,14 @@ macro_rules! blocks {
                 }
             }
 
+            #[inline]
             pub fn is_transparent(self) -> bool {
+                if let Some(slab_type) = self.slab_type() {
+                    return slab_type != SlabType::Double;
+                }
                 match self {
                     $(
-                        Block::$simple_name {} => true,
+                        Block::$simple_name {} => blocks!(@transparent $( $simple_transparent)?),
                     )*
                     $(
                         $( Block::$name { .. } => $transparent, )?
@@ -447,7 +550,11 @@ macro_rules! blocks {
                 }
             }
 
+            #[inline]
             pub fn is_cube(self) -> bool {
+                if let Some(slab_type) = self.slab_type() {
+                    return slab_type != SlabType::Bottom;
+                }
                 if self.is_command_block() { return true; }
                 match self {
                     $(
@@ -708,7 +815,7 @@ blocks! {
     #simple BlockofDiamond(3412, "diamond_block"),
     #simple RedstoneOre(3953, "redstone_ore"),
     #simple DeepslateRedstoneOre(3955, "deepslate_redstone_ore"),
-    #simple Ice(3998, "ice"),
+    #simple Ice(3998, "ice", transparent: true),
     #simple Netherrack(4068, "netherrack"),
     #simple Basalt(4072, "basalt"),
     #simple PolishedBasalt(4075, "polished_basalt"),
@@ -726,18 +833,18 @@ blocks! {
     #simple PurpurBlock(9384, "purpur_block"),
     #simple PurpurPillar(9386, "purpur_pillar"),
     #simple RedNetherBricks(9505, "red_nether_bricks"),
-    #simple BrickWall(11120, "brick_wall"),
-    #simple PrismarineWall(11444, "prismarine_wall"),
-    #simple RedSandstoneWall(11768, "red_sandstone_wall"),
-    #simple MossyStoneBrickWall(12092, "mossy_stone_brick_wall"),
-    #simple GraniteWall(12416, "granite_wall"),
-    #simple StoneBrickWall(12740, "stone_brick_wall"),
-    #simple NetherBrickWall(13064, "nether_brick_wall"),
-    #simple AndesiteWall(13388, "andesite_wall"),
-    #simple RedNetherBrickWall(13712, "red_nether_brick_wall"),
-    #simple SandstoneWall(14036, "sandstone_wall"),
-    #simple EndStoneBrickWall(14360, "end_stone_brick_wall"),
-    #simple DioriteWall(14684, "diorite_wall"),
+    #simple BrickWall(11120, "brick_wall", transparent: true),
+    #simple PrismarineWall(11444, "prismarine_wall", transparent: true),
+    #simple RedSandstoneWall(11768, "red_sandstone_wall", transparent: true),
+    #simple MossyStoneBrickWall(12092, "mossy_stone_brick_wall", transparent: true),
+    #simple GraniteWall(12416, "granite_wall", transparent: true),
+    #simple StoneBrickWall(12740, "stone_brick_wall", transparent: true),
+    #simple NetherBrickWall(13064, "nether_brick_wall", transparent: true),
+    #simple AndesiteWall(13388, "andesite_wall", transparent: true),
+    #simple RedNetherBrickWall(13712, "red_nether_brick_wall", transparent: true),
+    #simple SandstoneWall(14036, "sandstone_wall", transparent: true),
+    #simple EndStoneBrickWall(14360, "end_stone_brick_wall", transparent: true),
+    #simple DioriteWall(14684, "diorite_wall", transparent: true),
     #simple BlockofNetherite(16080, "netherite_block"),
     #simple AncientDebris(16081, "ancient_debris"),
     #simple CryingObsidian(16082, "crying_obsidian"),
@@ -761,7 +868,7 @@ blocks! {
     #simple WaxedOxidizedCutCopper(18172, "waxed_oxidized_cut_copper"),
     #simple WaxedWeatheredCutCopper(18173, "waxed_weathered_cut_copper"),
     #simple WaxedExposedCutCopper(18174, "waxed_exposed_cut_copper"),
-    #simple PointedDripstone(18549, "pointed_dripstone"),
+    #simple PointedDripstone(18549, "pointed_dripstone", transparent: true),
     #simple DripstoneBlock(18564, "dripstone_block"),
     #simple Deepslate(18684, "deepslate"),
     #simple CobbledDeepslate(18686, "cobbled_deepslate"),
