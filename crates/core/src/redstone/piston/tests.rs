@@ -215,9 +215,11 @@ fn movement_progress_advances_before_completion() {
     world.tick_interpreted();
     let head = pos.offset(BlockFace::East);
     println!("PROGRESS entity={:?}", world.get_block_entity(head));
-    assert!(
-        matches!(world.get_block_entity(head), Some(BlockEntity::MovingPiston(e)) if e.get_progress() > 0.0)
-    );
+    assert!(world
+        .piston_state()
+        .motions
+        .iter()
+        .any(|m| m.pos == head && m.progress == 0.5));
 }
 
 #[test]
@@ -616,5 +618,97 @@ fn game_nano_and_pico_steps_share_event_and_movement_order() {
             };
             assert_eq!(snapshot(&worlds[mode]), snapshot(&worlds[0]));
         }
+    }
+}
+
+#[test]
+fn chunk_nbt_uses_previous_progress_like_java() {
+    let mut world = empty_world();
+    let head = base().offset(BlockFace::East);
+    start(&mut world, base(), BlockFacing::East, Block::Stone {});
+    for previous in [0.0, 0.5] {
+        world.tick_interpreted();
+        let nbt = world.get_block_entity(head).unwrap().to_nbt(false).unwrap();
+        assert!(matches!(nbt.get("progress"),Some(nbt::Value::Float(p)) if *p==previous));
+    }
+}
+
+#[test]
+fn removing_vertical_base_updates_support_at_removed_head() {
+    let mut world = empty_world();
+    start(&mut world, base(), BlockFacing::Up, Block::Air);
+    settle(&mut world);
+    let torch = base().offset(BlockFace::Top).offset(BlockFace::Top);
+    world.set_block(torch, Block::RedstoneTorch { lit: true });
+    assert!(crate::interaction::is_valid_position(
+        world.get_block(torch),
+        &world,
+        torch
+    ));
+    crate::interaction::destroy(world.get_block(base()), &mut world, base());
+    assert_eq!(world.get_block(torch), Block::Air);
+}
+
+#[test]
+fn moved_observer_preserves_valid_pending_tick_at_destination() {
+    let mut world = empty_world();
+    let head = base().offset(BlockFace::East);
+    let destination = head.offset(BlockFace::East);
+    world.set_block(destination, world_observer());
+    world.schedule_half_tick(destination, 6, mchprs_world::TickPriority::Normal);
+    start(&mut world, base(), BlockFacing::East, world_observer());
+    for _ in 0..3 {
+        world.tick_interpreted();
+    }
+    assert!(matches!(world.get_block(destination),Block::Observer {observer} if observer.powered));
+    for _ in 0..3 {
+        world.tick_interpreted();
+    }
+    assert!(matches!(world.get_block(destination),Block::Observer {observer} if !observer.powered));
+}
+
+#[test]
+fn completion_runs_once_and_repeated_stale_work_preserves_payload() {
+    let mut world = empty_world();
+    let destination = base().offset(BlockFace::East).offset(BlockFace::East);
+    start(&mut world, base(), BlockFacing::East, Block::Stone {});
+    let identity = world
+        .piston_state()
+        .motions
+        .iter()
+        .find(|m| m.pos == destination)
+        .unwrap()
+        .identity;
+    settle(&mut world);
+    for _ in 0..3 {
+        super::tick_motion(&mut world, destination, identity);
+    }
+    assert_eq!(world.get_block(destination), Block::Stone {});
+    assert!(world.get_block_entity(destination).is_none());
+}
+
+#[test]
+fn replacing_retracting_base_does_not_resurrect_it() {
+    let mut world = empty_world();
+    start(&mut world, base(), BlockFacing::East, Block::Stone {});
+    settle(&mut world);
+    world.set_block(base().offset(BlockFace::Bottom), Block::Air);
+    crate::redstone::update(world.get_block(base()), &mut world, base(), None);
+    world.picotick_advance(1);
+    world.set_block(base(), Block::GoldBlock {});
+    settle(&mut world);
+    assert_eq!(world.get_block(base()), Block::GoldBlock {});
+}
+
+#[test]
+fn malformed_moving_progress_is_rejected() {
+    let entity = BlockEntity::MovingPiston(MovingPistonEntity {
+        block_state: Block::Stone {}.get_id(),
+        ..Default::default()
+    });
+    for progress in [f32::NAN, f32::INFINITY, -0.1, 1.1] {
+        let mut nbt = entity.to_nbt(false).unwrap();
+        nbt.insert("progress", nbt::Value::Float(progress)).unwrap();
+        assert!(BlockEntity::from_nbt(&nbt.content).is_err());
     }
 }

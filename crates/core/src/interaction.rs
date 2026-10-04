@@ -337,7 +337,7 @@ pub fn place_in_world(
 }
 
 pub fn destroy(block: Block, world: &mut impl World, pos: BlockPos) {
-    redstone::piston::remove_owned_parts(world, block, pos);
+    let counterpart = redstone::piston::remove_owned_parts(world, block, pos);
     if block.has_block_entity() {
         world.delete_block_entity(pos);
     }
@@ -378,6 +378,9 @@ pub fn destroy(block: Block, world: &mut impl World, pos: BlockPos) {
             change_surrounding_blocks(world, pos);
             redstone::update_surrounding_blocks(world, pos);
         }
+    }
+    if let Some(pos) = counterpart {
+        redstone::piston::notify(world, pos);
     }
 }
 

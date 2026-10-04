@@ -298,7 +298,7 @@ pub(crate) fn tick_motion(world: &mut impl World, pos: BlockPos, identity: u64) 
         if !complete {
             motion.progress = (motion.progress + 0.5).min(1.0);
         }
-        progress = motion.progress;
+        progress = motion.previous_progress;
     }
     if complete {
         finish(world, pos, false);
@@ -350,6 +350,7 @@ fn finish(world: &mut impl World, pos: BlockPos, interrupted: bool) {
         }
     }
     if !crate::interaction::is_valid_position(block, world, pos) {
+        world.delete_block_entity(pos);
         world.set_block(pos, Block::Air);
     }
     // Restored components get their placement/recheck callback once. Neighbor
@@ -373,7 +374,7 @@ fn shape_changed(world: &mut impl World, pos: BlockPos) {
     }
 }
 
-fn notify(world: &mut impl World, pos: BlockPos) {
+pub(crate) fn notify(world: &mut impl World, pos: BlockPos) {
     shape_changed(world, pos);
     for face in NEIGHBORS {
         let neighbor = pos.offset(face);
@@ -386,19 +387,25 @@ fn notify(world: &mut impl World, pos: BlockPos) {
 
 /// Breaking an owned source/head removes its counterpart. Payload movement is
 /// independent and can finish without rewriting or resurrecting that source.
-pub(crate) fn remove_owned_parts(world: &mut impl World, block: Block, pos: BlockPos) {
+pub(crate) fn remove_owned_parts(
+    world: &mut impl World,
+    block: Block,
+    pos: BlockPos,
+) -> Option<BlockPos> {
     match block {
         Block::Piston { piston } if piston.extended => {
-            let head_pos = pos.offset(piston.facing.into());
-            let owned = matches!(world.get_block(head_pos), Block::PistonHead { head }
+            let head = pos.offset(piston.facing.into());
+            let owned = matches!(world.get_block(head), Block::PistonHead { head }
                 if head.facing == piston.facing && head.sticky == piston.sticky)
-                || matches!(world.get_block(head_pos), Block::MovingPiston { .. })
-                    && matches!(world.get_block_entity(head_pos), Some(BlockEntity::MovingPiston(e))
+                || matches!(world.get_block(head), Block::MovingPiston { .. })
+                    && matches!(world.get_block_entity(head), Some(BlockEntity::MovingPiston(e))
                         if e.source && e.extending && e.facing == BlockFace::from(piston.facing));
             if owned {
-                world.delete_block_entity(head_pos);
-                world.set_block(head_pos, Block::Air);
-                // The caller removes the base before issuing normal notifications.
+                world.delete_block_entity(head);
+                world.set_block(head, Block::Air);
+                Some(head)
+            } else {
+                None
             }
         }
         Block::PistonHead { head } => {
@@ -407,20 +414,30 @@ pub(crate) fn remove_owned_parts(world: &mut impl World, block: Block, pos: Bloc
         Block::MovingPiston { moving } => {
             if matches!(world.get_block_entity(pos), Some(BlockEntity::MovingPiston(e)) if e.source && e.extending)
             {
-                remove_matching_base(world, pos, moving.facing.into(), moving.sticky);
+                remove_matching_base(world, pos, moving.facing.into(), moving.sticky)
+            } else {
+                None
             }
         }
-        _ => {}
+        _ => None,
     }
 }
 
-fn remove_matching_base(world: &mut impl World, head: BlockPos, facing: BlockFace, sticky: bool) {
+fn remove_matching_base(
+    world: &mut impl World,
+    head: BlockPos,
+    facing: BlockFace,
+    sticky: bool,
+) -> Option<BlockPos> {
     let base = head.offset(facing.opposite());
     if matches!(world.get_block(base), Block::Piston { piston }
         if piston.extended && BlockFace::from(piston.facing) == facing && piston.sticky == sticky)
     {
         world.delete_block_entity(base);
         world.set_block(base, Block::Air);
+        Some(base)
+    } else {
+        None
     }
 }
 

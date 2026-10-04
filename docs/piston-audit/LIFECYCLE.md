@@ -1,3 +1,5 @@
+Current status, **2026-10-04**: the reported repairs are implemented and covered by normal regressions. See [implementation](../PISTON_TIMING_IMPLEMENTATION.md) and [review](../PISTON_REVIEW.md). The findings below preserve the original audit snapshot; statements that no fix is applied refer to that snapshot.
+
 # Piston lifecycle: replaced bases, orphan heads and invalid recovery
 
 Documented **2026-10-04**. **Primary repair priority**, as selected by the user. Status: reproduced in Rust; compared with the exact Java 1.21.5 source; no fix applied.

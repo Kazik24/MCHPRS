@@ -100,8 +100,8 @@ pub struct MovingPistonEntity {
     pub facing: BlockFace,
     /// How far the block has been moved. Starts at 0.0, and increments by 0.5 each tick.
     /// If the value is 1.0 or higher at the start of a tick (before incrementing), then the block transforms into the stored blockState.
-    /// Negative values can be used to increase the time until transformation.
-    pub progress: u8, // (0 => 0.0, 255 => 1.0, linear interpolation)
+    /// Serialized/interpolated progress. Exact simulation progress is stored in PistonMotion.
+    pub progress: u8, // 0 => 0.0, 127 => 0.5, 255 => 1.0
     /// true if the block represents the piston head itself, false if it represents a block being pushed.
     pub source: bool,
     /// The moving block represented by this block entity.
@@ -371,10 +371,14 @@ impl BlockEntity {
                     Value::Byte
                 ) != 0;
 
-                let progress = MovingPistonEntity::progress_to_u8(*nbt_unwrap_val!(
+                let progress = *nbt_unwrap_val!(
                     nbt.get("Progress").or_else(|| nbt.get("progress")),
                     Value::Float
-                ));
+                );
+                if !progress.is_finite() || !(0.0..=1.0).contains(&progress) {
+                    bail!("Invalid moving piston progress: {progress}");
+                }
+                let progress = MovingPistonEntity::progress_to_u8(progress);
                 let source =
                     *nbt_unwrap_val!(nbt.get("Source").or_else(|| nbt.get("source")), Value::Byte)
                         != 0;

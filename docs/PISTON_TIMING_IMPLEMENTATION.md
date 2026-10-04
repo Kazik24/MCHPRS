@@ -20,7 +20,7 @@ The current movement scope follows the user's instruction: payloads are assumed 
 
 All four update-tester circuits and the memory cell now match their twelve-game-tick Java traces. The memory cell's previous guessed array was replaced by the actual Java recording. The recording includes intermediate memory-cell piston/observer states. This establishes the checked fixtures, not complete vanilla compliance or internal Java callback traces.
 
-The normal test suite includes 28 focused piston regressions, partial-step save/restart tests, stale incarnation work, and legacy format-3 motion conversion. Validation passed: all 75 workspace unit tests, independent protocol/restart smoke and plot-load failure smoke. Tests run in isolated worlds; the production server has not been deployed or modified by this repair.
+The normal test suite includes 34 focused piston regressions, partial-step save/restart tests, stale incarnation work, and legacy format-3 motion conversion. Validation passed: all 85 workspace unit tests, independent protocol/restart smoke and plot-load failure smoke. Tests run in isolated worlds; the production server has not been deployed or modified by this repair.
 
 ## Persistence
 
