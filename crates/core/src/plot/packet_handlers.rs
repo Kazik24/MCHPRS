@@ -72,6 +72,43 @@ fn traverse_dir(
 }
 
 impl ServerBoundPacketHandler for Plot {
+    fn handle_pick_item_from_block(&mut self, packet: SPickItemFromBlock, player: usize) {
+        if !matches!(
+            self.players[player].gamemode,
+            crate::player::Gamemode::Creative
+        ) {
+            return;
+        }
+        let pos = BlockPos::from_packed(packet.pos);
+        let location = self.players[player].pos;
+        if !Plot::in_plot_bounds(self.world.x, self.world.z, pos.x, pos.z)
+            || !(0..super::PLOT_BLOCK_HEIGHT).contains(&pos.y)
+            || !super::picking::within_reach(
+                PlayerPos::new(location.x, location.y + 1.62, location.z),
+                pos,
+            )
+        {
+            return;
+        }
+        let Some(picked) = super::picking::picked_stack(&self.world, pos, packet.include_data)
+        else {
+            return;
+        };
+        let player_data = &mut self.players[player];
+        let changed = super::picking::pick_into_inventory(
+            &mut player_data.inventory,
+            &mut player_data.selected_slot,
+            picked,
+        );
+        for slot in changed {
+            let item = player_data.inventory[slot].clone();
+            player_data.set_inventory_slot(slot as u32, item);
+        }
+        let slot = player_data.selected_slot as i16;
+        player_data.send_packet(&CHeldItemChange { slot: slot as i8 }.encode());
+        self.handle_held_item_change(SHeldItemChange { slot }, player);
+    }
+
     fn handle_tab_complete(&mut self, packet: STabComplete, player_idx: usize) {
         if !packet.text.starts_with("//load ") {
             return;

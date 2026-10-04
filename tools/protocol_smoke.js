@@ -31,6 +31,7 @@ function connect(name) {
       }
       if (meta.name === 'window_items') p.items.forEach((v,i)=>client.slots.set(i,v));
       if (meta.name === 'set_slot') client.slots.set(p.slot,p.item);
+      if (meta.name === 'held_item_slot') client.heldSlot=p.slot;
       if (meta.name === 'block_change') client.blocks.set(`${p.location.x},${p.location.y},${p.location.z}`,p.type);
       if (meta.name === 'multi_block_change') {
         for (const record of p.records) {
@@ -124,6 +125,16 @@ function command(client,command) { client.write('chat_command',{command}); }
     assert.equal(a.movingUpdates,movingBefore,'high TPS sends no moving piston states');
     await we('rtps 20','successfully set');
     await we('wsr','effective 20 Hz');
+    a.write('position',{x:130,y,z:129,flags:{onGround:false,hasHorizontalCollision:false}});
+    a.write('pick_item_from_block',{position:{x:130,y,z:130},includeData:false});
+    await until(()=>a.heldSlot===2 && a.slots.get(38)?.itemId===data.itemsByName.piston.id,'middle click creates/selects piston');
+    const slotChanges=a.seen.set_slot;
+    a.write('pick_item_from_block',{position:{x:130,y,z:130},includeData:false});
+    await delay(150);
+    assert.equal(a.seen.set_slot,slotChanges,'repeated pick reuses existing stack');
+    a.write('pick_item_from_block',{position:{x:129,y,z:130},includeData:false});
+    await until(()=>a.heldSlot===0,'middle click selects existing redstone hotbar stack');
+    a.write('position',{x:100,y:30,z:100,flags:{onGround:false,hasHorizontalCollision:false}});
     await we('p visit PortSmokeOne 0','Plot index starts at 1');
     await we('p sel','Second position');
     async function select(first,second) {
@@ -152,6 +163,10 @@ function command(client,command) { client.write('chat_command',{command}); }
     await we('/paste -as','clipboard was pasted');
     await until(()=>a.entities.some(p=>p.location.x===120 && p.location.y===29 && p.location.z===92 && p.action===7),'O2 sign at paste displacement');
     const signState=state(a,120,29,92); assert(data.blocksByStateId[signState].name.includes('sign'));
+    a.write('position',{x:120,y:28,z:91,flags:{onGround:false,hasHorizontalCollision:false}});
+    a.write('pick_item_from_block',{position:{x:120,y:29,z:92},includeData:true});
+    await until(()=>a.heldSlot===3 && a.slots.get(39)?.components?.some(c=>c.type==='block_entity_data'),'Ctrl-middle click retains sign text');
+    a.write('position',{x:100,y:30,z:100,flags:{onGround:false,hasHorizontalCollision:false}});
     command(a,'/undo'); await until(()=>state(a,120,29,92)===0,'WorldEdit undo');
     command(a,'/redo'); await until(()=>state(a,120,29,92)===signState,'WorldEdit redo');
     await we('/help rs','Like //stack');

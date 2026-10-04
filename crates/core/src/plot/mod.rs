@@ -3,6 +3,7 @@ mod data;
 pub mod database;
 mod monitor;
 mod packet_handlers;
+mod picking;
 #[cfg(test)]
 mod piston_tests;
 mod scoreboard;

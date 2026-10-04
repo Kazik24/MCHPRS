@@ -3,6 +3,40 @@ use super::*;
 use std::io::Cursor;
 
 #[test]
+fn pick_packets_dispatch_and_reject_truncated_payloads() {
+    use super::serverbound::*;
+    #[derive(Default)]
+    struct Handler {
+        block: bool,
+        entity: bool,
+    }
+    impl ServerBoundPacketHandler for Handler {
+        fn handle_pick_item_from_block(&mut self, packet: SPickItemFromBlock, _: usize) {
+            self.block = packet.include_data;
+        }
+        fn handle_pick_item_from_entity(&mut self, packet: SPickItemFromEntity, _: usize) {
+            self.entity = packet.entity_id == 123 && !packet.include_data;
+        }
+    }
+    let mut handler = Handler::default();
+    let mut state = NetworkState::Play;
+    let mut block = vec![0x22];
+    block.write_long(0);
+    assert!(read_decompressed(&mut Cursor::new(&block), &mut state).is_err());
+    block.write_bool(true);
+    read_decompressed(&mut Cursor::new(block), &mut state)
+        .unwrap()
+        .handle(&mut handler, 0);
+    let mut entity = vec![0x23];
+    entity.write_varint(123);
+    entity.write_bool(false);
+    read_decompressed(&mut Cursor::new(entity), &mut state)
+        .unwrap()
+        .handle(&mut handler, 0);
+    assert!(handler.block && handler.entity);
+}
+
+#[test]
 fn integer_boundaries_and_malformed_lengths() {
     for n in [0, 1, 127, 128, 16384, i32::MAX, i32::MIN, -1] {
         let mut data = vec![];

@@ -29,6 +29,8 @@ pub trait ServerBoundPacketHandler {
     fn handle_player_block_placement(&mut self, _packet: SPlayerBlockPlacemnt, _player_idx: usize) {
     }
     fn handle_held_item_change(&mut self, _packet: SHeldItemChange, _player_idx: usize) {}
+    fn handle_pick_item_from_block(&mut self, _packet: SPickItemFromBlock, _player_idx: usize) {}
+    fn handle_pick_item_from_entity(&mut self, _packet: SPickItemFromEntity, _player_idx: usize) {}
     fn handle_creative_inventory_action(
         &mut self,
         _packet: SCreativeInventoryAction,
@@ -48,6 +50,40 @@ pub trait ServerBoundPacket: Send {
 }
 
 pub struct SUnknown;
+
+pub struct SPickItemFromBlock {
+    pub pos: PackedPos,
+    pub include_data: bool,
+}
+
+impl ServerBoundPacket for SPickItemFromBlock {
+    fn decode<T: PacketDecoderExt>(reader: &mut T) -> DecodeResult<Self> {
+        Ok(Self {
+            pos: reader.read_position()?,
+            include_data: reader.read_bool()?,
+        })
+    }
+    fn handle(self: Box<Self>, handler: &mut dyn ServerBoundPacketHandler, player_idx: usize) {
+        handler.handle_pick_item_from_block(*self, player_idx);
+    }
+}
+
+pub struct SPickItemFromEntity {
+    pub entity_id: i32,
+    pub include_data: bool,
+}
+
+impl ServerBoundPacket for SPickItemFromEntity {
+    fn decode<T: PacketDecoderExt>(reader: &mut T) -> DecodeResult<Self> {
+        Ok(Self {
+            entity_id: reader.read_varint()?,
+            include_data: reader.read_bool()?,
+        })
+    }
+    fn handle(self: Box<Self>, handler: &mut dyn ServerBoundPacketHandler, player_idx: usize) {
+        handler.handle_pick_item_from_entity(*self, player_idx);
+    }
+}
 
 impl ServerBoundPacket for SUnknown {
     fn decode<T: PacketDecoderExt>(_: &mut T) -> DecodeResult<Self> {
