@@ -3,6 +3,7 @@ use super::*;
 use mchprs_blocks::block_entities::MovingPistonEntity;
 use mchprs_blocks::BlockFace;
 use std::fs;
+use std::iter::FromIterator;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 static NEXT: AtomicUsize = AtomicUsize::new(0);
@@ -132,4 +133,98 @@ fn rejects_other_minecraft_versions_and_unsupported_save_formats() {
         Err(PlotLoadError::ConversionUnavailable(2))
     ));
     assert_eq!(fs::read(&path).unwrap(), bytes);
+}
+
+fn format_three_motion(occupied: bool) -> Vec<u8> {
+    use super::fixer::legacy_1_21_5::{LegacyTick, Plot};
+    use mchprs_blocks::blocks::{Block, RedstonePiston};
+    use mchprs_blocks::BlockFacing;
+    let base = BlockPos::new(3, 8, 4);
+    let head = base.offset(BlockFace::East);
+    let piston = RedstonePiston {
+        facing: BlockFacing::East,
+        sticky: true,
+        extended: false,
+    };
+    let mut data = vec![0i64; 1024];
+    let mut put = |pos: BlockPos, block: Block| {
+        let i = pos.x as usize + pos.z as usize * 16 + pos.y as usize * 256;
+        data[i / 4] |= (block.get_id() as i64) << (i % 4 * 15);
+    };
+    put(base, Block::Piston { piston });
+    put(
+        head,
+        Block::MovingPiston {
+            moving: piston.into(),
+        },
+    );
+    if occupied {
+        put(head.offset(BlockFace::East), Block::GoldBlock {});
+    }
+    let plot = Plot::<1> {
+        tps: Tps::Limited(20),
+        world_send_rate: WorldSendRate(30),
+        chunk_data: vec![ChunkData {
+            sections: [Some(ChunkSectionData {
+                data,
+                palette: vec![],
+                bits_per_block: 15,
+                block_count: if occupied { 3 } else { 2 },
+                entries: 4096,
+            })],
+            block_entities: FxHashMap::from_iter([(
+                head,
+                BlockEntity::MovingPiston(MovingPistonEntity {
+                    extending: true,
+                    source: true,
+                    facing: BlockFace::East,
+                    progress: 127,
+                    block_state: Block::Stone {}.get_id(),
+                }),
+            )]),
+        }],
+        pending_ticks: vec![LegacyTick {
+            pos: base,
+            ticks_left: 3,
+            tick_priority: mchprs_world::TickPriority::Normal,
+        }],
+    };
+    let mut bytes = PLOT_MAGIC.to_vec();
+    bytes.extend_from_slice(&3u32.to_le_bytes());
+    bytes.extend_from_slice(&MC_DATA_VERSION.to_le_bytes());
+    bytes.extend_from_slice(&bincode::serialize(&plot).unwrap());
+    bytes
+}
+
+#[test]
+fn format_three_motion_migrates_to_destination_entities_and_keeps_backup() {
+    use mchprs_blocks::blocks::Block;
+    let temp = Temp::new();
+    let path = temp.0.join("plot");
+    let old = format_three_motion(false);
+    fs::write(&path, &old).unwrap();
+    let data = PlotData::<1>::load_from_file(&path, true).unwrap();
+    assert_eq!(fs::read(temp.0.join("plot.bak")).unwrap(), old);
+    let head = BlockPos::new(4, 8, 4);
+    assert!(
+        matches!(data.chunk_data[0].block_entities.get(&head), Some(BlockEntity::MovingPiston(e))
+        if e.source && matches!(Block::from_id(e.block_state), Block::PistonHead { .. }))
+    );
+    assert!(
+        matches!(data.chunk_data[0].block_entities.get(&head.offset(BlockFace::East)), Some(BlockEntity::MovingPiston(e))
+        if !e.source && Block::from_id(e.block_state) == Block::Stone {} && e.progress == 127)
+    );
+    assert_eq!(data.pending_ticks[0].block_type, None);
+    PlotData::<1>::load_from_file(&path, true).unwrap();
+}
+
+#[test]
+fn format_three_occupied_payload_destination_refuses_migration_without_changes() {
+    let temp = Temp::new();
+    let path = temp.0.join("plot");
+    let old = format_three_motion(true);
+    fs::write(&path, &old).unwrap();
+    assert!(PlotData::<1>::load_from_file(&path, true).is_err());
+    assert_eq!(fs::read(&path).unwrap(), old);
+    assert_eq!(fs::read_dir(&temp.0).unwrap().count(), 1);
 }

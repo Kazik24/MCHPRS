@@ -1,3 +1,5 @@
+Implementation status, **2026-10-04**: [piston timing repair](PISTON_TIMING_IMPLEMENTATION.md) implements event/movement phases, ownership, typed scheduled ticks and completion updates. All five existing circuits now match captured Java 1.21.5 traces. Push reactions and slime/honey attachment graphs are explicitly deferred by the user. Historical audit findings below describe the original snapshot.
+
 # Plan to repair piston state, short pulses and movement
 
 Prepared: **2026-10-03**. Status: **plan only; no simulation changes made by this task**.

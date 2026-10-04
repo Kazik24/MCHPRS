@@ -25,8 +25,16 @@ python tools/run_plot_load_smoke.py
 
 On Windows, `py` can replace `python`. If your npm installation does not resolve `--prefix`, run `npm ci --ignore-scripts` inside `tools`. The runner binds localhost port 25580 and creates a temporary world. It tests two clients, configuration/login, deep chunk palette decoding, inventory components, commands, piston extension, prediction acknowledgements, Sponge v3 load/paste/undo/redo, v2 save/reload, reconnect and process restart. Both processes stop through `/stop`. It never opens the repository's existing world or configuration.
 
-These clients independently decode the wire formats; they do not replace graphical vanilla-client checks of registry codecs, appearance and animations. The known memory-cell simulation regression remains visible in `cargo test --workspace --locked --no-fail-fast`.
+These clients independently decode the wire formats; they do not replace graphical vanilla-client checks of registry codecs, appearance and animations. The five piston circuit regressions use captured Java 1.21.5 traces, including the memory cell.
 
 The plot-load runner uses localhost port 25582 and a separate temporary world. It checks repeated attempts to enter an unsupported plot, failed spawn/template loading, disconnect reasons, continued access to healthy plots, preservation of rejected files and graceful shutdown across three server processes.
 
 The protocol smoke runner also includes the exact production mixed-sign fixture (`test_data/sign_mixed_text_v2.schem`). It checks both sign sides' message contents, paste, undo/redo and v2 export/reload, covering the reported `HeterogeneousList` crash.
+
+Capture the piston reference in an isolated official Java 1.21.5 server (Java 21):
+
+```text
+python tools/capture_piston_reference.py --server-jar /path/to/server.jar
+```
+
+The runner verifies the official server SHA-1, uses localhost ports 25583/25584, creates a temporary void world and stops the server after recording the fixtures. `--java` selects a Java executable. Its default output is `docs/piston-repair/java-traces.json`; use `--output` for a separate comparison. It never modifies an existing world. Push rules and adhesive attachments are outside the current timing repair.

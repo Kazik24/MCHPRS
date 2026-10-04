@@ -443,13 +443,15 @@ pub fn is_valid_position(block: Block, world: &impl World, pos: BlockPos) -> boo
                 supports_attachment(parent_block, button.facing.block_face())
             }
         },
-        Block::PistonHead { head } => matches!(
-            world.get_block(pos.offset(BlockFace::from(head.facing).opposite())),
-            Block::Piston { piston } if piston.extended && piston.facing == head.facing && piston.sticky == head.sticky
-        ) || matches!(
-            world.get_block_entity(pos.offset(BlockFace::from(head.facing).opposite())),
-            Some(BlockEntity::MovingPiston(e)) if !e.extending && e.source && e.facing == BlockFace::from(head.facing)
-        ),
+        Block::PistonHead { head } => {
+            matches!(
+                world.get_block(pos.offset(BlockFace::from(head.facing).opposite())),
+                Block::Piston { piston } if piston.extended && piston.facing == head.facing && piston.sticky == head.sticky
+            ) || matches!(
+                world.get_block_entity(pos.offset(BlockFace::from(head.facing).opposite())),
+                Some(BlockEntity::MovingPiston(e)) if !e.extending && e.source && e.facing == BlockFace::from(head.facing)
+            )
+        }
         _ => true,
     }
 }

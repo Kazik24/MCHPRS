@@ -24,10 +24,10 @@ DECODE = r"""
 const fs=require('fs'), nbt=require('prismarine-nbt');
 (async()=>{
 const {parsed}=await nbt.parse(fs.readFileSync(process.argv[1]));
-const s=nbt.simplify(parsed), m=s.Metadata||{}, pal={};
-for(const [name,id] of Object.entries(s.Palette)) pal[id]=name;
-const off=['X','Y','Z'].map(k=>m['WEOffset'+k]||0);
-const bytes=Buffer.from(s.BlockData), blocks=[]; let i=0, entry=0;
+const raw=nbt.simplify(parsed), s=raw.Schematic||raw, m=s.Metadata||{}, pal={};
+for(const [name,id] of Object.entries((s.Blocks||s).Palette)) pal[id]=name;
+const off=s.Version===3 ? (s.Offset||[0,0,0]) : ['X','Y','Z'].map(k=>m['WEOffset'+k]||0);
+const bytes=Buffer.from(s.Version===3?s.Blocks.Data:s.BlockData), blocks=[]; let i=0, entry=0;
 while(i<bytes.length){let v=0, shift=0, b;do{b=bytes[i++];v|=(b&127)<<shift;shift+=7;}while(b&128);
 let state=pal[v];
 // Old fork emitted a redundant sticky property; Java derives it from block type.
@@ -128,11 +128,25 @@ def main():
                     response=rcon.request(stimulus)
                     print(name,'paste:',rcon.request('execute if block 100 30 100 minecraft:stone_button'),'stimulus:',response,flush=True)
                     trace=[]
+                    details=[]
                     for _ in range(12):
                         rcon.step()
                         statuses=[rcon.request(c) for c in observations]
                         trace.append('Test passed' in statuses[3] if memory else ['Test passed' in t for t in statuses[:3]])
-                    result['fixtures'][name]={'sha256':hashlib.sha256((ROOT/'test_data'/name).read_bytes()).hexdigest(),'stimulus':stimulus,'trace':trace}
+                        if memory:
+                            snapshot=[]
+                            for pos in [[97,30,107],[98,30,107],[98,31,107],[98,30,103],[98,31,103],[97,33,103],[100,30,103]]:
+                                p=' '.join(map(str,pos))
+                                state='other'
+                                for block in ['sticky_piston','moving_piston','piston_head','observer','air']:
+                                    if 'Test passed' in rcon.request(f'execute if block {p} minecraft:{block}'):
+                                        state=block;break
+                                if state=='sticky_piston': state+=' extended='+str('Test passed' in rcon.request(f'execute if block {p} minecraft:sticky_piston[extended=true]'))
+                                if state=='observer': state+=' powered='+str('Test passed' in rcon.request(f'execute if block {p} minecraft:observer[powered=true]'))
+                                if state=='moving_piston': state+=' '+rcon.request(f'data get block {p}')
+                                snapshot.append({'pos':pos,'state':state})
+                            details.append(snapshot)
+                    result['fixtures'][name]={'sha256':hashlib.sha256((ROOT/'test_data'/name).read_bytes()).hexdigest(),'stimulus':stimulus,'trace':trace, 'details':details}
                     print(name,trace,flush=True)
                 args.output.parent.mkdir(parents=True,exist_ok=True)
                 args.output.write_text(json.dumps(result,indent=2)+'\n')

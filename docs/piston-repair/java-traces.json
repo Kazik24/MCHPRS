@@ -67,7 +67,8 @@
           false,
           false
         ]
-      ]
+      ],
+      "details": []
     },
     "UpdateTesterInst.schem": {
       "sha256": "d13f6956d9ebe07ba3f82dfe9b9976349cd789fccac60cd5a897fc0856371587",
@@ -133,7 +134,8 @@
           false,
           false
         ]
-      ]
+      ],
+      "details": []
     },
     "UpdateTesterExtendInst.schem": {
       "sha256": "6f08627398ed24ae26361d8c65df80e45735b620796aa06f0a396b711a1f2c36",
@@ -199,7 +201,8 @@
           false,
           false
         ]
-      ]
+      ],
+      "details": []
     },
     "UpdateTesterExtendNonInst.schem": {
       "sha256": "c843b9e44dea7f450c17832ce355250076d9fe9dd904f8b1a0dff820b0206921",
@@ -265,7 +268,8 @@
           false,
           false
         ]
-      ]
+      ],
+      "details": []
     },
     "MemCellUnalignedNanoTicks.schem": {
       "sha256": "6a6b0b9fd5fae36faaab846a7d089eb7cbd6ea934e8933ed3f2cba0ea1b438a2",
@@ -283,6 +287,704 @@
         false,
         false,
         false
+      ],
+      "details": [
+        [
+          {
+            "pos": [
+              97,
+              30,
+              107
+            ],
+            "state": "sticky_piston extended=True"
+          },
+          {
+            "pos": [
+              98,
+              30,
+              107
+            ],
+            "state": "moving_piston 98, 30, 107 has the following block data: {blockState: {Properties: {facing: \"south\", extended: \"false\"}, Name: \"minecraft:sticky_piston\"}, x: 98, facing: 3b, progress: 0.0f, y: 30, z: 107, source: 1b, id: \"minecraft:piston\", extending: 0b}"
+          },
+          {
+            "pos": [
+              98,
+              31,
+              107
+            ],
+            "state": "observer powered=False"
+          },
+          {
+            "pos": [
+              98,
+              30,
+              103
+            ],
+            "state": "moving_piston 98, 30, 103 has the following block data: {blockState: {Properties: {facing: \"north\", extended: \"false\"}, Name: \"minecraft:sticky_piston\"}, x: 98, facing: 2b, progress: 0.0f, y: 30, z: 103, source: 1b, id: \"minecraft:piston\", extending: 0b}"
+          },
+          {
+            "pos": [
+              98,
+              31,
+              103
+            ],
+            "state": "observer powered=False"
+          },
+          {
+            "pos": [
+              97,
+              33,
+              103
+            ],
+            "state": "moving_piston 97, 33, 103 has the following block data: {blockState: {Properties: {facing: \"south\", extended: \"false\"}, Name: \"minecraft:sticky_piston\"}, x: 97, facing: 3b, progress: 0.0f, y: 33, z: 103, source: 1b, id: \"minecraft:piston\", extending: 0b}"
+          },
+          {
+            "pos": [
+              100,
+              30,
+              103
+            ],
+            "state": "moving_piston 100, 30, 103 has the following block data: {blockState: {Properties: {facing: \"south\", extended: \"false\"}, Name: \"minecraft:sticky_piston\"}, x: 100, facing: 3b, progress: 0.0f, y: 30, z: 103, source: 1b, id: \"minecraft:piston\", extending: 0b}"
+          }
+        ],
+        [
+          {
+            "pos": [
+              97,
+              30,
+              107
+            ],
+            "state": "sticky_piston extended=True"
+          },
+          {
+            "pos": [
+              98,
+              30,
+              107
+            ],
+            "state": "moving_piston 98, 30, 107 has the following block data: {blockState: {Properties: {facing: \"south\", extended: \"false\"}, Name: \"minecraft:sticky_piston\"}, x: 98, facing: 3b, progress: 0.5f, y: 30, z: 107, source: 1b, id: \"minecraft:piston\", extending: 0b}"
+          },
+          {
+            "pos": [
+              98,
+              31,
+              107
+            ],
+            "state": "observer powered=False"
+          },
+          {
+            "pos": [
+              98,
+              30,
+              103
+            ],
+            "state": "moving_piston 98, 30, 103 has the following block data: {blockState: {Properties: {facing: \"north\", extended: \"false\"}, Name: \"minecraft:sticky_piston\"}, x: 98, facing: 2b, progress: 0.5f, y: 30, z: 103, source: 1b, id: \"minecraft:piston\", extending: 0b}"
+          },
+          {
+            "pos": [
+              98,
+              31,
+              103
+            ],
+            "state": "observer powered=False"
+          },
+          {
+            "pos": [
+              97,
+              33,
+              103
+            ],
+            "state": "moving_piston 97, 33, 103 has the following block data: {blockState: {Properties: {facing: \"south\", extended: \"false\"}, Name: \"minecraft:sticky_piston\"}, x: 97, facing: 3b, progress: 0.5f, y: 33, z: 103, source: 1b, id: \"minecraft:piston\", extending: 0b}"
+          },
+          {
+            "pos": [
+              100,
+              30,
+              103
+            ],
+            "state": "moving_piston 100, 30, 103 has the following block data: {blockState: {Properties: {facing: \"south\", extended: \"false\"}, Name: \"minecraft:sticky_piston\"}, x: 100, facing: 3b, progress: 0.5f, y: 30, z: 103, source: 1b, id: \"minecraft:piston\", extending: 0b}"
+          }
+        ],
+        [
+          {
+            "pos": [
+              97,
+              30,
+              107
+            ],
+            "state": "sticky_piston extended=True"
+          },
+          {
+            "pos": [
+              98,
+              30,
+              107
+            ],
+            "state": "sticky_piston extended=False"
+          },
+          {
+            "pos": [
+              98,
+              31,
+              107
+            ],
+            "state": "observer powered=True"
+          },
+          {
+            "pos": [
+              98,
+              30,
+              103
+            ],
+            "state": "sticky_piston extended=False"
+          },
+          {
+            "pos": [
+              98,
+              31,
+              103
+            ],
+            "state": "observer powered=True"
+          },
+          {
+            "pos": [
+              97,
+              33,
+              103
+            ],
+            "state": "sticky_piston extended=False"
+          },
+          {
+            "pos": [
+              100,
+              30,
+              103
+            ],
+            "state": "sticky_piston extended=False"
+          }
+        ],
+        [
+          {
+            "pos": [
+              97,
+              30,
+              107
+            ],
+            "state": "moving_piston 97, 30, 107 has the following block data: {blockState: {Properties: {facing: \"down\", extended: \"false\"}, Name: \"minecraft:sticky_piston\"}, x: 97, facing: 0b, progress: 0.0f, y: 30, z: 107, source: 1b, id: \"minecraft:piston\", extending: 0b}"
+          },
+          {
+            "pos": [
+              98,
+              30,
+              107
+            ],
+            "state": "sticky_piston extended=True"
+          },
+          {
+            "pos": [
+              98,
+              31,
+              107
+            ],
+            "state": "observer powered=True"
+          },
+          {
+            "pos": [
+              98,
+              30,
+              103
+            ],
+            "state": "sticky_piston extended=True"
+          },
+          {
+            "pos": [
+              98,
+              31,
+              103
+            ],
+            "state": "observer powered=True"
+          },
+          {
+            "pos": [
+              97,
+              33,
+              103
+            ],
+            "state": "sticky_piston extended=True"
+          },
+          {
+            "pos": [
+              100,
+              30,
+              103
+            ],
+            "state": "sticky_piston extended=True"
+          }
+        ],
+        [
+          {
+            "pos": [
+              97,
+              30,
+              107
+            ],
+            "state": "moving_piston 97, 30, 107 has the following block data: {blockState: {Properties: {facing: \"down\", extended: \"false\"}, Name: \"minecraft:sticky_piston\"}, x: 97, facing: 0b, progress: 0.5f, y: 30, z: 107, source: 1b, id: \"minecraft:piston\", extending: 0b}"
+          },
+          {
+            "pos": [
+              98,
+              30,
+              107
+            ],
+            "state": "sticky_piston extended=True"
+          },
+          {
+            "pos": [
+              98,
+              31,
+              107
+            ],
+            "state": "observer powered=False"
+          },
+          {
+            "pos": [
+              98,
+              30,
+              103
+            ],
+            "state": "sticky_piston extended=True"
+          },
+          {
+            "pos": [
+              98,
+              31,
+              103
+            ],
+            "state": "observer powered=False"
+          },
+          {
+            "pos": [
+              97,
+              33,
+              103
+            ],
+            "state": "sticky_piston extended=True"
+          },
+          {
+            "pos": [
+              100,
+              30,
+              103
+            ],
+            "state": "sticky_piston extended=True"
+          }
+        ],
+        [
+          {
+            "pos": [
+              97,
+              30,
+              107
+            ],
+            "state": "sticky_piston extended=False"
+          },
+          {
+            "pos": [
+              98,
+              30,
+              107
+            ],
+            "state": "sticky_piston extended=True"
+          },
+          {
+            "pos": [
+              98,
+              31,
+              107
+            ],
+            "state": "observer powered=False"
+          },
+          {
+            "pos": [
+              98,
+              30,
+              103
+            ],
+            "state": "sticky_piston extended=True"
+          },
+          {
+            "pos": [
+              98,
+              31,
+              103
+            ],
+            "state": "observer powered=False"
+          },
+          {
+            "pos": [
+              97,
+              33,
+              103
+            ],
+            "state": "sticky_piston extended=True"
+          },
+          {
+            "pos": [
+              100,
+              30,
+              103
+            ],
+            "state": "sticky_piston extended=True"
+          }
+        ],
+        [
+          {
+            "pos": [
+              97,
+              30,
+              107
+            ],
+            "state": "sticky_piston extended=False"
+          },
+          {
+            "pos": [
+              98,
+              30,
+              107
+            ],
+            "state": "sticky_piston extended=True"
+          },
+          {
+            "pos": [
+              98,
+              31,
+              107
+            ],
+            "state": "observer powered=False"
+          },
+          {
+            "pos": [
+              98,
+              30,
+              103
+            ],
+            "state": "sticky_piston extended=True"
+          },
+          {
+            "pos": [
+              98,
+              31,
+              103
+            ],
+            "state": "observer powered=False"
+          },
+          {
+            "pos": [
+              97,
+              33,
+              103
+            ],
+            "state": "sticky_piston extended=True"
+          },
+          {
+            "pos": [
+              100,
+              30,
+              103
+            ],
+            "state": "sticky_piston extended=True"
+          }
+        ],
+        [
+          {
+            "pos": [
+              97,
+              30,
+              107
+            ],
+            "state": "sticky_piston extended=False"
+          },
+          {
+            "pos": [
+              98,
+              30,
+              107
+            ],
+            "state": "sticky_piston extended=True"
+          },
+          {
+            "pos": [
+              98,
+              31,
+              107
+            ],
+            "state": "observer powered=False"
+          },
+          {
+            "pos": [
+              98,
+              30,
+              103
+            ],
+            "state": "sticky_piston extended=True"
+          },
+          {
+            "pos": [
+              98,
+              31,
+              103
+            ],
+            "state": "observer powered=False"
+          },
+          {
+            "pos": [
+              97,
+              33,
+              103
+            ],
+            "state": "sticky_piston extended=True"
+          },
+          {
+            "pos": [
+              100,
+              30,
+              103
+            ],
+            "state": "sticky_piston extended=True"
+          }
+        ],
+        [
+          {
+            "pos": [
+              97,
+              30,
+              107
+            ],
+            "state": "sticky_piston extended=False"
+          },
+          {
+            "pos": [
+              98,
+              30,
+              107
+            ],
+            "state": "sticky_piston extended=True"
+          },
+          {
+            "pos": [
+              98,
+              31,
+              107
+            ],
+            "state": "observer powered=False"
+          },
+          {
+            "pos": [
+              98,
+              30,
+              103
+            ],
+            "state": "sticky_piston extended=True"
+          },
+          {
+            "pos": [
+              98,
+              31,
+              103
+            ],
+            "state": "observer powered=False"
+          },
+          {
+            "pos": [
+              97,
+              33,
+              103
+            ],
+            "state": "sticky_piston extended=True"
+          },
+          {
+            "pos": [
+              100,
+              30,
+              103
+            ],
+            "state": "sticky_piston extended=True"
+          }
+        ],
+        [
+          {
+            "pos": [
+              97,
+              30,
+              107
+            ],
+            "state": "sticky_piston extended=False"
+          },
+          {
+            "pos": [
+              98,
+              30,
+              107
+            ],
+            "state": "sticky_piston extended=True"
+          },
+          {
+            "pos": [
+              98,
+              31,
+              107
+            ],
+            "state": "observer powered=False"
+          },
+          {
+            "pos": [
+              98,
+              30,
+              103
+            ],
+            "state": "sticky_piston extended=True"
+          },
+          {
+            "pos": [
+              98,
+              31,
+              103
+            ],
+            "state": "observer powered=False"
+          },
+          {
+            "pos": [
+              97,
+              33,
+              103
+            ],
+            "state": "sticky_piston extended=True"
+          },
+          {
+            "pos": [
+              100,
+              30,
+              103
+            ],
+            "state": "sticky_piston extended=True"
+          }
+        ],
+        [
+          {
+            "pos": [
+              97,
+              30,
+              107
+            ],
+            "state": "sticky_piston extended=False"
+          },
+          {
+            "pos": [
+              98,
+              30,
+              107
+            ],
+            "state": "sticky_piston extended=True"
+          },
+          {
+            "pos": [
+              98,
+              31,
+              107
+            ],
+            "state": "observer powered=False"
+          },
+          {
+            "pos": [
+              98,
+              30,
+              103
+            ],
+            "state": "sticky_piston extended=True"
+          },
+          {
+            "pos": [
+              98,
+              31,
+              103
+            ],
+            "state": "observer powered=False"
+          },
+          {
+            "pos": [
+              97,
+              33,
+              103
+            ],
+            "state": "sticky_piston extended=True"
+          },
+          {
+            "pos": [
+              100,
+              30,
+              103
+            ],
+            "state": "sticky_piston extended=True"
+          }
+        ],
+        [
+          {
+            "pos": [
+              97,
+              30,
+              107
+            ],
+            "state": "sticky_piston extended=False"
+          },
+          {
+            "pos": [
+              98,
+              30,
+              107
+            ],
+            "state": "sticky_piston extended=True"
+          },
+          {
+            "pos": [
+              98,
+              31,
+              107
+            ],
+            "state": "observer powered=False"
+          },
+          {
+            "pos": [
+              98,
+              30,
+              103
+            ],
+            "state": "sticky_piston extended=True"
+          },
+          {
+            "pos": [
+              98,
+              31,
+              103
+            ],
+            "state": "observer powered=False"
+          },
+          {
+            "pos": [
+              97,
+              33,
+              103
+            ],
+            "state": "sticky_piston extended=True"
+          },
+          {
+            "pos": [
+              100,
+              30,
+              103
+            ],
+            "state": "sticky_piston extended=True"
+          }
+        ]
       ]
     }
   }

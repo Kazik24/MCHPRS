@@ -3,15 +3,17 @@ mod data;
 pub mod database;
 mod monitor;
 mod packet_handlers;
+#[cfg(test)]
+mod piston_tests;
 mod scoreboard;
 pub mod worldedit;
 
 use crate::chat::ChatComponent;
 use crate::config::CONFIG;
 use crate::player::{EntityId, Gamemode, PacketSender, Player, PlayerPos};
+use crate::redpiler::backend::ScheduledBlockTick;
 use crate::redpiler::{Compiler, CompilerOptions, TickScheduler};
 use crate::redstone;
-use crate::redpiler::backend::ScheduledBlockTick;
 use crate::server::{BroadcastMessage, Message, PrivMessage};
 use crate::utils::HyphenatedUUID;
 use crate::world::storage::Chunk;
@@ -113,30 +115,43 @@ impl PlotWorld {
         to_be_ticked: TickScheduler<ScheduledBlockTick>,
     ) -> Self {
         let mut world = Self {
-            x, z, chunks, to_be_ticked,
+            x,
+            z,
+            chunks,
+            to_be_ticked,
             piston_state: PistonState::default(),
-            packet_senders: Vec::new(), is_cursed: false, disable_block_actions: false,
+            packet_senders: Vec::new(),
+            is_cursed: false,
+            disable_block_actions: false,
         };
         // Position-only old saves bind to the loaded type once. They never
         // dispatch an observer tick into a subsequently moved/replaced block.
         let ticks: Vec<_> = world.to_be_ticked.iter_entries().collect();
-        world.to_be_ticked = ticks.into_iter().filter_map(|mut tick| {
-            if tick.block_type.is_none() {
-                let block = world.get_block(tick.pos);
-                if matches!(block, Block::MovingPiston { .. }) { return None; }
-                if matches!(block, Block::Piston { .. }) {
-                    tick.ticks_left = 0;
-                    tick.tick_priority = TickPriority::NanoTick;
+        world.to_be_ticked = ticks
+            .into_iter()
+            .filter_map(|mut tick| {
+                if tick.block_type.is_none() {
+                    let block = world.get_block(tick.pos);
+                    if matches!(block, Block::MovingPiston { .. }) {
+                        return None;
+                    }
+                    if matches!(block, Block::Piston { .. }) {
+                        tick.ticks_left = 0;
+                        tick.tick_priority = TickPriority::NanoTick;
+                    }
+                    tick.block_type = Some(block.registry_id());
                 }
-                tick.block_type = Some(block.registry_id());
-            }
-            Some(tick)
-        }).collect();
+                Some(tick)
+            })
+            .collect();
         let mut entities = Vec::new();
         for (i, chunk) in world.chunks.iter().enumerate() {
             for (&local, entity) in &chunk.block_entities {
-                let pos = BlockPos::new(x * PLOT_BLOCK_WIDTH + (i as i32 / PLOT_WIDTH) * 16 + local.x,
-                    local.y, z * PLOT_BLOCK_WIDTH + (i as i32 % PLOT_WIDTH) * 16 + local.z);
+                let pos = BlockPos::new(
+                    x * PLOT_BLOCK_WIDTH + (i as i32 / PLOT_WIDTH) * 16 + local.x,
+                    local.y,
+                    z * PLOT_BLOCK_WIDTH + (i as i32 % PLOT_WIDTH) * 16 + local.z,
+                );
                 if let BlockEntity::MovingPiston(e) = entity {
                     if matches!(world.get_block(pos), Block::MovingPiston { .. }) {
                         entities.push((pos, e.get_progress()));
@@ -145,7 +160,9 @@ impl PlotWorld {
             }
         }
         entities.sort_by_key(|(p, _)| (p.x, p.y, p.z));
-        for (pos, progress) in entities { world.register_motion(pos, progress); }
+        for (pos, progress) in entities {
+            world.register_motion(pos, progress);
+        }
         world
     }
 
@@ -199,8 +216,14 @@ impl PlotWorld {
         let state = &mut self.piston_state;
         state.motions.retain(|m| m.pos != pos);
         state.next_identity += 1;
-        state.motions.push(PistonMotion { pos, identity: state.next_identity,
-            progress, previous_progress: progress, last_tick: state.logical_tick, carried_entity: None });
+        state.motions.push(PistonMotion {
+            pos,
+            identity: state.next_identity,
+            progress,
+            previous_progress: progress,
+            last_tick: state.logical_tick,
+            carried_entity: None,
+        });
     }
 
     /// Find the next operation in this game tick. All stepping commands share
@@ -214,21 +237,33 @@ impl PlotWorld {
                     self.piston_state.phase = AdvancePhase::ScheduledTicks;
                 }
                 AdvancePhase::ScheduledTicks => {
-                    if !self.to_be_ticked.this_tick_ref().is_empty() { return true; }
+                    if !self.to_be_ticked.this_tick_ref().is_empty() {
+                        return true;
+                    }
                     if !self.piston_state.scheduled_advanced {
                         self.to_be_ticked.end_last_tick_move_next();
                         self.piston_state.scheduled_advanced = true;
-                    } else { self.piston_state.phase = AdvancePhase::PistonEvents; }
+                    } else {
+                        self.piston_state.phase = AdvancePhase::PistonEvents;
+                    }
                 }
                 AdvancePhase::PistonEvents => {
-                    if !self.piston_state.events.is_empty() { return true; }
-                    self.piston_state.movement_work = self.piston_state.motions.iter()
-                        .map(|m| (m.pos, m.identity)).collect();
+                    if !self.piston_state.events.is_empty() {
+                        return true;
+                    }
+                    self.piston_state.movement_work = self
+                        .piston_state
+                        .motions
+                        .iter()
+                        .map(|m| (m.pos, m.identity))
+                        .collect();
                     self.piston_state.movement_cursor = 0;
                     self.piston_state.phase = AdvancePhase::MovingEntities;
                 }
                 AdvancePhase::MovingEntities => {
-                    if self.piston_state.movement_cursor < self.piston_state.movement_work.len() { return true; }
+                    if self.piston_state.movement_cursor < self.piston_state.movement_work.len() {
+                        return true;
+                    }
                     self.piston_state.movement_work.clear();
                     self.piston_state.movement_cursor = 0;
                     self.piston_state.phase = AdvancePhase::BetweenTicks;
@@ -239,7 +274,9 @@ impl PlotWorld {
     }
 
     fn advance_operation(&mut self) -> bool {
-        if !self.prepare_operation() { return false; }
+        if !self.prepare_operation() {
+            return false;
+        }
         match self.piston_state.phase {
             AdvancePhase::ScheduledTicks => {
                 let tick = self.to_be_ticked.this_tick().pop_first().unwrap();
@@ -253,7 +290,8 @@ impl PlotWorld {
                 redstone::piston::execute_event(self, event);
             }
             AdvancePhase::MovingEntities => {
-                let (pos, identity) = self.piston_state.movement_work[self.piston_state.movement_cursor];
+                let (pos, identity) =
+                    self.piston_state.movement_work[self.piston_state.movement_cursor];
                 self.piston_state.movement_cursor += 1;
                 redstone::piston::tick_motion(self, pos, identity);
             }
@@ -268,21 +306,28 @@ impl PlotWorld {
 
     pub fn nanotick_advance(&mut self, amount: u32) {
         for _ in 0..amount {
-            if !self.prepare_operation() { continue; }
+            if !self.prepare_operation() {
+                continue;
+            }
             let count = match self.piston_state.phase {
                 AdvancePhase::ScheduledTicks => self.to_be_ticked.this_tick_ref().len(),
                 AdvancePhase::PistonEvents => self.piston_state.events.len(),
-                AdvancePhase::MovingEntities => self.piston_state.movement_work.len() - self.piston_state.movement_cursor,
+                AdvancePhase::MovingEntities => {
+                    self.piston_state.movement_work.len() - self.piston_state.movement_cursor
+                }
                 AdvancePhase::BetweenTicks => 0,
             };
-            for _ in 0..count { self.advance_operation(); }
+            for _ in 0..count {
+                self.advance_operation();
+            }
         }
     }
 
     pub fn picotick_advance(&mut self, amount: u32) {
-        for _ in 0..amount { self.advance_operation(); }
+        for _ in 0..amount {
+            self.advance_operation();
+        }
     }
-
 }
 
 impl World for PlotWorld {
@@ -342,11 +387,17 @@ impl World for PlotWorld {
 
     fn get_block_entity_mut(&mut self, pos: BlockPos) -> Option<&mut BlockEntity> {
         let index = self.get_chunk_index_for_block(pos.x, pos.z)?;
-        self.chunks[index].block_entities.get_mut(&BlockPos::new(pos.x & 15, pos.y, pos.z & 15))
+        self.chunks[index]
+            .block_entities
+            .get_mut(&BlockPos::new(pos.x & 15, pos.y, pos.z & 15))
     }
 
-    fn piston_state(&self) -> &PistonState { &self.piston_state }
-    fn piston_state_mut(&mut self) -> &mut PistonState { &mut self.piston_state }
+    fn piston_state(&self) -> &PistonState {
+        &self.piston_state
+    }
+    fn piston_state_mut(&mut self) -> &mut PistonState {
+        &mut self.piston_state
+    }
 
     fn set_block_entity(&mut self, pos: BlockPos, block_entity: BlockEntity) {
         let chunk_index = match self.get_chunk_index_for_block(pos.x, pos.z) {
@@ -354,7 +405,9 @@ impl World for PlotWorld {
             None => return,
         };
         self.piston_state.motions.retain(|m| m.pos != pos);
-        if let BlockEntity::MovingPiston(e) = &block_entity { self.register_motion(pos, e.get_progress()); }
+        if let BlockEntity::MovingPiston(e) = &block_entity {
+            self.register_motion(pos, e.get_progress());
+        }
         if let Some(nbt) = block_entity.to_nbt(true) {
             let block_entity_data = CBlockEntityData {
                 pos: pos.packed(),
@@ -373,7 +426,10 @@ impl World for PlotWorld {
 
     fn get_chunk(&self, x: i32, z: i32) -> Option<&Chunk> {
         if !(self.x * PLOT_WIDTH..(self.x + 1) * PLOT_WIDTH).contains(&x)
-            || !(self.z * PLOT_WIDTH..(self.z + 1) * PLOT_WIDTH).contains(&z) { return None; }
+            || !(self.z * PLOT_WIDTH..(self.z + 1) * PLOT_WIDTH).contains(&z)
+        {
+            return None;
+        }
         self.chunks.get(self.get_chunk_index_for_chunk(x, z))
     }
 
@@ -388,14 +444,21 @@ impl World for PlotWorld {
     }
 
     fn schedule_half_tick(&mut self, pos: BlockPos, delay: u32, priority: TickPriority) {
-        let node = ScheduledBlockTick { pos, block_type: Some(self.get_block(pos).registry_id()) };
+        let node = ScheduledBlockTick {
+            pos,
+            block_type: Some(self.get_block(pos).registry_id()),
+        };
         if !self.to_be_ticked.contains(&node) {
-            self.to_be_ticked.schedule_half_tick(node, delay as usize, priority);
+            self.to_be_ticked
+                .schedule_half_tick(node, delay as usize, priority);
         }
     }
 
     fn pending_tick_at(&mut self, pos: BlockPos) -> bool {
-        self.to_be_ticked.contains(&ScheduledBlockTick { pos, block_type: Some(self.get_block(pos).registry_id()) })
+        self.to_be_ticked.contains(&ScheduledBlockTick {
+            pos,
+            block_type: Some(self.get_block(pos).registry_id()),
+        })
     }
 
     fn block_action(&mut self, pos: BlockPos, block_action: BlockAction) {
@@ -735,7 +798,9 @@ impl Plot {
 
     fn start_redpiler(&mut self, options: CompilerOptions) {
         if self.world.chunks.iter().any(Chunk::requires_interpreter)
-            || !self.world.piston_state.events.is_empty() || !self.world.piston_state.motions.is_empty() {
+            || !self.world.piston_state.events.is_empty()
+            || !self.world.piston_state.motions.is_empty()
+        {
             for player in &self.players {
                 player.send_system_message("This plot contains pistons or observers and runs with the interpreter to preserve their behavior.");
             }
@@ -1188,8 +1253,11 @@ impl Plot {
 
         let mut world =
             PlotWorld::from_chunks(x, z, chunks, plot_data.pending_ticks.into_iter().collect());
-        if plot_data.piston_state.logical_tick != 0 || plot_data.piston_state.next_identity != 0
-            || !plot_data.piston_state.events.is_empty() || !plot_data.piston_state.motions.is_empty() {
+        if plot_data.piston_state.logical_tick != 0
+            || plot_data.piston_state.next_identity != 0
+            || !plot_data.piston_state.events.is_empty()
+            || !plot_data.piston_state.motions.is_empty()
+        {
             world.piston_state = plot_data.piston_state;
         }
         let tps = plot_data.tps;

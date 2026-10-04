@@ -514,8 +514,14 @@ mod tests {
     }
 
     fn java_trace(name: &str) -> serde_json::Value {
-        let data: serde_json::Value = serde_json::from_str(include_str!("../../../../docs/piston-repair/java-traces.json")).unwrap();
-        assert_eq!(data["server_sha1"], "e6ec2f64e6080b9b5d9b471b291c33cc7f509733");
+        let data: serde_json::Value = serde_json::from_str(include_str!(
+            "../../../../docs/piston-repair/java-traces.json"
+        ))
+        .unwrap();
+        assert_eq!(
+            data["server_sha1"],
+            "e6ec2f64e6080b9b5d9b471b291c33cc7f509733"
+        );
         data["fixtures"][name]["trace"].clone()
     }
 
@@ -523,35 +529,54 @@ mod tests {
         let expected: Vec<[bool; 3]> = serde_json::from_value(java_trace(name)).unwrap();
         let world = &mut TestWorld::load_with_schematic(name, BUTTON_POS);
         world.click_floor_button(BUTTON_POS);
-        let got: Vec<_> = expected.iter().map(|_| {
-            world.tick_interpreted();
-            [world.is_wire_powered(BASE_WIRE), world.is_wire_powered(HEAD_WIRE), world.is_wire_powered(PUSH_WIRE)]
-        }).collect();
+        let got: Vec<_> = expected
+            .iter()
+            .map(|_| {
+                world.tick_interpreted();
+                [
+                    world.is_wire_powered(BASE_WIRE),
+                    world.is_wire_powered(HEAD_WIRE),
+                    world.is_wire_powered(PUSH_WIRE),
+                ]
+            })
+            .collect();
         assert_eq!(expected, got, "Java 1.21.5 trace for {name}");
     }
 
     #[test]
-    fn test_updates_non_instant() { compare_wire_trace("UpdateTesterNonInst.schem"); }
+    fn test_updates_non_instant() {
+        compare_wire_trace("UpdateTesterNonInst.schem");
+    }
     #[test]
-    fn test_updates_instant() { compare_wire_trace("UpdateTesterInst.schem"); }
+    fn test_updates_instant() {
+        compare_wire_trace("UpdateTesterInst.schem");
+    }
     #[test]
-    fn test_updates_extend_instant() { compare_wire_trace("UpdateTesterExtendInst.schem"); }
+    fn test_updates_extend_instant() {
+        compare_wire_trace("UpdateTesterExtendInst.schem");
+    }
     #[test]
-    fn test_updates_extend_non_instant() { compare_wire_trace("UpdateTesterExtendNonInst.schem"); }
+    fn test_updates_extend_non_instant() {
+        compare_wire_trace("UpdateTesterExtendNonInst.schem");
+    }
 
     #[test]
     fn test_memory_cell_unaligned_nanoticks() {
-        let expected: Vec<bool> = serde_json::from_value(java_trace("MemCellUnalignedNanoTicks.schem")).unwrap();
+        let expected: Vec<bool> =
+            serde_json::from_value(java_trace("MemCellUnalignedNanoTicks.schem")).unwrap();
         let cell_pos = BlockPos::new(97, 30, 107);
         let world =
             &mut TestWorld::load_with_schematic("MemCellUnalignedNanoTicks.schem", BUTTON_POS);
         assert!(!world.get_piston_extended(cell_pos));
 
         world.place(BUTTON_POS, Block::Air);
-        let got: Vec<_> = expected.iter().map(|_| {
-            world.tick_interpreted();
-            world.get_piston_extended(cell_pos)
-        }).collect();
+        let got: Vec<_> = expected
+            .iter()
+            .map(|_| {
+                world.tick_interpreted();
+                world.get_piston_extended(cell_pos)
+            })
+            .collect();
         assert_eq!(expected, got, "Java 1.21.5 memory cell trace");
     }
 }
