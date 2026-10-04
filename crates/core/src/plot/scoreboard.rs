@@ -100,10 +100,18 @@ impl Scoreboard {
         }
     }
 
-    pub fn remove_player(&mut self, player: &Player) {
-        for i in 0..self.current_state.len() {
-            player.send_packet(&self.make_removal_packet(i).encode());
-        }
+    pub fn remove_player(&self, player: &Player) {
+        // Leaving a plot keeps the connection alive. Remove the objective itself
+        // so the destination plot can create it again, even on a same-plot /tp.
+        player.send_packet(
+            &CScoreboardObjective {
+                objective_name: "redpiler_status".into(),
+                mode: 1,
+                objective_value: String::new(),
+                ty: 0,
+            }
+            .encode(),
+        );
     }
 
     pub fn set_redpiler_state(&mut self, players: &[Player], state: RedpilerState) {
