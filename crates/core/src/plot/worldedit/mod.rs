@@ -109,6 +109,10 @@ pub fn execute_command(
                 };
                 arg_removal_idxs.push(i);
                 if flag_desc.argument_type.is_some() {
+                    if i + 1 >= args.len() {
+                        player.send_error_message("Flag requires an argument");
+                        return true;
+                    }
                     arg_removal_idxs.push(i + 1);
                     with_argument = true;
                 }
@@ -117,6 +121,8 @@ pub fn execute_command(
         }
     }
 
+    arg_removal_idxs.sort_unstable();
+    arg_removal_idxs.dedup();
     for idx in arg_removal_idxs.iter().rev() {
         args.remove(*idx);
     }
@@ -289,6 +295,10 @@ impl Argument {
                     "me" => player_facing,
                     "u" | "up" => BlockFacing::Up,
                     "d" | "down" => BlockFacing::Down,
+                    "n" | "north" => BlockFacing::North,
+                    "s" | "south" => BlockFacing::South,
+                    "e" | "east" => BlockFacing::East,
+                    "w" | "west" => BlockFacing::West,
                     "l" | "left" => player_facing.rotate_ccw(),
                     "r" | "right" => player_facing.rotate(),
                     _ => return Err(ArgumentParseError::new(arg_type, "unknown direction")),
@@ -337,6 +347,10 @@ impl Argument {
                 let facing = match base_dir {
                     "u" | "up" => BlockFacing::Up,
                     "d" | "down" => BlockFacing::Down,
+                    "n" | "north" => BlockFacing::North,
+                    "s" | "south" => BlockFacing::South,
+                    "e" | "east" => BlockFacing::East,
+                    "w" | "west" => BlockFacing::West,
                     "l" | "left" => player_facing.rotate_ccw(),
                     "r" | "right" => player_facing.rotate(),
                     _ => return Err(ArgumentParseError::new(arg_type, "unknown direction")),
@@ -545,6 +559,7 @@ static COMMANDS: Lazy<HashMap<&'static str, WorldeditCommand>> = Lazy::new(|| {
             flags: &[
                 flag!('a', None, "Skip air blocks"),
                 flag!('u', None, "Also update all affected blocks"),
+                flag!('s', None, "Select the pasted region"),
             ],
             permission_node: "worldedit.clipboard.paste",
             ..Default::default()

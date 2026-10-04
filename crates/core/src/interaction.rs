@@ -132,6 +132,9 @@ pub fn on_use(
                     powered,
                 },
             );
+            if redstone::noteblock::is_noteblock_unblocked(world, pos) {
+                redstone::noteblock::play_note(world, pos, instrument, (note + 1) % 25);
+            }
             ActionResult::Success
         }
         b if b.has_block_entity() => {
@@ -304,6 +307,39 @@ pub fn get_state_for_placement(
                 short: true,
             },
         },
+        item if matches!(
+            item.get_name(),
+            "bamboo_sign" | "cherry_sign" | "mangrove_sign"
+        ) =>
+        {
+            if context.block_face == BlockFace::Bottom {
+                return Block::Air;
+            }
+            let name = item.get_name();
+            let name = if context.block_face == BlockFace::Top {
+                name.to_owned()
+            } else {
+                name.replace("_sign", "_wall_sign")
+            };
+            let mut block = Block::from_name(&name).unwrap();
+            if context.block_face == BlockFace::Top {
+                let rotation = (((180.0 + context.player.yaw).rem_euclid(360.0) * 16.0 / 360.0)
+                    .round() as u8
+                    & 15)
+                    .to_string();
+                block.set_properties(std::collections::HashMap::from([(
+                    "rotation",
+                    rotation.as_str(),
+                )]));
+            } else {
+                let facing = format!("{:?}", context.block_face.unwrap_direction()).to_lowercase();
+                block.set_properties(std::collections::HashMap::from([(
+                    "facing",
+                    facing.as_str(),
+                )]));
+            }
+            block
+        }
         _ => Block::from_name(item.get_name()).unwrap_or(Block::Air {}),
     };
     if is_valid_position(block, world, pos) {
@@ -397,6 +433,23 @@ fn supports_attachment(block: Block, face: BlockFace) -> bool {
 pub fn is_valid_position(block: Block, world: &impl World, pos: BlockPos) -> bool {
     if world.is_cursed() {
         return true;
+    }
+    if matches!(block, Block::Unknown { .. }) && block.is_sign() {
+        let mut support_model = Block::from_name(if block.property("facing").is_some() {
+            "oak_wall_sign"
+        } else {
+            "oak_sign"
+        })
+        .unwrap();
+        let props = block.properties();
+        support_model.set_properties(props.iter().map(|(k, v)| (*k, v.as_str())).collect());
+        return is_valid_position(support_model, world, pos);
+    }
+    if block.pressure_plate_powered().is_some() {
+        return supports_attachment(
+            world.get_block(pos.offset(BlockFace::Bottom)),
+            BlockFace::Top,
+        );
     }
 
     match block {
@@ -558,7 +611,7 @@ pub fn use_item_on_block(
         }
 
         match block {
-            Block::Sign { .. } | Block::WallSign { .. } => {
+            block if block.is_sign() => {
                 if !item
                     .nbt
                     .as_ref()

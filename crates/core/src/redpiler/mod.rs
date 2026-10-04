@@ -129,7 +129,19 @@ impl Compiler {
         debug!("Starting compile");
         let start = Instant::now();
 
-        let input = CompilerInput { world, bounds };
+        let ticks: Vec<_> = ticks
+            .into_iter()
+            .filter(|entry| {
+                entry
+                    .block_type
+                    .is_none_or(|kind| world.get_block(entry.pos).registry_id() == kind)
+            })
+            .collect();
+        let input = CompilerInput {
+            world,
+            bounds,
+            ticks: &ticks,
+        };
         let pass_manager = make_default_pass_manager::<W>();
         let graph = pass_manager.run_passes(&options, &input, monitor.clone());
 
@@ -228,6 +240,7 @@ impl Compiler {
 pub struct CompilerInput<'w, W: World> {
     pub world: &'w W,
     pub bounds: (BlockPos, BlockPos),
+    pub ticks: &'w [TickEntry],
 }
 
 #[cfg(test)]

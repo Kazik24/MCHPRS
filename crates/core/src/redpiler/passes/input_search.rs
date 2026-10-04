@@ -60,12 +60,13 @@ impl<'a, W: World> InputSearchState<'a, W> {
 
     fn provides_weak_power(&self, block: Block, side: BlockFace) -> bool {
         match block {
-            Block::RedstoneTorch { .. } => true,
+            Block::RedstoneTorch { .. } if side != BlockFace::Top => true,
             Block::RedstoneWallTorch { facing, .. } if facing.block_face() != side => true,
             Block::RedstoneBlock {} => true,
             Block::Lever { .. } => true,
             Block::StoneButton { .. } => true,
             Block::StonePressurePlate { .. } => true,
+            block if block.pressure_plate_powered().is_some() => true,
             Block::RedstoneRepeater { repeater } if repeater.facing.block_face() == side => true,
             Block::RedstoneComparator { comparator } if comparator.facing.block_face() == side => {
                 true
@@ -79,6 +80,7 @@ impl<'a, W: World> InputSearchState<'a, W> {
             Block::RedstoneTorch { .. } if side == BlockFace::Bottom => true,
             Block::RedstoneWallTorch { .. } if side == BlockFace::Bottom => true,
             Block::StonePressurePlate { .. } if side == BlockFace::Top => true,
+            block if side == BlockFace::Top && block.pressure_plate_powered().is_some() => true,
             Block::Lever { lever } => match side {
                 BlockFace::Top => lever.face == LeverFace::Floor,
                 BlockFace::Bottom => lever.face == LeverFace::Ceiling,

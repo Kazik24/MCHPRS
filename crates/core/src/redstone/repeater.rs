@@ -82,6 +82,9 @@ pub fn tick(mut rep: RedstoneRepeater, world: &mut impl World, pos: BlockPos) {
         world.set_block(pos, Block::RedstoneRepeater { repeater: rep });
         super::on_state_change(rep.facing.block_facing(), world, pos);
     } else if !rep.powered {
+        if !should_be_powered {
+            world.schedule_tick(pos, rep.delay as u32, TickPriority::Higher);
+        }
         rep.powered = true;
         world.set_block(pos, Block::RedstoneRepeater { repeater: rep });
         super::on_state_change(rep.facing.block_facing(), world, pos);

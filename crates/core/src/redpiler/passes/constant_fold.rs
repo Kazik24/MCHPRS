@@ -30,7 +30,7 @@ fn fold(graph: &mut CompileGraph) -> usize {
 
     'nodes: for i in 0..graph.node_bound() {
         let idx = NodeIdx::new(i);
-        if !graph.contains_node(idx) {
+        if !graph.contains_node(idx) || graph[idx].state.pending_tick {
             continue;
         }
 
@@ -101,6 +101,11 @@ fn fold(graph: &mut CompileGraph) -> usize {
             _ => continue,
         };
 
+        // A node whose current output differs from its eventual constant still
+        // needs to propagate that transition through the runtime scheduler.
+        if graph[idx].state.output_strength != new_power {
+            continue;
+        }
         graph[idx].ty = NodeType::Constant;
         graph[idx].state.output_strength = new_power;
 

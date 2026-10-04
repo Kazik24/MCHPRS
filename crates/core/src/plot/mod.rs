@@ -568,13 +568,13 @@ impl Plot {
         let old_block = old.block_pos();
         let new_block = new.block_pos();
 
-        if let Block::StonePressurePlate { powered: true } = self.world.get_block(old_block) {
+        if self.world.get_block(old_block).pressure_plate_powered() == Some(true) {
             if !self.are_players_on_block(old_block) {
                 self.set_pressure_plate(old_block, false);
             }
         }
 
-        if let Block::StonePressurePlate { powered: false } = self.world.get_block(new_block) {
+        if self.world.get_block(new_block).pressure_plate_powered() == Some(false) {
             if self.players[player_idx].on_ground {
                 self.set_pressure_plate(new_block, true);
             }
@@ -589,9 +589,9 @@ impl Plot {
 
         let block = self.world.get_block(pos);
         match block {
-            Block::StonePressurePlate { .. } => {
+            block if block.pressure_plate_powered().is_some() => {
                 self.world
-                    .set_block(pos, Block::StonePressurePlate { powered });
+                    .set_block(pos, block.with_pressure_plate_power(powered).unwrap());
                 redstone::update_surrounding_blocks(&mut self.world, pos);
                 redstone::update_surrounding_blocks(&mut self.world, pos.offset(BlockFace::Bottom));
             }
@@ -1106,7 +1106,7 @@ impl Plot {
             self.last_player_time = now;
 
             let world_send_rate =
-                Duration::from_nanos(1_000_000_000 / self.world_send_rate.0 as u64);
+                Duration::from_nanos(1_000_000_000 / self.world_send_rate.0.max(1) as u64);
 
             let max_batch_size = match self.last_nspt {
                 Some(Duration::ZERO) | None => 1,
@@ -1120,7 +1120,7 @@ impl Plot {
 
             let batch_size = match self.tps {
                 Tps::Limited(tps) if tps != 0 => {
-                    let dur_per_tick = Duration::from_nanos(1_000_000_000 / tps as u64);
+                    let dur_per_tick = Duration::from_nanos((1_000_000_000 / tps as u64).max(1));
                     self.lag_time += now - self.last_update_time;
                     let batch_size = (self.lag_time.as_nanos() / dur_per_tick.as_nanos()) as u64;
                     self.lag_time -= dur_per_tick * batch_size as u32;
@@ -1169,7 +1169,7 @@ impl Plot {
 
             let now = Instant::now();
             let time_since_last_world_send = now - self.last_world_send_time;
-            if time_since_last_world_send > world_send_rate {
+            if self.world_send_rate.0 != 0 && time_since_last_world_send > world_send_rate {
                 self.last_world_send_time = now;
                 self.world.flush_block_changes();
             }

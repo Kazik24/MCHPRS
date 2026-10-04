@@ -7,7 +7,7 @@ use crate::world::World;
 use petgraph::unionfind::UnionFind;
 use petgraph::visit::{EdgeRef, IntoEdgeReferences, NodeIndexable};
 use petgraph::Direction;
-use rustc_hash::FxHashMap;
+use rustc_hash::{FxHashMap, FxHashSet};
 
 pub struct ConstantCoalesce;
 
@@ -23,9 +23,10 @@ impl<W: World> Pass<W> for ConstantCoalesce {
         }
 
         let mut constant_nodes = FxHashMap::default();
+        let mut replacements = FxHashSet::default();
         for i in 0..graph.node_bound() {
             let idx = NodeIdx::new(i);
-            if !graph.contains_node(idx) {
+            if !graph.contains_node(idx) || replacements.contains(&idx) {
                 continue;
             }
             let node = &graph[idx];
@@ -50,6 +51,7 @@ impl<W: World> Pass<W> for ConstantCoalesce {
                             is_output: false,
                             annotations: Default::default(),
                         });
+                        replacements.insert(constant_idx);
                         *entry.insert(constant_idx)
                     }
                 };
@@ -61,5 +63,42 @@ impl<W: World> Pass<W> for ConstantCoalesce {
 
     fn status_message(&self) -> &'static str {
         "Coalescing constants"
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::redpiler::compile_graph::CompileLink;
+    use mchprs_blocks::BlockPos;
+
+    #[test]
+    fn replacement_constant_survives_reused_graph_slot() {
+        let mut graph = CompileGraph::new();
+        let node = |ty, state, is_output| CompileNode {
+            ty,
+            state,
+            is_output,
+            is_input: false,
+            block: None,
+            annotations: Default::default(),
+        };
+        let constant = graph.add_node(node(NodeType::Constant, NodeState::ss(15), false));
+        let hole = graph.add_node(node(NodeType::Lamp, NodeState::default(), false));
+        let output = graph.add_node(node(NodeType::Lamp, NodeState::default(), true));
+        graph.remove_node(hole);
+        graph.add_edge(constant, output, CompileLink::default(0));
+        let world = crate::plot::PlotWorld::from_chunks(0, 0, Vec::new(), Default::default());
+        let input = CompilerInput {
+            world: &world,
+            bounds: (BlockPos::new(0, 0, 0), BlockPos::new(0, 0, 0)),
+            ticks: &[],
+        };
+        ConstantCoalesce.run_pass(&mut graph, &CompilerOptions::default(), &input);
+        let inputs: Vec<_> = graph
+            .neighbors_directed(output, Direction::Incoming)
+            .collect();
+        assert_eq!(inputs.len(), 1);
+        assert_eq!(graph[inputs[0]].state.output_strength, 15);
     }
 }

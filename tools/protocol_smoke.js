@@ -101,14 +101,47 @@ function command(client,command) { client.write('chat_command',{command}); }
     a.write('position',{x:100,y:30,z:100,flags:{onGround:false,hasHorizontalCollision:false}});
     async function we(cmd,text) {
       const start=a.messages.length; command(a,cmd);
-      await until(()=>a.messages.slice(start).some(m=>m.includes(text)),cmd+' success: '+JSON.stringify(a.messages.slice(start)));
+      try { await until(()=>a.messages.slice(start).some(m=>m.includes(text)),cmd+' success'); }
+      catch(error) { throw Error(error.message+': '+JSON.stringify(a.messages.slice(start))); }
     }
+    await we('version','MCHPRS 0.4.1 (Minecraft 1.21.5, protocol 770)');
+    await we('wsr','World send rate:');
+    await we('wsr 0','successfully set');
+    await we('wsr','World send rate: 0 Hz');
+    await we('wsr 20','successfully set');
+    await we('rtps 200000','successfully set');
+    await we('rtps 20','successfully set');
+    await we('p visit PortSmokeOne 0','Plot index starts at 1');
+    await we('p sel','Second position');
+    async function select(first,second) {
+      for (const [name,pos] of [['/pos1',first],['/pos2',second]]) {
+        a.write('position',{x:pos[0],y:pos[1],z:pos[2],flags:{onGround:false,hasHorizontalCollision:false}});
+        await we(name,'position set');
+      }
+    }
+    await select([140,40,120],[144,40,120]);
+    await we('/set air','Operation completed');
+    await select([140,40,120],[142,40,120]);
+    await we('/set stone','Operation completed');
+    await select([141,40,120],[141,40,120]);
+    await we('/set gold_block','Operation completed');
+    await select([140,40,120],[142,40,120]);
+    const cells=()=>[140,141,142,143,144].map(x=>data.blocksByStateId[state(a,x,40,120)].name);
+    await until(()=>JSON.stringify(cells())===JSON.stringify(['stone','gold_block','stone','air','air']),'rstack initial cells');
+    await we('/rstack 2 1 east','stacked successfully');
+    await until(()=>JSON.stringify(cells())===JSON.stringify(['stone','stone','stone','gold_block','stone']),'overlapping rstack');
+    command(a,'/undo');
+    await until(()=>JSON.stringify(cells())===JSON.stringify(['stone','gold_block','stone','air','air']),'overlapping rstack undo');
+    command(a,'/redo');
+    await until(()=>JSON.stringify(cells())===JSON.stringify(['stone','stone','stone','gold_block','stone']),'overlapping rstack redo');
+    a.write('position',{x:100,y:30,z:100,flags:{onGround:false,hasHorizontalCollision:false}});
     await we('/load rf/ADDER_GWIEZDNY_TEST.schem','loaded to your clipboard');
-    await we('/paste','clipboard was pasted');
+    await we('/paste -as','clipboard was pasted');
     await until(()=>a.entities.some(p=>p.location.x===120 && p.location.y===29 && p.location.z===92 && p.action===7),'O2 sign at paste displacement');
     const signState=state(a,120,29,92); assert(data.blocksByStateId[signState].name.includes('sign'));
     command(a,'/undo'); await until(()=>state(a,120,29,92)===0,'WorldEdit undo');
     command(a,'/redo'); await until(()=>state(a,120,29,92)===signState,'WorldEdit redo');
+    await we('/help rs','Like //stack');
     await we('/load BadInput.schem','error loading the schematic');
     // A failed import must retain the successfully loaded clipboard.
     await we('/save SmokeRoundtrip.schem','saved sucessfuly');

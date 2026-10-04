@@ -1,5 +1,7 @@
 # Current piston server compared with newest upstream master
 
+This document records the recovered 1.18.2 baseline. For the current 1.21.5 branch and selectively adapted master fixes, see [the 2026-10-04 audit](MASTER_FEATURE_AUDIT.md).
+
 Comparison date: **2026-10-03**. Upstream `master` was fetched from `https://github.com/MCHPR/MCHPRS.git` for this comparison. The remote tip was **`d492e433f2c7de5fd5c71f165cb60f0d912ebf04`**, committed 2026-09-28. This is a pinned snapshot; future master commits are outside this document.
 
 The current server is the recovered **Minecraft 1.18.2 piston fork** described in [the repository assessment](REPOSITORY_ASSESSMENT.md). Newest upstream master is a **Minecraft 1.20.4 server**, with extensive compiler, data, tooling and reliability changes. It does **not** contain this fork's piston engine or its observer update implementation. Replacing the current server with master would therefore change supported circuit behavior as well as client compatibility.

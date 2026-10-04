@@ -22,7 +22,7 @@ impl<W: World> Pass<W> for UnreachableOutput {
     fn run_pass(&self, graph: &mut CompileGraph, _: &CompilerOptions, _: &CompilerInput<'_, W>) {
         for i in 0..graph.node_bound() {
             let idx = NodeIdx::new(i);
-            if !graph.contains_node(idx) {
+            if !graph.contains_node(idx) || graph[idx].state.pending_tick {
                 continue;
             }
 

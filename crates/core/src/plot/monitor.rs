@@ -94,23 +94,23 @@ impl TimingsMonitor {
             return None;
         }
 
-        let mut ticks_10s = 0;
-        let mut ticks_1m = 0;
-        let mut ticks_5m = 0;
-        let mut ticks_15m = 0;
+        let mut ticks_10s = 0u64;
+        let mut ticks_1m = 0u64;
+        let mut ticks_5m = 0u64;
+        let mut ticks_15m = 0u64;
         // TODO: https://github.com/rust-lang/rust-clippy/issues/8987
         #[allow(clippy::significant_drop_in_scrutinee)]
         for (i, ticks) in records.iter().enumerate() {
             if i < 20 {
-                ticks_10s += *ticks;
+                ticks_10s += *ticks as u64;
             }
             if i < 120 {
-                ticks_1m += *ticks;
+                ticks_1m += *ticks as u64;
             }
             if i < 600 {
-                ticks_5m += *ticks;
+                ticks_5m += *ticks as u64;
             }
-            ticks_15m += *ticks;
+            ticks_15m += *ticks as u64;
         }
 
         Some(TimingsReport {
@@ -168,14 +168,19 @@ impl TimingsMonitor {
                     || tps != last_tps
                     || data.reset_timings.load(Ordering::Relaxed) > 0
                 {
-                    data.reset_timings.fetch_sub(1, Ordering::Relaxed);
+                    let _ = data.reset_timings.fetch_update(
+                        Ordering::Relaxed,
+                        Ordering::Relaxed,
+                        |remaining| remaining.checked_sub(1),
+                    );
                     was_ticking_before = ticking;
                     last_tps = tps;
                     continue;
                 }
 
                 // 5% threshold
-                if data.tps.unlimited.load(Ordering::Relaxed) || ticks_passed < (tps / 2) * 95 / 100
+                if data.tps.unlimited.load(Ordering::Relaxed)
+                    || (ticks_passed as u64) < (tps as u64 / 2) * 95 / 100
                 {
                     behind_for += 1;
                 } else {
@@ -208,5 +213,35 @@ impl Drop for TimingsMonitor {
     fn drop(&mut self) {
         // Joining the thread in drop is a bad idea so we just let it detach
         self.data.running.store(false, Ordering::Relaxed);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn starting_monitor_does_not_underflow_reset_counter() {
+        let mut monitor = TimingsMonitor::new(Tps::Limited(20));
+        monitor.set_ticking(true);
+        monitor.tick();
+        thread::sleep(Duration::from_millis(600));
+        monitor.stop();
+        assert_eq!(monitor.data.reset_timings.load(Ordering::Relaxed), 0);
+    }
+
+    #[test]
+    fn high_tick_rate_reports_do_not_overflow() {
+        let mut monitor = TimingsMonitor::new(Tps::Unlimited);
+        monitor
+            .data
+            .timings_record
+            .lock()
+            .unwrap()
+            .extend(std::iter::repeat_n(u32::MAX, 1800));
+        let report = monitor.generate_report().unwrap();
+        assert!(report.fifteen_m.is_finite());
+        assert_eq!(report.fifteen_m, u32::MAX as f32 * 2.0);
+        monitor.stop();
     }
 }

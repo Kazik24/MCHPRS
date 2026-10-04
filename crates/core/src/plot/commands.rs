@@ -47,6 +47,7 @@ impl Plot {
             "visit" | "v" => "plots.visit",
             "teleport" | "tp" => "plots.visit",
             "lock" | "unlock" => "plots.lock",
+            "select" | "sel" => "plots.select",
             _ => {
                 self.players[player].send_error_message("Invalid argument for /plot");
                 return;
@@ -98,7 +99,11 @@ impl Plot {
 
                 let idx = if args.len() == 2 {
                     match args[1].parse::<usize>() {
-                        Ok(idx) => idx - 1,
+                        Ok(idx) if idx > 0 => idx - 1,
+                        Ok(_) => {
+                            self.players[player].send_error_message("Plot index starts at 1");
+                            return;
+                        }
                         Err(_) => {
                             self.players[player].send_error_message("Unable to parse index");
                             return;
@@ -155,6 +160,11 @@ impl Plot {
                     self.players[player]
                         .send_system_message("You are already locked to this plot.");
                 }
+            }
+            "select" | "sel" => {
+                let (first, second) = self.world.get_corners();
+                self.players[player].worldedit_set_first_position(first);
+                self.players[player].worldedit_set_second_position(second);
             }
             "unlock" => {
                 if self.locked_players.remove(&self.players[player].entity_id) {
@@ -229,6 +239,9 @@ impl Plot {
         }
 
         match command {
+            "/version" => {
+                self.players[player].send_system_message(&crate::server::version_string());
+            }
             "/whitelist" => match args.as_slice() {
                 ["add", username] => {
                     let username = username.to_string();
@@ -295,11 +308,6 @@ impl Plot {
                 }
 
                 let tps = if let Ok(tps) = args[0].parse::<u32>() {
-                    if tps > 100000 {
-                        self.players[player]
-                            .send_error_message("The rtps cannot go higher than 100000!");
-                        return false;
-                    }
                     Tps::Limited(tps)
                 } else if !args[0].is_empty() && "unlimited".starts_with(args[0]) {
                     Tps::Unlimited
@@ -535,6 +543,13 @@ impl Plot {
                 self.players[player].set_inventory_slot(slot, Some(item));
             }
             "/worldsendrate" | "/wsr" => {
+                if args.is_empty() {
+                    self.players[player].send_system_message(&format!(
+                        "World send rate: {} Hz",
+                        self.world_send_rate.0
+                    ));
+                    return false;
+                }
                 if args.len() != 1 {
                     self.players[player].send_error_message("Usage: /worldsendrate <hertz>");
                     return false;
@@ -544,10 +559,6 @@ impl Plot {
                     self.players[player].send_error_message("Unable to parse send rate!");
                     return false;
                 };
-                if hertz == 0 {
-                    self.players[player].send_error_message("The world send rate cannot be 0!");
-                    return false;
-                }
                 if hertz > 1000 {
                     self.players[player]
                         .send_error_message("The world send rate cannot go higher than 1000!");
@@ -610,7 +621,7 @@ pub static DECLARE_COMMANDS: Lazy<PacketEncoder> = Lazy::new(|| {
                 flags: CommandFlags::ROOT.bits() as i8,
                 children: &[
                     1, 4, 5, 6, 11, 12, 14, 16, 18, 19, 20, 21, 22, 23, 24, 26, 29, 31, 32, 34, 36,
-                    47, 49, 53, 60, 61, 63, 65, 66, 67, 71, 73, 74, 75,
+                    47, 49, 53, 60, 61, 63, 65, 66, 67, 71, 73, 74, 75, 82,
                 ],
                 redirect_node: None,
                 name: None,
@@ -665,7 +676,7 @@ pub static DECLARE_COMMANDS: Lazy<PacketEncoder> = Lazy::new(|| {
             // 6: /plot
             Node {
                 flags: (CommandFlags::LITERAL).bits() as i8,
-                children: &[7, 8, 9, 10, 38, 39, 40, 41, 43, 44, 46, 58, 59],
+                children: &[7, 8, 9, 10, 38, 39, 40, 41, 43, 44, 46, 58, 59, 80, 81],
                 redirect_node: None,
                 name: Some("plot"),
                 parser: None,
@@ -731,7 +742,7 @@ pub static DECLARE_COMMANDS: Lazy<PacketEncoder> = Lazy::new(|| {
                 children: &[],
                 redirect_node: None,
                 name: Some("rtps"),
-                parser: Some(Parser::Integer(0, 100000)),
+                parser: Some(Parser::Integer(0, i32::MAX)),
                 suggestions_type: None,
             },
             // 14: //pos1
@@ -1252,7 +1263,7 @@ pub static DECLARE_COMMANDS: Lazy<PacketEncoder> = Lazy::new(|| {
             },
             // 71: /worldsendrate
             Node {
-                flags: (CommandFlags::LITERAL).bits() as i8,
+                flags: (CommandFlags::LITERAL | CommandFlags::EXECUTABLE).bits() as i8,
                 children: &[72],
                 redirect_node: None,
                 name: Some("worldsendrate"),
@@ -1329,6 +1340,33 @@ pub static DECLARE_COMMANDS: Lazy<PacketEncoder> = Lazy::new(|| {
                 redirect_node: None,
                 name: Some("pticks"),
                 parser: Some(Parser::Integer(0, 100000)),
+                suggestions_type: None,
+            },
+            // 80: /plot select
+            Node {
+                flags: (CommandFlags::LITERAL | CommandFlags::EXECUTABLE).bits() as i8,
+                children: &[],
+                redirect_node: None,
+                name: Some("select"),
+                parser: None,
+                suggestions_type: None,
+            },
+            // 81: /plot sel
+            Node {
+                flags: (CommandFlags::LITERAL | CommandFlags::REDIRECT).bits() as i8,
+                children: &[],
+                redirect_node: Some(80),
+                name: Some("sel"),
+                parser: None,
+                suggestions_type: None,
+            },
+            // 82: /version
+            Node {
+                flags: (CommandFlags::LITERAL | CommandFlags::EXECUTABLE).bits() as i8,
+                children: &[],
+                redirect_node: None,
+                name: Some("version"),
+                parser: None,
                 suggestions_type: None,
             },
         ],

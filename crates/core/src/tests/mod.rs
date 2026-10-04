@@ -124,8 +124,40 @@ fn run_mandelbrot_chungus_interpreted_to_compiled() {
     compiler.flush(&mut plot);
 
     let hash = calculate_world_hash(&plot);
-    //hash after 1000 interpreted and then 1000 compiled ticks (master commit 33cfc6dd84)
-    assert_eq!(hash.as_ref(),b"\x02\xaf\x81\x4f\x25\x38\xde\x2e\xbb\x1b\x43\xc5\x19\x9b\xb7\xee\x0f\x85\x07\xcd\xbc\x03\x22\xaf\xdd\xf4\x19\xe3\xd0\x1d\xf7\x39");
+    let mut control = load_test_plot("./benches/chungus_mandelbrot_plot");
+    click_floor_button(&mut control, CHUNGUS_START_BUTTON);
+    for _ in 0..2000 * TICK_MUL {
+        control.tick_interpreted();
+    }
+    // Optimized compilation omits internal wires/nodes. Compare the circuit's
+    // visible outputs with uninterrupted interpreted execution instead of a
+    // historical whole-world hash containing the old lost-repeater-pulse state.
+    for chunk in control.get_chunks() {
+        for x in 0..16 {
+            for z in 0..16 {
+                for y in 0..256 {
+                    let block = Block::from_id(chunk.get_block(x, y, z));
+                    if matches!(
+                        block,
+                        Block::RedstoneLamp { .. }
+                            | Block::IronTrapdoor { .. }
+                            | Block::NoteBlock { .. }
+                    ) {
+                        let pos = BlockPos::new(
+                            chunk.x * 16 + x as i32,
+                            y as i32,
+                            chunk.z * 16 + z as i32,
+                        );
+                        assert_eq!(
+                            plot.get_block(pos),
+                            block,
+                            "handoff output at {pos}; world hash {hash:?}"
+                        );
+                    }
+                }
+            }
+        }
+    }
 }
 
 #[test]

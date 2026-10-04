@@ -114,6 +114,56 @@ impl BlockTransform for BlockFacing {
 }
 
 impl Block {
+    pub fn property(self, name: &str) -> Option<&'static str> {
+        crate::generated::STATE_PROPERTIES
+            .get(self.get_id() as usize)?
+            .iter()
+            .find_map(|&(key, value)| (key == name).then_some(value))
+    }
+
+    pub fn is_sign(self) -> bool {
+        let name = self.get_name();
+        name.ends_with("_sign") && !name.ends_with("_hanging_sign")
+    }
+
+    /// Binary plates supported by this creative server; weighted plates use power instead.
+    pub fn pressure_plate_powered(self) -> Option<bool> {
+        match self {
+            Self::StonePressurePlate { powered } => Some(powered),
+            Self::Unknown { .. } if self.get_name().ends_with("_pressure_plate") => {
+                self.property("powered").map(|value| value == "true")
+            }
+            _ => None,
+        }
+    }
+
+    pub fn with_pressure_plate_power(mut self, powered: bool) -> Option<Self> {
+        self.pressure_plate_powered()?;
+        self.set_properties(HashMap::from([(
+            "powered",
+            if powered { "true" } else { "false" },
+        )]));
+        Some(self)
+    }
+
+    fn transform_new_sign(&mut self, transform: impl FnOnce(&mut Self)) -> bool {
+        if !matches!(self, Self::Unknown { .. }) || !self.is_sign() {
+            return false;
+        }
+        let mut model = Self::from_name(if self.property("facing").is_some() {
+            "oak_wall_sign"
+        } else {
+            "oak_sign"
+        })
+        .unwrap();
+        let properties = self.properties();
+        model.set_properties(properties.iter().map(|(k, v)| (*k, v.as_str())).collect());
+        transform(&mut model);
+        let transformed = model.properties();
+        // Keep waterlogging and species from the original target state.
+        self.set_properties(transformed.iter().map(|(k, v)| (*k, v.as_str())).collect());
+        true
+    }
     pub fn get_id(self) -> u32 {
         if let Block::Unknown { id } = self {
             return id;
@@ -154,6 +204,7 @@ impl Block {
             | Block::PistonHead { .. }
             | Block::MovingPiston { .. } => true,
             Block::Piston { piston } => piston.extended,
+            Self::Unknown { .. } => self.is_sign(),
             _ => false,
         }
     }
@@ -184,6 +235,21 @@ fn repeater_id_test() {
     assert_eq!(id, crate::generated::LEGACY_BLOCK_STATES[4141]);
     let new = Block::from_id(id);
     assert_eq!(new, original);
+}
+
+#[test]
+fn standing_sign_transform_preserves_species_and_waterlogging() {
+    for name in ["oak_sign", "bamboo_sign", "cherry_sign", "mangrove_sign"] {
+        let mut block = Block::from_name(name).unwrap();
+        block.set_properties(HashMap::from([("rotation", "3")]));
+        let waterlogged = block.property("waterlogged");
+        block.rotate(RotateAmt::Rotate90);
+        assert_eq!(block.property("rotation"), Some("7"), "{name}");
+        block.flip(FlipDirection::FlipX);
+        assert_eq!(block.property("rotation"), Some("9"), "{name}");
+        assert_eq!(block.get_name(), name);
+        assert_eq!(block.property("waterlogged"), waterlogged);
+    }
 }
 
 #[test]
@@ -418,6 +484,12 @@ macro_rules! blocks {
             }
 
             pub fn rotate(&mut self, amt: RotateAmt) {
+                if self.transform_new_sign(|model| model.rotate(amt)) { return; }
+                if let Self::Sign { rotation, .. } = self {
+                    let delta = match amt { RotateAmt::Rotate90 => 4, RotateAmt::Rotate180 => 8, RotateAmt::Rotate270 => 12 };
+                    *rotation = (*rotation + delta) & 15;
+                    return;
+                }
                 match self {
                     $(
                         Block::$simple_name {} => {},
@@ -437,6 +509,11 @@ macro_rules! blocks {
             }
 
             pub fn flip(&mut self, dir: FlipDirection) {
+                if self.transform_new_sign(|model| model.flip(dir)) { return; }
+                if let Self::Sign { rotation, .. } = self {
+                    *rotation = match dir { FlipDirection::FlipX => (16 - *rotation) & 15, FlipDirection::FlipZ => (24 - *rotation) & 15 };
+                    return;
+                }
                 match self {
                     $(
                         Block::$simple_name {} => {},
@@ -513,6 +590,7 @@ blocks! {
     #simple Andesite(6, "andesite"),
     #simple PolishedAndesite(7, "polished_andesite"),
     #simple Cobblestone(14, "cobblestone"),
+    #simple StoneBricks(4564, "stone_bricks"),
     #simple GoldOre(69, "gold_ore"),
     #simple DeepslateGoldOre(70, "deepslate_gold_ore"),
     #simple IronOre(71, "iron_ore"),

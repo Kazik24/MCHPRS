@@ -103,6 +103,9 @@ pub fn on_use(wire: RedstoneWire, world: &mut impl World, pos: BlockPos) -> Acti
 }
 
 fn can_connect_to(block: Block, side: BlockDirection) -> bool {
+    if block.pressure_plate_powered().is_some() {
+        return true;
+    }
     match block {
         Block::RedstoneWire { .. }
         | Block::RedstoneComparator { .. }

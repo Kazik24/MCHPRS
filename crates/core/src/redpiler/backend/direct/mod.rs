@@ -178,6 +178,9 @@ impl JITBackend for DirectBackend {
                 if let Some(powered) = block_powered_mut(block) {
                     *powered = node.powered
                 }
+                if let Some(plate) = block.with_pressure_plate_power(node.powered) {
+                    *block = plate;
+                }
                 if let Block::RedstoneWire { wire, .. } = block {
                     wire.power = node.output_power
                 };

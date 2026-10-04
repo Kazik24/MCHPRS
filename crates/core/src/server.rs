@@ -31,6 +31,15 @@ pub const MC_VERSION: &str = "1.21.5";
 pub const MC_DATA_VERSION: i32 = 4325;
 pub const PROTOCOL_VERSION: i32 = 770;
 
+pub fn version_string() -> String {
+    format!(
+        "MCHPRS {} (Minecraft {}, protocol {})",
+        env!("MCHPRS_VERSION"),
+        MC_VERSION,
+        PROTOCOL_VERSION
+    )
+}
+
 /// `Message` gets send from a plot thread to the server thread.
 #[derive(Debug)]
 pub enum Message {

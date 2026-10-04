@@ -34,7 +34,7 @@ pub fn has_override(block: Block) -> bool {
             | Block::Cauldron { .. }
             | Block::Composter { .. }
             | Block::Cake { .. }
-    )
+    ) || block.get_name() == "end_portal_frame"
 }
 
 pub fn get_override(block: Block, world: &impl World, pos: BlockPos) -> u8 {
@@ -45,13 +45,15 @@ pub fn get_override(block: Block, world: &impl World, pos: BlockPos) -> u8 {
                     comparator_override,
                     ..
                 }) => *comparator_override,
-                Some(_) => unreachable!("Backing blockentity type is invalid"),
-                None => unreachable!("Backing blockentity does not exist"),
+                _ => 0,
             }
         }
         Block::Cauldron { level } => level,
         Block::Composter { level } => level,
         Block::Cake { bites } => 14 - 2 * bites,
+        block if block.get_name() == "end_portal_frame" => {
+            super::bool_to_ss(block.property("eye") == Some("true"))
+        }
         _ => unreachable!("Block does not override comparators"),
     }
 }

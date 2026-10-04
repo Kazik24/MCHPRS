@@ -27,7 +27,7 @@ jobs:
         run: cargo fmt --all -- --check
       - name: Build release
         run: cargo build --release --locked
-      - name: Test workspace (known memory-cell failure remains visible)
+      - name: Test workspace
         run: cargo test --workspace --locked --no-fail-fast
   protocol:
     runs-on: ubuntu-latest

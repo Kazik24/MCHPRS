@@ -237,12 +237,16 @@ pub(super) fn execute_paste(ctx: CommandExecuteContext<'_>) {
         let offset_z = pos.z - cb.offset_z;
         let first_pos = BlockPos::new(offset_x, offset_y, offset_z);
         let second_pos = BlockPos::new(
-            offset_x + cb.size_x as i32,
-            offset_y + cb.size_y as i32,
-            offset_z + cb.size_z as i32,
+            offset_x + cb.size_x as i32 - 1,
+            offset_y + cb.size_y as i32 - 1,
+            offset_z + cb.size_z as i32 - 1,
         );
         capture_undo(ctx.plot, ctx.player, first_pos, second_pos);
         paste_clipboard(ctx.plot, cb, pos, ctx.has_flag('a'));
+        if ctx.has_flag('s') {
+            ctx.player.worldedit_set_first_position(first_pos);
+            ctx.player.worldedit_set_second_position(second_pos);
+        }
         if ctx.has_flag('u') {
             update(ctx.plot, first_pos, second_pos);
         }
@@ -403,7 +407,7 @@ pub(super) fn execute_undo(ctx: CommandExecuteContext<'_>) {
             .collect(),
         ..undo
     };
-    for clipboard in &undo.clipboards {
+    for clipboard in undo.clipboards.iter().rev() {
         paste_clipboard(ctx.plot, clipboard, undo.pos, false);
     }
     ctx.player.worldedit_redo.push(redo);
@@ -747,7 +751,13 @@ pub(super) fn execute_help(mut ctx: CommandExecuteContext<'_>) {
 
     let maybe_command = COMMANDS
         .get(command_name.as_str())
-        .or_else(|| COMMANDS.get(slash_command_name.as_str()));
+        .or_else(|| COMMANDS.get(slash_command_name.as_str()))
+        .or_else(|| {
+            let alias = ALIASES
+                .get(command_name.as_str())
+                .or_else(|| ALIASES.get(slash_command_name.as_str()))?;
+            COMMANDS.get(alias.split_whitespace().next()?)
+        });
     let command = match maybe_command {
         Some(command) => command,
         None => {

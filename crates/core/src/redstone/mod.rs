@@ -5,6 +5,8 @@
 #[cfg(test)]
 mod adder_tests;
 pub mod comparator;
+#[cfg(test)]
+mod master_tests;
 pub mod noteblock;
 #[cfg(test)]
 mod observer_tests;
@@ -33,10 +35,11 @@ fn get_weak_power(
     dust_power: bool,
 ) -> u8 {
     match block {
-        Block::RedstoneTorch { lit: true } => 15,
+        Block::RedstoneTorch { lit: true } if side != BlockFace::Top => 15,
         Block::RedstoneWallTorch { lit: true, facing } if facing.block_face() != side => 15,
         Block::RedstoneBlock {} => 15,
         Block::StonePressurePlate { powered: true } => 15,
+        block if block.pressure_plate_powered() == Some(true) => 15,
         Block::Lever { lever } if lever.powered => 15,
         Block::StoneButton { button } if button.powered => 15,
         Block::RedstoneRepeater { repeater }
@@ -98,6 +101,7 @@ fn get_strong_power(
             } && button.powered,
         ),
         Block::StonePressurePlate { powered: true } if side == BlockFace::Top => 15,
+        block if side == BlockFace::Top && block.pressure_plate_powered() == Some(true) => 15,
         Block::RedstoneWire { .. } => get_weak_power(block, world, pos, side, dust_power),
         Block::RedstoneRepeater { .. } => get_weak_power(block, world, pos, side, dust_power),
         Block::RedstoneComparator { .. } => get_weak_power(block, world, pos, side, dust_power),

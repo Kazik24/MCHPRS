@@ -7,6 +7,13 @@ use tracing_subscriber::fmt::writer::MakeWriterExt;
 use tracing_subscriber::EnvFilter;
 
 fn main() {
+    if std::env::args()
+        .skip(1)
+        .any(|arg| arg == "--version" || arg == "-v")
+    {
+        println!("{}", mchprs_core::server::version_string());
+        return;
+    }
     // Setup logging
     let logfile = tracing_appender::rolling::daily("./logs", "mchprs.log");
     let env_filter = EnvFilter::builder()

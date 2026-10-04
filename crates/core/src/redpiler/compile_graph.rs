@@ -34,6 +34,7 @@ pub struct NodeState {
     pub powered: bool,
     pub repeater_locked: bool,
     pub output_strength: u8,
+    pub pending_tick: bool,
 }
 
 impl NodeState {
@@ -41,6 +42,7 @@ impl NodeState {
         NodeState {
             powered,
             output_strength: if powered { 15 } else { 0 },
+            pending_tick: false,
             ..Default::default()
         }
     }
@@ -50,12 +52,14 @@ impl NodeState {
             powered,
             repeater_locked: locked,
             output_strength: if powered { 15 } else { 0 },
+            pending_tick: false,
         }
     }
 
     pub fn ss(ss: u8) -> NodeState {
         NodeState {
             output_strength: ss,
+            pending_tick: false,
             ..Default::default()
         }
     }
@@ -85,7 +89,7 @@ pub struct CompileNode {
 
 impl CompileNode {
     pub fn is_removable(&self) -> bool {
-        !self.is_input && !self.is_output
+        !self.is_input && !self.is_output && !self.state.pending_tick
     }
 }
 

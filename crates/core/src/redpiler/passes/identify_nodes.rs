@@ -53,6 +53,11 @@ impl<W: World> Pass<W> for IdentifyNodes {
         for pos in second_pass {
             apply_annotations(graph, options, &first_pass, plot, pos);
         }
+        for entry in input.ticks {
+            if let Some(&idx) = first_pass.get(&entry.pos) {
+                graph[idx].state.pending_tick = true;
+            }
+        }
     }
 
     fn should_run(&self, _: &CompilerOptions) -> bool {
@@ -76,7 +81,7 @@ fn for_pos<W: World>(
     let id = world.get_block_raw(pos);
     let block = Block::from_id(id);
 
-    if matches!(block, Block::Sign { .. } | Block::WallSign { .. }) {
+    if block.is_sign() {
         second_pass.insert(pos);
         return;
     }
@@ -155,6 +160,10 @@ fn identify_block<W: World>(
         Block::StonePressurePlate { powered } => {
             (NodeType::PressurePlate, NodeState::simple(powered))
         }
+        block if block.pressure_plate_powered().is_some() => (
+            NodeType::PressurePlate,
+            NodeState::simple(block.pressure_plate_powered().unwrap()),
+        ),
         Block::IronTrapdoor { powered, .. } => (NodeType::Trapdoor, NodeState::simple(powered)),
         Block::RedstoneBlock {} => (NodeType::Constant, NodeState::ss(15)),
         Block::NoteBlock {
@@ -190,6 +199,19 @@ fn apply_annotations<W: World>(
         return;
     }
 
+    let block = if matches!(block, Block::Unknown { .. }) && block.is_sign() {
+        let mut model = Block::from_name(if block.property("facing").is_some() {
+            "oak_wall_sign"
+        } else {
+            "oak_sign"
+        })
+        .unwrap();
+        let props = block.properties();
+        model.set_properties(props.iter().map(|(k, v)| (*k, v.as_str())).collect());
+        model
+    } else {
+        block
+    };
     let targets = match block {
         Block::Sign { rotation, .. } => {
             if let Some(facing) = BlockDirection::from_rotation(rotation) {
