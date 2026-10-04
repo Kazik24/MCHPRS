@@ -50,6 +50,75 @@ fn assert_same(a: &mut PlotWorld, b: &mut PlotWorld) {
     );
 }
 
+fn snapshot_state(chunk: &CChunkData, pos: BlockPos) -> u32 {
+    let container = &chunk.chunk_sections[pos.y as usize / 16].block_states;
+    let bits = container.bits_per_entry as usize;
+    let index = (((pos.y & 15) << 8) | ((pos.z & 15) << 4) | (pos.x & 15)) as usize;
+    let value = if bits == 0 {
+        0
+    } else {
+        (container.data_array[index / (64 / bits)] >> ((index % (64 / bits)) * bits))
+            & ((1 << bits) - 1)
+    };
+    container
+        .palette
+        .as_ref()
+        .map_or(value as u32, |palette| palette[value as usize] as u32)
+}
+
+#[test]
+fn fast_rendering_projects_snapshots_without_changing_piston_timing() {
+    let mut normal = world();
+    let base = BlockPos::new(40, 30, 40);
+    normal.set_block(
+        base,
+        Block::Piston {
+            piston: RedstonePiston {
+                facing: BlockFacing::East,
+                sticky: true,
+                extended: false,
+            },
+        },
+    );
+    normal.set_block(base.offset(BlockFace::East), Block::Stone {});
+    normal.set_block(base.offset(BlockFace::Bottom), Block::RedstoneBlock {});
+    redstone::update(normal.get_block(base), &mut normal, base, None);
+    normal.tick_interpreted();
+    let mut fast = copy_saved(&mut normal);
+    fast.fast_rendering = true;
+    let index = fast.get_chunk_index_for_block(base.x, base.z).unwrap();
+    let ordinary = normal.chunks[index].client_data(false);
+    let projected = fast.chunks[index].client_data(true);
+    assert!(!ordinary.block_entities.is_empty());
+    assert!(projected.block_entities.is_empty());
+    for x in [41, 42] {
+        let pos = BlockPos::new(x, 30, 40);
+        assert!(matches!(
+            Block::from_id(snapshot_state(&ordinary, pos)),
+            Block::MovingPiston { .. }
+        ));
+        let carried = match fast.get_block_entity(pos).unwrap() {
+            BlockEntity::MovingPiston(entity) => entity.block_state,
+            _ => unreachable!(),
+        };
+        assert_eq!(snapshot_state(&projected, pos), carried);
+        assert!(matches!(fast.get_block(pos), Block::MovingPiston { .. }));
+    }
+    for step in 0..30 {
+        if step == 1 {
+            for world in [&mut normal, &mut fast] {
+                world.set_block(base.offset(BlockFace::Bottom), Block::Air);
+                redstone::update(world.get_block(base), world, base, None);
+            }
+        }
+        normal.picotick_advance(1);
+        fast.picotick_advance(1);
+        normal.flush_block_changes();
+        fast.flush_block_changes();
+        assert_same(&mut normal, &mut fast);
+    }
+}
+
 #[test]
 fn restart_preserves_event_motion_and_partial_step_state() {
     for paused_after in 0..=9 {

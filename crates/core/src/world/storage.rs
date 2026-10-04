@@ -1,6 +1,7 @@
 use crate::plot::{PLOT_BLOCK_HEIGHT, PLOT_SECTIONS};
 use itertools::Itertools;
 use mchprs_blocks::block_entities::BlockEntity;
+use mchprs_blocks::blocks::Block;
 use mchprs_blocks::BlockPos;
 use mchprs_save_data::plot_data::{ChunkData, ChunkSectionData};
 
@@ -343,10 +344,30 @@ impl ChunkSection {
         self.buffer = new_buffer;
     }
 
-    fn encode_packet(&self) -> CChunkDataSection {
+    fn encode_packet(&self, overrides: &[(usize, u32)]) -> CChunkDataSection {
+        // Pending changes must be visible to new clients even before the next batch flush.
+        let mut snapshot;
+        let mut count = self.block_count as i16;
+        let buffer = if self.changed || !overrides.is_empty() {
+            snapshot = self.buffer.clone();
+            if self.changed {
+                for (index, block) in self.changed_blocks.as_ref().unwrap().iter().enumerate() {
+                    if *block >= 0 {
+                        snapshot.set_entry(index, *block as u32);
+                    }
+                }
+            }
+            for &(index, state) in overrides {
+                count += i16::from(state != 0) - i16::from(snapshot.get_entry(index) != 0);
+                snapshot.set_entry(index, state);
+            }
+            &snapshot
+        } else {
+            &self.buffer
+        };
         CChunkDataSection {
-            block_count: self.block_count as i16,
-            block_states: self.buffer.encode_packet(),
+            block_count: count,
+            block_states: buffer.encode_packet(),
             biomes: PalettedContainer {
                 bits_per_entry: 0,
                 data_array: vec![],
@@ -440,6 +461,40 @@ impl Chunk {
     }
 
     pub fn encode_packet(&self) -> PacketEncoder {
+        self.encode_packet_for_client(false)
+    }
+
+    pub fn encode_packet_for_client(&self, static_pistons: bool) -> PacketEncoder {
+        self.client_data(static_pistons).encode()
+    }
+
+    pub(crate) fn client_data(&self, static_pistons: bool) -> CChunkData {
+        let mut projected = FxHashMap::default();
+        let mut overrides: [Vec<(usize, u32)>; PLOT_SECTIONS] = std::array::from_fn(|_| Vec::new());
+        if static_pistons {
+            for (pos, entity) in &self.block_entities {
+                if let BlockEntity::MovingPiston(entity) = entity {
+                    if (0..16).contains(&pos.x)
+                        && (0..16).contains(&pos.z)
+                        && (0..PLOT_BLOCK_HEIGHT).contains(&pos.y)
+                        && matches!(
+                            Block::from_id(self.get_block(
+                                pos.x as u32,
+                                pos.y as u32,
+                                pos.z as u32
+                            )),
+                            Block::MovingPiston { .. }
+                        )
+                    {
+                        projected.insert(*pos, entity.block_state);
+                        overrides[pos.y as usize / 16].push((
+                            ChunkSection::get_index(pos.x as u32, pos.y as u32 & 15, pos.z as u32),
+                            entity.block_state,
+                        ));
+                    }
+                }
+            }
+        }
         // Integer arithmetic trick: ceil(log2(x)) can be calculated with 32 - (x - 1).leading_zeros().
         // See also: https://wiki.vg/Protocol#Chunk_Data_and_Update_Light
         const HEIGHTMAP_BITS: u8 =
@@ -447,14 +502,27 @@ impl Chunk {
         let mut heightmap_buffer = BitBuffer::create(HEIGHTMAP_BITS, 16 * 16);
         for x in 0..16 {
             for z in 0..16 {
-                heightmap_buffer
-                    .set_entry((z * 16) + x, self.get_top_most_block(x as u32, z as u32));
+                let height = if projected.is_empty() {
+                    self.get_top_most_block(x as u32, z as u32)
+                } else {
+                    (0..PLOT_BLOCK_HEIGHT)
+                        .rev()
+                        .find(|&y| {
+                            projected
+                                .get(&BlockPos::new(x as i32, y, z as i32))
+                                .copied()
+                                .unwrap_or_else(|| self.get_block(x as u32, y as u32, z as u32))
+                                != 0
+                        })
+                        .map_or(0, |y| y as u32 + 1)
+                };
+                heightmap_buffer.set_entry((z * 16) + x, height);
             }
         }
 
         let mut chunk_sections = Vec::new();
-        for section in &self.sections {
-            chunk_sections.push(section.encode_packet());
+        for (section, overrides) in self.sections.iter().zip(&overrides) {
+            chunk_sections.push(section.encode_packet(overrides));
         }
         let mut heightmaps = nbt::Blob::new();
         let heightmap_longs: Vec<i64> = heightmap_buffer
@@ -470,6 +538,9 @@ impl Chunk {
             .unwrap();
         let mut block_entities = Vec::new();
         for (pos, block_entity) in &self.block_entities {
+            if static_pistons && matches!(block_entity, BlockEntity::MovingPiston(_)) {
+                continue;
+            }
             if let Some(nbt) = block_entity.to_nbt(false) {
                 block_entities.push(CChunkDataBlockEntity {
                     x: pos.x as i8,
@@ -487,7 +558,6 @@ impl Chunk {
             heightmaps,
             block_entities,
         }
-        .encode()
     }
 
     pub fn encode_empty_packet(x: i32, z: i32) -> PacketEncoder {
@@ -618,6 +688,43 @@ impl Chunk {
 #[cfg(test)]
 mod heightmap_tests {
     use super::*;
+    #[test]
+    fn client_snapshots_include_pending_changes_and_project_air_height() {
+        let mut chunk = Chunk::empty(0, 0);
+        let pos = BlockPos::new(1, 20, 2);
+        let moving = Block::MovingPiston {
+            moving: Default::default(),
+        }
+        .get_id();
+        chunk.set_block(1, 20, 2, moving);
+        chunk.set_block_entity(pos, BlockEntity::MovingPiston(Default::default()));
+        let normal = chunk.client_data(false);
+        let fast = chunk.client_data(true);
+        assert_eq!(normal.chunk_sections[1].block_count, 1);
+        assert!(normal.chunk_sections[1]
+            .block_states
+            .palette
+            .as_ref()
+            .unwrap()
+            .contains(&(moving as i32)));
+        assert_eq!(fast.chunk_sections[1].block_count, 0);
+        assert_eq!(normal.block_entities.len(), 1);
+        assert!(fast.block_entities.is_empty());
+        let height = |data: &CChunkData| {
+            let nbt::Value::LongArray(longs) = data.heightmaps.get("WORLD_SURFACE").unwrap() else {
+                panic!()
+            };
+            ((longs[33 / 7] as u64 >> (33 % 7 * 9)) & 511) as u32
+        };
+        assert_eq!(height(&normal), 21);
+        assert_eq!(height(&fast), 0);
+        assert_eq!(chunk.get_block(1, 20, 2), moving);
+        assert!(chunk.sections[1].changed_blocks.is_some());
+        assert_eq!(
+            chunk.multi_blocks().next().unwrap().records[0].block_id,
+            moving
+        );
+    }
     #[test]
     fn heightmap_uses_first_air_above_top_block() {
         let mut chunk = Chunk::empty(0, 0);

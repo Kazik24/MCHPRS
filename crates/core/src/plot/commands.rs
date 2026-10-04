@@ -319,6 +319,7 @@ impl Plot {
                 self.sleep_time = sleep_time_for_tps(tps);
                 self.timings.set_tps(tps);
                 self.tps = tps;
+                self.update_render_mode();
                 self.reset_timings();
                 self.players[player].send_system_message("The rtps was successfully set.");
             }
@@ -545,8 +546,9 @@ impl Plot {
             "/worldsendrate" | "/wsr" => {
                 if args.is_empty() {
                     self.players[player].send_system_message(&format!(
-                        "World send rate: {} Hz",
-                        self.world_send_rate.0
+                        "World send rate: {} Hz (effective {} Hz)",
+                        self.world_send_rate.0,
+                        self.effective_send_rate()
                     ));
                     return false;
                 }

@@ -1,24 +1,9 @@
+1) Add the none-java compatible optimalization that will remove the animations of the piston at high TPS. 
 
+2) Add explicit support for middle mouse button click events in server - it should copy the bahevior of the miecraft: 'probe' selected/pointed item.
 
-1) Finish the piston update task.
+3) Add explicit support for subset of the commandblock command one command in particualr: Basic support for /tellraw and /say - it should have basic subset of the functionality of the minecraft and ignore any unsupported features,
+   - Basic selectors (@a), ignore extra features liee @a[R>100] ect
+   - Basic support for JSON formatting, ignore any unsupported features like hover events, click events, etc.
+   - Basic support for text components, ignore any unsupported features like scoreboards, etc.
 
-2) Review the code for any potential bugs or issues. Analize the changes made in last time - is this the simplest, most efficient approch? Check correctness
-
-3) Write unit tests for the new piston approch, check basic functionality and edge cases.
-
-4) Write unit test for specific case:
-   - Load ADDER_GWIEZDNY_TEST.schem
-   - In this schematic there is 16 bit INSTANT ADDER, Inputs are specified using sign (block below is Input/Output, usually redstone or, other solid block)
-   - You will need to extrapolate inputs and outputs: There is only A1,B1 and A2,B2 specified - rest you can lineary interpolate to get full adder inputs
-   - Currently inputs are non zero, some kind of random value is inside: Solid block is one, redstone block is zero
-   - Outputs are O1, O2, also only two are specified rest must be extrapolated in the same way as inputs
-   - Outputs are redstoneblocks, redstoneblock - zero, air block - one.
-   - There is also "tick" block, removing it will cause the adder to calculate the result
-   - The Carry in/carry out is not spesified
-   - Task: Setup test that loads this schematic and checks correctness of the adder and piston behavior.
-
-5) Fix Issues specified in LIFECYCLE.md, SCHEDULED_TICKS.md, COMPLETION_UPDATES.md
-
-6) CURRENT_VS_MASTER.md -- check features implemented in origin/MASTER - task: Try to port these missing features into this branch, if possible and compatible. If not skip. 
-
-7) Try optimizing the pistion behavior without breaking the current functionality. Benchmark the current piston behavior and find gaps and ways to improve it performance wise.

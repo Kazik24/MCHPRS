@@ -74,5 +74,7 @@ gen_config! {
     schemati: bool = false,
     luckperms: Option<PermissionsConfig> = None,
     block_in_hitbox: bool = true,
-    auto_redpiler: bool = false
+    auto_redpiler: bool = false,
+    fast_render_threshold: i64 = 100,
+    fast_render_send_rate: i64 = 10
 }

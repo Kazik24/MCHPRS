@@ -6,6 +6,7 @@ mod packet_handlers;
 #[cfg(test)]
 mod piston_tests;
 mod scoreboard;
+mod visuals;
 pub mod worldedit;
 
 use crate::chat::ChatComponent;
@@ -103,7 +104,7 @@ pub struct PlotWorld {
     piston_state: PistonState,
     packet_senders: Vec<PlayerPacketSender>,
     is_cursed: bool,
-    disable_block_actions: bool,
+    fast_rendering: bool,
 }
 
 impl PlotWorld {
@@ -122,7 +123,7 @@ impl PlotWorld {
             piston_state: PistonState::default(),
             packet_senders: Vec::new(),
             is_cursed: false,
-            disable_block_actions: false,
+            fast_rendering: false,
         };
         // Position-only old saves bind to the loaded type once. They never
         // dispatch an observer tick into a subsequently moved/replaced block.
@@ -182,8 +183,54 @@ impl PlotWorld {
     }
 
     fn flush_block_changes(&mut self) {
+        let fast = self.fast_rendering;
+        let moving_states: std::collections::HashMap<_, _> = if fast {
+            self.piston_state
+                .motions
+                .iter()
+                .filter_map(|motion| match self.get_block_entity(motion.pos) {
+                    Some(BlockEntity::MovingPiston(entity)) => {
+                        Some((motion.pos, entity.block_state))
+                    }
+                    _ => None,
+                })
+                .collect()
+        } else {
+            Default::default()
+        };
         for packet in self.chunks.iter_mut().flat_map(|c| c.multi_blocks()) {
-            let encoded = packet.encode();
+            let encoded = if fast {
+                let records: Vec<_> = packet
+                    .records
+                    .iter()
+                    .map(|record| {
+                        let mut record = C3BMultiBlockChangeRecord {
+                            x: record.x,
+                            y: record.y,
+                            z: record.z,
+                            block_id: record.block_id,
+                        };
+                        if matches!(Block::from_id(record.block_id), Block::MovingPiston { .. }) {
+                            let pos = BlockPos::new(
+                                packet.chunk_x * 16 + i32::from(record.x),
+                                packet.chunk_y as i32 * 16 + i32::from(record.y),
+                                packet.chunk_z * 16 + i32::from(record.z),
+                            );
+                            record.block_id = moving_states.get(&pos).copied().unwrap_or(0);
+                        }
+                        record
+                    })
+                    .collect();
+                CMultiBlockChange {
+                    chunk_x: packet.chunk_x,
+                    chunk_y: packet.chunk_y,
+                    chunk_z: packet.chunk_z,
+                    records,
+                }
+                .encode()
+            } else {
+                packet.encode()
+            };
             for player in &self.packet_senders {
                 player.send_packet(&encoded);
             }
@@ -462,12 +509,11 @@ impl World for PlotWorld {
     }
 
     fn block_action(&mut self, pos: BlockPos, block_action: BlockAction) {
-        if self.disable_block_actions {
-            return;
-        }
-
         match block_action {
             BlockAction::Piston { action, piston } => {
+                if self.fast_rendering {
+                    return;
+                }
                 let piston_action_data = CBlockAction {
                     pos: pos.packed(),
                     action_id: action as u8,
@@ -500,6 +546,9 @@ impl World for PlotWorld {
         volume: f32,
         pitch: f32,
     ) {
+        if self.fast_rendering {
+            return;
+        }
         // FIXME: We do not know the players location here, so we send the sound packet to all players
         // A notchian server would only send to players in hearing distance (volume.clamp(0.0, 1.0) * 16.0)
         let sound_effect_data = CSoundEffect {
@@ -520,6 +569,48 @@ impl World for PlotWorld {
 }
 
 impl Plot {
+    fn effective_send_rate(&self) -> u32 {
+        visuals::send_rate(
+            self.world_send_rate.0,
+            self.world.fast_rendering,
+            CONFIG.fast_render_send_rate,
+        )
+    }
+
+    fn update_render_mode(&mut self) {
+        let fast = visuals::fast_rendering(self.tps, CONFIG.fast_render_threshold);
+        if fast == self.world.fast_rendering {
+            return;
+        }
+        self.world.fast_rendering = fast;
+        // Refresh only active movement chunks when switching presentation. This
+        // also restores moving entities if the user pauses after leaving fast mode.
+        let chunks: std::collections::BTreeSet<_> = self
+            .world
+            .piston_state
+            .motions
+            .iter()
+            .filter_map(|motion| {
+                self.world
+                    .get_chunk_index_for_block(motion.pos.x, motion.pos.z)
+            })
+            .collect();
+        for index in chunks {
+            let chunk = &self.world.chunks[index];
+            let encoded = chunk.encode_packet_for_client(fast);
+            for player in &self.players {
+                if Self::get_chunk_distance(
+                    chunk.x,
+                    chunk.z,
+                    player.last_chunk_x,
+                    player.last_chunk_z,
+                ) <= CONFIG.view_distance.max(0) as u32
+                {
+                    player.client.send_packet(&encoded);
+                }
+            }
+        }
+    }
     fn tick(&mut self) {
         self.timings.tick();
         if self.redpiler.is_active() {
@@ -736,7 +827,7 @@ impl Plot {
             } else {
                 let chunk_data = self.world.chunks
                     [self.world.get_chunk_index_for_chunk(chunk_x, chunk_z)]
-                .encode_packet();
+                .encode_packet_for_client(self.world.fast_rendering);
                 self.players[player_idx].client.send_packet(&chunk_data);
             }
         }
@@ -1098,6 +1189,7 @@ impl Plot {
 
     fn update(&mut self) {
         self.handle_messages();
+        self.update_render_mode();
 
         // Only tick if there are players in the plot
         if !self.players.is_empty() {
@@ -1105,8 +1197,9 @@ impl Plot {
             let now = Instant::now();
             self.last_player_time = now;
 
+            let effective_send_rate = self.effective_send_rate();
             let world_send_rate =
-                Duration::from_nanos(1_000_000_000 / self.world_send_rate.0.max(1) as u64);
+                Duration::from_nanos(1_000_000_000 / effective_send_rate.max(1) as u64);
 
             let max_batch_size = match self.last_nspt {
                 Some(Duration::ZERO) | None => 1,
@@ -1128,12 +1221,6 @@ impl Plot {
                 }
                 Tps::Unlimited => max_batch_size,
                 _ => 0,
-            };
-
-            self.world.disable_block_actions = match self.tps {
-                Tps::Limited(tps) if tps > 200 => true,
-                Tps::Unlimited => true,
-                _ => false,
             };
 
             self.last_update_time = now;
@@ -1261,6 +1348,7 @@ impl Plot {
             world.piston_state = plot_data.piston_state;
         }
         let tps = plot_data.tps;
+        world.fast_rendering = visuals::fast_rendering(tps, CONFIG.fast_render_threshold);
         let world_send_rate = plot_data.world_send_rate;
         Plot {
             last_player_time: Instant::now(),

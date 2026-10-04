@@ -16,7 +16,7 @@ async function until(predicate, description) {
 function connect(name) {
   const client = mc.createClient({host:'127.0.0.1',port,username:name,auth:'offline',version:'1.21.5'});
   clients.push(client); client.seen = {}; client.chunks = new Map(); client.slots = new Map();
-  client.tags = []; client.messages = []; client.blocks = new Map(); client.actions = []; client.acks = []; client.entities = [];
+  client.tags = []; client.messages = []; client.blocks = new Map(); client.actions = []; client.acks = []; client.entities = []; client.movingUpdates = 0;
   client.on('packet', (p, meta) => {
     try {
       client.seen[meta.name] = (client.seen[meta.name] || 0) + 1;
@@ -38,6 +38,7 @@ function connect(name) {
           const z=p.chunkCoordinates.z*16+((record>>>4)&15);
           const y=p.chunkCoordinates.y*16+(record&15);
           client.blocks.set(`${x},${y},${z}`,record>>>12);
+          if (data.blocksByStateId[record>>>12]?.name === 'moving_piston') client.movingUpdates++;
         }
       }
       if (meta.name === 'block_action') client.actions.push(p);
@@ -111,6 +112,18 @@ function command(client,command) { client.write('chat_command',{command}); }
     await we('wsr 20','successfully set');
     await we('rtps 200000','successfully set');
     await we('rtps 20','successfully set');
+    await we('rtps 101','successfully set');
+    await we('wsr','effective 10 Hz');
+    const actionsBefore=a.actions.length, movingBefore=a.movingUpdates;
+    await creative(a,36,item('piston',[{type:'block_state',data:facing}]));
+    await place(a,136,y,134,103);
+    await creative(a,36,item('redstone_block'));
+    await place(a,135,y,134,104);
+    await until(()=>data.blocksByStateId[state(a,137,y,134)]?.name==='piston_head','fast static piston head');
+    assert.equal(a.actions.length,actionsBefore,'high TPS sends no piston animation actions');
+    assert.equal(a.movingUpdates,movingBefore,'high TPS sends no moving piston states');
+    await we('rtps 20','successfully set');
+    await we('wsr','effective 20 Hz');
     await we('p visit PortSmokeOne 0','Plot index starts at 1');
     await we('p sel','Second position');
     async function select(first,second) {
