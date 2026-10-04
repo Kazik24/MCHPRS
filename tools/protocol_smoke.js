@@ -175,7 +175,7 @@ function command(client,command) { client.write('chat_command',{command}); }
     const again=await connect('PortSmokeOne');
     assert.equal(again.slots.get(37).components[1].data,16);
     command(again,'rtps');
-    console.log('PASS: configuration, two players, deep chunks, commands, components, placement, piston events, acknowledgements, Sponge v3 and production mixed-sign v2 paste/undo/redo/save/reload and reconnect.');
+    console.log('PASS: configuration, two players, deep chunks, version/rate/selection commands, combined flags, overlapping undo/redo, components, placement, piston events, acknowledgements, Sponge v3 and production mixed-sign v2 paste/undo/redo/save/reload and reconnect.');
     stopping=true; command(again,'stop'); await delay(800);
   } else {
     assert.equal(a.slots.get(37).components[1].data,16);

@@ -25,4 +25,6 @@ The supported evidence is five circuit traces plus the signed-adder recordings. 
 
 ## Performance candidates
 
-The runtime vector keeps deterministic insertion order and a compact save representation. Its position/identity lookups and removals scan active motions; benchmark this before introducing another index. Straight-chain source clearing also repeatedly scans overlapping destinations even though all sources except the first are overwritten by the preceding move. That can be simplified without changing movement order. Registry lookup is currently linear and ordinary typed tick checks exercise it frequently. Measure these gaps in task 7 before choosing changes.
+The runtime vector keeps deterministic insertion order and a compact save representation. Its position/identity lookups and removals remain a measured scaling limit. Task 7 removed the redundant straight-chain source scan, added a generated direct registry index, and made section change tracking lazy. A binary-search trial was rejected after slowing small workloads. See [the performance report](PISTON_PERFORMANCE.md) for the reproducible workloads, final timings and trade-offs.
+
+The later master audit also fixes short repeater pulses, retains pending compiler work and initial states, rejects stale typed ticks at handoff, and covers monitor underflow/overflow and overlapping WorldEdit undo. [The audit](MASTER_FEATURE_AUDIT.md) records compatible ports and excluded interface changes.

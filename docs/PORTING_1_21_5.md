@@ -2,7 +2,7 @@
 
 Target corrected from 1.21.1 to **1.21.5** at the user's request. Implemented on `port/piston-1.21.5`, based on recovered `p0.1.0` / `cb3d4e2` and the recovery lockfile fixes. Date: 2026-10-03.
 
-The branch now builds and serves independently decoded Java **1.21.5** clients: **protocol 770**, **Minecraft DataVersion 4325**. The original [1.21.1 plan](PORTING_1_21_1.md) is historical; [the repository assessment](REPOSITORY_ASSESSMENT.md) retains the branch analysis. Original branch heads remain intact. Current implementation changes are in the working tree.
+The branch now builds and serves independently decoded Java **1.21.5** clients: **protocol 770**, **Minecraft DataVersion 4325**. The original [1.21.1 plan](PORTING_1_21_1.md) is historical; [the repository assessment](REPOSITORY_ASSESSMENT.md) retains the branch analysis. Original branch heads remain intact. Protocol and piston milestones are committed on this branch; see [task progress](TASK_PROGRESS.md).
 
 ## Completed work
 
@@ -21,7 +21,7 @@ The branch now builds and serves independently decoded Java **1.21.5** clients: 
 | Schematics | v2/v3 imports, v2 export, offsets, rich signs, malformed-input checks, real fixture and command integration tests |
 | Validation | Debug/release builds, format/check, regression suite and independent two-client integration including restart |
 
-The implementation deliberately preserves the plot geometry (min Y 0, height 256, 256 × 256 plots) and the existing piston scheduler. Master and other fork branches informed individual changes; this does not merge their entire simulation/compiler histories.
+The implementation deliberately preserves the plot geometry (min Y 0, height 256, 256 × 256 plots) and the fork's fine-grained advancement modes. The piston scheduler now uses typed scheduled work, a separate FIFO event phase and moving-entity progress; see [the timing implementation](PISTON_TIMING_IMPLEMENTATION.md). Master and other fork branches informed individual changes; this does not merge their entire simulation/compiler histories.
 
 ## Structure and maintenance
 
@@ -48,7 +48,8 @@ Generated item mappings use explicit legacy IDs; legacy data starts at ID 1, whi
 | Plot format 1, 1.18.2 piston layout | Frozen reader preserves tick data, moving pistons, inventories and legacy signs |
 | Plot format 2, broken/other port histories | Explicit refusal; no safe reader is defined |
 | Headerless plot files | Explicit refusal |
-| Current plot format 3 | Magic + save version + Minecraft DataVersion 4325 + bincode payload |
+| This branch's earlier 1.21.5 plot format 3 | Frozen reader reconstructs legacy movement ownership and writes a backed-up format-4 save |
+| Current plot format 4 | Magic + save version + Minecraft DataVersion 4325 + bincode payload including piston runtime state and tick identities |
 | Legacy unversioned player files | Validate, remap items once, back up, write current header |
 | Current player files | `MCHPLY\0` + save version 3 + DataVersion 4325 + bincode payload |
 | Different Minecraft DataVersion | Refuse before deserialization |
@@ -73,15 +74,15 @@ python tools/run_protocol_smoke.py
 python tools/run_plot_load_smoke.py
 ```
 
-Current workspace result: **41 passed, 1 failed**, with no ignored tests. Formatting, locked debug/release builds, generator reproducibility and the independent integration test passed. The latest [focused live-testing patch](LIVE_PATCH_2026_10_04.md) fixes mixed sign-row NBT encoding and directional observer strong power; the broader piston engine repair remains outstanding.
+Current workspace result: **97 unit tests pass**, with no ignored tests. The former memory-cell failure now matches a recorded Java 1.21.5 trace. Five timing fixtures, 34 focused piston cases, lifecycle/scheduling/completion issues, partial-step restarts and legacy motion conversion are covered. See [task progress](TASK_PROGRESS.md), [the master audit](MASTER_FEATURE_AUDIT.md) and [performance evidence](PISTON_PERFORMANCE.md).
 
-The complete suite preserves the single known failure: `redstone::tests::test_memory_cell_unaligned_nanoticks`, tick 0. All four piston update fixtures, Chungus interpreter/compiler cases, registry round trips, codec, migration and schematic tests pass. Expected Chungus hashes are unchanged; hashing normalizes target states to their corresponding legacy IDs so registry renumbering does not alter the semantic circuit comparison.
+Three historical Chungus hashes remain unchanged. The interpreter-to-compiler handoff now compares visible circuit outputs with uninterrupted interpreted execution, because short-pulse and pending-state fixes change internal optimized-away state. Dedicated handoff tests also require the pending pulse to occur and finish with and without optimization.
 
 The independent integration clients verified configuration, two-player visibility, full-height chunk palette reads, creative components/equipment, placement, prediction acknowledgements, piston extension/action events, commands, v3 load/paste/undo/redo, v2 save/reload, failed-load clipboard preservation, reconnect and saved state after a process restart. Both servers shut down through `/stop`; the real workspace world was not opened.
 
 A graphical 1.21.5 client reported missing enchantment exclusive-set tags during registry loading. The original empty configuration tags packet was replaced with 556 vanilla tags resolved against the exact transmitted registry IDs. The smoke test now requires all seven reported exclusion sets. See [the disconnect analysis](protocol-errors/2026-10-03-enchantment-tags.md). Graphical reconnect confirmation is pending.
 
-Remaining acceptance work is **graphical vanilla-client verification** of registry codecs, rendering, lighting, sign appearance and piston animations, plus operational proxy/forwarding validation. Independent protocol clients do not validate all vanilla registry semantics. CI runs the full suite without hiding the known simulation failure, and the separate protocol job can pass independently.
+Remaining acceptance work is **graphical vanilla-client verification** of registry codecs, rendering, lighting, sign appearance and piston animations, plus operational proxy/forwarding validation. Independent protocol clients do not validate all vanilla registry semantics. CI runs the full passing suite, and the separate protocol job can pass independently.
 
 Piston/observer plots stay on the interpreter because the recovered compiler does not provide their required behavior. Detection scans palettes/direct states and can add overhead on large plots. New registry blocks can be represented and transferred, but this creative redstone server does not implement every new vanilla block's gameplay.
 
@@ -90,7 +91,7 @@ General nonempty modern persisted item-component maps in external schematic inve
 Next steps:
 
 1. Perform graphical-client acceptance on a copied test world and verify deployment/proxy configuration.
-2. Build a separate reference comparison suite for piston/observer scheduling, starting with the known memory-cell discrepancy and the recorded piston audit/fix plans.
-3. Achieve full reference piston compliance without weakening existing expectations; treat the failure as an implementation defect.
+2. Extend the existing Java trace comparison with live devices that expose new failures.
+3. Resume full reference movement rules and attachment-graph compliance when requested; these are currently deferred.
 4. Extend compiled piston execution only once it matches interpreter/reference behavior, and measure the interpreter-detection cost.
 5. Add explicit readers for other save histories and external persisted inventory components when those formats are required.

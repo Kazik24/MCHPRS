@@ -78,8 +78,13 @@ def main():
     parser.add_argument('--java',default='java')
     parser.add_argument('--adder',action='store_true',help='Capture the signed adder fixture instead of the timing fixtures')
     parser.add_argument('--inputs',nargs=2,type=lambda v:int(v,0),help='Set A/B inputs and settle eight ticks with the clock held')
-    parser.add_argument('--output',type=Path,default=ROOT/'docs/piston-repair/java-traces.json')
+    parser.add_argument('--output',type=Path)
     args=parser.parse_args()
+    if args.inputs is not None and not args.adder:
+        parser.error('--inputs requires --adder')
+    if args.output is None:
+        name = 'java-adder-inputs.json' if args.inputs is not None else 'java-adder-traces.json' if args.adder else 'java-traces.json'
+        args.output = ROOT/'docs/piston-repair'/name
     jar=args.server_jar.resolve()
     assert hashlib.sha1(jar.read_bytes()).hexdigest()==SHA1, 'Unexpected Java server binary'
     env=os.environ.copy()

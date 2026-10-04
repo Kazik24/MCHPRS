@@ -20,7 +20,7 @@ The current movement scope follows the user's instruction: payloads are assumed 
 
 All four update-tester circuits and the memory cell now match their twelve-game-tick Java traces. The memory cell's previous guessed array was replaced by the actual Java recording. The recording includes intermediate memory-cell piston/observer states. This establishes the checked fixtures, not complete vanilla compliance or internal Java callback traces.
 
-The normal test suite includes 34 focused piston regressions, partial-step save/restart tests, stale incarnation work, and legacy format-3 motion conversion. Validation passed: all 85 workspace unit tests, independent protocol/restart smoke and plot-load failure smoke. Tests run in isolated worlds; the production server has not been deployed or modified by this repair.
+The normal test suite includes 34 focused piston regressions, partial-step save/restart tests, stale incarnation work, and legacy format-3 motion conversion. Validation passed: all 97 workspace unit tests, independent protocol/restart smoke and plot-load failure smoke. Tests run in isolated worlds; the production server has not been deployed or modified by this repair.
 
 ## Persistence
 
@@ -29,3 +29,5 @@ Plot format 4 stores expected tick types, queued events, logical time, phase, cu
 ## Remaining work
 
 See [task progress](TASK_PROGRESS.md) for the requested review, adder circuit test, upstream feature ports and benchmarking. Push reactions and adhesive graphs remain deferred by explicit instruction. Graphical animation/client checks and full vanilla behavior coverage remain future validation work.
+
+The remaining task-list audit and optimization are recorded in [the master audit](MASTER_FEATURE_AUDIT.md) and [performance report](PISTON_PERFORMANCE.md). The interpreted-to-compiled control now compares visible outputs with uninterrupted interpretation; three other Chungus hashes remain unchanged.
