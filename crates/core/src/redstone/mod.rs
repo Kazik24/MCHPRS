@@ -2,6 +2,8 @@
 //! This is the implementation that is used by default in low-performance
 //! scenerio (i.e. regular buiding)
 
+#[cfg(test)]
+mod adder_tests;
 pub mod comparator;
 pub mod noteblock;
 #[cfg(test)]

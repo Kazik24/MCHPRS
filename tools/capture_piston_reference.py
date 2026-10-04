@@ -76,13 +76,16 @@ def main():
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--server-jar',type=Path,required=True)
     parser.add_argument('--java',default='java')
+    parser.add_argument('--adder',action='store_true',help='Capture the signed adder fixture instead of the timing fixtures')
+    parser.add_argument('--inputs',nargs=2,type=lambda v:int(v,0),help='Set A/B inputs and settle eight ticks with the clock held')
     parser.add_argument('--output',type=Path,default=ROOT/'docs/piston-repair/java-traces.json')
     args=parser.parse_args()
     jar=args.server_jar.resolve()
     assert hashlib.sha1(jar.read_bytes()).hexdigest()==SHA1, 'Unexpected Java server binary'
     env=os.environ.copy()
     env['NODE_PATH']=str(ROOT/'tools/node_modules')
-    blocks={name:json.loads(subprocess.check_output(['node','-e',DECODE,str(ROOT/'test_data'/name)],cwd=ROOT,env=env)) for name in FIXTURES}
+    fixtures = ['ADDER_GWIEZDNY_TEST.schem'] if args.adder else FIXTURES
+    blocks={name:json.loads(subprocess.check_output(['node','-e',DECODE,str(ROOT/'test_data'/name)],cwd=ROOT,env=env)) for name in fixtures}
     with tempfile.TemporaryDirectory(prefix='mchprs-java-piston-') as directory:
         run=Path(directory)
         (run/'eula.txt').write_text('eula=true\n')
@@ -91,8 +94,8 @@ def main():
         functions=pack/'data/piston_reference/function'
         functions.mkdir(parents=True)
         (pack/'pack.mcmeta').write_text(json.dumps({'pack':{'pack_format':71,'description':'Isolated piston trace fixtures'}}))
-        for idx,name in enumerate(FIXTURES):
-            commands=['fill 85 20 85 120 43 120 minecraft:air strict']
+        for idx,name in enumerate(fixtures):
+            commands=['fill 96 24 52 124 36 110 minecraft:air strict']
             commands += ['setblock '+' '.join(map(str,b['pos']))+' '+b['state']+' strict' for b in blocks[name] if b['state']!='minecraft:air']
             (functions/f'fixture_{idx}.mcfunction').write_text('\n'.join(commands)+'\n')
         observations=[]
@@ -112,16 +115,24 @@ def main():
                     time.sleep(.25)
                 rcon=Rcon()
                 print(rcon.request('tick freeze'),flush=True)
-                rcon.request('forceload add 80 80 127 127')
-                result={'version':'1.21.5','server_sha1':SHA1,'setup':'Strict fixture paste into frozen void world; normal button power/removal; one game tick per observation','fixtures':{}}
-                for idx,name in enumerate(FIXTURES):
+                rcon.request('forceload add 80 48 127 127')
+                result={'version':'1.21.5','server_sha1':SHA1,'setup':'Strict fixture paste into frozen void world; normal button power/removal; one game tick per observation','adder_inputs':args.inputs,'fixtures':{}}
+                for idx,name in enumerate(fixtures):
                     # Clear scheduled work from the prior circuit before placing the next.
-                    rcon.request('fill 85 20 85 120 43 120 minecraft:air strict')
+                    rcon.request('fill 96 24 52 124 36 110 minecraft:air strict')
                     for _ in range(22): rcon.step()
                     response=rcon.request(f'function piston_reference:fixture_{idx}')
                     if 'Unknown' in response: raise RuntimeError(response+'\n'+(run/'server.log').read_text(errors='replace')[-6000:])
                     memory=name.startswith('MemCell')
-                    if memory: stimulus='setblock 100 30 100 minecraft:air'
+                    if args.inputs:
+                        assert args.adder and all(0<=v<2048 for v in args.inputs)
+                        for z0,value in zip([98,96],args.inputs):
+                            for bit in range(11):
+                                state='minecraft:stone' if value&(1<<bit) else 'minecraft:redstone_block'
+                                rcon.request(f'setblock 103 31 {z0-bit*4} {state}')
+                        for _ in range(8): rcon.step()
+                    if args.adder: stimulus='setblock 102 30 100 minecraft:air'
+                    elif memory: stimulus='setblock 100 30 100 minecraft:air'
                     else:
                         button=next(b['state'] for b in blocks[name] if b['pos']==[100,30,100])
                         stimulus='setblock 100 30 100 '+button.replace('powered=false','powered=true')
@@ -129,8 +140,17 @@ def main():
                     print(name,'paste:',rcon.request('execute if block 100 30 100 minecraft:stone_button'),'stimulus:',response,flush=True)
                     trace=[]
                     details=[]
+                    adder_output=[]
                     for _ in range(12):
                         rcon.step()
+                        if args.adder:
+                            value=0
+                            for bit in range(11):
+                                p=f'120 28 {96-bit*4}'
+                                if 'Test passed' in rcon.request(f'execute if block {p} minecraft:air'): value|=1<<bit
+                                elif 'Test passed' not in rcon.request(f'execute if block {p} minecraft:redstone_block'):
+                                    value=None;break
+                            adder_output.append(value)
                         statuses=[rcon.request(c) for c in observations]
                         trace.append('Test passed' in statuses[3] if memory else ['Test passed' in t for t in statuses[:3]])
                         if memory:
@@ -146,8 +166,8 @@ def main():
                                 if state=='moving_piston': state+=' '+rcon.request(f'data get block {p}')
                                 snapshot.append({'pos':pos,'state':state})
                             details.append(snapshot)
-                    result['fixtures'][name]={'sha256':hashlib.sha256((ROOT/'test_data'/name).read_bytes()).hexdigest(),'stimulus':stimulus,'trace':trace, 'details':details}
-                    print(name,trace,flush=True)
+                    result['fixtures'][name]={'sha256':hashlib.sha256((ROOT/'test_data'/name).read_bytes()).hexdigest(),'stimulus':stimulus,'trace':trace, 'details':details,'adder_output':adder_output}
+                    print(name,adder_output if args.adder else trace,flush=True)
                 args.output.parent.mkdir(parents=True,exist_ok=True)
                 args.output.write_text(json.dumps(result,indent=2)+'\n')
                 rcon.request('stop')
