@@ -5,7 +5,7 @@ use anyhow::{bail, Context, Result};
 use mchprs_blocks::block_entities::BlockEntity;
 use mchprs_blocks::blocks::Block;
 use mchprs_blocks::BlockPos;
-use regex::{Regex, RegexBuilder};
+use regex::RegexBuilder;
 use serde_json::{json, Value};
 use std::collections::BTreeSet;
 use std::ops::Range;
@@ -15,6 +15,7 @@ const MAX_RESULTS: usize = 4096;
 const MAX_SCAN_BLOCKS: u64 = 16_777_216;
 const MAX_QUERY_BYTES: usize = 1024;
 const MAX_SIGN_LINE_BYTES: usize = 8192;
+const MAX_RESULT_TEXT_BYTES: usize = 2 * 1024 * 1024;
 
 #[derive(Clone, Copy, Debug)]
 pub(super) enum SearchKind {
@@ -97,10 +98,16 @@ impl SearchCache {
 
     fn display(&self, player: &Player, kind: SearchKind, page: usize) -> Result<()> {
         if self.hits.is_empty() {
-            player.send_raw_system_message(json!({
-                "text": "No matches found, nya~",
-                "color": "light_purple"
-            }).to_string());
+            if page != 1 {
+                bail!("There are no cached results to paginate");
+            }
+            player.send_raw_system_message(
+                json!({
+                    "text": "No matches found, nya~",
+                    "color": "light_purple"
+                })
+                .to_string(),
+            );
             return Ok(());
         }
         let hits = self.page(page)?;
@@ -118,7 +125,9 @@ impl SearchCache {
             let label = format!("({}, {}, {})", pos.x, pos.y, pos.z);
             let mut parts = vec![ResultAction::Teleport(pos).component(&label)];
             for line in &hit.lines {
-                parts.push(json!({"text": format!("\n  {} {}: ", line.side.label(), line.line + 1)}));
+                parts.push(
+                    json!({"text": format!("\n  {} {}: ", line.side.label(), line.line + 1)}),
+                );
                 parts.extend(highlight_parts(&line.text, line.highlight.clone()));
             }
             player.send_raw_system_message(json!({"text": "", "extra": parts}).to_string());
@@ -126,10 +135,22 @@ impl SearchCache {
 
         let mut pages = Vec::new();
         if page > 1 {
-            pages.push(ResultAction::Page { kind, page: page - 1 }.component("[Previous] "));
+            pages.push(
+                ResultAction::Page {
+                    kind,
+                    page: page - 1,
+                }
+                .component("[Previous] "),
+            );
         }
         if page < self.page_count() {
-            pages.push(ResultAction::Page { kind, page: page + 1 }.component("[Next]"));
+            pages.push(
+                ResultAction::Page {
+                    kind,
+                    page: page + 1,
+                }
+                .component("[Next]"),
+            );
         }
         if !pages.is_empty() {
             player.send_raw_system_message(json!({"text": "", "extra": pages}).to_string());
@@ -181,23 +202,30 @@ impl BlockMask {
         }
         let (name, properties) = match term.split_once('[') {
             Some((name, tail)) => {
-                let properties = tail.strip_suffix(']').context("Mask properties must end with ]")?;
+                let properties = tail
+                    .strip_suffix(']')
+                    .context("Mask properties must end with ]")?;
                 (name, properties)
             }
             None => (term, ""),
         };
         let name = name.strip_prefix("minecraft:").unwrap_or(name);
-        let definition = mchprs_blocks::generated::BLOCKS.iter()
+        let definition = mchprs_blocks::generated::BLOCKS
+            .iter()
             .find(|definition| definition.0 == name)
             .with_context(|| format!("Unknown block: {name}"))?;
         let mut constraints = Vec::new();
         if !properties.is_empty() {
             for property in properties.split(',') {
-                let (key, value) = property.split_once('=').context("Use property=value in masks")?;
+                let (key, value) = property
+                    .split_once('=')
+                    .context("Use property=value in masks")?;
                 if constraints.iter().any(|&(existing, _)| existing == key) {
                     bail!("Duplicate mask property: {key}");
                 }
-                if !(definition.2..=definition.3).any(|id| Block::from_id(id).property(key) == Some(value)) {
+                if !(definition.2..=definition.3)
+                    .any(|id| Block::from_id(id).property(key) == Some(value))
+                {
                     bail!("Unknown property or value: {key}={value}");
                 }
                 constraints.push((key, value));
@@ -205,7 +233,10 @@ impl BlockMask {
         }
         for id in definition.2..=definition.3 {
             let block = Block::from_id(id);
-            if constraints.iter().all(|&(key, value)| block.property(key) == Some(value)) {
+            if constraints
+                .iter()
+                .all(|&(key, value)| block.property(key) == Some(value))
+            {
                 states.insert(id);
             }
         }
@@ -255,14 +286,22 @@ impl Plot {
                 return None;
             };
             let mut lines = Vec::new();
-            for (side, rows) in [(SignSide::Front, &sign.rows), (SignSide::Back, &sign.back_rows)] {
+            for (side, rows) in [
+                (SignSide::Front, &sign.rows),
+                (SignSide::Back, &sign.back_rows),
+            ] {
                 for (line, row) in rows.iter().enumerate() {
                     let text = flatten_sign_text(row);
                     let Some(found) = regex.find(&text) else {
                         continue;
                     };
                     let highlight = found.range();
-                    lines.push(SignMatch { side, line, text, highlight });
+                    lines.push(SignMatch {
+                        side,
+                        line,
+                        text,
+                        highlight,
+                    });
                 }
             }
             match lines.is_empty() {
@@ -281,7 +320,9 @@ impl Plot {
         let [_, page] = args else {
             bail!("Usage: {} -p <page>", kind.command());
         };
-        let page = page.parse::<usize>().context("Page must be a positive integer")?;
+        let page = page
+            .parse::<usize>()
+            .context("Page must be a positive integer")?;
         self.display_search(player, kind, page)?;
         Ok(true)
     }
@@ -312,23 +353,32 @@ impl Plot {
         find: impl Fn(&Self, BlockPos) -> Option<Vec<SignMatch>>,
     ) -> SearchCache {
         let mut hits = Vec::new();
+        let mut text_bytes = 0;
         let mut truncated = false;
         'scan: for x in bounds.start.x..=bounds.end.x {
             for y in bounds.start.y..=bounds.end.y {
                 for z in bounds.start.z..=bounds.end.z {
                     let position = BlockPos::new(x, y, z);
                     if let Some(lines) = find(self, position) {
-                        if hits.len() == MAX_RESULTS {
+                        let line_bytes: usize = lines.iter().map(|line| line.text.len()).sum();
+                        if hits.len() == MAX_RESULTS
+                            || text_bytes + line_bytes > MAX_RESULT_TEXT_BYTES
+                        {
                             truncated = true;
                             break 'scan;
                         }
+                        text_bytes += line_bytes;
                         hits.push(SearchHit { position, lines });
                     }
                 }
             }
         }
         hits.sort_by_key(|hit| (hit.position.x, hit.position.y, hit.position.z));
-        SearchCache { plot: (self.world.x, self.world.z), hits, truncated }
+        SearchCache {
+            plot: (self.world.x, self.world.z),
+            hits,
+            truncated,
+        }
     }
 }
 
@@ -395,6 +445,7 @@ fn highlight_parts(text: &str, range: Range<usize>) -> [Value; 3] {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use regex::Regex;
 
     #[test]
     fn masks_match_partial_properties_and_reject_unknowns() {
@@ -403,10 +454,19 @@ mod tests {
         for id in 0..mchprs_blocks::generated::STATE_PROPERTIES.len() as u32 {
             let block = Block::from_id(id);
             let expected = block.get_name() == "stone"
-                || (block.get_name() == repeater.get_name() && block.property("facing") == Some("north"));
+                || (block.get_name() == repeater.get_name()
+                    && block.property("facing") == Some("north"));
             assert_eq!(mask.matches(block), expected);
         }
-        for invalid in ["", "stone[foo=bar]", "repeater[delay=5]", "stone[", "missing", "stone,", "repeater[delay=1,delay=2]"] {
+        for invalid in [
+            "",
+            "stone[foo=bar]",
+            "repeater[delay=5]",
+            "stone[",
+            "missing",
+            "stone,",
+            "repeater[delay=1,delay=2]",
+        ] {
             assert!(BlockMask::parse(invalid).is_err(), "{invalid}");
         }
     }
@@ -426,11 +486,17 @@ mod tests {
 
     #[test]
     fn pages_validate_before_slicing() {
-        let hits = (0..15).map(|x| SearchHit {
-            position: BlockPos::new(x, 1, 0),
-            lines: Vec::new(),
-        }).collect();
-        let cache = SearchCache { plot: (0, 0), hits, truncated: false };
+        let hits = (0..15)
+            .map(|x| SearchHit {
+                position: BlockPos::new(x, 1, 0),
+                lines: Vec::new(),
+            })
+            .collect();
+        let cache = SearchCache {
+            plot: (0, 0),
+            hits,
+            truncated: false,
+        };
         assert_eq!(cache.page_count(), 3);
         assert_eq!(cache.page(2).unwrap()[0].position.x, 7);
         assert_eq!(cache.page(3).unwrap().len(), 1);

@@ -307,7 +307,7 @@ function command(client,command) { client.write('chat_command',{command}); }
     await select([140,40,120],[142,40,120]);
     const cells=()=>[140,141,142,143,144].map(x=>data.blocksByStateId[state(a,x,40,120)].name);
     await until(()=>JSON.stringify(cells())===JSON.stringify(['stone','gold_block','stone','air','air']),'rstack initial cells');
-    await we('/rstack 2 1 east','stacked successfully');
+    await we('/rstack 2 1 east','Stacked 2 copies');
     await until(()=>JSON.stringify(cells())===JSON.stringify(['stone','stone','stone','gold_block','stone']),'overlapping rstack');
     command(a,'/undo');
     await until(()=>JSON.stringify(cells())===JSON.stringify(['stone','gold_block','stone','air','air']),'overlapping rstack undo');
@@ -324,7 +324,7 @@ function command(client,command) { client.write('chat_command',{command}); }
     a.write('position',{x:100,y:30,z:100,flags:{onGround:false,hasHorizontalCollision:false}});
     command(a,'/undo'); await until(()=>state(a,120,29,92)===0,'WorldEdit undo');
     command(a,'/redo'); await until(()=>state(a,120,29,92)===signState,'WorldEdit redo');
-    await we('/help rs','Like //stack');
+    await we('/help rs','//rs [direction] [count] [spacing]');
     await we('/load BadInput.schem','Could not load schematic:');
     // A failed import must retain the successfully loaded clipboard.
     await we('/save SmokeRoundtrip.schem','saved sucessfuly');

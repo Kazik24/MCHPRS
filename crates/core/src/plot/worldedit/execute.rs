@@ -813,7 +813,7 @@ pub(super) fn execute_help(mut ctx: CommandExecuteContext<'_>) {
             }
         } else {
             match arg.argument_type {
-                ArgumentType::Direction | ArgumentType::DirectionVector => Some("me".to_string()),
+                ArgumentType::Direction => Some("me".to_string()),
                 ArgumentType::UnsignedInteger => Some("1".to_string()),
                 _ => None,
             }
@@ -941,52 +941,6 @@ pub(super) fn execute_descend(ctx: CommandExecuteContext<'_>) {
         player.teleport(pos);
         player.send_worldedit_message(&format!("Descended {} levels.", initial_levels - levels));
     }
-}
-
-pub(super) fn execute_rstack(ctx: CommandExecuteContext<'_>) {
-    let start_time = Instant::now();
-
-    let stack_amt = ctx.arguments[0].unwrap_uint();
-    let stack_spacing = ctx.arguments[1].unwrap_uint();
-    let direction = ctx.arguments[2].unwrap_direction_vec();
-    let pos1 = ctx.player.first_position.unwrap();
-    let pos2 = ctx.player.second_position.unwrap();
-    let clipboard = create_clipboard(ctx.plot, pos1, pos1, pos2);
-    let mut undo_cbs = Vec::new();
-    for i in 1..stack_amt + 1 {
-        let offset = (i * stack_spacing) as i32;
-
-        let block_pos = pos1 + direction * offset;
-        undo_cbs.push(create_clipboard(
-            ctx.plot,
-            pos1,
-            block_pos,
-            pos2 + direction * offset,
-        ));
-        paste_clipboard(ctx.plot, &clipboard, block_pos, !ctx.has_flag('a'));
-    }
-    let undo = WorldEditUndo {
-        clipboards: undo_cbs,
-        pos: pos1,
-        plot_x: ctx.plot.x,
-        plot_z: ctx.plot.z,
-    };
-
-    if ctx.has_flag('e') {
-        expand_selection(
-            ctx.player,
-            direction * (stack_amt * stack_spacing) as i32,
-            false,
-        );
-    }
-
-    let player = ctx.player;
-    player.worldedit_undo.push(undo);
-
-    player.send_worldedit_message(&format!(
-        "Your selection was stacked successfully. ({:.00?})",
-        start_time.elapsed()
-    ));
 }
 
 pub(super) fn execute_update(ctx: CommandExecuteContext<'_>) {

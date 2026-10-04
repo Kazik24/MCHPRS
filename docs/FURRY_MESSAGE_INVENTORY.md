@@ -1,25 +1,25 @@
 # MCHPRS server message inventory
 
-This inventory locates outgoing player-facing text relevant to [the furry messages and PCMD plan](FURRY_MESSAGES_AND_PCMD_PLAN.md). It covers the current working tree, including local changes, rather than only the base commit. The scope is server-to-player feedback and its producers; incoming packet parsing is listed where it leads to those replies.
+This inventory locates outgoing player-facing text relevant to [the furry message style plan](FURRY_MESSAGES_PLAN.md). It covers the current working tree, including local changes, rather than only the base commit. The scope is server-to-player feedback and its producers; incoming packet parsing is listed where it leads to those replies.
 
-All entries identify source locations and preserve current source expressions. Repeated wording remains listed at every send site. Runtime library errors have no finite phrase list, so their propagation paths are identified separately. This document does not change server behavior or message wording.
+The [wording proposal](FURRY_MESSAGE_WORDING.md) provides cute replacements for routine notices. All entries identify source locations and preserve current source expressions. Repeated wording remains listed at every send site. Runtime library errors have no finite phrase list, so their propagation paths are identified separately. This document does not change server behavior or message wording.
 
 ## Coverage
 
-The scan found **182 message helper call sites across 12 files**, and **8 direct chat or disconnect packet construction sites**. These counts include shared transports and permission helper invocations; they are not counts of distinct sentences. Packet constructors can overlap helper implementations.
+The scan found **178 message helper call sites across 12 files**, and **8 direct chat or disconnect packet construction sites**. These counts include shared transports and permission helper invocations; they are not counts of distinct sentences. Packet constructors can overlap helper implementations.
 
 | Source file | Helper call sites |
 | --- | ---: |
 | [crates/core/src/interaction.rs](../crates/core/src/interaction.rs) | 4 |
 | [crates/core/src/player.rs](../crates/core/src/player.rs) | 10 |
-| [crates/core/src/plot/commands.rs](../crates/core/src/plot/commands.rs) | 82 |
+| [crates/core/src/plot/commands.rs](../crates/core/src/plot/commands.rs) | 78 |
 | [crates/core/src/plot/containers.rs](../crates/core/src/plot/containers.rs) | 2 |
 | [crates/core/src/plot/history.rs](../crates/core/src/plot/history.rs) | 2 |
 | [crates/core/src/plot/mod.rs](../crates/core/src/plot/mod.rs) | 9 |
 | [crates/core/src/plot/packet_handlers.rs](../crates/core/src/plot/packet_handlers.rs) | 10 |
-| [crates/core/src/plot/redstone_tools/mod.rs](../crates/core/src/plot/redstone_tools/mod.rs) | 1 |
+| [crates/core/src/plot/redstone_tools/mod.rs](../crates/core/src/plot/redstone_tools/mod.rs) | 2 |
 | [crates/core/src/plot/redstone_tools/search.rs](../crates/core/src/plot/redstone_tools/search.rs) | 4 |
-| [crates/core/src/plot/worldedit/execute.rs](../crates/core/src/plot/worldedit/execute.rs) | 38 |
+| [crates/core/src/plot/worldedit/execute.rs](../crates/core/src/plot/worldedit/execute.rs) | 37 |
 | [crates/core/src/plot/worldedit/mod.rs](../crates/core/src/plot/worldedit/mod.rs) | 12 |
 | [crates/core/src/server.rs](../crates/core/src/server.rs) | 8 |
 
@@ -41,112 +41,108 @@ Payloads below are Rust source expressions with whitespace folded for readabilit
 
 | Location | Function and sender | Current payload | Treatment |
 | --- | --- | --- | --- |
-| [interaction.rs:25](../crates/core/src/interaction.rs#L25) | `on_use / send_color_message` | `ColorCode::DarkAqua, format_args!("Block at ({}, {}, {}):\n    {block:?}", pos.x, pos.y, pos.z),` | Preserve diagnostic values |
-| [interaction.rs:37](../crates/core/src/interaction.rs#L37) | `on_use / send_color_message` | `ColorCode::Gold, format_args!("  Redstone power: {power_desc}"),` | Preserve diagnostic values |
-| [interaction.rs:43](../crates/core/src/interaction.rs#L43) | `on_use / send_color_message` | `ColorCode::Aqua, format_args!("  Block entity:\n    {entity:?}"),` | Preserve diagnostic values |
-| [interaction.rs:146](../crates/core/src/interaction.rs#L146) | `on_use / send_no_permission_message` | `shared permission notice` | Candidate notice |
+| [interaction.rs:24](../crates/core/src/interaction.rs#L24) | `on_use / send_color_message` | `ColorCode::DarkAqua, format_args!("Block at ({}, {}, {}):\n    {block:?}", pos.x, pos.y, pos.z),` | Preserve diagnostic values |
+| [interaction.rs:36](../crates/core/src/interaction.rs#L36) | `on_use / send_color_message` | `ColorCode::Gold, format_args!("  Redstone power: {power_desc}"),` | Preserve diagnostic values |
+| [interaction.rs:42](../crates/core/src/interaction.rs#L42) | `on_use / send_color_message` | `ColorCode::Aqua, format_args!("  Block entity:\n    {entity:?}"),` | Preserve diagnostic values |
+| [interaction.rs:145](../crates/core/src/interaction.rs#L145) | `on_use / send_no_permission_message` | `shared permission notice` | Candidate notice |
 
 ### crates/core/src/player.rs
 
 | Location | Function and sender | Current payload | Treatment |
 | --- | --- | --- | --- |
-| [player.rs:371](../crates/core/src/player.rs#L371) | `update / kick` | `json!({ "text": "Timed out." }).to_string()` | Disconnect notice |
-| [player.rs:439](../crates/core/src/player.rs#L439) | `teleport / send_error_message` | `"We just saved you from a game crash, don't try it again!"` | Candidate notice |
-| [player.rs:473](../crates/core/src/player.rs#L473) | `send_chat_message / send_raw_chat` | `sender, json` | Shared transport |
-| [player.rs:477](../crates/core/src/player.rs#L477) | `send_no_permission_message / send_error_message` | `"You do not have permission to perform this action."` | Candidate notice |
-| [player.rs:482](../crates/core/src/player.rs#L482) | `send_worldedit_message / send_color_message` | `ColorCode::LightPurple, message` | Shared transport |
-| [player.rs:486](../crates/core/src/player.rs#L486) | `worldedit_set_first_position / send_worldedit_message` | `&format!( "First position set to ({}, {}, {})", pos.x, pos.y, pos.z )` | Candidate notice |
-| [player.rs:495](../crates/core/src/player.rs#L495) | `worldedit_set_second_position / send_worldedit_message` | `&format!( "Second position set to ({}, {}, {})", pos.x, pos.y, pos.z )` | Candidate notice |
-| [player.rs:678](../crates/core/src/player.rs#L678) | `send_error_message / send_color_message` | `ColorCode::Red, message` | Shared transport |
-| [player.rs:683](../crates/core/src/player.rs#L683) | `send_system_message / send_color_message` | `ColorCode::Yellow, message` | Shared transport |
-| [player.rs:688](../crates/core/src/player.rs#L688) | `send_color_message / send_raw_system_message` | `json!({ "text": message.to_string(), "color": col }) .to_string(),` | Shared transport |
+| [player.rs:373](../crates/core/src/player.rs#L373) | `update / kick` | `json!({ "text": "Timed out." }).to_string()` | Disconnect notice |
+| [player.rs:441](../crates/core/src/player.rs#L441) | `teleport / send_error_message` | `"We just saved you from a game crash, don't try it again!"` | Candidate notice |
+| [player.rs:475](../crates/core/src/player.rs#L475) | `send_chat_message / send_raw_chat` | `sender, json` | Shared transport |
+| [player.rs:479](../crates/core/src/player.rs#L479) | `send_no_permission_message / send_error_message` | `"You do not have permission to perform this action."` | Candidate notice |
+| [player.rs:484](../crates/core/src/player.rs#L484) | `send_worldedit_message / send_color_message` | `ColorCode::LightPurple, message` | Shared transport |
+| [player.rs:488](../crates/core/src/player.rs#L488) | `worldedit_set_first_position / send_worldedit_message` | `&format!( "First position set to ({}, {}, {})", pos.x, pos.y, pos.z )` | Candidate notice |
+| [player.rs:497](../crates/core/src/player.rs#L497) | `worldedit_set_second_position / send_worldedit_message` | `&format!( "Second position set to ({}, {}, {})", pos.x, pos.y, pos.z )` | Candidate notice |
+| [player.rs:681](../crates/core/src/player.rs#L681) | `send_error_message / send_color_message` | `ColorCode::Red, message` | Shared transport |
+| [player.rs:686](../crates/core/src/player.rs#L686) | `send_system_message / send_color_message` | `ColorCode::Yellow, message` | Shared transport |
+| [player.rs:691](../crates/core/src/player.rs#L691) | `send_color_message / send_raw_system_message` | `json!({ "text": message.to_string(), "color": col }) .to_string(),` | Shared transport |
 
 ### crates/core/src/plot/commands.rs
 
 | Location | Function and sender | Current payload | Treatment |
 | --- | --- | --- | --- |
-| [commands.rs:52](../crates/core/src/plot/commands.rs#L52) | `handle_plot_command / send_error_message` | `"Invalid argument for /plot"` | Candidate notice |
-| [commands.rs:57](../crates/core/src/plot/commands.rs#L57) | `handle_plot_command / send_no_permission_message` | `shared permission notice` | Candidate notice |
-| [commands.rs:64](../crates/core/src/plot/commands.rs#L64) | `handle_plot_command / send_system_message` | `&format!( "Plot owner is: {}", database::get_cached_username(owner.clone()).unwrap_or(owner) )` | Candidate notice |
-| [commands.rs:69](../crates/core/src/plot/commands.rs#L69) | `handle_plot_command / send_system_message` | `"Plot is not owned by anyone."` | Candidate notice |
-| [commands.rs:74](../crates/core/src/plot/commands.rs#L74) | `handle_plot_command / send_system_message` | `"Plot is already claimed!"` | Candidate notice |
-| [commands.rs:96](../crates/core/src/plot/commands.rs#L96) | `handle_plot_command / send_error_message` | `"Invalid number of arguments!"` | Candidate notice |
-| [commands.rs:104](../crates/core/src/plot/commands.rs#L104) | `handle_plot_command / send_error_message` | `"Plot index starts at 1"` | Candidate notice |
-| [commands.rs:108](../crates/core/src/plot/commands.rs#L108) | `handle_plot_command / send_error_message` | `"Unable to parse index"` | Candidate notice |
-| [commands.rs:123](../crates/core/src/plot/commands.rs#L123) | `handle_plot_command / send_system_message` | `&format!("Plot range (1, {}).", plots.len())` | Candidate notice |
-| [commands.rs:127](../crates/core/src/plot/commands.rs#L127) | `handle_plot_command / send_system_message` | `&format!("{} does not own any plots.", args[0])` | Candidate notice |
-| [commands.rs:132](../crates/core/src/plot/commands.rs#L132) | `handle_plot_command / send_error_message` | `"Invalid number of arguments!"` | Candidate notice |
-| [commands.rs:141](../crates/core/src/plot/commands.rs#L141) | `handle_plot_command / send_error_message` | `"Unable to parse x coordinate!"` | Candidate notice |
-| [commands.rs:147](../crates/core/src/plot/commands.rs#L147) | `handle_plot_command / send_error_message` | `"Unable to parse z coordinate!"` | Candidate notice |
-| [commands.rs:158](../crates/core/src/plot/commands.rs#L158) | `handle_plot_command / send_system_message` | `&res` | Candidate notice |
-| [commands.rs:161](../crates/core/src/plot/commands.rs#L161) | `handle_plot_command / send_system_message` | `"You are already locked to this plot."` | Candidate notice |
-| [commands.rs:171](../crates/core/src/plot/commands.rs#L171) | `handle_plot_command / send_system_message` | `"You are now unlocked."` | Candidate notice |
-| [commands.rs:173](../crates/core/src/plot/commands.rs#L173) | `handle_plot_command / send_system_message` | `"You are not locked to this plot."` | Candidate notice |
-| [commands.rs:176](../crates/core/src/plot/commands.rs#L176) | `handle_plot_command / send_error_message` | `"Invalid argument for /plot"` | Candidate notice |
-| [commands.rs:191](../crates/core/src/plot/commands.rs#L191) | `handle_redpiler_command / send_system_message` | `msg` | Candidate notice |
-| [commands.rs:209](../crates/core/src/plot/commands.rs#L209) | `handle_redpiler_command / send_error_message` | `"Trace failed"` | Candidate notice |
-| [commands.rs:217](../crates/core/src/plot/commands.rs#L217) | `handle_redpiler_command / send_error_message` | `"Invalid argument for /redpiler"` | Candidate notice |
-| [commands.rs:241](../crates/core/src/plot/commands.rs#L241) | `handle_command / send_no_permission_message` | `shared permission notice` | Candidate notice |
-| [commands.rs:254](../crates/core/src/plot/commands.rs#L254) | `handle_command / send_error_message` | `"Usage: /help [topic]"` | Candidate notice |
-| [commands.rs:256](../crates/core/src/plot/commands.rs#L256) | `handle_command / send_system_message` | `page` | Candidate notice |
-| [commands.rs:258](../crates/core/src/plot/commands.rs#L258) | `handle_command / send_error_message` | `"Unknown help topic. Use /help for topics, or //help <command> for WorldEdit.",` | Candidate notice |
-| [commands.rs:265](../crates/core/src/plot/commands.rs#L265) | `handle_command / send_no_permission_message` | `shared permission notice` | Candidate notice |
-| [commands.rs:275](../crates/core/src/plot/commands.rs#L275) | `handle_command / send_error_message` | `"Usage: /piston_anim [auto\|on\|off]"` | Candidate notice |
-| [commands.rs:281](../crates/core/src/plot/commands.rs#L281) | `handle_command / send_system_message` | `&format!( "Piston animation: {} (effective {})", self.piston_animation, if self.world.fast_rendering { "off" } else { "on" } )` | Candidate notice |
-| [commands.rs:298](../crates/core/src/plot/commands.rs#L298) | `handle_command / send_no_permission_message` | `shared permission notice` | Candidate notice |
-| [commands.rs:312](../crates/core/src/plot/commands.rs#L312) | `handle_command / send_error_message` | `&error` | Candidate notice |
-| [commands.rs:316](../crates/core/src/plot/commands.rs#L316) | `handle_command / send_system_message` | `&crate::server::version_string()` | Candidate notice |
-| [commands.rs:355](../crates/core/src/plot/commands.rs#L355) | `handle_command / send_error_message` | `"Usage: /whitelist [add \| remove] (username)"` | Candidate notice |
-| [commands.rs:363](../crates/core/src/plot/commands.rs#L363) | `handle_command / send_chat_message` | `0, &ChatComponent::from_legacy_text(&format!( "&6RTPS from last 10s, 1m, 5m, 15m: &a{:.1}, {:.1}, {:.1}, {:.1} ({})", report.ten_s, report.one_m, report.five_m, report.fifteen_m, self.tps )),` | Candidate notice |
-| [commands.rs:371](../crates/core/src/plot/commands.rs#L371) | `handle_command / send_chat_message` | `0, &ChatComponent::from_legacy_text(&format!( "&6No timings data. &a({})", self.tps )),` | Candidate notice |
-| [commands.rs:388](../crates/core/src/plot/commands.rs#L388) | `handle_command / send_error_message` | `"Unable to parse rtps!"` | Candidate notice |
-| [commands.rs:397](../crates/core/src/plot/commands.rs#L397) | `handle_command / send_system_message` | `"The rtps was successfully set."` | Candidate notice |
-| [commands.rs:400](../crates/core/src/plot/commands.rs#L400) | `handle_command / send_system_message` | `&message` | Candidate notice |
-| [commands.rs:401](../crates/core/src/plot/commands.rs#L401) | `handle_command / send_error_message` | `&error` | Candidate notice |
-| [commands.rs:405](../crates/core/src/plot/commands.rs#L405) | `handle_command / send_error_message` | `&error` | Candidate notice |
-| [commands.rs:411](../crates/core/src/plot/commands.rs#L411) | `handle_command / send_error_message` | `"Please specify a number of ticks to advance."` | Candidate notice |
-| [commands.rs:418](../crates/core/src/plot/commands.rs#L418) | `handle_command / send_error_message` | `"Please specify a number of nano-ticks to advance.",` | Candidate notice |
-| [commands.rs:424](../crates/core/src/plot/commands.rs#L424) | `handle_command / send_error_message` | `"Unable to parse nano-ticks!"` | Candidate notice |
-| [commands.rs:428](../crates/core/src/plot/commands.rs#L428) | `handle_command / send_error_message` | `"Cannot advance nano-ticks while redpiler is active!",` | Candidate notice |
-| [commands.rs:434](../crates/core/src/plot/commands.rs#L434) | `handle_command / send_error_message` | `"Disable tick history before nano/pico advancement.",` | Candidate notice |
-| [commands.rs:444](../crates/core/src/plot/commands.rs#L444) | `handle_command / send_error_message` | `"Please specify a number of pico-ticks to advance.",` | Candidate notice |
-| [commands.rs:450](../crates/core/src/plot/commands.rs#L450) | `handle_command / send_error_message` | `"Unable to parse pico-ticks!"` | Candidate notice |
-| [commands.rs:454](../crates/core/src/plot/commands.rs#L454) | `handle_command / send_error_message` | `"Cannot advance pico-ticks while redpiler is active!",` | Candidate notice |
-| [commands.rs:460](../crates/core/src/plot/commands.rs#L460) | `handle_command / send_error_message` | `"Disable tick history before nano/pico advancement.",` | Candidate notice |
-| [commands.rs:470](../crates/core/src/plot/commands.rs#L470) | `handle_command / send_error_message` | `"Unable to parse ticks!"` | Candidate notice |
-| [commands.rs:480](../crates/core/src/plot/commands.rs#L480) | `handle_command / send_system_message` | `&format!( "Plot has been advanced by {unit} ({:.00?})", start_time.elapsed() )` | Candidate notice |
-| [commands.rs:489](../crates/core/src/plot/commands.rs#L489) | `handle_command / send_system_message` | `"Automatic redpiler compilation has been enabled."` | Candidate notice |
-| [commands.rs:492](../crates/core/src/plot/commands.rs#L492) | `handle_command / send_system_message` | `"Automatic redpiler compilation has been disabled."` | Candidate notice |
-| [commands.rs:504](../crates/core/src/plot/commands.rs#L504) | `handle_command / send_error_message` | `"Unable to parse x coordinate!"` | Candidate notice |
-| [commands.rs:510](../crates/core/src/plot/commands.rs#L510) | `handle_command / send_error_message` | `"Unable to parse y coordinate!"` | Candidate notice |
-| [commands.rs:516](../crates/core/src/plot/commands.rs#L516) | `handle_command / send_error_message` | `"Unable to parse z coordinate!"` | Candidate notice |
-| [commands.rs:520](../crates/core/src/plot/commands.rs#L520) | `handle_command / send_system_message` | `&format!("Teleporting to ({}, {}, {})", x, y, z)` | Candidate notice |
-| [commands.rs:524](../crates/core/src/plot/commands.rs#L524) | `handle_command / send_system_message` | `&format!("Teleporting to {}", args[0])` | Candidate notice |
-| [commands.rs:533](../crates/core/src/plot/commands.rs#L533) | `handle_command / send_error_message` | `"Invalid number of arguments for teleport command!"` | Candidate notice |
-| [commands.rs:541](../crates/core/src/plot/commands.rs#L541) | `handle_command / send_error_message` | `"Invalid number of arguments!"` | Candidate notice |
-| [commands.rs:549](../crates/core/src/plot/commands.rs#L549) | `handle_command / send_error_message` | `"Invalid number of arguments!"` | Candidate notice |
-| [commands.rs:557](../crates/core/src/plot/commands.rs#L557) | `handle_command / send_error_message` | `"/speed <0-10>"` | Candidate notice |
-| [commands.rs:563](../crates/core/src/plot/commands.rs#L563) | `handle_command / send_error_message` | `"Silly child, you can't have a negative flyspeed!"` | Candidate notice |
-| [commands.rs:567](../crates/core/src/plot/commands.rs#L567) | `handle_command / send_error_message` | `"For performance reasons player speed cannot be higher than 10.",` | Candidate notice |
-| [commands.rs:574](../crates/core/src/plot/commands.rs#L574) | `handle_command / send_error_message` | `"You can't set your speed to NaN or -NaN."` | Candidate notice |
-| [commands.rs:580](../crates/core/src/plot/commands.rs#L580) | `handle_command / send_system_message` | `&format!( "Set flying speed to {} for {}", speed_arg, username )` | Candidate notice |
-| [commands.rs:585](../crates/core/src/plot/commands.rs#L585) | `handle_command / send_error_message` | `"Unable to parse speed value"` | Candidate notice |
-| [commands.rs:592](../crates/core/src/plot/commands.rs#L592) | `handle_command / send_error_message` | `"Invalid number of arguments!"` | Candidate notice |
-| [commands.rs:600](../crates/core/src/plot/commands.rs#L600) | `handle_command / send_error_message` | `"Unknown gamemode"` | Candidate notice |
-| [commands.rs:608](../crates/core/src/plot/commands.rs#L608) | `handle_command / send_error_message` | `"Usage: /container [type] [power]"` | Candidate notice |
-| [commands.rs:615](../crates/core/src/plot/commands.rs#L615) | `handle_command / send_error_message` | `"Unable to parse power!"` | Candidate notice |
-| [commands.rs:622](../crates/core/src/plot/commands.rs#L622) | `handle_command / send_error_message` | `"Container type must be one of [barrel, furnace, hopper]",` | Candidate notice |
-| [commands.rs:630](../crates/core/src/plot/commands.rs#L630) | `handle_command / send_error_message` | `"Container power must be greater than 0 and lower than 15!",` | Candidate notice |
-| [commands.rs:642](../crates/core/src/plot/commands.rs#L642) | `handle_command / send_system_message` | `&format!( "World send rate: {} Hz (effective {} Hz)", self.world_send_rate.0, self.effective_send_rate() )` | Candidate notice |
-| [commands.rs:650](../crates/core/src/plot/commands.rs#L650) | `handle_command / send_error_message` | `"Usage: /worldsendrate <hertz>"` | Candidate notice |
-| [commands.rs:655](../crates/core/src/plot/commands.rs#L655) | `handle_command / send_error_message` | `"Unable to parse send rate!"` | Candidate notice |
-| [commands.rs:660](../crates/core/src/plot/commands.rs#L660) | `handle_command / send_error_message` | `"The world send rate cannot go higher than 1000!"` | Candidate notice |
-| [commands.rs:667](../crates/core/src/plot/commands.rs#L667) | `handle_command / send_system_message` | `"The world send rate was successfully set."` | Candidate notice |
-| [commands.rs:671](../crates/core/src/plot/commands.rs#L671) | `handle_command / send_system_message` | `"The world is already cursed."` | Candidate notice |
-| [commands.rs:675](../crates/core/src/plot/commands.rs#L675) | `handle_command / send_system_message` | `"The world has been cursed. Redpiler disabled (/bless to undo)",` | Candidate notice |
-| [commands.rs:684](../crates/core/src/plot/commands.rs#L684) | `handle_command / send_system_message` | `"The world has been blessed."` | Candidate notice |
-| [commands.rs:687](../crates/core/src/plot/commands.rs#L687) | `handle_command / send_system_message` | `"The world is not cursed. (/curse to curse)"` | Candidate notice |
-| [commands.rs:691](../crates/core/src/plot/commands.rs#L691) | `handle_command / send_error_message` | `"Command not found!"` | Candidate notice |
+| [commands.rs:51](../crates/core/src/plot/commands.rs#L51) | `handle_plot_command / send_error_message` | `"Invalid argument for /plot"` | Candidate notice |
+| [commands.rs:56](../crates/core/src/plot/commands.rs#L56) | `handle_plot_command / send_no_permission_message` | `shared permission notice` | Candidate notice |
+| [commands.rs:63](../crates/core/src/plot/commands.rs#L63) | `handle_plot_command / send_system_message` | `&format!( "Plot owner is: {}", database::get_cached_username(owner.clone()).unwrap_or(owner) )` | Candidate notice |
+| [commands.rs:68](../crates/core/src/plot/commands.rs#L68) | `handle_plot_command / send_system_message` | `"Plot is not owned by anyone."` | Candidate notice |
+| [commands.rs:73](../crates/core/src/plot/commands.rs#L73) | `handle_plot_command / send_system_message` | `"Plot is already claimed!"` | Candidate notice |
+| [commands.rs:95](../crates/core/src/plot/commands.rs#L95) | `handle_plot_command / send_error_message` | `"Invalid number of arguments!"` | Candidate notice |
+| [commands.rs:103](../crates/core/src/plot/commands.rs#L103) | `handle_plot_command / send_error_message` | `"Plot index starts at 1"` | Candidate notice |
+| [commands.rs:107](../crates/core/src/plot/commands.rs#L107) | `handle_plot_command / send_error_message` | `"Unable to parse index"` | Candidate notice |
+| [commands.rs:122](../crates/core/src/plot/commands.rs#L122) | `handle_plot_command / send_system_message` | `&format!("Plot range (1, {}).", plots.len())` | Candidate notice |
+| [commands.rs:126](../crates/core/src/plot/commands.rs#L126) | `handle_plot_command / send_system_message` | `&format!("{} does not own any plots.", args[0])` | Candidate notice |
+| [commands.rs:131](../crates/core/src/plot/commands.rs#L131) | `handle_plot_command / send_error_message` | `"Invalid number of arguments!"` | Candidate notice |
+| [commands.rs:140](../crates/core/src/plot/commands.rs#L140) | `handle_plot_command / send_error_message` | `"Unable to parse x coordinate!"` | Candidate notice |
+| [commands.rs:146](../crates/core/src/plot/commands.rs#L146) | `handle_plot_command / send_error_message` | `"Unable to parse z coordinate!"` | Candidate notice |
+| [commands.rs:157](../crates/core/src/plot/commands.rs#L157) | `handle_plot_command / send_system_message` | `&res` | Candidate notice |
+| [commands.rs:160](../crates/core/src/plot/commands.rs#L160) | `handle_plot_command / send_system_message` | `"You are already locked to this plot."` | Candidate notice |
+| [commands.rs:170](../crates/core/src/plot/commands.rs#L170) | `handle_plot_command / send_system_message` | `"You are now unlocked."` | Candidate notice |
+| [commands.rs:172](../crates/core/src/plot/commands.rs#L172) | `handle_plot_command / send_system_message` | `"You are not locked to this plot."` | Candidate notice |
+| [commands.rs:175](../crates/core/src/plot/commands.rs#L175) | `handle_plot_command / send_error_message` | `"Invalid argument for /plot"` | Candidate notice |
+| [commands.rs:190](../crates/core/src/plot/commands.rs#L190) | `handle_redpiler_command / send_system_message` | `msg` | Candidate notice |
+| [commands.rs:208](../crates/core/src/plot/commands.rs#L208) | `handle_redpiler_command / send_error_message` | `"Trace failed"` | Candidate notice |
+| [commands.rs:216](../crates/core/src/plot/commands.rs#L216) | `handle_redpiler_command / send_error_message` | `"Invalid argument for /redpiler"` | Candidate notice |
+| [commands.rs:240](../crates/core/src/plot/commands.rs#L240) | `handle_command / send_no_permission_message` | `shared permission notice` | Candidate notice |
+| [commands.rs:257](../crates/core/src/plot/commands.rs#L257) | `handle_command / send_error_message` | `"Usage: /help [topic]"` | Candidate notice |
+| [commands.rs:259](../crates/core/src/plot/commands.rs#L259) | `handle_command / send_system_message` | `page` | Candidate notice |
+| [commands.rs:261](../crates/core/src/plot/commands.rs#L261) | `handle_command / send_error_message` | `"Unknown help topic. Use /help for topics, or //help <command> for WorldEdit.",` | Candidate notice |
+| [commands.rs:268](../crates/core/src/plot/commands.rs#L268) | `handle_command / send_no_permission_message` | `shared permission notice` | Candidate notice |
+| [commands.rs:278](../crates/core/src/plot/commands.rs#L278) | `handle_command / send_error_message` | `"Usage: /piston_anim [auto\|on\|off]"` | Candidate notice |
+| [commands.rs:284](../crates/core/src/plot/commands.rs#L284) | `handle_command / send_system_message` | `&format!( "Piston animation: {} (effective {})", self.piston_animation, if self.world.fast_rendering { "off" } else { "on" } )` | Candidate notice |
+| [commands.rs:301](../crates/core/src/plot/commands.rs#L301) | `handle_command / send_no_permission_message` | `shared permission notice` | Candidate notice |
+| [commands.rs:315](../crates/core/src/plot/commands.rs#L315) | `handle_command / send_error_message` | `&error` | Candidate notice |
+| [commands.rs:319](../crates/core/src/plot/commands.rs#L319) | `handle_command / send_system_message` | `&crate::server::version_string()` | Candidate notice |
+| [commands.rs:358](../crates/core/src/plot/commands.rs#L358) | `handle_command / send_error_message` | `"Usage: /whitelist [add \| remove] (username)"` | Candidate notice |
+| [commands.rs:366](../crates/core/src/plot/commands.rs#L366) | `handle_command / send_chat_message` | `0, &ChatComponent::from_legacy_text(&format!( "&6RTPS from last 10s, 1m, 5m, 15m: &a{:.1}, {:.1}, {:.1}, {:.1} ({})", report.ten_s, report.one_m, report.five_m, report.fifteen_m, self.tps )),` | Candidate notice |
+| [commands.rs:374](../crates/core/src/plot/commands.rs#L374) | `handle_command / send_chat_message` | `0, &ChatComponent::from_legacy_text(&format!( "&6No timings data. &a({})", self.tps )),` | Candidate notice |
+| [commands.rs:391](../crates/core/src/plot/commands.rs#L391) | `handle_command / send_error_message` | `"Unable to parse rtps!"` | Candidate notice |
+| [commands.rs:400](../crates/core/src/plot/commands.rs#L400) | `handle_command / send_system_message` | `"The rtps was successfully set."` | Candidate notice |
+| [commands.rs:403](../crates/core/src/plot/commands.rs#L403) | `handle_command / send_system_message` | `&message` | Candidate notice |
+| [commands.rs:404](../crates/core/src/plot/commands.rs#L404) | `handle_command / send_error_message` | `&error` | Candidate notice |
+| [commands.rs:408](../crates/core/src/plot/commands.rs#L408) | `handle_command / send_error_message` | `&error` | Candidate notice |
+| [commands.rs:414](../crates/core/src/plot/commands.rs#L414) | `handle_command / send_error_message` | `"Please specify a number of ticks to advance."` | Candidate notice |
+| [commands.rs:421](../crates/core/src/plot/commands.rs#L421) | `handle_command / send_error_message` | `"Please specify a number of nano-ticks to advance.",` | Candidate notice |
+| [commands.rs:427](../crates/core/src/plot/commands.rs#L427) | `handle_command / send_error_message` | `"Unable to parse nano-ticks!"` | Candidate notice |
+| [commands.rs:431](../crates/core/src/plot/commands.rs#L431) | `handle_command / send_error_message` | `"Cannot advance nano-ticks while redpiler is active!",` | Candidate notice |
+| [commands.rs:437](../crates/core/src/plot/commands.rs#L437) | `handle_command / send_error_message` | `"Disable tick history before nano/pico advancement.",` | Candidate notice |
+| [commands.rs:447](../crates/core/src/plot/commands.rs#L447) | `handle_command / send_error_message` | `"Please specify a number of pico-ticks to advance.",` | Candidate notice |
+| [commands.rs:453](../crates/core/src/plot/commands.rs#L453) | `handle_command / send_error_message` | `"Unable to parse pico-ticks!"` | Candidate notice |
+| [commands.rs:457](../crates/core/src/plot/commands.rs#L457) | `handle_command / send_error_message` | `"Cannot advance pico-ticks while redpiler is active!",` | Candidate notice |
+| [commands.rs:463](../crates/core/src/plot/commands.rs#L463) | `handle_command / send_error_message` | `"Disable tick history before nano/pico advancement.",` | Candidate notice |
+| [commands.rs:473](../crates/core/src/plot/commands.rs#L473) | `handle_command / send_error_message` | `"Unable to parse ticks!"` | Candidate notice |
+| [commands.rs:483](../crates/core/src/plot/commands.rs#L483) | `handle_command / send_system_message` | `&format!( "Plot has been advanced by {unit} ({:.00?})", start_time.elapsed() )` | Candidate notice |
+| [commands.rs:492](../crates/core/src/plot/commands.rs#L492) | `handle_command / send_system_message` | `"Automatic redpiler compilation has been enabled."` | Candidate notice |
+| [commands.rs:495](../crates/core/src/plot/commands.rs#L495) | `handle_command / send_system_message` | `"Automatic redpiler compilation has been disabled."` | Candidate notice |
+| [commands.rs:507](../crates/core/src/plot/commands.rs#L507) | `handle_command / send_error_message` | `"Unable to parse x coordinate!"` | Candidate notice |
+| [commands.rs:513](../crates/core/src/plot/commands.rs#L513) | `handle_command / send_error_message` | `"Unable to parse y coordinate!"` | Candidate notice |
+| [commands.rs:519](../crates/core/src/plot/commands.rs#L519) | `handle_command / send_error_message` | `"Unable to parse z coordinate!"` | Candidate notice |
+| [commands.rs:523](../crates/core/src/plot/commands.rs#L523) | `handle_command / send_system_message` | `&format!("Teleporting to ({}, {}, {})", x, y, z)` | Candidate notice |
+| [commands.rs:527](../crates/core/src/plot/commands.rs#L527) | `handle_command / send_system_message` | `&format!("Teleporting to {}", args[0])` | Candidate notice |
+| [commands.rs:536](../crates/core/src/plot/commands.rs#L536) | `handle_command / send_error_message` | `"Invalid number of arguments for teleport command!"` | Candidate notice |
+| [commands.rs:544](../crates/core/src/plot/commands.rs#L544) | `handle_command / send_error_message` | `"Invalid number of arguments!"` | Candidate notice |
+| [commands.rs:552](../crates/core/src/plot/commands.rs#L552) | `handle_command / send_error_message` | `"Invalid number of arguments!"` | Candidate notice |
+| [commands.rs:560](../crates/core/src/plot/commands.rs#L560) | `handle_command / send_error_message` | `"/speed <0-10>"` | Candidate notice |
+| [commands.rs:566](../crates/core/src/plot/commands.rs#L566) | `handle_command / send_error_message` | `"Silly child, you can't have a negative flyspeed!"` | Candidate notice |
+| [commands.rs:570](../crates/core/src/plot/commands.rs#L570) | `handle_command / send_error_message` | `"For performance reasons player speed cannot be higher than 10.",` | Candidate notice |
+| [commands.rs:577](../crates/core/src/plot/commands.rs#L577) | `handle_command / send_error_message` | `"You can't set your speed to NaN or -NaN."` | Candidate notice |
+| [commands.rs:583](../crates/core/src/plot/commands.rs#L583) | `handle_command / send_system_message` | `&format!( "Set flying speed to {} for {}", speed_arg, username )` | Candidate notice |
+| [commands.rs:588](../crates/core/src/plot/commands.rs#L588) | `handle_command / send_error_message` | `"Unable to parse speed value"` | Candidate notice |
+| [commands.rs:595](../crates/core/src/plot/commands.rs#L595) | `handle_command / send_error_message` | `"Invalid number of arguments!"` | Candidate notice |
+| [commands.rs:603](../crates/core/src/plot/commands.rs#L603) | `handle_command / send_error_message` | `"Unknown gamemode"` | Candidate notice |
+| [commands.rs:611](../crates/core/src/plot/commands.rs#L611) | `handle_command / send_system_message` | `&format!( "World send rate: {} Hz (effective {} Hz)", self.world_send_rate.0, self.effective_send_rate() )` | Candidate notice |
+| [commands.rs:619](../crates/core/src/plot/commands.rs#L619) | `handle_command / send_error_message` | `"Usage: /worldsendrate <hertz>"` | Candidate notice |
+| [commands.rs:624](../crates/core/src/plot/commands.rs#L624) | `handle_command / send_error_message` | `"Unable to parse send rate!"` | Candidate notice |
+| [commands.rs:629](../crates/core/src/plot/commands.rs#L629) | `handle_command / send_error_message` | `"The world send rate cannot go higher than 1000!"` | Candidate notice |
+| [commands.rs:636](../crates/core/src/plot/commands.rs#L636) | `handle_command / send_system_message` | `"The world send rate was successfully set."` | Candidate notice |
+| [commands.rs:640](../crates/core/src/plot/commands.rs#L640) | `handle_command / send_system_message` | `"The world is already cursed."` | Candidate notice |
+| [commands.rs:644](../crates/core/src/plot/commands.rs#L644) | `handle_command / send_system_message` | `"The world has been cursed. Redpiler disabled (/bless to undo)",` | Candidate notice |
+| [commands.rs:653](../crates/core/src/plot/commands.rs#L653) | `handle_command / send_system_message` | `"The world has been blessed."` | Candidate notice |
+| [commands.rs:656](../crates/core/src/plot/commands.rs#L656) | `handle_command / send_system_message` | `"The world is not cursed. (/curse to curse)"` | Candidate notice |
+| [commands.rs:660](../crates/core/src/plot/commands.rs#L660) | `handle_command / send_error_message` | `"Command not found!"` | Candidate notice |
 
 ### crates/core/src/plot/containers.rs
 
@@ -166,15 +162,15 @@ Payloads below are Rust source expressions with whitespace folded for readabilit
 
 | Location | Function and sender | Current payload | Treatment |
 | --- | --- | --- | --- |
-| [mod.rs:714](../crates/core/src/plot/mod.rs#L714) | `broadcast_plot_chat_message / send_chat_message` | `0, &ChatComponent::from_legacy_text(message)` | Shared transport |
-| [mod.rs:865](../crates/core/src/plot/mod.rs#L865) | `enter_plot / send_system_message` | `&format!( "Entering plot ({}, {})", self.world.x, self.world.z )` | Candidate notice |
-| [mod.rs:968](../crates/core/src/plot/mod.rs#L968) | `start_redpiler / send_system_message` | `"This plot contains pistons, observers or command blocks and runs with the interpreter to preserve their behavior."` | Candidate notice |
-| [mod.rs:976](../crates/core/src/plot/mod.rs#L976) | `start_redpiler / broadcast_plot_chat_message` | `&format!( "Tick history disabled because compiled execution is starting. Released approximately {}.", history::format_memory(bytes) )` | Candidate notice |
-| [mod.rs:1095](../crates/core/src/plot/mod.rs#L1095) | `claim_plot / send_system_message` | `&format!("Claimed plot {},{}", plot_x, plot_z)` | Candidate notice |
-| [mod.rs:1158](../crates/core/src/plot/mod.rs#L1158) | `handle_messages / send_raw_system_message` | `command.message.clone()` | Preserve authored text |
-| [mod.rs:1164](../crates/core/src/plot/mod.rs#L1164) | `handle_messages / send_chat_message` | `sender, &message` | Preserve player chat |
-| [mod.rs:1192](../crates/core/src/plot/mod.rs#L1192) | `handle_messages / kick` | `json!({ "text": "Server closed" }) .to_string(),` | Disconnect notice |
-| [mod.rs:1585](../crates/core/src/plot/mod.rs#L1585) | `drop / send_error_message` | `"The plot you were previously in has crashed!"` | Candidate notice |
+| [mod.rs:715](../crates/core/src/plot/mod.rs#L715) | `broadcast_plot_chat_message / send_chat_message` | `0, &ChatComponent::from_legacy_text(message)` | Shared transport |
+| [mod.rs:866](../crates/core/src/plot/mod.rs#L866) | `enter_plot / send_system_message` | `&format!( "Entering plot ({}, {})", self.world.x, self.world.z )` | Candidate notice |
+| [mod.rs:969](../crates/core/src/plot/mod.rs#L969) | `start_redpiler / send_system_message` | `"This plot contains pistons, observers or command blocks and runs with the interpreter to preserve their behavior."` | Candidate notice |
+| [mod.rs:977](../crates/core/src/plot/mod.rs#L977) | `start_redpiler / broadcast_plot_chat_message` | `&format!( "Tick history disabled because compiled execution is starting. Released approximately {}.", history::format_memory(bytes) )` | Candidate notice |
+| [mod.rs:1097](../crates/core/src/plot/mod.rs#L1097) | `claim_plot / send_system_message` | `&format!("Claimed plot {},{}", plot_x, plot_z)` | Candidate notice |
+| [mod.rs:1160](../crates/core/src/plot/mod.rs#L1160) | `handle_messages / send_raw_system_message` | `command.message.clone()` | Preserve authored text |
+| [mod.rs:1166](../crates/core/src/plot/mod.rs#L1166) | `handle_messages / send_chat_message` | `sender, &message` | Preserve player chat |
+| [mod.rs:1194](../crates/core/src/plot/mod.rs#L1194) | `handle_messages / kick` | `json!({ "text": "Server closed" }) .to_string(),` | Disconnect notice |
+| [mod.rs:1590](../crates/core/src/plot/mod.rs#L1590) | `drop / send_error_message` | `"The plot you were previously in has crashed!"` | Candidate notice |
 
 ### crates/core/src/plot/packet_handlers.rs
 
@@ -182,20 +178,21 @@ Payloads below are Rust source expressions with whitespace folded for readabilit
 | --- | --- | --- | --- |
 | [packet_handlers.rs:95](../crates/core/src/plot/packet_handlers.rs#L95) | `handle_update_command_block / send_no_permission_message` | `shared permission notice` | Candidate notice |
 | [packet_handlers.rs:135](../crates/core/src/plot/packet_handlers.rs#L135) | `handle_update_command_block / send_system_message` | `"Command block updated."` | Candidate notice |
-| [packet_handlers.rs:336](../crates/core/src/plot/packet_handlers.rs#L336) | `handle_player_block_placement / send_system_message` | `"Can't interact with blocks outside of plot"` | Candidate notice |
-| [packet_handlers.rs:360](../crates/core/src/plot/packet_handlers.rs#L360) | `handle_player_block_placement / send_no_permission_message` | `shared permission notice` | Candidate notice |
-| [packet_handlers.rs:365](../crates/core/src/plot/packet_handlers.rs#L365) | `handle_player_block_placement / send_no_permission_message` | `shared permission notice` | Candidate notice |
-| [packet_handlers.rs:379](../crates/core/src/plot/packet_handlers.rs#L379) | `handle_player_block_placement / send_error_message` | `ERROR_IO_ONLY` | Candidate notice |
-| [packet_handlers.rs:615](../crates/core/src/plot/packet_handlers.rs#L615) | `handle_player_digging / send_system_message` | `"Can't break blocks outside of plot"` | Candidate notice |
-| [packet_handlers.rs:640](../crates/core/src/plot/packet_handlers.rs#L640) | `handle_player_digging / send_no_permission_message` | `shared permission notice` | Candidate notice |
-| [packet_handlers.rs:645](../crates/core/src/plot/packet_handlers.rs#L645) | `handle_player_digging / send_no_permission_message` | `shared permission notice` | Candidate notice |
-| [packet_handlers.rs:652](../crates/core/src/plot/packet_handlers.rs#L652) | `handle_player_digging / send_error_message` | `ERROR_IO_ONLY` | Candidate notice |
+| [packet_handlers.rs:344](../crates/core/src/plot/packet_handlers.rs#L344) | `handle_player_block_placement / send_system_message` | `"Can't interact with blocks outside of plot"` | Candidate notice |
+| [packet_handlers.rs:368](../crates/core/src/plot/packet_handlers.rs#L368) | `handle_player_block_placement / send_no_permission_message` | `shared permission notice` | Candidate notice |
+| [packet_handlers.rs:373](../crates/core/src/plot/packet_handlers.rs#L373) | `handle_player_block_placement / send_no_permission_message` | `shared permission notice` | Candidate notice |
+| [packet_handlers.rs:387](../crates/core/src/plot/packet_handlers.rs#L387) | `handle_player_block_placement / send_error_message` | `ERROR_IO_ONLY` | Candidate notice |
+| [packet_handlers.rs:623](../crates/core/src/plot/packet_handlers.rs#L623) | `handle_player_digging / send_system_message` | `"Can't break blocks outside of plot"` | Candidate notice |
+| [packet_handlers.rs:648](../crates/core/src/plot/packet_handlers.rs#L648) | `handle_player_digging / send_no_permission_message` | `shared permission notice` | Candidate notice |
+| [packet_handlers.rs:653](../crates/core/src/plot/packet_handlers.rs#L653) | `handle_player_digging / send_no_permission_message` | `shared permission notice` | Candidate notice |
+| [packet_handlers.rs:660](../crates/core/src/plot/packet_handlers.rs#L660) | `handle_player_digging / send_error_message` | `ERROR_IO_ONLY` | Candidate notice |
 
 ### crates/core/src/plot/redstone_tools/mod.rs
 
 | Location | Function and sender | Current payload | Treatment |
 | --- | --- | --- | --- |
-| [mod.rs:85](../crates/core/src/plot/redstone_tools/mod.rs#L85) | `send / send_raw_system_message` | `json!({"text": text, "color": color}).to_string()` | Candidate notice |
+| [mod.rs:78](../crates/core/src/plot/redstone_tools/mod.rs#L78) | `send / send_raw_system_message` | `json!({"text": text, "color": color}).to_string()` | Candidate notice |
+| [mod.rs:152](../crates/core/src/plot/redstone_tools/mod.rs#L152) | `handle_redstone_tools_command / send_system_message` | `super::help::page(Some("tools")).expect("tools help page"),` | Candidate notice |
 
 ### crates/core/src/plot/redstone_tools/search.rs
 
@@ -244,10 +241,9 @@ Payloads below are Rust source expressions with whitespace folded for readabilit
 | [execute.rs:906](../crates/core/src/plot/worldedit/execute.rs#L906) | `execute_ascend / send_worldedit_message` | `&format!("Ascended {} levels.", initial_levels - levels)` | Candidate notice |
 | [execute.rs:937](../crates/core/src/plot/worldedit/execute.rs#L937) | `execute_descend / send_error_message` | `"No free spot below you found."` | Candidate notice |
 | [execute.rs:942](../crates/core/src/plot/worldedit/execute.rs#L942) | `execute_descend / send_worldedit_message` | `&format!("Descended {} levels.", initial_levels - levels)` | Candidate notice |
-| [execute.rs:986](../crates/core/src/plot/worldedit/execute.rs#L986) | `execute_rstack / send_worldedit_message` | `&format!( "Your selection was stacked successfully. ({:.00?})", start_time.elapsed() )` | Candidate notice |
-| [execute.rs:1004](../crates/core/src/plot/worldedit/execute.rs#L1004) | `execute_update / send_error_message` | `"Your selection is incomplete."` | Candidate notice |
-| [execute.rs:1011](../crates/core/src/plot/worldedit/execute.rs#L1011) | `execute_update / send_worldedit_message` | `&format!( "Your selection was updated sucessfully. ({:.00?})", start_time.elapsed() )` | Candidate notice |
-| [execute.rs:1083](../crates/core/src/plot/worldedit/execute.rs#L1083) | `execute_replace_container / send_worldedit_message` | `&format!( "Your selection was replaced sucessfully. ({:.00?})", start_time.elapsed() )` | Candidate notice |
+| [execute.rs:958](../crates/core/src/plot/worldedit/execute.rs#L958) | `execute_update / send_error_message` | `"Your selection is incomplete."` | Candidate notice |
+| [execute.rs:965](../crates/core/src/plot/worldedit/execute.rs#L965) | `execute_update / send_worldedit_message` | `&format!( "Your selection was updated sucessfully. ({:.00?})", start_time.elapsed() )` | Candidate notice |
+| [execute.rs:1035](../crates/core/src/plot/worldedit/execute.rs#L1035) | `execute_replace_container / send_worldedit_message` | `&format!( "Your selection was replaced sucessfully. ({:.00?})", start_time.elapsed() )` | Candidate notice |
 
 ### crates/core/src/plot/worldedit/mod.rs
 
@@ -283,10 +279,10 @@ Payloads below are Rust source expressions with whitespace folded for readabilit
 
 | Location | Packet | Current fields |
 | --- | --- | --- |
-| [player.rs:319](../crates/core/src/player.rs#L319) | `CDisconnect` | `reason:json!({"text":"Your player save could not be loaded. Ask the administrator to inspect the server log; your original file was preserved."}).to_string()` |
-| [player.rs:461](../crates/core/src/player.rs#L461) | `CChatMessage` | `message, sender, position: 0,` |
-| [player.rs:514](../crates/core/src/player.rs#L514) | `CDisconnect` | `reason` |
-| [player.rs:667](../crates/core/src/player.rs#L667) | `CChatMessage` | `message, sender: 0, position: 1,` |
+| [player.rs:321](../crates/core/src/player.rs#L321) | `CDisconnect` | `reason:json!({"text":"Your player save could not be loaded. Ask the administrator to inspect the server log; your original file was preserved."}).to_string()` |
+| [player.rs:463](../crates/core/src/player.rs#L463) | `CChatMessage` | `message, sender, position: 0,` |
+| [player.rs:516](../crates/core/src/player.rs#L516) | `CDisconnect` | `reason` |
+| [player.rs:670](../crates/core/src/player.rs#L670) | `CChatMessage` | `message, sender: 0, position: 1,` |
 | [history.rs:269](../crates/core/src/plot/history.rs#L269) | `CChatMessage` | `message, position: 1, sender: 0,` |
 | [server.rs:327](../crates/core/src/server.rs#L327) | `CDisconnectLogin` | `reason: json!({ "text": "You are not whitelisted on this server" }) .to_string(),` |
 | [server.rs:730](../crates/core/src/server.rs#L730) | `CDisconnectLogin` | `reason: json!({ "text": format!("Version mismatch, I'm on {}!", MC_VERSION) }) .to_string(),` |
@@ -394,8 +390,8 @@ These producers resolve variables used by send sites and compose the version rep
 
 | Location | Current literal or template |
 | --- | --- |
-| [commands.rs:157](../crates/core/src/plot/commands.rs#L157) | `"Locked to plot ({}, {}). Use '/p unlock' to unlock."` |
-| [commands.rs:189](../crates/core/src/plot/commands.rs#L189) | `"Redpiler optimization is highly unstable and can break builds. Use with caution!"` |
+| [commands.rs:156](../crates/core/src/plot/commands.rs#L156) | `"Locked to plot ({}, {}). Use '/p unlock' to unlock."` |
+| [commands.rs:188](../crates/core/src/plot/commands.rs#L188) | `"Redpiler optimization is highly unstable and can break builds. Use with caution!"` |
 
 #### crates/core/src/server.rs
 
@@ -413,21 +409,22 @@ These producers resolve variables used by send sites and compose the version rep
 
 ### General help pages
 
-`plot/help.rs::page` supplies the nine help bodies to `/help`; the help topic tokens themselves should stay exact.
+`plot/help.rs::page` supplies the ten help bodies to `/help`; the help topic tokens themselves should stay exact.
 
 #### crates/core/src/plot/help.rs
 
 | Location | Current literal or template |
 | --- | --- |
-| [help.rs:9](../crates/core/src/plot/help.rs#L9) | `"MCHPRS quick start\nClaim a plot with /p auto.\n/help plots - Claim, visit and find your plot.\n/help rtps - Pause, speed up and step through a circuit.\n/help we - Select, copy, paste and undo.\n/help schematics - Load and save schematics.\n/help pistons - Animation and client update settings.\n/help rewind - tick rewind commands.\n/help chat - Messages and command blocks.\n/help redpiler - Compiled simulation."` |
-| [help.rs:19](../crates/core/src/plot/help.rs#L19) | `"Plots\n/p auto claim an empty plot. /p claim claims the plot you're standing in.\n/p info shows its owner; /p middle takes you to its centre.\n/p visit <player> [number] visits one of that player's plots.\n/p tp <x> <z> goes to plot coordinates, not block coordinates.\n/p lock keeps you in this plot; /p unlock lets you leave.\n/p select selects the whole plot for WorldEdit. Editing may require ownership or permission."` |
-| [help.rs:26](../crates/core/src/plot/help.rs#L26) | `"Tick control\n/rtps shows the current speed. /rtps 20 runs at normal game speed.\n/rtps 0 pauses the tickrate. /rtps 1000 speeds it up; /rtps unlimited runs as fast as it can.\n/radvance Advances one game tick if rtps is 0. /radv is an alias.\n/radvance 10 advances ten game ticks. \n/radvance nano 1 advances a batch of work (One \"Nanotick\"; /radvance pico 1 advances one operation (One \"Picotick\")\n"` |
-| [help.rs:33](../crates/core/src/plot/help.rs#L33) | `"WorldEdit\nThis server supports subset of WorldEdit commands, check autofill with // to check what is available.\n\n"` |
-| [help.rs:36](../crates/core/src/plot/help.rs#L36) | `"Schematics\n//load my_schematic.schem reads a schematic into your clipboard. \nUse //paste to place it where you're standing\nTo save a build: select it, //copy, then //save my_schematic.schem.\nYou can load schematics from redstonefun server under rf/ folder.  \n"` |
-| [help.rs:42](../crates/core/src/plot/help.rs#L42) | `"Animations and client updates\n/piston_anim shows this plot's setting. /bisdon_anim is an alias.\n/piston_anim auto follows the server threshold: by default, animations turn off above 100 TPS.\n/piston_anim on keeps animations on. /piston_anim off shows static blocks at any speed.\nThis affects only clients animations, piston tick and update behaviour stays the same.\n/wsr shows configured and effective block-update rates. /wsr 20 sends up to 20 updates per second; /wsr 0 stops periodic block updates.\nStatic rendering caps the send rate at 10 per second by default. A lower /wsr still applies."` |
-| [help.rs:49](../crates/core/src/plot/help.rs#L49) | `"Tick rewind\n/rhistory on [ticks] starts recording; the default is 100 ticks.\n/rhistory shows ticks and compressed/uncompressed sizes. /rhistory off frees the buffer.\n/rback rewinds one tick; /rback 10 rewinds ten. Rewind pauses the plot and clears WorldEdit undo/redo. Use /rtps 20 to resume.\nAll plots share a 2 GiB memory limit by default. Older ticks drop when memory fills. Admins can use /rhistory limit <MiB> to change it.\nMore than 1000 ticks requires plots.admin.rewind.unlimited; changing memory requires plots.admin.rewind.memory. Grant these through LuckPerms.\nHistory needs the interpreter and whole ticks. Compilation or restart clears it.\nTry /rtps 0, /rhistory on, /radvance 10, then /rback 5."` |
-| [help.rs:57](../crates/core/src/plot/help.rs#L57) | `"Messages and command blocks\n/say Hello everyone sends a message to all players.\n/tellraw @a {\"text\":\"Hello\",\"color\":\"gold\",\"bold\":true} sends formatted text.\nUse @a for everyone, @s for yourself, or a player name. Selector filters are ignored. Text, colours, basic styles and extra components work; scoreboard text and click/hover actions are ignored.\nPlace a command block, open it and enter say or tellraw. Impulse blocks run on a redstone pulse; repeating and chain blocks are also supported. Editing requires creative mode and permission.\nCommand blocks can use @a or player names; @s has no player there. Other commands are kept in schematics but don't run."` |
-| [help.rs:63](../crates/core/src/plot/help.rs#L63) | `"Redpiler\n/rp compile compiles a circuit for faster simulation. /rp reset returns to the interpreter.\n/rp inspect inspects the block you're looking at. /toggleautorp toggles automatic compilation for this plot.\nPlots with pistons, observers or command blocks stay on the interpreter to preserve their behaviour.\nUse the interpreter for nano/pico stepping. Start with /rtps 0, then /rp reset and /radvance pico 1."` |
+| [help.rs:9](../crates/core/src/plot/help.rs#L9) | `"MCHPRS quick start\nClaim a plot with /p auto.\n/help plots - Claim, visit and find your plot.\n/help rtps - Pause, speed up and step through a circuit.\n/help we - Select, copy, paste and undo.\n/help tools - RedstoneTools commands.\n/help schematics - Load and save schematics.\n/help pistons - Animation and client update settings.\n/help rewind - tick rewind commands.\n/help chat - Messages and command blocks.\n/help redpiler - Compiled simulation."` |
+| [help.rs:20](../crates/core/src/plot/help.rs#L20) | `"Plots\n/p auto claim an empty plot. /p claim claims the plot you're standing in.\n/p info shows its owner; /p middle takes you to its centre.\n/p visit <player> [number] visits one of that player's plots.\n/p tp <x> <z> goes to plot coordinates, not block coordinates.\n/p lock keeps you in this plot; /p unlock lets you leave.\n/p select selects the whole plot for WorldEdit. Editing may require ownership or permission."` |
+| [help.rs:27](../crates/core/src/plot/help.rs#L27) | `"Tick control\n/rtps shows the current speed. /rtps 20 runs at normal game speed.\n/rtps 0 pauses the tickrate. /rtps 1000 speeds it up; /rtps unlimited runs as fast as it can.\n/radvance Advances one game tick if rtps is 0. /radv is an alias.\n/radvance 10 advances ten game ticks. \n/radvance nano 1 advances a batch of work (One \"Nanotick\"; /radvance pico 1 advances one operation (One \"Picotick\")\n"` |
+| [help.rs:34](../crates/core/src/plot/help.rs#L34) | `"WorldEdit\nThis server supports subset of WorldEdit commands, check autofill with // to check what is available.\n\n"` |
+| [help.rs:38](../crates/core/src/plot/help.rs#L38) | `"RedstoneTools, nya~\n//find <block> finds blocks in your selection.\n//ss <regex> searches signs. Use -p <page> for more results.\n//rs [direction] [count] [spacing] stacks copies. -e expands selection; -w includes air.\n/container <type> <0..15> gives a comparator container.\n/slab [type] gives a top slab or converts the held slab.\n/cursel toggles your selection sidebar."` |
+| [help.rs:45](../crates/core/src/plot/help.rs#L45) | `"Schematics\n//load my_schematic.schem reads a schematic into your clipboard. \nUse //paste to place it where you're standing\nTo save a build: select it, //copy, then //save my_schematic.schem.\nYou can load schematics from redstonefun server under rf/ folder.  \n"` |
+| [help.rs:51](../crates/core/src/plot/help.rs#L51) | `"Animations and client updates\n/piston_anim shows this plot's setting. /bisdon_anim is an alias.\n/piston_anim auto follows the server threshold: by default, animations turn off above 100 TPS.\n/piston_anim on keeps animations on. /piston_anim off shows static blocks at any speed.\nThis affects only clients animations, piston tick and update behaviour stays the same.\n/wsr shows configured and effective block-update rates. /wsr 20 sends up to 20 updates per second; /wsr 0 stops periodic block updates.\nStatic rendering caps the send rate at 10 per second by default. A lower /wsr still applies."` |
+| [help.rs:58](../crates/core/src/plot/help.rs#L58) | `"Tick rewind\n/rhistory on [ticks] starts recording; the default is 100 ticks.\n/rhistory shows ticks and compressed/uncompressed sizes. /rhistory off frees the buffer.\n/rback rewinds one tick; /rback 10 rewinds ten. Rewind pauses the plot and clears WorldEdit undo/redo. Use /rtps 20 to resume.\nAll plots share a 2 GiB memory limit by default. Older ticks drop when memory fills. Admins can use /rhistory limit <MiB> to change it.\nMore than 1000 ticks requires plots.admin.rewind.unlimited; changing memory requires plots.admin.rewind.memory. Grant these through LuckPerms.\nHistory needs the interpreter and whole ticks. Compilation or restart clears it.\nTry /rtps 0, /rhistory on, /radvance 10, then /rback 5."` |
+| [help.rs:66](../crates/core/src/plot/help.rs#L66) | `"Messages and command blocks\n/say Hello everyone sends a message to all players.\n/tellraw @a {\"text\":\"Hello\",\"color\":\"gold\",\"bold\":true} sends formatted text.\nUse @a for everyone, @s for yourself, or a player name. Selector filters are ignored. Text, colours, basic styles and extra components work; scoreboard text and click/hover actions are ignored.\nPlace a command block, open it and enter say or tellraw. Impulse blocks run on a redstone pulse; repeating and chain blocks are also supported. Editing requires creative mode and permission.\nCommand blocks can use @a or player names; @s has no player there. Other commands are kept in schematics but don't run."` |
+| [help.rs:72](../crates/core/src/plot/help.rs#L72) | `"Redpiler\n/rp compile compiles a circuit for faster simulation. /rp reset returns to the interpreter.\n/rp inspect inspects the block you're looking at. /toggleautorp toggles automatic compilation for this plot.\nPlots with pistons, observers or command blocks stay on the interpreter to preserve their behaviour.\nUse the interpreter for nano/pico stepping. Start with /rtps 0, then /rp reset and /radvance pico 1."` |
 
 ### WorldEdit arguments and rich help
 
@@ -495,22 +492,18 @@ These producers resolve variables used by send sites and compose the version rep
 | [mod.rs:683](../crates/core/src/plot/worldedit/mod.rs#L683) | `"Flip the contents of the clipboard across the origin"` |
 | [mod.rs:689](../crates/core/src/plot/worldedit/mod.rs#L689) | `"Amount to rotate on the x-axis"` |
 | [mod.rs:693](../crates/core/src/plot/worldedit/mod.rs#L693) | `"Rotate the contents of the clipboard"` |
-| [mod.rs:699](../crates/core/src/plot/worldedit/mod.rs#L699) | `"# of copies to stack"` |
-| [mod.rs:700](../crates/core/src/plot/worldedit/mod.rs#L700) | `"The spacing between each selection"` |
-| [mod.rs:701](../crates/core/src/plot/worldedit/mod.rs#L701) | `"The direction to stack"` |
-| [mod.rs:705](../crates/core/src/plot/worldedit/mod.rs#L705) | `"Include air blocks"` |
-| [mod.rs:706](../crates/core/src/plot/worldedit/mod.rs#L706) | `"Expand selection"` |
-| [mod.rs:709](../crates/core/src/plot/worldedit/mod.rs#L709) | `"Like //stack but allows the stacked copies to overlap, supports more directions, and more flags"` |
-| [mod.rs:715](../crates/core/src/plot/worldedit/mod.rs#L715) | `"Updates all blocks in the selection"` |
-| [mod.rs:719](../crates/core/src/plot/worldedit/mod.rs#L719) | `"Update the entire plot"` |
-| [mod.rs:725](../crates/core/src/plot/worldedit/mod.rs#L725) | `"Command to retrieve help for"` |
-| [mod.rs:728](../crates/core/src/plot/worldedit/mod.rs#L728) | `"Displays help for WorldEdit commands"` |
-| [mod.rs:735](../crates/core/src/plot/worldedit/mod.rs#L735) | `"Gives a WorldEdit wand"` |
-| [mod.rs:742](../crates/core/src/plot/worldedit/mod.rs#L742) | `"The container type to replace"` |
-| [mod.rs:743](../crates/core/src/plot/worldedit/mod.rs#L743) | `"The container type to replace with"` |
-| [mod.rs:746](../crates/core/src/plot/worldedit/mod.rs#L746) | `"Replaces all container types in the selection"` |
-| [mod.rs:811](../crates/core/src/plot/worldedit/mod.rs#L811) | `"unknown block: {}"` |
-| [mod.rs:812](../crates/core/src/plot/worldedit/mod.rs#L812) | `"invalid pattern: {}"` |
+| [mod.rs:699](../crates/core/src/plot/worldedit/mod.rs#L699) | `"Updates all blocks in the selection"` |
+| [mod.rs:703](../crates/core/src/plot/worldedit/mod.rs#L703) | `"Update the entire plot"` |
+| [mod.rs:709](../crates/core/src/plot/worldedit/mod.rs#L709) | `"Command to retrieve help for"` |
+| [mod.rs:712](../crates/core/src/plot/worldedit/mod.rs#L712) | `"Displays help for WorldEdit commands"` |
+| [mod.rs:719](../crates/core/src/plot/worldedit/mod.rs#L719) | `"Gives a WorldEdit wand"` |
+| [mod.rs:726](../crates/core/src/plot/worldedit/mod.rs#L726) | `"The container type to replace"` |
+| [mod.rs:727](../crates/core/src/plot/worldedit/mod.rs#L727) | `"The container type to replace with"` |
+| [mod.rs:730](../crates/core/src/plot/worldedit/mod.rs#L730) | `"Replaces all container types in the selection"` |
+| [mod.rs:748](../crates/core/src/plot/worldedit/mod.rs#L748) | `"/paste -a"` |
+| [mod.rs:750](../crates/core/src/plot/worldedit/mod.rs#L750) | `"/stack -a"` |
+| [mod.rs:794](../crates/core/src/plot/worldedit/mod.rs#L794) | `"unknown block: {}"` |
+| [mod.rs:795](../crates/core/src/plot/worldedit/mod.rs#L795) | `"invalid pattern: {}"` |
 
 #### crates/core/src/plot/worldedit/execute.rs
 
@@ -593,56 +586,76 @@ Load and save send `Could not load schematic: {root_cause}` or `Could not save s
 
 | Location | Error or context producer |
 | --- | --- |
-| [block_entities.rs:189](../crates/blocks/src/block_entities.rs#L189) | `bail!("{key}: expected String")` |
-| [block_entities.rs:197](../crates/blocks/src/block_entities.rs#L197) | `bail!("{key}: expected boolean Byte")` |
-| [block_entities.rs:202](../crates/blocks/src/block_entities.rs#L202) | `bail!("Command: too long")` |
-| [block_entities.rs:207](../crates/blocks/src/block_entities.rs#L207) | `bail!("SuccessCount: expected nonnegative Int")` |
-| [block_entities.rs:212](../crates/blocks/src/block_entities.rs#L212) | `bail!("LastExecution: expected Long")` |
-| [block_entities.rs:220](../crates/blocks/src/block_entities.rs#L220) | `bail!("{key}: expected text component")` |
-| [block_entities.rs:305](../crates/blocks/src/block_entities.rs#L305) | `bail!("invalid container item count")` |
-| [block_entities.rs:309](../crates/blocks/src/block_entities.rs#L309) | `bail!("modern persisted inventory components are not supported by this schematic importer")` |
-| [block_entities.rs:314](../crates/blocks/src/block_entities.rs#L314) | `bail!("invalid container slot or count")` |
-| [block_entities.rs:324](../crates/blocks/src/block_entities.rs#L324) | `anyhow!("Item compound id missing namespace")` |
-| [block_entities.rs:351](../crates/blocks/src/block_entities.rs#L351) | `anyhow!("unknown item {namespaced_name}")` |
-| [block_entities.rs:379](../crates/blocks/src/block_entities.rs#L379) | `bail!("OutputSignal: expected strength 0..15")` |
-| [block_entities.rs:392](../crates/blocks/src/block_entities.rs#L392) | `bail!("Items: expected List")` |
-| [block_entities.rs:416](../crates/blocks/src/block_entities.rs#L416) | `bail!("{side}.messages: expected List")` |
-| [block_entities.rs:419](../crates/blocks/src/block_entities.rs#L419) | `bail!("{side}.messages: expected exactly four text components")` |
-| [block_entities.rs:426](../crates/blocks/src/block_entities.rs#L426) | `bail!("{side}.messages: invalid text component")` |
-| [block_entities.rs:434](../crates/blocks/src/block_entities.rs#L434) | `bail!("{side}.color: expected String")` |
-| [block_entities.rs:439](../crates/blocks/src/block_entities.rs#L439) | `bail!("{side}.has_glowing_text: expected boolean Byte")` |
-| [block_entities.rs:450](../crates/blocks/src/block_entities.rs#L450) | `bail!("Text{}: expected String", i + 1)` |
-| [block_entities.rs:455](../crates/blocks/src/block_entities.rs#L455) | `bail!("{side}: expected Compound")` |
-| [block_entities.rs:461](../crates/blocks/src/block_entities.rs#L461) | `bail!("is_waxed: expected boolean Byte")` |
-| [block_entities.rs:475](../crates/blocks/src/block_entities.rs#L475) | `anyhow!("unknown carried block {name}")` |
-| [block_entities.rs:495](../crates/blocks/src/block_entities.rs#L495) | `anyhow!("Unknown block face in moving piston block entity: {facing}")` |
-| [block_entities.rs:509](../crates/blocks/src/block_entities.rs#L509) | `bail!("Invalid moving piston progress: {progress}")` |
-| [block_entities.rs:524](../crates/blocks/src/block_entities.rs#L524) | `bail!("Unknown block entity id: {}", id)` |
+| [block_entities.rs:196](../crates/blocks/src/block_entities.rs#L196) | `bail!("{key}: expected String")` |
+| [block_entities.rs:204](../crates/blocks/src/block_entities.rs#L204) | `bail!("{key}: expected boolean Byte")` |
+| [block_entities.rs:209](../crates/blocks/src/block_entities.rs#L209) | `bail!("Command: too long")` |
+| [block_entities.rs:214](../crates/blocks/src/block_entities.rs#L214) | `bail!("SuccessCount: expected nonnegative Int")` |
+| [block_entities.rs:219](../crates/blocks/src/block_entities.rs#L219) | `bail!("LastExecution: expected Long")` |
+| [block_entities.rs:227](../crates/blocks/src/block_entities.rs#L227) | `bail!("{key}: expected text component")` |
+| [block_entities.rs:313](../crates/blocks/src/block_entities.rs#L313) | `bail!("invalid container item count")` |
+| [block_entities.rs:317](../crates/blocks/src/block_entities.rs#L317) | `bail!("modern persisted inventory components are not supported by this schematic importer")` |
+| [block_entities.rs:322](../crates/blocks/src/block_entities.rs#L322) | `bail!("invalid container slot or count")` |
+| [block_entities.rs:332](../crates/blocks/src/block_entities.rs#L332) | `anyhow!("Item compound id missing namespace")` |
+| [block_entities.rs:359](../crates/blocks/src/block_entities.rs#L359) | `anyhow!("unknown item {namespaced_name}")` |
+| [block_entities.rs:387](../crates/blocks/src/block_entities.rs#L387) | `bail!("OutputSignal: expected strength 0..15")` |
+| [block_entities.rs:401](../crates/blocks/src/block_entities.rs#L401) | `bail!("Items: expected List")` |
+| [block_entities.rs:425](../crates/blocks/src/block_entities.rs#L425) | `bail!("{side}.messages: expected List")` |
+| [block_entities.rs:428](../crates/blocks/src/block_entities.rs#L428) | `bail!("{side}.messages: expected exactly four text components")` |
+| [block_entities.rs:435](../crates/blocks/src/block_entities.rs#L435) | `bail!("{side}.messages: invalid text component")` |
+| [block_entities.rs:443](../crates/blocks/src/block_entities.rs#L443) | `bail!("{side}.color: expected String")` |
+| [block_entities.rs:448](../crates/blocks/src/block_entities.rs#L448) | `bail!("{side}.has_glowing_text: expected boolean Byte")` |
+| [block_entities.rs:459](../crates/blocks/src/block_entities.rs#L459) | `bail!("Text{}: expected String", i + 1)` |
+| [block_entities.rs:464](../crates/blocks/src/block_entities.rs#L464) | `bail!("{side}: expected Compound")` |
+| [block_entities.rs:470](../crates/blocks/src/block_entities.rs#L470) | `bail!("is_waxed: expected boolean Byte")` |
+| [block_entities.rs:484](../crates/blocks/src/block_entities.rs#L484) | `anyhow!("unknown carried block {name}")` |
+| [block_entities.rs:504](../crates/blocks/src/block_entities.rs#L504) | `anyhow!("Unknown block face in moving piston block entity: {facing}")` |
+| [block_entities.rs:518](../crates/blocks/src/block_entities.rs#L518) | `bail!("Invalid moving piston progress: {progress}")` |
+| [block_entities.rs:533](../crates/blocks/src/block_entities.rs#L533) | `bail!("Unknown block entity id: {}", id)` |
 
 ### RedstoneTools notices and results
 
 The working tree contains an in-progress `plot/redstone_tools` module. Its `ToolNotice::send` already renders fixed feline success wording and appends ` >.<` to error text; its trusted result-action builder includes a hover label. The inventory below reflects files present at scan time. Files being added by other work can introduce further messages after this snapshot.
 
+#### crates/core/src/plot/redstone_tools/items.rs
+
+| Location | Current literal or template |
+| --- | --- |
+| [items.rs:24](../crates/core/src/plot/redstone_tools/items.rs#L24) | `"Power must be 0..15 or lowercase a..f"` |
+| [items.rs:27](../crates/core/src/plot/redstone_tools/items.rs#L27) | `"Power must be between 0 and 15"` |
+| [items.rs:36](../crates/core/src/plot/redstone_tools/items.rs#L36) | `"Usage: /container <chest\|barrel\|hopper\|furnace> <0..15\|a..f>"` |
+| [items.rs:45](../crates/core/src/plot/redstone_tools/items.rs#L45) | `"{} · power {}"` |
+| [items.rs:46](../crates/core/src/plot/redstone_tools/items.rs#L46) | `"Comparator signal: {} / 15"` |
+| [items.rs:47](../crates/core/src/plot/redstone_tools/items.rs#L47) | `"Cannot prepare container components: {error:?}"` |
+| [items.rs:58](../crates/core/src/plot/redstone_tools/items.rs#L58) | `"Usage: /slab [slab_type]"` |
+| [items.rs:77](../crates/core/src/plot/redstone_tools/items.rs#L77) | `"Unknown slab type"` |
+| [items.rs:79](../crates/core/src/plot/redstone_tools/items.rs#L79) | `"This item is not a slab"` |
+| [items.rs:82](../crates/core/src/plot/redstone_tools/items.rs#L82) | `"top slab has components"` |
+| [items.rs:86](../crates/core/src/plot/redstone_tools/items.rs#L86) | `"Top {name}"` |
+| [items.rs:87](../crates/core/src/plot/redstone_tools/items.rs#L87) | `"Places top slabs; click an existing top slab to place beneath it."` |
+| [items.rs:88](../crates/core/src/plot/redstone_tools/items.rs#L88) | `"Cannot prepare slab display: {error:?}"` |
+| [items.rs:98](../crates/core/src/plot/redstone_tools/items.rs#L98) | `"Cannot prepare slab components: {error:?}"` |
+| [items.rs:117](../crates/core/src/plot/redstone_tools/items.rs#L117) | `"Unknown container type; use chest, barrel, hopper or furnace"` |
+| [items.rs:119](../crates/core/src/plot/redstone_tools/items.rs#L119) | `"Ambiguous container type"` |
+| [items.rs:126](../crates/core/src/plot/redstone_tools/items.rs#L126) | `"Switch to creative mode first"` |
+| [items.rs:138](../crates/core/src/plot/redstone_tools/items.rs#L138) | `"Your inventory is full; free a slot first"` |
+
 #### crates/core/src/plot/redstone_tools/mod.rs
 
 | Location | Current literal or template |
 | --- | --- |
-| [mod.rs:77](../crates/core/src/plot/redstone_tools/mod.rs#L77) | `"{error} >.<"` |
-| [mod.rs:78](../crates/core/src/plot/redstone_tools/mod.rs#L78) | `"Autowire enabled, nya~"` |
-| [mod.rs:79](../crates/core/src/plot/redstone_tools/mod.rs#L79) | `"Autowire disabled, nya~"` |
-| [mod.rs:80](../crates/core/src/plot/redstone_tools/mod.rs#L80) | `"Selection sidebar enabled, nya~"` |
-| [mod.rs:81](../crates/core/src/plot/redstone_tools/mod.rs#L81) | `"Selection sidebar hidden, nya~"` |
-| [mod.rs:82](../crates/core/src/plot/redstone_tools/mod.rs#L82) | `"Your item is ready, nya~"` |
-| [mod.rs:83](../crates/core/src/plot/redstone_tools/mod.rs#L83) | `"Stacked {count} copies, nya~"` |
-| [mod.rs:98](../crates/core/src/plot/redstone_tools/mod.rs#L98) | `"/tp {} {} {}"` |
-| [mod.rs:99](../crates/core/src/plot/redstone_tools/mod.rs#L99) | `"{} -p {page}"` |
-| [mod.rs:105](../crates/core/src/plot/redstone_tools/mod.rs#L105) | `"Click, nya~"` |
-| [mod.rs:118](../crates/core/src/plot/redstone_tools/mod.rs#L118) | `"Select position 1 first"` |
-| [mod.rs:119](../crates/core/src/plot/redstone_tools/mod.rs#L119) | `"Select position 2 first"` |
-| [mod.rs:125](../crates/core/src/plot/redstone_tools/mod.rs#L125) | `"The complete selection must be inside this plot and world height"` |
-| [mod.rs:166](../crates/core/src/plot/redstone_tools/mod.rs#L166) | `"You don't have permission to use this command"` |
-| [mod.rs:172](../crates/core/src/plot/redstone_tools/mod.rs#L172) | `"You can only use WorldEdit on your own plot"` |
-| [mod.rs:186](../crates/core/src/plot/redstone_tools/mod.rs#L186) | `"Usage: /autowire (or /aw)"` |
+| [mod.rs:72](../crates/core/src/plot/redstone_tools/mod.rs#L72) | `"{error} >.<"` |
+| [mod.rs:73](../crates/core/src/plot/redstone_tools/mod.rs#L73) | `"Selection sidebar enabled, nya~"` |
+| [mod.rs:74](../crates/core/src/plot/redstone_tools/mod.rs#L74) | `"Selection sidebar hidden, nya~"` |
+| [mod.rs:75](../crates/core/src/plot/redstone_tools/mod.rs#L75) | `"Your item is ready, nya~"` |
+| [mod.rs:76](../crates/core/src/plot/redstone_tools/mod.rs#L76) | `"Stacked {count} copies, nya~"` |
+| [mod.rs:91](../crates/core/src/plot/redstone_tools/mod.rs#L91) | `"/tp {} {} {}"` |
+| [mod.rs:92](../crates/core/src/plot/redstone_tools/mod.rs#L92) | `"{} -p {page}"` |
+| [mod.rs:98](../crates/core/src/plot/redstone_tools/mod.rs#L98) | `"Click, nya~"` |
+| [mod.rs:111](../crates/core/src/plot/redstone_tools/mod.rs#L111) | `"Select position 1 first"` |
+| [mod.rs:112](../crates/core/src/plot/redstone_tools/mod.rs#L112) | `"Select position 2 first"` |
+| [mod.rs:118](../crates/core/src/plot/redstone_tools/mod.rs#L118) | `"The complete selection must be inside this plot and world height"` |
+| [mod.rs:175](../crates/core/src/plot/redstone_tools/mod.rs#L175) | `"You don't have permission to use this command"` |
+| [mod.rs:181](../crates/core/src/plot/redstone_tools/mod.rs#L181) | `"You can only use WorldEdit on your own plot"` |
 
 #### crates/core/src/plot/redstone_tools/search.rs
 
@@ -697,8 +710,9 @@ The working tree contains an in-progress `plot/redstone_tools` module. Its `Tool
 | [stack.rs:132](../crates/core/src/plot/redstone_tools/stack.rs#L132) | `"Stack X coordinate overflows"` |
 | [stack.rs:133](../crates/core/src/plot/redstone_tools/stack.rs#L133) | `"Stack Y coordinate overflows"` |
 | [stack.rs:134](../crates/core/src/plot/redstone_tools/stack.rs#L134) | `"Stack Z coordinate overflows"` |
-| [stack.rs:191](../crates/core/src/plot/redstone_tools/stack.rs#L191) | `"Unknown direction: {token}"` |
-| [stack.rs:195](../crates/core/src/plot/redstone_tools/stack.rs#L195) | `"Look horizontally before using a relative direction"` |
+| [stack.rs:141](../crates/core/src/plot/redstone_tools/stack.rs#L141) | `"Stack coordinate overflows"` |
+| [stack.rs:197](../crates/core/src/plot/redstone_tools/stack.rs#L197) | `"Unknown direction: {token}"` |
+| [stack.rs:201](../crates/core/src/plot/redstone_tools/stack.rs#L201) | `"Look horizontally before using a relative direction"` |
 
 ## Other visible text and preserved content
 
@@ -713,15 +727,15 @@ The working tree contains an in-progress `plot/redstone_tools` module. Its `Tool
 | [plot/packet_handlers.rs:58](../crates/core/src/plot/packet_handlers.rs#L58) | Schematic completion returns paths with `tooltip: None`. | Paths and command suggestions are syntax, not tone candidates. |
 | [chat.rs](../crates/core/src/chat.rs) | Legacy formatting and detected URL `open_url` components. | Shared serialization; preserve player content and URLs. |
 | [network/text.rs](../crates/network/src/text.rs), [network/packets/clientbound.rs:220](../crates/network/src/packets/clientbound.rs#L220) | JSON/NBT text conversion and chat packet encoding. | Transport rather than phrase ownership; keep protocol behavior. |
-| [network/packets/components.rs](../crates/network/src/packets/components.rs), [blocks/items.rs](../crates/blocks/src/items.rs) | Item patches and display metadata. | Preserve authored item names, lore, and data; no PCMD item-message producer is present. |
+| [network/packets/components.rs](../crates/network/src/packets/components.rs), [blocks/items.rs](../crates/blocks/src/items.rs) | Item patches and display metadata. | Preserve authored item names, lore, and data. |
 | [blocks/block_entities.rs](../crates/blocks/src/block_entities.rs) | Sign lines and imported custom names. | Authored text delivered in world data; preserve. |
 
 ## Findings for the plan
 
 - A global change to `send_raw_system_message`, `send_raw_chat`, or `send_chat_message` would also rewrite authored content. Convert notice producers selectively.
 - The complete existing feedback scope includes general commands, server-thread whitelist and teleport replies, WorldEdit parsing and results, interactions, tick history, plot lifecycle, and login/disconnect surfaces.
-- `/container` currently validates power `1..=15`; its existing error says greater than 0 and lower than 15 even though 15 is accepted. The plan example suggesting 0 through 15 is not a cosmetic replacement of this behavior. RedstoneTools has an in-progress replacement, so verify its validation before adopting wording.
-- Native PCMD creation, sanitation-count feedback, placement, ownership/removal, and copy-to-clipboard messages have no existing send sites. They remain proposed features. The authored `/say` and `/tellraw` route and command-block output are the current integration points.
+- The current RedstoneTools `/container` implementation accepts power `0..=15` and lowercase `a..f`. Match that validation in proposed wording; message style does not change the range.
+- The style proposal changes visible server-authored feedback only. Preserve the authored `/say` and `/tellraw` route, command-block command text, and existing interactive actions.
 - Keep OS errors, parse details, paths, numbers, coordinates, permission tokens, and command syntax exact when moving wrappers into typed notices. Logging calls are not player feedback unless the same text is explicitly sent.
 
 ## Rechecking coverage

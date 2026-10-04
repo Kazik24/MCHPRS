@@ -687,7 +687,7 @@ pub static DECLARE_COMMANDS: Lazy<PacketEncoder> = Lazy::new(|| {
                 children: &[
                     1, 4, 5, 6, 11, 12, 14, 16, 18, 19, 20, 21, 22, 23, 24, 26, 29, 31, 32, 34, 36,
                     47, 49, 53, 60, 61, 63, 65, 66, 67, 71, 73, 74, 75, 82, 83, 85, 88, 90, 91,
-                    101, 106,
+                    101, 106, 111, 112, 113, 114, 115, 116, 117,
                 ],
                 redirect_node: None,
                 name: None,
@@ -1162,50 +1162,50 @@ pub static DECLARE_COMMANDS: Lazy<PacketEncoder> = Lazy::new(|| {
                 parser: Some(Parser::Entity(3)),
                 suggestions_type: None,
             },
-            // 53: /container
+            // 53-57: /container <type> <power>
             Node {
-                flags: (CommandFlags::LITERAL).bits() as i8,
+                flags: CommandFlags::LITERAL.bits() as i8,
                 children: &[54, 55, 56],
                 redirect_node: None,
                 name: Some("container"),
                 parser: None,
                 suggestions_type: None,
             },
-            // 54: /container barrel
             Node {
-                flags: (CommandFlags::LITERAL).bits() as i8,
+                flags: (CommandFlags::ARGUMENT | CommandFlags::HAS_SUGGESTIONS_TYPE).bits() as i8,
                 children: &[57],
                 redirect_node: None,
-                name: Some("barrel"),
-                parser: None,
-                suggestions_type: None,
+                name: Some("type"),
+                parser: Some(Parser::String(0)),
+                suggestions_type: Some("minecraft:ask_server"),
             },
-            // 55: /container hopper
+            // Preserve the existing literal alternatives and their node indices.
             Node {
-                flags: (CommandFlags::LITERAL).bits() as i8,
+                flags: CommandFlags::LITERAL.bits() as i8,
                 children: &[57],
                 redirect_node: None,
                 name: Some("hopper"),
                 parser: None,
                 suggestions_type: None,
             },
-            // 56: /container furnace
             Node {
-                flags: (CommandFlags::LITERAL).bits() as i8,
+                flags: CommandFlags::LITERAL.bits() as i8,
                 children: &[57],
                 redirect_node: None,
                 name: Some("furnace"),
                 parser: None,
                 suggestions_type: None,
             },
-            // 57: /container [type] [power]
             Node {
-                flags: (CommandFlags::ARGUMENT | CommandFlags::EXECUTABLE).bits() as i8,
+                flags: (CommandFlags::ARGUMENT
+                    | CommandFlags::EXECUTABLE
+                    | CommandFlags::HAS_SUGGESTIONS_TYPE)
+                    .bits() as i8,
                 children: &[],
                 redirect_node: None,
                 name: Some("power"),
-                parser: Some(Parser::Integer(0, 15)),
-                suggestions_type: None,
+                parser: Some(Parser::String(0)),
+                suggestions_type: Some("minecraft:ask_server"),
             },
             // 58: /plot lock
             Node {
@@ -1655,6 +1655,81 @@ pub static DECLARE_COMMANDS: Lazy<PacketEncoder> = Lazy::new(|| {
                 redirect_node: None,
                 name: Some("MiB"),
                 parser: Some(Parser::Integer(0, MAX)),
+                suggestions_type: None,
+            },
+            // 110: flexible tool arguments, validated by the command handler
+            Node {
+                flags: (CommandFlags::ARGUMENT
+                    | CommandFlags::EXECUTABLE
+                    | CommandFlags::HAS_SUGGESTIONS_TYPE)
+                    .bits() as i8,
+                children: &[],
+                redirect_node: None,
+                name: Some("arguments"),
+                parser: Some(Parser::String(2)),
+                suggestions_type: Some("minecraft:ask_server"),
+            },
+            // 111: //find
+            Node {
+                flags: (CommandFlags::LITERAL | CommandFlags::EXECUTABLE).bits() as i8,
+                children: &[110],
+                redirect_node: None,
+                name: Some("/find"),
+                parser: None,
+                suggestions_type: None,
+            },
+            // 112: //signsearch
+            Node {
+                flags: (CommandFlags::LITERAL | CommandFlags::EXECUTABLE).bits() as i8,
+                children: &[110],
+                redirect_node: None,
+                name: Some("/signsearch"),
+                parser: None,
+                suggestions_type: None,
+            },
+            // 113: //ss
+            Node {
+                flags: (CommandFlags::LITERAL | CommandFlags::EXECUTABLE).bits() as i8,
+                children: &[110],
+                redirect_node: None,
+                name: Some("/ss"),
+                parser: None,
+                suggestions_type: None,
+            },
+            // 114: //rstack
+            Node {
+                flags: (CommandFlags::LITERAL | CommandFlags::EXECUTABLE).bits() as i8,
+                children: &[110],
+                redirect_node: None,
+                name: Some("/rstack"),
+                parser: None,
+                suggestions_type: None,
+            },
+            // 115: //rs
+            Node {
+                flags: (CommandFlags::LITERAL | CommandFlags::EXECUTABLE).bits() as i8,
+                children: &[110],
+                redirect_node: None,
+                name: Some("/rs"),
+                parser: None,
+                suggestions_type: None,
+            },
+            // 116: /slab
+            Node {
+                flags: (CommandFlags::LITERAL | CommandFlags::EXECUTABLE).bits() as i8,
+                children: &[110],
+                redirect_node: None,
+                name: Some("slab"),
+                parser: None,
+                suggestions_type: None,
+            },
+            // 117: /cursel
+            Node {
+                flags: (CommandFlags::LITERAL | CommandFlags::EXECUTABLE).bits() as i8,
+                children: &[110],
+                redirect_node: None,
+                name: Some("cursel"),
+                parser: None,
                 suggestions_type: None,
             },
         ],

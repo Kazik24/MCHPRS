@@ -1,4 +1,4 @@
-use crate::block_entities::ContainerType;
+use crate::block_entities::{ContainerType, SignalStrength};
 use crate::{BlockColorVariant, SignType};
 use mchprs_utils::map;
 
@@ -11,7 +11,8 @@ pub struct ItemStack {
 
 impl ItemStack {
     /// Create container item with specified signal strength
-    pub fn container_with_ss(container_ty: ContainerType, ss: u8) -> ItemStack {
+    pub fn container_with_ss(container_ty: ContainerType, signal: SignalStrength) -> ItemStack {
+        let ss = signal.value();
         let item = match container_ty {
             ContainerType::Barrel => Item::Barrel {},
             ContainerType::Hopper => Item::Hopper {},

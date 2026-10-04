@@ -322,6 +322,7 @@ fn decode_schematic(schema: &Schema<'_>) -> Result<WorldEditClipboard> {
                 | "minecraft:barrel"
                 | "minecraft:furnace"
                 | "minecraft:hopper"
+                | "minecraft:chest"
                 | "minecraft:sign"
                 | "minecraft:piston"
                 | "minecraft:moving_piston"

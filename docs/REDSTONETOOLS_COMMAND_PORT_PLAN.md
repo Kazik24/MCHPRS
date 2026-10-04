@@ -1,29 +1,70 @@
 # RedstoneTools command adaptation plan
 
-This document compares the commands in Lord225's RedstoneToolsRF with MCHPRS and
-proposes an incremental port. Two command families already exist here with
-different behavior. The first implementation should reuse those operations and
-add the missing commands without importing Bukkit or WorldEdit abstractions.
-This is analysis and a proposed plan; no commands have been implemented by this
-document.
+This document records the RedstoneToolsRF comparison and the native Rust port.
+The six command families below are implemented. Autowire was removed from scope
+at the user's request. The original comparison and implementation sequence are
+retained below for context.
 
 The reference is RedstoneToolsRF commit
 `3bcb69f3d6018f875f01cf20f3eda81550ff0dba`. Links below pin that revision.
-The MCHPRS comparison uses the current workspace, based on commit `507e058`.
+The original MCHPRS comparison was based on commit `507e058`.
+
+## Implemented behavior
+
+- `//find` supports block names matching all states, partial properties such as
+  `repeater[facing=north]`, numeric state IDs, comma-separated unions, and `*`.
+  Other WorldEdit mask operators are rejected.
+- Searches list seven results per page, ordered by `(x, y, z)`. Limits are
+  16,777,216 selected blocks, 4,096 results, and 2 MiB of cached sign text.
+  Truncation is reported. Invalid queries preserve prior results; empty searches
+  replace them. Leaving the plot clears both caches.
+- Sign search examines front and back lines separately, retaining parent and
+  child literal text and highlighting the first match on each line. Lines are
+  limited to 8 KiB; expressions to 1 KiB. Rust regex supports zero-width matches
+  but rejects lookaround and backreferences.
+- Rstack accepts flexible argument order, signed count/spacing, diagonal
+  directions, and `-w`/`-a` for air. Defaults are one copy, spacing two, and look
+  direction. Every destination is validated and every undo snapshot prepared
+  before writing. Overlap uses one source snapshot, including with air; this
+  preserves MCHPRS copying semantics rather than claiming full WorldEdit parity.
+  Limits are 4,096 copies and 16,777,216 copied blocks.
+- Container and slab commands insert into an empty slot. Omitted slab type
+  converts a held slab while preserving its count and unrelated components.
+  Special top slabs can place beneath an existing top slab when the lower cell
+  is air and inside the plot.
+- Containers accept chest/barrel/hopper/furnace, unambiguous prefixes, decimal
+  powers 0–15, and lowercase `a`–`f`. `SignalStrength` validates powers before
+  item construction. Names, lore, glint, block state and container contents use
+  protocol components and survive save/load.
+- Chest states, inventories, comparator output, menus, transforms and schematic
+  persistence are supported. Menus expose 27 slots per block; adjacent chests
+  do not merge into a 54-slot inventory. The appended save enum variant preserves
+  existing furnace/barrel/hopper indices.
+- `/cursel` switches only the requesting player's sidebar. It starts hidden,
+  uses one stable objective, and updates when selection lines change. Hiding it
+  restores Redpiler status without clearing search caches.
+- `/help tools` and `//help <tool>` show concise usage. Commands and aliases are
+  declared to clients, with server completion for masks, pages, slab IDs,
+  container names/powers and stacking directions/flags.
+
+Trusted result actions use the `click_event` and `hover_event` forms required by
+[Minecraft 1.21.5](https://www.minecraft.net/en-us/article/minecraft-java-edition-1-21-5).
+Only generated coordinate/page actions use this path; authored chat retains its
+existing filtering policy. Feedback uses deterministic furry wording.
 
 ## Command inventory
 
 | Command | Reference behavior | MCHPRS status |
 | --- | --- | --- |
-| `//rstack`, `//rs` | Stack with explicit spacing, optional selection expansion, and diagonal directions. | Partial implementation. |
-| `//find <mask>` | Search the selection and display matching block locations. `-p <page>` retrieves saved results. | Missing; `//count` only reports a count. |
-| `//signsearch <regex>`, `//ss` | Search sign lines and display highlighted matches. `-p <page>` retrieves saved results. | Missing. |
-| `/autowire`, `/aw` | Toggle automatic wire placement above newly placed blocks. | Missing. |
-| `/container <type> <power>` | Give a container filled to produce the requested comparator signal. | Partial implementation. |
-| `/slab [type]` | Give a special top slab, or convert the held slab when no type is supplied. | Missing command; some slab placement support exists. |
-| `/cursel` | Toggle the selection sidebar showing dimensions and volume. | Missing; WorldEdit CUI messages already exist. |
+| `//rstack`, `//rs` | Stack with explicit spacing, optional selection expansion, and diagonal directions. | Implemented; see compatibility limits above. |
+| `//find <mask>` | Search the selection and display matching block locations. `-p <page>` retrieves saved results. | Implemented mask subset and cached pages. |
+| `//signsearch <regex>`, `//ss` | Search sign lines and display highlighted matches. `-p <page>` retrieves saved results. | Implemented on both sign sides. |
+| `/container <type> <power>` | Give a container filled to produce the requested comparator signal. | Implemented; see compatibility limits above. |
+| `/slab [type]` | Give a special top slab, or convert the held slab when no type is supplied. | Implemented with inventory preservation. |
+| `/cursel` | Toggle the selection sidebar showing dimensions and volume. | Implemented as an individual sidebar mode. |
 
-The source registers these seven command families. `/cursel` is absent from the
+The reference registers seven command families; six remain in this port.
+`/cursel` is absent from the
 README's command list. Its implementation is in
 [WorldEditHelper.kt](https://github.com/Lord225/RedstoneToolsRF/blob/3bcb69f3d6018f875f01cf20f3eda81550ff0dba/src/main/kotlin/WorldEditHelper.kt).
 
@@ -121,29 +162,9 @@ Proposed implementation:
 
 Search commands are read-only and must not reset Redpiler or create undo entries.
 Pagination should operate on cached results without requiring a new selection.
-Trusted teleport and page buttons need the message support described in
-[the message plan](FURRY_MESSAGES_PLAN.md).
-
-### Automatic wire placement
-
-The reference enables autowire per player, clears the toggle on disconnect,
-requires creative mode, skips nonsolid and gravity blocks, and places wire only
-when the cell above is air. It calls a synthetic placement event before adding
-wire.
-[Autowire.kt](https://github.com/Lord225/RedstoneToolsRF/blob/3bcb69f3d6018f875f01cf20f3eda81550ff0dba/src/main/kotlin/Autowire.kt)
-
-Proposed implementation: keep a transient player toggle and apply it only after
-a successful ordinary placement. Prepare and validate the extra cell using the
-same plot ownership, bounds, compiler, and placement rules. Use normal wire
-neighbor updates. Do not derive success solely from
-`interaction::use_item_on_block`'s cancellation boolean: an interaction can
-succeed without placing a block. Introduce a small explicit placement outcome
-where the actual placed position is known.
-
-Proposed boundary behavior: if the extra wire cannot be placed, keep the player's
-valid original placement and omit the optional wire. Verify this independently
-of the toggle feedback. This is a convenience feature, not a second command
-dispatcher or an event framework.
+Trusted teleport and page buttons need explicit component support in this
+command port. Their visible labels should follow
+[the message style plan](FURRY_MESSAGES_PLAN.md).
 
 ### Top slab items
 
@@ -176,16 +197,16 @@ instances; use one owner here.
 
 ## Implementation sequence
 
-1. Add deterministic furry command feedback and the minimal trusted result
-   actions from the [message plan](FURRY_MESSAGES_PLAN.md).
+1. Add deterministic furry command feedback following the
+   [message style plan](FURRY_MESSAGES_PLAN.md), and the minimal trusted result
+   actions needed by this command port.
 2. Add `//find` with a documented mask subset, bounded results, and pagination.
 3. Add `//signsearch` and `//ss`, reusing the pagination and tested text extraction.
 4. Bring `//rstack` syntax into compatibility while retaining current aliases.
-5. Add `/autowire` through an explicit successful-placement hook.
-6. Add `/slab` item creation, then its separately tested placement behavior.
-7. Improve `/container` input and inventory handling; implement chest support
+5. Add `/slab` item creation, then its separately tested placement behavior.
+6. Improve `/container` input and inventory handling; implement chest support
    as its own feature with persistence checks.
-8. Add `/cursel` without disrupting the Redpiler sidebar.
+7. Add `/cursel` without disrupting the Redpiler sidebar.
 
 Keep upstream `redstonetools.*` permission nodes for these command families.
 Apply existing plot access checks as well. Extend help, aliases, tab completion,
@@ -205,3 +226,10 @@ are individual while the current Redpiler sidebar is shared within a plot.
 No Gradle plugin dependencies are needed for the native implementation. Exact
 WorldEdit copying semantics, full mask parity, and live-client interactive text
 behavior remain verification work for their corresponding implementation steps.
+
+Run the native regression tests with `cargo test --workspace --locked`. Run
+`py tools/run_redstone_tools_smoke.py` after `cargo build --locked` for independent
+protocol decoding, two-player sidebar checks, inventory failure cases, slab
+placement, chest menus and process restart. The existing protocol smoke retains
+its overlapping rstack undo/redo check. Graphical vanilla-client checks remain
+useful for the appearance and interaction of generated chat buttons.

@@ -1,7 +1,109 @@
 use crate::BlockFacing;
 
 use super::{Block, BlockDirection, BlockProperty, BlockTransform, FlipDirection};
+use std::collections::HashMap;
 use std::str::FromStr;
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum ChestType {
+    #[default]
+    Single,
+    Left,
+    Right,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, BlockTransform)]
+pub struct Chest {
+    pub facing: BlockDirection,
+    pub kind: ChestType,
+    pub waterlogged: bool,
+}
+
+impl Default for Chest {
+    fn default() -> Self {
+        Self {
+            facing: BlockDirection::North,
+            kind: ChestType::Single,
+            waterlogged: false,
+        }
+    }
+}
+
+impl Chest {
+    pub(super) fn from_id(id: u32) -> Self {
+        Self {
+            facing: BlockDirection::from_id(id / 6),
+            kind: ChestType::from_id(id / 2 % 3),
+            waterlogged: id & 1 == 0,
+        }
+    }
+
+    pub(super) fn get_id(self) -> u32 {
+        self.facing.get_id() * 6 + self.kind.get_id() * 2 + !self.waterlogged as u32
+    }
+}
+
+impl BlockProperty for Chest {
+    fn encode(self, properties: &mut HashMap<&'static str, String>, _name: &'static str) {
+        self.facing.encode(properties, "facing");
+        self.kind.encode(properties, "type");
+        self.waterlogged.encode(properties, "waterlogged");
+    }
+
+    fn decode(&mut self, properties: &HashMap<&str, &str>, _name: &str) {
+        self.facing.decode(properties, "facing");
+        self.kind.decode(properties, "type");
+        self.waterlogged.decode(properties, "waterlogged");
+    }
+}
+
+impl ChestType {
+    pub(super) fn from_id(id: u32) -> Self {
+        [Self::Single, Self::Left, Self::Right][id as usize]
+    }
+
+    pub(super) fn get_id(self) -> u32 {
+        self as u32
+    }
+}
+
+impl FromStr for ChestType {
+    type Err = ();
+
+    fn from_str(token: &str) -> Result<Self, Self::Err> {
+        match token {
+            "single" => Ok(Self::Single),
+            "left" => Ok(Self::Left),
+            "right" => Ok(Self::Right),
+            _ => Err(()),
+        }
+    }
+}
+
+impl std::fmt::Display for ChestType {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let token = match self {
+            Self::Single => "single",
+            Self::Left => "left",
+            Self::Right => "right",
+        };
+        formatter.write_str(token)
+    }
+}
+
+impl BlockTransform for ChestType {
+    fn rotate90(&mut self) {
+        // Rotating a chest preserves its left/right half.
+    }
+
+    fn flip(&mut self, _direction: FlipDirection) {
+        *self = match self {
+            Self::Single => Self::Single,
+            Self::Left => Self::Right,
+            Self::Right => Self::Left,
+        };
+    }
+}
 
 /// Hopper outlets cannot point up. IDs follow the Java state property order.
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]

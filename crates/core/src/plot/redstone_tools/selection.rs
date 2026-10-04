@@ -19,16 +19,19 @@ pub(super) fn toggle(player: &mut Player, args: &[&str]) -> Result<()> {
         ToolNotice::SelectionEnabled.send(player);
     } else {
         remove(player);
-        player.send_packet(&CDisplayScoreboard {
-            position: 1,
-            score_name: "redpiler_status".into(),
-        }.encode());
+        player.send_packet(
+            &CDisplayScoreboard {
+                position: 1,
+                score_name: "redpiler_status".into(),
+            }
+            .encode(),
+        );
         ToolNotice::SelectionDisabled.send(player);
     }
     Ok(())
 }
 
-pub(super) fn update(player: &mut Player) {
+pub(in crate::plot) fn update(player: &mut Player) {
     if !player.redstone_tools.selection_visible {
         return;
     }
@@ -41,16 +44,23 @@ pub(super) fn update(player: &mut Player) {
             send_line(player, line, 1, 0);
         }
     } else {
-        player.send_packet(&CScoreboardObjective {
-            objective_name: OBJECTIVE.into(),
-            mode: 0,
-            objective_value: json!({"text": "Selection, nya~", "color": "light_purple"}).to_string(),
-            ty: 0,
-        }.encode());
-        player.send_packet(&CDisplayScoreboard {
-            position: 1,
-            score_name: OBJECTIVE.into(),
-        }.encode());
+        player.send_packet(
+            &CScoreboardObjective {
+                objective_name: OBJECTIVE.into(),
+                mode: 0,
+                objective_value: json!({"text": "Selection, nya~", "color": "light_purple"})
+                    .to_string(),
+                ty: 0,
+            }
+            .encode(),
+        );
+        player.send_packet(
+            &CDisplayScoreboard {
+                position: 1,
+                score_name: OBJECTIVE.into(),
+            }
+            .encode(),
+        );
     }
     for (index, line) in lines.iter().enumerate() {
         send_line(player, line, 0, (lines.len() - index) as u32);
@@ -58,26 +68,30 @@ pub(super) fn update(player: &mut Player) {
     player.redstone_tools.selection_lines = Some(lines);
 }
 
-pub(super) fn remove(player: &mut Player) {
+pub(in crate::plot) fn remove(player: &mut Player) {
     if player.redstone_tools.selection_lines.take().is_some() {
-        player.send_packet(&CScoreboardObjective {
-            objective_name: OBJECTIVE.into(),
-            mode: 1,
-            objective_value: String::new(),
-            ty: 0,
-        }.encode());
+        player.send_packet(
+            &CScoreboardObjective {
+                objective_name: OBJECTIVE.into(),
+                mode: 1,
+                objective_value: String::new(),
+                ty: 0,
+            }
+            .encode(),
+        );
     }
-    player.redstone_tools.block_search = None;
-    player.redstone_tools.sign_search = None;
 }
 
-fn send_line(player: &Player, text: &str, action: i8, value: u32) {
-    player.send_packet(&CUpdateScore {
-        entity_name: text.into(),
-        action,
-        objective_name: OBJECTIVE.into(),
-        value,
-    }.encode());
+fn send_line(player: &Player, text: &str, action: u8, value: u32) {
+    player.send_packet(
+        &CUpdateScore {
+            entity_name: text.into(),
+            action,
+            objective_name: OBJECTIVE.into(),
+            value,
+        }
+        .encode(),
+    );
 }
 
 fn selection_lines(first: Option<BlockPos>, second: Option<BlockPos>) -> Vec<String> {
@@ -107,10 +121,16 @@ mod tests {
     fn selection_dimensions_are_inclusive_and_order_independent() {
         let first = Some(BlockPos::new(3, 4, 5));
         let second = Some(BlockPos::new(1, 2, 3));
-        assert_eq!(selection_lines(first, second), selection_lines(second, first));
+        assert_eq!(
+            selection_lines(first, second),
+            selection_lines(second, first)
+        );
         assert!(selection_lines(first, second)[1].contains("27"));
         assert_eq!(selection_lines(first, first)[1], "§aVolume: 1");
         assert_eq!(selection_lines(first, None), ["§7Select both positions"]);
-        selection_lines(Some(BlockPos::new(i32::MIN, i32::MIN, i32::MIN)), Some(BlockPos::new(i32::MAX, i32::MAX, i32::MAX)));
+        selection_lines(
+            Some(BlockPos::new(i32::MIN, i32::MIN, i32::MIN)),
+            Some(BlockPos::new(i32::MAX, i32::MAX, i32::MAX)),
+        );
     }
 }

@@ -2,7 +2,7 @@
   "calls": [
     {
       "path": "crates/core/src/interaction.rs",
-      "line": 25,
+      "line": 24,
       "method": "send_color_message",
       "fn": "on_use",
       "payload": "ColorCode::DarkAqua, format_args!(\"Block at ({}, {}, {}):\\n    {block:?}\", pos.x, pos.y, pos.z),",
@@ -10,7 +10,7 @@
     },
     {
       "path": "crates/core/src/interaction.rs",
-      "line": 37,
+      "line": 36,
       "method": "send_color_message",
       "fn": "on_use",
       "payload": "ColorCode::Gold, format_args!(\"  Redstone power: {power_desc}\"),",
@@ -18,7 +18,7 @@
     },
     {
       "path": "crates/core/src/interaction.rs",
-      "line": 43,
+      "line": 42,
       "method": "send_color_message",
       "fn": "on_use",
       "payload": "ColorCode::Aqua, format_args!(\"  Block entity:\\n    {entity:?}\"),",
@@ -26,7 +26,7 @@
     },
     {
       "path": "crates/core/src/interaction.rs",
-      "line": 146,
+      "line": 145,
       "method": "send_no_permission_message",
       "fn": "on_use",
       "payload": "",
@@ -34,7 +34,7 @@
     },
     {
       "path": "crates/core/src/player.rs",
-      "line": 371,
+      "line": 373,
       "method": "kick",
       "fn": "update",
       "payload": "json!({ \"text\": \"Timed out.\" }).to_string()",
@@ -42,7 +42,7 @@
     },
     {
       "path": "crates/core/src/player.rs",
-      "line": 439,
+      "line": 441,
       "method": "send_error_message",
       "fn": "teleport",
       "payload": "\"We just saved you from a game crash, don't try it again!\"",
@@ -50,7 +50,7 @@
     },
     {
       "path": "crates/core/src/player.rs",
-      "line": 473,
+      "line": 475,
       "method": "send_raw_chat",
       "fn": "send_chat_message",
       "payload": "sender, json",
@@ -58,7 +58,7 @@
     },
     {
       "path": "crates/core/src/player.rs",
-      "line": 477,
+      "line": 479,
       "method": "send_error_message",
       "fn": "send_no_permission_message",
       "payload": "\"You do not have permission to perform this action.\"",
@@ -66,7 +66,7 @@
     },
     {
       "path": "crates/core/src/player.rs",
-      "line": 482,
+      "line": 484,
       "method": "send_color_message",
       "fn": "send_worldedit_message",
       "payload": "ColorCode::LightPurple, message",
@@ -74,7 +74,7 @@
     },
     {
       "path": "crates/core/src/player.rs",
-      "line": 486,
+      "line": 488,
       "method": "send_worldedit_message",
       "fn": "worldedit_set_first_position",
       "payload": "&format!( \"First position set to ({}, {}, {})\", pos.x, pos.y, pos.z )",
@@ -82,7 +82,7 @@
     },
     {
       "path": "crates/core/src/player.rs",
-      "line": 495,
+      "line": 497,
       "method": "send_worldedit_message",
       "fn": "worldedit_set_second_position",
       "payload": "&format!( \"Second position set to ({}, {}, {})\", pos.x, pos.y, pos.z )",
@@ -90,7 +90,7 @@
     },
     {
       "path": "crates/core/src/player.rs",
-      "line": 678,
+      "line": 681,
       "method": "send_color_message",
       "fn": "send_error_message",
       "payload": "ColorCode::Red, message",
@@ -98,7 +98,7 @@
     },
     {
       "path": "crates/core/src/player.rs",
-      "line": 683,
+      "line": 686,
       "method": "send_color_message",
       "fn": "send_system_message",
       "payload": "ColorCode::Yellow, message",
@@ -106,7 +106,7 @@
     },
     {
       "path": "crates/core/src/player.rs",
-      "line": 688,
+      "line": 691,
       "method": "send_raw_system_message",
       "fn": "send_color_message",
       "payload": "json!({ \"text\": message.to_string(), \"color\": col }) .to_string(),",
@@ -114,7 +114,7 @@
     },
     {
       "path": "crates/core/src/plot/commands.rs",
-      "line": 52,
+      "line": 51,
       "method": "send_error_message",
       "fn": "handle_plot_command",
       "payload": "\"Invalid argument for /plot\"",
@@ -122,7 +122,7 @@
     },
     {
       "path": "crates/core/src/plot/commands.rs",
-      "line": 57,
+      "line": 56,
       "method": "send_no_permission_message",
       "fn": "handle_plot_command",
       "payload": "",
@@ -130,7 +130,7 @@
     },
     {
       "path": "crates/core/src/plot/commands.rs",
-      "line": 64,
+      "line": 63,
       "method": "send_system_message",
       "fn": "handle_plot_command",
       "payload": "&format!( \"Plot owner is: {}\", database::get_cached_username(owner.clone()).unwrap_or(owner) )",
@@ -138,7 +138,7 @@
     },
     {
       "path": "crates/core/src/plot/commands.rs",
-      "line": 69,
+      "line": 68,
       "method": "send_system_message",
       "fn": "handle_plot_command",
       "payload": "\"Plot is not owned by anyone.\"",
@@ -146,7 +146,7 @@
     },
     {
       "path": "crates/core/src/plot/commands.rs",
-      "line": 74,
+      "line": 73,
       "method": "send_system_message",
       "fn": "handle_plot_command",
       "payload": "\"Plot is already claimed!\"",
@@ -154,7 +154,7 @@
     },
     {
       "path": "crates/core/src/plot/commands.rs",
-      "line": 96,
+      "line": 95,
       "method": "send_error_message",
       "fn": "handle_plot_command",
       "payload": "\"Invalid number of arguments!\"",
@@ -162,7 +162,7 @@
     },
     {
       "path": "crates/core/src/plot/commands.rs",
-      "line": 104,
+      "line": 103,
       "method": "send_error_message",
       "fn": "handle_plot_command",
       "payload": "\"Plot index starts at 1\"",
@@ -170,7 +170,7 @@
     },
     {
       "path": "crates/core/src/plot/commands.rs",
-      "line": 108,
+      "line": 107,
       "method": "send_error_message",
       "fn": "handle_plot_command",
       "payload": "\"Unable to parse index\"",
@@ -178,7 +178,7 @@
     },
     {
       "path": "crates/core/src/plot/commands.rs",
-      "line": 123,
+      "line": 122,
       "method": "send_system_message",
       "fn": "handle_plot_command",
       "payload": "&format!(\"Plot range (1, {}).\", plots.len())",
@@ -186,7 +186,7 @@
     },
     {
       "path": "crates/core/src/plot/commands.rs",
-      "line": 127,
+      "line": 126,
       "method": "send_system_message",
       "fn": "handle_plot_command",
       "payload": "&format!(\"{} does not own any plots.\", args[0])",
@@ -194,7 +194,7 @@
     },
     {
       "path": "crates/core/src/plot/commands.rs",
-      "line": 132,
+      "line": 131,
       "method": "send_error_message",
       "fn": "handle_plot_command",
       "payload": "\"Invalid number of arguments!\"",
@@ -202,7 +202,7 @@
     },
     {
       "path": "crates/core/src/plot/commands.rs",
-      "line": 141,
+      "line": 140,
       "method": "send_error_message",
       "fn": "handle_plot_command",
       "payload": "\"Unable to parse x coordinate!\"",
@@ -210,7 +210,7 @@
     },
     {
       "path": "crates/core/src/plot/commands.rs",
-      "line": 147,
+      "line": 146,
       "method": "send_error_message",
       "fn": "handle_plot_command",
       "payload": "\"Unable to parse z coordinate!\"",
@@ -218,7 +218,7 @@
     },
     {
       "path": "crates/core/src/plot/commands.rs",
-      "line": 158,
+      "line": 157,
       "method": "send_system_message",
       "fn": "handle_plot_command",
       "payload": "&res",
@@ -226,7 +226,7 @@
     },
     {
       "path": "crates/core/src/plot/commands.rs",
-      "line": 161,
+      "line": 160,
       "method": "send_system_message",
       "fn": "handle_plot_command",
       "payload": "\"You are already locked to this plot.\"",
@@ -234,7 +234,7 @@
     },
     {
       "path": "crates/core/src/plot/commands.rs",
-      "line": 171,
+      "line": 170,
       "method": "send_system_message",
       "fn": "handle_plot_command",
       "payload": "\"You are now unlocked.\"",
@@ -242,7 +242,7 @@
     },
     {
       "path": "crates/core/src/plot/commands.rs",
-      "line": 173,
+      "line": 172,
       "method": "send_system_message",
       "fn": "handle_plot_command",
       "payload": "\"You are not locked to this plot.\"",
@@ -250,7 +250,7 @@
     },
     {
       "path": "crates/core/src/plot/commands.rs",
-      "line": 176,
+      "line": 175,
       "method": "send_error_message",
       "fn": "handle_plot_command",
       "payload": "\"Invalid argument for /plot\"",
@@ -258,7 +258,7 @@
     },
     {
       "path": "crates/core/src/plot/commands.rs",
-      "line": 191,
+      "line": 190,
       "method": "send_system_message",
       "fn": "handle_redpiler_command",
       "payload": "msg",
@@ -266,7 +266,7 @@
     },
     {
       "path": "crates/core/src/plot/commands.rs",
-      "line": 209,
+      "line": 208,
       "method": "send_error_message",
       "fn": "handle_redpiler_command",
       "payload": "\"Trace failed\"",
@@ -274,7 +274,7 @@
     },
     {
       "path": "crates/core/src/plot/commands.rs",
-      "line": 217,
+      "line": 216,
       "method": "send_error_message",
       "fn": "handle_redpiler_command",
       "payload": "\"Invalid argument for /redpiler\"",
@@ -282,7 +282,7 @@
     },
     {
       "path": "crates/core/src/plot/commands.rs",
-      "line": 241,
+      "line": 240,
       "method": "send_no_permission_message",
       "fn": "handle_command",
       "payload": "",
@@ -290,7 +290,7 @@
     },
     {
       "path": "crates/core/src/plot/commands.rs",
-      "line": 254,
+      "line": 257,
       "method": "send_error_message",
       "fn": "handle_command",
       "payload": "\"Usage: /help [topic]\"",
@@ -298,7 +298,7 @@
     },
     {
       "path": "crates/core/src/plot/commands.rs",
-      "line": 256,
+      "line": 259,
       "method": "send_system_message",
       "fn": "handle_command",
       "payload": "page",
@@ -306,7 +306,7 @@
     },
     {
       "path": "crates/core/src/plot/commands.rs",
-      "line": 258,
+      "line": 261,
       "method": "send_error_message",
       "fn": "handle_command",
       "payload": "\"Unknown help topic. Use /help for topics, or //help <command> for WorldEdit.\",",
@@ -314,7 +314,7 @@
     },
     {
       "path": "crates/core/src/plot/commands.rs",
-      "line": 265,
+      "line": 268,
       "method": "send_no_permission_message",
       "fn": "handle_command",
       "payload": "",
@@ -322,7 +322,7 @@
     },
     {
       "path": "crates/core/src/plot/commands.rs",
-      "line": 275,
+      "line": 278,
       "method": "send_error_message",
       "fn": "handle_command",
       "payload": "\"Usage: /piston_anim [auto|on|off]\"",
@@ -330,7 +330,7 @@
     },
     {
       "path": "crates/core/src/plot/commands.rs",
-      "line": 281,
+      "line": 284,
       "method": "send_system_message",
       "fn": "handle_command",
       "payload": "&format!( \"Piston animation: {} (effective {})\", self.piston_animation, if self.world.fast_rendering { \"off\" } else { \"on\" } )",
@@ -338,7 +338,7 @@
     },
     {
       "path": "crates/core/src/plot/commands.rs",
-      "line": 298,
+      "line": 301,
       "method": "send_no_permission_message",
       "fn": "handle_command",
       "payload": "",
@@ -346,7 +346,7 @@
     },
     {
       "path": "crates/core/src/plot/commands.rs",
-      "line": 312,
+      "line": 315,
       "method": "send_error_message",
       "fn": "handle_command",
       "payload": "&error",
@@ -354,7 +354,7 @@
     },
     {
       "path": "crates/core/src/plot/commands.rs",
-      "line": 316,
+      "line": 319,
       "method": "send_system_message",
       "fn": "handle_command",
       "payload": "&crate::server::version_string()",
@@ -362,7 +362,7 @@
     },
     {
       "path": "crates/core/src/plot/commands.rs",
-      "line": 355,
+      "line": 358,
       "method": "send_error_message",
       "fn": "handle_command",
       "payload": "\"Usage: /whitelist [add | remove] (username)\"",
@@ -370,7 +370,7 @@
     },
     {
       "path": "crates/core/src/plot/commands.rs",
-      "line": 363,
+      "line": 366,
       "method": "send_chat_message",
       "fn": "handle_command",
       "payload": "0, &ChatComponent::from_legacy_text(&format!( \"&6RTPS from last 10s, 1m, 5m, 15m: &a{:.1}, {:.1}, {:.1}, {:.1} ({})\", report.ten_s, report.one_m, report.five_m, report.fifteen_m, self.tps )),",
@@ -378,7 +378,7 @@
     },
     {
       "path": "crates/core/src/plot/commands.rs",
-      "line": 371,
+      "line": 374,
       "method": "send_chat_message",
       "fn": "handle_command",
       "payload": "0, &ChatComponent::from_legacy_text(&format!( \"&6No timings data. &a({})\", self.tps )),",
@@ -386,7 +386,7 @@
     },
     {
       "path": "crates/core/src/plot/commands.rs",
-      "line": 388,
+      "line": 391,
       "method": "send_error_message",
       "fn": "handle_command",
       "payload": "\"Unable to parse rtps!\"",
@@ -394,7 +394,7 @@
     },
     {
       "path": "crates/core/src/plot/commands.rs",
-      "line": 397,
+      "line": 400,
       "method": "send_system_message",
       "fn": "handle_command",
       "payload": "\"The rtps was successfully set.\"",
@@ -402,7 +402,7 @@
     },
     {
       "path": "crates/core/src/plot/commands.rs",
-      "line": 400,
+      "line": 403,
       "method": "send_system_message",
       "fn": "handle_command",
       "payload": "&message",
@@ -410,7 +410,7 @@
     },
     {
       "path": "crates/core/src/plot/commands.rs",
-      "line": 401,
+      "line": 404,
       "method": "send_error_message",
       "fn": "handle_command",
       "payload": "&error",
@@ -418,7 +418,7 @@
     },
     {
       "path": "crates/core/src/plot/commands.rs",
-      "line": 405,
+      "line": 408,
       "method": "send_error_message",
       "fn": "handle_command",
       "payload": "&error",
@@ -426,7 +426,7 @@
     },
     {
       "path": "crates/core/src/plot/commands.rs",
-      "line": 411,
+      "line": 414,
       "method": "send_error_message",
       "fn": "handle_command",
       "payload": "\"Please specify a number of ticks to advance.\"",
@@ -434,7 +434,7 @@
     },
     {
       "path": "crates/core/src/plot/commands.rs",
-      "line": 418,
+      "line": 421,
       "method": "send_error_message",
       "fn": "handle_command",
       "payload": "\"Please specify a number of nano-ticks to advance.\",",
@@ -442,7 +442,7 @@
     },
     {
       "path": "crates/core/src/plot/commands.rs",
-      "line": 424,
+      "line": 427,
       "method": "send_error_message",
       "fn": "handle_command",
       "payload": "\"Unable to parse nano-ticks!\"",
@@ -450,7 +450,7 @@
     },
     {
       "path": "crates/core/src/plot/commands.rs",
-      "line": 428,
+      "line": 431,
       "method": "send_error_message",
       "fn": "handle_command",
       "payload": "\"Cannot advance nano-ticks while redpiler is active!\",",
@@ -458,7 +458,7 @@
     },
     {
       "path": "crates/core/src/plot/commands.rs",
-      "line": 434,
+      "line": 437,
       "method": "send_error_message",
       "fn": "handle_command",
       "payload": "\"Disable tick history before nano/pico advancement.\",",
@@ -466,7 +466,7 @@
     },
     {
       "path": "crates/core/src/plot/commands.rs",
-      "line": 444,
+      "line": 447,
       "method": "send_error_message",
       "fn": "handle_command",
       "payload": "\"Please specify a number of pico-ticks to advance.\",",
@@ -474,7 +474,7 @@
     },
     {
       "path": "crates/core/src/plot/commands.rs",
-      "line": 450,
+      "line": 453,
       "method": "send_error_message",
       "fn": "handle_command",
       "payload": "\"Unable to parse pico-ticks!\"",
@@ -482,7 +482,7 @@
     },
     {
       "path": "crates/core/src/plot/commands.rs",
-      "line": 454,
+      "line": 457,
       "method": "send_error_message",
       "fn": "handle_command",
       "payload": "\"Cannot advance pico-ticks while redpiler is active!\",",
@@ -490,7 +490,7 @@
     },
     {
       "path": "crates/core/src/plot/commands.rs",
-      "line": 460,
+      "line": 463,
       "method": "send_error_message",
       "fn": "handle_command",
       "payload": "\"Disable tick history before nano/pico advancement.\",",
@@ -498,7 +498,7 @@
     },
     {
       "path": "crates/core/src/plot/commands.rs",
-      "line": 470,
+      "line": 473,
       "method": "send_error_message",
       "fn": "handle_command",
       "payload": "\"Unable to parse ticks!\"",
@@ -506,7 +506,7 @@
     },
     {
       "path": "crates/core/src/plot/commands.rs",
-      "line": 480,
+      "line": 483,
       "method": "send_system_message",
       "fn": "handle_command",
       "payload": "&format!( \"Plot has been advanced by {unit} ({:.00?})\", start_time.elapsed() )",
@@ -514,7 +514,7 @@
     },
     {
       "path": "crates/core/src/plot/commands.rs",
-      "line": 489,
+      "line": 492,
       "method": "send_system_message",
       "fn": "handle_command",
       "payload": "\"Automatic redpiler compilation has been enabled.\"",
@@ -522,7 +522,7 @@
     },
     {
       "path": "crates/core/src/plot/commands.rs",
-      "line": 492,
+      "line": 495,
       "method": "send_system_message",
       "fn": "handle_command",
       "payload": "\"Automatic redpiler compilation has been disabled.\"",
@@ -530,7 +530,7 @@
     },
     {
       "path": "crates/core/src/plot/commands.rs",
-      "line": 504,
+      "line": 507,
       "method": "send_error_message",
       "fn": "handle_command",
       "payload": "\"Unable to parse x coordinate!\"",
@@ -538,7 +538,7 @@
     },
     {
       "path": "crates/core/src/plot/commands.rs",
-      "line": 510,
+      "line": 513,
       "method": "send_error_message",
       "fn": "handle_command",
       "payload": "\"Unable to parse y coordinate!\"",
@@ -546,7 +546,7 @@
     },
     {
       "path": "crates/core/src/plot/commands.rs",
-      "line": 516,
+      "line": 519,
       "method": "send_error_message",
       "fn": "handle_command",
       "payload": "\"Unable to parse z coordinate!\"",
@@ -554,7 +554,7 @@
     },
     {
       "path": "crates/core/src/plot/commands.rs",
-      "line": 520,
+      "line": 523,
       "method": "send_system_message",
       "fn": "handle_command",
       "payload": "&format!(\"Teleporting to ({}, {}, {})\", x, y, z)",
@@ -562,7 +562,7 @@
     },
     {
       "path": "crates/core/src/plot/commands.rs",
-      "line": 524,
+      "line": 527,
       "method": "send_system_message",
       "fn": "handle_command",
       "payload": "&format!(\"Teleporting to {}\", args[0])",
@@ -570,7 +570,7 @@
     },
     {
       "path": "crates/core/src/plot/commands.rs",
-      "line": 533,
+      "line": 536,
       "method": "send_error_message",
       "fn": "handle_command",
       "payload": "\"Invalid number of arguments for teleport command!\"",
@@ -578,7 +578,7 @@
     },
     {
       "path": "crates/core/src/plot/commands.rs",
-      "line": 541,
+      "line": 544,
       "method": "send_error_message",
       "fn": "handle_command",
       "payload": "\"Invalid number of arguments!\"",
@@ -586,7 +586,7 @@
     },
     {
       "path": "crates/core/src/plot/commands.rs",
-      "line": 549,
+      "line": 552,
       "method": "send_error_message",
       "fn": "handle_command",
       "payload": "\"Invalid number of arguments!\"",
@@ -594,7 +594,7 @@
     },
     {
       "path": "crates/core/src/plot/commands.rs",
-      "line": 557,
+      "line": 560,
       "method": "send_error_message",
       "fn": "handle_command",
       "payload": "\"/speed <0-10>\"",
@@ -602,7 +602,7 @@
     },
     {
       "path": "crates/core/src/plot/commands.rs",
-      "line": 563,
+      "line": 566,
       "method": "send_error_message",
       "fn": "handle_command",
       "payload": "\"Silly child, you can't have a negative flyspeed!\"",
@@ -610,7 +610,7 @@
     },
     {
       "path": "crates/core/src/plot/commands.rs",
-      "line": 567,
+      "line": 570,
       "method": "send_error_message",
       "fn": "handle_command",
       "payload": "\"For performance reasons player speed cannot be higher than 10.\",",
@@ -618,7 +618,7 @@
     },
     {
       "path": "crates/core/src/plot/commands.rs",
-      "line": 574,
+      "line": 577,
       "method": "send_error_message",
       "fn": "handle_command",
       "payload": "\"You can't set your speed to NaN or -NaN.\"",
@@ -626,7 +626,7 @@
     },
     {
       "path": "crates/core/src/plot/commands.rs",
-      "line": 580,
+      "line": 583,
       "method": "send_system_message",
       "fn": "handle_command",
       "payload": "&format!( \"Set flying speed to {} for {}\", speed_arg, username )",
@@ -634,7 +634,7 @@
     },
     {
       "path": "crates/core/src/plot/commands.rs",
-      "line": 585,
+      "line": 588,
       "method": "send_error_message",
       "fn": "handle_command",
       "payload": "\"Unable to parse speed value\"",
@@ -642,7 +642,7 @@
     },
     {
       "path": "crates/core/src/plot/commands.rs",
-      "line": 592,
+      "line": 595,
       "method": "send_error_message",
       "fn": "handle_command",
       "payload": "\"Invalid number of arguments!\"",
@@ -650,7 +650,7 @@
     },
     {
       "path": "crates/core/src/plot/commands.rs",
-      "line": 600,
+      "line": 603,
       "method": "send_error_message",
       "fn": "handle_command",
       "payload": "\"Unknown gamemode\"",
@@ -658,39 +658,7 @@
     },
     {
       "path": "crates/core/src/plot/commands.rs",
-      "line": 608,
-      "method": "send_error_message",
-      "fn": "handle_command",
-      "payload": "\"Usage: /container [type] [power]\"",
-      "classification": "Candidate notice"
-    },
-    {
-      "path": "crates/core/src/plot/commands.rs",
-      "line": 615,
-      "method": "send_error_message",
-      "fn": "handle_command",
-      "payload": "\"Unable to parse power!\"",
-      "classification": "Candidate notice"
-    },
-    {
-      "path": "crates/core/src/plot/commands.rs",
-      "line": 622,
-      "method": "send_error_message",
-      "fn": "handle_command",
-      "payload": "\"Container type must be one of [barrel, furnace, hopper]\",",
-      "classification": "Candidate notice"
-    },
-    {
-      "path": "crates/core/src/plot/commands.rs",
-      "line": 630,
-      "method": "send_error_message",
-      "fn": "handle_command",
-      "payload": "\"Container power must be greater than 0 and lower than 15!\",",
-      "classification": "Candidate notice"
-    },
-    {
-      "path": "crates/core/src/plot/commands.rs",
-      "line": 642,
+      "line": 611,
       "method": "send_system_message",
       "fn": "handle_command",
       "payload": "&format!( \"World send rate: {} Hz (effective {} Hz)\", self.world_send_rate.0, self.effective_send_rate() )",
@@ -698,7 +666,7 @@
     },
     {
       "path": "crates/core/src/plot/commands.rs",
-      "line": 650,
+      "line": 619,
       "method": "send_error_message",
       "fn": "handle_command",
       "payload": "\"Usage: /worldsendrate <hertz>\"",
@@ -706,7 +674,7 @@
     },
     {
       "path": "crates/core/src/plot/commands.rs",
-      "line": 655,
+      "line": 624,
       "method": "send_error_message",
       "fn": "handle_command",
       "payload": "\"Unable to parse send rate!\"",
@@ -714,7 +682,7 @@
     },
     {
       "path": "crates/core/src/plot/commands.rs",
-      "line": 660,
+      "line": 629,
       "method": "send_error_message",
       "fn": "handle_command",
       "payload": "\"The world send rate cannot go higher than 1000!\"",
@@ -722,7 +690,7 @@
     },
     {
       "path": "crates/core/src/plot/commands.rs",
-      "line": 667,
+      "line": 636,
       "method": "send_system_message",
       "fn": "handle_command",
       "payload": "\"The world send rate was successfully set.\"",
@@ -730,7 +698,7 @@
     },
     {
       "path": "crates/core/src/plot/commands.rs",
-      "line": 671,
+      "line": 640,
       "method": "send_system_message",
       "fn": "handle_command",
       "payload": "\"The world is already cursed.\"",
@@ -738,7 +706,7 @@
     },
     {
       "path": "crates/core/src/plot/commands.rs",
-      "line": 675,
+      "line": 644,
       "method": "send_system_message",
       "fn": "handle_command",
       "payload": "\"The world has been cursed. Redpiler disabled (/bless to undo)\",",
@@ -746,7 +714,7 @@
     },
     {
       "path": "crates/core/src/plot/commands.rs",
-      "line": 684,
+      "line": 653,
       "method": "send_system_message",
       "fn": "handle_command",
       "payload": "\"The world has been blessed.\"",
@@ -754,7 +722,7 @@
     },
     {
       "path": "crates/core/src/plot/commands.rs",
-      "line": 687,
+      "line": 656,
       "method": "send_system_message",
       "fn": "handle_command",
       "payload": "\"The world is not cursed. (/curse to curse)\"",
@@ -762,7 +730,7 @@
     },
     {
       "path": "crates/core/src/plot/commands.rs",
-      "line": 691,
+      "line": 660,
       "method": "send_error_message",
       "fn": "handle_command",
       "payload": "\"Command not found!\"",
@@ -802,7 +770,7 @@
     },
     {
       "path": "crates/core/src/plot/mod.rs",
-      "line": 714,
+      "line": 715,
       "method": "send_chat_message",
       "fn": "broadcast_plot_chat_message",
       "payload": "0, &ChatComponent::from_legacy_text(message)",
@@ -810,7 +778,7 @@
     },
     {
       "path": "crates/core/src/plot/mod.rs",
-      "line": 865,
+      "line": 866,
       "method": "send_system_message",
       "fn": "enter_plot",
       "payload": "&format!( \"Entering plot ({}, {})\", self.world.x, self.world.z )",
@@ -818,7 +786,7 @@
     },
     {
       "path": "crates/core/src/plot/mod.rs",
-      "line": 968,
+      "line": 969,
       "method": "send_system_message",
       "fn": "start_redpiler",
       "payload": "\"This plot contains pistons, observers or command blocks and runs with the interpreter to preserve their behavior.\"",
@@ -826,7 +794,7 @@
     },
     {
       "path": "crates/core/src/plot/mod.rs",
-      "line": 976,
+      "line": 977,
       "method": "broadcast_plot_chat_message",
       "fn": "start_redpiler",
       "payload": "&format!( \"Tick history disabled because compiled execution is starting. Released approximately {}.\", history::format_memory(bytes) )",
@@ -834,7 +802,7 @@
     },
     {
       "path": "crates/core/src/plot/mod.rs",
-      "line": 1095,
+      "line": 1097,
       "method": "send_system_message",
       "fn": "claim_plot",
       "payload": "&format!(\"Claimed plot {},{}\", plot_x, plot_z)",
@@ -842,7 +810,7 @@
     },
     {
       "path": "crates/core/src/plot/mod.rs",
-      "line": 1158,
+      "line": 1160,
       "method": "send_raw_system_message",
       "fn": "handle_messages",
       "payload": "command.message.clone()",
@@ -850,7 +818,7 @@
     },
     {
       "path": "crates/core/src/plot/mod.rs",
-      "line": 1164,
+      "line": 1166,
       "method": "send_chat_message",
       "fn": "handle_messages",
       "payload": "sender, &message",
@@ -858,7 +826,7 @@
     },
     {
       "path": "crates/core/src/plot/mod.rs",
-      "line": 1192,
+      "line": 1194,
       "method": "kick",
       "fn": "handle_messages",
       "payload": "json!({ \"text\": \"Server closed\" }) .to_string(),",
@@ -866,7 +834,7 @@
     },
     {
       "path": "crates/core/src/plot/mod.rs",
-      "line": 1585,
+      "line": 1590,
       "method": "send_error_message",
       "fn": "drop",
       "payload": "\"The plot you were previously in has crashed!\"",
@@ -890,7 +858,7 @@
     },
     {
       "path": "crates/core/src/plot/packet_handlers.rs",
-      "line": 336,
+      "line": 344,
       "method": "send_system_message",
       "fn": "handle_player_block_placement",
       "payload": "\"Can't interact with blocks outside of plot\"",
@@ -898,7 +866,7 @@
     },
     {
       "path": "crates/core/src/plot/packet_handlers.rs",
-      "line": 360,
+      "line": 368,
       "method": "send_no_permission_message",
       "fn": "handle_player_block_placement",
       "payload": "",
@@ -906,7 +874,7 @@
     },
     {
       "path": "crates/core/src/plot/packet_handlers.rs",
-      "line": 365,
+      "line": 373,
       "method": "send_no_permission_message",
       "fn": "handle_player_block_placement",
       "payload": "",
@@ -914,7 +882,7 @@
     },
     {
       "path": "crates/core/src/plot/packet_handlers.rs",
-      "line": 379,
+      "line": 387,
       "method": "send_error_message",
       "fn": "handle_player_block_placement",
       "payload": "ERROR_IO_ONLY",
@@ -922,7 +890,7 @@
     },
     {
       "path": "crates/core/src/plot/packet_handlers.rs",
-      "line": 615,
+      "line": 623,
       "method": "send_system_message",
       "fn": "handle_player_digging",
       "payload": "\"Can't break blocks outside of plot\"",
@@ -930,7 +898,7 @@
     },
     {
       "path": "crates/core/src/plot/packet_handlers.rs",
-      "line": 640,
+      "line": 648,
       "method": "send_no_permission_message",
       "fn": "handle_player_digging",
       "payload": "",
@@ -938,7 +906,7 @@
     },
     {
       "path": "crates/core/src/plot/packet_handlers.rs",
-      "line": 645,
+      "line": 653,
       "method": "send_no_permission_message",
       "fn": "handle_player_digging",
       "payload": "",
@@ -946,7 +914,7 @@
     },
     {
       "path": "crates/core/src/plot/packet_handlers.rs",
-      "line": 652,
+      "line": 660,
       "method": "send_error_message",
       "fn": "handle_player_digging",
       "payload": "ERROR_IO_ONLY",
@@ -954,10 +922,18 @@
     },
     {
       "path": "crates/core/src/plot/redstone_tools/mod.rs",
-      "line": 85,
+      "line": 78,
       "method": "send_raw_system_message",
       "fn": "send",
       "payload": "json!({\"text\": text, \"color\": color}).to_string()",
+      "classification": "Candidate notice"
+    },
+    {
+      "path": "crates/core/src/plot/redstone_tools/mod.rs",
+      "line": 152,
+      "method": "send_system_message",
+      "fn": "handle_redstone_tools_command",
+      "payload": "super::help::page(Some(\"tools\")).expect(\"tools help page\"),",
       "classification": "Candidate notice"
     },
     {
@@ -1266,15 +1242,7 @@
     },
     {
       "path": "crates/core/src/plot/worldedit/execute.rs",
-      "line": 986,
-      "method": "send_worldedit_message",
-      "fn": "execute_rstack",
-      "payload": "&format!( \"Your selection was stacked successfully. ({:.00?})\", start_time.elapsed() )",
-      "classification": "Candidate notice"
-    },
-    {
-      "path": "crates/core/src/plot/worldedit/execute.rs",
-      "line": 1004,
+      "line": 958,
       "method": "send_error_message",
       "fn": "execute_update",
       "payload": "\"Your selection is incomplete.\"",
@@ -1282,7 +1250,7 @@
     },
     {
       "path": "crates/core/src/plot/worldedit/execute.rs",
-      "line": 1011,
+      "line": 965,
       "method": "send_worldedit_message",
       "fn": "execute_update",
       "payload": "&format!( \"Your selection was updated sucessfully. ({:.00?})\", start_time.elapsed() )",
@@ -1290,7 +1258,7 @@
     },
     {
       "path": "crates/core/src/plot/worldedit/execute.rs",
-      "line": 1083,
+      "line": 1035,
       "method": "send_worldedit_message",
       "fn": "execute_replace_container",
       "payload": "&format!( \"Your selection was replaced sucessfully. ({:.00?})\", start_time.elapsed() )",
@@ -1460,25 +1428,25 @@
   "packets": [
     {
       "path": "crates/core/src/player.rs",
-      "line": 319,
+      "line": 321,
       "method": "CDisconnect",
       "payload": "reason:json!({\"text\":\"Your player save could not be loaded. Ask the administrator to inspect the server log; your original file was preserved.\"}).to_string()"
     },
     {
       "path": "crates/core/src/player.rs",
-      "line": 461,
+      "line": 463,
       "method": "CChatMessage",
       "payload": "message, sender, position: 0,"
     },
     {
       "path": "crates/core/src/player.rs",
-      "line": 514,
+      "line": 516,
       "method": "CDisconnect",
       "payload": "reason"
     },
     {
       "path": "crates/core/src/player.rs",
-      "line": 667,
+      "line": 670,
       "method": "CChatMessage",
       "payload": "message, sender: 0, position: 1,"
     },

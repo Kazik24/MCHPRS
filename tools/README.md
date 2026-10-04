@@ -28,6 +28,7 @@ cargo build --locked
 python tools/run_protocol_smoke.py
 python tools/run_plot_load_smoke.py
 python tools/run_barrel_smoke.py
+python tools/run_redstone_tools_smoke.py
 ```
 
 On Windows, `py` can replace `python`. If your npm installation does not resolve `--prefix`, run `npm ci --ignore-scripts` inside `tools`. The runner binds localhost port 25580 and creates a temporary world. It tests two clients, configuration/login, deep chunk palette decoding, inventory components, commands, piston extension, prediction acknowledgements, Sponge v3 load/paste/undo/redo, v2 save/reload, reconnect and process restart. Both processes stop through `/stop`. It never opens the repository's existing world or configuration.
@@ -53,3 +54,10 @@ The command smoke test also checks version/plot selection, rate query and disabl
 The current task smoke checks high-TPS static rendering, `/piston_anim` overrides and the `/bisdon_anim` alias, middle-click selection and Ctrl-middle-click sign data, cross-plot `/say` and `/tellraw`, and command-block placement/editing/activation, schematic save/reload/undo/redo and persisted commands/animation preferences. The complete supplied `potados_27072024.schem` is covered by Rust import/export and isolated activation tests. See [command-block scope](../docs/COMMAND_BLOCKS.md).
 
 Tick rewind coverage checks `/rhistory` default/custom capacity and memory reports, invalid requests, nano/pico exclusion, wrapped history, two-client piston rewind/replay, edit restoration, refresh with `/wsr 0`, automatic recording, persistence of the restored present, history reset after restart and compiled-mode exclusions. See [tick rewind](../docs/TICK_REWIND.md).
+
+The RedstoneTools runner uses localhost port 25589 and a temporary world. It
+checks command declarations and completion, cached block/sign searches,
+Unicode highlights and generated click actions, inventory preservation on
+invalid input/full inventory, top-slab components and placement, chest menus
+and contents across restart, diagonal stacking with undo/redo, and independent
+selection sidebars for two clients. Autowire is excluded from this port.

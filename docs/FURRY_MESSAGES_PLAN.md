@@ -17,7 +17,11 @@ owns that separate command work; this document only specifies its message tone.
 
 ## Tone
 
-- State the result or failure reason first. Add a short cute touch where it fits.
+- Build the voice into the phrasing: fetch clipboard contents, sniff out matches,
+  follow tick trails, and pounce to coordinates. State the result or failure
+  clearly; avoid a plain message followed by unrelated furry flavor.
+- Vary verbs, imagery, sentence shape, and rhythm. Use emoticons occasionally,
+  without a default ending or repeated form of address.
 - Use one deterministic phrase per notice. Avoid randomness, automatic text
   transformations, and a universal prefix or suffix.
 - Keep routine replies short. Useful instructions take priority over jokes.
@@ -67,19 +71,19 @@ This style work needs no serializer, interaction-policy, or protocol changes.
 
 | Situation | Proposed reply |
 | --- | --- |
-| Selection required | “Your selection is incomplete. Set both paws with //pos1 and //pos2 :3” |
-| Permission denied | “You do not have permission to use this command. Paws off for now >w<” |
-| Search success | “Sniffed out 12 matches. Showing page 1 of 2 :3” |
-| No results | “No matches found. Nothing for these paws this time :3” |
-| Clipboard empty | “Your clipboard is empty. Use //copy first, little floof :3” |
-| History enabled | “History enabled: up to 100 game ticks. Estimated size: 2 MiB. Ready to rewind, rawr :3” |
-| Autowire enabled | “Autowire enabled. Wire paws are ready :3” |
+| Selection required | “One pawprint's missing from your selection. Set both positions with //pos1 and //pos2.” |
+| Permission denied | “This command trick is outside your permissions.” |
+| Search success | “Sniffed out 12 matches. Page 1/2.” |
+| No results | “No matches—the sniff patrol came back empty-pawed >w<” |
+| Clipboard empty | “Can't paste from an empty clipboard—fetch a selection with //copy first.” |
+| History enabled | “Recording up to 100 game ticks of pawprints. Estimated size: 2 MiB.” |
+| Plot claimed | “Plot 2,3 is your den now. Awoo!” |
 | Schematic storage failure | “Could not save schematic: permission denied” |
 
-Existing `/container` validation accepts power 1 through 15. Its current error
-incorrectly suggests that 15 is excluded. Proposed wording should describe the
-actual range. Check the in-progress tool implementation separately when it
-replaces that handler; a message change cannot establish a different range.
+The in-progress RedstoneTools `/container` handler accepts power 0 through 15
+and lowercase a through f. Its wording should describe that actual range. This
+handler changed during the audit, so check its validation against the inventory
+snapshot before implementing replacements. Message style does not change it.
 
 ## Implementation sequence
 

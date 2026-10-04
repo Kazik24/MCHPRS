@@ -173,6 +173,14 @@ impl ServerBoundPacketHandler for Plot {
     }
 
     fn handle_tab_complete(&mut self, packet: STabComplete, player_idx: usize) {
+        if let Some(completion) = self.complete_redstone_tools(
+            player_idx,
+            packet.transaction_id,
+            &packet.text,
+        ) {
+            self.players[player_idx].send_packet(&completion.encode());
+            return;
+        }
         if !packet.text.starts_with("//load ") {
             return;
         }
@@ -396,7 +404,7 @@ impl ServerBoundPacketHandler for Plot {
         self.close_open_container(player);
 
         if let Some(item) = item_in_hand {
-            let outcome = interaction::use_item_on_block(
+            let cancelled = interaction::use_item_on_block(
                 &item,
                 &mut self.world,
                 UseOnBlockContext {
@@ -406,7 +414,7 @@ impl ServerBoundPacketHandler for Plot {
                     cursor_y: player_block_placement.cursor_y,
                 },
             );
-            if outcome == interaction::PlacementOutcome::Cancelled {
+            if cancelled {
                 cancel(self);
             }
             self.world.flush_block_changes();

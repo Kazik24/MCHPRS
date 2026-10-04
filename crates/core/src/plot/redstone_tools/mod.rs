@@ -1,6 +1,7 @@
+mod completion;
 mod items;
 mod search;
-mod selection;
+pub(super) mod selection;
 mod stack;
 
 #[cfg(test)]
@@ -16,7 +17,6 @@ use serde_json::{json, Value};
 /// Session state only: none of these preferences or caches alter player saves.
 #[derive(Default)]
 pub(crate) struct PlayerTools {
-    pub autowire: bool,
     pub selection_visible: bool,
     pub block_search: Option<SearchCache>,
     pub sign_search: Option<SearchCache>,
@@ -28,7 +28,6 @@ enum ToolCommand {
     Find,
     SignSearch,
     RStack,
-    Autowire,
     Container,
     Slab,
     CurrentSelection,
@@ -40,7 +39,6 @@ impl ToolCommand {
             "//find" => Some(Self::Find),
             "//signsearch" | "//ss" => Some(Self::SignSearch),
             "//rstack" | "//rs" => Some(Self::RStack),
-            "/autowire" | "/aw" => Some(Self::Autowire),
             "/container" => Some(Self::Container),
             "/slab" => Some(Self::Slab),
             "/cursel" => Some(Self::CurrentSelection),
@@ -53,18 +51,26 @@ impl ToolCommand {
             Self::Find => "redstonetools.find",
             Self::SignSearch => "redstonetools.signsearch",
             Self::RStack => "redstonetools.rstack",
-            Self::Autowire => "redstonetools.autowire",
             Self::Container => "redstonetools.container",
             Self::Slab => "redstonetools.slab",
             Self::CurrentSelection => "redstonetools.cursel",
         }
     }
+
+    fn help_topic(command: &str, args: &[&str]) -> Option<Self> {
+        if command != "//help" {
+            return None;
+        }
+        let [topic] = args else {
+            return None;
+        };
+        let topic = topic.trim_start_matches('/');
+        Self::parse(&format!("//{topic}")).or_else(|| Self::parse(&format!("/{topic}")))
+    }
 }
 
 enum ToolNotice {
     Error(String),
-    AutowireEnabled,
-    AutowireDisabled,
     SelectionEnabled,
     SelectionDisabled,
     ItemGiven,
@@ -75,8 +81,6 @@ impl ToolNotice {
     fn send(self, player: &Player) {
         let (text, color) = match self {
             Self::Error(error) => (format!("{error} >.<"), "red"),
-            Self::AutowireEnabled => ("Autowire enabled, nya~".into(), "light_purple"),
-            Self::AutowireDisabled => ("Autowire disabled, nya~".into(), "light_purple"),
             Self::SelectionEnabled => ("Selection sidebar enabled, nya~".into(), "light_purple"),
             Self::SelectionDisabled => ("Selection sidebar hidden, nya~".into(), "light_purple"),
             Self::ItemGiven => ("Your item is ready, nya~".into(), "light_purple"),
@@ -115,8 +119,12 @@ struct SelectionBounds {
 
 impl SelectionBounds {
     fn from_player(player: &Player, world: &PlotWorld) -> Result<Self> {
-        let first = player.first_position.ok_or_else(|| anyhow::anyhow!("Select position 1 first"))?;
-        let second = player.second_position.ok_or_else(|| anyhow::anyhow!("Select position 2 first"))?;
+        let first = player
+            .first_position
+            .ok_or_else(|| anyhow::anyhow!("Select position 1 first"))?;
+        let second = player
+            .second_position
+            .ok_or_else(|| anyhow::anyhow!("Select position 2 first"))?;
         Self::new(first.min(second), first.max(second), world)
     }
 
@@ -149,10 +157,22 @@ impl Plot {
         command: &str,
         args: &[&str],
     ) -> bool {
+        if let Some(tool) = ToolCommand::help_topic(command, args) {
+            match self.check_tool_access(player, tool) {
+                Ok(()) => self.players[player].send_system_message(
+                    super::help::page(Some("tools")).expect("tools help page"),
+                ),
+                Err(error) => {
+                    ToolNotice::Error(error.to_string()).send(&self.players[player]);
+                }
+            }
+            return true;
+        }
         let Some(tool) = ToolCommand::parse(command) else {
             return false;
         };
-        let result = self.check_tool_access(player, tool)
+        let result = self
+            .check_tool_access(player, tool)
             .and_then(|()| self.execute_tool(player, tool, args));
         if let Err(error) = result {
             ToolNotice::Error(error.to_string()).send(&self.players[player]);
@@ -160,13 +180,15 @@ impl Plot {
         true
     }
 
-    fn check_tool_access(&mut self, player: usize, command: ToolCommand) -> Result<()> {
-        let player = &mut self.players[player];
+    fn check_tool_access(&self, player: usize, command: ToolCommand) -> Result<()> {
+        let player = &self.players[player];
         if !player.has_permission(command.permission()) {
             bail!("You don't have permission to use this command");
         }
-        if matches!(command, ToolCommand::Find | ToolCommand::SignSearch | ToolCommand::RStack)
-            && !player.has_permission("plots.worldedit.bypass")
+        if matches!(
+            command,
+            ToolCommand::Find | ToolCommand::SignSearch | ToolCommand::RStack
+        ) && !player.has_permission("plots.worldedit.bypass")
             && self.owner != Some(player.uuid)
         {
             bail!("You can only use WorldEdit on your own plot");
@@ -181,19 +203,6 @@ impl Plot {
             ToolCommand::RStack => self.redstone_stack(player, args),
             ToolCommand::Container => items::give_container(&mut self.players[player], args),
             ToolCommand::Slab => items::give_slab(&mut self.players[player], args),
-            ToolCommand::Autowire => {
-                if !args.is_empty() {
-                    bail!("Usage: /autowire (or /aw)");
-                }
-                let player = &mut self.players[player];
-                player.redstone_tools.autowire = !player.redstone_tools.autowire;
-                let notice = match player.redstone_tools.autowire {
-                    true => ToolNotice::AutowireEnabled,
-                    false => ToolNotice::AutowireDisabled,
-                };
-                notice.send(player);
-                Ok(())
-            }
             ToolCommand::CurrentSelection => selection::toggle(&mut self.players[player], args),
         }
     }

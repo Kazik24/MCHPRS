@@ -14,6 +14,7 @@ fn all_container_states_and_item_components_survive_schematic_round_trip() {
         (ContainerType::Barrel, 19431..=19442),
         (ContainerType::Hopper, 10034..=10043),
         (ContainerType::Furnace, 4358..=4365),
+        (ContainerType::Chest, 3018..=3041),
     ] {
         let mut world = PlotWorld::from_chunks(0, 0, vec![Chunk::empty(0, 0)], Default::default());
         let pos = BlockPos::new(4, 30, 4);

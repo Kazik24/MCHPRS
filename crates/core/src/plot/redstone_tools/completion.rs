@@ -1,0 +1,78 @@
+use super::{Plot, ToolCommand};
+use mchprs_network::packets::clientbound::{CTabComplete, CTabCompleteMatch};
+
+impl Plot {
+    pub(in crate::plot) fn complete_redstone_tools(
+        &mut self,
+        player: usize,
+        transaction: i32,
+        text: &str,
+    ) -> Option<CTabComplete> {
+        let (command, tail) = text.split_once(' ')?;
+        let tool = ToolCommand::parse(command)?;
+        if !self.players[player].has_permission(tool.permission()) {
+            return Some(CTabComplete {
+                id: transaction,
+                start: 0,
+                length: 0,
+                matches: Vec::new(),
+            });
+        }
+        let start = text.rfind(' ')? + 1;
+        let prefix = &text[start..];
+        let args: Vec<_> = tail.split_whitespace().collect();
+        let mut choices: Vec<String> = match tool {
+            ToolCommand::Container if args.len() < 2 && !tail.contains(' ') => {
+                ["chest", "barrel", "hopper", "furnace"]
+                    .map(str::to_owned)
+                    .to_vec()
+            }
+            ToolCommand::Container => (0..=15)
+                .map(|power| power.to_string())
+                .chain(["a", "b", "c", "d", "e", "f"].map(str::to_owned))
+                .collect(),
+            ToolCommand::Slab => mchprs_blocks::generated::BLOCKS
+                .iter()
+                .filter(|definition| definition.0.ends_with("_slab"))
+                .map(|definition| definition.0.to_owned())
+                .collect(),
+            ToolCommand::RStack => [
+                "me", "north", "south", "east", "west", "up", "down", "ne", "nw", "se", "sw",
+                "neu", "ned", "forward", "back", "left", "right", "-e", "-w", "-a",
+            ]
+            .map(str::to_owned)
+            .to_vec(),
+            ToolCommand::Find | ToolCommand::SignSearch if args.first() == Some(&"-p") => {
+                let cache = match tool {
+                    ToolCommand::Find => self.players[player].redstone_tools.block_search.as_ref(),
+                    _ => self.players[player].redstone_tools.sign_search.as_ref(),
+                };
+                let pages = cache.map_or(0, |cache| cache.page_count());
+                (1..=pages).map(|page| page.to_string()).collect()
+            }
+            ToolCommand::Find => mchprs_blocks::generated::BLOCKS
+                .iter()
+                .map(|definition| definition.0.to_owned())
+                .chain(std::iter::once("-p".into()))
+                .collect(),
+            ToolCommand::SignSearch => vec!["-p".into()],
+            _ => Vec::new(),
+        };
+        choices.retain(|choice| choice.starts_with(prefix));
+        choices.sort();
+        choices.dedup();
+        choices.truncate(100);
+        Some(CTabComplete {
+            id: transaction,
+            start: text[..start].encode_utf16().count() as i32,
+            length: prefix.encode_utf16().count() as i32,
+            matches: choices
+                .into_iter()
+                .map(|text| CTabCompleteMatch {
+                    match_: text,
+                    tooltip: None,
+                })
+                .collect(),
+        })
+    }
+}

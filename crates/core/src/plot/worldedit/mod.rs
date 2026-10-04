@@ -3,6 +3,8 @@
 mod execute;
 mod schematic;
 mod schematic_paths;
+#[cfg(test)]
+mod stack_tests;
 
 use super::{Plot, PlotWorld};
 use crate::player::{PacketSender, Player, PlayerPos};
@@ -192,8 +194,6 @@ type ArgumentParseResult = Result<Argument, ArgumentParseError>;
 enum ArgumentType {
     UnsignedInteger,
     Direction,
-    /// Used for diag directions in redstonetools commands
-    DirectionVector,
     Mask,
     Pattern,
     String,
@@ -204,7 +204,6 @@ enum ArgumentType {
 enum Argument {
     UnsignedInteger(u32),
     Direction(BlockFacing),
-    DirectionVector(BlockPos),
     Pattern(WorldEditPattern),
     Mask(WorldEditPattern),
     String(String),
@@ -223,13 +222,6 @@ impl Argument {
         match self {
             Argument::Direction(val) => *val,
             _ => panic!("Argument was not an Direction"),
-        }
-    }
-
-    fn unwrap_direction_vec(&self) -> BlockPos {
-        match self {
-            Argument::DirectionVector(val) => *val,
-            _ => panic!("Argument was not an DirectionVector"),
         }
     }
 
@@ -268,9 +260,7 @@ impl Argument {
 
         let arg_type = desc.argument_type;
         match arg_type {
-            ArgumentType::Direction | ArgumentType::DirectionVector => {
-                Argument::parse(player, desc, Some("me"))
-            }
+            ArgumentType::Direction => Argument::parse(player, desc, Some("me")),
             ArgumentType::UnsignedInteger => Ok(Argument::UnsignedInteger(1)),
             _ => Err(ArgumentParseError::new(
                 arg_type,
@@ -319,47 +309,6 @@ impl Argument {
                 Err(err) => Err(ArgumentParseError::new(arg_type, &err.to_string())),
             },
             ArgumentType::String => Ok(Argument::String(arg.to_owned())),
-            ArgumentType::DirectionVector => {
-                let mut vec = BlockPos::new(0, 0, 0);
-                let player_facing = player.get_facing();
-                if arg == "me" {
-                    vec = player_facing.offset_pos(vec, 1);
-                    if !matches!(player_facing, BlockFacing::Down | BlockFacing::Up) {
-                        let pitch = player.pitch;
-                        if pitch > 22.5 {
-                            vec.y -= 1;
-                        } else if pitch < -22.5 {
-                            vec.y += 1;
-                        }
-                    }
-                    return Ok(Argument::DirectionVector(vec));
-                }
-
-                let mut base_dir = arg;
-                if arg.len() > 1 && matches!(arg.chars().last(), Some('u' | 'd')) {
-                    match arg.chars().last().unwrap() {
-                        'u' => vec.y += 1,
-                        'd' => vec.y -= 1,
-                        _ => unreachable!(),
-                    }
-                    base_dir = &arg[..1];
-                }
-
-                let facing = match base_dir {
-                    "u" | "up" => BlockFacing::Up,
-                    "d" | "down" => BlockFacing::Down,
-                    "n" | "north" => BlockFacing::North,
-                    "s" | "south" => BlockFacing::South,
-                    "e" | "east" => BlockFacing::East,
-                    "w" | "west" => BlockFacing::West,
-                    "l" | "left" => player_facing.rotate_ccw(),
-                    "r" | "right" => player_facing.rotate(),
-                    _ => return Err(ArgumentParseError::new(arg_type, "unknown direction")),
-                };
-                let vec = facing.offset_pos(vec, 1);
-
-                Ok(Argument::DirectionVector(vec))
-            }
             ArgumentType::ContainerType => match arg.parse::<ContainerType>() {
                 Ok(ty) => Ok(Argument::ContainerType(ty)),
                 Err(_) => Err(ArgumentParseError::new(
@@ -694,22 +643,6 @@ static COMMANDS: Lazy<HashMap<&'static str, WorldeditCommand>> = Lazy::new(|| {
             mutates_world: false,
             ..Default::default()
         },
-        "/rstack" => WorldeditCommand {
-            arguments: &[
-                argument!("count", UnsignedInteger, "# of copies to stack"),
-                argument!("spacing", UnsignedInteger, "The spacing between each selection", 2),
-                argument!("direction", DirectionVector, "The direction to stack")
-            ],
-            requires_positions: true,
-            flags: &[
-                flag!('a', None, "Include air blocks"),
-                flag!('e', None, "Expand selection")
-            ],
-            execute_fn: execute_rstack,
-            description: "Like //stack but allows the stacked copies to overlap, supports more directions, and more flags",
-            permission_node: "redstonetools.rstack",
-            ..Default::default()
-        },
         "/update" => WorldeditCommand {
             execute_fn: execute_update,
             description: "Updates all blocks in the selection",
@@ -769,7 +702,6 @@ static ALIASES: Lazy<HashMap<&'static str, &'static str>> = Lazy::new(|| {
         "/f" => "/flip",
         "/h1" => "/hpos1",
         "/h2" => "/hpos2",
-        "/rs" => "/rstack",
         "/rc" => "/replacecontainer"
     }
 });
@@ -1019,7 +951,7 @@ fn worldedit_start_operation(player: &mut Player) -> WorldEditOperation {
     WorldEditOperation::new(first_pos, second_pos)
 }
 
-pub(super) fn create_clipboard(
+fn create_clipboard(
     plot: &mut PlotWorld,
     origin: BlockPos,
     first_pos: BlockPos,
@@ -1136,6 +1068,12 @@ pub fn paste_clipboard(
     }
 }
 
+#[derive(Clone, Copy, Debug)]
+pub(super) enum AirPolicy {
+    Ignore,
+    Copy,
+}
+
 /// All destinations must be validated before calling. Snapshot every target before
 /// the first paste so overlapping copies remain reversible in a single undo.
 pub(super) fn stack_prepared(
@@ -1143,10 +1081,11 @@ pub(super) fn stack_prepared(
     start: BlockPos,
     end: BlockPos,
     destinations: &[(BlockPos, BlockPos)],
-    ignore_air: bool,
+    air: AirPolicy,
 ) -> WorldEditUndo {
     let source = create_clipboard(plot, start, start, end);
-    let clipboards = destinations.iter()
+    let clipboards = destinations
+        .iter()
         .map(|&(first, second)| create_clipboard(plot, start, first, second))
         .collect();
     let undo = WorldEditUndo {
@@ -1156,7 +1095,7 @@ pub(super) fn stack_prepared(
         plot_z: plot.z,
     };
     for &(first, _) in destinations {
-        paste_clipboard(plot, &source, first, ignore_air);
+        paste_clipboard(plot, &source, first, matches!(air, AirPolicy::Ignore));
     }
     undo
 }

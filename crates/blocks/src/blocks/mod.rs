@@ -198,6 +198,7 @@ impl Block {
             | Block::Barrel { .. }
             | Block::Furnace { .. }
             | Block::Hopper { .. }
+            | Block::Chest { .. }
             | Block::Sign { .. }
             | Block::WallSign { .. }
             | Block::PistonHead { .. }
@@ -1326,6 +1327,21 @@ blocks! {
             }
         },
         get_name: "cake",
+    },
+    Chest {
+        props: {
+            chest: Chest,
+        },
+        get_id: 2090 + chest.get_id(),
+        from_id_offset: 2090,
+        from_id(id): 2090..=2113 => {
+            chest: Chest::from_id(id),
+        },
+        from_names(_name): {
+            "chest" => { chest: Chest::default() }
+        },
+        get_name: "chest",
+        transparent: true,
     },
     Barrel {
         props: {

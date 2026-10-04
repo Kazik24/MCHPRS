@@ -1,17 +1,11 @@
 use super::{Plot, PlotWorld, SelectionBounds, ToolNotice};
 use crate::player::Player;
-use crate::plot::worldedit;
+use crate::plot::worldedit::{self, AirPolicy};
 use anyhow::{bail, Context, Result};
 use mchprs_blocks::{BlockFacing, BlockPos};
 
 const MAX_COPIES: u32 = 4096;
 const MAX_STACK_BLOCKS: u64 = 16_777_216;
-
-#[derive(Clone, Copy, Debug)]
-enum AirPolicy {
-    Ignore,
-    Copy,
-}
 
 #[derive(Clone, Copy, Debug)]
 enum SelectionPolicy {
@@ -40,6 +34,9 @@ impl RStackRequest {
                 continue;
             }
             if argument.starts_with('-') {
+                if argument == "-" {
+                    bail!("A flag name must follow -");
+                }
                 for flag in argument[1..].chars() {
                     match flag {
                         'a' | 'w' => air = AirPolicy::Copy,
@@ -60,7 +57,9 @@ impl RStackRequest {
         let count = numbers.first().copied().unwrap_or(1);
         let mut spacing = numbers.get(1).copied().unwrap_or(2);
         if count < 0 {
-            spacing = spacing.checked_neg().context("Spacing overflows when reversing direction")?;
+            spacing = spacing
+                .checked_neg()
+                .context("Spacing overflows when reversing direction")?;
         }
         let count = count.unsigned_abs();
         if count > MAX_COPIES {
@@ -75,7 +74,11 @@ impl RStackRequest {
         })
     }
 
-    fn destinations(&self, bounds: SelectionBounds, world: &PlotWorld) -> Result<Vec<SelectionBounds>> {
+    fn destinations(
+        &self,
+        bounds: SelectionBounds,
+        world: &PlotWorld,
+    ) -> Result<Vec<SelectionBounds>> {
         if bounds.volume() * u64::from(self.count) > MAX_STACK_BLOCKS {
             bail!("A stack operation may copy at most {MAX_STACK_BLOCKS} blocks");
         }
@@ -102,20 +105,25 @@ impl Plot {
         }
 
         self.reset_redpiler();
-        let destinations: Vec<_> = destinations.iter().map(|area| (area.start, area.end)).collect();
+        let destinations: Vec<_> = destinations
+            .iter()
+            .map(|area| (area.start, area.end))
+            .collect();
         let undo = worldedit::stack_prepared(
             &mut self.world,
             bounds.start,
             bounds.end,
             &destinations,
-            matches!(request.air, AirPolicy::Ignore),
+            request.air,
         );
         let player = &mut self.players[player];
         player.worldedit_undo.push(undo);
         player.worldedit_redo.clear();
 
         if matches!(request.selection, SelectionPolicy::Expand) {
-            let last = destinations.last().expect("nonempty validated destinations");
+            let last = destinations
+                .last()
+                .expect("nonempty validated destinations");
             player.worldedit_set_first_position(bounds.start.min(last.0));
             player.worldedit_set_second_position(bounds.end.max(last.1));
         }
@@ -125,14 +133,21 @@ impl Plot {
 }
 
 fn translated(position: BlockPos, direction: BlockPos, distance: i64) -> Result<BlockPos> {
-    let x = i64::from(position.x) + i64::from(direction.x) * distance;
-    let y = i64::from(position.y) + i64::from(direction.y) * distance;
-    let z = i64::from(position.z) + i64::from(direction.z) * distance;
+    let x = translated_axis(position.x, direction.x, distance)?;
+    let y = translated_axis(position.y, direction.y, distance)?;
+    let z = translated_axis(position.z, direction.z, distance)?;
     Ok(BlockPos::new(
         i32::try_from(x).context("Stack X coordinate overflows")?,
         i32::try_from(y).context("Stack Y coordinate overflows")?,
         i32::try_from(z).context("Stack Z coordinate overflows")?,
     ))
+}
+
+fn translated_axis(position: i32, direction: i32, distance: i64) -> Result<i64> {
+    i64::from(direction)
+        .checked_mul(distance)
+        .and_then(|offset| i64::from(position).checked_add(offset))
+        .context("Stack coordinate overflows")
 }
 
 fn look_direction(player: &Player) -> BlockPos {
@@ -212,9 +227,28 @@ mod tests {
         let defaults = RStackRequest::parse(&[], look).unwrap();
         assert_eq!(defaults.count, 1);
         assert_eq!(defaults.spacing, 2);
-        for args in [vec!["sideways"], vec!["1", "2", "3"], vec!["-q"], vec!["-1", "-2147483648"], vec!["2147483648"]] {
+        for args in [
+            vec!["sideways"],
+            vec!["1", "2", "3"],
+            vec!["-q"],
+            vec!["-1", "-2147483648"],
+            vec!["2147483648"],
+        ] {
             assert!(RStackRequest::parse(&args, look).is_err(), "{args:?}");
         }
         assert!(translated(BlockPos::new(i32::MAX, 1, 1), look, i64::MAX).is_err());
+    }
+
+    #[test]
+    fn every_destination_is_checked_before_mutation() {
+        let world = super::super::tests::test_world();
+        let start = BlockPos::new(250, 10, 10);
+        let bounds = SelectionBounds::new(start, start, &world).unwrap();
+        let request = RStackRequest::parse(&["east", "4", "2"], BlockPos::new(0, 0, 1)).unwrap();
+        assert!(request.destinations(bounds, &world).is_err());
+        let valid = RStackRequest::parse(&["-2", "2", "east"], BlockPos::new(0, 0, 1)).unwrap();
+        let destinations = valid.destinations(bounds, &world).unwrap();
+        assert_eq!(destinations[0].start.x, 248);
+        assert_eq!(destinations[1].start.x, 246);
     }
 }

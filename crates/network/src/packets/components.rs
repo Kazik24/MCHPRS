@@ -19,8 +19,14 @@ pub fn set_tool_display(
     custom_name.write_text(&serde_json::json!({"text": name, "italic": false}).to_string());
     let mut description = Vec::new();
     description.write_varint(1);
-    description.write_text(&serde_json::json!({"text": lore, "color": "gray", "italic": false}).to_string());
-    patch_components(item_id, blob, &[(5, custom_name), (8, description), (18, vec![1])])
+    description.write_text(
+        &serde_json::json!({"text": lore, "color": "gray", "italic": false}).to_string(),
+    );
+    patch_components(
+        item_id,
+        blob,
+        &[(5, custom_name), (8, description), (18, vec![1])],
+    )
 }
 
 /// Set top placement while retaining unrelated protocol components and custom data.
@@ -38,8 +44,8 @@ pub fn set_top_slab(item_id: i32, blob: &mut nbt::Blob) -> DecodeResult<()> {
         let nbt::Value::String(value) = value else {
             return Err(invalid("block state properties must be strings"));
         };
-        state.write_string(name);
-        state.write_string(value);
+        state.write_string(name.len(), name);
+        state.write_string(value.len(), value);
     }
     let mut custom_data = match blob.get("custom_data") {
         Some(nbt::Value::Compound(data)) => data.clone(),
@@ -61,30 +67,47 @@ fn patch_components(
     blob: &mut nbt::Blob,
     replacements: &[(i32, Vec<u8>)],
 ) -> DecodeResult<()> {
+    if !(0..crate::generated::ITEM_COUNT).contains(&item_id) {
+        return Err(invalid("invalid item ID"));
+    }
     let mut encoded = Vec::new();
-    write_slot(&mut encoded, &Some(SlotData {
-        item_id,
-        item_count: 1,
-        nbt: Some(blob.clone()),
-    }));
+    write_slot(
+        &mut encoded,
+        &Some(SlotData {
+            item_id,
+            item_count: 1,
+            nbt: Some(blob.clone()),
+        }),
+    );
     let mut cursor = Cursor::new(encoded);
     cursor.read_varint()?;
     cursor.read_varint()?;
     let added = bounded(cursor.read_varint()?)?;
     let removed = bounded(cursor.read_varint()?)?;
+    if added + removed > crate::generated::COMPONENT_COUNT as usize {
+        return Err(invalid("too many components"));
+    }
     let names = &schema()["types"]["SlotComponentType"][1]["mappings"];
     let mut components = std::collections::BTreeMap::new();
     for _ in 0..added {
         let id = cursor.read_varint()?;
-        let name = names[id.to_string()].as_str().ok_or_else(|| invalid("unknown component ID"))?;
-        let mut recording = Recording { reader: &mut cursor, bytes: Vec::new() };
+        let name = names[id.to_string()]
+            .as_str()
+            .ok_or_else(|| invalid("unknown component ID"))?;
+        let mut recording = Recording {
+            reader: &mut cursor,
+            bytes: Vec::new(),
+        };
         consume(&mut recording, &component_type(name), &Map::new(), 1)?;
         components.insert(id, recording.bytes);
     }
     let mut removals = Vec::new();
     for _ in 0..removed {
         let id = cursor.read_varint()?;
-        if !replacements.iter().any(|(replacement, _)| *replacement == id) {
+        if !replacements
+            .iter()
+            .any(|(replacement, _)| *replacement == id)
+        {
             removals.push(id);
         }
     }
@@ -101,7 +124,10 @@ fn patch_components(
     for id in removals {
         patch.write_varint(id);
     }
-    blob.insert(RAW, nbt::Value::ByteArray(patch.into_iter().map(|byte| byte as i8).collect()))?;
+    blob.insert(
+        RAW,
+        nbt::Value::ByteArray(patch.into_iter().map(|byte| byte as i8).collect()),
+    )?;
     Ok(())
 }
 
@@ -119,6 +145,68 @@ fn component_type(name: &str) -> Value {
             ]
         ]),
         _ => schema()["types"]["SlotComponent"][1][1]["type"][1]["fields"][name].clone(),
+    }
+}
+
+#[cfg(test)]
+mod tool_component_tests {
+    use super::*;
+
+    #[test]
+    fn top_slab_preserves_existing_components_and_custom_data() {
+        let item_id = item_names()
+            .iter()
+            .position(|name| name == "oak_slab")
+            .unwrap() as i32;
+        let mut raw = Vec::new();
+        raw.write_varint(3);
+        raw.write_varint(0);
+        raw.write_varint(4); // unbreakable, unit component
+        raw.write_varint(1); // maximum stack size
+        raw.write_varint(16);
+        raw.write_varint(0); // authored custom data
+        raw.write_nbt_blob(&nbt::Blob::with_content(std::collections::HashMap::from([
+            ("owner".into(), nbt::Value::String("kitten".into())),
+        ])));
+        let mut slot = vec![8];
+        slot.write_varint(item_id);
+        slot.write_bytes(&raw);
+        let mut decoded = read_slot(&mut Cursor::new(slot)).unwrap().unwrap();
+        let blob = decoded.nbt.as_mut().unwrap();
+        set_top_slab(item_id, blob).unwrap();
+        set_tool_display(item_id, blob, "Top slab", "Test lore").unwrap();
+        let mut bytes = Vec::new();
+        write_slot(&mut bytes, &Some(decoded));
+        let restored = read_slot(&mut Cursor::new(&bytes)).unwrap().unwrap();
+        assert_eq!(restored.item_count, 8);
+        assert_eq!(max_stack_size(&restored.nbt, 64), 16);
+        let blob = restored.nbt.as_ref().unwrap();
+        assert!(
+            matches!(blob.get("custom_data"), Some(nbt::Value::Compound(data))
+            if data.get("owner") == Some(&nbt::Value::String("kitten".into()))
+                && data.get("mchprs:top_slab") == Some(&nbt::Value::Byte(1)))
+        );
+        assert!(
+            matches!(blob.get("BlockStateTag"), Some(nbt::Value::Compound(properties))
+            if properties.get("type") == Some(&nbt::Value::String("top".into())))
+        );
+        let mut again = Vec::new();
+        write_slot(&mut again, &Some(restored));
+        assert_eq!(bytes, again);
+    }
+
+    #[test]
+    fn invalid_slab_properties_leave_components_unchanged() {
+        let mut blob = nbt::Blob::with_content(std::collections::HashMap::from([(
+            "BlockStateTag".into(),
+            nbt::Value::Compound(std::collections::HashMap::from([(
+                "waterlogged".into(),
+                nbt::Value::Int(42),
+            )])),
+        )]));
+        let before = blob.clone();
+        assert!(set_top_slab(1, &mut blob).is_err());
+        assert_eq!(blob, before);
     }
 }
 

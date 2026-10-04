@@ -1,9 +1,8 @@
 use crate::chat::ColorCode;
 use crate::config::CONFIG;
 use crate::player::PacketSender;
-use crate::player::{Gamemode, Player};
+use crate::player::Player;
 use crate::plot::PlotWorld;
-use crate::plot::PLOT_BLOCK_HEIGHT;
 use crate::redstone;
 use crate::world::World;
 use mchprs_blocks::block_entities::{BlockEntity, ContainerType};
@@ -388,6 +387,12 @@ pub fn get_state_for_placement(
             }
             block
         }
+        item if item.get_name() == "chest" => Block::Chest {
+            chest: Chest {
+                facing: context.player.get_direction().opposite(),
+                ..Default::default()
+            },
+        },
         _ => Block::from_name(item.get_name()).unwrap_or(Block::Air {}),
     };
     if is_valid_position(block, world, pos) {
@@ -613,18 +618,12 @@ pub struct UseOnBlockContext<'a> {
     pub cursor_y: f32,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum PlacementOutcome {
-    Cancelled,
-    Handled,
-    Placed(BlockPos),
-}
-
+/// Returns true when the client placement must be cancelled.
 pub fn use_item_on_block(
     item: &ItemStack,
     world: &mut PlotWorld,
     ctx: UseOnBlockContext<'_>,
-) -> PlacementOutcome {
+) -> bool {
     let use_pos = ctx.block_pos;
     let use_block = world.get_block(use_pos);
     let block_pos = placement_position(item, world, ctx.block_pos, ctx.block_face);
@@ -632,7 +631,7 @@ pub fn use_item_on_block(
     top_pos.y += 1;
     if (block_pos == ctx.player.pos.block_pos() || block_pos == top_pos) && !CONFIG.block_in_hitbox
     {
-        return PlacementOutcome::Handled;
+        return false;
     }
     let can_place = item.item_type.is_block() && world.get_block(block_pos).can_place_block_in();
     if !ctx.player.crouching
@@ -645,7 +644,7 @@ pub fn use_item_on_block(
         )
         .is_success()
     {
-        return PlacementOutcome::Handled;
+        return false;
     }
 
     if can_place && world.contains_position(block_pos) {
@@ -685,12 +684,9 @@ pub fn use_item_on_block(
         }
 
         place_in_world(block, world, block_pos, &item.nbt);
-        if ctx.player.redstone_tools.autowire && matches!(ctx.player.gamemode, Gamemode::Creative) {
-            place_optional_wire(world, block_pos);
-        }
-        PlacementOutcome::Placed(block_pos)
+        false
     } else {
-        PlacementOutcome::Cancelled
+        true
     }
 }
 
@@ -719,21 +715,55 @@ fn placement_position(
     clicked.offset(face)
 }
 
-fn place_optional_wire(world: &mut PlotWorld, support: BlockPos) {
-    let block = world.get_block(support);
-    let above = support.offset(BlockFace::Top);
-    if !block.is_solid() || is_gravity_block(block) || !world.contains_position(above) {
-        return;
-    }
-    if world.get_block(above) != (Block::Air {}) {
-        return;
-    }
-    let wire = Block::RedstoneWire { wire: Default::default() };
-    place_in_world(wire, world, above, &None);
-}
+#[cfg(test)]
+mod tool_placement_tests {
+    use super::*;
+    use mchprs_network::packets::components;
 
-fn is_gravity_block(block: Block) -> bool {
-    matches!(block.get_name(),
-        "sand" | "red_sand" | "gravel" | "anvil" | "chipped_anvil" | "damaged_anvil" | "dragon_egg"
-    ) || block.get_name().ends_with("_concrete_powder")
+    #[test]
+    fn special_slabs_choose_air_beneath_a_top_slab_within_bounds() {
+        let mut world = PlotWorld::from_chunks(
+            0,
+            0,
+            vec![crate::world::storage::Chunk::empty(0, 0)],
+            Default::default(),
+        );
+        let clicked = BlockPos::new(4, 30, 4);
+        for name in ["smooth_stone_slab", "oak_slab"] {
+            let item_type = Item::from_name(name).unwrap();
+            let mut tag = nbt::Blob::new();
+            components::set_top_slab(item_type.get_id() as i32, &mut tag).unwrap();
+            let item = ItemStack {
+                item_type,
+                count: 16,
+                nbt: Some(tag),
+            };
+            let definition = mchprs_blocks::generated::BLOCKS
+                .iter()
+                .find(|block| block.0 == name)
+                .unwrap();
+            let top = (definition.2..=definition.3)
+                .map(Block::from_id)
+                .find(|block| block.property("type") == Some("top"))
+                .unwrap();
+            let below = clicked.offset(BlockFace::Bottom);
+            world.set_block(clicked, top);
+            world.set_block(below, Block::Air {});
+            assert_eq!(
+                placement_position(&item, &world, clicked, BlockFace::Top),
+                below
+            );
+            world.set_block(below, Block::Stone {});
+            assert_eq!(
+                placement_position(&item, &world, clicked, BlockFace::Top),
+                clicked.offset(BlockFace::Top)
+            );
+            let floor = BlockPos::new(4, 0, 4);
+            world.set_block(floor, top);
+            assert_eq!(
+                placement_position(&item, &world, floor, BlockFace::Top),
+                floor.offset(BlockFace::Top)
+            );
+        }
+    }
 }

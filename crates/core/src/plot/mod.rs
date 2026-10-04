@@ -1074,6 +1074,8 @@ impl Plot {
         self.locked_players.remove(&player.entity_id);
         self.scoreboard.remove_player(&player);
         redstone_tools::selection::remove(&mut player);
+        player.redstone_tools.block_search = None;
+        player.redstone_tools.sign_search = None;
         player
     }
 

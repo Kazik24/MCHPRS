@@ -1,7 +1,7 @@
 use crate::blocks::Block;
 use crate::items::Item;
 use crate::BlockFace;
-use anyhow::{bail, Result};
+use anyhow::{bail, Context, Result};
 use mchprs_utils::{map, nbt_unwrap_val};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -39,6 +39,45 @@ impl Default for SignBlockEntity {
             front_glow: false,
             back_glow: false,
         }
+    }
+}
+
+/// Unitless comparator output, validated before constructing a filled item.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct SignalStrength(u8);
+
+impl SignalStrength {
+    pub const MIN: u8 = 0;
+    pub const MAX: u8 = 15;
+
+    pub fn new(value: u8) -> Result<Self> {
+        if value > Self::MAX {
+            bail!("Power must be between 0 and 15");
+        }
+        Ok(Self(value))
+    }
+
+    pub fn value(self) -> u8 {
+        self.0
+    }
+}
+
+impl FromStr for SignalStrength {
+    type Err = anyhow::Error;
+
+    fn from_str(token: &str) -> Result<Self> {
+        let value = match token {
+            "a" => 10,
+            "b" => 11,
+            "c" => 12,
+            "d" => 13,
+            "e" => 14,
+            "f" => 15,
+            _ => token
+                .parse::<u8>()
+                .context("Power must be 0..15 or lowercase a..f")?,
+        };
+        Self::new(value)
     }
 }
 
@@ -83,7 +122,7 @@ impl ContainerType {
             Block::Barrel { .. } => Some(Self::Barrel),
             Block::Hopper { .. } => Some(Self::Hopper),
             Block::Furnace { .. } => Some(Self::Furnace),
-            block if block.get_name() == "chest" => Some(Self::Chest),
+            Block::Chest { .. } => Some(Self::Chest),
             _ => None,
         }
     }

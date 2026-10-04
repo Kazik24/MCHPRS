@@ -1,34 +1,10 @@
 use super::ToolNotice;
 use crate::player::{Gamemode, Player};
 use anyhow::{bail, Context, Result};
-use mchprs_blocks::block_entities::ContainerType;
+use mchprs_blocks::block_entities::{ContainerType, SignalStrength};
 use mchprs_blocks::blocks::Block;
 use mchprs_blocks::items::{Item, ItemStack};
 use mchprs_network::packets::components;
-use std::str::FromStr;
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-struct SignalStrength(u8);
-
-impl FromStr for SignalStrength {
-    type Err = anyhow::Error;
-
-    fn from_str(token: &str) -> Result<Self> {
-        let value = match token {
-            "a" => 10,
-            "b" => 11,
-            "c" => 12,
-            "d" => 13,
-            "e" => 14,
-            "f" => 15,
-            _ => token.parse::<u8>().context("Power must be 0..15 or lowercase a..f")?,
-        };
-        if value > 15 {
-            bail!("Power must be between 0 and 15");
-        }
-        Ok(Self(value))
-    }
-}
 
 pub(super) fn give_container(player: &mut Player, args: &[&str]) -> Result<()> {
     require_creative(player)?;
@@ -37,14 +13,19 @@ pub(super) fn give_container(player: &mut Player, args: &[&str]) -> Result<()> {
     };
     let kind = parse_container_kind(kind)?;
     let power = power.parse::<SignalStrength>()?;
-    let mut item = ItemStack::container_with_ss(kind, power.0);
+    let mut item = ItemStack::container_with_ss(kind, power);
     let mut blob = item.nbt.take().unwrap_or_default();
     components::set_tool_display(
         item.item_type.get_id() as i32,
         &mut blob,
-        &format!("{} · power {}", kind.to_string().trim_start_matches("minecraft:"), power.0),
-        &format!("Comparator signal: {} / 15", power.0),
-    ).map_err(|error| anyhow::anyhow!("Cannot prepare container components: {error:?}"))?;
+        &format!(
+            "{} · power {}",
+            kind.to_string().trim_start_matches("minecraft:"),
+            power.value()
+        ),
+        &format!("Comparator signal: {} / 15", power.value()),
+    )
+    .map_err(|error| anyhow::anyhow!("Cannot prepare container components: {error:?}"))?;
     item.nbt = Some(blob);
     let slot = insertion_slot(player)?;
     player.set_inventory_slot(slot, Some(item));
@@ -78,14 +59,19 @@ pub(super) fn give_slab(player: &mut Player, args: &[&str]) -> Result<()> {
     if !is_slab(item_type) {
         bail!("This item is not a slab");
     }
-    let mut item = top_slab(ItemStack { item_type, count: 1, nbt: None })?;
+    let mut item = top_slab(ItemStack {
+        item_type,
+        count: 1,
+        nbt: None,
+    })?;
     let blob = item.nbt.as_mut().expect("top slab has components");
     components::set_tool_display(
         item_type.get_id() as i32,
         blob,
         &format!("Top {name}"),
         "Places top slabs; click an existing top slab to place beneath it.",
-    ).map_err(|error| anyhow::anyhow!("Cannot prepare slab display: {error:?}"))?;
+    )
+    .map_err(|error| anyhow::anyhow!("Cannot prepare slab display: {error:?}"))?;
     let slot = insertion_slot(player)?;
     player.set_inventory_slot(slot, Some(item));
     ToolNotice::ItemGiven.send(player);
@@ -101,8 +87,10 @@ fn top_slab(mut item: ItemStack) -> Result<ItemStack> {
 }
 
 fn is_slab(item: Item) -> bool {
-    Block::from_name(item.get_name()).is_some_and(|block| block.property("type") == Some("bottom")
-        && block.get_name().ends_with("_slab"))
+    Block::from_name(item.get_name()).is_some_and(|block| {
+        matches!(block.property("type"), Some("bottom" | "top" | "double"))
+            && block.get_name().ends_with("_slab")
+    })
 }
 
 fn parse_container_kind(token: &str) -> Result<ContainerType> {
@@ -113,8 +101,13 @@ fn parse_container_kind(token: &str) -> Result<ContainerType> {
         ("furnace", ContainerType::Furnace),
     ];
     let token = token.strip_prefix("minecraft:").unwrap_or(token);
-    let mut matches = supported.iter().filter(|(name, _)| !token.is_empty() && name.starts_with(token));
-    let kind = matches.next().context("Unknown container type; use chest, barrel, hopper or furnace")?.1;
+    let mut matches = supported
+        .iter()
+        .filter(|(name, _)| !token.is_empty() && name.starts_with(token));
+    let kind = matches
+        .next()
+        .context("Unknown container type; use chest, barrel, hopper or furnace")?
+        .1;
     if matches.next().is_some() {
         bail!("Ambiguous container type");
     }
@@ -145,10 +138,13 @@ mod tests {
     #[test]
     fn container_input_is_explicit_and_validated() {
         for value in 0..=15 {
-            assert_eq!(value.to_string().parse::<SignalStrength>().unwrap().0, value);
+            assert_eq!(
+                value.to_string().parse::<SignalStrength>().unwrap().value(),
+                value
+            );
         }
         for (token, value) in [("a", 10), ("f", 15)] {
-            assert_eq!(token.parse::<SignalStrength>().unwrap().0, value);
+            assert_eq!(token.parse::<SignalStrength>().unwrap().value(), value);
         }
         for token in ["16", "256", "-1", "A", "unknown", ""] {
             assert!(token.parse::<SignalStrength>().is_err());
@@ -161,13 +157,20 @@ mod tests {
 
     #[test]
     fn top_slab_conversion_retains_count() {
-        for name in ["smooth_stone_slab", "oak_slab", "copper_slab"] {
+        for name in ["smooth_stone_slab", "oak_slab", "cut_copper_slab"] {
             let item_type = Item::from_name(name).unwrap();
             assert!(is_slab(item_type));
-            let item = top_slab(ItemStack { item_type, count: 32, nbt: None }).unwrap();
+            let item = top_slab(ItemStack {
+                item_type,
+                count: 32,
+                nbt: None,
+            })
+            .unwrap();
             assert_eq!(item.count, 32);
             let blob = item.nbt.unwrap();
-            assert!(matches!(blob.get("BlockStateTag"), Some(nbt::Value::Compound(state)) if state.get("type") == Some(&nbt::Value::String("top".into()))));
+            assert!(
+                matches!(blob.get("BlockStateTag"), Some(nbt::Value::Compound(state)) if state.get("type") == Some(&nbt::Value::String("top".into())))
+            );
         }
         assert!(!is_slab(Item::Stone {}));
     }
