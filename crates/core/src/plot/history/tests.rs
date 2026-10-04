@@ -345,6 +345,40 @@ fn limited_world(limit: usize) -> PlotWorld {
 }
 
 #[test]
+fn borrowed_chunk_encoding_matches_palettes_and_direct_storage() {
+    for states in [16, 300, 1000] {
+        let mut chunk = Chunk::empty(0, 0);
+        for index in 0..4096 {
+            chunk.set_block(index % 16, index / 256, index / 16 % 16, index % states + 1);
+        }
+        chunk.prepare_history();
+        let borrowed = bincode::serialize(&chunk.history_view()).unwrap();
+        let owned = bincode::serialize(&chunk.save()).unwrap();
+        assert_eq!(borrowed, owned, "palette with {states} states");
+    }
+}
+
+#[test]
+fn shared_dictionary_compresses_repeated_random_data() {
+    use rand::{RngCore, SeedableRng};
+    let work = Budget::new(1024 * 1024);
+    let mut raw = Bytes::zeroed(&work, 60000).unwrap();
+    rand::rngs::StdRng::seed_from_u64(22).fill_bytes(&mut raw.data);
+    let dictionary = raw.data.clone();
+    let without = Encoded::encode(Bytes::copy(&work, &raw.data).unwrap(), &[], &work).unwrap();
+    let shared = Encoded::encode(raw, &dictionary, &work).unwrap();
+    assert!(!without.compressed);
+    assert!(shared.compressed);
+    assert!(shared.bytes.data.len() < without.bytes.data.len() / 10);
+    let mut decoded = vec![0; shared.raw_len];
+    let count =
+        lz4_flex::block::decompress_into_with_dict(&shared.bytes.data, &mut decoded, &dictionary)
+            .unwrap();
+    assert_eq!(count, dictionary.len());
+    assert_eq!(decoded, dictionary);
+}
+
+#[test]
 fn compressed_admission_uses_stored_size_and_accounts_for_dictionary() {
     let mut world = limited_world(256 * 1024);
     world.set_block_entity(
