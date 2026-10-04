@@ -114,6 +114,10 @@ impl BlockTransform for BlockFacing {
 }
 
 impl Block {
+    fn definition(self) -> Option<&'static (&'static str, u32, u32, u32, u32)> {
+        let index = *crate::generated::STATE_TO_BLOCK_INDEX.get(self.get_id() as usize)?;
+        crate::generated::BLOCKS.get(index as usize)
+    }
     pub fn property(self, name: &str) -> Option<&'static str> {
         crate::generated::STATE_PROPERTIES
             .get(self.get_id() as usize)?
@@ -186,12 +190,7 @@ impl Block {
         }
     }
     pub fn registry_id(self) -> u32 {
-        let state = self.get_id();
-        crate::generated::BLOCKS
-            .iter()
-            .find(|b| state >= b.2 && state <= b.3)
-            .expect("invalid block state")
-            .1
+        self.definition().expect("invalid block state").1
     }
     pub fn has_block_entity(self) -> bool {
         match self {
@@ -250,6 +249,29 @@ fn standing_sign_transform_preserves_species_and_waterlogging() {
         assert_eq!(block.get_name(), name);
         assert_eq!(block.property("waterlogged"), waterlogged);
     }
+}
+
+#[test]
+fn generated_registry_ranges_resolve_every_target_state() {
+    let mut next_state = 0;
+    for &(name, registry, first, last, _) in crate::generated::BLOCKS {
+        assert_eq!(
+            first, next_state,
+            "registry ranges must remain ordered and contiguous"
+        );
+        for state in first..=last {
+            let block = Block::from_id(state);
+            assert_eq!(block.get_id(), state);
+            assert_eq!(block.get_name(), name);
+            assert_eq!(block.registry_id(), registry);
+        }
+        next_state = last + 1;
+    }
+    assert_eq!(
+        next_state as usize,
+        crate::generated::STATE_PROPERTIES.len()
+    );
+    assert_eq!(Block::Unknown { id: next_state }.get_name(), "air");
 }
 
 #[test]
@@ -429,13 +451,13 @@ macro_rules! blocks {
             }
 
             pub fn get_name(self) -> &'static str {
-                let id=self.get_id();
-                crate::generated::BLOCKS.iter().find(|b|id>=b.2 && id<=b.3).map_or("air",|b|b.0)
+                self.definition().map_or("air", |block| block.0)
             }
 
             pub fn set_properties(&mut self, props: HashMap<&str, &str>) {
+                let definition = self.definition();
                 if let Self::Unknown{id}=self {
-                    let block=crate::generated::BLOCKS.iter().find(|b| *id>=b.2 && *id<=b.3);
+                    let block=definition;
                     if let Some(block)=block {
                         let mut wanted:HashMap<&str,&str>=crate::generated::STATE_PROPERTIES[*id as usize].iter().copied().collect();
                         wanted.extend(props);

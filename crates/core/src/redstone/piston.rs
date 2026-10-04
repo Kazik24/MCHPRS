@@ -176,12 +176,8 @@ fn extend(world: &mut impl World, piston: RedstonePiston, pos: BlockPos) -> bool
             entity.clone(),
         );
     }
-    for &(p, _, _) in &payloads {
-        if !payloads.iter().any(|&(s, _, _)| s.offset(facing) == p) {
-            world.delete_block_entity(p);
-            world.set_block(p, Block::Air);
-        }
-    }
+    // Every source is overwritten by the preceding payload's destination;
+    // the first source is replaced by the moving head below.
     moving(
         world,
         pos.offset(facing),

@@ -243,7 +243,7 @@ pub struct ChunkSection {
     buffer: PalettedBitBuffer,
     block_count: u32,
     multi_block: CMultiBlockChange,
-    changed_blocks: [i16; 16 * 16 * 16],
+    changed_blocks: Option<Box<[i16; 16 * 16 * 16]>>,
     changed: bool,
 }
 
@@ -254,11 +254,10 @@ impl ChunkSection {
 
     fn get_block(&self, x: u32, y: u32, z: u32) -> u32 {
         let idx = ChunkSection::get_index(x, y, z);
-        if self.changed_blocks[idx] >= 0 {
-            self.changed_blocks[idx] as u32
-        } else {
-            self.buffer.get_entry(idx)
-        }
+        self.changed_blocks
+            .as_ref()
+            .and_then(|blocks| (blocks[idx] >= 0).then_some(blocks[idx] as u32))
+            .unwrap_or_else(|| self.buffer.get_entry(idx))
     }
 
     /// Sets a block in the chunk sections. Returns true if a block was changed.
@@ -273,7 +272,8 @@ impl ChunkSection {
         let changed = old_block != block;
         if changed {
             self.changed = true;
-            self.changed_blocks[idx] = block as i16;
+            self.changed_blocks
+                .get_or_insert_with(|| Box::new([-1; 4096]))[idx] = block as i16;
         }
         changed
     }
@@ -298,7 +298,7 @@ impl ChunkSection {
                 chunk_z: 0,
                 records: Vec::new(),
             },
-            changed_blocks: [-1; 16 * 16 * 16],
+            changed_blocks: None,
             changed: false,
         }
     }
@@ -357,7 +357,7 @@ impl ChunkSection {
 
     fn flush(&mut self) {
         if self.changed {
-            for (i, block) in self.changed_blocks.iter().enumerate() {
+            for (i, block) in self.changed_blocks.as_ref().unwrap().iter().enumerate() {
                 if *block >= 0 {
                     self.buffer.set_entry(i, *block as u32);
                 }
@@ -370,7 +370,7 @@ impl ChunkSection {
         self.multi_block.chunk_y = chunk_y;
         self.multi_block.chunk_z = chunk_z;
         if self.changed {
-            for (i, block) in self.changed_blocks.iter().enumerate() {
+            for (i, block) in self.changed_blocks.take().unwrap().iter().enumerate() {
                 if *block >= 0 {
                     self.buffer.set_entry(i, *block as u32);
                     self.multi_block.records.push(C3BMultiBlockChangeRecord {
@@ -382,7 +382,6 @@ impl ChunkSection {
                 }
             }
             self.changed = false;
-            self.changed_blocks = [-1; 16 * 16 * 16];
         }
         &self.multi_block
     }
@@ -403,7 +402,7 @@ impl Default for ChunkSection {
                 chunk_z: 0,
                 records: Vec::new(),
             },
-            changed_blocks: [-1; 16 * 16 * 16],
+            changed_blocks: None,
             changed: false,
         }
     }
@@ -430,6 +429,7 @@ impl Chunk {
         self.sections.iter().any(|s| {
             s.changed_blocks
                 .iter()
+                .flat_map(|blocks| blocks.iter())
                 .any(|id| *id >= 0 && piston(*id as u32))
                 || if s.buffer.use_palette {
                     s.buffer.palette.iter().any(|id| piston(*id))
@@ -628,5 +628,31 @@ mod heightmap_tests {
         assert_eq!(chunk.get_top_most_block(1, 2), 21);
         chunk.set_block(1, 255, 2, 1);
         assert_eq!(chunk.get_top_most_block(1, 2), 256);
+    }
+
+    #[test]
+    fn lazy_change_tracking_survives_save_and_packet_flush() {
+        let mut section = ChunkSection::default();
+        assert!(section.changed_blocks.is_none());
+        assert!(!section.set_block(1, 2, 3, 0));
+        assert!(section.changed_blocks.is_none());
+        assert!(section.set_block(1, 2, 3, 1));
+        let saved = section.save();
+        assert_eq!(section.get_block(1, 2, 3), 1);
+        assert!(
+            section.changed_blocks.is_some(),
+            "saving must retain pending client changes"
+        );
+        let packet = section.multi_block(0, 0, 0);
+        assert_eq!(packet.records.len(), 1);
+        assert_eq!(packet.records[0].block_id, 1);
+        assert!(section.changed_blocks.is_none());
+        assert_eq!(section.get_block(1, 2, 3), 1);
+        let loaded = ChunkSection::load(saved);
+        assert!(loaded.changed_blocks.is_none());
+        assert_eq!(loaded.get_block(1, 2, 3), 1);
+        assert!(section.set_block(1, 2, 3, 0));
+        assert_eq!(section.get_block(1, 2, 3), 0);
+        assert_eq!(section.block_count(), 0);
     }
 }
