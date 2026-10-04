@@ -3,6 +3,7 @@ mod command_block_tests;
 pub mod commands;
 mod data;
 pub mod database;
+mod help;
 mod monitor;
 mod packet_handlers;
 mod picking;

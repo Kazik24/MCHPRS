@@ -79,10 +79,17 @@ server_context = "global"
 ## Usage
 
 ### General Commands
+Use `/help` for a quick start and topic list. `/help rtps`, `/help we`,
+`/help plots`, `/help schematics`, `/help pistons`, `/help chat` and
+`/help redpiler` explain the usual workflows. `/help rewind` describes the
+planned `/rhistory` and `/rback` commands, which are not implemented yet.
+`//help <command>` still shows detailed WorldEdit arguments and flags.
+
 | Command | Alias | Description |
 | --- | --- |--- |
-| `/rtps [rtps\|unlimited]` | None | Set the **redstone** ticks per second in the plot to `[rtps]`. (There are two game ticks in a redstone tick) |
-| `/radvance [ticks]` | `/radv` | Advances the plot by `[ticks]` redstone ticks. |
+| `/help [topic]` | None | Show the quick-start guide or a topic tutorial. |
+| `/rtps [rtps\|unlimited]` | None | Set game ticks per second in the plot. `0` pauses; `20` is normal game speed. There are two game ticks in a redstone tick. |
+| `/radvance [ticks]` | `/radv` | Advances the plot by `[ticks]` game ticks. |
 | `/teleport [player]` | `/tp` | Teleports you to `[player]`. |
 | `/teleport [x] [y] [z]` | `/tp` | Teleports you to `[x] [y] [z]`. Supports relative coordinates. Floats can be expressed as described [here](https://doc.rust-lang.org/std/primitive.f64.html#grammar). |
 | `/speed [speed]` | None | Sets your flyspeed. |

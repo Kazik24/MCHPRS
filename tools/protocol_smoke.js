@@ -21,6 +21,7 @@ function connect(name) {
     try {
       client.seen[meta.name] = (client.seen[meta.name] || 0) + 1;
       if (meta.name === 'tags') client.tags=p.tags;
+      if (meta.name === 'declare_commands') client.commandTree=p;
       if (meta.name === 'system_chat') client.messages.push(JSON.stringify(nbt.simplify(p.content)));
       if (meta.name === 'position') client.write('teleport_confirm', {teleportId:p.teleportId});
       if (meta.name === 'map_chunk') {
@@ -108,6 +109,16 @@ function command(client,command) { client.write('chat_command',{command}); }
       catch(error) { throw Error(error.message+': '+JSON.stringify(a.messages.slice(start))); }
     }
     await we('version','MCHPRS 0.4.1 (Minecraft 1.21.5, protocol 770)');
+    // Help is available before claiming a plot and does not change the simulation.
+    const help=a.commandTree.nodes.find(node=>node.extraNodeData?.name==='help');
+    assert(help,'General help appears in the command tree');
+    await we('help','MCHPRS quick start');
+    for(const [topic,text] of [['plots','/p auto'],['rtps','/radvance 1'],['we','//copy'],['schematics','rf/my_circuit.schem'],['pistons','/piston_anim off'],['rewind','not available yet'],['chat','/tellraw @a'],['redpiler','/rp compile'],['TICK_REWIND','/rhistory on'],['rback','/rback 10']]) {
+      await we('help '+topic,text);
+    }
+    await we('help missing','Unknown help topic');
+    await we('help we extra','Usage: /help [topic]');
+    await we('/help paste','Help for /paste');
     const secondPosition=b.seen.position;
     command(b,'tp 300 30 100');
     await until(()=>b.seen.position>secondPosition,'second client changes plot');
