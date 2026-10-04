@@ -2,6 +2,7 @@
 
 mod execute;
 mod schematic;
+mod schematic_paths;
 
 use super::{Plot, PlotWorld};
 use crate::player::{PacketSender, Player, PlayerPos};

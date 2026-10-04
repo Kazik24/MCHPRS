@@ -8,4 +8,4 @@ services:
       - 25562:25565
     volumes:
       - /srv/mchprs/data:/data
-      - /home/minecraft/redstonefun_server/plugins/WorldEdit/schematics:/data/schems/rf
+      - /home/minecraft/redstonefun_server/plugins/WorldEdit/schematics:/data/schems/rf:ro

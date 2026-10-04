@@ -14,7 +14,7 @@ use rustc_hash::FxHashMap;
 use serde::Serialize;
 use std::fs::{self, File};
 use std::io::Read;
-use std::path::PathBuf;
+use std::path::Path;
 
 type Compound = std::collections::HashMap<String, nbt::Value>;
 const MAX_BLOCKS: u32 = 16_777_216;
@@ -384,8 +384,7 @@ struct Schematic {
 }
 
 pub fn save_schematic(file_name: &str, clipboard: &WorldEditClipboard) -> Result<()> {
-    let mut path = PathBuf::from("./schems");
-    path.push(file_name);
+    let path = super::schematic_paths::save_path(Path::new("./schems"), file_name)?;
     fs::create_dir_all(path.parent().unwrap())?;
 
     let file = File::create(path)?;

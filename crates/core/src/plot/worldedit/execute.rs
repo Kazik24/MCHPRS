@@ -10,9 +10,9 @@ use mchprs_blocks::items::{Item, ItemStack};
 use mchprs_blocks::{BlockFace, BlockFacing, BlockPos};
 use mchprs_network::packets::clientbound::*;
 use mchprs_network::packets::SlotData;
-use once_cell::sync::Lazy;
 use schematic::{load_schematic, save_schematic};
 use std::fs::File;
+use std::path::PathBuf;
 use std::time::Instant;
 use tracing::error;
 
@@ -259,32 +259,24 @@ pub(super) fn execute_paste(ctx: CommandExecuteContext<'_>) {
     }
 }
 
-static SCHEMATI_VALIDATE_REGEX: Lazy<Regex> =
-    Lazy::new(|| Regex::new(r"[a-zA-Z0-9_.]+\.schem(atic)?").unwrap());
-
 pub(super) fn execute_load(ctx: CommandExecuteContext<'_>) {
     let start_time = Instant::now();
 
-    let mut file_name = ctx.arguments[0].unwrap_string().clone();
-    if !SCHEMATI_VALIDATE_REGEX.is_match(&file_name) {
-        ctx.player.send_error_message("Filename is invalid");
-        return;
-    }
-
+    let file_name = ctx.arguments[0].unwrap_string();
+    let mut library = PathBuf::from("./schems");
     if CONFIG.schemati {
-        let prefix = HyphenatedUUID(ctx.player.uuid).to_string() + "/";
-        file_name.insert_str(0, &prefix);
+        library.push(HyphenatedUUID(ctx.player.uuid).to_string());
     }
 
-    let clipboard = File::open("./schems/".to_owned() + &file_name)
-        .map_err(anyhow::Error::from)
+    let clipboard = super::schematic_paths::load_path(&library, file_name)
+        .and_then(|path| File::open(path).map_err(anyhow::Error::from))
         .and_then(load_schematic)
         .map_err(|e| e.context(format!("loading schematic ./schems/{file_name}")));
     match clipboard {
         Ok(cb) => {
             ctx.player.worldedit_clipboard = Some(cb);
             ctx.player.send_worldedit_message(&format!(
-                "The schematic was loaded to your clipboard. Do //paste to birth it into the world. ({:.00?})",
+                "The schematic was loaded to your clipboard. Use //paste to place it. ({:.00?})",
                 start_time.elapsed()
             ));
         }
@@ -298,9 +290,8 @@ pub(super) fn execute_load(ctx: CommandExecuteContext<'_>) {
             }
             error!("There was an error loading a schematic:");
             error!("{:#}", e);
-            ctx.player.send_error_message(
-                "There was an error loading the schematic. Check console for more details.",
-            );
+            ctx.player
+                .send_error_message(&format!("Could not load schematic: {}", e.root_cause()));
         }
     }
 }
@@ -309,11 +300,6 @@ pub(super) fn execute_save(ctx: CommandExecuteContext<'_>) {
     let start_time = Instant::now();
 
     let mut file_name = ctx.arguments[0].unwrap_string().clone();
-    if !SCHEMATI_VALIDATE_REGEX.is_match(&file_name) {
-        ctx.player.send_error_message("Filename is invalid");
-        return;
-    }
-
     if CONFIG.schemati {
         let prefix = HyphenatedUUID(ctx.player.uuid).to_string() + "/";
         file_name.insert_str(0, &prefix);
@@ -331,7 +317,7 @@ pub(super) fn execute_save(ctx: CommandExecuteContext<'_>) {
             error!("There was an error saving a schematic: ");
             error!("{:?}", err);
             ctx.player
-                .send_error_message("There was an error saving the schematic.");
+                .send_error_message(&format!("Could not save schematic: {}", err.root_cause()));
         }
     }
 }
