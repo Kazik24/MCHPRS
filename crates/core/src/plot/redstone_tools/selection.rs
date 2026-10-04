@@ -1,4 +1,5 @@
 use super::ToolNotice;
+use crate::messages;
 use crate::player::{PacketSender, Player};
 use anyhow::{bail, Result};
 use mchprs_blocks::BlockPos;
@@ -11,7 +12,7 @@ const OBJECTIVE: &str = "rf_selection";
 
 pub(super) fn toggle(player: &mut Player, args: &[&str]) -> Result<()> {
     if !args.is_empty() {
-        bail!("Usage: /cursel");
+        bail!(messages::USAGE_CURSEL);
     }
     player.redstone_tools.selection_visible = !player.redstone_tools.selection_visible;
     if player.redstone_tools.selection_visible {
@@ -48,8 +49,9 @@ pub(in crate::plot) fn update(player: &mut Player) {
             &CScoreboardObjective {
                 objective_name: OBJECTIVE.into(),
                 mode: 0,
-                objective_value: json!({"text": "Selection, nya~", "color": "light_purple"})
-                    .to_string(),
+                objective_value:
+                    json!({"text": messages::SELECTION_SIDEBAR_TITLE, "color": "light_purple"})
+                        .to_string(),
                 ty: 0,
             }
             .encode(),
@@ -96,7 +98,7 @@ fn send_line(player: &Player, text: &str, action: u8, value: u32) {
 
 fn selection_lines(first: Option<BlockPos>, second: Option<BlockPos>) -> Vec<String> {
     let (Some(first), Some(second)) = (first, second) else {
-        return vec!["§7Select both positions".into()];
+        return vec![messages::SELECTION_SIDEBAR_INCOMPLETE.into()];
     };
     let width = (i64::from(first.x) - i64::from(second.x)).unsigned_abs() + 1;
     let height = (i64::from(first.y) - i64::from(second.y)).unsigned_abs() + 1;
@@ -127,7 +129,10 @@ mod tests {
         );
         assert!(selection_lines(first, second)[1].contains("27"));
         assert_eq!(selection_lines(first, first)[1], "§aVolume: 1");
-        assert_eq!(selection_lines(first, None), ["§7Select both positions"]);
+        assert_eq!(
+            selection_lines(first, None),
+            [messages::SELECTION_SIDEBAR_INCOMPLETE]
+        );
         selection_lines(
             Some(BlockPos::new(i32::MIN, i32::MIN, i32::MIN)),
             Some(BlockPos::new(i32::MAX, i32::MAX, i32::MAX)),

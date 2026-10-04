@@ -1,6 +1,7 @@
 use super::Plot;
 use crate::config::CONFIG;
 use crate::interaction::{self, UseOnBlockContext};
+use crate::messages;
 use crate::player::{PacketSender, PlayerPos, SkinParts};
 use crate::server::Message;
 use crate::utils::HyphenatedUUID;
@@ -19,7 +20,7 @@ use std::path::PathBuf;
 use std::time::Instant;
 use tracing::{error, warn};
 
-pub(super) const ERROR_IO_ONLY: &str = "This plot cannot be interacted with while redpiler is active with `--io-only`. To stop redpiler, run `/redpiler reset`.";
+pub(super) const ERROR_IO_ONLY: &str = messages::PLOT_CANNOT_INTERACTED_WHILE_REDPILER_ACTIVE;
 
 impl Plot {
     pub(super) fn handle_packets_for_player(&mut self, player: usize) {
@@ -132,7 +133,7 @@ impl ServerBoundPacketHandler for Plot {
         self.world
             .set_block_entity(pos, BlockEntity::CommandBlock(Box::new(entity)));
         crate::redstone::command_block::update(&mut self.world, pos);
-        self.players[player].send_system_message("Command block updated.");
+        self.players[player].send_system_message(messages::COMMAND_BLOCK_UPDATED);
     }
 
     fn handle_pick_item_from_block(&mut self, packet: SPickItemFromBlock, player: usize) {
@@ -173,11 +174,9 @@ impl ServerBoundPacketHandler for Plot {
     }
 
     fn handle_tab_complete(&mut self, packet: STabComplete, player_idx: usize) {
-        if let Some(completion) = self.complete_redstone_tools(
-            player_idx,
-            packet.transaction_id,
-            &packet.text,
-        ) {
+        if let Some(completion) =
+            self.complete_redstone_tools(player_idx, packet.transaction_id, &packet.text)
+        {
             self.players[player_idx].send_packet(&completion.encode());
             return;
         }
@@ -341,7 +340,7 @@ impl ServerBoundPacketHandler for Plot {
         };
 
         if !Plot::in_plot_bounds(self.world.x, self.world.z, block_pos.x, block_pos.z) {
-            self.players[player].send_system_message("Can't interact with blocks outside of plot");
+            self.players[player].send_system_message(messages::CAN_T_INTERACT_BLOCKS_OUTSIDE_PLOT);
             cancel(self);
             return;
         }
@@ -620,7 +619,7 @@ impl ServerBoundPacketHandler for Plot {
             let block = self.world.get_block(block_pos);
 
             if !Plot::in_plot_bounds(self.world.x, self.world.z, block_pos.x, block_pos.z) {
-                self.players[player].send_system_message("Can't break blocks outside of plot");
+                self.players[player].send_system_message(messages::CAN_T_BREAK_BLOCKS_OUTSIDE_PLOT);
                 return;
             }
 

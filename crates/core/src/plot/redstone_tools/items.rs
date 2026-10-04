@@ -1,4 +1,5 @@
 use super::ToolNotice;
+use crate::messages;
 use crate::player::{Gamemode, Player};
 use anyhow::{bail, Context, Result};
 use mchprs_blocks::block_entities::{ContainerType, SignalStrength};
@@ -8,10 +9,12 @@ use mchprs_network::packets::components;
 pub(super) fn give_container(player: &mut Player, args: &[&str]) -> Result<()> {
     require_creative(player)?;
     let [kind, power] = args else {
-        bail!("Usage: /container <chest|barrel|hopper|furnace> <0..15|a..f>");
+        bail!(messages::USAGE_CONTAINER_CHEST_BARREL_HOPPER_FURNACE);
     };
     let kind = parse_container_kind(kind)?;
-    let power = power.parse::<SignalStrength>()?;
+    let power = power
+        .parse::<SignalStrength>()
+        .map_err(|_| anyhow::anyhow!(messages::CONTAINER_INVALID_POWER))?;
     let mut item = ItemStack::container_with_ss(kind, power);
     let mut blob = item.nbt.take().unwrap_or_default();
     components::set_tool_display(
@@ -45,17 +48,17 @@ fn parse_container_kind(token: &str) -> Result<ContainerType> {
         .filter(|(name, _)| !token.is_empty() && name.starts_with(token));
     let kind = matches
         .next()
-        .context("Unknown container type; use chest, barrel, hopper or furnace")?
+        .context(messages::UNKNOWN_CONTAINER_TYPE_USE_CHEST_BARREL)?
         .1;
     if matches.next().is_some() {
-        bail!("Ambiguous container type");
+        bail!(messages::AMBIGUOUS_CONTAINER_TYPE);
     }
     Ok(kind)
 }
 
 fn require_creative(player: &Player) -> Result<()> {
     if !matches!(player.gamemode, Gamemode::Creative) {
-        bail!("Switch to creative mode first");
+        bail!(messages::SWITCH_CREATIVE_MODE_FIRST);
     }
     Ok(())
 }
@@ -67,7 +70,7 @@ fn insertion_slot(player: &Player) -> Result<u32> {
         .chain(36..45)
         .chain(9..36)
         .find(|&slot| player.inventory[slot as usize].is_none())
-        .context("Your inventory is full; free a slot first")
+        .context(messages::INVENTORY_FULL)
 }
 
 #[cfg(test)]

@@ -40,20 +40,20 @@ async function command(client, text, expected) {
 }
 (async () => {
   const ordinary = await connect('default');
-  await command(ordinary, 'p info', /not owned|Plot owner/);
-  await command(ordinary, 'stop', /do not have permission/);
-  await command(ordinary, 'whitelist add LPTest', /do not have permission/);
-  await command(ordinary, '/copy', /do not have permission/);
-  await command(ordinary, 'p auto', /Claimed plot/);
-  await command(ordinary, 'rhistory on 2', /enabled|Enabled/);
-  await command(ordinary, 'rhistory limit 512', /Requires plots.admin/);
+  await command(ordinary, 'p info', /No paws on this plot|pawprint on this plot/);
+  await command(ordinary, 'stop', /do not have permission|paws don't have permission/);
+  await command(ordinary, 'whitelist add LPTest', /do not have permission|paws don't have permission/);
+  await command(ordinary, '/copy', /do not have permission|paws don't have permission/);
+  await command(ordinary, 'p auto', /Plot .* is your den now/);
+  await command(ordinary, 'rhistory on 2', /Recording up to 2 game ticks/);
+  await command(ordinary, 'rhistory limit 512', /need plots.admin.rewind.memory permission/);
   await command(ordinary, 'rhistory on 1001', /1000/);
   const builder = await connect('builder');
-  await command(builder, 'p auto', /Claimed plot/);
-  await command(builder, '/pos1', /First position/);
-  await command(builder, '/pos2', /Second position/);
+  await command(builder, 'p auto', /Plot .* is your den now/);
+  await command(builder, '/pos1', /First paw/);
+  await command(builder, '/pos2', /Second paw/);
   await command(builder, '/copy', /copied/);
-  await command(builder, 'stop', /do not have permission/);
+  await command(builder, 'stop', /do not have permission|paws don't have permission/);
   const admin = await connect('admin');
   admin.write('chat_command', {command: 'stop', timestamp: BigInt(Date.now()), salt: 0n,
     argumentSignatures: [], messageCount: 0, acknowledged: Buffer.alloc(3)});

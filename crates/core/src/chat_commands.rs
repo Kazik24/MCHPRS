@@ -1,3 +1,4 @@
+use crate::messages;
 use serde_json::{json, Map, Value};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -26,14 +27,14 @@ pub struct ChatCommand {
 // Preserve supported component structure and inheritance; discard unsupported fields.
 fn component(value: &Value, depth: usize) -> Result<Value, String> {
     if depth > 64 {
-        return Err("Text component nesting is too deep".into());
+        return Err(messages::TEXT_COMPONENT_NESTING_TOO_DEEP.into());
     }
 
     match value {
         Value::String(text) => Ok(json!({"text": text})),
         Value::Array(values) => component_array(values, depth),
         Value::Object(object) => component_object(object, depth),
-        _ => Err("Expected a text string, object or array".into()),
+        _ => Err(messages::EXPECTED_TEXT_STRING_OBJECT_OR_ARRAY.into()),
     }
 }
 
@@ -131,7 +132,7 @@ fn valid_color(color: &str) -> bool {
 
 fn target<'a>(input: &'a str, player: Option<&str>) -> Result<(Recipient, &'a str), String> {
     let end = if input.starts_with('@') && input.as_bytes().get(2) == Some(&b'[') {
-        input.find(']').ok_or("Unclosed selector options")? + 1
+        input.find(']').ok_or(messages::UNCLOSED_SELECTOR_OPTIONS)? + 1
     } else {
         input.find(char::is_whitespace).unwrap_or(input.len())
     };
@@ -140,7 +141,7 @@ fn target<'a>(input: &'a str, player: Option<&str>) -> Result<(Recipient, &'a st
         "@a" => Recipient::All,
         "@s" => player.map_or(Recipient::Nobody, |name| Recipient::Name(name.into())),
         name if !name.starts_with('@') && !name.is_empty() => Recipient::Name(name.into()),
-        _ => return Err("Supported targets: @a, @s or a player name".into()),
+        _ => return Err(messages::SUPPORTED_TARGETS_S_OR_PLAYER_NAME.into()),
     };
     Ok((recipient, input[end..].trim_start()))
 }
@@ -164,14 +165,14 @@ pub(crate) fn parse(
         "tellraw" => {
             let (recipient, text) = target(args, player)?;
             let value = serde_json::from_str(text)
-                .map_err(|_| "Usage: /tellraw <target> <JSON text>".to_owned())?;
+                .map_err(|_| messages::USAGE_TELLRAW_TARGET_JSON_TEXT.to_owned())?;
             Ok(ChatCommand {
                 recipient,
                 message: component(&value, 0)?.to_string(),
             })
         }
-        "say" => Err("Usage: /say <message>".into()),
-        _ => Err("Only /tellraw and /say are supported in command blocks".into()),
+        "say" => Err(messages::USAGE_SAY_MESSAGE.into()),
+        _ => Err(messages::ONLY_TELLRAW_SAY_SUPPORTED_COMMAND_BLOCKS.into()),
     }
 }
 
@@ -249,8 +250,25 @@ mod tests {
         let input = format!("tellraw @a {text}");
         assert_eq!(
             parse(&input, "@", None).unwrap_err(),
-            "Text component nesting is too deep"
+            messages::TEXT_COMPONENT_NESTING_TOO_DEEP
         );
+    }
+
+    #[test]
+    fn authored_text_matching_notices_is_never_translated() {
+        for text in ["Command not found!", messages::COMMAND_NOT_FOUND] {
+            let say = parse(&format!("say {text}"), "Bob", Some("Bob")).unwrap();
+            let value: Value = serde_json::from_str(&say.message).unwrap();
+            assert_eq!(value["text"], format!("[Bob] {text}"));
+
+            let component = json!({"text": text, "bold": false, "extra": [{"text": text}]});
+            let tellraw = parse(&format!("tellraw @s {component}"), "Bob", Some("Bob")).unwrap();
+            assert_eq!(tellraw.recipient, Recipient::Name("Bob".into()));
+            assert_eq!(
+                serde_json::from_str::<Value>(&tellraw.message).unwrap(),
+                component
+            );
+        }
     }
 
     #[test]

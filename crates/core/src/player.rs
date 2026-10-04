@@ -1,5 +1,6 @@
 use crate::chat::{ChatComponent, ColorCode};
 use crate::config::CONFIG;
+use crate::messages;
 use crate::permissions::{self, PlayerPermissionsCache};
 use crate::plot::worldedit::{WorldEditClipboard, WorldEditUndo};
 use crate::plot::PLOT_SCALE;
@@ -318,7 +319,13 @@ impl Player {
                     "Refusing player login; original save preserved for {}: {}",
                     username, err
                 );
-                client.send_packet(&CDisconnect{reason:json!({"text":"Your player save could not be loaded. Ask the administrator to inspect the server log; your original file was preserved."}).to_string()}.encode());
+                client.send_packet(
+                    &CDisconnect {
+                        reason: json!({"text":messages::PLAYER_SAVE_COULD_NOT_LOADED_ASK})
+                            .to_string(),
+                    }
+                    .encode(),
+                );
                 client.close_connection();
                 None
             }
@@ -370,7 +377,7 @@ impl Player {
     /// Manages keep alives and packet reading. Return true if the view position should be updated.
     pub fn update(&mut self) -> bool {
         if self.last_keep_alive_received.elapsed().as_secs() > 30 {
-            self.kick(json!({ "text": "Timed out." }).to_string());
+            self.kick(json!({ "text": messages::CONNECTION_TIMEOUT }).to_string());
         }
         if self.last_keep_alive_sent.elapsed().as_secs() > 10 {
             self.send_keep_alive();
@@ -438,7 +445,7 @@ impl Player {
     pub fn teleport(&mut self, pos: PlayerPos) {
         // Prevent from teleporting to Infinity or NaN
         if !pos.x.is_finite() || !pos.y.is_finite() || !pos.z.is_finite() {
-            self.send_error_message("We just saved you from a game crash, don't try it again!");
+            self.send_error_message(messages::INVALID_TELEPORT_COORDINATES);
             return;
         }
 
@@ -476,7 +483,7 @@ impl Player {
     }
 
     pub fn send_no_permission_message(&self) {
-        self.send_error_message("You do not have permission to perform this action.");
+        self.send_error_message(messages::PERMISSION_DENIED);
     }
 
     /// Sends the player a light purple system message (`message` is not in json format)
@@ -485,19 +492,13 @@ impl Player {
     }
 
     pub fn worldedit_set_first_position(&mut self, pos: BlockPos) {
-        self.send_worldedit_message(&format!(
-            "First position set to ({}, {}, {})",
-            pos.x, pos.y, pos.z
-        ));
+        self.send_worldedit_message(&messages::selection_first(pos.x, pos.y, pos.z));
         self.first_position = Some(pos);
         self.worldedit_send_cui(&format!("p|0|{}|{}|{}|0", pos.x, pos.y, pos.z));
     }
 
     pub fn worldedit_set_second_position(&mut self, pos: BlockPos) {
-        self.send_worldedit_message(&format!(
-            "Second position set to ({}, {}, {})",
-            pos.x, pos.y, pos.z
-        ));
+        self.send_worldedit_message(&messages::selection_second(pos.x, pos.y, pos.z));
         self.second_position = Some(pos);
         self.worldedit_send_cui(&format!("p|1|{}|{}|{}|0", pos.x, pos.y, pos.z));
     }

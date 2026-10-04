@@ -1,4 +1,5 @@
 //! Independent LZ4 snapshots with a shared per-session dictionary and bounded storage.
+use crate::messages;
 mod budget;
 mod codec;
 #[cfg(test)]
@@ -24,9 +25,9 @@ const MEMORY_PERMISSION: &str = "plots.admin.rewind.memory";
 
 fn validate_tick_limit(ticks: usize, unlimited: bool) -> Result<(), String> {
     if ticks > NORMAL_HISTORY_LIMIT && !unlimited {
-        return Err(format!(
-            "More than {NORMAL_HISTORY_LIMIT} game ticks requires \
-             {UNLIMITED_HISTORY_PERMISSION} permission."
+        return Err(messages::history_tick_limit_permission(
+            NORMAL_HISTORY_LIMIT,
+            UNLIMITED_HISTORY_PERMISSION,
         ));
     }
 
@@ -95,31 +96,29 @@ impl TickHistory {
             false => "off",
         };
 
-        format!(
-            "Tick history: {}. Available: {}/{} game ticks.\n\
-             Uncompressed: {} | Compressed: {} | Server: {} / {}",
+        messages::history_status(
             state,
             self.len(),
             self.capacity(),
             format_memory(self.raw_bytes),
             format_memory(self.heap_bytes),
             format_memory(used),
-            format_memory(limit)
+            format_memory(limit),
         )
     }
 
     fn prepare(capacity: usize, budget: Arc<Budget>, work: Arc<Budget>) -> Result<Self, String> {
         if capacity == 0 || capacity > i32::MAX as usize {
-            return Err("History capacity must be between 1 and 2147483647 game ticks.".into());
+            return Err(messages::HISTORY_CAPACITY_MUST_BETWEEN_GAME_TICKS.into());
         }
         let bytes = capacity
             .checked_mul(size_of::<Option<Stored>>())
-            .ok_or("History size overflow.")?;
+            .ok_or(messages::HISTORY_SIZE_OVERFLOW)?;
         let reservation = budget.reserve(bytes)?;
         let mut slots = Vec::new();
         slots
             .try_reserve_exact(capacity)
-            .map_err(|_| "Unable to allocate the history buffer.".to_owned())?;
+            .map_err(|_| messages::UNABLE_ALLOCATE_HISTORY_BUFFER.to_owned())?;
         debug_assert_eq!(slots.capacity(), capacity);
         slots.resize_with(capacity, || None);
         Ok(Self {
@@ -173,16 +172,13 @@ impl TickHistory {
 
     pub fn validate_rewind(&self, ticks: usize) -> Result<(), String> {
         if !self.enabled() {
-            return Err("Tick history is disabled. Use /rhistory on [ticks].".into());
+            return Err(messages::TICK_HISTORY_DISABLED_USE_RHISTORY_ON.into());
         }
         if ticks == 0 {
-            return Err("Specify a positive number of game ticks to rewind.".into());
+            return Err(messages::SPECIFY_POSITIVE_NUMBER_GAME_TICKS_REWIND.into());
         }
         if ticks > self.len {
-            return Err(format!(
-                "Only {} game ticks are available to rewind.",
-                self.len
-            ));
+            return Err(messages::rewind_available(self.len));
         }
         Ok(())
     }
@@ -228,23 +224,21 @@ impl PlotWorld {
         let minimum = history
             .memory_bytes()
             .checked_add(stored)
-            .ok_or("History size overflow.")?;
+            .ok_or(messages::HISTORY_SIZE_OVERFLOW)?;
         if minimum > history.budget.stats().1 {
-            return Err("One compressed snapshot cannot fit the history limit.".into());
+            return Err(messages::ONE_COMPRESSED_SNAPSHOT_CANNOT_FIT_HISTORY.into());
         }
         let projected = stored
             .checked_mul(capacity)
             .and_then(|n| n.checked_add(history.memory_bytes()))
-            .ok_or_else(|| "History memory estimate exceeds the supported size.".to_owned())?;
+            .ok_or_else(|| messages::HISTORY_MEMORY_ESTIMATE_EXCEEDS_SUPPORTED_SIZE.to_owned())?;
         self.history = history;
         Ok(projected)
     }
 
     fn require_tick_boundary(&self) -> Result<(), String> {
         if self.piston_state.phase != AdvancePhase::BetweenTicks {
-            return Err(
-                "Finish the partial tick with /radvance 1 before using tick history.".into(),
-            );
+            return Err(messages::FINISH_PARTIAL_TICK_RADVANCE_BEFORE_USING.into());
         }
 
         Ok(())
@@ -262,7 +256,7 @@ impl PlotWorld {
             self.history.disable();
             tracing::warn!("Tick history stopped: {error}");
             let message = serde_json::json!({
-                "text": format!("Tick history stopped: {error}"),
+                "text": messages::history_stopped(error),
                 "color": "red",
             })
             .to_string();
@@ -314,7 +308,7 @@ impl Plot {
     ) -> Result<(), String> {
         let player = &self.players[player];
         if !player.has_permission(permission) {
-            return Err("You do not have permission to use this command.".into());
+            return Err(messages::COMMAND_PERMISSION_DENIED.into());
         }
         if mutating {
             let allowed = match self.owner {
@@ -324,7 +318,7 @@ impl Plot {
                 None => player.has_permission("plots.admin.interact.unowned"),
             };
             if !allowed {
-                return Err("You do not have permission to change this plot.".into());
+                return Err(messages::PLOT_PERMISSION_DENIED.into());
             }
         }
         Ok(())
@@ -344,42 +338,36 @@ impl Plot {
             [] | ["status"] => Ok(self.world.history.status()),
             ["limit"] => {
                 let (used, limit) = self.world.history.budget.stats();
-                Ok(format!(
-                    "Server history: {} / {}",
+                Ok(messages::server_history_usage(
                     format_memory(used),
-                    format_memory(limit)
+                    format_memory(limit),
                 ))
             }
             ["limit", value] => {
                 if !self.players[player].has_explicit_permission(MEMORY_PERMISSION) {
-                    return Err(format!("Requires {MEMORY_PERMISSION} permission."));
+                    return Err(messages::history_memory_permission(MEMORY_PERMISSION));
                 }
                 let mib = value
                     .parse::<i64>()
-                    .map_err(|_| "Specify a nonnegative memory limit in MiB.".to_owned())?;
+                    .map_err(|_| messages::SPECIFY_NONNEGATIVE_MEMORY_LIMIT_MIB.to_owned())?;
                 let bytes = budget::mib_to_bytes(mib)?;
                 self.world
                     .history
                     .budget
                     .set_limit(bytes, || crate::config::save_history_limit(mib))?;
-                Ok(format!("History limit saved: {}.", format_memory(bytes)))
+                Ok(messages::history_limit_saved(format_memory(bytes)))
             }
             ["off"] => {
                 let bytes = self.world.history.disable();
-                Ok(format!(
-                    "History disabled. Released {}.",
-                    format_memory(bytes)
-                ))
+                Ok(messages::history_disabled(format_memory(bytes)))
             }
             ["on"] | ["on", _] => {
                 if self.redpiler.is_active() {
-                    return Err(
-                        "Tick history is only available during interpreted execution.".into(),
-                    );
+                    return Err(messages::TICK_HISTORY_ONLY_AVAILABLE_DURING_INTERPRETED.into());
                 }
                 let capacity = match args.get(1) {
                     Some(value) => value.parse::<usize>().map_err(|_| {
-                        "Specify a positive history capacity in game ticks.".to_owned()
+                        messages::SPECIFY_POSITIVE_HISTORY_CAPACITY_GAME_TICKS.to_owned()
                     })?,
                     None => DEFAULT_HISTORY_TICKS,
                 };
@@ -387,12 +375,12 @@ impl Plot {
                     self.players[player].has_explicit_permission(UNLIMITED_HISTORY_PERMISSION);
                 let projected = self.world.enable_history(capacity, unlimited)?;
                 self.reset_timings();
-                Ok(format!(
-                    "History enabled: up to {capacity} game ticks. Estimated size: {}.",
-                    format_memory(projected)
+                Ok(messages::history_enabled(
+                    capacity,
+                    format_memory(projected),
                 ))
             }
-            _ => Err("Usage: /rhistory [on [ticks]|off|status|limit [MiB]]".into()),
+            _ => Err(messages::USAGE_RHISTORY_ON_TICKS_OFF_STATUS.into()),
         }
     }
 
@@ -402,11 +390,11 @@ impl Plot {
             [] => 1,
             [value] => value
                 .parse::<usize>()
-                .map_err(|_| "Specify a positive number of game ticks.".to_owned())?,
-            _ => return Err("Usage: /rback [ticks]".into()),
+                .map_err(|_| messages::SPECIFY_POSITIVE_NUMBER_GAME_TICKS.to_owned())?,
+            _ => return Err(messages::USAGE_RBACK_TICKS.into()),
         };
         if self.redpiler.is_active() {
-            return Err("Tick rewind is only available during interpreted execution.".into());
+            return Err(messages::TICK_REWIND_ONLY_AVAILABLE_DURING_INTERPRETED.into());
         }
         let unlimited = self.players[player].has_explicit_permission(UNLIMITED_HISTORY_PERMISSION);
         self.world.rewind_ticks(ticks, unlimited)?;
@@ -421,7 +409,7 @@ impl Plot {
             if !player.worldedit_undo.is_empty() || !player.worldedit_redo.is_empty() {
                 player.worldedit_undo.clear();
                 player.worldedit_redo.clear();
-                player.send_system_message("WorldEdit undo/redo cleared after tick rewind.");
+                player.send_system_message(messages::WORLDEDIT_UNDO_REDO_CLEARED_AFTER_TICK);
             }
         }
         // Explicit authoritative refresh also works when /wsr 0 disables periodic sends.
@@ -446,10 +434,7 @@ impl Plot {
                 player.client.send_packet(&packet);
             }
         }
-        self.broadcast_plot_chat_message(&format!(
-            "Plot rewound by {ticks} game ticks and paused. {} game ticks remain in history.",
-            self.world.history.len()
-        ));
+        self.broadcast_plot_chat_message(&messages::plot_rewound(ticks, self.world.history.len()));
         Ok(())
     }
 }

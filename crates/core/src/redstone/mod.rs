@@ -571,6 +571,78 @@ mod tests {
     }
 
     #[test]
+    fn test_edgecase_single_pulse_on_both_outputs() {
+        let reference: serde_json::Value = serde_json::from_str(include_str!(
+            "../../../../test_data/piston-repair/java-edgecase-traces.json"
+        ))
+        .unwrap();
+        assert_eq!(
+            reference["server_sha1"],
+            "e6ec2f64e6080b9b5d9b471b291c33cc7f509733"
+        );
+        let fixture = &reference["fixtures"]["MCHPRS_EDGECASE.schem"];
+        use sha2::{Digest, Sha256};
+        assert_eq!(
+            fixture["sha256"],
+            format!(
+                "{:x}",
+                Sha256::digest(include_bytes!(
+                    "../../../../test_data/MCHPRS_EDGECASE.schem"
+                ))
+            )
+        );
+        let expected: Vec<[bool; 2]> = serde_json::from_value(fixture["trace"].clone()).unwrap();
+        let invalid = BlockPos::new(100, 30, 100);
+        let correct = BlockPos::new(102, 30, 100);
+        let trigger = BlockPos::new(98, 30, 100);
+        // Both outputs have exactly one two-game-tick (one redstone-tick) pulse.
+        for output in 0..2 {
+            assert_eq!(expected.iter().filter(|sample| sample[output]).count(), 2);
+        }
+        for stepping in ["game", "nano", "pico"] {
+            let world = &mut TestWorld::load_with_schematic("MCHPRS_EDGECASE.schem", BUTTON_POS);
+            world.place(trigger, Block::RedstoneBlock {});
+            for _ in 0..8 {
+                world.tick_interpreted();
+            }
+            world.place(trigger, Block::Air);
+            let mut trace = Vec::new();
+            for _ in &expected {
+                let target_tick = world.piston_state().logical_tick + 1;
+                for _ in 0..256 {
+                    match stepping {
+                        "game" => world.tick_interpreted(),
+                        "nano" => world.nanotick_advance(1),
+                        "pico" => world.picotick_advance(1),
+                        _ => unreachable!(),
+                    }
+                    if world.piston_state().logical_tick == target_tick
+                        && world.piston_state().phase == mchprs_world::AdvancePhase::BetweenTicks
+                    {
+                        break;
+                    }
+                }
+                assert_eq!(world.piston_state().logical_tick, target_tick);
+                assert_eq!(
+                    world.piston_state().phase,
+                    mchprs_world::AdvancePhase::BetweenTicks
+                );
+                trace.push([
+                    world.is_wire_powered(invalid),
+                    world.is_wire_powered(correct),
+                ]);
+            }
+            assert_eq!(
+                trace, expected,
+                "Java 1.21.5 edge-case trace with {stepping} stepping"
+            );
+            for x in [100, 102] {
+                assert!(world.get_piston_extended(BlockPos::new(x, 30, 103)));
+            }
+        }
+    }
+
+    #[test]
     fn test_updates_non_instant() {
         compare_wire_trace("UpdateTesterNonInst.schem");
     }

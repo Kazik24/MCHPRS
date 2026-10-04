@@ -77,19 +77,22 @@ def main():
     parser.add_argument('--server-jar',type=Path,required=True)
     parser.add_argument('--java',default='java')
     parser.add_argument('--adder',action='store_true',help='Capture the signed adder fixture instead of the timing fixtures')
+    parser.add_argument('--edgecase', action='store_true', help='Capture the signed dust/observer edge-case fixture')
     parser.add_argument('--inputs',nargs=2,type=lambda v:int(v,0),help='Set A/B inputs and settle eight ticks with the clock held')
     parser.add_argument('--output',type=Path)
     args=parser.parse_args()
+    if args.edgecase and args.adder:
+        parser.error('--edgecase and --adder are mutually exclusive')
     if args.inputs is not None and not args.adder:
         parser.error('--inputs requires --adder')
     if args.output is None:
-        name = 'java-adder-inputs.json' if args.inputs is not None else 'java-adder-traces.json' if args.adder else 'java-traces.json'
+        name = 'java-edgecase-traces.json' if args.edgecase else 'java-adder-inputs.json' if args.inputs is not None else 'java-adder-traces.json' if args.adder else 'java-traces.json'
         args.output = ROOT/'test_data/piston-repair'/name
     jar=args.server_jar.resolve()
     assert hashlib.sha1(jar.read_bytes()).hexdigest()==SHA1, 'Unexpected Java server binary'
     env=os.environ.copy()
     env['NODE_PATH']=str(ROOT/'tools/node_modules')
-    fixtures = ['ADDER_GWIEZDNY_TEST.schem'] if args.adder else FIXTURES
+    fixtures = ['MCHPRS_EDGECASE.schem'] if args.edgecase else ['ADDER_GWIEZDNY_TEST.schem'] if args.adder else FIXTURES
     blocks={name:json.loads(subprocess.check_output(['node','-e',DECODE,str(ROOT/'test_data'/name)],cwd=ROOT,env=env)) for name in fixtures}
     with tempfile.TemporaryDirectory(prefix='mchprs-java-piston-') as directory:
         run=Path(directory)
@@ -104,7 +107,8 @@ def main():
             commands += ['setblock '+' '.join(map(str,b['pos']))+' '+b['state']+' strict' for b in blocks[name] if b['state']!='minecraft:air']
             (functions/f'fixture_{idx}.mcfunction').write_text('\n'.join(commands)+'\n')
         observations=[]
-        for label,pos in [('BASE',[100,30,102]),('HEAD',[102,30,102]),('PUSH',[104,30,102])]:
+        output_positions = [[100,30,100], [102,30,100]] if args.edgecase else [[100,30,102], [102,30,102], [104,30,102]]
+        for pos in output_positions:
             p=' '.join(map(str,pos))
             observations.append(f'execute if block {p} minecraft:redstone_wire unless block {p} minecraft:redstone_wire[power=0]')
         observations.append('execute if block 97 30 107 minecraft:sticky_piston[extended=true]')
@@ -122,6 +126,9 @@ def main():
                 print(rcon.request('tick freeze'),flush=True)
                 rcon.request('forceload add 80 48 127 127')
                 result={'version':'1.21.5','server_sha1':SHA1,'setup':'Strict fixture paste into frozen void world; normal button power/removal; one game tick per observation','adder_inputs':args.inputs,'fixtures':{}}
+                if args.edgecase:
+                    result['setup'] = 'Strict fixture paste into frozen void world; place trigger redstone block, hold eight game ticks, then remove; one game tick per observation'
+                    result['output_positions'] = output_positions
                 for idx,name in enumerate(fixtures):
                     # Clear scheduled work from the prior circuit before placing the next.
                     rcon.request('fill 96 24 52 124 36 110 minecraft:air strict')
@@ -136,17 +143,22 @@ def main():
                                 state='minecraft:stone' if value&(1<<bit) else 'minecraft:redstone_block'
                                 rcon.request(f'setblock 103 31 {z0-bit*4} {state}')
                         for _ in range(8): rcon.step()
-                    if args.adder: stimulus='setblock 102 30 100 minecraft:air'
+                    if args.edgecase:
+                        rcon.request('setblock 98 30 100 minecraft:redstone_block')
+                        for _ in range(8): rcon.step()
+                        stimulus='setblock 98 30 100 minecraft:air'
+                    elif args.adder: stimulus='setblock 102 30 100 minecraft:air'
                     elif memory: stimulus='setblock 100 30 100 minecraft:air'
                     else:
                         button=next(b['state'] for b in blocks[name] if b['pos']==[100,30,100])
                         stimulus='setblock 100 30 100 '+button.replace('powered=false','powered=true')
                     response=rcon.request(stimulus)
-                    print(name,'paste:',rcon.request('execute if block 100 30 100 minecraft:stone_button'),'stimulus:',response,flush=True)
+                    paste_check = 'execute if block 98 29 100 minecraft:redstone_block' if args.edgecase else 'execute if block 100 30 100 minecraft:stone_button'
+                    print(name,'paste:',rcon.request(paste_check),'stimulus:',response,flush=True)
                     trace=[]
                     details=[]
                     adder_output=[]
-                    for _ in range(12):
+                    for _ in range(24 if args.edgecase else 12):
                         rcon.step()
                         if args.adder:
                             value=0
@@ -157,17 +169,20 @@ def main():
                                     value=None;break
                             adder_output.append(value)
                         statuses=[rcon.request(c) for c in observations]
-                        trace.append('Test passed' in statuses[3] if memory else ['Test passed' in t for t in statuses[:3]])
-                        if memory:
+                        trace.append('Test passed' in statuses[3] if memory else ['Test passed' in t for t in statuses[:len(output_positions)]])
+                        if memory or (args.edgecase and len(trace) <= 8):
                             snapshot=[]
-                            for pos in [[97,30,107],[98,30,107],[98,31,107],[98,30,103],[98,31,103],[97,33,103],[100,30,103]]:
+                            detail_positions = [[98,30,101],[98,29,102],[98,30,102],[98,30,103],[98,30,104],[100,30,102],[100,30,103],[100,31,103],[100,31,104],[101,30,104],[102,30,103],[102,31,103]] if args.edgecase else [[97,30,107],[98,30,107],[98,31,107],[98,30,103],[98,31,103],[97,33,103],[100,30,103]]
+                            for pos in detail_positions:
                                 p=' '.join(map(str,pos))
                                 state='other'
-                                for block in ['sticky_piston','moving_piston','piston_head','observer','air']:
+                                for block in ['sticky_piston','moving_piston','piston_head','observer','air','redstone_wall_torch','redstone_block','redstone_wire']:
                                     if 'Test passed' in rcon.request(f'execute if block {p} minecraft:{block}'):
                                         state=block;break
                                 if state=='sticky_piston': state+=' extended='+str('Test passed' in rcon.request(f'execute if block {p} minecraft:sticky_piston[extended=true]'))
                                 if state=='observer': state+=' powered='+str('Test passed' in rcon.request(f'execute if block {p} minecraft:observer[powered=true]'))
+                                if state=='redstone_wall_torch': state+=' lit='+str('Test passed' in rcon.request(f'execute if block {p} minecraft:redstone_wall_torch[lit=true]'))
+                                if state=='redstone_wire': state+=' powered='+str('Test passed' in rcon.request(f'execute if block {p} minecraft:redstone_wire unless block {p} minecraft:redstone_wire[power=0]'))
                                 if state=='moving_piston': state+=' '+rcon.request(f'data get block {p}')
                                 snapshot.append({'pos':pos,'state':state})
                             details.append(snapshot)

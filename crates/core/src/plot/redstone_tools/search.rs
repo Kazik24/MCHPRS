@@ -1,4 +1,5 @@
 use super::{Plot, ResultAction, SelectionBounds};
+use crate::messages;
 use crate::player::{PacketSender, Player};
 use crate::world::World;
 use anyhow::{bail, Context, Result};
@@ -89,7 +90,7 @@ impl SearchCache {
 
     fn page(&self, number: usize) -> Result<&[SearchHit]> {
         if number == 0 || number > self.page_count() {
-            bail!("Page must be between 1 and {}", self.page_count());
+            bail!(messages::search_page_range(self.page_count()));
         }
         let start = (number - 1) * PAGE_SIZE;
         let end = (start + PAGE_SIZE).min(self.hits.len());
@@ -99,11 +100,11 @@ impl SearchCache {
     fn display(&self, player: &Player, kind: SearchKind, page: usize) -> Result<()> {
         if self.hits.is_empty() {
             if page != 1 {
-                bail!("There are no cached results to paginate");
+                bail!(messages::THERE_NO_CACHED_RESULTS_PAGINATE);
             }
             player.send_raw_system_message(
                 json!({
-                    "text": "No matches found, nya~",
+                    "text": messages::SEARCH_NO_MATCHES,
                     "color": "light_purple"
                 })
                 .to_string(),
@@ -112,13 +113,16 @@ impl SearchCache {
         }
         let hits = self.page(page)?;
         let suffix = match self.truncated {
-            true => " (result limit reached)",
+            true => messages::SEARCH_RESULT_LIMIT,
             false => "",
         };
-        player.send_raw_system_message(json!({
-            "text": format!("{} matches{suffix}; page {page}/{}, nya~", self.hits.len(), self.page_count()),
-            "color": "light_purple"
-        }).to_string());
+        player.send_raw_system_message(
+            json!({
+                "text": messages::search_results(self.hits.len(), suffix, page, self.page_count()),
+                "color": "light_purple"
+            })
+            .to_string(),
+        );
 
         for hit in hits {
             let pos = hit.position;
@@ -140,7 +144,7 @@ impl SearchCache {
                     kind,
                     page: page - 1,
                 }
-                .component("[Previous] "),
+                .component(messages::SEARCH_PREVIOUS_PAGE),
             );
         }
         if page < self.page_count() {
@@ -149,7 +153,7 @@ impl SearchCache {
                     kind,
                     page: page + 1,
                 }
-                .component("[Next]"),
+                .component(messages::SEARCH_NEXT_PAGE),
             );
         }
         if !pages.is_empty() {
@@ -183,7 +187,7 @@ impl BlockMask {
             Self::add_term(term, &mut states)?;
         }
         if depth != 0 {
-            bail!("Unbalanced mask properties");
+            bail!(messages::UNBALANCED_MASK_PROPERTIES);
         }
         Ok(Self { states })
     }
@@ -195,7 +199,7 @@ impl BlockMask {
         }
         if let Ok(id) = term.parse::<u32>() {
             if id as usize >= mchprs_blocks::generated::STATE_PROPERTIES.len() {
-                bail!("Unknown block state ID: {id}");
+                bail!(messages::unknown_block_state(id));
             }
             states.insert(id);
             return Ok(());
@@ -204,7 +208,7 @@ impl BlockMask {
             Some((name, tail)) => {
                 let properties = tail
                     .strip_suffix(']')
-                    .context("Mask properties must end with ]")?;
+                    .context(messages::MASK_PROPERTIES_MUST_END)?;
                 (name, properties)
             }
             None => (term, ""),
@@ -213,20 +217,20 @@ impl BlockMask {
         let definition = mchprs_blocks::generated::BLOCKS
             .iter()
             .find(|definition| definition.0 == name)
-            .with_context(|| format!("Unknown block: {name}"))?;
+            .with_context(|| messages::unknown_block(name))?;
         let mut constraints = Vec::new();
         if !properties.is_empty() {
             for property in properties.split(',') {
                 let (key, value) = property
                     .split_once('=')
-                    .context("Use property=value in masks")?;
+                    .context(messages::USE_PROPERTY_VALUE_MASKS)?;
                 if constraints.iter().any(|&(existing, _)| existing == key) {
-                    bail!("Duplicate mask property: {key}");
+                    bail!(messages::duplicate_mask_property(key));
                 }
                 if !(definition.2..=definition.3)
                     .any(|id| Block::from_id(id).property(key) == Some(value))
                 {
-                    bail!("Unknown property or value: {key}={value}");
+                    bail!(messages::invalid_mask_property(key, value));
                 }
                 constraints.push((key, value));
             }
@@ -254,7 +258,7 @@ impl Plot {
             return Ok(());
         }
         let [query] = args else {
-            bail!("Usage: //find <mask> or //find -p <page>");
+            bail!(messages::USAGE_FIND_MASK_OR_FIND_P);
         };
         let mask = BlockMask::parse(query)?;
         let bounds = self.search_bounds(player)?;
@@ -271,7 +275,7 @@ impl Plot {
             return Ok(());
         }
         if args.is_empty() {
-            bail!("Usage: //signsearch <regex> or //signsearch -p <page>");
+            bail!(messages::USAGE_SIGNSEARCH_REGEX_OR_SIGNSEARCH_P);
         }
         let query = args.join(" ");
         validate_query(&query)?;
@@ -279,7 +283,7 @@ impl Plot {
             .size_limit(1024 * 1024)
             .dfa_size_limit(1024 * 1024)
             .build()
-            .context("Invalid regular expression")?;
+            .context(messages::INVALID_REGULAR_EXPRESSION)?;
         let bounds = self.search_bounds(player)?;
         let cache = self.scan_selection(bounds, |plot, position| {
             let BlockEntity::Sign(sign) = plot.world.get_block_entity(position)? else {
@@ -318,23 +322,23 @@ impl Plot {
             return Ok(false);
         }
         let [_, page] = args else {
-            bail!("Usage: {} -p <page>", kind.command());
+            bail!(messages::search_page_usage(kind.command()));
         };
         let page = page
             .parse::<usize>()
-            .context("Page must be a positive integer")?;
+            .context(messages::PAGE_MUST_POSITIVE_INTEGER)?;
         self.display_search(player, kind, page)?;
         Ok(true)
     }
 
     fn display_search(&self, player: usize, kind: SearchKind, page: usize) -> Result<()> {
         let player = &self.players[player];
-        let cache = kind.cache(player).context("Run a search first")?;
+        let cache = kind.cache(player).context(messages::RUN_SEARCH_FIRST)?;
         if cache.plot != (self.world.x, self.world.z) {
-            bail!("These search results belong to another plot; run a new search");
+            bail!(messages::THESE_SEARCH_RESULTS_BELONG_ANOTHER_PLOT);
         }
         if page == 0 {
-            bail!("Page numbers start at 1");
+            bail!(messages::PAGE_NUMBERS_START_AT);
         }
         cache.display(player, kind, page)
     }
@@ -342,7 +346,7 @@ impl Plot {
     fn search_bounds(&self, player: usize) -> Result<SelectionBounds> {
         let bounds = SelectionBounds::from_player(&self.players[player], &self.world)?;
         if bounds.volume() > MAX_SCAN_BLOCKS {
-            bail!("Search selections may contain at most {MAX_SCAN_BLOCKS} blocks");
+            bail!(messages::search_selection_limit(MAX_SCAN_BLOCKS));
         }
         Ok(bounds)
     }
@@ -384,7 +388,7 @@ impl Plot {
 
 fn validate_query(query: &str) -> Result<()> {
     if query.len() > MAX_QUERY_BYTES {
-        bail!("Queries may contain at most {MAX_QUERY_BYTES} bytes");
+        bail!(messages::search_query_limit(MAX_QUERY_BYTES));
     }
     Ok(())
 }

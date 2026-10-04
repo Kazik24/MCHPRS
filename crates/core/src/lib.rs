@@ -7,6 +7,7 @@ mod chat_commands;
 mod config;
 mod container;
 mod interaction;
+mod messages;
 mod permissions;
 mod player;
 pub mod plot;

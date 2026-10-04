@@ -1,4 +1,5 @@
 use crate::chat::{ChatComponentBuilder, ColorCode};
+use crate::messages;
 use crate::player::{PacketSender, Player};
 use crate::redpiler::CompilerOptions;
 use mchprs_network::packets::clientbound::{
@@ -80,7 +81,7 @@ impl Scoreboard {
             &CScoreboardObjective {
                 objective_name: "redpiler_status".into(),
                 mode: 0,
-                objective_value: ChatComponentBuilder::new("Redpiler Status".into())
+                objective_value: ChatComponentBuilder::new(messages::REDPILER_SIDEBAR_TITLE.into())
                     .color_code(ColorCode::Red)
                     .finish()
                     .encode_json(),

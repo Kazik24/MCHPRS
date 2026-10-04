@@ -47,6 +47,15 @@ python tools/capture_piston_reference.py --server-jar /path/to/server.jar
 
 The runner verifies the official server SHA-1, uses localhost ports 25583/25584, creates a temporary void world and stops the server after recording the fixtures. `--java` selects a Java executable. Its default output is `test_data/piston-repair/java-traces.json`; use `--output` for a separate comparison. It never modifies an existing world. Push rules and adhesive attachments are outside the current timing repair.
 
+Use `--edgecase` to capture `MCHPRS_EDGECASE.schem` into
+`test_data/piston-repair/java-edgecase-traces.json`. It places a redstone block
+above “Trigger,” holds it for eight game ticks, then removes it. Both signed
+outputs pulse for two game ticks. The Rust regression compares 24 game ticks
+with game, nano and pico stepping. This circuit depends on piston shape updates
+following Java's west, east, north, south, down, up order: scheduling the upper
+observer before the side observer causes an extra piston cycle when the output
+wire switches off.
+
 For the signed adder references, use `--adder --output test_data/piston-repair/java-adder-traces.json`. The changed-input diagnostic uses `--adder --inputs 0x555 0x2aa --output test_data/piston-repair/java-adder-inputs.json`. Inputs settle with the clock held before its removal.
 
 The command smoke test also checks version/plot selection, rate query and disabled sends, combined paste flags, alias help and overlapping rstack undo/redo. Piston benchmarks are documented in [the performance report](../docs/PISTON_PERFORMANCE.md). Adder mode defaults to its own trace output; `--inputs` requires `--adder`.

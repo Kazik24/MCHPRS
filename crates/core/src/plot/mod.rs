@@ -1,3 +1,4 @@
+use crate::messages;
 #[cfg(test)]
 mod command_block_tests;
 pub mod commands;
@@ -9,9 +10,9 @@ mod history;
 mod monitor;
 mod packet_handlers;
 mod picking;
-pub(crate) mod redstone_tools;
 #[cfg(test)]
 mod piston_tests;
+pub(crate) mod redstone_tools;
 mod scoreboard;
 mod visuals;
 pub mod worldedit;
@@ -863,10 +864,7 @@ impl Plot {
             }
         }
 
-        player.send_system_message(&format!(
-            "Entering plot ({}, {})",
-            self.world.x, self.world.z
-        ));
+        player.send_system_message(&messages::plot_entered(self.world.x, self.world.z));
         self.world
             .packet_senders
             .push(PlayerPacketSender::new(&player.client));
@@ -966,7 +964,7 @@ impl Plot {
             || !self.world.piston_state.motions.is_empty()
         {
             for player in &self.players {
-                player.send_system_message("This plot contains pistons, observers or command blocks and runs with the interpreter to preserve their behavior.");
+                player.send_system_message(messages::PLOT_CONTAINS_PISTONS_OBSERVERS_OR_COMMAND);
             }
             return;
         }
@@ -974,9 +972,8 @@ impl Plot {
         self.close_all_containers();
         if self.world.history.enabled() {
             let bytes = self.world.history.disable();
-            self.broadcast_plot_chat_message(&format!(
-                "Tick history disabled because compiled execution is starting. Released approximately {}.",
-                history::format_memory(bytes)
+            self.broadcast_plot_chat_message(&messages::history_disabled_for_compilation(
+                history::format_memory(bytes),
             ));
         }
         self.scoreboard
@@ -1096,7 +1093,7 @@ impl Plot {
         }
         let center = Plot::get_center(plot_x, plot_z);
         player.teleport(PlayerPos::new(center.0, 64.0, center.1));
-        player.send_system_message(&format!("Claimed plot {},{}", plot_x, plot_z));
+        player.send_system_message(&messages::plot_claimed(plot_x, plot_z));
     }
 
     pub fn get_center(plot_x: i32, plot_z: i32) -> (f64, f64) {
@@ -1195,7 +1192,7 @@ impl Plot {
                         player.save();
                         player.kick(
                             json!({
-                                "text": "Server closed"
+                                "text": messages::SERVER_CLOSED
                             })
                             .to_string(),
                         );
@@ -1589,7 +1586,7 @@ impl Drop for Plot {
                     Plot::get_center(0, 0)
                 };
                 player.teleport(PlayerPos::new(px, 64.0, pz));
-                player.send_error_message("The plot you were previously in has crashed!");
+                player.send_error_message(messages::PLOT_YOU_WERE_PREVIOUSLY_CRASHED);
             }
 
             while !self.players.is_empty() {

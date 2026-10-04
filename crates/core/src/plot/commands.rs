@@ -1,5 +1,6 @@
 use super::{database, worldedit, Plot, PlotWorld};
 use crate::chat::ChatComponent;
+use crate::messages;
 use crate::player::{Gamemode, PacketSender, PlayerPos};
 use crate::plot::data::sleep_time_for_tps;
 use crate::profile::PlayerProfile;
@@ -48,7 +49,7 @@ impl Plot {
             "lock" | "unlock" => "plots.lock",
             "select" | "sel" => "plots.select",
             _ => {
-                self.players[player].send_error_message("Invalid argument for /plot");
+                self.players[player].send_error_message(messages::PLOT_INVALID_ARGUMENT);
                 return;
             }
         };
@@ -60,17 +61,16 @@ impl Plot {
         match command {
             "info" | "i" => {
                 if let Some(owner) = database::get_plot_owner(plot_x, plot_z) {
-                    self.players[player].send_system_message(&format!(
-                        "Plot owner is: {}",
-                        database::get_cached_username(owner.clone()).unwrap_or(owner)
+                    self.players[player].send_system_message(&messages::plot_owner(
+                        database::get_cached_username(owner.clone()).unwrap_or(owner),
                     ));
                 } else {
-                    self.players[player].send_system_message("Plot is not owned by anyone.");
+                    self.players[player].send_system_message(messages::PLOT_UNCLAIMED);
                 }
             }
             "claim" | "c" => {
                 if database::is_claimed(plot_x, plot_z).unwrap() {
-                    self.players[player].send_system_message("Plot is already claimed!");
+                    self.players[player].send_system_message(messages::PLOT_ALREADY_CLAIMED);
                 } else {
                     self.claim_plot(plot_x, plot_z, player);
                 }
@@ -92,7 +92,7 @@ impl Plot {
             }
             "visit" | "v" => {
                 if !(1..=2).contains(&args.len()) {
-                    self.players[player].send_error_message("Invalid number of arguments!");
+                    self.players[player].send_error_message(messages::INVALID_ARGUMENT_COUNT);
                     return;
                 }
 
@@ -100,11 +100,11 @@ impl Plot {
                     match args[1].parse::<usize>() {
                         Ok(idx) if idx > 0 => idx - 1,
                         Ok(_) => {
-                            self.players[player].send_error_message("Plot index starts at 1");
+                            self.players[player].send_error_message(messages::PLOT_INDEX_ZERO);
                             return;
                         }
                         Err(_) => {
-                            self.players[player].send_error_message("Unable to parse index");
+                            self.players[player].send_error_message(messages::PLOT_INVALID_INDEX);
                             return;
                         }
                     }
@@ -119,16 +119,16 @@ impl Plot {
                         self.players[player].teleport(PlayerPos::new(center.0, 64.0, center.1));
                     } else {
                         self.players[player]
-                            .send_system_message(&format!("Plot range (1, {}).", plots.len()));
+                            .send_system_message(&messages::plot_index_range(plots.len()));
                     }
                 } else {
                     self.players[player]
-                        .send_system_message(&format!("{} does not own any plots.", args[0]));
+                        .send_system_message(&messages::player_has_no_plots(args[0]));
                 }
             }
             "teleport" | "tp" => {
                 if args.len() != 2 {
-                    self.players[player].send_error_message("Invalid number of arguments!");
+                    self.players[player].send_error_message(messages::INVALID_ARGUMENT_COUNT);
                     return;
                 }
 
@@ -137,13 +137,13 @@ impl Plot {
                 if let Ok(x_arg) = parse_relative_coord(args[0], plot_x) {
                     new_plot_x = x_arg;
                 } else {
-                    self.players[player].send_error_message("Unable to parse x coordinate!");
+                    self.players[player].send_error_message(messages::INVALID_X_COORDINATE);
                     return;
                 }
                 if let Ok(z_arg) = parse_relative_coord(args[1], plot_z) {
                     new_plot_z = z_arg;
                 } else {
-                    self.players[player].send_error_message("Unable to parse z coordinate!");
+                    self.players[player].send_error_message(messages::INVALID_Z_COORDINATE);
                     return;
                 }
 
@@ -153,11 +153,10 @@ impl Plot {
             "lock" => {
                 if self.locked_players.insert(self.players[player].entity_id) {
                     let PlotWorld { x, z, .. } = self.world;
-                    let res = format!("Locked to plot ({}, {}). Use '/p unlock' to unlock.", x, z);
+                    let res = messages::plot_locked(x, z);
                     self.players[player].send_system_message(&res);
                 } else {
-                    self.players[player]
-                        .send_system_message("You are already locked to this plot.");
+                    self.players[player].send_system_message(messages::PLOT_ALREADY_LOCKED);
                 }
             }
             "select" | "sel" => {
@@ -167,12 +166,12 @@ impl Plot {
             }
             "unlock" => {
                 if self.locked_players.remove(&self.players[player].entity_id) {
-                    self.players[player].send_system_message("You are now unlocked.");
+                    self.players[player].send_system_message(messages::PLOT_UNLOCKED);
                 } else {
-                    self.players[player].send_system_message("You are not locked to this plot.");
+                    self.players[player].send_system_message(messages::PLOT_NOT_LOCKED);
                 }
             }
-            _ => self.players[player].send_error_message("Invalid argument for /plot"),
+            _ => self.players[player].send_error_message(messages::PLOT_INVALID_ARGUMENT),
         }
     }
 
@@ -185,7 +184,7 @@ impl Plot {
                 let options = CompilerOptions::parse(&args);
 
                 if options.optimize {
-                    let msg = "Redpiler optimization is highly unstable and can break builds. Use with caution!";
+                    let msg = messages::REDPILER_OPTIMIZATION_HIGHLY_UNSTABLE_CAN_BREAK;
                     warn!("{}", msg);
                     self.players[player].send_system_message(msg);
                 }
@@ -205,7 +204,7 @@ impl Plot {
                     10.0,
                 );
                 let Some(pos) = pos else {
-                    player.send_error_message("Trace failed");
+                    player.send_error_message(messages::BLOCK_TRACE_FAILED);
                     return;
                 };
                 self.redpiler.inspect(pos);
@@ -213,7 +212,7 @@ impl Plot {
             "reset" | "r" => {
                 self.reset_redpiler();
             }
-            _ => self.players[player].send_error_message("Invalid argument for /redpiler"),
+            _ => self.players[player].send_error_message(messages::REDPILER_INVALID_ARGUMENT),
         }
     }
 
@@ -254,13 +253,12 @@ impl Plot {
         match command {
             "/help" => {
                 if args.len() > 1 {
-                    self.players[player].send_error_message("Usage: /help [topic]");
+                    self.players[player].send_error_message(messages::USAGE_HELP_TOPIC);
                 } else if let Some(page) = super::help::page(args.first().copied()) {
                     self.players[player].send_system_message(page);
                 } else {
-                    self.players[player].send_error_message(
-                        "Unknown help topic. Use /help for topics, or //help <command> for WorldEdit.",
-                    );
+                    self.players[player]
+                        .send_error_message(messages::UNKNOWN_HELP_TOPIC_USE_HELP_TOPICS);
                 }
             }
             "/piston_anim" | "/bisdon_anim" => {
@@ -275,20 +273,19 @@ impl Plot {
                         ["off"] => mchprs_save_data::plot_data::PistonAnimation::Off,
                         _ => {
                             self.players[player]
-                                .send_error_message("Usage: /piston_anim [auto|on|off]");
+                                .send_error_message(messages::USAGE_PISTON_ANIM_AUTO_ON_OFF);
                             return false;
                         }
                     };
                     self.update_render_mode();
                 }
-                self.players[player].send_system_message(&format!(
-                    "Piston animation: {} (effective {})",
+                self.players[player].send_system_message(&messages::piston_animation(
                     self.piston_animation,
                     if self.world.fast_rendering {
                         "off"
                     } else {
                         "on"
-                    }
+                    },
                 ));
             }
             "/tellraw" | "/say" => {
@@ -355,7 +352,7 @@ impl Plot {
                 }
                 _ => {
                     self.players[player]
-                        .send_error_message("Usage: /whitelist [add | remove] (username)");
+                        .send_error_message(messages::USAGE_WHITELIST_ADD_REMOVE_USERNAME);
                     return false;
                 }
             },
@@ -365,18 +362,18 @@ impl Plot {
                     if let Some(report) = report {
                         self.players[player].send_chat_message(
                             0,
-                            &ChatComponent::from_legacy_text(&format!(
-                                "&6RTPS from last 10s, 1m, 5m, 15m: &a{:.1}, {:.1}, {:.1}, {:.1} ({})",
-                                report.ten_s, report.one_m, report.five_m, report.fifteen_m, self.tps
+                            &ChatComponent::from_legacy_text(&messages::rtps_report(
+                                report.ten_s,
+                                report.one_m,
+                                report.five_m,
+                                report.fifteen_m,
+                                self.tps,
                             )),
                         );
                     } else {
                         self.players[player].send_chat_message(
                             0,
-                            &ChatComponent::from_legacy_text(&format!(
-                                "&6No timings data. &a({})",
-                                self.tps
-                            )),
+                            &ChatComponent::from_legacy_text(&messages::rtps_no_data(self.tps)),
                         );
                     }
 
@@ -388,7 +385,7 @@ impl Plot {
                 } else if !args[0].is_empty() && "unlimited".starts_with(args[0]) {
                     Tps::Unlimited
                 } else {
-                    self.players[player].send_error_message("Unable to parse rtps!");
+                    self.players[player].send_error_message(messages::UNABLE_PARSE_RTPS);
                     return false;
                 };
 
@@ -397,7 +394,7 @@ impl Plot {
                 self.tps = tps;
                 self.update_render_mode();
                 self.reset_timings();
-                self.players[player].send_system_message("The rtps was successfully set.");
+                self.players[player].send_system_message(messages::RTPS_SET);
             }
             "/rhistory" => match self.control_history(player, &args) {
                 Ok(message) => self.players[player].send_system_message(&message),
@@ -411,7 +408,7 @@ impl Plot {
             "/radv" | "/radvance" => {
                 let Some(arg0) = args.get(0) else {
                     self.players[player]
-                        .send_error_message("Please specify a number of ticks to advance.");
+                        .send_error_message(messages::PLEASE_SPECIFY_NUMBER_TICKS_ADVANCE);
                     return false;
                 };
                 let start_time = Instant::now();
@@ -419,23 +416,24 @@ impl Plot {
                     "nano" => {
                         let Some(num) = args.get(1) else {
                             self.players[player].send_error_message(
-                                "Please specify a number of nano-ticks to advance.",
+                                messages::PLEASE_SPECIFY_NUMBER_NANO_TICKS_ADVANCE,
                             );
                             return false;
                         };
                         let Ok(ticks) = num.parse::<u32>() else {
-                            self.players[player].send_error_message("Unable to parse nano-ticks!");
+                            self.players[player]
+                                .send_error_message(messages::UNABLE_PARSE_NANO_TICKS);
                             return false;
                         };
                         if self.redpiler.is_active() {
                             self.players[player].send_error_message(
-                                "Cannot advance nano-ticks while redpiler is active!",
+                                messages::CANNOT_ADVANCE_NANO_TICKS_WHILE_REDPILER,
                             );
                             return false;
                         }
                         if self.world.history.enabled() {
                             self.players[player].send_error_message(
-                                "Disable tick history before nano/pico advancement.",
+                                messages::DISABLE_TICK_HISTORY_BEFORE_NANO_PICO,
                             );
                             return false;
                         }
@@ -445,23 +443,24 @@ impl Plot {
                     "pico" => {
                         let Some(num) = args.get(1) else {
                             self.players[player].send_error_message(
-                                "Please specify a number of pico-ticks to advance.",
+                                messages::PLEASE_SPECIFY_NUMBER_PICO_TICKS_ADVANCE,
                             );
                             return false;
                         };
                         let Ok(ticks) = num.parse::<u32>() else {
-                            self.players[player].send_error_message("Unable to parse pico-ticks!");
+                            self.players[player]
+                                .send_error_message(messages::UNABLE_PARSE_PICO_TICKS);
                             return false;
                         };
                         if self.redpiler.is_active() {
                             self.players[player].send_error_message(
-                                "Cannot advance pico-ticks while redpiler is active!",
+                                messages::CANNOT_ADVANCE_PICO_TICKS_WHILE_REDPILER,
                             );
                             return false;
                         }
                         if self.world.history.enabled() {
                             self.players[player].send_error_message(
-                                "Disable tick history before nano/pico advancement.",
+                                messages::DISABLE_TICK_HISTORY_BEFORE_NANO_PICO,
                             );
                             return false;
                         }
@@ -470,7 +469,7 @@ impl Plot {
                     }
                     num => {
                         let Ok(ticks) = num.parse::<u32>() else {
-                            self.players[player].send_error_message("Unable to parse ticks!");
+                            self.players[player].send_error_message(messages::UNABLE_PARSE_TICKS);
                             return false;
                         };
                         for _ in 0..ticks {
@@ -480,19 +479,15 @@ impl Plot {
                     }
                 };
 
-                self.players[player].send_system_message(&format!(
-                    "Plot has been advanced by {unit} ({:.00?})",
-                    start_time.elapsed()
-                ));
+                self.players[player]
+                    .send_system_message(&messages::plot_advanced(unit, start_time.elapsed()));
             }
             "/toggleautorp" => {
                 self.auto_redpiler = !self.auto_redpiler;
                 if self.auto_redpiler {
-                    self.players[player]
-                        .send_system_message("Automatic redpiler compilation has been enabled.");
+                    self.players[player].send_system_message(messages::REDPILER_AUTO_ENABLED);
                 } else {
-                    self.players[player]
-                        .send_system_message("Automatic redpiler compilation has been disabled.");
+                    self.players[player].send_system_message(messages::REDPILER_AUTO_DISABLED);
                 }
             }
             "/teleport" | "/tp" => {
@@ -504,27 +499,26 @@ impl Plot {
                     if let Ok(x_arg) = parse_relative_coord(args[0], player_pos.x) {
                         x = x_arg;
                     } else {
-                        self.players[player].send_error_message("Unable to parse x coordinate!");
+                        self.players[player].send_error_message(messages::INVALID_X_COORDINATE);
                         return false;
                     }
                     if let Ok(y_arg) = parse_relative_coord(args[1], player_pos.y) {
                         y = y_arg;
                     } else {
-                        self.players[player].send_error_message("Unable to parse y coordinate!");
+                        self.players[player].send_error_message(messages::INVALID_Y_COORDINATE);
                         return false;
                     }
                     if let Ok(z_arg) = parse_relative_coord(args[2], player_pos.z) {
                         z = z_arg;
                     } else {
-                        self.players[player].send_error_message("Unable to parse z coordinate!");
+                        self.players[player].send_error_message(messages::INVALID_Z_COORDINATE);
                         return false;
                     }
                     self.players[player]
-                        .send_system_message(&format!("Teleporting to ({}, {}, {})", x, y, z));
+                        .send_system_message(&messages::teleport_coordinates(x, y, z));
                     self.players[player].teleport(PlayerPos::new(x, y, z));
                 } else if args.len() == 1 {
-                    self.players[player]
-                        .send_system_message(&format!("Teleporting to {}", args[0]));
+                    self.players[player].send_system_message(&messages::teleport_player(args[0]));
                     let uuid = self.players[player].uuid;
                     let player = self.leave_plot(uuid);
                     let _ = self
@@ -533,7 +527,7 @@ impl Plot {
                     return true;
                 } else {
                     self.players[player]
-                        .send_error_message("Invalid number of arguments for teleport command!");
+                        .send_error_message(messages::INVALID_NUMBER_ARGUMENTS_TELEPORT_COMMAND);
                 }
             }
             "/stop" => {
@@ -541,7 +535,7 @@ impl Plot {
             }
             "/plot" | "/p" => {
                 if args.is_empty() {
-                    self.players[player].send_error_message("Invalid number of arguments!");
+                    self.players[player].send_error_message(messages::INVALID_ARGUMENT_COUNT);
                     return false;
                 }
                 let command = args.remove(0);
@@ -549,7 +543,7 @@ impl Plot {
             }
             "/redpiler" | "/rp" => {
                 if args.is_empty() {
-                    self.players[player].send_error_message("Invalid number of arguments!");
+                    self.players[player].send_error_message(messages::INVALID_ARGUMENT_COUNT);
                     return false;
                 }
                 let command = args.remove(0);
@@ -557,42 +551,38 @@ impl Plot {
             }
             "/speed" => {
                 if args.len() != 1 {
-                    self.players[player].send_error_message("/speed <0-10>");
+                    self.players[player].send_error_message(messages::USAGE_SPEED);
                     return false;
                 }
                 if let Ok(speed_arg) = args[0].parse::<f32>() {
                     if speed_arg < 0.0 {
-                        self.players[player]
-                            .send_error_message("Silly child, you can't have a negative flyspeed!");
+                        self.players[player].send_error_message(messages::SPEED_NEGATIVE);
                         return false;
                     }
                     if speed_arg > 10.0 {
                         self.players[player].send_error_message(
-                            "For performance reasons player speed cannot be higher than 10.",
+                            messages::PERFORMANCE_REASONS_PLAYER_SPEED_CANNOT_HIGHER,
                         );
                         return false;
                     }
                     if speed_arg.is_nan() {
-                        self.players[player]
-                            .send_error_message("You can't set your speed to NaN or -NaN.");
+                        self.players[player].send_error_message(messages::YOU_CAN_T_SET_SPEED_NAN);
                         return false;
                     }
                     self.players[player].fly_speed = speed_arg;
                     self.players[player].update_player_abilities();
                     let username = self.players[player].username.clone();
-                    self.players[player].send_system_message(&format!(
-                        "Set flying speed to {} for {}",
-                        speed_arg, username
-                    ));
+                    self.players[player]
+                        .send_system_message(&messages::flying_speed(speed_arg, username));
                 } else {
-                    self.players[player].send_error_message("Unable to parse speed value");
+                    self.players[player].send_error_message(messages::UNABLE_PARSE_SPEED_VALUE);
                 }
             }
             "/gmsp" => self.change_player_gamemode(player, Gamemode::Spectator),
             "/gmc" => self.change_player_gamemode(player, Gamemode::Creative),
             "/gamemode" => {
                 if args.is_empty() {
-                    self.players[player].send_error_message("Invalid number of arguments!");
+                    self.players[player].send_error_message(messages::INVALID_ARGUMENT_COUNT);
                     return false;
                 }
                 let name = args.remove(0);
@@ -600,7 +590,7 @@ impl Plot {
                     "creative" | "1" => Gamemode::Creative,
                     "spectator" | "3" => Gamemode::Spectator,
                     _ => {
-                        self.players[player].send_error_message("Unknown gamemode");
+                        self.players[player].send_error_message(messages::UNKNOWN_GAMEMODE);
                         return false;
                     }
                 };
@@ -608,56 +598,54 @@ impl Plot {
             }
             "/worldsendrate" | "/wsr" => {
                 if args.is_empty() {
-                    self.players[player].send_system_message(&format!(
-                        "World send rate: {} Hz (effective {} Hz)",
+                    self.players[player].send_system_message(&messages::world_send_rate(
                         self.world_send_rate.0,
-                        self.effective_send_rate()
+                        self.effective_send_rate(),
                     ));
                     return false;
                 }
                 if args.len() != 1 {
-                    self.players[player].send_error_message("Usage: /worldsendrate <hertz>");
+                    self.players[player].send_error_message(messages::USAGE_WORLDSENDRATE_HERTZ);
                     return false;
                 }
 
                 let Ok(hertz) = args[0].parse::<u32>() else {
-                    self.players[player].send_error_message("Unable to parse send rate!");
+                    self.players[player].send_error_message(messages::UNABLE_PARSE_SEND_RATE);
                     return false;
                 };
                 if hertz > 1000 {
                     self.players[player]
-                        .send_error_message("The world send rate cannot go higher than 1000!");
+                        .send_error_message(messages::WORLD_SEND_RATE_CANNOT_GO_HIGHER);
                     return false;
                 }
 
                 self.world_send_rate = WorldSendRate(hertz);
                 self.reset_timings();
                 self.players[player]
-                    .send_system_message("The world send rate was successfully set.");
+                    .send_system_message(messages::WORLD_SEND_RATE_WAS_SUCCESSFULLY_SET);
             }
             "/curse" => {
                 if self.world.is_cursed {
-                    self.players[player].send_system_message("The world is already cursed.");
+                    self.players[player].send_system_message(messages::WORLD_ALREADY_CURSED);
                 } else {
                     self.world.is_cursed = true;
                     self.auto_redpiler = false;
-                    self.players[player].send_system_message(
-                        "The world has been cursed. Redpiler disabled (/bless to undo)",
-                    );
+                    self.players[player]
+                        .send_system_message(messages::WORLD_BEEN_CURSED_REDPILER_DISABLED_BLESS);
                 }
                 return false;
             }
             "/bless" => {
                 if self.world.is_cursed {
                     self.world.is_cursed = false;
-                    self.players[player].send_system_message("The world has been blessed.");
+                    self.players[player].send_system_message(messages::WORLD_BEEN_BLESSED);
                 } else {
                     self.players[player]
-                        .send_system_message("The world is not cursed. (/curse to curse)");
+                        .send_system_message(messages::WORLD_NOT_CURSED_CURSE_CURSE);
                 }
                 return false;
             }
-            _ => self.players[player].send_error_message("Command not found!"),
+            _ => self.players[player].send_error_message(messages::COMMAND_NOT_FOUND),
         }
         false
     }

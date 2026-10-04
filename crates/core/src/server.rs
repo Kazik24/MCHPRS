@@ -1,5 +1,6 @@
 use crate::chat::ChatComponent;
 use crate::config::CONFIG;
+use crate::messages;
 use crate::permissions;
 use crate::player::{Gamemode, PacketSender, Player};
 use crate::plot::commands::DECLARE_COMMANDS;
@@ -326,7 +327,7 @@ impl MinecraftServer {
             if !whitelisted {
                 let disconnect = CDisconnectLogin {
                     reason: json!({
-                        "text": "You are not whitelisted on this server"
+                        "text": messages::YOU_NOT_WHITELISTED_ON_SERVER
                     })
                     .to_string(),
                 }
@@ -520,7 +521,7 @@ impl MinecraftServer {
                         | PrivMessage::PlayerTeleportOther(player, _) => player,
                     }));
                 for mut player in players {
-                    player.kick(json!({"text": format!("Could not load plot {},{}. Please contact the server administrator.", x, z)}).to_string());
+                    player.kick(json!({"text": messages::plot_load_failed(x, z)}).to_string());
                     player.client.close_connection();
                     self.handle_message(Message::PlayerLeft(player.uuid));
                 }
@@ -562,8 +563,7 @@ impl MinecraftServer {
                         .iter()
                         .any(|p| p.plot_x == plot_x && p.plot_z == plot_z);
                     if !plot_loaded {
-                        player
-                            .send_system_message("Their plot wasn't loaded. How did this happen??");
+                        player.send_system_message(messages::TARGET_PLOT_NOT_LOADED);
                         self.send_player_to_plot(player, false);
                     } else {
                         self.update_player_entry(player.uuid, plot_x, plot_z);
@@ -577,7 +577,7 @@ impl MinecraftServer {
                             .send(PrivMessage::PlayerTeleportOther(player, other_username));
                     }
                 } else {
-                    player.send_system_message("Player not found!");
+                    player.send_system_message(messages::PLAYER_NOT_FOUND);
                     self.send_player_to_plot(player, false);
                 }
             }
@@ -590,7 +590,7 @@ impl MinecraftServer {
             }
             Message::WhitelistAdd(uuid, username, sender) => {
                 if let Some(whitelist) = &mut self.whitelist {
-                    let msg = format!("{} was sucessfully added to the whitelist.", &username);
+                    let msg = messages::whitelist_added(&username);
                     sender.send_system_message(&msg);
                     let uuid = HyphenatedUUID(uuid);
                     debug!("Added to whitelist: {} ({})", &username, uuid.to_string());
@@ -600,7 +600,7 @@ impl MinecraftServer {
                         uuid,
                     });
                 } else {
-                    sender.send_error_message("Whitelist is not enabled!");
+                    sender.send_error_message(messages::WHITELIST_NOT_ENABLED);
                 }
             }
             Message::WhitelistRemove(uuid, sender) => {
@@ -609,10 +609,7 @@ impl MinecraftServer {
                     whitelist.retain(|entry| {
                         let matches = entry.uuid.0 == uuid;
                         if matches {
-                            let msg = format!(
-                                "{} was sucessfully removed from the whitelist.",
-                                &entry.name
-                            );
+                            let msg = messages::whitelist_removed(&entry.name);
                             sender.send_system_message(&msg);
                             debug!(
                                 "Removed from whitelist: {}",
@@ -623,10 +620,10 @@ impl MinecraftServer {
                         !matches
                     });
                     if !found {
-                        sender.send_error_message("That player is not whitelisted on this server.");
+                        sender.send_error_message(messages::THAT_PLAYER_NOT_WHITELISTED_ON_SERVER);
                     }
                 } else {
-                    sender.send_error_message("Whitelist is not enabled!");
+                    sender.send_error_message(messages::WHITELIST_NOT_ENABLED);
                 }
             }
         }
@@ -728,8 +725,7 @@ impl ServerBoundPacketHandler for MinecraftServer {
         if next_state == NetworkState::Login && handshake.protocol_version != PROTOCOL_VERSION {
             warn!("A player tried to connect using the wrong version");
             let disconnect = CDisconnectLogin {
-                reason: json!({ "text": format!("Version mismatch, I'm on {}!", MC_VERSION) })
-                    .to_string(),
+                reason: json!({ "text": messages::version_mismatch(MC_VERSION) }).to_string(),
             }
             .encode();
             client.send_packet(&disconnect);
@@ -741,7 +737,7 @@ impl ServerBoundPacketHandler for MinecraftServer {
             } else {
                 let disconnect = CDisconnectLogin {
                     reason: json!({
-                        "text": "If you wish to use IP forwarding, please enable it in your BungeeCord config as well!"
+                        "text": messages::IP_FORWARDING_REQUIRED
                     })
                     .to_string(),
                 }

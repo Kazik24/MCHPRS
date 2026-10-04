@@ -1,3 +1,4 @@
+use crate::messages;
 mod completion;
 mod items;
 mod search;
@@ -77,11 +78,13 @@ enum ToolNotice {
 impl ToolNotice {
     fn send(self, player: &Player) {
         let (text, color) = match self {
-            Self::Error(error) => (format!("{error} >.<"), "red"),
-            Self::SelectionEnabled => ("Selection sidebar enabled, nya~".into(), "light_purple"),
-            Self::SelectionDisabled => ("Selection sidebar hidden, nya~".into(), "light_purple"),
-            Self::ItemGiven => ("Your item is ready, nya~".into(), "light_purple"),
-            Self::Stacked(count) => (format!("Stacked {count} copies, nya~"), "light_purple"),
+            Self::Error(error) => (error, "red"),
+            Self::SelectionEnabled => (messages::SELECTION_SIDEBAR_ENABLED.into(), "light_purple"),
+            Self::SelectionDisabled => {
+                (messages::SELECTION_SIDEBAR_DISABLED.into(), "light_purple")
+            }
+            Self::ItemGiven => (messages::TOOL_ITEM_GIVEN.into(), "light_purple"),
+            Self::Stacked(count) => (messages::copies_stacked(count), "light_purple"),
         };
         player.send_raw_system_message(json!({"text": text, "color": color}).to_string());
     }
@@ -103,7 +106,7 @@ impl ResultAction {
             "text": label,
             "color": "aqua",
             "click_event": {"action": "run_command", "command": command},
-            "hover_event": {"action": "show_text", "value": "Click, nya~"}
+            "hover_event": {"action": "show_text", "value": messages::RESULT_ACTION_HOVER}
         })
     }
 }
@@ -118,16 +121,16 @@ impl SelectionBounds {
     fn from_player(player: &Player, world: &PlotWorld) -> Result<Self> {
         let first = player
             .first_position
-            .ok_or_else(|| anyhow::anyhow!("Select position 1 first"))?;
+            .ok_or_else(|| anyhow::anyhow!(messages::SELECT_POSITION_FIRST))?;
         let second = player
             .second_position
-            .ok_or_else(|| anyhow::anyhow!("Select position 2 first"))?;
+            .ok_or_else(|| anyhow::anyhow!(messages::SELECT_POSITION_SECOND))?;
         Self::new(first.min(second), first.max(second), world)
     }
 
     fn new(start: BlockPos, end: BlockPos, world: &PlotWorld) -> Result<Self> {
         if !world.contains_position(start) || !world.contains_position(end) {
-            bail!("The complete selection must be inside this plot and world height");
+            bail!(messages::COMPLETE_SELECTION_MUST_INSIDE_PLOT_WORLD);
         }
         Ok(Self { start, end })
     }
@@ -180,7 +183,7 @@ impl Plot {
     fn check_tool_access(&self, player: usize, command: ToolCommand) -> Result<()> {
         let player = &self.players[player];
         if !player.has_permission(command.permission()) {
-            bail!("You don't have permission to use this command");
+            bail!(messages::TOOL_PERMISSION_DENIED);
         }
         if matches!(
             command,
@@ -188,7 +191,7 @@ impl Plot {
         ) && !player.has_permission("plots.worldedit.bypass")
             && self.owner != Some(player.uuid)
         {
-            bail!("You can only use WorldEdit on your own plot");
+            bail!(messages::YOU_CAN_ONLY_USE_WORLDEDIT_ON);
         }
         Ok(())
     }

@@ -1,4 +1,5 @@
 //! Minimal command-block lifecycle, sharing ordinary typed scheduled ticks.
+use crate::messages;
 use crate::world::World;
 use mchprs_blocks::block_entities::{BlockEntity, CommandBlockEntity};
 use mchprs_blocks::{BlockFace, BlockPos};
@@ -98,8 +99,9 @@ fn execute(world: &mut impl World, pos: BlockPos) -> bool {
             Ok(()) => {
                 entity.success_count = 1;
                 if entity.track_output {
-                    entity.last_output =
-                        Some(serde_json::json!({"text":"Command executed"}).to_string());
+                    entity.last_output = Some(
+                        serde_json::json!({"text":messages::COMMAND_BLOCK_EXECUTED}).to_string(),
+                    );
                 }
             }
             Err(error) => {

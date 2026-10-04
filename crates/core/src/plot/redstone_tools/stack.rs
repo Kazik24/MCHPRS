@@ -1,4 +1,5 @@
 use super::{Plot, PlotWorld, SelectionBounds, ToolNotice};
+use crate::messages;
 use crate::player::Player;
 use crate::plot::worldedit::{self, AirPolicy};
 use anyhow::{bail, Context, Result};
@@ -35,35 +36,35 @@ impl RStackRequest {
             }
             if argument.starts_with('-') {
                 if argument == "-" {
-                    bail!("A flag name must follow -");
+                    bail!(messages::FLAG_NAME_MUST_FOLLOW);
                 }
                 for flag in argument[1..].chars() {
                     match flag {
                         'a' | 'w' => air = AirPolicy::Copy,
                         'e' => selection = SelectionPolicy::Expand,
-                        _ => bail!("Unknown rstack flag: -{flag}"),
+                        _ => bail!(messages::unknown_stack_flag(flag)),
                     }
                 }
                 continue;
             }
             if direction.is_some() {
-                bail!("Specify only one direction");
+                bail!(messages::SPECIFY_ONLY_ONE_DIRECTION);
             }
             direction = Some(parse_direction(argument, look)?);
         }
         if numbers.len() > 2 {
-            bail!("Usage: //rstack [direction] [count] [spacing] [-e] [-w]");
+            bail!(messages::USAGE_RSTACK_DIRECTION_COUNT_SPACING_E);
         }
         let count = numbers.first().copied().unwrap_or(1);
         let mut spacing = numbers.get(1).copied().unwrap_or(2);
         if count < 0 {
             spacing = spacing
                 .checked_neg()
-                .context("Spacing overflows when reversing direction")?;
+                .context(messages::SPACING_OVERFLOWS_WHEN_REVERSING_DIRECTION)?;
         }
         let count = count.unsigned_abs();
         if count > MAX_COPIES {
-            bail!("Stack count may not exceed {MAX_COPIES}");
+            bail!(messages::stack_copy_limit(MAX_COPIES));
         }
         Ok(Self {
             count,
@@ -80,7 +81,7 @@ impl RStackRequest {
         world: &PlotWorld,
     ) -> Result<Vec<SelectionBounds>> {
         if bounds.volume() * u64::from(self.count) > MAX_STACK_BLOCKS {
-            bail!("A stack operation may copy at most {MAX_STACK_BLOCKS} blocks");
+            bail!(messages::stack_block_limit(MAX_STACK_BLOCKS));
         }
         let mut destinations = Vec::new();
         for index in 1..=self.count {
@@ -137,9 +138,9 @@ fn translated(position: BlockPos, direction: BlockPos, distance: i64) -> Result<
     let y = translated_axis(position.y, direction.y, distance)?;
     let z = translated_axis(position.z, direction.z, distance)?;
     Ok(BlockPos::new(
-        i32::try_from(x).context("Stack X coordinate overflows")?,
-        i32::try_from(y).context("Stack Y coordinate overflows")?,
-        i32::try_from(z).context("Stack Z coordinate overflows")?,
+        i32::try_from(x).context(messages::STACK_X_COORDINATE_OVERFLOWS)?,
+        i32::try_from(y).context(messages::STACK_Y_COORDINATE_OVERFLOWS)?,
+        i32::try_from(z).context(messages::STACK_Z_COORDINATE_OVERFLOWS)?,
     ))
 }
 
@@ -147,7 +148,7 @@ fn translated_axis(position: i32, direction: i32, distance: i64) -> Result<i64> 
     i64::from(direction)
         .checked_mul(distance)
         .and_then(|offset| i64::from(position).checked_add(offset))
-        .context("Stack coordinate overflows")
+        .context(messages::STACK_COORDINATE_OVERFLOWS)
 }
 
 fn look_direction(player: &Player) -> BlockPos {
@@ -203,11 +204,11 @@ fn parse_direction(token: &str, look: BlockPos) -> Result<BlockPos> {
         "b" | "back" | "backward" => horizontal_look * -1,
         "l" | "left" => BlockPos::new(horizontal_look.z, 0, -horizontal_look.x),
         "r" | "right" => BlockPos::new(-horizontal_look.z, 0, horizontal_look.x),
-        _ => bail!("Unknown direction: {token}"),
+        _ => bail!(messages::unknown_direction(token)),
     };
     direction.y = vertical;
     if direction == BlockPos::new(0, 0, 0) {
-        bail!("Look horizontally before using a relative direction");
+        bail!(messages::LOOK_HORIZONTALLY_BEFORE_USING_RELATIVE_DIRECTION);
     }
     Ok(direction)
 }

@@ -108,8 +108,8 @@ async function click(c,slot,mouseButton=0,mode=0,changedSlots=[]) {
 }
 async function setBlock(c,x,y,name,z=130) {
   move(c,x,y,z);
-  await cmd(c,'/pos1','First position'); await cmd(c,'/pos2','Second position');
-  await cmd(c,'/set '+name,'Operation completed');
+  await cmd(c,'/pos1','First paw'); await cmd(c,'/pos2','Second paw');
+  await cmd(c,'/set '+name,'Operation complete');
 }
 (async () => {
   const a = await connect('BarrelSmokeOne');
@@ -136,7 +136,7 @@ async function setBlock(c,x,y,name,z=130) {
       await close(a);
     }
   } else {
-    await cmd(a,'rtps 0','successfully set');
+    await cmd(a,'rtps 0',"circuit's new tick pace is set");
     a.write('look',{yaw:90,pitch:0,flags:{onGround:false,hasHorizontalCollision:false}});
     await creative(a,36,item('barrel'));
     await creative(a,37,item('redstone',64,[{type:'unbreakable',data:Buffer.alloc(0)}]));
@@ -159,12 +159,12 @@ async function setBlock(c,x,y,name,z=130) {
     await setBlock(a,132,y,'redstone_wire'); move(a,128,y,128);
     // WorldEdit does not run placement updates; a lid change notifies the new circuit.
     await open(a,130,y); await close(a);
-    await cmd(a,'radvance 4','Plot has been advanced');
+    await cmd(a,'radvance 4','Trotted the plot forward');
     await until(() => Number(props(a,132,y).power) === 1,'filled barrel updates comparator');
     await open(a,130,y); await open(b,130,y);
     await click(b,0,0,1);
     await until(() => count(menu(a).items[0]) === 0,'other viewer inventory updates');
-    await cmd(a,'radvance 4','Plot has been advanced');
+    await cmd(a,'radvance 4','Trotted the plot forward');
     await until(() => Number(props(a,132,y).power) === 0,'removing items updates comparator');
     await click(b,62,0,1);
     await until(() => count(menu(a).items[0]) === 64,'shift transfer back into barrel');
@@ -174,11 +174,11 @@ async function setBlock(c,x,y,name,z=130) {
     await until(() => props(a,130,y).open === false,'last viewer closes lid');
     // Preserve facing, inventory and components through WorldEdit and schematic files.
     move(a,130,y);
-    await cmd(a,'/pos1','First position'); await cmd(a,'/pos2','Second position');
-    await cmd(a,'/copy','selection was copied');
-    await cmd(a,'/save BarrelRoundtrip.schem','saved sucessfuly');
-    await cmd(a,'/load BarrelRoundtrip.schem','loaded to your clipboard');
-    move(a,136,y); await cmd(a,'/paste','clipboard was pasted');
+    await cmd(a,'/pos1','First paw'); await cmd(a,'/pos2','Second paw');
+    await cmd(a,'/copy','Selection copied');
+    await cmd(a,'/save BarrelRoundtrip.schem','schematic away successfully');
+    await cmd(a,'/load BarrelRoundtrip.schem','Fetched the schematic into your clipboard');
+    move(a,136,y); await cmd(a,'/paste','Unpacked your clipboard');
     await until(() => data.blocksByStateId[state(a,136,y)]?.name === 'barrel','barrel paste');
     assert.equal(props(a,136,y).facing,'east');
     await open(a,136,y);
@@ -223,14 +223,14 @@ async function setBlock(c,x,y,name,z=130) {
       await setBlock(a,x+2,y,'redstone_wire');
       move(a,x,y); await open(a,x,y,130,type,size);
       await click(a,0); await click(a,0); await close(a);
-      await cmd(a,'radvance 4','Plot has been advanced');
+      await cmd(a,'radvance 4','Trotted the plot forward');
       await until(() => Number(props(a,x+2,y).power) === power,'container comparator '+name);
       move(a,x,y);
-      await cmd(a,'/pos1','First position'); await cmd(a,'/pos2','Second position');
-      await cmd(a,'/copy','selection was copied');
-      await cmd(a,'/save ContainerRoundtrip.schem','saved sucessfuly');
-      await cmd(a,'/load ContainerRoundtrip.schem','loaded to your clipboard');
-      move(a,x,y,134); await cmd(a,'/paste','clipboard was pasted');
+      await cmd(a,'/pos1','First paw'); await cmd(a,'/pos2','Second paw');
+      await cmd(a,'/copy','Selection copied');
+      await cmd(a,'/save ContainerRoundtrip.schem','schematic away successfully');
+      await cmd(a,'/load ContainerRoundtrip.schem','Fetched the schematic into your clipboard');
+      move(a,x,y,134); await cmd(a,'/paste','Unpacked your clipboard');
       await open(a,x,y,134,type,size);
       assert.equal(count(menu(a).items[0]),64,'schematic inventory '+name);
       assert(menu(a).items[0].components.some(c => c.type === 'unbreakable'));
@@ -247,7 +247,7 @@ async function setBlock(c,x,y,name,z=130) {
       await use(a,156,y);
       if (bite < 7) assert.equal(Number(props(a,156,y).bites),bite);
       else await until(() => data.blocksByStateId[state(a,156,y)]?.name === 'air','last bite removes cake');
-      await cmd(a,'radvance 4','Plot has been advanced');
+      await cmd(a,'radvance 4','Trotted the plot forward');
       await until(() => Number(props(a,158,y).power) === 14-2*bite,'cake comparator bite '+bite);
       assert.equal(a.currentMenu,null,'cake never opens an inventory');
     }
@@ -263,7 +263,7 @@ async function setBlock(c,x,y,name,z=130) {
     assert.equal(sum([...a.inventory.values()]),1,'carried item returned on close');
     // Rewind replaces world inventories and closes screens with current cursors safely.
     await cmd(a,'rhistory on 2','up to 2 game ticks');
-    await cmd(a,'radvance 1','Plot has been advanced');
+    await cmd(a,'radvance 1','Trotted the plot forward');
     await open(a,130,y); await click(a,0);
     await cmd(a,'rback','rewound by 1 game ticks and paused');
     await until(() => a.currentMenu === null,'rewind closes inventory');

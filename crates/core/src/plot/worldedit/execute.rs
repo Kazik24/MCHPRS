@@ -1,6 +1,7 @@
 use super::*;
 use crate::chat::{ChatComponentBuilder, ColorCode};
 use crate::config::CONFIG;
+use crate::messages;
 use crate::player::PacketSender;
 use crate::plot::PLOT_BLOCK_HEIGHT;
 use crate::utils::HyphenatedUUID;
@@ -68,11 +69,11 @@ pub(super) fn execute_set(ctx: CommandExecuteContext<'_>) {
 
     let blocks_updated = operation.blocks_updated();
 
-    ctx.player.send_worldedit_message(&format!(
-        "Operation completed: {} block(s) affected ({:.00?})",
-        blocks_updated,
-        start_time.elapsed()
-    ));
+    ctx.player
+        .send_worldedit_message(&messages::worldedit_completed(
+            blocks_updated,
+            start_time.elapsed(),
+        ));
 }
 
 pub(super) fn execute_replace(ctx: CommandExecuteContext<'_>) {
@@ -106,11 +107,11 @@ pub(super) fn execute_replace(ctx: CommandExecuteContext<'_>) {
 
     let blocks_updated = operation.blocks_updated();
 
-    ctx.player.send_worldedit_message(&format!(
-        "Operation completed: {} block(s) affected ({:.00?})",
-        blocks_updated,
-        start_time.elapsed()
-    ));
+    ctx.player
+        .send_worldedit_message(&messages::worldedit_completed(
+            blocks_updated,
+            start_time.elapsed(),
+        ));
 }
 
 pub(super) fn execute_count(ctx: CommandExecuteContext<'_>) {
@@ -131,11 +132,11 @@ pub(super) fn execute_count(ctx: CommandExecuteContext<'_>) {
         }
     }
 
-    ctx.player.send_worldedit_message(&format!(
-        "Counted {} block(s) ({:.00?})",
-        blocks_counted,
-        start_time.elapsed()
-    ));
+    ctx.player
+        .send_worldedit_message(&messages::worldedit_counted(
+            blocks_counted,
+            start_time.elapsed(),
+        ));
 }
 
 pub(super) fn execute_copy(ctx: CommandExecuteContext<'_>) {
@@ -150,10 +151,8 @@ pub(super) fn execute_copy(ctx: CommandExecuteContext<'_>) {
     );
     ctx.player.worldedit_clipboard = Some(clipboard);
 
-    ctx.player.send_worldedit_message(&format!(
-        "Your selection was copied. ({:.00?})",
-        start_time.elapsed()
-    ));
+    ctx.player
+        .send_worldedit_message(&messages::selection_copied(start_time.elapsed()));
 }
 
 pub(super) fn execute_cut(ctx: CommandExecuteContext<'_>) {
@@ -169,10 +168,8 @@ pub(super) fn execute_cut(ctx: CommandExecuteContext<'_>) {
     ctx.player.worldedit_clipboard = Some(clipboard);
     clear_area(ctx.plot, first_pos, second_pos);
 
-    ctx.player.send_worldedit_message(&format!(
-        "Your selection was cut. ({:.00?})",
-        start_time.elapsed()
-    ));
+    ctx.player
+        .send_worldedit_message(&messages::selection_cut(start_time.elapsed()));
 }
 
 pub(super) fn execute_move(mut ctx: CommandExecuteContext<'_>) {
@@ -219,10 +216,8 @@ pub(super) fn execute_move(mut ctx: CommandExecuteContext<'_>) {
         player.worldedit_set_second_position(second_pos);
     }
 
-    ctx.player.send_worldedit_message(&format!(
-        "Your selection was moved. ({:.00?})",
-        start_time.elapsed()
-    ));
+    ctx.player
+        .send_worldedit_message(&messages::selection_moved(start_time.elapsed()));
 }
 
 pub(super) fn execute_paste(ctx: CommandExecuteContext<'_>) {
@@ -250,12 +245,11 @@ pub(super) fn execute_paste(ctx: CommandExecuteContext<'_>) {
         if ctx.has_flag('u') {
             update(ctx.plot, first_pos, second_pos);
         }
-        ctx.player.send_worldedit_message(&format!(
-            "Your clipboard was pasted. ({:.00?})",
-            start_time.elapsed()
-        ));
+        ctx.player
+            .send_worldedit_message(&messages::clipboard_pasted(start_time.elapsed()));
     } else {
-        ctx.player.send_system_message("Your clipboard is empty!");
+        ctx.player
+            .send_system_message(messages::CLIPBOARD_EMPTY_PASTE);
     }
 }
 
@@ -275,15 +269,13 @@ pub(super) fn execute_load(ctx: CommandExecuteContext<'_>) {
     match clipboard {
         Ok(cb) => {
             ctx.player.worldedit_clipboard = Some(cb);
-            ctx.player.send_worldedit_message(&format!(
-                "The schematic was loaded to your clipboard. Use //paste to place it. ({:.00?})",
-                start_time.elapsed()
-            ));
+            ctx.player
+                .send_worldedit_message(&messages::schematic_loaded(start_time.elapsed()));
         }
         Err(e) => {
             if let Some(e) = e.downcast_ref::<std::io::Error>() {
                 if e.kind() == std::io::ErrorKind::NotFound {
-                    let msg = "The specified schematic file could not be found.";
+                    let msg = messages::SCHEMATIC_NOT_FOUND;
                     ctx.player.send_error_message(msg);
                     return;
                 }
@@ -291,7 +283,7 @@ pub(super) fn execute_load(ctx: CommandExecuteContext<'_>) {
             error!("There was an error loading a schematic:");
             error!("{:#}", e);
             ctx.player
-                .send_error_message(&format!("Could not load schematic: {}", e.root_cause()));
+                .send_error_message(&messages::schematic_load_failed(e.root_cause()));
         }
     }
 }
@@ -308,16 +300,14 @@ pub(super) fn execute_save(ctx: CommandExecuteContext<'_>) {
     let clipboard = ctx.player.worldedit_clipboard.as_ref().unwrap();
     match save_schematic(&file_name, clipboard) {
         Ok(_) => {
-            ctx.player.send_worldedit_message(&format!(
-                "The schematic was saved sucessfuly. ({:.00?})",
-                start_time.elapsed()
-            ));
+            ctx.player
+                .send_worldedit_message(&messages::schematic_saved(start_time.elapsed()));
         }
         Err(err) => {
             error!("There was an error saving a schematic: ");
             error!("{:?}", err);
             ctx.player
-                .send_error_message(&format!("Could not save schematic: {}", err.root_cause()));
+                .send_error_message(&messages::schematic_save_failed(err.root_cause()));
         }
     }
 }
@@ -355,22 +345,20 @@ pub(super) fn execute_stack(ctx: CommandExecuteContext<'_>) {
     };
     ctx.player.worldedit_undo.push(undo);
 
-    ctx.player.send_worldedit_message(&format!(
-        "Your selection was stacked. ({:.00?})",
-        start_time.elapsed()
-    ));
+    ctx.player
+        .send_worldedit_message(&messages::selection_stacked(start_time.elapsed()));
 }
 
 pub(super) fn execute_undo(ctx: CommandExecuteContext<'_>) {
     if ctx.player.worldedit_undo.is_empty() {
         ctx.player
-            .send_error_message("There is nothing left to undo.");
+            .send_error_message(messages::THERE_NOTHING_LEFT_UNDO);
         return;
     }
     let undo = ctx.player.worldedit_undo.pop().unwrap();
     if undo.plot_x != ctx.plot.x || undo.plot_z != ctx.plot.z {
         ctx.player
-            .send_error_message("Cannot undo outside of your current plot.");
+            .send_error_message(messages::CANNOT_UNDO_OUTSIDE_CURRENT_PLOT);
         return;
     }
     let redo = WorldEditUndo {
@@ -402,13 +390,13 @@ pub(super) fn execute_undo(ctx: CommandExecuteContext<'_>) {
 pub(super) fn execute_redo(ctx: CommandExecuteContext<'_>) {
     if ctx.player.worldedit_redo.is_empty() {
         ctx.player
-            .send_error_message("There is nothing left to redo.");
+            .send_error_message(messages::THERE_NOTHING_LEFT_REDO);
         return;
     }
     let redo = ctx.player.worldedit_redo.pop().unwrap();
     if redo.plot_x != ctx.plot.x || redo.plot_z != ctx.plot.z {
         ctx.player
-            .send_error_message("Cannot redo outside of your current plot.");
+            .send_error_message(messages::CANNOT_REDO_OUTSIDE_CURRENT_PLOT);
         return;
     }
     let undo = WorldEditUndo {
@@ -441,7 +429,7 @@ pub(super) fn execute_sel(ctx: CommandExecuteContext<'_>) {
     let player = ctx.player;
     player.first_position = None;
     player.second_position = None;
-    player.send_worldedit_message("Selection cleared.");
+    player.send_worldedit_message(messages::SELECTION_CLEARED);
     player.worldedit_send_cui("s|cuboid");
 }
 
@@ -465,7 +453,7 @@ pub(super) fn execute_hpos1(mut ctx: CommandExecuteContext<'_>) {
     let player = ctx.player;
     match result {
         Some(pos) => player.worldedit_set_first_position(pos),
-        None => player.send_error_message("No block in sight!"),
+        None => player.send_error_message(messages::NO_BLOCK_SIGHT),
     }
 }
 
@@ -479,7 +467,7 @@ pub(super) fn execute_hpos2(mut ctx: CommandExecuteContext<'_>) {
     let player = &mut ctx.player;
     match result {
         Some(pos) => player.worldedit_set_second_position(pos),
-        None => player.send_error_message("No block in sight!"),
+        None => player.send_error_message(messages::NO_BLOCK_SIGHT),
     }
 }
 
@@ -494,7 +482,7 @@ pub(super) fn execute_expand(ctx: CommandExecuteContext<'_>) {
         false,
     );
 
-    player.send_worldedit_message(&format!("Region expanded {} block(s).", amount));
+    player.send_worldedit_message(&messages::region_expanded(amount));
 }
 
 pub(super) fn execute_contract(ctx: CommandExecuteContext<'_>) {
@@ -508,7 +496,7 @@ pub(super) fn execute_contract(ctx: CommandExecuteContext<'_>) {
         true,
     );
 
-    player.send_worldedit_message(&format!("Region contracted {} block(s).", amount));
+    player.send_worldedit_message(&messages::region_contracted(amount));
 }
 
 pub(super) fn execute_shift(ctx: CommandExecuteContext<'_>) {
@@ -540,7 +528,7 @@ pub(super) fn execute_shift(ctx: CommandExecuteContext<'_>) {
         BlockFacing::North => move_both_points(0, 0, -(amount as i32)),
     }
 
-    player.send_worldedit_message(&format!("Region shifted {} block(s).", amount));
+    player.send_worldedit_message(&messages::region_shifted(amount));
 }
 
 pub(super) fn execute_flip(ctx: CommandExecuteContext<'_>) {
@@ -618,10 +606,8 @@ pub(super) fn execute_flip(ctx: CommandExecuteContext<'_>) {
     };
 
     ctx.player.worldedit_clipboard = Some(cb);
-    ctx.player.send_worldedit_message(&format!(
-        "The clipboard copy has been flipped. ({:.00?})",
-        start_time.elapsed()
-    ));
+    ctx.player
+        .send_worldedit_message(&messages::clipboard_flipped(start_time.elapsed()));
 }
 
 pub(super) fn execute_rotate(ctx: CommandExecuteContext<'_>) {
@@ -630,7 +616,7 @@ pub(super) fn execute_rotate(ctx: CommandExecuteContext<'_>) {
     let rotate_amt = match rotate_amt % 360 {
         0 => {
             ctx.player
-                .send_worldedit_message("Successfully rotated by 0! That took a lot of work.");
+                .send_worldedit_message(messages::CLIPBOARD_ROTATED_ZERO);
             return;
         }
         90 => RotateAmt::Rotate90,
@@ -638,7 +624,7 @@ pub(super) fn execute_rotate(ctx: CommandExecuteContext<'_>) {
         270 => RotateAmt::Rotate270,
         _ => {
             ctx.player
-                .send_error_message("Rotate amount must be a multiple of 90.");
+                .send_error_message(messages::ROTATE_AMOUNT_MUST_MULTIPLE);
             return;
         }
     };
@@ -724,10 +710,8 @@ pub(super) fn execute_rotate(ctx: CommandExecuteContext<'_>) {
     };
 
     ctx.player.worldedit_clipboard = Some(cb);
-    ctx.player.send_worldedit_message(&format!(
-        "The clipboard copy has been rotated. ({:.00?})",
-        start_time.elapsed()
-    ));
+    ctx.player
+        .send_worldedit_message(&messages::clipboard_rotated(start_time.elapsed()));
 }
 
 pub(super) fn execute_help(mut ctx: CommandExecuteContext<'_>) {
@@ -747,25 +731,25 @@ pub(super) fn execute_help(mut ctx: CommandExecuteContext<'_>) {
     let command = match maybe_command {
         Some(command) => command,
         None => {
-            player.send_error_message(&format!("Unknown command: {}", command_name));
+            player.send_error_message(&messages::unknown_command(command_name));
             return;
         }
     };
 
     let mut message = vec![
-        ChatComponentBuilder::new("--------------".to_owned())
+        ChatComponentBuilder::new(messages::WORLD_EDIT_HELP_SEPARATOR.to_owned())
             .color_code(ColorCode::Yellow)
             .strikethrough(true)
             .finish(),
-        ChatComponentBuilder::new(format!(" Help for /{} ", command_name)).finish(),
-        ChatComponentBuilder::new("--------------\n".to_owned())
+        ChatComponentBuilder::new(messages::worldedit_help_heading(&command_name)).finish(),
+        ChatComponentBuilder::new(messages::WORLD_EDIT_HELP_SEPARATOR_END.to_owned())
             .color_code(ColorCode::Yellow)
             .strikethrough(true)
             .finish(),
         ChatComponentBuilder::new(command.description.to_owned())
             .color_code(ColorCode::Gray)
             .finish(),
-        ChatComponentBuilder::new("\nUsage: ".to_owned())
+        ChatComponentBuilder::new(messages::WORLD_EDIT_HELP_USAGE.to_owned())
             .color_code(ColorCode::Gray)
             .finish(),
         ChatComponentBuilder::new(format!("/{}", command_name))
@@ -788,7 +772,7 @@ pub(super) fn execute_help(mut ctx: CommandExecuteContext<'_>) {
     }
 
     message.push(
-        ChatComponentBuilder::new("\nArguments:".to_owned())
+        ChatComponentBuilder::new(messages::WORLD_EDIT_HELP_ARGUMENTS.to_owned())
             .color_code(ColorCode::Gray)
             .finish(),
     );
@@ -835,7 +819,7 @@ pub(super) fn execute_help(mut ctx: CommandExecuteContext<'_>) {
 
     if !command.flags.is_empty() {
         message.push(
-            ChatComponentBuilder::new("\nFlags:".to_owned())
+            ChatComponentBuilder::new(messages::WORLD_EDIT_HELP_FLAGS.to_owned())
                 .color_code(ColorCode::Gray)
                 .finish(),
         );
@@ -898,12 +882,12 @@ pub(super) fn execute_ascend(ctx: CommandExecuteContext<'_>) {
     }
 
     if player_y == player_pos.y {
-        player.send_error_message("No free spot above you found.");
+        player.send_error_message(messages::NO_FREE_SPOT_ABOVE_YOU_FOUND);
     } else {
         let mut pos = player.pos;
         pos.y = player_y as f64;
         player.teleport(pos);
-        player.send_worldedit_message(&format!("Ascended {} levels.", initial_levels - levels));
+        player.send_worldedit_message(&messages::ascended(initial_levels - levels));
     }
 }
 
@@ -934,12 +918,12 @@ pub(super) fn execute_descend(ctx: CommandExecuteContext<'_>) {
     }
 
     if player_y == player_pos.y {
-        player.send_error_message("No free spot below you found.");
+        player.send_error_message(messages::NO_FREE_SPOT_BELOW_YOU_FOUND);
     } else {
         let mut pos = player.pos;
         pos.y = player_y as f64;
         player.teleport(pos);
-        player.send_worldedit_message(&format!("Descended {} levels.", initial_levels - levels));
+        player.send_worldedit_message(&messages::descended(initial_levels - levels));
     }
 }
 
@@ -955,17 +939,15 @@ pub(super) fn execute_update(ctx: CommandExecuteContext<'_>) {
             (first_pos, second_pos)
         } else {
             ctx.player
-                .send_error_message("Your selection is incomplete.");
+                .send_error_message(messages::SELECTION_INCOMPLETE);
             return;
         }
     };
 
     update(ctx.plot, first_pos, second_pos);
 
-    ctx.player.send_worldedit_message(&format!(
-        "Your selection was updated sucessfully. ({:.00?})",
-        start_time.elapsed()
-    ));
+    ctx.player
+        .send_worldedit_message(&messages::selection_updated(start_time.elapsed()));
 }
 
 pub(super) fn execute_replace_container(ctx: CommandExecuteContext<'_>) {
@@ -1032,10 +1014,8 @@ pub(super) fn execute_replace_container(ctx: CommandExecuteContext<'_>) {
         }
     }
 
-    ctx.player.send_worldedit_message(&format!(
-        "Your selection was replaced sucessfully. ({:.00?})",
-        start_time.elapsed()
-    ));
+    ctx.player
+        .send_worldedit_message(&messages::selection_replaced(start_time.elapsed()));
 }
 
 pub(super) fn execute_unimplemented(_ctx: CommandExecuteContext<'_>) {

@@ -1,6 +1,6 @@
 # MCHPRS server message inventory
 
-This inventory locates outgoing player-facing text relevant to [the furry message style plan](FURRY_MESSAGES_PLAN.md). It covers the current working tree, including local changes, rather than only the base commit. The scope is server-to-player feedback and its producers; incoming packet parsing is listed where it leads to those replies.
+This inventory locates outgoing player-facing text relevant to [the furry message style plan](FURRY_MESSAGES_PLAN.md). It records the working tree at the original wording audit, including local changes. Expressions, line numbers, and counts below belong to that snapshot. The implemented wording now lives in the [shared message catalog](../crates/core/src/messages.rs). The scope is server-to-player feedback and its producers; incoming packet parsing is listed where it leads to those replies.
 
 The [wording proposal](FURRY_MESSAGE_WORDING.md) provides cute replacements for routine notices. All entries identify source locations and preserve current source expressions. Repeated wording remains listed at every send site. Runtime library errors have no finite phrase list, so their propagation paths are identified separately. This document does not change server behavior or message wording.
 
@@ -25,7 +25,7 @@ The scan found **178 message helper call sites across 12 files**, and **8 direct
 
 ## Sending and routing
 
-- `Player::send_error_message` and `send_system_message` use the `PacketSender` defaults: red and yellow, through `send_color_message` and `send_raw_system_message`. WorldEdit uses light purple. Add typed notices beside these entry points; keep the raw senders available for authored components.
+- `Player::send_error_message` and `send_system_message` use the `PacketSender` defaults: red and yellow, through `send_color_message` and `send_raw_system_message`. WorldEdit uses light purple. Catalog entries are selected by their producers; raw senders remain available for authored components.
 - `Player::send_chat_message` wraps legacy chat components in a JSON `extra` array and delegates to `send_raw_chat`. RTPS reports, WorldEdit help, and plot broadcasts also use this chat path despite being server-authored.
 - `plot/history.rs::record_tick` constructs a red `CChatMessage` directly, then sends the encoded packet to every plot packet sender. This is a feedback path outside the usual message helpers.
 - `plot/packet_handlers.rs::handle_chat_message` sends player chat as `Message::ChatInfo` to the server thread. `server.rs::handle_message` applies `CONFIG.chat_format` and broadcasts `BroadcastMessage::Chat`; plots deliver it with `send_chat_message`. Preserve the player content.

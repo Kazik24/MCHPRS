@@ -235,16 +235,16 @@ async function close(c) {
 }
 async function setBlock(c, x, y, name, z = 130) {
   move(c, x, y, z);
-  await cmd(c, "/pos1", "First position");
-  await cmd(c, "/pos2", "Second position");
-  await cmd(c, "/set " + name, "Operation completed");
+  await cmd(c, "/pos1", "First paw");
+  await cmd(c, "/pos2", "Second paw");
+  await cmd(c, "/set " + name, "Operation complete");
 }
 
 async function select(c, first, second = first) {
   move(c, ...first);
-  await cmd(c, "/pos1", "First position");
+  await cmd(c, "/pos1", "First paw");
   move(c, ...second);
-  await cmd(c, "/pos2", "Second position");
+  await cmd(c, "/pos2", "Second paw");
 }
 
 function actions(component) {
@@ -333,7 +333,7 @@ function component(slot, name) {
       component(a.inventory.get(37), "lore"),
       "container lore survives restart",
     );
-    await cmd(a, "/find -p 1", "Run a search first");
+    await cmd(a, "/find -p 1", "No cached search results yet");
     await creative(a, 36, { itemCount: 0 });
     move(a, 148, y, 130);
     await openChest(a, 150, y);
@@ -346,12 +346,12 @@ function component(slot, name) {
   } else {
     const b = await connect("ToolsSmokeTwo");
     move(b, 128, y, 128);
-    await cmd(a, "rtps 0", "successfully set");
+    await cmd(a, "rtps 0", "circuit's new tick pace is set");
     await cmd(a, "help tools", "//find <block>");
     await cmd(a, "/help rs", "//rs [direction]");
 
     await select(a, [130, y, 130], [138, y, 130]);
-    await cmd(a, "/set repeater[facing=north]", "Operation completed");
+    await cmd(a, "/set repeater[facing=north]", "Operation complete");
     await setBlock(a, 134, y, "repeater[facing=east]");
     await select(a, [130, y, 130], [138, y, 130]);
     const foundStart = a.components.length;
@@ -368,7 +368,7 @@ function component(slot, name) {
         .includes(`/tp 130 ${y + 1} 130`),
     );
     const secondPage = a.components.length;
-    await cmd(a, "/find -p 2", "page 2/2");
+    await cmd(a, "/find -p 2", "Page 2/2");
     await until(
       () =>
         a.components
@@ -377,10 +377,10 @@ function component(slot, name) {
           .includes(`/tp 138 ${y + 1} 130`),
       "stable second-page positions",
     );
-    await cmd(a, "/find missing_block", "Unknown block");
-    await cmd(a, "/find -p 2", "page 2/2");
+    await cmd(a, "/find missing_block", "Couldn't sniff out a block");
+    await cmd(a, "/find -p 2", "Page 2/2");
     await cmd(a, "/find -p 0", "Page numbers start at 1");
-    await cmd(a, "/find -p 99", "Page must be between");
+    await cmd(a, "/find -p 99", "result trail has pages 1 through");
     assert.deepEqual(
       (await complete(a, "//find -p ")).matches.map((match) => match.match),
       ["1", "2"],
@@ -396,8 +396,8 @@ function component(slot, name) {
       ),
     );
     await cmd(a, "/find repeater[facing=north]", "8 matches");
-    await cmd(a, "/find diamond_block", "No matches");
-    await cmd(a, "/find -p 1", "No matches");
+    await cmd(a, "/find diamond_block", "no matches");
+    await cmd(a, "/find -p 1", "no matches");
     await cmd(a, "/find repeater", "9 matches");
 
     await setBlock(a, 140, y, "oak_sign");
@@ -442,7 +442,7 @@ function component(slot, name) {
 
     await creative(a, 36, item("diamond", 5));
     const occupied = JSON.stringify(a.inventory.get(36));
-    await cmd(a, "container b 0", "Your item is ready");
+    await cmd(a, "container b 0", "your item's fetched");
     assert.equal(
       JSON.stringify(a.inventory.get(36)),
       occupied,
@@ -451,8 +451,8 @@ function component(slot, name) {
     assert.equal(a.inventory.get(37).itemId, data.itemsByName.barrel.id);
     assert(component(a.inventory.get(37), "custom_name"));
     const inventoryBefore = JSON.stringify([...a.inventory]);
-    await cmd(a, "container unknown 1", "Unknown container type");
-    await cmd(a, "container chest 16", "Power must be between");
+    await cmd(a, "container unknown 1", "Can't fetch that container type");
+    await cmd(a, "container chest 16", "0..15 or lowercase a..f");
     assert.equal(
       JSON.stringify([...a.inventory]),
       inventoryBefore,
@@ -505,7 +505,7 @@ function component(slot, name) {
     }
 
     await creative(a, 36, { itemCount: 0 });
-    await cmd(a, "container c f", "Your item is ready");
+    await cmd(a, "container c f", "your item's fetched");
     const savedChest = a.inventory.get(36);
     assert(component(savedChest, "container"));
     assert(component(savedChest, "enchantment_glint_override"));
@@ -541,10 +541,10 @@ function component(slot, name) {
       item("oak_slab", 32, [{ type: "unbreakable", data: Buffer.alloc(0) }]),
     );
     await creative(a, 37, { itemCount: 0 });
-    await cmd(a, "container chest f", "Your item is ready");
+    await cmd(a, "container chest f", "your item's fetched");
 
     await select(a, [130, y, 130], [138, y, 130]);
-    await cmd(a, "cursel", "sidebar enabled");
+    await cmd(a, "cursel", "pawprints are on the sidebar");
     await until(() => a.sidebar === "rf_selection", "selection sidebar");
     assert(
       !b.objectives.has("rf_selection"),
@@ -556,7 +556,7 @@ function component(slot, name) {
       ),
     );
     await select(b, [120, y, 130], [121, y, 130]);
-    await cmd(b, "cursel", "sidebar enabled");
+    await cmd(b, "cursel", "pawprints are on the sidebar");
     await until(
       () =>
         [...(b.scores.get("rf_selection") || [])].some((text) =>
@@ -564,12 +564,12 @@ function component(slot, name) {
         ),
       "second player selection",
     );
-    await cmd(a, "cursel", "sidebar hidden");
+    await cmd(a, "cursel", "sidebar out of sight");
     await until(() => a.sidebar === "redpiler_status", "Redpiler restored");
     assert.equal(b.sidebar, "rf_selection");
-    await cmd(a, "/find -p 2", "page 2/2");
-    await cmd(b, "cursel", "sidebar hidden");
-    await cmd(a, "cursel", "sidebar enabled");
+    await cmd(a, "/find -p 2", "Page 2/2");
+    await cmd(b, "cursel", "sidebar out of sight");
+    await cmd(a, "cursel", "pawprints are on the sidebar");
 
     await select(a, [254, y, 130]);
     const beforeBounds = state(a, 254, y, 130);
@@ -581,7 +581,7 @@ function component(slot, name) {
     );
     await setBlock(a, 160, y, "stone");
     await select(a, [160, y, 130]);
-    await cmd(a, "/rs -e neu 2 1", "Stacked 2 copies");
+    await cmd(a, "/rs -e neu 2 1", "Piled up 2 copies");
     await until(
       () => data.blocksByStateId[state(a, 162, y + 2, 128)]?.name === "stone",
       "diagonal stack",

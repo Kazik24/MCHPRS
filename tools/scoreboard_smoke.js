@@ -59,7 +59,7 @@ async function transfer(client, value) {
   await transfer(player, 'tp 130 30 130');
   await transfer(player, 'tp MissingScorePlayer');
   command(player, 'rtps 100');
-  await until(() => player.messages.some(message => message.includes('rtps was successfully set')), '100 TPS');
+  await until(() => player.messages.some(message => message.includes("circuit's new tick pace is set")), '100 TPS');
   for (let i = 0; i < 5; i++) await transfer(player, 'tp ScoreTraveler');
   const creates = player.creates; const positions = player.positions;
   command(player, 'tp 140 30 140');

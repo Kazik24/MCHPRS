@@ -16,6 +16,19 @@ const NEIGHBORS: [BlockFace; 6] = [
     BlockFace::South,
 ];
 
+// Java BlockBehaviour.UPDATE_SHAPE_ORDER differs from neighbor power callbacks.
+// Observers schedule their pulse ticks in this order; swapping vertical and
+// horizontal faces can make a falling wire edge recheck a quasi-powered piston
+// after its powering observer has switched off, causing an extra piston cycle.
+const SHAPE_NEIGHBORS: [BlockFace; 6] = [
+    BlockFace::West,
+    BlockFace::East,
+    BlockFace::North,
+    BlockFace::South,
+    BlockFace::Bottom,
+    BlockFace::Top,
+];
+
 fn powered(world: &impl World, pos: BlockPos, face: BlockFace) -> bool {
     let p = pos.offset(face);
     super::get_redstone_power(world.get_block(p), world, p, face) > 0
@@ -362,7 +375,7 @@ fn finish(world: &mut impl World, pos: BlockPos, interrupted: bool) {
 }
 
 fn shape_changed(world: &mut impl World, pos: BlockPos) {
-    for face in NEIGHBORS {
+    for face in SHAPE_NEIGHBORS {
         let neighbor = pos.offset(face);
         crate::interaction::change(world.get_block(neighbor), world, neighbor, face.opposite());
         // Observers watch shape/state changes, not ordinary neighbor power callbacks.

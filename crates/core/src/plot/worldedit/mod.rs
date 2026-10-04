@@ -1,4 +1,5 @@
 //! [Worldedit](https://github.com/EngineHub/WorldEdit) and [RedstoneTools](https://github.com/paulikauro/RedstoneTools) implementation
+use crate::messages;
 
 mod execute;
 mod schematic;
@@ -71,23 +72,23 @@ pub fn execute_command(
         let plot_x = plot.world.x;
         let plot_z = plot.world.z;
         if player.first_position.is_none() || player.second_position.is_none() {
-            player.send_error_message("Make a region selection first.");
+            player.send_error_message(messages::SELECTION_REQUIRED);
             return true;
         }
         let first_pos = player.first_position.unwrap();
         let second_pos = player.second_position.unwrap();
         if !Plot::in_plot_bounds(plot_x, plot_z, first_pos.x, first_pos.z) {
-            player.send_system_message("First position is outside plot bounds!");
+            player.send_system_message(messages::FIRST_POSITION_OUTSIDE_PLOT_BOUNDS);
             return true;
         }
         if !Plot::in_plot_bounds(plot_x, plot_z, second_pos.x, second_pos.z) {
-            player.send_system_message("Second position is outside plot bounds!");
+            player.send_system_message(messages::SECOND_POSITION_OUTSIDE_PLOT_BOUNDS);
             return true;
         }
     }
 
     if command.requires_clipboard && player.worldedit_clipboard.is_none() {
-        player.send_error_message("Your clipboard is empty. Use //copy first.");
+        player.send_error_message(messages::CLIPBOARD_EMPTY);
         return true;
     }
 
@@ -101,19 +102,19 @@ pub fn execute_command(
             let flags = arg.chars();
             for flag in flags.skip(1) {
                 if with_argument {
-                    player.send_error_message("Flag with argument must be last in grouping");
+                    player.send_error_message(messages::FLAG_ARGUMENT_MUST_LAST_GROUPING);
                     return true;
                 }
                 let flag_desc = if let Some(desc) = flag_descs.iter().find(|d| d.letter == flag) {
                     desc
                 } else {
-                    player.send_error_message(&format!("Unknown flag: {}", flag));
+                    player.send_error_message(&messages::unknown_flag(flag));
                     return true;
                 };
                 arg_removal_idxs.push(i);
                 if flag_desc.argument_type.is_some() {
                     if i + 1 >= args.len() {
-                        player.send_error_message("Flag requires an argument");
+                        player.send_error_message(messages::FLAG_REQUIRES_AN_ARGUMENT);
                         return true;
                     }
                     arg_removal_idxs.push(i + 1);
@@ -133,7 +134,7 @@ pub fn execute_command(
     let arg_descs = command.arguments;
 
     if args.len() > arg_descs.len() {
-        player.send_error_message("Too many arguments.");
+        player.send_error_message(messages::TOO_MANY_ARGUMENTS);
         return true;
     }
 
@@ -178,11 +179,7 @@ impl ArgumentParseError {
 
 impl fmt::Display for ArgumentParseError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "Error parsing argument of type {:?}: {}",
-            self.arg_type, self.reason
-        )
+        f.write_str(&messages::argument_error(self.arg_type, &self.reason))
     }
 }
 
@@ -264,7 +261,7 @@ impl Argument {
             ArgumentType::UnsignedInteger => Ok(Argument::UnsignedInteger(1)),
             _ => Err(ArgumentParseError::new(
                 arg_type,
-                "argument can't be inferred",
+                messages::ARGUMENT_CANNOT_INFER,
             )),
         }
     }
@@ -292,12 +289,20 @@ impl Argument {
                     "w" | "west" => BlockFacing::West,
                     "l" | "left" => player_facing.rotate_ccw(),
                     "r" | "right" => player_facing.rotate(),
-                    _ => return Err(ArgumentParseError::new(arg_type, "unknown direction")),
+                    _ => {
+                        return Err(ArgumentParseError::new(
+                            arg_type,
+                            messages::ARGUMENT_UNKNOWN_DIRECTION,
+                        ))
+                    }
                 }))
             }
             ArgumentType::UnsignedInteger => match arg.parse::<u32>() {
                 Ok(num) => Ok(Argument::UnsignedInteger(num)),
-                Err(_) => Err(ArgumentParseError::new(arg_type, "error parsing uint")),
+                Err(_) => Err(ArgumentParseError::new(
+                    arg_type,
+                    messages::ARGUMENT_INVALID_UINT,
+                )),
             },
             ArgumentType::Pattern => match WorldEditPattern::from_str(arg) {
                 Ok(pattern) => Ok(Argument::Pattern(pattern)),
@@ -313,7 +318,7 @@ impl Argument {
                 Ok(ty) => Ok(Argument::ContainerType(ty)),
                 Err(_) => Err(ArgumentParseError::new(
                     arg_type,
-                    "error parsing container type",
+                    messages::ARGUMENT_INVALID_CONTAINER,
                 )),
             },
         }
@@ -328,7 +333,7 @@ struct ArgumentDescription {
 }
 
 macro_rules! argument {
-    ($name:literal, $type:ident, $desc:literal) => {
+    ($name:literal, $type:ident, $desc:expr) => {
         ArgumentDescription {
             name: $name,
             argument_type: ArgumentType::$type,
@@ -336,7 +341,7 @@ macro_rules! argument {
             default: None,
         }
     };
-    ($name:literal, $type:ident, $desc:literal, $default:literal) => {
+    ($name:literal, $type:ident, $desc:expr, $default:literal) => {
         ArgumentDescription {
             name: $name,
             argument_type: ArgumentType::$type,
@@ -353,7 +358,7 @@ struct FlagDescription {
 }
 
 macro_rules! flag {
-    ($name:literal, $type:ident, $desc:literal) => {
+    ($name:literal, $type:ident, $desc:expr) => {
         FlagDescription {
             letter: $name,
             argument_type: $type,
@@ -405,18 +410,18 @@ static COMMANDS: Lazy<HashMap<&'static str, WorldeditCommand>> = Lazy::new(|| {
     map! {
         "up" => WorldeditCommand {
             execute_fn: execute_up,
-            description: "Go upwards some distance",
+            description: messages::WE_HELP_GO_UPWARDS_SOME_DISTANCE,
             arguments: &[
-                argument!("distance", UnsignedInteger, "Distance to go upwards")
+                argument!("distance", UnsignedInteger, messages::WE_ARGUMENT_DISTANCE_TO_GO_UPWARDS)
             ],
             permission_node: "worldedit.navigation.up",
             ..Default::default()
         },
         "ascend" => WorldeditCommand {
             execute_fn: execute_ascend,
-            description: "Go up a floor",
+            description: messages::WE_HELP_GO_UP_A_FLOOR,
             arguments: &[
-                argument!("levels", UnsignedInteger, "# of levels to ascend")
+                argument!("levels", UnsignedInteger, messages::WE_ARGUMENT_OF_LEVELS_TO_ASCEND)
             ],
             permission_node: "worldedit.navigation.ascend",
             mutates_world: false,
@@ -424,9 +429,9 @@ static COMMANDS: Lazy<HashMap<&'static str, WorldeditCommand>> = Lazy::new(|| {
         },
         "descend" => WorldeditCommand {
             execute_fn: execute_descend,
-            description: "Go down a floor",
+            description: messages::WE_HELP_GO_DOWN_A_FLOOR,
             arguments: &[
-                argument!("levels", UnsignedInteger, "# of levels to descend")
+                argument!("levels", UnsignedInteger, messages::WE_ARGUMENT_OF_LEVELS_TO_DESCEND)
             ],
             permission_node: "worldedit.navigation.descend",
             mutates_world: false,
@@ -434,63 +439,63 @@ static COMMANDS: Lazy<HashMap<&'static str, WorldeditCommand>> = Lazy::new(|| {
         },
         "/pos1" => WorldeditCommand {
             execute_fn: execute_pos1,
-            description: "Set position 1",
+            description: messages::WE_HELP_SET_POSITION_1,
             permission_node: "worldedit.selection.pos",
             mutates_world: false,
             ..Default::default()
         },
         "/pos2" => WorldeditCommand {
             execute_fn: execute_pos2,
-            description: "Set position 2",
+            description: messages::WE_HELP_SET_POSITION_2,
             permission_node: "worldedit.selection.pos",
             mutates_world: false,
             ..Default::default()
         },
         "/hpos1" => WorldeditCommand {
             execute_fn: execute_hpos1,
-            description: "Set position 1 to targeted block",
+            description: messages::WE_HELP_SET_POSITION_1_TO_TARGETED_BLOCK,
             permission_node: "worldedit.selection.hpos",
             mutates_world: false,
             ..Default::default()
         },
         "/hpos2" => WorldeditCommand {
             execute_fn: execute_hpos2,
-            description: "Set position 2 to targeted block",
+            description: messages::WE_HELP_SET_POSITION_2_TO_TARGETED_BLOCK,
             permission_node: "worldedit.selection.hpos",
             mutates_world: false,
             ..Default::default()
         },
         "/sel" => WorldeditCommand {
             execute_fn: execute_sel,
-            description: "Choose a region selector",
+            description: messages::WE_HELP_CHOOSE_A_REGION_SELECTOR,
             mutates_world: false,
             ..Default::default()
         },
         "/set" => WorldeditCommand {
             arguments: &[
-                argument!("pattern", Pattern, "The pattern of blocks to set")
+                argument!("pattern", Pattern, messages::WE_ARGUMENT_THE_PATTERN_OF_BLOCKS_TO_SET)
             ],
             requires_positions: true,
             execute_fn: execute_set,
-            description: "Sets all the blocks in the region",
+            description: messages::WE_HELP_SETS_ALL_THE_BLOCKS_IN_THE,
             permission_node: "worldedit.region.stack",
             ..Default::default()
         },
         "/replace" => WorldeditCommand {
             arguments: &[
-                argument!("from", Mask, "The mask representng blocks to replace"),
-                argument!("to", Pattern, "The pattern of blocks to replace with")
+                argument!("from", Mask, messages::WE_ARGUMENT_REPLACE_MASK),
+                argument!("to", Pattern, messages::WE_ARGUMENT_THE_PATTERN_OF_BLOCKS_TO_REPLACE_WITH)
             ],
             requires_positions: true,
             execute_fn: execute_replace,
-            description: "Replace all blocks in a selection with another",
+            description: messages::WE_HELP_REPLACE_ALL_BLOCKS_IN_A_SELECTION,
             permission_node: "worldedit.region.replace",
             ..Default::default()
         },
         "/copy" => WorldeditCommand {
             requires_positions: true,
             execute_fn: execute_copy,
-            description: "Copy the selection to the clipboard",
+            description: messages::WE_HELP_COPY_THE_SELECTION_TO_THE_CLIPBOARD,
             permission_node: "worldedit.clipboard.copy",
             mutates_world: false,
             ..Default::default()
@@ -498,185 +503,185 @@ static COMMANDS: Lazy<HashMap<&'static str, WorldeditCommand>> = Lazy::new(|| {
         "/cut" => WorldeditCommand {
             requires_positions: true,
             execute_fn: execute_cut,
-            description: "Cut the selection to the clipboard",
+            description: messages::WE_HELP_CUT_THE_SELECTION_TO_THE_CLIPBOARD,
             permission_node: "worldedit.clipboard.cut",
             ..Default::default()
         },
         "/paste" => WorldeditCommand {
             requires_clipboard: true,
             execute_fn: execute_paste,
-            description: "Paste the clipboard's contents",
+            description: messages::WE_HELP_PASTE_THE_CLIPBOARD_S_CONTENTS,
             flags: &[
-                flag!('a', None, "Skip air blocks"),
-                flag!('u', None, "Also update all affected blocks"),
-                flag!('s', None, "Select the pasted region"),
+                flag!('a', None, messages::WE_HELP_SKIP_AIR_BLOCKS),
+                flag!('u', None, messages::WE_HELP_ALSO_UPDATE_ALL_AFFECTED_BLOCKS),
+                flag!('s', None, messages::WE_HELP_SELECT_THE_PASTED_REGION),
             ],
             permission_node: "worldedit.clipboard.paste",
             ..Default::default()
         },
         "/undo" => WorldeditCommand {
             execute_fn: execute_undo,
-            description: "Undoes the last action (from history)",
+            description: messages::WE_HELP_UNDOES_THE_LAST_ACTION_FROM_HISTORY,
             permission_node: "worldedit.history.undo",
             ..Default::default()
         },
         "/redo" => WorldeditCommand {
             execute_fn: execute_redo,
-            description: "Redoes the last action (from history)",
+            description: messages::WE_HELP_REDOES_THE_LAST_ACTION_FROM_HISTORY,
             permission_node: "worldedit.history.redo",
             ..Default::default()
         },
         "/stack" => WorldeditCommand {
             arguments: &[
-                argument!("count", UnsignedInteger, "# of copies to stack"),
-                argument!("direction", Direction, "The direction to stack")
+                argument!("count", UnsignedInteger, messages::WE_ARGUMENT_OF_COPIES_TO_STACK),
+                argument!("direction", Direction, messages::WE_ARGUMENT_THE_DIRECTION_TO_STACK)
             ],
             requires_positions: true,
             execute_fn: execute_stack,
-            description: "Repeat the contents of the selection",
+            description: messages::WE_HELP_REPEAT_THE_CONTENTS_OF_THE_SELECTION,
             flags: &[
-                flag!('a', None, "Ignore air blocks")
+                flag!('a', None, messages::WE_HELP_IGNORE_AIR_BLOCKS)
             ],
             permission_node: "worldedit.region.stack",
             ..Default::default()
         },
         "/move" => WorldeditCommand {
             arguments: &[
-                argument!("count", UnsignedInteger, "The distance to move"),
-                argument!("direction", Direction, "The direction to move")
+                argument!("count", UnsignedInteger, messages::WE_ARGUMENT_THE_DISTANCE_TO_MOVE),
+                argument!("direction", Direction, messages::WE_ARGUMENT_THE_DIRECTION_TO_MOVE)
             ],
             requires_positions: true,
             execute_fn: execute_move,
-            description: "Move the contents of the selection",
+            description: messages::WE_HELP_MOVE_THE_CONTENTS_OF_THE_SELECTION,
             flags: &[
-                flag!('a', None, "Ignore air blocks"),
-                flag!('s', None, "Shift the selection to the target location")
+                flag!('a', None, messages::WE_HELP_IGNORE_AIR_BLOCKS),
+                flag!('s', None, messages::WE_HELP_SHIFT_THE_SELECTION_TO_THE_TARGET)
             ],
             permission_node: "worldedit.region.move",
             ..Default::default()
         },
         "/count" => WorldeditCommand {
             arguments: &[
-                argument!("mask", Mask, "The mask of blocks to match")
+                argument!("mask", Mask, messages::WE_ARGUMENT_THE_MASK_OF_BLOCKS_TO_MATCH)
             ],
             requires_positions: true,
             execute_fn: execute_count,
-            description: "Counts the number of blocks matching a mask",
+            description: messages::WE_HELP_COUNTS_THE_NUMBER_OF_BLOCKS_MATCHING,
             permission_node: "worldedit.analysis.count",
             mutates_world: false,
             ..Default::default()
         },
         "/load" => WorldeditCommand {
             arguments: &[
-                argument!("name", String, "The file name of the schematic to load")
+                argument!("name", String, messages::WE_ARGUMENT_THE_FILE_NAME_OF_THE_SCHEMATIC_TO_LOAD)
             ],
             execute_fn: execute_load,
-            description: "Loads a schematic file into the clipboard",
+            description: messages::WE_HELP_LOADS_A_SCHEMATIC_FILE_INTO_THE,
             permission_node: "worldedit.clipboard.load",
             mutates_world: false,
             ..Default::default()
         },
         "/save" => WorldeditCommand {
             arguments: &[
-                argument!("name", String, "The file name of the schematic to save")
+                argument!("name", String, messages::WE_ARGUMENT_THE_FILE_NAME_OF_THE_SCHEMATIC_TO_SAVE)
             ],
             requires_clipboard: true,
             execute_fn: execute_save,
-            description: "Save a schematic file from the clipboard",
+            description: messages::WE_HELP_SAVE_A_SCHEMATIC_FILE_FROM_THE,
             permission_node: "worldedit.clipboard.save",
             mutates_world: false,
             ..Default::default()
         },
         "/expand" => WorldeditCommand {
             arguments: &[
-                argument!("amount", UnsignedInteger, "Amount to expand the selection by"),
-                argument!("direction", Direction, "Direction to expand")
+                argument!("amount", UnsignedInteger, messages::WE_ARGUMENT_AMOUNT_TO_EXPAND_THE_SELECTION_BY),
+                argument!("direction", Direction, messages::WE_ARGUMENT_DIRECTION_TO_EXPAND)
             ],
             requires_positions: true,
             execute_fn: execute_expand,
-            description: "Expand the selection area",
+            description: messages::WE_HELP_EXPAND_THE_SELECTION_AREA,
             permission_node: "worldedit.selection.expand",
             mutates_world: false,
             ..Default::default()
         },
         "/contract" => WorldeditCommand {
             arguments: &[
-                argument!("amount", UnsignedInteger, "Amount to contract the selection by"),
-                argument!("direction", Direction, "Direction to contract")
+                argument!("amount", UnsignedInteger, messages::WE_ARGUMENT_AMOUNT_TO_CONTRACT_THE_SELECTION_BY),
+                argument!("direction", Direction, messages::WE_ARGUMENT_DIRECTION_TO_CONTRACT)
             ],
             requires_positions: true,
             execute_fn: execute_contract,
-            description: "Contract the selection area",
+            description: messages::WE_HELP_CONTRACT_THE_SELECTION_AREA,
             permission_node: "worldedit.selection.contract",
             mutates_world: false,
             ..Default::default()
         },
         "/shift" => WorldeditCommand {
             arguments: &[
-                argument!("amount", UnsignedInteger, "Amount to shift the selection by"),
-                argument!("direction", Direction, "Direction to shift")
+                argument!("amount", UnsignedInteger, messages::WE_ARGUMENT_AMOUNT_TO_SHIFT_THE_SELECTION_BY),
+                argument!("direction", Direction, messages::WE_ARGUMENT_DIRECTION_TO_SHIFT)
             ],
             requires_positions: true,
             execute_fn: execute_shift,
-            description: "Shift the selection area",
+            description: messages::WE_HELP_SHIFT_THE_SELECTION_AREA,
             permission_node: "worldedit.selection.shift",
             mutates_world: false,
             ..Default::default()
         },
         "/flip" => WorldeditCommand {
             arguments: &[
-                argument!("direction", Direction, "The direction to flip, defaults to look direction"),
+                argument!("direction", Direction, messages::WE_ARGUMENT_THE_DIRECTION_TO_FLIP_DEFAULTS_TO_LOOK_DIRECTION),
             ],
             requires_clipboard: true,
             execute_fn: execute_flip,
-            description: "Flip the contents of the clipboard across the origin",
+            description: messages::WE_HELP_FLIP_THE_CONTENTS_OF_THE_CLIPBOARD,
             mutates_world: false,
             ..Default::default()
         },
         "/rotate" => WorldeditCommand {
             arguments: &[
-                argument!("rotateY", UnsignedInteger, "Amount to rotate on the x-axis", 0),
+                argument!("rotateY", UnsignedInteger, messages::WE_ARGUMENT_ROTATION_DEGREES, 0),
             ],
             requires_clipboard: true,
             execute_fn: execute_rotate,
-            description: "Rotate the contents of the clipboard",
+            description: messages::WE_HELP_ROTATE_THE_CONTENTS_OF_THE_CLIPBOARD,
             mutates_world: false,
             ..Default::default()
         },
         "/update" => WorldeditCommand {
             execute_fn: execute_update,
-            description: "Updates all blocks in the selection",
+            description: messages::WE_HELP_UPDATES_ALL_BLOCKS_IN_THE_SELECTION,
             permission_node: "mchprs.we.update",
             requires_positions: false,
             flags: &[
-                flag!('p', None, "Update the entire plot"),
+                flag!('p', None, messages::WE_HELP_UPDATE_THE_ENTIRE_PLOT),
             ],
             ..Default::default()
         },
         "/help" => WorldeditCommand {
             arguments: &[
-                argument!("command", String, "Command to retrieve help for"),
+                argument!("command", String, messages::WE_ARGUMENT_COMMAND_TO_RETRIEVE_HELP_FOR),
             ],
             execute_fn: execute_help,
-            description: "Displays help for WorldEdit commands",
+            description: messages::WE_HELP_DISPLAYS_HELP_FOR_WORLDEDIT_COMMANDS,
             permission_node: "worldedit.help",
             mutates_world: false,
             ..Default::default()
         },
         "/wand" => WorldeditCommand {
            execute_fn: execute_wand,
-           description: "Gives a WorldEdit wand",
+           description: messages::WE_HELP_GIVES_A_WORLDEDIT_WAND,
            permission_node: "worldedit.wand",
             mutates_world: false,
            ..Default::default()
         },
         "/replacecontainer" => WorldeditCommand {
             arguments: &[
-                argument!("from", ContainerType, "The container type to replace"),
-                argument!("to", ContainerType, "The container type to replace with"),
+                argument!("from", ContainerType, messages::WE_ARGUMENT_THE_CONTAINER_TYPE_TO_REPLACE),
+                argument!("to", ContainerType, messages::WE_ARGUMENT_THE_CONTAINER_TYPE_TO_REPLACE_WITH),
             ],
            execute_fn: execute_replace_container,
-           description: "Replaces all container types in the selection",
+           description: messages::WE_HELP_REPLACES_ALL_CONTAINER_TYPES_IN_THE,
            permission_node: "mchprs.we.replacecontainer",
            requires_positions: true,
            ..Default::default()
@@ -740,8 +745,12 @@ pub enum PatternParseError {
 impl fmt::Display for PatternParseError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            PatternParseError::UnknownBlock(block) => write!(f, "unknown block: {}", block),
-            PatternParseError::InvalidPattern(pattern) => write!(f, "invalid pattern: {}", pattern),
+            PatternParseError::UnknownBlock(block) => {
+                f.write_str(&messages::unknown_pattern_block(block))
+            }
+            PatternParseError::InvalidPattern(pattern) => {
+                f.write_str(&messages::invalid_pattern(pattern))
+            }
         }
     }
 }

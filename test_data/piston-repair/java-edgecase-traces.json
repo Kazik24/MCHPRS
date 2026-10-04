@@ -1,0 +1,909 @@
+{
+  "version": "1.21.5",
+  "server_sha1": "e6ec2f64e6080b9b5d9b471b291c33cc7f509733",
+  "setup": "Strict fixture paste into frozen void world; place trigger redstone block, hold eight game ticks, then remove; one game tick per observation",
+  "adder_inputs": null,
+  "fixtures": {
+    "MCHPRS_EDGECASE.schem": {
+      "sha256": "b21e65ac148d5efb757699a7bcc10089e079dd30705bfce9d2c8effcc30aacb8",
+      "stimulus": "setblock 98 30 100 minecraft:air",
+      "trace": [
+        [
+          false,
+          false
+        ],
+        [
+          false,
+          false
+        ],
+        [
+          true,
+          true
+        ],
+        [
+          true,
+          true
+        ],
+        [
+          false,
+          false
+        ],
+        [
+          false,
+          false
+        ],
+        [
+          false,
+          false
+        ],
+        [
+          false,
+          false
+        ],
+        [
+          false,
+          false
+        ],
+        [
+          false,
+          false
+        ],
+        [
+          false,
+          false
+        ],
+        [
+          false,
+          false
+        ],
+        [
+          false,
+          false
+        ],
+        [
+          false,
+          false
+        ],
+        [
+          false,
+          false
+        ],
+        [
+          false,
+          false
+        ],
+        [
+          false,
+          false
+        ],
+        [
+          false,
+          false
+        ],
+        [
+          false,
+          false
+        ],
+        [
+          false,
+          false
+        ],
+        [
+          false,
+          false
+        ],
+        [
+          false,
+          false
+        ],
+        [
+          false,
+          false
+        ],
+        [
+          false,
+          false
+        ]
+      ],
+      "details": [
+        [
+          {
+            "pos": [
+              98,
+              30,
+              101
+            ],
+            "state": "redstone_wire powered=False"
+          },
+          {
+            "pos": [
+              98,
+              29,
+              102
+            ],
+            "state": "redstone_wall_torch lit=False"
+          },
+          {
+            "pos": [
+              98,
+              30,
+              102
+            ],
+            "state": "moving_piston 98, 30, 102 has the following block data: {blockState: {Properties: {facing: \"south\", extended: \"false\"}, Name: \"minecraft:sticky_piston\"}, x: 98, facing: 3b, progress: 0.0f, y: 30, z: 102, source: 1b, id: \"minecraft:piston\", extending: 0b}"
+          },
+          {
+            "pos": [
+              98,
+              30,
+              103
+            ],
+            "state": "moving_piston 98, 30, 103 has the following block data: {blockState: {Name: \"minecraft:redstone_block\"}, x: 98, facing: 3b, progress: 0.0f, y: 30, z: 103, source: 0b, id: \"minecraft:piston\", extending: 0b}"
+          },
+          {
+            "pos": [
+              98,
+              30,
+              104
+            ],
+            "state": "air"
+          },
+          {
+            "pos": [
+              100,
+              30,
+              102
+            ],
+            "state": "observer powered=False"
+          },
+          {
+            "pos": [
+              100,
+              30,
+              103
+            ],
+            "state": "moving_piston 100, 30, 103 has the following block data: {blockState: {Properties: {facing: \"down\", extended: \"false\"}, Name: \"minecraft:sticky_piston\"}, x: 100, facing: 0b, progress: 0.0f, y: 30, z: 103, source: 1b, id: \"minecraft:piston\", extending: 0b}"
+          },
+          {
+            "pos": [
+              100,
+              31,
+              103
+            ],
+            "state": "observer powered=False"
+          },
+          {
+            "pos": [
+              100,
+              31,
+              104
+            ],
+            "state": "redstone_wire powered=False"
+          },
+          {
+            "pos": [
+              101,
+              30,
+              104
+            ],
+            "state": "redstone_wire powered=False"
+          },
+          {
+            "pos": [
+              102,
+              30,
+              103
+            ],
+            "state": "moving_piston 102, 30, 103 has the following block data: {blockState: {Properties: {facing: \"down\", extended: \"false\"}, Name: \"minecraft:sticky_piston\"}, x: 102, facing: 0b, progress: 0.0f, y: 30, z: 103, source: 1b, id: \"minecraft:piston\", extending: 0b}"
+          },
+          {
+            "pos": [
+              102,
+              31,
+              103
+            ],
+            "state": "observer powered=False"
+          }
+        ],
+        [
+          {
+            "pos": [
+              98,
+              30,
+              101
+            ],
+            "state": "redstone_wire powered=False"
+          },
+          {
+            "pos": [
+              98,
+              29,
+              102
+            ],
+            "state": "redstone_wall_torch lit=True"
+          },
+          {
+            "pos": [
+              98,
+              30,
+              102
+            ],
+            "state": "moving_piston 98, 30, 102 has the following block data: {blockState: {Properties: {facing: \"south\", extended: \"false\"}, Name: \"minecraft:sticky_piston\"}, x: 98, facing: 3b, progress: 0.5f, y: 30, z: 102, source: 1b, id: \"minecraft:piston\", extending: 0b}"
+          },
+          {
+            "pos": [
+              98,
+              30,
+              103
+            ],
+            "state": "moving_piston 98, 30, 103 has the following block data: {blockState: {Name: \"minecraft:redstone_block\"}, x: 98, facing: 3b, progress: 0.5f, y: 30, z: 103, source: 0b, id: \"minecraft:piston\", extending: 0b}"
+          },
+          {
+            "pos": [
+              98,
+              30,
+              104
+            ],
+            "state": "air"
+          },
+          {
+            "pos": [
+              100,
+              30,
+              102
+            ],
+            "state": "observer powered=False"
+          },
+          {
+            "pos": [
+              100,
+              30,
+              103
+            ],
+            "state": "moving_piston 100, 30, 103 has the following block data: {blockState: {Properties: {facing: \"down\", extended: \"false\"}, Name: \"minecraft:sticky_piston\"}, x: 100, facing: 0b, progress: 0.5f, y: 30, z: 103, source: 1b, id: \"minecraft:piston\", extending: 0b}"
+          },
+          {
+            "pos": [
+              100,
+              31,
+              103
+            ],
+            "state": "observer powered=False"
+          },
+          {
+            "pos": [
+              100,
+              31,
+              104
+            ],
+            "state": "redstone_wire powered=False"
+          },
+          {
+            "pos": [
+              101,
+              30,
+              104
+            ],
+            "state": "redstone_wire powered=False"
+          },
+          {
+            "pos": [
+              102,
+              30,
+              103
+            ],
+            "state": "moving_piston 102, 30, 103 has the following block data: {blockState: {Properties: {facing: \"down\", extended: \"false\"}, Name: \"minecraft:sticky_piston\"}, x: 102, facing: 0b, progress: 0.5f, y: 30, z: 103, source: 1b, id: \"minecraft:piston\", extending: 0b}"
+          },
+          {
+            "pos": [
+              102,
+              31,
+              103
+            ],
+            "state": "observer powered=False"
+          }
+        ],
+        [
+          {
+            "pos": [
+              98,
+              30,
+              101
+            ],
+            "state": "redstone_wire powered=False"
+          },
+          {
+            "pos": [
+              98,
+              29,
+              102
+            ],
+            "state": "redstone_wall_torch lit=True"
+          },
+          {
+            "pos": [
+              98,
+              30,
+              102
+            ],
+            "state": "sticky_piston extended=False"
+          },
+          {
+            "pos": [
+              98,
+              30,
+              103
+            ],
+            "state": "redstone_block"
+          },
+          {
+            "pos": [
+              98,
+              30,
+              104
+            ],
+            "state": "air"
+          },
+          {
+            "pos": [
+              100,
+              30,
+              102
+            ],
+            "state": "observer powered=True"
+          },
+          {
+            "pos": [
+              100,
+              30,
+              103
+            ],
+            "state": "sticky_piston extended=False"
+          },
+          {
+            "pos": [
+              100,
+              31,
+              103
+            ],
+            "state": "observer powered=True"
+          },
+          {
+            "pos": [
+              100,
+              31,
+              104
+            ],
+            "state": "redstone_wire powered=False"
+          },
+          {
+            "pos": [
+              101,
+              30,
+              104
+            ],
+            "state": "redstone_wire powered=False"
+          },
+          {
+            "pos": [
+              102,
+              30,
+              103
+            ],
+            "state": "sticky_piston extended=False"
+          },
+          {
+            "pos": [
+              102,
+              31,
+              103
+            ],
+            "state": "observer powered=True"
+          }
+        ],
+        [
+          {
+            "pos": [
+              98,
+              30,
+              101
+            ],
+            "state": "redstone_wire powered=False"
+          },
+          {
+            "pos": [
+              98,
+              29,
+              102
+            ],
+            "state": "redstone_wall_torch lit=True"
+          },
+          {
+            "pos": [
+              98,
+              30,
+              102
+            ],
+            "state": "sticky_piston extended=True"
+          },
+          {
+            "pos": [
+              98,
+              30,
+              103
+            ],
+            "state": "moving_piston 98, 30, 103 has the following block data: {blockState: {Properties: {short: \"false\", facing: \"south\", type: \"sticky\"}, Name: \"minecraft:piston_head\"}, x: 98, facing: 3b, progress: 0.0f, y: 30, z: 103, source: 1b, id: \"minecraft:piston\", extending: 1b}"
+          },
+          {
+            "pos": [
+              98,
+              30,
+              104
+            ],
+            "state": "moving_piston 98, 30, 104 has the following block data: {blockState: {Name: \"minecraft:redstone_block\"}, x: 98, facing: 3b, progress: 0.0f, y: 30, z: 104, source: 0b, id: \"minecraft:piston\", extending: 1b}"
+          },
+          {
+            "pos": [
+              100,
+              30,
+              102
+            ],
+            "state": "observer powered=True"
+          },
+          {
+            "pos": [
+              100,
+              30,
+              103
+            ],
+            "state": "sticky_piston extended=True"
+          },
+          {
+            "pos": [
+              100,
+              31,
+              103
+            ],
+            "state": "observer powered=True"
+          },
+          {
+            "pos": [
+              100,
+              31,
+              104
+            ],
+            "state": "redstone_wire powered=False"
+          },
+          {
+            "pos": [
+              101,
+              30,
+              104
+            ],
+            "state": "redstone_wire powered=False"
+          },
+          {
+            "pos": [
+              102,
+              30,
+              103
+            ],
+            "state": "sticky_piston extended=True"
+          },
+          {
+            "pos": [
+              102,
+              31,
+              103
+            ],
+            "state": "observer powered=True"
+          }
+        ],
+        [
+          {
+            "pos": [
+              98,
+              30,
+              101
+            ],
+            "state": "redstone_wire powered=False"
+          },
+          {
+            "pos": [
+              98,
+              29,
+              102
+            ],
+            "state": "redstone_wall_torch lit=True"
+          },
+          {
+            "pos": [
+              98,
+              30,
+              102
+            ],
+            "state": "sticky_piston extended=True"
+          },
+          {
+            "pos": [
+              98,
+              30,
+              103
+            ],
+            "state": "moving_piston 98, 30, 103 has the following block data: {blockState: {Properties: {short: \"false\", facing: \"south\", type: \"sticky\"}, Name: \"minecraft:piston_head\"}, x: 98, facing: 3b, progress: 0.5f, y: 30, z: 103, source: 1b, id: \"minecraft:piston\", extending: 1b}"
+          },
+          {
+            "pos": [
+              98,
+              30,
+              104
+            ],
+            "state": "moving_piston 98, 30, 104 has the following block data: {blockState: {Name: \"minecraft:redstone_block\"}, x: 98, facing: 3b, progress: 0.5f, y: 30, z: 104, source: 0b, id: \"minecraft:piston\", extending: 1b}"
+          },
+          {
+            "pos": [
+              100,
+              30,
+              102
+            ],
+            "state": "observer powered=False"
+          },
+          {
+            "pos": [
+              100,
+              30,
+              103
+            ],
+            "state": "sticky_piston extended=True"
+          },
+          {
+            "pos": [
+              100,
+              31,
+              103
+            ],
+            "state": "observer powered=False"
+          },
+          {
+            "pos": [
+              100,
+              31,
+              104
+            ],
+            "state": "redstone_wire powered=False"
+          },
+          {
+            "pos": [
+              101,
+              30,
+              104
+            ],
+            "state": "redstone_wire powered=False"
+          },
+          {
+            "pos": [
+              102,
+              30,
+              103
+            ],
+            "state": "sticky_piston extended=True"
+          },
+          {
+            "pos": [
+              102,
+              31,
+              103
+            ],
+            "state": "observer powered=False"
+          }
+        ],
+        [
+          {
+            "pos": [
+              98,
+              30,
+              101
+            ],
+            "state": "redstone_wire powered=False"
+          },
+          {
+            "pos": [
+              98,
+              29,
+              102
+            ],
+            "state": "redstone_wall_torch lit=True"
+          },
+          {
+            "pos": [
+              98,
+              30,
+              102
+            ],
+            "state": "sticky_piston extended=True"
+          },
+          {
+            "pos": [
+              98,
+              30,
+              103
+            ],
+            "state": "piston_head"
+          },
+          {
+            "pos": [
+              98,
+              30,
+              104
+            ],
+            "state": "redstone_block"
+          },
+          {
+            "pos": [
+              100,
+              30,
+              102
+            ],
+            "state": "observer powered=False"
+          },
+          {
+            "pos": [
+              100,
+              30,
+              103
+            ],
+            "state": "sticky_piston extended=True"
+          },
+          {
+            "pos": [
+              100,
+              31,
+              103
+            ],
+            "state": "observer powered=False"
+          },
+          {
+            "pos": [
+              100,
+              31,
+              104
+            ],
+            "state": "redstone_wire powered=True"
+          },
+          {
+            "pos": [
+              101,
+              30,
+              104
+            ],
+            "state": "redstone_wire powered=True"
+          },
+          {
+            "pos": [
+              102,
+              30,
+              103
+            ],
+            "state": "sticky_piston extended=True"
+          },
+          {
+            "pos": [
+              102,
+              31,
+              103
+            ],
+            "state": "observer powered=False"
+          }
+        ],
+        [
+          {
+            "pos": [
+              98,
+              30,
+              101
+            ],
+            "state": "redstone_wire powered=False"
+          },
+          {
+            "pos": [
+              98,
+              29,
+              102
+            ],
+            "state": "redstone_wall_torch lit=True"
+          },
+          {
+            "pos": [
+              98,
+              30,
+              102
+            ],
+            "state": "sticky_piston extended=True"
+          },
+          {
+            "pos": [
+              98,
+              30,
+              103
+            ],
+            "state": "piston_head"
+          },
+          {
+            "pos": [
+              98,
+              30,
+              104
+            ],
+            "state": "redstone_block"
+          },
+          {
+            "pos": [
+              100,
+              30,
+              102
+            ],
+            "state": "observer powered=False"
+          },
+          {
+            "pos": [
+              100,
+              30,
+              103
+            ],
+            "state": "sticky_piston extended=True"
+          },
+          {
+            "pos": [
+              100,
+              31,
+              103
+            ],
+            "state": "observer powered=False"
+          },
+          {
+            "pos": [
+              100,
+              31,
+              104
+            ],
+            "state": "redstone_wire powered=True"
+          },
+          {
+            "pos": [
+              101,
+              30,
+              104
+            ],
+            "state": "redstone_wire powered=True"
+          },
+          {
+            "pos": [
+              102,
+              30,
+              103
+            ],
+            "state": "sticky_piston extended=True"
+          },
+          {
+            "pos": [
+              102,
+              31,
+              103
+            ],
+            "state": "observer powered=False"
+          }
+        ],
+        [
+          {
+            "pos": [
+              98,
+              30,
+              101
+            ],
+            "state": "redstone_wire powered=False"
+          },
+          {
+            "pos": [
+              98,
+              29,
+              102
+            ],
+            "state": "redstone_wall_torch lit=True"
+          },
+          {
+            "pos": [
+              98,
+              30,
+              102
+            ],
+            "state": "sticky_piston extended=True"
+          },
+          {
+            "pos": [
+              98,
+              30,
+              103
+            ],
+            "state": "piston_head"
+          },
+          {
+            "pos": [
+              98,
+              30,
+              104
+            ],
+            "state": "redstone_block"
+          },
+          {
+            "pos": [
+              100,
+              30,
+              102
+            ],
+            "state": "observer powered=False"
+          },
+          {
+            "pos": [
+              100,
+              30,
+              103
+            ],
+            "state": "sticky_piston extended=True"
+          },
+          {
+            "pos": [
+              100,
+              31,
+              103
+            ],
+            "state": "observer powered=False"
+          },
+          {
+            "pos": [
+              100,
+              31,
+              104
+            ],
+            "state": "redstone_wire powered=True"
+          },
+          {
+            "pos": [
+              101,
+              30,
+              104
+            ],
+            "state": "redstone_wire powered=True"
+          },
+          {
+            "pos": [
+              102,
+              30,
+              103
+            ],
+            "state": "sticky_piston extended=True"
+          },
+          {
+            "pos": [
+              102,
+              31,
+              103
+            ],
+            "state": "observer powered=False"
+          }
+        ]
+      ],
+      "adder_output": []
+    }
+  },
+  "output_positions": [
+    [
+      100,
+      30,
+      100
+    ],
+    [
+      102,
+      30,
+      100
+    ]
+  ]
+}

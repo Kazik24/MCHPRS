@@ -293,7 +293,7 @@ fn normal_limit_and_admin_override_preserve_existing_history_on_rejection() {
     assert!(world
         .rewind_ticks(NORMAL_HISTORY_LIMIT + 1, true)
         .unwrap_err()
-        .contains("Only 0"));
+        .contains("Only 0 game ticks are available to rewind"));
     assert!(world.enable_history(usize::MAX, true).is_err());
     assert_eq!(world.history.capacity(), NORMAL_HISTORY_LIMIT + 1);
 }
