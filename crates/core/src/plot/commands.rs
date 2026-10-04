@@ -239,6 +239,30 @@ impl Plot {
         }
 
         match command {
+            "/tellraw" | "/say" => {
+                let permission = if command == "/say" {
+                    "commands.say"
+                } else {
+                    "commands.tellraw"
+                };
+                if !self.players[player].has_permission(permission) {
+                    self.players[player].send_no_permission_message();
+                    return false;
+                }
+                let source = &self.players[player].username;
+                match crate::chat_commands::parse(
+                    &format!("{command} {}", args.join(" ")),
+                    source,
+                    Some(source),
+                ) {
+                    Ok(message) => {
+                        self.message_sender
+                            .send(Message::CommandChat(message))
+                            .unwrap();
+                    }
+                    Err(error) => self.players[player].send_error_message(&error),
+                }
+            }
             "/version" => {
                 self.players[player].send_system_message(&crate::server::version_string());
             }
@@ -623,7 +647,7 @@ pub static DECLARE_COMMANDS: Lazy<PacketEncoder> = Lazy::new(|| {
                 flags: CommandFlags::ROOT.bits() as i8,
                 children: &[
                     1, 4, 5, 6, 11, 12, 14, 16, 18, 19, 20, 21, 22, 23, 24, 26, 29, 31, 32, 34, 36,
-                    47, 49, 53, 60, 61, 63, 65, 66, 67, 71, 73, 74, 75, 82,
+                    47, 49, 53, 60, 61, 63, 65, 66, 67, 71, 73, 74, 75, 82, 83, 85,
                 ],
                 redirect_node: None,
                 name: None,
@@ -1369,6 +1393,47 @@ pub static DECLARE_COMMANDS: Lazy<PacketEncoder> = Lazy::new(|| {
                 redirect_node: None,
                 name: Some("version"),
                 parser: None,
+                suggestions_type: None,
+            },
+            // 83–87: /say <message>, /tellraw <targets> <JSON text>
+            Node {
+                flags: CommandFlags::LITERAL.bits() as i8,
+                children: &[84],
+                redirect_node: None,
+                name: Some("say"),
+                parser: None,
+                suggestions_type: None,
+            },
+            Node {
+                flags: (CommandFlags::ARGUMENT | CommandFlags::EXECUTABLE).bits() as i8,
+                children: &[],
+                redirect_node: None,
+                name: Some("message"),
+                parser: Some(Parser::String(2)),
+                suggestions_type: None,
+            },
+            Node {
+                flags: CommandFlags::LITERAL.bits() as i8,
+                children: &[86],
+                redirect_node: None,
+                name: Some("tellraw"),
+                parser: None,
+                suggestions_type: None,
+            },
+            Node {
+                flags: CommandFlags::ARGUMENT.bits() as i8,
+                children: &[87],
+                redirect_node: None,
+                name: Some("targets"),
+                parser: Some(Parser::Entity(2)),
+                suggestions_type: None,
+            },
+            Node {
+                flags: (CommandFlags::ARGUMENT | CommandFlags::EXECUTABLE).bits() as i8,
+                children: &[],
+                redirect_node: None,
+                name: Some("message"),
+                parser: Some(Parser::String(2)),
                 suggestions_type: None,
             },
         ],

@@ -107,6 +107,24 @@ function command(client,command) { client.write('chat_command',{command}); }
       catch(error) { throw Error(error.message+': '+JSON.stringify(a.messages.slice(start))); }
     }
     await we('version','MCHPRS 0.4.1 (Minecraft 1.21.5, protocol 770)');
+    const secondPosition=b.seen.position;
+    command(b,'tp 300 30 100');
+    await until(()=>b.seen.position>secondPosition,'second client changes plot');
+    await we('say global message with  spaces','[PortSmokeOne] global message with  spaces');
+    await until(()=>b.messages.some(m=>m.includes('global message with  spaces')),'say reaches another plot');
+    await we('tellraw @a[distance=..1] ["",{"text":"Formatted broadcast","bold":true,"color":"red","hoverEvent":{"action":"show_text","contents":"ignored"}}]','Formatted broadcast');
+    await until(()=>b.messages.some(m=>m.includes('Formatted broadcast')),'tellraw ignores selector filters across plots');
+    const formatted=JSON.parse(a.messages.find(m=>m.includes('Formatted broadcast')));
+    assert.equal(formatted.extra[0].color,'red'); assert.equal(formatted.extra[0].bold,1);
+    assert(!JSON.stringify(formatted).includes('hoverEvent'));
+    await we('tellraw @s "Self message"','Self message');
+    await delay(100); assert(!b.messages.some(m=>m.includes('Self message')));
+    command(a,'tellraw PortSmokeTwo {"text":"Named message","extra":[{"text":"child","italic":false}],"clickEvent":{"action":"run_command","value":"/stop"}}');
+    await until(()=>b.messages.some(m=>m.includes('Named message')),'named tellraw');
+    assert(!a.messages.some(m=>m.includes('Named message')));
+    await we('tellraw @a {bad','Usage: /tellraw');
+    await we('say still connected','still connected');
+    command(b,'tp 128 128 128');
     await we('wsr','World send rate:');
     await we('wsr 0','successfully set');
     await we('wsr','World send rate: 0 Hz');
