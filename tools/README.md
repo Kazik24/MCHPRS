@@ -40,9 +40,9 @@ Capture the piston reference in an isolated official Java 1.21.5 server (Java 21
 python tools/capture_piston_reference.py --server-jar /path/to/server.jar
 ```
 
-The runner verifies the official server SHA-1, uses localhost ports 25583/25584, creates a temporary void world and stops the server after recording the fixtures. `--java` selects a Java executable. Its default output is `docs/piston-repair/java-traces.json`; use `--output` for a separate comparison. It never modifies an existing world. Push rules and adhesive attachments are outside the current timing repair.
+The runner verifies the official server SHA-1, uses localhost ports 25583/25584, creates a temporary void world and stops the server after recording the fixtures. `--java` selects a Java executable. Its default output is `test_data/piston-repair/java-traces.json`; use `--output` for a separate comparison. It never modifies an existing world. Push rules and adhesive attachments are outside the current timing repair.
 
-For the signed adder references, use `--adder --output docs/piston-repair/java-adder-traces.json`. The changed-input diagnostic uses `--adder --inputs 0x555 0x2aa --output docs/piston-repair/java-adder-inputs.json`. Inputs settle with the clock held before its removal. See `docs/ADDER_TEST_REPORT.md` for the fixture's observed width and arithmetic limitations.
+For the signed adder references, use `--adder --output test_data/piston-repair/java-adder-traces.json`. The changed-input diagnostic uses `--adder --inputs 0x555 0x2aa --output test_data/piston-repair/java-adder-inputs.json`. Inputs settle with the clock held before its removal.
 
 The command smoke test also checks version/plot selection, rate query and disabled sends, combined paste flags, alias help and overlapping rstack undo/redo. Piston benchmarks are documented in [the performance report](../docs/PISTON_PERFORMANCE.md). Adder mode defaults to its own trace output; `--inputs` requires `--adder`.
 

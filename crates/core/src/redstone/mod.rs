@@ -542,7 +542,7 @@ mod tests {
 
     fn java_trace(name: &str) -> serde_json::Value {
         let data: serde_json::Value = serde_json::from_str(include_str!(
-            "../../../../docs/piston-repair/java-traces.json"
+            "../../../../test_data/piston-repair/java-traces.json"
         ))
         .unwrap();
         assert_eq!(

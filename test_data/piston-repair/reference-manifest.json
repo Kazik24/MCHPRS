@@ -1,0 +1,47 @@
+{
+  "integration_version": "1.21.5",
+  "protocol": 770,
+  "minecraft_data_version": 4325,
+  "manifest": "https://piston-meta.mojang.com/v1/packages/5b1e09e69f4f9c650ba11c36d8b27fd0153e4e82/1.21.5.json",
+  "server": {
+    "sha1": "e6ec2f64e6080b9b5d9b471b291c33cc7f509733",
+    "size": 57269758,
+    "url": "https://piston-data.mojang.com/v1/objects/e6ec2f64e6080b9b5d9b471b291c33cc7f509733/server.jar"
+  },
+  "server_mappings": {
+    "sha1": "f4812c1d66d0098a94616b19c21829e591d0af3a",
+    "size": 8027211,
+    "url": "https://piston-data.mojang.com/v1/objects/f4812c1d66d0098a94616b19c21829e591d0af3a/server.txt"
+  },
+  "hashes_verified": true,
+  "mapped_classes": {
+    "PistonBaseBlock": "ebi",
+    "PistonMovingBlockEntity": "ebl",
+    "PistonStructureResolver": "ebm",
+    "ObserverBlock": "dtg",
+    "ServerLevel": "asb"
+  },
+  "workspace": {
+    "branch": "port/piston-1.21.5",
+    "head": "cb3d4e27a67737abad990932ce94b5461368d45f",
+    "state": "uncommitted protocol-port workspace; HEAD alone does not identify the integration baseline",
+    "sha256": {
+      "Cargo.lock": "64aa04a0dedca22b53499081c4fba53303c3c608d52969b019c0498ebf9159cd",
+      "crates/core/src/server.rs": "5edaed78439efba6dde060ef2917a85ba10b37732782d97c9063225a4e6f26de",
+      "crates/core/src/redstone/mod.rs": "56726e56218d1b026f7d6398534ce188a950972506e261f72e35bf3d8075c2db",
+      "crates/core/src/redstone/piston.rs": "41b6aa96e9f5006795b52eb722ea1ab9b938df569abb660da0db003616c04361",
+      "crates/core/src/world/mod.rs": "673ada8cd201055fbc77c5467edc9f44f4261cc18ec019b5927c5ee8834031c5",
+      "crates/core/src/plot/mod.rs": "b22b3ba7915a351e54ea3878bd2675e83f5bba67dd2bb0748e1db656d16c8a15",
+      "crates/core/src/redpiler/backend/queue.rs": "053649eedd607ce4b5011814ecc3b5458208cf287e5cd3207bfe5277062042ee",
+      "crates/blocks/src/block_entities.rs": "3845aff0eabe34267f7421a7b0efcf80b36c7a7abaf69cde045c32fdba45c3ec",
+      "crates/save_data/src/plot_data.rs": "fe563d02c20b956422b418405ad1d7fb135bd72647e02d02b6978065d562198a",
+      "test_data/MemCellUnalignedNanoTicks.schem": "6a6b0b9fd5fae36faaab846a7d089eb7cbd6ea934e8933ed3f2cba0ea1b438a2"
+    }
+  },
+  "acceptance": {
+    "java_live_phase_traces_captured": false,
+    "memory_cell_expected_trace_verified": false,
+    "simulation_modified_by_reference_preparation": false
+  },
+  "notes": "Official binaries and mappings are reference inputs, not open-source Minecraft implementation code. Downloaded/decompiled Java is not included. Existing 1.18.2 and 1.21.1 references remain in docs/piston-audit/reference-manifest.json."
+}

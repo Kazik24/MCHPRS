@@ -165,7 +165,7 @@ fn signed_adder_outputs_and_moving_states_match_java() {
     compare_java_output(
         &mut world,
         &out,
-        include_str!("../../../../docs/piston-repair/java-adder-traces.json"),
+        include_str!("../../../../test_data/piston-repair/java-adder-traces.json"),
     );
     assert!(world.piston_state().motions.is_empty());
 }
@@ -195,6 +195,6 @@ fn signed_adder_changed_inputs_match_reference_fixture_limit() {
     compare_java_output(
         &mut world,
         &out,
-        include_str!("../../../../docs/piston-repair/java-adder-inputs.json"),
+        include_str!("../../../../test_data/piston-repair/java-adder-inputs.json"),
     );
 }
