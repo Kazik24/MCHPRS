@@ -540,6 +540,14 @@ impl Player {
         }
     }
 
+    /// Require a granted permission without the permissive no-LuckPerms fallback.
+    pub fn has_explicit_permission(&self, node: &str) -> bool {
+        self.permissions_cache
+            .as_ref()
+            .and_then(|cache| cache.get_node_val(node))
+            .is_some_and(|value| value > 0)
+    }
+
     pub fn open_container(&self, inventory: &[InventoryEntry], container_type: ContainerType) {
         let mut slots: Vec<Option<SlotData>> =
             (0..container_type.num_slots()).map(|_| None).collect();

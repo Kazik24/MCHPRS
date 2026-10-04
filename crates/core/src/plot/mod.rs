@@ -4,6 +4,7 @@ pub mod commands;
 mod data;
 pub mod database;
 mod help;
+mod history;
 mod monitor;
 mod packet_handlers;
 mod picking;
@@ -111,6 +112,7 @@ pub struct PlotWorld {
     is_cursed: bool,
     fast_rendering: bool,
     command_messages: Vec<crate::chat_commands::ChatCommand>,
+    history: history::TickHistory,
 }
 
 impl PlotWorld {
@@ -131,6 +133,7 @@ impl PlotWorld {
             is_cursed: false,
             fast_rendering: false,
             command_messages: Vec::new(),
+            history: Default::default(),
         };
         // Position-only old saves bind to the loaded type once. They never
         // dispatch an observer tick into a subsequently moved/replaced block.
@@ -373,10 +376,15 @@ impl PlotWorld {
     }
 
     pub fn tick_interpreted(&mut self) {
+        self.record_tick();
         while self.advance_operation() {}
     }
 
     pub fn nanotick_advance(&mut self, amount: u32) {
+        // Production commands reject this; protect other callers as well.
+        if self.history.enabled() {
+            return;
+        }
         for _ in 0..amount {
             if !self.prepare_operation() {
                 continue;
@@ -396,6 +404,9 @@ impl PlotWorld {
     }
 
     pub fn picotick_advance(&mut self, amount: u32) {
+        if self.history.enabled() {
+            return;
+        }
         for _ in 0..amount {
             self.advance_operation();
         }
@@ -933,6 +944,13 @@ impl Plot {
             return;
         }
         debug!("Starting redpiler");
+        if self.world.history.enabled() {
+            let bytes = self.world.history.disable();
+            self.broadcast_plot_chat_message(&format!(
+                "Tick history disabled because compiled execution is starting. Released approximately {}.",
+                history::format_memory(bytes)
+            ));
+        }
         self.scoreboard
             .set_redpiler_state(&self.players, RedpilerState::Compiling);
         self.scoreboard

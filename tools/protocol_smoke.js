@@ -26,6 +26,11 @@ function connect(name) {
       if (meta.name === 'position') client.write('teleport_confirm', {teleportId:p.teleportId});
       if (meta.name === 'map_chunk') {
         const chunk = new Chunk({minY:0,worldHeight:256}); chunk.load(p.chunkData);
+        // An authoritative chunk replaces previously received incremental changes.
+        for (const key of client.blocks.keys()) {
+          const [x,,z] = key.split(',').map(Number);
+          if (Math.floor(x/16)===p.x && Math.floor(z/16)===p.z) client.blocks.delete(key);
+        }
         client.chunks.set(`${p.x},${p.z}`, chunk);
         client.chunkEntities=(client.chunkEntities||[]).concat(p.blockEntities.map(entity=>nbt.simplify(entity.nbtData)));
         // Force palette reads through the full vertical range, including empty sections.
@@ -113,7 +118,7 @@ function command(client,command) { client.write('chat_command',{command}); }
     const help=a.commandTree.nodes.find(node=>node.extraNodeData?.name==='help');
     assert(help,'General help appears in the command tree');
     await we('help','MCHPRS quick start');
-    for(const [topic,text] of [['plots','/p auto'],['rtps','/radvance 1'],['we','//copy'],['schematics','rf/my_circuit.schem'],['pistons','/piston_anim off'],['rewind','not available yet'],['chat','/tellraw @a'],['redpiler','/rp compile'],['TICK_REWIND','/rhistory on'],['rback','/rback 10']]) {
+    for(const [topic,text] of [['plots','/p auto'],['rtps','Tick control'],['we','WorldEdit'],['schematics','Schematics'],['pistons','/piston_anim off'],['rewind','Tick rewind'],['chat','/tellraw @a'],['redpiler','/rp compile'],['TICK_REWIND','/rhistory on'],['rback','/rback 10']]) {
       await we('help '+topic,text);
     }
     await we('help missing','Unknown help topic');
@@ -172,6 +177,72 @@ function command(client,command) { client.write('chat_command',{command}); }
     assert.equal(a.actions.length,offActions,'off command suppresses low TPS animations');
     await we('piston_anim auto','auto (effective on)');
     await we('wsr','effective 20 Hz');
+    // Rewind capacity, piston round trip, disabled sends, two viewers and wraparound.
+    const commandNodes=a.commandTree.nodes;
+    assert(commandNodes.some(n=>n.extraNodeData?.name==='rhistory') && commandNodes.some(n=>n.extraNodeData?.name==='rback'),'rewind commands declared');
+    for (const node of commandNodes) {
+      for (const child of node.children) assert(child>=0 && child<commandNodes.length,'command child index');
+    }
+    await we('rtps 0','successfully set');
+    await we('rhistory on','History enabled: up to');
+    assert(a.messages.some(m=>m.includes('Estimated memory at full capacity:')),'enable memory projection');
+    console.log('History memory estimate:',a.messages.at(-1));
+    // Normal commands work without LuckPerms, but the cap bypass requires a grant.
+    await we('rhistory on 1000','up to 1000 game ticks');
+    await we('rhistory on 1001','requires plots.admin.rewind.unlimited');
+    await we('rhistory status','Available: 0/1000 game ticks');
+    await we('rhistory on 4','up to 4 game ticks');
+    await we('rhistory on 0','capacity must be between');
+    await we('rhistory status','Available: 0/4 game ticks');
+    await we('radvance pico 1','Disable tick history');
+    await creative(a,36,item('piston',[{type:'block_state',data:facing}]));
+    await place(a,140,y,142,113);
+    await creative(a,36,item('glass'));
+    await place(a,141,y,142,114);
+    await creative(a,36,item('redstone_block'));
+    await place(a,139,y,142,115);
+    await we('radvance 4','Plot has been advanced');
+    await until(()=>data.blocksByStateId[state(a,141,y,142)]?.name==='piston_head','rewind fixture extended');
+    await until(()=>data.blocksByStateId[state(b,141,y,142)]?.name==='piston_head','second viewer sees fixture');
+    await we('rback 1001','requires plots.admin.rewind.unlimited');
+    await we('rhistory status','Available: 4/4 game ticks');
+    await we('rback 5','Only 4 game ticks');
+    await we('wsr 0','successfully set');
+    const beforeRefresh=[a.seen.map_chunk,b.seen.map_chunk];
+    await we('rback 4','rewound by 4 game ticks and paused');
+    await until(()=>a.seen.map_chunk>beforeRefresh[0] && b.seen.map_chunk>beforeRefresh[1],'rewind refreshes both viewers with wsr zero');
+    for(const c of [a,b]) {
+      assert.equal(data.blocksByStateId[state(c,141,y,142)]?.name,'glass','restore original payload');
+      assert.equal(data.blocksByStateId[state(c,142,y,142)]?.name,'air','remove moved payload');
+    }
+    await we('rtps','(0)');
+    await we('rhistory','Available: 0/4 game ticks');
+    await we('radvance 4','Plot has been advanced');
+    await we('wsr 20','successfully set');
+    await until(()=>data.blocksByStateId[state(a,141,y,142)]?.name==='piston_head','re-advance reproduces piston');
+    await we('radvance 3','Plot has been advanced');
+    await we('rback','rewound by 1 game ticks and paused');
+    await we('rback 3','rewound by 3 game ticks and paused');
+    await we('rhistory','Available: 0/4 game ticks');
+    await we('radvance 1','Plot has been advanced');
+    await creative(a,36,item('gold_block'));
+    assert(a.chunks.has('8,8'),'edited block is in a visible chunk');
+    await place(a,143,y,142,116);
+    await until(()=>data.blocksByStateId[state(a,143,y,142)]?.name==='gold_block','post-snapshot edit');
+    await we('rback','rewound by 1 game ticks and paused');
+    assert.equal(data.blocksByStateId[state(a,143,y,142)]?.name,'air','rewind undoes later edit');
+    await we('rhistory off','Released approximately');
+    await we('rhistory','Tick history: off');
+    await we('rback','Tick history is disabled');
+    // Automatic whole ticks use the same capture path as manual advancement.
+    await we('rhistory on 4','up to 4 game ticks');
+    await we('rtps 20','successfully set');
+    await delay(400);
+    await we('rtps 0','successfully set');
+    await we('rhistory','Available: 4/4 game ticks');
+    await we('rback 2','rewound by 2 game ticks and paused');
+    await we('rhistory off','Released approximately');
+    await we('rtps 20','successfully set');
     // Creative command-block placement, editor update and a single redstone activation.
     a.write('position',{x:142,y,z:136,flags:{onGround:false,hasHorizontalCollision:false}});
     a.write('held_item_slot',{slotId:0});
@@ -247,7 +318,7 @@ function command(client,command) { client.write('chat_command',{command}); }
     command(a,'/undo'); await until(()=>state(a,120,29,92)===0,'WorldEdit undo');
     command(a,'/redo'); await until(()=>state(a,120,29,92)===signState,'WorldEdit redo');
     await we('/help rs','Like //stack');
-    await we('/load BadInput.schem','error loading the schematic');
+    await we('/load BadInput.schem','Could not load schematic:');
     // A failed import must retain the successfully loaded clipboard.
     await we('/save SmokeRoundtrip.schem','saved sucessfuly');
     await we('/load SmokeRoundtrip.schem','loaded to your clipboard');
@@ -277,6 +348,11 @@ function command(client,command) { client.write('chat_command',{command}); }
     await we('/load MixedSignsRoundtrip.schem','loaded to your clipboard');
     await we('/paste','clipboard was pasted');
     await we('piston_anim off','off (effective off)');
+    // Keep recording enabled across shutdown: present state persists, history does not.
+    await we('rtps 0','successfully set');
+    await we('rhistory on 4','up to 4 game ticks');
+    await we('radvance 2','Plot has been advanced');
+    await we('rback','rewound by 1 game ticks and paused');
     a.end(); await delay(600);
     const again=await connect('PortSmokeOne');
     assert.equal(again.slots.get(37).components[1].data,16);
@@ -294,6 +370,24 @@ function command(client,command) { client.write('chat_command',{command}); }
     assert(a.chunkEntities.some(e=>e.Command==='say saved command'),'restart retained command text');
     command(a,'bisdon_anim');
     await until(()=>a.messages.some(m=>m.includes('Piston animation: off')),'animation choice survives process restart');
+    command(a,'rhistory');
+    await until(()=>a.messages.some(m=>m.includes('Tick history: off') && m.includes('Available: 0/0')),'restart clears history');
+    assert.equal(data.blocksByStateId[state(a,141,y,142)].name,'piston_head','rewound present persisted');
+    // A compile boundary must discard interpreter history, even with no compiled ticks.
+    command(b,'tp 300 30 100');
+    await delay(250);
+    const commandB=async (cmd,text)=>{
+      const start=b.messages.length; command(b,cmd);
+      await until(()=>b.messages.slice(start).some(m=>m.includes(text)),cmd+' on second plot');
+    };
+    await commandB('rtps 0','successfully set');
+    await commandB('rhistory on 2','up to 2 game ticks');
+    await commandB('radvance 1','Plot has been advanced');
+    await commandB('rp compile','Tick history disabled because compiled execution is starting');
+    await commandB('rhistory on','only available during interpreted execution');
+    await commandB('rback','only available during interpreted execution');
+    command(b,'rp reset');
+    await commandB('rhistory','Tick history: off');
     console.log('PASS: process restart retained structured item components and extended piston/head states.');
     stopping=true;command(a,'stop');await delay(800);
   }

@@ -386,6 +386,15 @@ impl Plot {
                 self.reset_timings();
                 self.players[player].send_system_message("The rtps was successfully set.");
             }
+            "/rhistory" => match self.control_history(player, &args) {
+                Ok(message) => self.players[player].send_system_message(&message),
+                Err(error) => self.players[player].send_error_message(&error),
+            },
+            "/rback" => {
+                if let Err(error) = self.rewind_plot(player, &args) {
+                    self.players[player].send_error_message(&error);
+                }
+            }
             "/radv" | "/radvance" => {
                 let Some(arg0) = args.get(0) else {
                     self.players[player]
@@ -411,6 +420,12 @@ impl Plot {
                             );
                             return false;
                         }
+                        if self.world.history.enabled() {
+                            self.players[player].send_error_message(
+                                "Disable tick history before nano/pico advancement.",
+                            );
+                            return false;
+                        }
                         self.world.nanotick_advance(ticks);
                         format!("{ticks} nano-ticks")
                     }
@@ -428,6 +443,12 @@ impl Plot {
                         if self.redpiler.is_active() {
                             self.players[player].send_error_message(
                                 "Cannot advance pico-ticks while redpiler is active!",
+                            );
+                            return false;
+                        }
+                        if self.world.history.enabled() {
+                            self.players[player].send_error_message(
+                                "Disable tick history before nano/pico advancement.",
                             );
                             return false;
                         }
@@ -687,6 +708,7 @@ pub static DECLARE_COMMANDS: Lazy<PacketEncoder> = Lazy::new(|| {
                 children: &[
                     1, 4, 5, 6, 11, 12, 14, 16, 18, 19, 20, 21, 22, 23, 24, 26, 29, 31, 32, 34, 36,
                     47, 49, 53, 60, 61, 63, 65, 66, 67, 71, 73, 74, 75, 82, 83, 85, 88, 90, 91,
+                    101, 106,
                 ],
                 redirect_node: None,
                 name: None,
@@ -1580,6 +1602,63 @@ pub static DECLARE_COMMANDS: Lazy<PacketEncoder> = Lazy::new(|| {
                 redirect_node: None,
                 name: Some("redpiler"),
                 parser: None,
+                suggestions_type: None,
+            },
+            // 101–107: tick history and whole-game-tick rewind
+            Node {
+                flags: (CommandFlags::LITERAL | CommandFlags::EXECUTABLE).bits() as i8,
+                children: &[102, 104, 105],
+                redirect_node: None,
+                name: Some("rhistory"),
+                parser: None,
+                suggestions_type: None,
+            },
+            Node {
+                flags: (CommandFlags::LITERAL | CommandFlags::EXECUTABLE).bits() as i8,
+                children: &[103],
+                redirect_node: None,
+                name: Some("on"),
+                parser: None,
+                suggestions_type: None,
+            },
+            Node {
+                flags: (CommandFlags::ARGUMENT | CommandFlags::EXECUTABLE).bits() as i8,
+                children: &[],
+                redirect_node: None,
+                name: Some("ticks"),
+                parser: Some(Parser::Integer(1, MAX)),
+                suggestions_type: None,
+            },
+            Node {
+                flags: (CommandFlags::LITERAL | CommandFlags::EXECUTABLE).bits() as i8,
+                children: &[],
+                redirect_node: None,
+                name: Some("off"),
+                parser: None,
+                suggestions_type: None,
+            },
+            Node {
+                flags: (CommandFlags::LITERAL | CommandFlags::EXECUTABLE).bits() as i8,
+                children: &[],
+                redirect_node: None,
+                name: Some("status"),
+                parser: None,
+                suggestions_type: None,
+            },
+            Node {
+                flags: (CommandFlags::LITERAL | CommandFlags::EXECUTABLE).bits() as i8,
+                children: &[107],
+                redirect_node: None,
+                name: Some("rback"),
+                parser: None,
+                suggestions_type: None,
+            },
+            Node {
+                flags: (CommandFlags::ARGUMENT | CommandFlags::EXECUTABLE).bits() as i8,
+                children: &[],
+                redirect_node: None,
+                name: Some("ticks"),
+                parser: Some(Parser::Integer(1, MAX)),
                 suggestions_type: None,
             },
         ],
