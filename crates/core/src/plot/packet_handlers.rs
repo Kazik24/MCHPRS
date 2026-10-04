@@ -19,7 +19,7 @@ use std::path::PathBuf;
 use std::time::Instant;
 use tracing::{error, warn};
 
-const ERROR_IO_ONLY: &str = "This plot cannot be interacted with while redpiler is active with `--io-only`. To stop redpiler, run `/redpiler reset`.";
+pub(super) const ERROR_IO_ONLY: &str = "This plot cannot be interacted with while redpiler is active with `--io-only`. To stop redpiler, run `/redpiler reset`.";
 
 impl Plot {
     pub(super) fn handle_packets_for_player(&mut self, player: usize) {
@@ -258,6 +258,20 @@ impl ServerBoundPacketHandler for Plot {
         self.players[player].set_inventory_slot(creative_inventory_action.slot as u32, item);
     }
 
+    fn handle_container_click(&mut self, packet: SContainerClick, player: usize) {
+        self.click_open_container(packet, player);
+    }
+
+    fn handle_container_close(&mut self, packet: SContainerClose, player: usize) {
+        if self.players[player]
+            .open_container
+            .as_ref()
+            .is_some_and(|menu| menu.window_id as i32 == packet.window_id)
+        {
+            self.close_open_container(player);
+        }
+    }
+
     fn handle_player_abilities(&mut self, player_abilities: SPlayerAbilities, player: usize) {
         self.players[player].flying = player_abilities.is_flying;
     }
@@ -371,6 +385,15 @@ impl ServerBoundPacketHandler for Plot {
                 self.reset_redpiler();
             }
         }
+
+        if mchprs_blocks::block_entities::ContainerType::from_block(self.world.get_block(block_pos))
+            .is_some()
+            && !self.container_in_reach(player, block_pos)
+        {
+            cancel(self);
+            return;
+        }
+        self.close_open_container(player);
 
         if let Some(item) = item_in_hand {
             let cancelled = interaction::use_item_on_block(

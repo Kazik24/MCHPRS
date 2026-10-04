@@ -12,6 +12,58 @@ fn empty_world() -> PlotWorld {
         .collect();
     PlotWorld::from_chunks(0, 0, chunks, Default::default())
 }
+
+#[test]
+fn containers_cannot_be_pushed_or_pulled_in_any_state() {
+    let mut world = empty_world();
+    let pos = base();
+    let front = pos.offset(BlockFace::East);
+    let ahead = front.offset(BlockFace::East);
+    for id in (19431..=19442).chain(10034..=10043).chain(4358..=4365) {
+        let block = Block::from_id(id);
+        world.set_block(pos.offset(BlockFace::Bottom), Block::Air);
+        start(&mut world, pos, BlockFacing::East, block);
+        settle(&mut world);
+        assert!(!extended(&world, pos), "container state {id} was pushed");
+        assert_eq!(world.get_block(front), block);
+        assert!(matches!(
+            world.get_block_entity(front),
+            Some(BlockEntity::Container { .. })
+        ));
+        world.set_block(front, Block::Air);
+        world.set_block(ahead, block);
+        world.set_block(
+            pos,
+            Block::Piston {
+                piston: piston(BlockFacing::East, true, true),
+            },
+        );
+        world.set_block(
+            front,
+            Block::PistonHead {
+                head: RedstonePistonHead {
+                    facing: BlockFacing::East,
+                    sticky: true,
+                    short: false,
+                },
+            },
+        );
+        world.set_block(pos.offset(BlockFace::Bottom), Block::Air);
+        crate::redstone::update(world.get_block(pos), &mut world, pos, None);
+        settle(&mut world);
+        let actual = world.get_block(ahead);
+        // Neighbor notifications may legitimately unlock a hopper, without moving it.
+        match (block, actual) {
+            (Block::Hopper { facing, .. }, Block::Hopper { facing: actual, .. }) => assert_eq!(facing, actual),
+            _ => assert_eq!(actual, block, "container state {id} was pulled"),
+        }
+        assert!(matches!(
+            world.get_block_entity(ahead),
+            Some(BlockEntity::Container { .. })
+        ));
+        world.set_block(ahead, Block::Air);
+    }
+}
 fn base() -> BlockPos {
     BlockPos::new(40, 30, 40)
 }

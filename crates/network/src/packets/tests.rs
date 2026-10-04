@@ -3,6 +3,86 @@ use super::*;
 use std::io::Cursor;
 
 #[test]
+fn container_click_hashes_dispatch_and_validate_without_accepting_item_data() {
+    use super::serverbound::*;
+    #[derive(Default)]
+    struct Handler {
+        clicked: bool,
+        closed: bool,
+    }
+    impl ServerBoundPacketHandler for Handler {
+        fn handle_container_click(&mut self, p: SContainerClick, _: usize) {
+            self.clicked = p.window_id == 200 && p.state_id == 9 && p.slot == 54 && p.mode == 0;
+        }
+        fn handle_container_close(&mut self, p: SContainerClose, _: usize) {
+            self.closed = p.window_id == 200;
+        }
+    }
+    let mut bytes = vec![0x10];
+    bytes.write_varint(200);
+    bytes.write_varint(9);
+    bytes.write_short(54);
+    bytes.write_byte(0);
+    bytes.write_varint(0);
+    bytes.write_varint(1);
+    bytes.write_short(54);
+    bytes.write_bool(true);
+    bytes.write_varint(1);
+    bytes.write_varint(64);
+    bytes.write_varint(1);
+    bytes.write_varint(1);
+    PacketEncoderExt::write_int(&mut bytes, 123456);
+    bytes.write_varint(0);
+    bytes.write_bool(false);
+    let mut handler = Handler::default();
+    let mut cursor = Cursor::new(&bytes);
+    read_decompressed(&mut cursor, &mut NetworkState::Play)
+        .unwrap()
+        .handle(&mut handler, 0);
+    assert_eq!(cursor.position() as usize, bytes.len());
+    bytes.pop();
+    assert!(read_decompressed(&mut Cursor::new(bytes), &mut NetworkState::Play).is_err());
+    let mut close = vec![0x11];
+    close.write_varint(200);
+    read_decompressed(&mut Cursor::new(close), &mut NetworkState::Play)
+        .unwrap()
+        .handle(&mut handler, 0);
+    assert!(handler.clicked && handler.closed);
+    let mut oversized = vec![0x10, 1, 0, 0, 0, 0, 0];
+    oversized.write_varint(129);
+    assert!(read_decompressed(&mut Cursor::new(oversized), &mut NetworkState::Play).is_err());
+}
+
+#[test]
+fn container_ids_are_varints_in_content_slot_and_close_packets() {
+    let packets = [
+        CWindowItems {
+            window_id: 200,
+            state_id: 9,
+            slot_data: vec![],
+            carried_item: None,
+        }
+        .encode(),
+        CSetSlot {
+            window_id: 200,
+            state_id: 9,
+            slot: 0,
+            slot_data: None,
+        }
+        .encode(),
+        CCloseWindow { window_id: 200 }.encode(),
+    ];
+    for packet in packets {
+        let mut bytes = vec![];
+        packet.write_uncompressed(&mut bytes).unwrap();
+        let mut cursor = Cursor::new(bytes);
+        cursor.read_varint().unwrap();
+        cursor.read_varint().unwrap();
+        assert_eq!(cursor.read_varint().unwrap(), 200);
+    }
+}
+
+#[test]
 fn pick_packets_dispatch_and_reject_truncated_payloads() {
     use super::serverbound::*;
     #[derive(Default)]

@@ -1,6 +1,7 @@
 #[cfg(test)]
 mod command_block_tests;
 pub mod commands;
+mod containers;
 mod data;
 pub mod database;
 mod help;
@@ -432,16 +433,37 @@ impl World for PlotWorld {
         }
 
         let old = self.get_block(pos);
+        let new = Block::from_id(block);
+        if mchprs_blocks::block_entities::ContainerType::from_block(old).is_some()
+            && mchprs_blocks::block_entities::ContainerType::from_block(new).is_none()
+        {
+            self.delete_block_entity(pos);
+        }
         if matches!(old, Block::MovingPiston { .. }) && old.get_id() != block {
             self.delete_block_entity(pos);
         }
         let chunk = &mut self.chunks[chunk_index];
-        chunk.set_block(
+        let changed = chunk.set_block(
             (pos.x & 0xF) as u32,
             pos.y as u32,
             (pos.z & 0xF) as u32,
             block,
-        )
+        );
+        let local_pos = BlockPos::new(pos.x & 15, pos.y, pos.z & 15);
+        if let Some(ty) = mchprs_blocks::block_entities::ContainerType::from_block(new) {
+            if !matches!(chunk.get_block_entity(local_pos), Some(BlockEntity::Container { ty: existing, .. }) if *existing == ty)
+            {
+                chunk.set_block_entity(
+                    local_pos,
+                    BlockEntity::Container {
+                        ty,
+                        inventory: Default::default(),
+                        comparator_override: 0,
+                    },
+                );
+            }
+        }
+        changed
     }
 
     /// Returns the block state id of the block at `pos`
@@ -944,6 +966,7 @@ impl Plot {
             return;
         }
         debug!("Starting redpiler");
+        self.close_all_containers();
         if self.world.history.enabled() {
             let bytes = self.world.history.disable();
             self.broadcast_plot_chat_message(&format!(
@@ -1021,6 +1044,7 @@ impl Plot {
 
     fn leave_plot(&mut self, uuid: u128) -> Player {
         let player_idx = self.players.iter().position(|p| p.uuid == uuid).unwrap();
+        self.close_open_container(player_idx);
         self.world.packet_senders.remove(player_idx);
         let player = self.players.remove(player_idx);
 
@@ -1154,6 +1178,7 @@ impl Plot {
                     }
                 }
                 BroadcastMessage::Shutdown => {
+                    self.close_all_containers();
                     let mut players: Vec<Player> = self.players.drain(..).collect();
                     for player in players.iter_mut() {
                         player.save();
@@ -1215,6 +1240,11 @@ impl Plot {
 
     /// Remove disconnected players
     fn remove_dc_players(&mut self) {
+        for player in 0..self.players.len() {
+            if !self.players[player].client.alive() {
+                self.close_open_container(player);
+            }
+        }
         let message_sender = &mut self.message_sender;
 
         let mut disconnected_players = Vec::new();
@@ -1333,6 +1363,7 @@ impl Plot {
 
         // Handle commands before removing players just in case they ran a command before leaving
         self.handle_commands();
+        self.update_open_containers();
 
         for command in self.world.command_messages.drain(..) {
             self.message_sender
@@ -1531,6 +1562,7 @@ impl Plot {
 
 impl Drop for Plot {
     fn drop(&mut self) {
+        self.close_all_containers();
         if !self.players.is_empty() {
             for player in &mut self.players {
                 player.save(); // just in case

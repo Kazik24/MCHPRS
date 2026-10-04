@@ -32,6 +32,8 @@ pub trait ServerBoundPacketHandler {
     fn handle_pick_item_from_block(&mut self, _packet: SPickItemFromBlock, _player_idx: usize) {}
     fn handle_pick_item_from_entity(&mut self, _packet: SPickItemFromEntity, _player_idx: usize) {}
     fn handle_update_command_block(&mut self, _packet: SUpdateCommandBlock, _player_idx: usize) {}
+    fn handle_container_click(&mut self, _packet: SContainerClick, _player_idx: usize) {}
+    fn handle_container_close(&mut self, _packet: SContainerClose, _player_idx: usize) {}
     fn handle_creative_inventory_action(
         &mut self,
         _packet: SCreativeInventoryAction,
@@ -519,6 +521,95 @@ impl ServerBoundPacket for SHeldItemChange {
 pub struct SCreativeInventoryAction {
     pub slot: i16,
     pub clicked_item: Option<SlotData>,
+}
+
+/// Protocol 770 carries hashed predictions, not full item stacks, in menu clicks.
+pub struct SContainerClick {
+    pub window_id: i32,
+    pub state_id: i32,
+    pub slot: i16,
+    pub button: i8,
+    pub mode: i32,
+}
+
+fn invalid_container(message: &str) -> super::PacketDecodeError {
+    std::io::Error::new(std::io::ErrorKind::InvalidData, message).into()
+}
+
+fn read_hashed_slot<T: PacketDecoderExt>(reader: &mut T) -> DecodeResult<()> {
+    if !reader.read_bool()? {
+        return Ok(());
+    }
+    let id = reader.read_varint()?;
+    let count = reader.read_varint()?;
+    if !(0..crate::generated::ITEM_COUNT).contains(&id) || !(1..=127).contains(&count) {
+        return Err(invalid_container("invalid hashed item"));
+    }
+    let mut seen = std::collections::HashSet::new();
+    for removed in [false, true] {
+        let n = reader.read_varint()?;
+        if !(0..=crate::generated::COMPONENT_COUNT).contains(&n) {
+            return Err(invalid_container("too many hashed components"));
+        }
+        for _ in 0..n {
+            let component = reader.read_varint()?;
+            if !(0..crate::generated::COMPONENT_COUNT).contains(&component)
+                || !seen.insert(component)
+            {
+                return Err(invalid_container("invalid hashed component"));
+            }
+            if !removed {
+                reader.read_int()?;
+            }
+        }
+    }
+    Ok(())
+}
+
+impl ServerBoundPacket for SContainerClick {
+    fn decode<T: PacketDecoderExt>(reader: &mut T) -> DecodeResult<Self> {
+        let packet = Self {
+            window_id: reader.read_varint()?,
+            state_id: reader.read_varint()?,
+            slot: reader.read_short()?,
+            button: reader.read_byte()?,
+            mode: reader.read_varint()?,
+        };
+        if packet.window_id < 0 || packet.state_id < 0 || !(0..=6).contains(&packet.mode) {
+            return Err(invalid_container("invalid container click"));
+        }
+        let count = reader.read_varint()?;
+        if !(0..=128).contains(&count) {
+            return Err(invalid_container("too many changed slots"));
+        }
+        let mut seen = std::collections::HashSet::new();
+        for _ in 0..count {
+            let slot = reader.read_short()?;
+            if slot < 0 || !seen.insert(slot) {
+                return Err(invalid_container("invalid changed slot"));
+            }
+            read_hashed_slot(reader)?;
+        }
+        read_hashed_slot(reader)?;
+        Ok(packet)
+    }
+    fn handle(self: Box<Self>, handler: &mut dyn ServerBoundPacketHandler, idx: usize) {
+        handler.handle_container_click(*self, idx);
+    }
+}
+
+pub struct SContainerClose {
+    pub window_id: i32,
+}
+impl ServerBoundPacket for SContainerClose {
+    fn decode<T: PacketDecoderExt>(reader: &mut T) -> DecodeResult<Self> {
+        Ok(Self {
+            window_id: reader.read_varint()?,
+        })
+    }
+    fn handle(self: Box<Self>, handler: &mut dyn ServerBoundPacketHandler, idx: usize) {
+        handler.handle_container_close(*self, idx);
+    }
 }
 
 impl ServerBoundPacket for SCreativeInventoryAction {

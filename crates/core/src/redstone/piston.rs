@@ -253,7 +253,15 @@ fn retract(
         // For this timing repair, the front payload is assumed to stick.
         // Slime/honey side attachments and push reactions are deliberately deferred.
         let block = world.get_block(ahead);
-        if block != Block::Air && !matches!(block, Block::MovingPiston { .. }) {
+        if block != Block::Air
+            && !matches!(
+                block,
+                Block::MovingPiston { .. }
+                    | Block::Barrel { .. }
+                    | Block::Hopper { .. }
+                    | Block::Furnace { .. }
+            )
+        {
             let entity = world.get_block_entity(ahead).cloned();
             moving(world, head, piston, block, false, false, entity);
             world.delete_block_entity(ahead);
@@ -451,7 +459,11 @@ fn payload_line(world: &impl World, start: BlockPos, facing: BlockFace) -> Optio
         match world.get_block(pos) {
             Block::Air => return Some(line),
             // A moving entity belongs to another operation; do not nest its state.
-            Block::MovingPiston { .. } | Block::PistonHead { .. } => return None,
+            Block::MovingPiston { .. }
+            | Block::PistonHead { .. }
+            | Block::Barrel { .. }
+            | Block::Hopper { .. }
+            | Block::Furnace { .. } => return None,
             _ => line.push(pos),
         }
         pos = pos.offset(facing);

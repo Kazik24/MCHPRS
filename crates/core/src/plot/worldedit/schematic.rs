@@ -11,7 +11,6 @@ use mchprs_blocks::BlockPos;
 use once_cell::sync::Lazy;
 use regex::Regex;
 use rustc_hash::FxHashMap;
-use serde::Serialize;
 use std::fs::{self, File};
 use std::io::Read;
 use std::path::Path;
@@ -355,34 +354,6 @@ fn decode_schematic(schema: &Schema<'_>) -> Result<WorldEditClipboard> {
     })
 }
 
-#[derive(Serialize)]
-struct Metadata {
-    #[serde(rename = "WEOffsetX")]
-    offset_x: i32,
-    #[serde(rename = "WEOffsetY")]
-    offset_y: i32,
-    #[serde(rename = "WEOffsetZ")]
-    offset_z: i32,
-}
-
-/// Used to serialize schematics in NBT. This cannot be used for deserialization because of
-/// [a bug](https://github.com/PistonDevelopers/hematite_nbt/issues/45) in `hematite-nbt`.
-#[derive(Serialize)]
-#[serde(rename_all = "PascalCase")]
-struct Schematic {
-    width: i16,
-    length: i16,
-    height: i16,
-    palette: nbt::Blob,
-    palette_max: i32,
-    metadata: Metadata,
-    #[serde(serialize_with = "nbt::i8_array")]
-    block_data: Vec<i8>,
-    block_entities: Vec<nbt::Blob>,
-    version: i32,
-    data_version: i32,
-}
-
 pub fn save_schematic(file_name: &str, clipboard: &WorldEditClipboard) -> Result<()> {
     let path = super::schematic_paths::save_path(Path::new("./schems"), file_name)?;
     fs::create_dir_all(path.parent().unwrap())?;
@@ -476,28 +447,31 @@ fn write_schematic(mut file: impl std::io::Write, clipboard: &WorldEditClipboard
                 blob.insert("Id", id)?;
             }
             blob.insert("Pos", nbt::Value::IntArray(vec![pos.x, pos.y, pos.z]))?;
-            block_entities.push(blob);
+            block_entities.push(nbt::Value::Compound(blob.content));
         }
     }
 
-    let metadata = Metadata {
-        offset_x,
-        offset_y,
-        offset_z,
-    };
-    let schematic = Schematic {
-        width: size_x as i16,
-        length: size_z as i16,
-        height: size_y as i16,
-        block_data: data,
-        block_entities,
-        palette: encoded_pallete,
-        palette_max: pallette.len() as i32,
-        metadata,
-        version: 2,
-        data_version: MC_DATA_VERSION,
-    };
-    nbt::to_gzip_writer(&mut file, &schematic, Some("Schematic"))?;
+    // The serde path turns nested NBT arrays into Lists, losing item components.
+    // Write the typed NBT tree directly so every nested tag retains its type.
+    let mut schematic = nbt::Blob::new();
+    schematic.insert("Width", size_x as i16)?;
+    schematic.insert("Length", size_z as i16)?;
+    schematic.insert("Height", size_y as i16)?;
+    schematic.insert("BlockData", nbt::Value::ByteArray(data))?;
+    schematic.insert("BlockEntities", nbt::Value::List(block_entities))?;
+    schematic.insert("Palette", nbt::Value::Compound(encoded_pallete.content))?;
+    schematic.insert("PaletteMax", pallette.len() as i32)?;
+    schematic.insert(
+        "Metadata",
+        nbt::Value::Compound(Compound::from([
+            ("WEOffsetX".into(), nbt::Value::Int(offset_x)),
+            ("WEOffsetY".into(), nbt::Value::Int(offset_y)),
+            ("WEOffsetZ".into(), nbt::Value::Int(offset_z)),
+        ])),
+    )?;
+    schematic.insert("Version", 2i32)?;
+    schematic.insert("DataVersion", MC_DATA_VERSION)?;
+    schematic.to_gzip_writer(&mut file)?;
 
     Ok(())
 }

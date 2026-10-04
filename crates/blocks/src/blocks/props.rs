@@ -3,6 +3,84 @@ use crate::BlockFacing;
 use super::{Block, BlockDirection, BlockProperty, BlockTransform, FlipDirection};
 use std::str::FromStr;
 
+/// Hopper outlets cannot point up. IDs follow the Java state property order.
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub enum HopperFacing {
+    Down,
+    North,
+    South,
+    West,
+    East,
+}
+
+impl HopperFacing {
+    pub(super) fn from_id(id: u32) -> Self {
+        [Self::Down, Self::North, Self::South, Self::West, Self::East][id as usize]
+    }
+
+    pub(super) fn get_id(self) -> u32 {
+        self as u32
+    }
+
+    pub fn for_placement(face: crate::BlockFace) -> Self {
+        match face {
+            crate::BlockFace::North => Self::South,
+            crate::BlockFace::South => Self::North,
+            crate::BlockFace::West => Self::East,
+            crate::BlockFace::East => Self::West,
+            _ => Self::Down,
+        }
+    }
+}
+
+impl FromStr for HopperFacing {
+    type Err = ();
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Ok(match s {
+            "down" => Self::Down,
+            "north" => Self::North,
+            "south" => Self::South,
+            "west" => Self::West,
+            "east" => Self::East,
+            _ => return Err(()),
+        })
+    }
+}
+
+impl ToString for HopperFacing {
+    fn to_string(&self) -> String {
+        match self {
+            Self::Down => "down",
+            Self::North => "north",
+            Self::South => "south",
+            Self::West => "west",
+            Self::East => "east",
+        }
+        .to_owned()
+    }
+}
+
+impl BlockTransform for HopperFacing {
+    fn rotate90(&mut self) {
+        *self = match self {
+            Self::North => Self::East,
+            Self::East => Self::South,
+            Self::South => Self::West,
+            Self::West => Self::North,
+            Self::Down => Self::Down,
+        };
+    }
+    fn flip(&mut self, dir: FlipDirection) {
+        *self = match (dir, *self) {
+            (FlipDirection::FlipX, Self::West) => Self::East,
+            (FlipDirection::FlipX, Self::East) => Self::West,
+            (FlipDirection::FlipZ, Self::North) => Self::South,
+            (FlipDirection::FlipZ, Self::South) => Self::North,
+            _ => *self,
+        };
+    }
+}
+
 #[derive(Copy, Clone, Debug, PartialEq, Eq, BlockProperty, BlockTransform)]
 pub struct RedstoneRepeater {
     pub delay: u8,
@@ -563,7 +641,7 @@ impl Instrument {
             // All wood materials: Log, Plank
             Block::Sign { .. }
             | Block::NoteBlock { .. }
-            | Block::Barrel {}
+            | Block::Barrel { .. }
             | Block::Composter { .. } => Instrument::Bass,
             Block::Clay {} => Instrument::Flute,
             Block::GoldBlock {} => Instrument::Bell,

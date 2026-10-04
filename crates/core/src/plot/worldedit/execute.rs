@@ -1021,9 +1021,9 @@ pub(super) fn execute_replace_container(ctx: CommandExecuteContext<'_>) {
     let to = ctx.arguments[1].unwrap_container_type();
 
     let new_block = match to {
-        ContainerType::Furnace => Block::Furnace {},
-        ContainerType::Barrel => Block::Barrel {},
-        ContainerType::Hopper => Block::Hopper {},
+        ContainerType::Furnace => Block::from_name("furnace").unwrap(),
+        ContainerType::Barrel => Block::from_name("barrel").unwrap(),
+        ContainerType::Hopper => Block::from_name("hopper").unwrap(),
     };
     let slots = to.num_slots() as u32;
 
@@ -1036,7 +1036,7 @@ pub(super) fn execute_replace_container(ctx: CommandExecuteContext<'_>) {
 
                 if !matches!(
                     block,
-                    Block::Furnace {} | Block::Barrel {} | Block::Hopper {}
+                    Block::Furnace { .. } | Block::Barrel { .. } | Block::Hopper { .. }
                 ) {
                     continue;
                 }

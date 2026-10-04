@@ -6,7 +6,7 @@ use crate::plot::PlotWorld;
 use crate::plot::PLOT_BLOCK_HEIGHT;
 use crate::redstone;
 use crate::world::World;
-use mchprs_blocks::block_entities::BlockEntity;
+use mchprs_blocks::block_entities::{BlockEntity, ContainerType};
 use mchprs_blocks::blocks::*;
 use mchprs_blocks::items::{Item, ItemStack};
 use mchprs_blocks::{BlockFace, BlockPos};
@@ -105,6 +105,10 @@ pub fn on_use(
             }
             ActionResult::Success
         }
+        Block::Cake { .. } => {
+            crate::container::eat_cake(world, pos);
+            ActionResult::Success
+        }
         Block::RedstoneWire { wire } => redstone::wire::on_use(wire, world, pos),
         Block::SeaPickle { pickles } => {
             if let Some(Item::SeaPickle {}) = item_in_hand {
@@ -159,9 +163,24 @@ pub fn on_use(
         }
         b if b.has_block_entity() => {
             // Open container
+            if let Some(ty) = ContainerType::from_block(b) {
+                // Repair containers from plots saved before empty inventories existed.
+                if !matches!(world.get_block_entity(pos), Some(BlockEntity::Container { ty: existing, .. }) if *existing == ty)
+                {
+                    world.set_block_entity(
+                        pos,
+                        BlockEntity::Container {
+                            inventory: Default::default(),
+                            comparator_override: 0,
+                            ty,
+                        },
+                    );
+                }
+            }
             let block_entity = world.get_block_entity(pos);
             if let Some(BlockEntity::Container { inventory, ty, .. }) = block_entity {
-                player.open_container(inventory, *ty);
+                player.open_container(pos, inventory, *ty);
+                crate::container::set_barrel_open(world, pos, true);
                 ActionResult::Success
             } else {
                 ActionResult::Pass
@@ -183,7 +202,10 @@ pub fn get_state_for_placement(
         Item::Sandstone {} => Block::Sandstone {},
         Item::SeaPickle {} => Block::SeaPickle { pickles: 1 },
         Item::Wool { color } => Block::Wool { color },
-        Item::Furnace {} => Block::Furnace {},
+        Item::Furnace {} => Block::Furnace {
+            facing: context.player.get_direction().opposite(),
+            lit: false,
+        },
         Item::StonePressurePlate {} => Block::StonePressurePlate { powered: false },
         Item::Lever {} => {
             let lever_face = match context.block_face {
@@ -232,7 +254,10 @@ pub fn get_state_for_placement(
             lit: redstone::redstone_lamp_should_be_lit(world, pos),
         },
         Item::RedstoneBlock {} => Block::RedstoneBlock {},
-        Item::Hopper {} => Block::Hopper {},
+        Item::Hopper {} => Block::Hopper {
+            facing: HopperFacing::for_placement(context.block_face),
+            enabled: !redstone::redstone_lamp_should_be_lit(world, pos),
+        },
         Item::Terracotta {} => Block::Terracotta {},
         Item::ColoredTerracotta { color } => Block::ColoredTerracotta { color },
         Item::Concrete { color } => Block::Concrete { color },
@@ -266,7 +291,10 @@ pub fn get_state_for_placement(
         Item::Redstone {} => Block::RedstoneWire {
             wire: redstone::wire::get_state_for_placement(world, pos),
         },
-        Item::Barrel {} => Block::Barrel {},
+        Item::Barrel {} => Block::Barrel {
+            facing: crate::container::barrel_facing(context.player.yaw, context.player.pitch),
+            open: false,
+        },
         Item::Target {} => Block::Target {},
         Item::StainedGlass { color } => Block::StainedGlass { color },
         Item::SmoothStoneSlab {} => Block::SmoothStoneSlab {},
@@ -476,6 +504,7 @@ pub fn is_valid_position(block: Block, world: &impl World, pos: BlockPos) -> boo
     }
 
     match block {
+        Block::Cake { .. } => world.get_block(pos.offset(BlockFace::Bottom)).is_solid(),
         Block::RedstoneWire { .. }
         | Block::RedstoneComparator { .. }
         | Block::RedstoneRepeater { .. }

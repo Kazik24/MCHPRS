@@ -7,6 +7,64 @@ use std::io::Cursor;
 const ADDER: &[u8] = include_bytes!("../../../../../../../test_data/ADDER_GWIEZDNY_TEST.schem");
 
 #[test]
+fn all_container_states_and_item_components_survive_schematic_round_trip() {
+    use mchprs_blocks::block_entities::ContainerType;
+    use mchprs_blocks::items::ItemStack;
+    for (ty, ids) in [
+        (ContainerType::Barrel, 19431..=19442),
+        (ContainerType::Hopper, 10034..=10043),
+        (ContainerType::Furnace, 4358..=4365),
+    ] {
+        let mut world = PlotWorld::from_chunks(0, 0, vec![Chunk::empty(0, 0)], Default::default());
+        let pos = BlockPos::new(4, 30, 4);
+        let mut tag = nbt::Blob::new();
+        tag.insert("__mchprs_components_770", Value::ByteArray(vec![1, 0, 0]))
+            .unwrap();
+        tag.insert("__mchprs_max_stack_size", 16i32).unwrap();
+        let slots = vec![
+            Some(ItemStack {
+                item_type: mchprs_blocks::items::Item::from_name("redstone").unwrap(),
+                count: 16,
+                nbt: Some(tag),
+            });
+            ty.num_slots() as usize
+        ];
+        for id in ids {
+            world.set_block_raw(pos, id);
+            world.set_block_entity(
+                pos,
+                BlockEntity::Container {
+                    ty,
+                    inventory: crate::container::inventory_entries(&slots).into(),
+                    comparator_override: 15,
+                },
+            );
+            let cb = create_clipboard(&mut world, pos, pos, pos);
+            assert_roundtrip(&cb);
+            let mut bytes = vec![];
+            write_schematic(&mut bytes, &cb).unwrap();
+            let restored = load_schematic(Cursor::new(bytes)).unwrap();
+            let dest = BlockPos::new(8, 30, 4);
+            paste_clipboard(&mut world, &restored, dest, false);
+            assert_eq!(world.get_block_raw(dest), id);
+            assert_eq!(
+                crate::redstone::comparator::get_override(world.get_block(dest), &world, dest),
+                15
+            );
+            let Some(BlockEntity::Container { inventory, .. }) = world.get_block_entity(dest)
+            else {
+                panic!()
+            };
+            let items = crate::container::inventory_slots(inventory, ty.num_slots() as usize);
+            assert_eq!(
+                crate::container::signature(&slots, &None),
+                crate::container::signature(&items, &None)
+            );
+        }
+    }
+}
+
+#[test]
 fn supplied_potados_preserves_all_command_blocks_and_supported_messages() {
     let cb = load_schematic(Cursor::new(include_bytes!(
         "../../../../../../../test_data/potados_27072024.schem"

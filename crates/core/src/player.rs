@@ -162,6 +162,8 @@ pub struct Player {
     pub worldedit_redo: Vec<WorldEditUndo>,
     /// Commands are stored so they can be handled after packets
     pub command_queue: Vec<String>,
+    pub(crate) open_container: Option<crate::container::OpenContainer>,
+    next_window_id: u8,
     permissions_cache: Option<PlayerPermissionsCache>,
 }
 
@@ -238,6 +240,8 @@ impl Player {
             worldedit_undo: Vec::new(),
             worldedit_redo: Vec::new(),
             command_queue: Vec::new(),
+            open_container: None,
+            next_window_id: 0,
             permissions_cache,
         }
     }
@@ -548,37 +552,87 @@ impl Player {
             .is_some_and(|value| value > 0)
     }
 
-    pub fn open_container(&self, inventory: &[InventoryEntry], container_type: ContainerType) {
-        let mut slots: Vec<Option<SlotData>> =
-            (0..container_type.num_slots()).map(|_| None).collect();
-        for entry in inventory {
-            let nbt = entry
-                .nbt
-                .clone()
-                .map(|data| nbt::Blob::from_reader(&mut Cursor::new(data)).unwrap());
-            slots[entry.slot as usize] = Some(SlotData {
-                item_id: entry.id as i32,
-                item_count: entry.count,
-                nbt,
-            });
-        }
-
+    pub fn open_container(
+        &mut self,
+        pos: BlockPos,
+        inventory: &[InventoryEntry],
+        container_type: ContainerType,
+    ) {
+        self.next_window_id = self.next_window_id % 100 + 1;
+        let title = match container_type {
+            ContainerType::Barrel => "container.barrel",
+            ContainerType::Furnace => "container.furnace",
+            ContainerType::Hopper => "container.hopper",
+        };
+        self.open_container = Some(crate::container::OpenContainer {
+            pos,
+            ty: container_type,
+            window_id: self.next_window_id,
+            state_id: 0,
+            cursor: None,
+            drag: None,
+            last_contents: Vec::new(),
+        });
         let open_window = COpenWindow {
-            window_id: 1,
+            window_id: self.next_window_id as i32,
             window_type: container_type.window_type() as i32,
-            window_title: r#"{"text":"Container"}"#.to_owned(),
+            window_title: serde_json::json!({"translate":title}).to_string(),
         }
         .encode();
         self.client.send_packet(&open_window);
+        self.send_container_contents(inventory, true);
+    }
 
+    pub fn send_container_contents(&mut self, inventory: &[InventoryEntry], force: bool) {
+        let Some(menu) = &mut self.open_container else {
+            return;
+        };
+        let mut slots = crate::container::inventory_slots(inventory, menu.ty.num_slots() as usize);
+        slots.extend_from_slice(&self.inventory[9..45]);
+        let signature = crate::container::signature(&slots, &menu.cursor);
+        if !force && signature == menu.last_contents {
+            return;
+        }
+        menu.last_contents = signature;
+        menu.state_id = (menu.state_id + 1) & 32767;
         let window_items = CWindowItems {
-            window_id: 1,
-            state_id: 0,
-            slot_data: slots,
-            carried_item: None,
+            window_id: menu.window_id,
+            state_id: menu.state_id,
+            slot_data: slots
+                .iter()
+                .map(|s| s.as_ref().map(crate::container::slot_data))
+                .collect(),
+            carried_item: menu.cursor.as_ref().map(crate::container::slot_data),
         }
         .encode();
         self.client.send_packet(&window_items);
+    }
+
+    /// Return the carried stack before leaving a menu or saving the player.
+    pub fn close_container(&mut self) -> Option<(BlockPos, ContainerType)> {
+        let mut menu = self.open_container.take()?;
+        let indices: Vec<_> = (9..45).collect();
+        crate::container::insert(&mut self.inventory, &mut menu.cursor, &indices);
+        self.client.send_packet(
+            &CCloseWindow {
+                window_id: menu.window_id,
+            }
+            .encode(),
+        );
+        self.client.send_packet(
+            &CWindowItems {
+                window_id: 0,
+                state_id: 0,
+                slot_data: self
+                    .inventory
+                    .iter()
+                    .map(|s| s.as_ref().map(crate::container::slot_data))
+                    .collect(),
+                carried_item: None,
+            }
+            .encode(),
+        );
+        Some((menu.pos, menu.ty))
     }
 
     pub fn set_inventory_slot(&mut self, slot: u32, item: Option<ItemStack>) {

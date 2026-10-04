@@ -5,6 +5,7 @@ mod utils;
 mod chat;
 mod chat_commands;
 mod config;
+mod container;
 mod interaction;
 mod permissions;
 mod player;

@@ -239,6 +239,18 @@ pub fn update(block: Block, world: &mut impl World, pos: BlockPos, dir: Option<B
                 world.set_block(pos, Block::RedstoneLamp { lit: true });
             }
         }
+        Block::Hopper { facing, enabled } => {
+            let should_be_enabled = !redstone_lamp_should_be_lit(world, pos);
+            if enabled != should_be_enabled {
+                world.set_block(
+                    pos,
+                    Block::Hopper {
+                        facing,
+                        enabled: should_be_enabled,
+                    },
+                );
+            }
+        }
         Block::IronTrapdoor {
             powered,
             facing,

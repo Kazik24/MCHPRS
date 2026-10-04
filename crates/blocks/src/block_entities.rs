@@ -74,6 +74,15 @@ impl ToString for ContainerType {
 }
 
 impl ContainerType {
+    pub fn from_block(block: Block) -> Option<Self> {
+        match block {
+            Block::Barrel { .. } => Some(Self::Barrel),
+            Block::Hopper { .. } => Some(Self::Hopper),
+            Block::Furnace { .. } => Some(Self::Furnace),
+            _ => None,
+        }
+    }
+
     pub fn num_slots(self) -> u8 {
         match self {
             ContainerType::Furnace => 3,
@@ -315,19 +324,26 @@ impl BlockEntity {
                     .ok_or(anyhow::anyhow!("Item compound id missing namespace"))?,
             );
 
-            let tag = match item_compound.get("tag") {
+            let tag_blob = match item_compound.get("tag") {
                 Some(nbt::Value::Compound(map)) => {
                     let mut blob = nbt::Blob::new();
                     for (k, v) in map {
                         blob.insert(k, v.clone()).unwrap();
                     }
 
-                    let mut data = Vec::new();
-                    blob.to_writer(&mut data).unwrap();
-                    Some(data)
+                    Some(blob)
                 }
                 _ => None,
             };
+            let max_stack = mchprs_network::packets::components::max_stack_size(
+                &tag_blob,
+                item_type.map_or(64, Item::max_stack_size) as u8,
+            );
+            let tag = tag_blob.map(|blob| {
+                let mut data = Vec::new();
+                blob.to_writer(&mut data).expect("validated inventory tag");
+                data
+            });
             inventory.push(InventoryEntry {
                 slot,
                 count,
@@ -337,12 +353,13 @@ impl BlockEntity {
                 nbt: tag,
             });
 
-            fullness_sum += count as f32 / item_type.map_or(64, Item::max_stack_size) as f32;
+            fullness_sum += count as f32 / max_stack as f32;
         }
         Ok(BlockEntity::Container {
             comparator_override: (if fullness_sum > 0.0 { 1.0 } else { 0.0 }
                 + (fullness_sum / num_slots as f32) * 14.0)
-                .floor() as u8,
+                .floor()
+                .min(15.0) as u8,
             inventory,
             ty,
         })

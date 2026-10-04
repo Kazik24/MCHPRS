@@ -305,6 +305,65 @@ fn test_piston_observers_id_conversions() {
     }
 }
 
+#[test]
+fn all_barrel_states_keep_entity_redstone_and_transform_semantics() {
+    for id in 19431..=19442 {
+        let mut block = Block::from_id(id);
+        assert!(matches!(block, Block::Barrel { .. }));
+        assert_eq!(block.get_id(), id);
+        assert!(block.has_block_entity() && block.is_cube() && block.is_solid());
+        assert_eq!(Instrument::from_block_below(block), Instrument::Bass);
+        let props = block.properties();
+        for _ in 0..4 {
+            block.rotate(RotateAmt::Rotate90);
+        }
+        assert_eq!(block.properties(), props);
+    }
+    let mut barrel = Block::from_name("barrel").unwrap();
+    assert_eq!(barrel.get_id(), 19432);
+    barrel.set_properties(HashMap::from([("facing", "east"), ("open", "true")]));
+    assert_eq!(barrel.get_id(), 19433);
+}
+
+#[test]
+fn hopper_furnace_and_cake_states_match_registry_properties() {
+    for (name, ids) in [
+        ("hopper", 10034..=10043),
+        ("furnace", 4358..=4365),
+        ("cake", 6053..=6059),
+    ] {
+        for id in ids {
+            let mut block = Block::from_id(id);
+            assert_eq!(block.get_name(), name);
+            assert_eq!(block.get_id(), id);
+            assert_eq!(
+                block.properties(),
+                crate::generated::STATE_PROPERTIES[id as usize]
+                    .iter()
+                    .map(|(k, v)| (*k, (*v).to_owned()))
+                    .collect()
+            );
+            assert_eq!(block.has_block_entity(), name != "cake");
+            for _ in 0..4 {
+                block.rotate(RotateAmt::Rotate90);
+            }
+            assert_eq!(block.get_id(), id);
+            block.flip(FlipDirection::FlipX);
+            block.flip(FlipDirection::FlipX);
+            assert_eq!(block.get_id(), id);
+        }
+    }
+    assert_eq!(Block::from_name("hopper").unwrap().get_id(), 10034);
+    let mut hopper = Block::from_name("hopper").unwrap();
+    hopper.set_properties(HashMap::from([("facing", "east"), ("enabled", "false")]));
+    assert_eq!(hopper.get_id(), 10043);
+    hopper.set_properties(HashMap::from([("facing", "up")]));
+    assert_eq!(hopper.get_id(), 10043);
+    let mut cake = Block::from_name("cake").unwrap();
+    cake.set_properties(HashMap::from([("bites", "255")]));
+    assert_eq!(cake.get_id(), 6053);
+}
+
 macro_rules! blocks {
     (
         $(
@@ -464,6 +523,12 @@ macro_rules! blocks {
             }
 
             pub fn set_properties(&mut self, props: HashMap<&str, &str>) {
+                if let Self::Cake { bites } = self {
+                    if let Some(value) = props.get("bites").and_then(|value| value.parse::<u8>().ok()).filter(|value| *value <= 6) {
+                        *bites = value;
+                    }
+                    return;
+                }
                 let definition = self.definition();
                 if let Self::Unknown{id}=self {
                     let block=definition;
@@ -1263,20 +1328,33 @@ blocks! {
         get_name: "cake",
     },
     Barrel {
-        get_id: 15042,
-        from_id(_id): 15042 => {},
+        props: {
+            facing: BlockFacing,
+            open: bool,
+        },
+        get_id: 15041 + facing.get_id() * 2 + !open as u32,
+        from_id_offset: 15041,
+        from_id(id): 15041..=15052 => {
+            facing: BlockFacing::try_from_id(id >> 1).unwrap(),
+            open: id & 1 == 0,
+        },
         from_names(_name): {
-            "barrel" => {}
+            "barrel" => { facing: BlockFacing::North, open: false }
         },
         get_name: "barrel",
         solid: true,
         cube: true,
     },
     Hopper {
-        get_id: 6939,
-        from_id(_id): 6939 => {},
+        props: { enabled: bool, facing: HopperFacing },
+        get_id: 6934 + !enabled as u32 * 5 + facing.get_id(),
+        from_id_offset: 6934,
+        from_id(id): 6934..=6943 => {
+            enabled: id < 5,
+            facing: HopperFacing::from_id(id % 5),
+        },
         from_names(_name): {
-            "hopper" => {}
+            "hopper" => { enabled: true, facing: HopperFacing::Down }
         },
         get_name: "hopper",
         transparent: true,
@@ -1313,10 +1391,15 @@ blocks! {
         cube: true,
     },
     Furnace {
-        get_id: 3431,
-        from_id(_id): 3431 => {},
+        props: { facing: BlockDirection, lit: bool },
+        get_id: 3430 + facing.get_id() * 2 + !lit as u32,
+        from_id_offset: 3430,
+        from_id(id): 3430..=3437 => {
+            facing: BlockDirection::from_id(id >> 1),
+            lit: id & 1 == 0,
+        },
         from_names(_name): {
-            "furnace" => {}
+            "furnace" => { facing: BlockDirection::North, lit: false }
         },
         get_name: "furnace",
         solid: true,

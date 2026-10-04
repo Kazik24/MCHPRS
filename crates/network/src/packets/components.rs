@@ -6,6 +6,14 @@ use std::io::{self, Cursor, Read};
 use std::sync::OnceLock;
 
 const RAW: &str = "__mchprs_components_770";
+const MAX_STACK_SIZE: &str = "__mchprs_max_stack_size";
+
+pub fn max_stack_size(nbt: &Option<nbt::Blob>, default: u8) -> u8 {
+    match nbt.as_ref().and_then(|blob| blob.get(MAX_STACK_SIZE)) {
+        Some(nbt::Value::Int(value)) if (1..=99).contains(value) => *value as u8,
+        _ => default,
+    }
+}
 fn invalid(message: &str) -> PacketDecodeError {
     io::Error::new(io::ErrorKind::InvalidData, message).into()
 }
@@ -315,6 +323,13 @@ fn read_slot_depth<T: PacketDecoderExt>(
         };
         raw.write_varint(component_id);
         raw.write_bytes(&data);
+        if name == "max_stack_size" {
+            let size = Cursor::new(&data).read_varint()?;
+            if !(1..=99).contains(&size) {
+                return Err(invalid("invalid maximum stack size"));
+            }
+            nbt.insert(MAX_STACK_SIZE, nbt::Value::Int(size))?;
+        }
         if matches!(
             name,
             "custom_data" | "debug_stick_state" | "block_entity_data"

@@ -374,6 +374,7 @@ impl Plot {
         }
         let unlimited = self.players[player].has_explicit_permission(UNLIMITED_HISTORY_PERMISSION);
         self.world.rewind_ticks(ticks, unlimited)?;
+        self.close_all_containers();
         self.tps = Tps::Limited(0);
         self.sleep_time = sleep_time_for_tps(self.tps);
         self.timings.set_tps(self.tps);

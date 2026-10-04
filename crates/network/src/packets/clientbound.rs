@@ -374,7 +374,7 @@ pub struct CWindowItems {
 impl ClientBoundPacket for CWindowItems {
     fn encode(&self) -> PacketEncoder {
         let mut buf = Vec::new();
-        buf.write_unsigned_byte(self.window_id);
+        buf.write_varint(self.window_id as i32);
         buf.write_varint(self.state_id);
         buf.write_varint(self.slot_data.len() as i32);
         for slot_data in &self.slot_data {
@@ -386,7 +386,7 @@ impl ClientBoundPacket for CWindowItems {
 }
 
 pub struct CSetSlot {
-    pub window_id: u8,
+    pub window_id: i32,
     pub state_id: i32,
     pub slot: i16,
     pub slot_data: Option<SlotData>,
@@ -395,7 +395,7 @@ pub struct CSetSlot {
 impl ClientBoundPacket for CSetSlot {
     fn encode(&self) -> PacketEncoder {
         let mut buf = Vec::new();
-        buf.write_unsigned_byte(self.window_id);
+        buf.write_varint(self.window_id);
         buf.write_varint(self.state_id);
         buf.write_short(self.slot);
         buf.write_slot_data(&self.slot_data);
@@ -754,6 +754,17 @@ pub struct COpenWindow {
     pub window_id: i32,
     pub window_type: i32,
     pub window_title: String,
+}
+
+pub struct CCloseWindow {
+    pub window_id: u8,
+}
+impl ClientBoundPacket for CCloseWindow {
+    fn encode(&self) -> PacketEncoder {
+        let mut buf = Vec::new();
+        buf.write_varint(self.window_id as i32);
+        PacketEncoder::new(buf, 0x11)
+    }
 }
 
 impl ClientBoundPacket for COpenWindow {
