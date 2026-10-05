@@ -15,6 +15,7 @@ mod profile;
 pub mod redpiler;
 pub mod redstone;
 pub mod server;
+mod velocity;
 pub mod world;
 
 #[macro_use]

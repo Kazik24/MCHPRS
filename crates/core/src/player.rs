@@ -1,7 +1,7 @@
 use crate::chat::{ChatComponent, ColorCode};
 use crate::config::CONFIG;
 use crate::messages;
-use crate::permissions::{self, PlayerPermissionsCache};
+use crate::permissions::{self, PlayerPermissionsCache, Rank};
 use crate::plot::worldedit::{WorldEditClipboard, WorldEditUndo};
 use crate::plot::PLOT_SCALE;
 use crate::utils::HyphenatedUUID;
@@ -125,6 +125,7 @@ impl std::fmt::Display for PlayerPos {
 pub struct Player {
     pub uuid: u128,
     pub username: String,
+    pub profile_properties: Vec<mchprs_network::packets::clientbound::CPlayerInfoAddPlayerProperty>,
     pub skin_parts: SkinParts,
     pub inventory: Vec<Option<ItemStack>>,
     /// The selected slot of the player's hotbar (1-9)
@@ -218,6 +219,7 @@ impl Player {
         Player {
             uuid,
             username,
+            profile_properties: Vec::new(),
             skin_parts: Default::default(),
             inventory,
             selected_slot: player_data.selected_item_slot as u32,
@@ -235,7 +237,16 @@ impl Player {
             flying: player_data.flying,
             sprinting: false,
             crouching: false,
-            gamemode: player_data.gamemode,
+            gamemode: if permissions::dedicated_permissions()
+                && !permissions_cache
+                    .as_ref()
+                    .and_then(|cache| cache.get_node_val("mchprs.build"))
+                    .is_some_and(|value| value > 0)
+            {
+                Gamemode::Spectator
+            } else {
+                player_data.gamemode
+            },
             on_ground: player_data.on_ground,
             walk_speed: player_data.walk_speed,
             fly_speed: player_data.fly_speed,
@@ -547,9 +558,51 @@ impl Player {
                 false
             }
         } else {
-            // Permissions is not enabled
-            true
+            // An authenticated proxy deployment must not grant all permissions
+            // when its LuckPerms configuration is accidentally omitted.
+            CONFIG.velocity.is_none()
         }
+    }
+
+    pub fn can_use_commands(&self) -> bool {
+        if permissions::dedicated_permissions() {
+            self.has_permission("mchprs.access.commands")
+        } else {
+            self.permissions_cache.is_some() || CONFIG.velocity.is_none()
+        }
+    }
+
+    pub fn can_edit_plot(&self, owner: Option<u128>) -> bool {
+        if permissions::dedicated_permissions() && !self.has_permission("mchprs.build") {
+            return false;
+        }
+        match owner {
+            Some(owner) => owner == self.uuid || self.has_permission("plots.admin.interact.other"),
+            None => self.has_permission("plots.admin.interact.unowned"),
+        }
+    }
+
+    pub fn can_build_action(&self, action: &str, owner: Option<u128>) -> bool {
+        self.can_edit_plot(owner)
+            && (!permissions::dedicated_permissions()
+                || self.has_permission(&format!("mchprs.build.{action}")))
+    }
+
+    pub fn chat_prefix(&self) -> Option<&str> {
+        if !permissions::ranked_chat() {
+            return None;
+        }
+        Some(
+            self.permissions_cache
+                .as_ref()
+                .and_then(|cache| cache.rank_profile.as_ref())
+                .map_or(Rank::Player.default_prefix(), |profile| {
+                    profile
+                        .prefix
+                        .as_deref()
+                        .unwrap_or_else(|| profile.rank.default_prefix())
+                }),
+        )
     }
 
     /// Require a granted permission without the permissive no-LuckPerms fallback.

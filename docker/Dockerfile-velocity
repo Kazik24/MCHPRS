@@ -1,0 +1,14 @@
+# syntax=docker/dockerfile:1
+FROM itzg/mc-proxy:java25@sha256:7b7ff61d2a60ac34601fcafd4a11b9063b072643af7270ae2be5bd3766a53bb3
+
+# Pin the official release in the image; restarts need no JAR download.
+ADD --checksum=sha256:35a5596a5468a035d8a32c8de5ebb0dc6b8d8f0cc3ff5169d514aca762af8aa8 \
+    --chmod=0644 \
+    https://fill-data.papermc.io/v1/objects/35a5596a5468a035d8a32c8de5ebb0dc6b8d8f0cc3ff5169d514aca762af8aa8/velocity-4.2.0-30.jar \
+    /opt/velocity/velocity.jar
+
+# ADD's mode also applies to its newly created parent directory.
+RUN chmod 0755 /opt/velocity
+
+# The standard image initializer syncs this into /server on every start.
+COPY docker/velocity.toml /config/velocity.toml

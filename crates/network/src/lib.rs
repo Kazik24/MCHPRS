@@ -60,6 +60,8 @@ pub struct HandshakingConn {
     client: NetworkClient,
     pub username: Option<String>,
     pub uuid: Option<u128>,
+    pub profile_properties: Vec<packets::clientbound::CPlayerInfoAddPlayerProperty>,
+    pub forwarding_pending: bool,
     pub protocol_phase: u8,
 }
 
@@ -222,6 +224,8 @@ impl NetworkServer {
                     client,
                     username: None,
                     uuid: None,
+                    profile_properties: Vec::new(),
+                    forwarding_pending: false,
                     protocol_phase: 0,
                 }),
                 Err(mpsc::TryRecvError::Empty) => break,

@@ -47,6 +47,7 @@ impl ClientBoundPacket for CPong {
 pub struct CLoginSuccess {
     pub uuid: u128,
     pub username: String,
+    pub properties: Vec<CPlayerInfoAddPlayerProperty>,
 }
 
 impl ClientBoundPacket for CLoginSuccess {
@@ -54,8 +55,23 @@ impl ClientBoundPacket for CLoginSuccess {
         let mut buf = Vec::new();
         buf.write_uuid(self.uuid);
         buf.write_string(16, &self.username);
-        buf.write_varint(0);
+        write_profile_properties(&mut buf, &self.properties);
         PacketEncoder::new(buf, 0x02)
+    }
+}
+
+pub struct CLoginPluginRequest {
+    pub message_id: i32,
+}
+
+impl ClientBoundPacket for CLoginPluginRequest {
+    fn encode(&self) -> PacketEncoder {
+        let mut buf = Vec::new();
+        buf.write_varint(self.message_id);
+        buf.write_string(32767, "velocity:player_info");
+        // Request modern forwarding v1: authenticated UUID, name and properties.
+        buf.write_unsigned_byte(1);
+        PacketEncoder::new(buf, 0x04)
     }
 }
 
@@ -793,10 +809,23 @@ impl ClientBoundPacket for CPlayerAbilities {
     }
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct CPlayerInfoAddPlayerProperty {
-    name: String,
-    value: String,
-    signature: Option<String>,
+    pub name: String,
+    pub value: String,
+    pub signature: Option<String>,
+}
+
+fn write_profile_properties(buf: &mut Vec<u8>, properties: &[CPlayerInfoAddPlayerProperty]) {
+    buf.write_varint(properties.len() as i32);
+    for prop in properties {
+        buf.write_string(32767, &prop.name);
+        buf.write_string(32767, &prop.value);
+        buf.write_bool(prop.signature.is_some());
+        if let Some(sig) = &prop.signature {
+            buf.write_string(32767, sig);
+        }
+    }
 }
 
 pub struct CPlayerInfoAddPlayer {
@@ -824,15 +853,7 @@ impl ClientBoundPacket for CPlayerInfo {
                 for p in ps {
                     buf.write_uuid(p.uuid);
                     buf.write_string(16, &p.name);
-                    buf.write_varint(p.properties.len() as i32);
-                    for prop in &p.properties {
-                        buf.write_string(32767, &prop.name);
-                        buf.write_string(32767, &prop.value);
-                        buf.write_bool(prop.signature.is_some());
-                        if let Some(sig) = &prop.signature {
-                            buf.write_string(32767, sig);
-                        }
-                    }
+                    write_profile_properties(&mut buf, &p.properties);
                     buf.write_varint(p.gamemode);
                     buf.write_bool(true);
                     buf.write_varint(p.ping);

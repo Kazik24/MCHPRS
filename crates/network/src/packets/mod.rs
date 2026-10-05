@@ -126,6 +126,9 @@ fn read_decompressed<T: PacketDecoderExt>(
             *state = NetworkState::LoginAcknowledgement;
             Box::new(p)
         }
+        NetworkState::LoginAcknowledgement if packet_id == 2 => {
+            Box::new(SLoginPluginResponse::decode(reader)?)
+        }
         NetworkState::LoginAcknowledgement if packet_id == 3 => {
             *state = NetworkState::Configuration;
             Box::new(SLoginAcknowledged)

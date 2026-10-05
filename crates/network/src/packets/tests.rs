@@ -3,6 +3,37 @@ use super::*;
 use std::io::Cursor;
 
 #[test]
+fn forwarding_response_keeps_login_state_until_acknowledgement() {
+    #[derive(Default)]
+    struct Handler {
+        data: Vec<u8>,
+    }
+    impl serverbound::ServerBoundPacketHandler for Handler {
+        fn handle_login_plugin_response(
+            &mut self,
+            packet: serverbound::SLoginPluginResponse,
+            _: usize,
+        ) {
+            assert_eq!(packet.message_id, 0);
+            assert!(packet.successful);
+            self.data = packet.data;
+        }
+    }
+    let mut bytes = vec![2, 0, 1];
+    bytes.extend_from_slice(&[7; 64]);
+    let mut state = NetworkState::LoginAcknowledgement;
+    let packet = read_decompressed(&mut Cursor::new(bytes), &mut state).unwrap();
+    assert!(matches!(state, NetworkState::LoginAcknowledgement));
+    let mut handler = Handler::default();
+    packet.handle(&mut handler, 0);
+    assert_eq!(handler.data, vec![7; 64]);
+    assert!(serverbound::SLoginPluginResponse::decode(&mut Cursor::new(vec![0, 0, 1])).is_err());
+    let mut oversized = vec![0, 1];
+    oversized.extend_from_slice(&vec![0; 32769]);
+    assert!(serverbound::SLoginPluginResponse::decode(&mut Cursor::new(oversized)).is_err());
+}
+
+#[test]
 fn container_click_hashes_dispatch_and_validate_without_accepting_item_data() {
     use super::serverbound::*;
     #[derive(Default)]

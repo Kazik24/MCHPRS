@@ -49,7 +49,7 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 
 COPY --from=builder /out/mchprs /usr/local/bin/mchprs
-COPY Config.toml /etc/mchprs/Config.toml
+COPY docker/Config.toml /etc/mchprs/Config.toml
 ENV MCHPRS_CONFIG=/etc/mchprs/Config.toml
 WORKDIR /data
 VOLUME ["/data"]

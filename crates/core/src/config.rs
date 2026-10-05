@@ -1,4 +1,5 @@
 use crate::permissions::PermissionsConfig;
+use crate::velocity::VelocityConfig;
 use once_cell::sync::Lazy;
 use serde::{Deserialize, Serialize};
 use std::fs;
@@ -84,6 +85,7 @@ gen_config! {
     max_players: i64 = 99999,
     view_distance: i64 = 8,
     bungeecord: bool = false,
+    velocity: Option<VelocityConfig> = None,
     whitelist: bool = false,
     schemati: bool = false,
     luckperms: Option<PermissionsConfig> = None,

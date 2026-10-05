@@ -157,6 +157,23 @@ pub struct ChatComponent {
 }
 
 impl ChatComponent {
+    pub fn ranked_message(prefix: &str, username: &str, message: &str) -> Vec<Self> {
+        // LuckPerms prefixes use &#RRGGBB; the renderer accepts #RRGGBB.
+        let prefix = prefix.replace("&#", "#");
+        let mut components = Self::from_legacy_text(&format!("{prefix}{username} &8» "));
+        // Player-authored text is literal, so it cannot inject rank styling.
+        components.push(Self {
+            text: message.to_owned(),
+            color: Some(ChatColor::ColorCode(ColorCode::Gray)),
+            ..Default::default()
+        });
+        components
+    }
+
+    pub fn player_joined(username: &str) -> Vec<Self> {
+        Self::from_legacy_text(&format!("&8&l[&2&l+&8&l]&7 {username}"))
+    }
+
     pub fn from_legacy_text(message: &str) -> Vec<ChatComponent> {
         let mut components = Vec::new();
 

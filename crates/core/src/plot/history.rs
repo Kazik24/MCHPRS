@@ -311,13 +311,7 @@ impl Plot {
             return Err(messages::COMMAND_PERMISSION_DENIED.into());
         }
         if mutating {
-            let allowed = match self.owner {
-                Some(owner) => {
-                    owner == player.uuid || player.has_permission("plots.admin.interact.other")
-                }
-                None => player.has_permission("plots.admin.interact.unowned"),
-            };
-            if !allowed {
+            if !player.can_edit_plot(self.owner) {
                 return Err(messages::PLOT_PERMISSION_DENIED.into());
             }
         }
@@ -329,6 +323,18 @@ impl Plot {
         player: usize,
         args: &[&str],
     ) -> Result<String, String> {
+        if crate::permissions::dedicated_permissions() {
+            let action = match args {
+                [] | ["status"] => "status",
+                ["limit"] => "limit.view",
+                ["limit", _] => "limit.set",
+                ["off"] => "disable",
+                _ => "enable",
+            };
+            if !self.players[player].has_permission(&format!("commands.rhistory.{action}")) {
+                return Err(messages::COMMAND_PERMISSION_DENIED.into());
+            }
+        }
         self.authorize_history(
             player,
             "commands.rhistory",

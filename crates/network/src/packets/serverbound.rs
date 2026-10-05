@@ -8,6 +8,7 @@ pub trait ServerBoundPacketHandler {
     fn handle_known_packs(&mut self, _packet: SKnownPacks, _idx: usize) {}
     fn handle_configuration_finished(&mut self, _packet: SConfigurationFinished, _idx: usize) {}
     fn handle_login_start(&mut self, _packet: SLoginStart, _player_idx: usize) {}
+    fn handle_login_plugin_response(&mut self, _packet: SLoginPluginResponse, _idx: usize) {}
     fn handle_chat_message(&mut self, _packet: SChatMessage, _player_idx: usize) {}
     fn handle_client_settings(&mut self, _packet: SClientSettings, _player_idx: usize) {}
     fn handle_tab_complete(&mut self, _packet: STabComplete, _player_idx: usize) {}
@@ -50,6 +51,36 @@ pub trait ServerBoundPacket: Send {
         Self: Sized;
 
     fn handle(self: Box<Self>, handler: &mut dyn ServerBoundPacketHandler, player_idx: usize);
+}
+
+pub struct SLoginPluginResponse {
+    pub message_id: i32,
+    pub successful: bool,
+    pub data: Vec<u8>,
+}
+
+impl ServerBoundPacket for SLoginPluginResponse {
+    fn decode<T: PacketDecoderExt>(reader: &mut T) -> DecodeResult<Self> {
+        let message_id = reader.read_varint()?;
+        let successful = reader.read_bool()?;
+        let data = PacketDecoderExt::read_to_end(reader)?;
+        if data.len() > 32768 || (!successful && !data.is_empty()) {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                "invalid login forwarding response",
+            )
+            .into());
+        }
+        Ok(Self {
+            message_id,
+            successful,
+            data,
+        })
+    }
+
+    fn handle(self: Box<Self>, handler: &mut dyn ServerBoundPacketHandler, idx: usize) {
+        handler.handle_login_plugin_response(*self, idx);
+    }
 }
 
 pub struct SUnknown;

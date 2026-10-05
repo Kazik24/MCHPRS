@@ -8,6 +8,9 @@ use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
+mod rank;
+pub use rank::{Rank, RankProfile};
+
 static DATABASE: OnceCell<Database> = OnceCell::new();
 
 #[derive(Default, Serialize, Deserialize, Clone, Copy)]
@@ -42,6 +45,10 @@ pub struct PermissionsConfig {
     world_context: String,
     #[serde(default)]
     plotsquared_compat: bool,
+    #[serde(default)]
+    pub redstonefun_ranks: bool,
+    #[serde(default)]
+    pub mchprs_permissions: bool,
 }
 struct Database {
     config: PermissionsConfig,
@@ -248,6 +255,34 @@ impl PermissionNode {
 pub struct PlayerPermissionsCache {
     nodes: Vec<PermissionNode>,
     plotsquared_compat: bool,
+    pub rank_profile: Option<RankProfile>,
+    mchprs_permissions: bool,
+}
+
+/// Keep existing handler permission names while isolating MCHPRS from Paper's
+/// permission packs. Already-namespaced nodes are used without modification.
+fn mchprs_node(name: &str) -> String {
+    if name.starts_with("mchprs.") {
+        name.to_owned()
+    } else if let Some(command) = name.strip_prefix("minecraft.command.") {
+        format!("mchprs.commands.{command}")
+    } else {
+        format!("mchprs.{name}")
+    }
+}
+
+pub fn dedicated_permissions() -> bool {
+    crate::config::CONFIG
+        .luckperms
+        .as_ref()
+        .is_some_and(|config| config.mchprs_permissions)
+}
+
+pub fn ranked_chat() -> bool {
+    crate::config::CONFIG
+        .luckperms
+        .as_ref()
+        .is_some_and(|config| config.redstonefun_ranks)
 }
 impl PlayerPermissionsCache {
     fn stored_node_val(&self, name: &str) -> Option<i32> {
@@ -259,6 +294,9 @@ impl PlayerPermissionsCache {
             .map(|n| i32::from(n.value))
     }
     pub fn get_node_val(&self, name: &str) -> Option<i32> {
+        if self.mchprs_permissions {
+            return self.stored_node_val(&mchprs_node(name));
+        }
         if let Some(value) = self.stored_node_val(name) {
             return Some(value);
         }
@@ -322,6 +360,8 @@ impl PlayerPermissionsCache {
         let mut result = Self {
             nodes: Vec::new(),
             plotsquared_compat: config.plotsquared_compat,
+            rank_profile: None,
+            mchprs_permissions: config.mchprs_permissions,
         };
         let mut add = |node: &RawNode, direct: bool, depth: usize, weight: i64| {
             if ["group.", "weight.", "prefix.", "suffix."]
@@ -373,6 +413,30 @@ impl PlayerPermissionsCache {
                     add(node, false, depth, weight);
                 }
             }
+        }
+        if config.redstonefun_ranks {
+            let rank = visited
+                .iter()
+                .filter_map(|group| Rank::from_group(group))
+                .max()
+                .unwrap_or_default();
+            let prefix = grouped
+                .get(rank.group())
+                .into_iter()
+                .flatten()
+                .filter(|node| node.value)
+                .filter_map(|node| {
+                    let text = node.permission.strip_prefix("prefix.")?;
+                    let (priority, prefix) = text.split_once('.')?;
+                    let priority = priority.parse::<i64>().ok()?;
+                    let scope = usize::from(node.server != "global")
+                        + usize::from(node.world != "global")
+                        + usize::from(node.contexts != "{}");
+                    Some(((priority, scope, prefix), prefix))
+                })
+                .max_by_key(|(priority, _)| *priority)
+                .map(|(_, prefix)| prefix.to_owned());
+            result.rank_profile = Some(RankProfile { rank, prefix });
         }
         result
     }

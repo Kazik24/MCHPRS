@@ -935,6 +935,16 @@ impl Plot {
     }
 
     fn change_player_gamemode(&mut self, player_idx: usize, gamemode: Gamemode) {
+        if crate::permissions::dedicated_permissions() {
+            let name = match gamemode {
+                Gamemode::Creative => "creative",
+                Gamemode::Spectator => "spectator",
+            };
+            if !self.players[player_idx].has_permission(&format!("commands.gamemode.{name}")) {
+                self.players[player_idx].send_no_permission_message();
+                return;
+            }
+        }
         self.players[player_idx].set_gamemode(gamemode);
         let _ = self.message_sender.send(Message::PlayerUpdateGamemode(
             self.players[player_idx].uuid,
@@ -943,6 +953,12 @@ impl Plot {
     }
 
     fn on_player_move(&mut self, player_idx: usize, old: PlayerPos, new: PlayerPos) {
+        if matches!(self.players[player_idx].gamemode, Gamemode::Spectator)
+            || (crate::permissions::dedicated_permissions()
+                && !self.players[player_idx].can_build_action("interact", self.owner))
+        {
+            return;
+        }
         let old_block = old.block_pos();
         let new_block = new.block_pos();
 
@@ -979,7 +995,12 @@ impl Plot {
 
     fn are_players_on_block(&mut self, pos: BlockPos) -> bool {
         for player in &self.players {
-            if player.pos.block_pos() == pos && player.on_ground {
+            if player.pos.block_pos() == pos
+                && player.on_ground
+                && !matches!(player.gamemode, Gamemode::Spectator)
+                && (!crate::permissions::dedicated_permissions()
+                    || player.can_build_action("interact", self.owner))
+            {
                 return true;
             }
         }
@@ -1014,7 +1035,7 @@ impl Plot {
         .encode();
         let status = CEntityStatus {
             entity_id: player.entity_id as i32,
-            entity_status: 26, // op level 2 to use F3+N, this is `24 + op_level` (there are 4 possible levels)
+            entity_status: if player.can_use_commands() { 26 } else { 24 },
         }
         .encode();
         player.client.send_packet(&status);
@@ -1384,10 +1405,12 @@ impl Plot {
                     }
                 }
                 BroadcastMessage::PlayerJoinedInfo(player_join_info) => {
+                    let join_message = crate::permissions::ranked_chat()
+                        .then(|| ChatComponent::player_joined(&player_join_info.username));
                     let player_info = CPlayerInfo::AddPlayer(vec![CPlayerInfoAddPlayer {
                         name: player_join_info.username,
-                        properties: Vec::new(),
-                        gamemode: 1,
+                        properties: player_join_info.properties,
+                        gamemode: player_join_info.gamemode.get_id(),
                         ping: 0,
                         uuid: player_join_info.uuid,
                         display_name: None,
@@ -1395,6 +1418,11 @@ impl Plot {
                     .encode();
                     for player in &mut self.players {
                         player.client.send_packet(&player_info);
+                        if player.uuid != player_join_info.uuid {
+                            if let Some(message) = &join_message {
+                                player.send_chat_message(0, message);
+                            }
+                        }
                     }
                 }
                 BroadcastMessage::PlayerLeft(uuid) => {

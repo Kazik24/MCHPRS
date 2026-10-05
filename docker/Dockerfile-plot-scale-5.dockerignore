@@ -2,7 +2,8 @@
 **
 !Cargo.toml
 !Cargo.lock
-!Config.toml
+!docker/
+!docker/Config.toml
 !build.rs
 !src/
 !src/**

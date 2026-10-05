@@ -287,9 +287,9 @@ catalog! {
         invalid_mask_property(key: impl Display, value: impl Display) = "Unknown block property or value: {key}={value}. These paws can't match it.";
         piston_animation(configured: impl Display, effective: impl Display) = "Piston wiggles (animation): {configured} (effective {effective}).";
         player_has_no_plots(player: impl Display) = "No plots bear {player}'s pawprint yet.";
-        plot_advanced(unit: impl Display, elapsed: Duration) = "Trotted the plot forward by {unit} ({elapsed:.00?}).";
+        plot_advanced(unit: impl Display, elapsed: Duration) = "Advanced the ticks forward by {unit} ({elapsed:.00?}).";
         plot_claimed(x: impl Display, z: impl Display) = "Plot {x},{z} is your den now. Awoo!";
-        plot_entered(x: impl Display, z: impl Display) = "Padding into plot ({x}, {z}).";
+        plot_entered(x: impl Display, z: impl Display) = "Pounced into plot ({x}, {z}).";
         plot_index_range(count: impl Display) = "Choose one of this player's plots from 1 through {count}, pup.";
         plot_load_failed(x: impl Display, z: impl Display) = "Could not load plot {x},{z}. Please contact the server administrator.";
         plot_locked(x: impl Display, z: impl Display) = "Locked to plot ({x}, {z}). Use /p unlock to unclip the leash and roam again.";

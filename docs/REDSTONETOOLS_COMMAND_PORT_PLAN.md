@@ -233,9 +233,7 @@ No Gradle plugin dependencies are needed for the native implementation. Exact
 WorldEdit copying semantics, full mask parity, and live-client interactive text
 behavior remain verification work for their corresponding implementation steps.
 
-Run the native regression tests with `cargo test --workspace --locked`. Run
-`py tools/run_redstone_tools_smoke.py` after `cargo build --locked` for independent
-protocol decoding, two-player sidebar checks, inventory failure cases, slab
-placement, chest menus and process restart. The existing protocol smoke retains
-its overlapping rstack undo/redo check. Graphical vanilla-client checks remain
-useful for the appearance and interaction of generated chat buttons.
+Run the native regression tests with `cargo test --workspace --locked`. The CI
+protocol smoke test includes an overlapping rstack undo/redo check; see
+[tools](../tools/README.md) for instructions. Graphical vanilla-client checks
+remain useful for the appearance and interaction of generated chat buttons.

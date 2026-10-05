@@ -188,9 +188,11 @@ impl Plot {
         if matches!(
             command,
             ToolCommand::Find | ToolCommand::SignSearch | ToolCommand::RStack
-        ) && !player.has_permission("plots.worldedit.bypass")
-            && self.owner != Some(player.uuid)
-        {
+        ) && if crate::permissions::dedicated_permissions() {
+            !player.can_edit_plot(self.owner)
+        } else {
+            !player.has_permission("plots.worldedit.bypass") && self.owner != Some(player.uuid)
+        } {
             bail!(messages::YOU_CAN_ONLY_USE_WORLDEDIT_ON);
         }
         Ok(())

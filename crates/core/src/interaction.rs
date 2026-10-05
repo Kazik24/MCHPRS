@@ -19,6 +19,18 @@ pub fn on_use(
     pos: BlockPos,
     item_in_hand: Option<Item>,
 ) -> ActionResult {
+    if crate::permissions::dedicated_permissions() {
+        let action = if ContainerType::from_block(block).is_some() {
+            "container"
+        } else if block.is_command_block() {
+            "commandblock"
+        } else {
+            "interact"
+        };
+        if !player.has_permission(&format!("mchprs.build.{action}")) {
+            return ActionResult::Pass;
+        }
+    }
     if item_in_hand == Some(Item::Stick) {
         //debug info about blocks
         player.send_color_message(
@@ -648,6 +660,12 @@ pub fn use_item_on_block(
     }
 
     if can_place && world.contains_position(block_pos) {
+        if crate::permissions::dedicated_permissions()
+            && !ctx.player.has_permission("mchprs.build.place")
+        {
+            ctx.player.send_no_permission_message();
+            return true;
+        }
         let block = get_state_for_placement(world, block_pos, item.item_type, &ctx);
         let block = apply_item_properties(block, &item.nbt);
 

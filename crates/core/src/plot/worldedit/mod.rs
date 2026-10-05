@@ -50,19 +50,14 @@ pub fn execute_command(
         return false;
     };
 
-    let wea = player.has_permission("plots.worldedit.bypass");
-    if !wea {
-        if let Some(owner) = plot.owner {
-            if owner != player.uuid {
-                // tried to worldedit on plot that wasn't theirs
-                player.send_no_permission_message();
-                return true;
-            }
-        } else {
-            // tried to worldedit on unclaimed plot
-            player.send_no_permission_message();
-            return true;
-        }
+    let allowed = if crate::permissions::dedicated_permissions() {
+        player.can_edit_plot(plot.owner)
+    } else {
+        player.has_permission("plots.worldedit.bypass") || plot.owner == Some(player.uuid)
+    };
+    if !allowed {
+        player.send_no_permission_message();
+        return true;
     }
 
     if !command.permission_node.is_empty() && !player.has_permission(command.permission_node) {
@@ -470,6 +465,7 @@ static COMMANDS: Lazy<HashMap<&'static str, WorldeditCommand>> = Lazy::new(|| {
         "/sel" => WorldeditCommand {
             execute_fn: execute_sel,
             description: messages::WE_HELP_CHOOSE_A_REGION_SELECTOR,
+            permission_node: "worldedit.selection.sel",
             mutates_world: false,
             ..Default::default()
         },
@@ -480,7 +476,7 @@ static COMMANDS: Lazy<HashMap<&'static str, WorldeditCommand>> = Lazy::new(|| {
             requires_positions: true,
             execute_fn: execute_set,
             description: messages::WE_HELP_SETS_ALL_THE_BLOCKS_IN_THE,
-            permission_node: "worldedit.region.stack",
+            permission_node: "worldedit.region.set",
             ..Default::default()
         },
         "/replace" => WorldeditCommand {
@@ -637,6 +633,7 @@ static COMMANDS: Lazy<HashMap<&'static str, WorldeditCommand>> = Lazy::new(|| {
             requires_clipboard: true,
             execute_fn: execute_flip,
             description: messages::WE_HELP_FLIP_THE_CONTENTS_OF_THE_CLIPBOARD,
+            permission_node: "worldedit.clipboard.flip",
             mutates_world: false,
             ..Default::default()
         },
@@ -647,6 +644,7 @@ static COMMANDS: Lazy<HashMap<&'static str, WorldeditCommand>> = Lazy::new(|| {
             requires_clipboard: true,
             execute_fn: execute_rotate,
             description: messages::WE_HELP_ROTATE_THE_CONTENTS_OF_THE_CLIPBOARD,
+            permission_node: "worldedit.clipboard.rotate",
             mutates_world: false,
             ..Default::default()
         },

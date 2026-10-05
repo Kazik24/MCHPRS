@@ -7,7 +7,6 @@ edition = "2021"
 
 [dev-dependencies]
 criterion = "0.4"
-sha2 = "0.10"
 
 [[bench]]
 name = "bitbuffer"
@@ -26,6 +25,8 @@ name = "cpus"
 harness = false
 
 [dependencies]
+hmac = "0.12"
+sha2 = "0.10"
 mchprs_proc_macros = { path = "../proc_macros" }
 toml = "0.7"
 enum_dispatch = "0.3"

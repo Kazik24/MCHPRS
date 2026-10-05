@@ -223,6 +223,19 @@ impl Plot {
         command: &str,
         mut args: Vec<&str>,
     ) -> bool {
+        if !self.players[player].can_use_commands() {
+            self.players[player].send_no_permission_message();
+            return false;
+        }
+        if crate::permissions::dedicated_permissions() {
+            if native_command_permission(command, &args)
+                .is_some_and(|node| !self.players[player].has_permission(&node))
+                || (changes_plot(command, &args) && !self.players[player].can_edit_plot(self.owner))
+            {
+                self.players[player].send_no_permission_message();
+                return false;
+            }
+        }
         info!(
             "{} issued command: {} {}",
             self.players[player].username,
@@ -690,6 +703,76 @@ impl Plot {
         false
     }
 }
+
+/// Native command permissions are checked before dispatch, including aliases.
+fn native_command_permission(command: &str, args: &[&str]) -> Option<String> {
+    let action = if args.is_empty() { "view" } else { "set" };
+    let name = match command {
+        "/help" => "help".to_owned(),
+        "/version" => "version".to_owned(),
+        "/teleport" | "/tp" => "teleport".to_owned(),
+        "/speed" => "speed".to_owned(),
+        "/gmsp" | "/gmc" | "/gamemode" => "gamemode".to_owned(),
+        "/stop" => "stop".to_owned(),
+        "/whitelist" => "whitelist".to_owned(),
+        "/tellraw" => "tellraw".to_owned(),
+        "/say" => "say".to_owned(),
+        "/rtps" => format!(
+            "rtps.{}",
+            if args.is_empty() || args == ["timings"] {
+                "view"
+            } else {
+                "set"
+            }
+        ),
+        "/worldsendrate" | "/wsr" => format!("worldsendrate.{action}"),
+        "/screenonly" => format!("screenonly.{action}"),
+        "/piston_anim" | "/bisdon_anim" => format!("piston_anim.{action}"),
+        "/radv" | "/radvance" => "radvance".to_owned(),
+        "/toggleautorp" => "toggleautorp".to_owned(),
+        "/curse" => "curse".to_owned(),
+        "/bless" => "bless".to_owned(),
+        "/redpiler" | "/rp" => format!(
+            "redpiler.{}",
+            match args.first().copied() {
+                Some("c" | "compile") => "compile",
+                Some("r" | "reset") => "reset",
+                Some("i" | "inspect") => "inspect",
+                _ => "help",
+            }
+        ),
+        // Plot, history, WorldEdit and redstone tools check their own nodes.
+        _ => return None,
+    };
+    Some(format!("commands.{name}"))
+}
+
+fn changes_plot(command: &str, args: &[&str]) -> bool {
+    match command {
+        "/rtps" => !args.is_empty() && args != ["timings"],
+        "/worldsendrate" | "/wsr" | "/screenonly" | "/piston_anim" | "/bisdon_anim" => {
+            !args.is_empty()
+        }
+        "/radv" | "/radvance" | "/toggleautorp" | "/curse" | "/bless" => true,
+        "/redpiler" | "/rp" => !matches!(args.first().copied(), Some("inspect" | "i")),
+        _ => false,
+    }
+}
+
+pub static NO_COMMANDS: Lazy<PacketEncoder> = Lazy::new(|| {
+    CDeclareCommands {
+        nodes: &[Node {
+            flags: 0,
+            children: &[],
+            redirect_node: None,
+            name: None,
+            parser: None,
+            suggestions_type: None,
+        }],
+        root_index: 0,
+    }
+    .encode()
+});
 
 bitflags! {
     struct CommandFlags: u32 {

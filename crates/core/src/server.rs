@@ -6,15 +6,16 @@ use crate::player::{Gamemode, PacketSender, Player};
 use crate::plot::commands::DECLARE_COMMANDS;
 use crate::plot::{self, database, Plot};
 use crate::utils::HyphenatedUUID;
+use crate::velocity;
 use backtrace::Backtrace;
 use bus::Bus;
 use mchprs_network::packets::clientbound::{
-    CDisconnectLogin, CHeldItemChange, CJoinGame, CLoginSuccess, CPlayerInfo, CPlayerInfoAddPlayer,
-    CPlayerPositionAndLook, CPluginMessage, CPong, CResponse, CSetCompression, CTimeUpdate,
-    CWindowItems, ClientBoundPacket,
+    CDisconnectLogin, CHeldItemChange, CJoinGame, CLoginPluginRequest, CLoginSuccess, CPlayerInfo,
+    CPlayerInfoAddPlayer, CPlayerInfoAddPlayerProperty, CPlayerPositionAndLook, CPluginMessage,
+    CPong, CResponse, CSetCompression, CTimeUpdate, CWindowItems, ClientBoundPacket,
 };
 use mchprs_network::packets::serverbound::{
-    SHandshake, SLoginStart, SPing, SRequest, ServerBoundPacketHandler,
+    SHandshake, SLoginPluginResponse, SLoginStart, SPing, SRequest, ServerBoundPacketHandler,
 };
 use mchprs_network::packets::{PacketEncoderExt, SlotData};
 use mchprs_network::{NetworkServer, NetworkState, PlayerPacketSender};
@@ -106,6 +107,8 @@ pub enum PrivMessage {
 pub struct PlayerJoinInfo {
     pub username: String,
     pub uuid: u128,
+    pub properties: Vec<CPlayerInfoAddPlayerProperty>,
+    pub gamemode: Gamemode,
 }
 
 #[derive(Debug, Clone)]
@@ -114,6 +117,8 @@ struct PlayerListEntry {
     plot_z: i32,
     username: String,
     gamemode: Gamemode,
+    properties: Vec<CPlayerInfoAddPlayerProperty>,
+    chat_prefix: Option<String>,
 }
 
 struct PlotListEntry {
@@ -181,6 +186,13 @@ impl MinecraftServer {
 
         if let Some(permissions_config) = &CONFIG.luckperms {
             permissions::init(permissions_config.clone()).unwrap();
+        }
+        if let Some(config) = &CONFIG.velocity {
+            assert!(
+                !CONFIG.bungeecord,
+                "Velocity and legacy BungeeCord forwarding are mutually exclusive"
+            );
+            velocity::init(config).expect("Cannot initialize Velocity forwarding");
         }
 
         // Create server struct
@@ -271,6 +283,8 @@ impl MinecraftServer {
                 plot_z,
                 username: player.username.clone(),
                 gamemode: player.gamemode,
+                properties: player.profile_properties.clone(),
+                chat_prefix: player.chat_prefix().map(str::to_owned),
             };
             self.online_players.insert(player.uuid, player_list_entry);
         } else {
@@ -310,6 +324,10 @@ impl MinecraftServer {
     }
 
     fn handle_player_login(&mut self, client_idx: usize, login_start: SLoginStart) {
+        if !velocity::valid_username(&login_start.name) {
+            self.network.handshaking_clients[client_idx].close_connection();
+            return;
+        }
         let clients = &mut self.network.handshaking_clients;
         let username = login_start.name;
         clients[client_idx].username = Some(username.clone());
@@ -317,8 +335,25 @@ impl MinecraftServer {
         clients[client_idx].send_packet(&set_compression);
         clients[client_idx].set_compressed(true);
 
+        if CONFIG.velocity.is_some() {
+            clients[client_idx].forwarding_pending = true;
+            clients[client_idx].send_packet(&CLoginPluginRequest { message_id: 0 }.encode());
+            return;
+        }
+        self.accept_player_login(client_idx);
+    }
+
+    fn accept_player_login(&mut self, client_idx: usize) {
+        let clients = &mut self.network.handshaking_clients;
+        let username = clients[client_idx].username.clone().unwrap();
+        // Modern forwarding must never fall back to a username or offline UUID.
+        if CONFIG.velocity.is_some() && clients[client_idx].uuid.is_none() {
+            clients[client_idx].close_connection();
+            return;
+        }
+
         if let Some(whitelist) = &self.whitelist {
-            // uuid will only be present if bungeecord is enabled in config
+            // Authenticated proxy identities are whitelisted by UUID.
             let whitelisted = if let Some(uuid) = clients[client_idx].uuid {
                 whitelist.iter().any(|entry| entry.uuid.0 == uuid)
             } else {
@@ -345,6 +380,7 @@ impl MinecraftServer {
         let login_success = CLoginSuccess {
             uuid,
             username: username.clone(),
+            properties: clients[client_idx].profile_properties.clone(),
         }
         .encode();
         clients[client_idx].send_packet(&login_success);
@@ -357,10 +393,17 @@ impl MinecraftServer {
         let client = self.network.handshaking_clients.remove(client_idx);
         let username = client.username.clone().unwrap();
         let uuid = client.uuid.unwrap();
+        let properties = client.profile_properties.clone();
 
-        let Some(player) = Player::load_player(uuid, username, client.into()) else {
+        let Some(mut player) = Player::load_player(uuid, username, client.into()) else {
             return;
         };
+        player.profile_properties = properties;
+        if permissions::dedicated_permissions() && !player.has_permission("mchprs.access.join") {
+            player.kick(json!({"text": messages::PERMISSION_DENIED}).to_string());
+            player.client.close_connection();
+            return;
+        }
 
         let join_game = CJoinGame {
             entity_id: player.entity_id as i32,
@@ -426,7 +469,7 @@ impl MinecraftServer {
                 display_name: None,
                 gamemode: player.gamemode.get_id(),
                 ping: 0,
-                properties: Vec::new(),
+                properties: player.properties.clone(),
             });
         }
         add_player_list.push(CPlayerInfoAddPlayer {
@@ -435,7 +478,7 @@ impl MinecraftServer {
             display_name: None,
             gamemode: player.gamemode.get_id(),
             ping: 0,
-            properties: Vec::new(),
+            properties: player.profile_properties.clone(),
         });
         let player_info = CPlayerInfo::AddPlayer(add_player_list).encode();
         player.client.send_packet(&player_info);
@@ -468,7 +511,11 @@ impl MinecraftServer {
         .encode();
         player.client.send_packet(&held_item_change);
 
-        player.client.send_packet(&DECLARE_COMMANDS);
+        player.client.send_packet(if player.can_use_commands() {
+            &DECLARE_COMMANDS
+        } else {
+            &crate::plot::commands::NO_COMMANDS
+        });
 
         let time_update = CTimeUpdate {
             world_age: 0,
@@ -489,10 +536,15 @@ impl MinecraftServer {
         match message {
             Message::PlayerJoined(player) => {
                 info!("{} joined the game", player.username);
+                if permissions::ranked_chat() {
+                    player.send_chat_message(0, &ChatComponent::player_joined(&player.username));
+                }
                 // Send player info to plots
                 let player_join_info = PlayerJoinInfo {
                     username: player.username.clone(),
                     uuid: player.uuid,
+                    properties: player.profile_properties.clone(),
+                    gamemode: player.gamemode,
                 };
                 database::ensure_user(&format!("{:032x}", player.uuid), &player.username);
                 self.broadcaster
@@ -532,15 +584,23 @@ impl MinecraftServer {
             }
             Message::ChatInfo(uuid, username, message) => {
                 info!("<{}> {}", username, message);
-                self.broadcaster.broadcast(BroadcastMessage::Chat(
-                    uuid,
-                    ChatComponent::from_legacy_text(
-                        &CONFIG
-                            .chat_format
-                            .replace("{username}", &username)
-                            .replace("{message}", &message),
-                    ),
-                ));
+                let components = self
+                    .online_players
+                    .get(&uuid)
+                    .and_then(|player| player.chat_prefix.as_deref())
+                    .map_or_else(
+                        || {
+                            ChatComponent::from_legacy_text(
+                                &CONFIG
+                                    .chat_format
+                                    .replace("{username}", &username)
+                                    .replace("{message}", &message),
+                            )
+                        },
+                        |prefix| ChatComponent::ranked_message(prefix, &username, &message),
+                    );
+                self.broadcaster
+                    .broadcast(BroadcastMessage::Chat(uuid, components));
             }
             Message::PlayerLeavePlot(player) => {
                 self.send_player_to_plot(player, false);
@@ -658,6 +718,33 @@ impl MinecraftServer {
 }
 
 impl ServerBoundPacketHandler for MinecraftServer {
+    fn handle_login_plugin_response(&mut self, packet: SLoginPluginResponse, idx: usize) {
+        let client = &mut self.network.handshaking_clients[idx];
+        if CONFIG.velocity.is_none() || !client.forwarding_pending || packet.message_id != 0 {
+            client.close_connection();
+            return;
+        }
+        client.forwarding_pending = false;
+        let profile = if packet.successful {
+            velocity::verify(&packet.data, client.username.as_deref().unwrap_or_default())
+        } else {
+            Err(anyhow::anyhow!("Velocity forwarding is required"))
+        };
+        match profile {
+            Ok(profile) => {
+                client.uuid = Some(profile.uuid);
+                client.profile_properties = profile.properties;
+                self.accept_player_login(idx);
+            }
+            Err(error) => {
+                warn!("Rejected unauthenticated backend login: {error}");
+                client.send_packet(&CDisconnectLogin {
+                    reason: json!({"text":"Please connect through the authenticated Velocity proxy."}).to_string(),
+                }.encode());
+                client.close_connection();
+            }
+        }
+    }
     fn handle_login_acknowledged(
         &mut self,
         _: mchprs_network::packets::serverbound::SLoginAcknowledged,
@@ -730,6 +817,10 @@ impl ServerBoundPacketHandler for MinecraftServer {
             .encode();
             client.send_packet(&disconnect);
             client.close_connection();
+        } else if next_state == NetworkState::Login && CONFIG.velocity.is_some() {
+            if handshake.server_address.contains('\0') {
+                client.close_connection();
+            }
         } else if next_state == NetworkState::Login && CONFIG.bungeecord {
             let split: Vec<&str> = handshake.server_address.split('\u{0}').collect();
             if split.len() == 3 || split.len() == 4 {

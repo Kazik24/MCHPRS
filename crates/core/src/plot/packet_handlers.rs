@@ -87,12 +87,7 @@ impl ServerBoundPacketHandler for Plot {
         {
             return;
         }
-        let permission = if let Some(owner) = self.owner {
-            owner == data.uuid || data.has_permission("plots.admin.interact.other")
-        } else {
-            data.has_permission("plots.admin.interact.unowned")
-        };
-        if !permission {
+        if !data.can_build_action("commandblock", self.owner) {
             data.send_no_permission_message();
             return;
         }
@@ -137,6 +132,11 @@ impl ServerBoundPacketHandler for Plot {
     }
 
     fn handle_pick_item_from_block(&mut self, packet: SPickItemFromBlock, player: usize) {
+        if crate::permissions::dedicated_permissions()
+            && !self.players[player].has_permission("mchprs.inventory.creative")
+        {
+            return;
+        }
         if !matches!(
             self.players[player].gamemode,
             crate::player::Gamemode::Creative
@@ -174,6 +174,9 @@ impl ServerBoundPacketHandler for Plot {
     }
 
     fn handle_tab_complete(&mut self, packet: STabComplete, player_idx: usize) {
+        if !self.players[player_idx].can_use_commands() {
+            return;
+        }
         if let Some(completion) =
             self.complete_redstone_tools(player_idx, packet.transaction_id, &packet.text)
         {
@@ -216,6 +219,11 @@ impl ServerBoundPacketHandler for Plot {
         player: usize,
     ) {
         if !(0..46).contains(&creative_inventory_action.slot) {
+            return;
+        }
+        if crate::permissions::dedicated_permissions()
+            && !self.players[player].has_permission("mchprs.inventory.creative")
+        {
             return;
         }
         if let Some(slot_data) = creative_inventory_action.clicked_item {
@@ -330,6 +338,12 @@ impl ServerBoundPacketHandler for Plot {
             plot.send_block_change(offset_pos, plot.world.get_block_raw(offset_pos));
         };
 
+        if !self.players[player].can_edit_plot(self.owner) {
+            self.players[player].send_no_permission_message();
+            cancel(self);
+            return;
+        }
+
         let selected_slot = self.players[player].selected_slot as usize;
         let item_in_hand = if player_block_placement.hand == 0 {
             // Slot in hotbar
@@ -361,23 +375,15 @@ impl ServerBoundPacketHandler for Plot {
             }
         }
 
-        if let Some(owner) = self.owner {
-            let player = &mut self.players[player];
-            if owner != player.uuid && !player.has_permission("plots.admin.interact.other") {
-                player.send_no_permission_message();
-                cancel(self);
-                return;
-            }
-        } else if !self.players[player].has_permission("plots.admin.interact.unowned") {
-            self.players[player].send_no_permission_message();
-            cancel(self);
-            return;
-        }
-
         if self.redpiler.is_active() {
             let block = self.world.get_block(block_pos);
             let lever_or_button = matches!(block, Block::Lever { .. } | Block::StoneButton { .. });
             if lever_or_button && !self.players[player].crouching {
+                if !self.players[player].can_build_action("interact", self.owner) {
+                    self.players[player].send_no_permission_message();
+                    cancel(self);
+                    return;
+                }
                 self.redpiler.on_use_block(block_pos);
                 return;
             } else {
@@ -439,6 +445,12 @@ impl ServerBoundPacketHandler for Plot {
             self.players[player].command_queue.push(message);
         } else {
             let player = &self.players[player];
+            if crate::permissions::dedicated_permissions()
+                && !player.has_permission("mchprs.access.chat")
+            {
+                player.send_no_permission_message();
+                return;
+            }
             let broadcast_message =
                 Message::ChatInfo(player.uuid, player.username.clone(), message);
             self.message_sender.send(broadcast_message).unwrap();
@@ -641,14 +653,7 @@ impl ServerBoundPacketHandler for Plot {
                 }
             }
 
-            if let Some(owner) = self.owner {
-                let player = &mut self.players[player];
-                if owner != player.uuid && !player.has_permission("plots.admin.interact.other") {
-                    player.send_no_permission_message();
-                    self.send_block_change(block_pos, block.get_id());
-                    return;
-                }
-            } else if !self.players[player].has_permission("plots.admin.interact.unowned") {
+            if !self.players[player].can_build_action("break", self.owner) {
                 self.players[player].send_no_permission_message();
                 self.send_block_change(block_pos, block.get_id());
                 return;
@@ -769,8 +774,16 @@ impl ServerBoundPacketHandler for Plot {
         self.players[player].selected_slot = held_item_change.slot as u32;
     }
 
-    fn handle_update_sign(&mut self, packet: SUpdateSign, _player: usize) {
+    fn handle_update_sign(&mut self, packet: SUpdateSign, player: usize) {
         let pos = BlockPos::from_packed(packet.pos);
+        if !self.players[player].can_build_action("sign", self.owner)
+            || !Plot::in_plot_bounds(self.world.x, self.world.z, pos.x, pos.z)
+            || !(0..super::PLOT_BLOCK_HEIGHT).contains(&pos.y)
+            || !self.container_in_reach(player, pos)
+            || !matches!(self.world.get_block_entity(pos), Some(BlockEntity::Sign(_)))
+        {
+            return;
+        }
         let mut rows = packet
             .lines
             .iter()

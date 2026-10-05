@@ -1,0 +1,17 @@
+bind_address = "0.0.0.0:25565"
+motd = "§4§lRedstoneFUN.pl §r§71.21.5\n§cSzybki Serwer Redstone!"
+chat_format = "<{username}> {message}"
+max_players = 100
+view_distance = 8
+bungeecord = false
+whitelist = false
+schemati = false
+block_in_hitbox = true
+auto_redpiler = true
+fast_render_threshold = 200
+fast_render_send_rate = 10
+rhistory_memory_limit_mib = 2048
+rhistory_work_memory_limit_mib = 256
+
+[velocity]
+secret_file = "/run/velocity/forwarding.secret"

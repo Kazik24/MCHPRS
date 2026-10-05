@@ -78,14 +78,7 @@ impl Plot {
             return;
         }
         let pos = menu.pos;
-        let allowed = match self.owner {
-            Some(owner) => {
-                owner == self.players[player_idx].uuid
-                    || self.players[player_idx].has_permission("plots.admin.interact.other")
-            }
-            None => self.players[player_idx].has_permission("plots.admin.interact.unowned"),
-        };
-        if !allowed {
+        if !self.players[player_idx].can_build_action("container", self.owner) {
             self.players[player_idx].send_no_permission_message();
             self.close_open_container(player_idx);
             return;

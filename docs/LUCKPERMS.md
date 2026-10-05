@@ -6,6 +6,11 @@ it does not create/migrate tables, update users, or change permission nodes.
 Use the existing LuckPerms plugin to manage permissions. Players must reconnect
 to refresh permission changes.
 
+The live server uses dedicated `mchprs.*` permissions and RedstoneFun rank/chat
+formatting. See [MCHPRS_PERMISSIONS.md](MCHPRS_PERMISSIONS.md) for the active rank
+policy, complete permission catalog and individual override examples. The
+PlotSquared compatibility mode below describes the older optional mode.
+
 ## PostgreSQL configuration
 
 Append this table to the runtime `Config.toml`, replacing the connection details:
@@ -46,7 +51,9 @@ server contains authenticated account UUIDs. MCHPRS's default offline login uses
 different UUIDs, so it cannot find those users' existing ranks. Merely looking up
 an account UUID from an unverified username would allow rank impersonation.
 
-MCHPRS currently accepts account UUIDs through BungeeCord forwarding. If using
+MCHPRS accepts signed account UUIDs through Velocity modern forwarding; see
+[VELOCITY.md](VELOCITY.md) for the active authenticated deployment. It also
+supports legacy BungeeCord forwarding. If using
 `bungeecord = true`, only a trusted authenticating proxy may reach the backend;
 the public must not have direct access to its port. The forwarding format is not
 authenticated by MCHPRS itself. No UUID conversion or username-based permission
@@ -115,14 +122,8 @@ This test checks read-only access and the existing default, builder and staff
 rank results without issuing data mutations. Only use it with the matching
 RedstoneFun rank layout; it is not a schema-independent migration utility.
 
-The protocol smoke runner uses a separate temporary world on localhost:25588.
-Set `MCHPRS_LUCKPERMS_TEST_ACCOUNTS` to a private JSON file mapping `default`,
-`builder`, and `admin` to existing UUIDs, then run
-`python tools/run_luckperms_smoke.py` (`py` on Windows). It simulates trusted proxy
-forwarding only within that isolated server, and verifies default plot/rewind
-access, scoped builder WorldEdit, administrator commands, and denied escalation.
-It does not modify LuckPerms data. Plot ownership is refreshed after claims and
-on entry so ordinary owners can use these permissions immediately.
+Plot ownership is refreshed after claims and on entry so ordinary owners can
+use these permissions immediately.
 
 ## RedstoneFun setup record: 2026-10-04
 
@@ -152,10 +153,21 @@ Docker image. The isolated production-image server stopped cleanly and its test
 container was removed. The staged image is
 `sha256:f78a33775f35f3a125017340a371084a601112eee2bfcda0fe61334e98418501`.
 
-**Activation is pending the authentication choice.** The live MCHPRS config and
-running container remain unchanged. None of the 252 stored account UUIDs matches
-its corresponding offline UUID. Enabling the reader without verified identity
-would therefore apply default permissions instead of existing player ranks.
-The private `luckperms.toml` is staged beside the backup, and the production image
-has been built. Only activate after choosing an authenticated login route; never
-solve this by copying user/group rows or trusting a submitted account name.
+At the time of this setup, activation was pending an authenticated login route.
+None of the 252 stored account UUIDs matched its corresponding offline UUID.
+
+## Activation record: 2026-10-05
+
+The reader is now active in `/srv/mchprs/backend-config/Config.toml`, alongside
+Velocity modern forwarding. Velocity authenticates official Minecraft accounts
+on public port 25562; MCHPRS verifies the signed account UUID and has no published
+port. The database role remains read-only, and Paper RedstoneFun remains unchanged.
+See [VELOCITY.md](VELOCITY.md) for the Docker Compose deployment command.
+
+Before the dedicated permission policy, isolated protocol checks verified
+default-user denial of administrative commands, builder WorldEdit access, and
+administrator commands with existing account UUIDs. The active policy now makes
+Gracz and Budowniczy read-only; see [MCHPRS_PERMISSIONS.md](MCHPRS_PERMISSIONS.md).
+Existing offline player files and plot ownership were preserved. Any transfer to
+account UUIDs requires verified ownership; never copy permission rows or trust a
+submitted account name to establish identity.
