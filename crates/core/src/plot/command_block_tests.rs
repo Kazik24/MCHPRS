@@ -11,6 +11,28 @@ fn world() -> PlotWorld {
         Default::default(),
     )
 }
+#[test]
+fn command_blocks_cannot_dispatch_privileged_commands_or_flood_output() {
+    let mut world = world();
+    for command in [
+        "stop",
+        "lp user Lord225 parent set admin",
+        "execute run stop",
+        "fill 0 0 0 1 1 1 air",
+        "function attack",
+        "whitelist add Fake",
+    ] {
+        assert!(
+            world.execute_command_block(command, "@").is_err(),
+            "{command}"
+        );
+    }
+    for _ in 0..64 {
+        world.execute_command_block("say hello", "@").unwrap();
+    }
+    assert!(world.execute_command_block("say overflow", "@").is_err());
+    assert_eq!(world.command_output().count(), 64);
+}
 fn place(
     world: &mut PlotWorld,
     pos: BlockPos,

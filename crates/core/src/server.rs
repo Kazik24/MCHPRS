@@ -546,7 +546,9 @@ impl MinecraftServer {
                     properties: player.profile_properties.clone(),
                     gamemode: player.gamemode,
                 };
-                if let Err(error) = database::ensure_user(&format!("{:032x}", player.uuid), &player.username) {
+                if let Err(error) =
+                    database::ensure_user(&format!("{:032x}", player.uuid), &player.username)
+                {
                     tracing::error!("Could not register plot user: {error}");
                     player.client.close_connection();
                     return;

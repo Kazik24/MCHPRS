@@ -96,8 +96,11 @@ pub struct PlayerPos {
 impl PlayerPos {
     /// Keep coordinates inside Minecraft's border and away from integer overflow.
     pub fn is_valid(self) -> bool {
-        self.x.is_finite() && self.y.is_finite() && self.z.is_finite()
-            && self.x.abs() <= 30_000_000.0 && self.z.abs() <= 30_000_000.0
+        self.x.is_finite()
+            && self.y.is_finite()
+            && self.z.is_finite()
+            && self.x.abs() <= 30_000_000.0
+            && self.z.abs() <= 30_000_000.0
             && (-2048.0..=2048.0).contains(&self.y)
     }
     pub fn new(x: f64, y: f64, z: f64) -> PlayerPos {
@@ -125,6 +128,21 @@ impl PlayerPos {
 impl std::fmt::Display for PlayerPos {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "({}, {}, {})", self.x, self.y, self.z)
+    }
+}
+
+#[cfg(test)]
+mod coordinate_security_tests {
+    use super::*;
+    #[test]
+    fn player_coordinates_reject_nonfinite_and_extreme_positions() {
+        for value in [f64::NAN, f64::INFINITY, f64::NEG_INFINITY, 30_000_001.0, -30_000_001.0] {
+            assert!(!PlayerPos::new(value, 64.0, 0.0).is_valid());
+            assert!(!PlayerPos::new(0.0, 64.0, value).is_valid());
+        }
+        assert!(!PlayerPos::new(0.0, 2049.0, 0.0).is_valid());
+        assert!(!PlayerPos::new(0.0, f64::NAN, 0.0).is_valid());
+        assert!(PlayerPos::new(-128.0, 128.0, 128.0).is_valid());
     }
 }
 
@@ -307,10 +325,14 @@ impl Player {
             if !(0..9).contains(&player.selected_item_slot) {
                 anyhow::bail!("invalid hotbar slot");
             }
-            if !PlayerPos::new(player.position[0], player.position[1], player.position[2]).is_valid()
+            if !PlayerPos::new(player.position[0], player.position[1], player.position[2])
+                .is_valid()
                 || player.rotation.iter().any(|angle| !angle.is_finite())
-                || !player.fly_speed.is_finite() || !(0.0..=10.0).contains(&player.fly_speed)
-                || !player.walk_speed.is_finite() || !(0.0..=10.0).contains(&player.walk_speed) {
+                || !player.fly_speed.is_finite()
+                || !(0.0..=10.0).contains(&player.fly_speed)
+                || !player.walk_speed.is_finite()
+                || !(0.0..=10.0).contains(&player.walk_speed)
+            {
                 anyhow::bail!("invalid player coordinates, rotation or speed");
             }
             let mut inventory_slots = std::collections::HashSet::new();
@@ -588,7 +610,9 @@ impl Player {
             self.chat_window = Instant::now();
             self.chat_count = 0;
         }
-        if self.chat_count >= 5 { return false; }
+        if self.chat_count >= 5 {
+            return false;
+        }
         self.chat_count += 1;
         true
     }
@@ -607,7 +631,8 @@ impl Player {
                         PlayerPermissionsCache::default()
                     }));
                     self.permissions_refresh = None;
-                    self.next_permissions_refresh = Instant::now() + std::time::Duration::from_secs(25);
+                    self.next_permissions_refresh =
+                        Instant::now() + std::time::Duration::from_secs(25);
                 }
                 Err(std::sync::mpsc::TryRecvError::Disconnected) => {
                     self.permissions_cache = Some(PlayerPermissionsCache::default());

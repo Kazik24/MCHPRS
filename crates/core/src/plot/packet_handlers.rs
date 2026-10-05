@@ -44,10 +44,14 @@ fn traverse_dir(
     }
     if path.is_dir() {
         for entry in fs::read_dir(path)? {
-            if matches.len() >= 256 { break; }
+            if matches.len() >= 256 {
+                break;
+            }
             let entry = entry?;
             let kind = entry.file_type()?;
-            if kind.is_symlink() { continue; }
+            if kind.is_symlink() {
+                continue;
+            }
             let path = entry.path();
             if let Some(file_name) = path.file_name() {
                 let file_name = file_name.to_string_lossy();
@@ -189,7 +193,8 @@ impl ServerBoundPacketHandler for Plot {
         }
         if !packet.text.starts_with("//load ")
             || !self.players[player_idx].has_permission("worldedit.clipboard.load")
-            || !self.players[player_idx].can_edit_plot(self.owner) {
+            || !self.players[player_idx].can_edit_plot(self.owner)
+        {
             return;
         }
 
@@ -224,7 +229,10 @@ impl ServerBoundPacketHandler for Plot {
         creative_inventory_action: SCreativeInventoryAction,
         player: usize,
     ) {
-        if !matches!(self.players[player].gamemode, crate::player::Gamemode::Creative) {
+        if !matches!(
+            self.players[player].gamemode,
+            crate::player::Gamemode::Creative
+        ) {
             return;
         }
         if !(0..46).contains(&creative_inventory_action.slot) {
@@ -339,8 +347,14 @@ impl ServerBoundPacketHandler for Plot {
             || !(0..super::PLOT_BLOCK_HEIGHT).contains(&block_pos.y)
             || !self.container_in_reach(player, block_pos)
             || !(0..=1).contains(&player_block_placement.hand)
-            || [player_block_placement.cursor_x, player_block_placement.cursor_y, player_block_placement.cursor_z]
-                .iter().any(|n| !n.is_finite() || !(0.0..=1.0).contains(n)) {
+            || [
+                player_block_placement.cursor_x,
+                player_block_placement.cursor_y,
+                player_block_placement.cursor_z,
+            ]
+            .iter()
+            .any(|n| !n.is_finite() || !(0.0..=1.0).contains(n))
+        {
             return;
         }
         let Some(block_face) = BlockFace::try_from_id(player_block_placement.face as u32) else {
@@ -463,11 +477,14 @@ impl ServerBoundPacketHandler for Plot {
         let max_length = if message.starts_with('/') { 32767 } else { 256 };
         if message.encode_utf16().count() > max_length
             || message.chars().any(|c| c.is_control())
-            || !self.players[player].accept_chat_message() {
+            || !self.players[player].accept_chat_message()
+        {
             return;
         }
         if message.starts_with('/') {
-            if self.players[player].command_queue.len() >= 16 { return; }
+            if self.players[player].command_queue.len() >= 16 {
+                return;
+            }
             self.players[player].command_queue.push(message);
         } else {
             let player = &self.players[player];
@@ -564,8 +581,10 @@ impl ServerBoundPacketHandler for Plot {
             player_position_and_rotation.y,
             player_position_and_rotation.z,
         );
-        if !new.is_valid() || !player_position_and_rotation.yaw.is_finite()
-            || !player_position_and_rotation.pitch.is_finite() {
+        if !new.is_valid()
+            || !player_position_and_rotation.yaw.is_finite()
+            || !player_position_and_rotation.pitch.is_finite()
+        {
             self.players[player].client.close_connection();
             return;
         }
@@ -669,7 +688,8 @@ impl ServerBoundPacketHandler for Plot {
             let block_pos = BlockPos::from_packed(player_digging.pos);
             if !Plot::in_plot_bounds(self.world.x, self.world.z, block_pos.x, block_pos.z)
                 || !(0..super::PLOT_BLOCK_HEIGHT).contains(&block_pos.y)
-                || !self.container_in_reach(player, block_pos) {
+                || !self.container_in_reach(player, block_pos)
+            {
                 return;
             }
             let block = self.world.get_block(block_pos);

@@ -313,7 +313,10 @@ impl PlayerPermissionsCache {
         self.stored_node_val_at(name, now())
     }
     fn stored_node_val_at(&self, name: &str, time: i64) -> Option<i32> {
-        if self.valid_until.is_some_and(|deadline| Instant::now() >= deadline) {
+        if self
+            .valid_until
+            .is_some_and(|deadline| Instant::now() >= deadline)
+        {
             return None;
         }
         self.nodes
@@ -537,6 +540,113 @@ mod tests {
         assert_eq!(cache.get_node_val("plots.info"), Some(1));
         assert_eq!(cache.get_node_val("plots"), None);
         assert_eq!(cache.get_node_val("plots.info.other"), None);
+    }
+    #[test]
+    fn temporary_memberships_limit_every_inherited_permission() {
+        let mut membership = node("", "group.admin", true);
+        membership.expiry = 20;
+        let mut inheritance = node("admin", "group.engineer", true);
+        inheritance.expiry = 17;
+        let cache = PlayerPermissionsCache::resolve(
+            vec![membership],
+            vec![
+                node("admin", "commands.stop", true),
+                inheritance,
+                node("engineer", "worldedit.*", true),
+            ],
+            &config(),
+            10,
+        );
+        assert_eq!(cache.stored_node_val_at("commands.stop", 19), Some(1));
+        assert_eq!(cache.stored_node_val_at("commands.stop", 20), None);
+        assert_eq!(
+            cache.stored_node_val_at("worldedit.region.set", 16),
+            Some(1)
+        );
+        assert_eq!(cache.stored_node_val_at("worldedit.region.set", 17), None);
+    }
+    #[test]
+    fn permanent_alternate_group_path_survives_temporary_path_expiry() {
+        let mut temporary = node("", "group.admin", true);
+        temporary.expiry = 20;
+        let cache = PlayerPermissionsCache::resolve(
+            vec![temporary, node("", "group.engineer", true)],
+            vec![
+                node("engineer", "group.admin", true),
+                node("admin", "group.engineer", true),
+                node("admin", "commands.stop", true),
+            ],
+            &config(),
+            10,
+        );
+        assert_eq!(cache.stored_node_val_at("commands.stop", 21), Some(1));
+    }
+    #[test]
+    fn stale_cache_fails_closed() {
+        let mut cache =
+            PlayerPermissionsCache::resolve(vec![node("", "*", true)], vec![], &config(), now());
+        cache.valid_until = Some(Instant::now() - Duration::from_secs(1));
+        assert_eq!(cache.get_node_val("commands.stop"), None);
+    }
+    #[test]
+    fn builder_history_denials_do_not_remove_higher_rank_history_grants() {
+        let mut config = config();
+        config.mchprs_permissions = true;
+        let groups = vec![
+            node("default", "mchprs.*", false),
+            node("default", "mchprs.access.join", true),
+            node("builder", "group.default", true),
+            node("builder", "mchprs.build.*", true),
+            node("builder", "mchprs.commands.rhistory", false),
+            node("builder", "mchprs.commands.rhistory.*", false),
+            node("builder", "mchprs.commands.rback", false),
+            node("builder", "mchprs.history.limit.*", false),
+            node("advanced", "group.builder", true),
+            node("advanced", "mchprs.commands.rhistory", true),
+            node("advanced", "mchprs.commands.rhistory.*", true),
+            node("advanced", "mchprs.commands.rback", true),
+            node("advanced", "mchprs.history.limit.200", true),
+            node("expert", "group.builder", true),
+            node("expert", "group.advanced", true),
+            node("expert", "mchprs.commands.rhistory", true),
+            node("expert", "mchprs.commands.rhistory.*", true),
+            node("expert", "mchprs.commands.rback", true),
+            node("engineer", "group.builder", true),
+            node("engineer", "group.expert", true),
+            node("engineer", "mchprs.commands.rhistory", true),
+            node("engineer", "mchprs.commands.rhistory.*", true),
+            node("engineer", "mchprs.commands.rback", true),
+            node("engineer", "mchprs.history.limit.1000", true),
+        ];
+        for (group, limit) in [
+            ("builder", None),
+            ("advanced", Some(200)),
+            ("expert", Some(200)),
+            ("engineer", Some(1000)),
+        ] {
+            let cache = PlayerPermissionsCache::resolve(
+                vec![node("", &format!("group.{group}"), true)],
+                groups.clone(),
+                &config,
+                now(),
+            );
+            assert_eq!(
+                cache.get_node_val("commands.rhistory"),
+                Some(i32::from(group != "builder")),
+                "{group}"
+            );
+            assert_eq!(
+                cache.get_node_val("commands.rhistory.enable"),
+                Some(i32::from(group != "builder")),
+                "{group}"
+            );
+            assert_eq!(
+                cache.numeric_limit("mchprs.history.limit."),
+                limit,
+                "{group}"
+            );
+            assert_eq!(cache.get_node_val("plots.admin.interact.other"), Some(0));
+        }
     }
     #[test]
     fn default_group_and_recursive_inheritance_are_read_without_writes() {

@@ -2,9 +2,9 @@
 use crate::messages;
 
 mod execute;
+mod safety;
 mod schematic;
 mod schematic_paths;
-mod safety;
 #[cfg(test)]
 mod stack_tests;
 #[cfg(test)]
@@ -76,7 +76,8 @@ pub fn execute_command(
         let first_pos = player.first_position.unwrap();
         let second_pos = player.second_position.unwrap();
         if !(0..super::PLOT_BLOCK_HEIGHT).contains(&first_pos.y)
-            || !(0..super::PLOT_BLOCK_HEIGHT).contains(&second_pos.y) {
+            || !(0..super::PLOT_BLOCK_HEIGHT).contains(&second_pos.y)
+        {
             player.send_error_message("Selection is outside the world height");
             return true;
         }
@@ -152,7 +153,13 @@ pub fn execute_command(
             }
         }
     }
-    if let Err(error) = safety::validate_request(&plot.world, &plot.players[player_idx], command_name, command, &arguments) {
+    if let Err(error) = safety::validate_request(
+        &plot.world,
+        &plot.players[player_idx],
+        command_name,
+        command,
+        &arguments,
+    ) {
         plot.players[player_idx].send_error_message(&error);
         return true;
     }
@@ -758,17 +765,29 @@ pub struct WorldEditUndo {
 /// Bound retained undo/redo across repeated commands, including redstone stacks.
 pub(in crate::plot) fn trim_history(player: &mut Player) {
     let entries = |history: &[WorldEditUndo]| -> u64 {
-        history.iter().flat_map(|undo| &undo.clipboards)
-            .map(|cb| cb.data.entries() as u64).sum()
+        history
+            .iter()
+            .flat_map(|undo| &undo.clipboards)
+            .map(|cb| cb.data.entries() as u64)
+            .sum()
     };
     let mut blocks = entries(&player.worldedit_undo) + entries(&player.worldedit_redo);
     while blocks > crate::config::CONFIG.worldedit_history_blocks {
-        let history = if !player.worldedit_undo.is_empty() { &mut player.worldedit_undo } else { &mut player.worldedit_redo };
+        let history = if !player.worldedit_undo.is_empty() {
+            &mut player.worldedit_undo
+        } else {
+            &mut player.worldedit_redo
+        };
         let removed = history.remove(0);
-        blocks -= removed.clipboards.iter().map(|cb| cb.data.entries() as u64).sum::<u64>();
+        blocks -= removed
+            .clipboards
+            .iter()
+            .map(|cb| cb.data.entries() as u64)
+            .sum::<u64>();
     }
 }
 
+#[derive(Debug)]
 pub enum PatternParseError {
     UnknownBlock(String),
     InvalidPattern(String),
@@ -888,6 +907,7 @@ impl WorldEditPattern {
         };
 
         for part in &self.parts {
+            if part.weight <= 0.0 { continue; }
             random -= part.weight;
             if random <= 0.0 {
                 selected = part;
@@ -912,6 +932,22 @@ fn container_patterns_apply_properties_and_split_only_between_blocks() {
     assert_eq!(pattern.parts[1].weight, 0.75);
     for invalid in ["hopper[facing=up]", "furnace[lit=maybe]", "cake[bites=7]"] {
         assert!(WorldEditPattern::from_str(invalid).is_err());
+    }
+}
+
+#[test]
+fn invalid_pattern_weights_and_numeric_ids_do_not_panic() {
+    for pattern in [
+        "0%stone",
+        "0%stone,0%glass",
+        "=4294967296",
+        "99999999999999999999999999999999999999999999999999999999%stone",
+    ] {
+        assert!(pattern.parse::<WorldEditPattern>().is_err(), "{pattern}");
+    }
+    let pattern: WorldEditPattern = "0%stone,100%glass".parse().unwrap();
+    for _ in 0..10 {
+        assert_eq!(pattern.pick(), Block::Glass {});
     }
 }
 

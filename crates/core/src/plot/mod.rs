@@ -494,12 +494,19 @@ impl World for PlotWorld {
             self.command_output_count = 0;
             self.command_output_bytes = 0;
         }
-        if self.command_messages.len() >= 64 || self.command_output_count >= 64
-            || command.len() > 131_068 || source.len() > 256 {
+        if self.command_messages.len() >= 64
+            || self.command_output_count >= 64
+            || command.len() > 131_068
+            || source.len() > 256
+        {
             return Err("Command-block output limit reached".into());
         }
         let message = crate::chat_commands::parse(command, source, None)?;
-        if self.command_output_bytes.saturating_add(message.message.len()) > 65_536 {
+        if self
+            .command_output_bytes
+            .saturating_add(message.message.len())
+            > 65_536
+        {
             return Err("Command-block output byte limit reached".into());
         }
         self.command_output_count += 1;
@@ -1348,9 +1355,15 @@ impl Plot {
     pub fn claim_plot(&mut self, plot_x: i32, plot_z: i32, player: usize) {
         let player = &mut self.players[player];
         match database::claim_plot(plot_x, plot_z, &format!("{:032x}", player.uuid)) {
-            Ok(true) => {},
-            Ok(false) => { player.send_system_message(messages::PLOT_ALREADY_CLAIMED); return; },
-            Err(error) => { player.send_error_message(&format!("Could not claim plot: {error}")); return; },
+            Ok(true) => {}
+            Ok(false) => {
+                player.send_system_message(messages::PLOT_ALREADY_CLAIMED);
+                return;
+            }
+            Err(error) => {
+                player.send_error_message(&format!("Could not claim plot: {error}"));
+                return;
+            }
         }
         if self.world.x == plot_x && self.world.z == plot_z {
             self.owner = Some(player.uuid);
@@ -1404,15 +1417,10 @@ impl Plot {
         for player_idx in 0..self.players.len() {
             let player_idx = player_idx - removal_offset;
             let commands: Vec<String> = self.players[player_idx].command_queue.drain(..).collect();
-            for command in commands {
-                let mut args: Vec<&str> = command.split(' ').collect();
-                let command = args.remove(0);
-                if self.handle_command(player_idx, command, args) {
-                    removal_offset += 1;
-                    // The indexed player has left. Remaining commands belong to
-                    // that player, never to the player shifted into this slot.
-                    break;
-                }
+            if commands::run_command_queue(commands, |command, args| {
+                self.handle_command(player_idx, command, args)
+            }) {
+                removal_offset += 1;
             }
         }
     }

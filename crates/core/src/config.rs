@@ -40,6 +40,19 @@ macro_rules! impl_simple_default {
 
 impl_simple_default!(String, i64, bool);
 
+impl ConfigSerializeDefault for u32 {
+    fn fix_config(self, name: &str, doc: &mut Document) {
+        doc.entry(name).or_insert_with(|| value(i64::from(self)));
+    }
+}
+impl ConfigSerializeDefault for u64 {
+    fn fix_config(self, name: &str, doc: &mut Document) {
+        doc.entry(name).or_insert_with(|| {
+            value(i64::try_from(self).expect("Config default exceeds TOML integer range"))
+        });
+    }
+}
+
 impl<T> ConfigSerializeDefault for Option<T> {
     fn fix_config(self, _: &str, _: &mut Document) {
         assert!(matches!(self, None), "`Some` as default is unimplemented");

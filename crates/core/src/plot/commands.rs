@@ -22,8 +22,27 @@ use tracing::{debug, info, warn};
 trait RelativeCoordinate: FromStr {
     fn checked_offset(self, offset: Self) -> Option<Self>;
 }
+
+/// Stop dispatch as soon as a command transfers the indexed player away.
+pub(super) fn run_command_queue(
+    commands: Vec<String>,
+    mut handle: impl FnMut(&str, Vec<&str>) -> bool,
+) -> bool {
+    for input in &commands {
+        let mut parts = input.split_whitespace();
+        let Some(command) = parts.next() else {
+            continue;
+        };
+        if handle(command, parts.collect()) {
+            return true;
+        }
+    }
+    false
+}
 impl RelativeCoordinate for i32 {
-    fn checked_offset(self, offset: Self) -> Option<Self> { self.checked_add(offset) }
+    fn checked_offset(self, offset: Self) -> Option<Self> {
+        self.checked_add(offset)
+    }
 }
 impl RelativeCoordinate for f64 {
     fn checked_offset(self, offset: Self) -> Option<Self> {
@@ -39,7 +58,9 @@ fn parse_relative_coord<F: RelativeCoordinate>(
         Ok(ref_coord)
     } else if let Some(offset_str) = coord.strip_prefix('~') {
         let offset = offset_str.parse::<F>().map_err(|_| "Invalid coordinate")?;
-        ref_coord.checked_offset(offset).ok_or("Coordinate overflow")
+        ref_coord
+            .checked_offset(offset)
+            .ok_or("Coordinate overflow")
     } else {
         coord.parse::<F>().map_err(|_| "Invalid coordinate")
     }
@@ -50,7 +71,9 @@ fn advance_bounded(ticks: u32, mut step: impl FnMut()) -> u32 {
     let budget = std::time::Duration::from_millis(crate::config::CONFIG.command_work_time_ms);
     let mut advanced = 0;
     for _ in 0..ticks {
-        if started.elapsed() >= budget { break; }
+        if started.elapsed() >= budget {
+            break;
+        }
         step();
         advanced += 1;
     }
@@ -99,11 +122,19 @@ impl Plot {
                 for _ in 0..10_000 {
                     match database::is_claimed(start.0, start.1) {
                         Some(true) => start = Plot::get_next_plot(start.0, start.1),
-                        Some(false) => { self.claim_plot(start.0, start.1, player); return; },
-                        None => { self.players[player].send_error_message("Could not read plot claims"); return; },
+                        Some(false) => {
+                            self.claim_plot(start.0, start.1, player);
+                            return;
+                        }
+                        None => {
+                            self.players[player].send_error_message("Could not read plot claims");
+                            return;
+                        }
                     }
                 }
-                self.players[player].send_error_message("No free plot in the automatic search area; choose a plot and use /plot claim");
+                self.players[player].send_error_message(
+                    "No free plot in the automatic search area; choose a plot and use /plot claim",
+                );
             }
             "middle" => {
                 let center = Plot::get_center(plot_x, plot_z);
@@ -133,7 +164,11 @@ impl Plot {
 
                 let plots = match database::get_owned_plots(args[0]) {
                     Ok(plots) => plots,
-                    Err(error) => { self.players[player].send_error_message(&format!("Could not read plots: {error}")); return; },
+                    Err(error) => {
+                        self.players[player]
+                            .send_error_message(&format!("Could not read plots: {error}"));
+                        return;
+                    }
                 };
                 if !plots.is_empty() {
                     if let Some(&(plot_x, plot_z)) = plots.get(idx) {
@@ -483,11 +518,22 @@ impl Plot {
             "/radv" | "/radvance" => {
                 let count = match args.as_slice() {
                     [count] => count.parse::<u32>(),
-                    [unit, count] if matches!(unit.to_ascii_lowercase().as_str(), "nano" | "pico") => count.parse::<u32>(),
-                    _ => { self.players[player].send_error_message("Usage: /radvance [nano|pico] <ticks>"); return false; },
+                    [unit, count]
+                        if matches!(unit.to_ascii_lowercase().as_str(), "nano" | "pico") =>
+                    {
+                        count.parse::<u32>()
+                    }
+                    _ => {
+                        self.players[player]
+                            .send_error_message("Usage: /radvance [nano|pico] <ticks>");
+                        return false;
+                    }
                 };
                 if !matches!(count, Ok(ticks) if ticks <= crate::config::CONFIG.max_command_ticks) {
-                    self.players[player].send_error_message(&format!("Tick count must be between 0 and {}", crate::config::CONFIG.max_command_ticks));
+                    self.players[player].send_error_message(&format!(
+                        "Tick count must be between 0 and {}",
+                        crate::config::CONFIG.max_command_ticks
+                    ));
                     return false;
                 }
                 let Some(arg0) = args.get(0) else {
@@ -785,6 +831,50 @@ fn changes_plot(command: &str, args: &[&str]) -> bool {
         "/radv" | "/radvance" | "/toggleautorp" | "/curse" | "/bless" => true,
         "/redpiler" | "/rp" => !matches!(args.first().copied(), Some("inspect" | "i")),
         _ => false,
+    }
+}
+
+#[cfg(test)]
+mod security_tests {
+    use super::*;
+    #[test]
+    fn queued_commands_stop_when_the_actor_leaves() {
+        let mut calls = Vec::new();
+        assert!(run_command_queue(
+            vec!["/tp Admin".into(), "/stop".into()],
+            |command, _| {
+                calls.push(command.to_owned());
+                command == "/tp"
+            }
+        ));
+        assert_eq!(calls, ["/tp"]);
+        assert!(!run_command_queue(
+            vec!["  ".into(), "/help".into()],
+            |_, _| false
+        ));
+    }
+    #[test]
+    fn relative_plot_coordinates_cannot_overflow() {
+        assert!(parse_relative_coord("~2147483647", 1i32).is_err());
+        assert!(parse_relative_coord("~-2147483648", -1i32).is_err());
+        assert!(parse_relative_coord("~1e309", 0.0f64).is_err());
+        assert_eq!(parse_relative_coord("~-1", 2i32).unwrap(), 1);
+    }
+    #[test]
+    fn native_aliases_share_permissions_and_ownership_checks() {
+        for (alias, canonical, args) in [
+            ("/bisdon_anim", "/piston_anim", vec!["off"]),
+            ("/wsr", "/worldsendrate", vec!["100"]),
+            ("/radv", "/radvance", vec!["1"]),
+            ("/rp", "/redpiler", vec!["compile"]),
+            ("/tp", "/teleport", vec!["Admin"]),
+        ] {
+            assert_eq!(
+                native_command_permission(alias, &args),
+                native_command_permission(canonical, &args)
+            );
+            assert_eq!(changes_plot(alias, &args), changes_plot(canonical, &args));
+        }
     }
 }
 
