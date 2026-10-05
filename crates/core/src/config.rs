@@ -94,7 +94,11 @@ gen_config! {
     fast_render_threshold: i64 = 200,
     fast_render_send_rate: i64 = 10,
     rhistory_memory_limit_mib: i64 = 2048,
-    rhistory_work_memory_limit_mib: i64 = 256
+    rhistory_work_memory_limit_mib: i64 = 256,
+    max_command_ticks: u32 = 10_000,
+    command_work_time_ms: u64 = 250,
+    worldedit_max_blocks: u64 = 4_194_304,
+    worldedit_history_blocks: u64 = 8_388_608
 }
 
 #[cfg(test)]

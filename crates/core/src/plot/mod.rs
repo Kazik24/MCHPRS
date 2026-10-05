@@ -121,6 +121,9 @@ pub struct PlotWorld {
     is_cursed: bool,
     fast_rendering: bool,
     command_messages: Vec<crate::chat_commands::ChatCommand>,
+    command_output_window: Instant,
+    command_output_count: usize,
+    command_output_bytes: usize,
     history: history::TickHistory,
     update_stats: UpdateStats,
 }
@@ -157,6 +160,9 @@ impl PlotWorld {
             is_cursed: false,
             fast_rendering: false,
             command_messages: Vec::new(),
+            command_output_window: Instant::now(),
+            command_output_count: 0,
+            command_output_bytes: 0,
             history: Default::default(),
             update_stats: Default::default(),
         };
@@ -483,7 +489,21 @@ impl PlotWorld {
 
 impl World for PlotWorld {
     fn execute_command_block(&mut self, command: &str, source: &str) -> Result<(), String> {
+        if self.command_output_window.elapsed() >= Duration::from_secs(1) {
+            self.command_output_window = Instant::now();
+            self.command_output_count = 0;
+            self.command_output_bytes = 0;
+        }
+        if self.command_messages.len() >= 64 || self.command_output_count >= 64
+            || command.len() > 131_068 || source.len() > 256 {
+            return Err("Command-block output limit reached".into());
+        }
         let message = crate::chat_commands::parse(command, source, None)?;
+        if self.command_output_bytes.saturating_add(message.message.len()) > 65_536 {
+            return Err("Command-block output byte limit reached".into());
+        }
+        self.command_output_count += 1;
+        self.command_output_bytes += message.message.len();
         self.command_messages.push(message);
         Ok(())
     }
@@ -1312,6 +1332,7 @@ impl Plot {
         redstone_tools::selection::remove(&mut player);
         player.redstone_tools.block_search = None;
         player.redstone_tools.sign_search = None;
+        player.redstone_tools.auto_stack = None;
         player
     }
 
@@ -1326,7 +1347,11 @@ impl Plot {
 
     pub fn claim_plot(&mut self, plot_x: i32, plot_z: i32, player: usize) {
         let player = &mut self.players[player];
-        database::claim_plot(plot_x, plot_z, &format!("{:032x}", player.uuid));
+        match database::claim_plot(plot_x, plot_z, &format!("{:032x}", player.uuid)) {
+            Ok(true) => {},
+            Ok(false) => { player.send_system_message(messages::PLOT_ALREADY_CLAIMED); return; },
+            Err(error) => { player.send_error_message(&format!("Could not claim plot: {error}")); return; },
+        }
         if self.world.x == plot_x && self.world.z == plot_z {
             self.owner = Some(player.uuid);
         }
@@ -1384,6 +1409,9 @@ impl Plot {
                 let command = args.remove(0);
                 if self.handle_command(player_idx, command, args) {
                     removal_offset += 1;
+                    // The indexed player has left. Remaining commands belong to
+                    // that player, never to the player shifted into this slot.
+                    break;
                 }
             }
         }
@@ -1628,9 +1656,12 @@ impl Plot {
         self.refresh_sidebar(false);
 
         for command in self.world.command_messages.drain(..) {
-            self.message_sender
-                .send(Message::CommandChat(command))
-                .unwrap();
+            // Automated plot circuits cannot flood chat on unrelated plots.
+            for player in &self.players {
+                if command.recipient.matches(&player.username) {
+                    player.send_raw_system_message(command.message.clone());
+                }
+            }
         }
 
         self.remove_dc_players();

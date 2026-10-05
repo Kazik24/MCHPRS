@@ -129,7 +129,7 @@ pub struct NetworkClient {
 impl NetworkClient {
     fn listen(
         mut stream: TcpStream,
-        sender: mpsc::Sender<Box<dyn ServerBoundPacket>>,
+        sender: mpsc::SyncSender<Box<dyn ServerBoundPacket>>,
         compressed: Arc<AtomicBool>,
     ) {
         let mut state = NetworkState::Handshake;
@@ -143,7 +143,9 @@ impl NetworkClient {
                     return;
                 }
             };
-            if sender.send(packet).is_err() {
+            // Disconnect a flooding client instead of growing an unbounded queue.
+            if sender.try_send(packet).is_err() {
+                let _ = stream.shutdown(Shutdown::Both);
                 return;
             }
         }
@@ -151,7 +153,7 @@ impl NetworkClient {
 
     pub fn receive_packets(&self, alive: &mut bool) -> Vec<Box<dyn ServerBoundPacket>> {
         let mut packets = Vec::new();
-        loop {
+        for _ in 0..128 {
             let packet = self.packets.try_recv();
             match packet {
                 Ok(packet) => packets.push(packet),
@@ -188,7 +190,7 @@ impl NetworkServer {
 
         for (index, stream) in listener.incoming().enumerate() {
             let stream = stream.unwrap();
-            let (packet_sender, packet_receiver) = mpsc::channel();
+            let (packet_sender, packet_receiver) = mpsc::sync_channel(64);
             let compressed = Arc::new(AtomicBool::new(false));
             let client_stream = stream.try_clone().unwrap();
             let client_compressed = compressed.clone();

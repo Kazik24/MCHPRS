@@ -6,6 +6,9 @@ services:
       context: .
       dockerfile: docker/Dockerfile-plot-scale-5
     restart: unless-stopped
+    mem_limit: 6g
+    memswap_limit: 6g
+    cpus: 4.0
     environment:
       MCHPRS_CONFIG: /run/config/Config.toml
     depends_on:

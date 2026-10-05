@@ -24,6 +24,7 @@ pub(super) const ERROR_IO_ONLY: &str = messages::PLOT_CANNOT_INTERACTED_WHILE_RE
 
 impl Plot {
     pub(super) fn handle_packets_for_player(&mut self, player: usize) {
+        self.players[player].refresh_permissions();
         let packets = self.players[player].client.receive_packets();
         for packet in packets {
             packet.handle(self, player);
@@ -43,7 +44,10 @@ fn traverse_dir(
     }
     if path.is_dir() {
         for entry in fs::read_dir(path)? {
+            if matches.len() >= 256 { break; }
             let entry = entry?;
+            let kind = entry.file_type()?;
+            if kind.is_symlink() { continue; }
             let path = entry.path();
             if let Some(file_name) = path.file_name() {
                 let file_name = file_name.to_string_lossy();
@@ -53,13 +57,13 @@ fn traverse_dir(
                     .starts_with(base.join(to_complete).to_string_lossy().as_ref())
                 {
                     let relative = path.strip_prefix(base)?;
-                    let relative = relative.to_str().unwrap();
+                    let relative = relative.to_string_lossy();
                     matches.push(CTabCompleteMatch {
                         match_: relative.to_string(),
                         tooltip: None,
                     });
                 }
-                if path.is_dir() {
+                if kind.is_dir() {
                     matches.push(CTabCompleteMatch {
                         match_: format!("{}/", file_name),
                         tooltip: None,
@@ -183,7 +187,9 @@ impl ServerBoundPacketHandler for Plot {
             self.players[player_idx].send_packet(&completion.encode());
             return;
         }
-        if !packet.text.starts_with("//load ") {
+        if !packet.text.starts_with("//load ")
+            || !self.players[player_idx].has_permission("worldedit.clipboard.load")
+            || !self.players[player_idx].can_edit_plot(self.owner) {
             return;
         }
 
@@ -197,7 +203,7 @@ impl ServerBoundPacketHandler for Plot {
         let mut res = CTabComplete {
             id: packet.transaction_id,
             start: 7,
-            length: current.len() as i32,
+            length: current.encode_utf16().count() as i32,
             matches: Vec::new(),
         };
 
@@ -218,6 +224,9 @@ impl ServerBoundPacketHandler for Plot {
         creative_inventory_action: SCreativeInventoryAction,
         player: usize,
     ) {
+        if !matches!(self.players[player].gamemode, crate::player::Gamemode::Creative) {
+            return;
+        }
         if !(0..46).contains(&creative_inventory_action.slot) {
             return;
         }
@@ -326,6 +335,14 @@ impl ServerBoundPacketHandler for Plot {
                 4,
             ));
         let block_pos = BlockPos::from_packed(player_block_placement.pos);
+        if !Plot::in_plot_bounds(self.world.x, self.world.z, block_pos.x, block_pos.z)
+            || !(0..super::PLOT_BLOCK_HEIGHT).contains(&block_pos.y)
+            || !self.container_in_reach(player, block_pos)
+            || !(0..=1).contains(&player_block_placement.hand)
+            || [player_block_placement.cursor_x, player_block_placement.cursor_y, player_block_placement.cursor_z]
+                .iter().any(|n| !n.is_finite() || !(0.0..=1.0).contains(n)) {
+            return;
+        }
         let Some(block_face) = BlockFace::try_from_id(player_block_placement.face as u32) else {
             warn!("Invalid block face: {}", player_block_placement.face);
             return;
@@ -409,7 +426,7 @@ impl ServerBoundPacketHandler for Plot {
         self.close_open_container(player);
 
         if let Some(item) = item_in_hand {
-            let cancelled = interaction::use_item_on_block(
+            let result = interaction::use_item_on_block(
                 &item,
                 &mut self.world,
                 UseOnBlockContext {
@@ -419,8 +436,10 @@ impl ServerBoundPacketHandler for Plot {
                     cursor_y: player_block_placement.cursor_y,
                 },
             );
-            if cancelled {
-                cancel(self);
+            match result {
+                interaction::ItemUseResult::Cancelled => cancel(self),
+                interaction::ItemUseResult::Placed(pos) => self.mirror_auto_stack(player, pos),
+                interaction::ItemUseResult::Used => {}
             }
             self.world.flush_block_changes();
             return;
@@ -441,7 +460,14 @@ impl ServerBoundPacketHandler for Plot {
 
     fn handle_chat_message(&mut self, chat_message: SChatMessage, player: usize) {
         let message = chat_message.message;
+        let max_length = if message.starts_with('/') { 32767 } else { 256 };
+        if message.encode_utf16().count() > max_length
+            || message.chars().any(|c| c.is_control())
+            || !self.players[player].accept_chat_message() {
+            return;
+        }
         if message.starts_with('/') {
+            if self.players[player].command_queue.len() >= 16 { return; }
             self.players[player].command_queue.push(message);
         } else {
             let player = &self.players[player];
@@ -485,6 +511,10 @@ impl ServerBoundPacketHandler for Plot {
     fn handle_player_position(&mut self, player_position: SPlayerPosition, player: usize) {
         let old = self.players[player].pos;
         let new = PlayerPos::new(player_position.x, player_position.y, player_position.z);
+        if !new.is_valid() {
+            self.players[player].client.close_connection();
+            return;
+        }
         self.players[player].pos = new;
         self.players[player].on_ground = player_position.on_ground;
         let packet = if (new.x - old.x).abs() > 8.0
@@ -534,6 +564,11 @@ impl ServerBoundPacketHandler for Plot {
             player_position_and_rotation.y,
             player_position_and_rotation.z,
         );
+        if !new.is_valid() || !player_position_and_rotation.yaw.is_finite()
+            || !player_position_and_rotation.pitch.is_finite() {
+            self.players[player].client.close_connection();
+            return;
+        }
         self.players[player].pos = new;
         self.players[player].yaw = player_position_and_rotation.yaw;
         self.players[player].pitch = player_position_and_rotation.pitch;
@@ -585,6 +620,10 @@ impl ServerBoundPacketHandler for Plot {
     }
 
     fn handle_player_rotation(&mut self, player_rotation: SPlayerRotation, player: usize) {
+        if !player_rotation.yaw.is_finite() || !player_rotation.pitch.is_finite() {
+            self.players[player].client.close_connection();
+            return;
+        }
         self.players[player].yaw = player_rotation.yaw;
         self.players[player].pitch = player_rotation.pitch;
         self.players[player].on_ground = player_rotation.on_ground;
@@ -628,6 +667,11 @@ impl ServerBoundPacketHandler for Plot {
             ));
         if player_digging.status == 0 {
             let block_pos = BlockPos::from_packed(player_digging.pos);
+            if !Plot::in_plot_bounds(self.world.x, self.world.z, block_pos.x, block_pos.z)
+                || !(0..super::PLOT_BLOCK_HEIGHT).contains(&block_pos.y)
+                || !self.container_in_reach(player, block_pos) {
+                return;
+            }
             let block = self.world.get_block(block_pos);
 
             if !Plot::in_plot_bounds(self.world.x, self.world.z, block_pos.x, block_pos.z) {
@@ -671,6 +715,9 @@ impl ServerBoundPacketHandler for Plot {
             self.reset_redpiler();
 
             interaction::destroy(block, &mut self.world, block_pos);
+            if !matches!(block, Block::Air {}) {
+                self.mirror_auto_stack(player, block_pos);
+            }
             self.world.flush_block_changes();
 
             let effect = CEffect {
@@ -693,7 +740,7 @@ impl ServerBoundPacketHandler for Plot {
             } else if player_digging.status == 4 {
                 let mut stack_empty = false;
                 if let Some(item_stack) = &mut self.players[player].inventory[selected_slot] {
-                    item_stack.count -= 1;
+                    item_stack.count = item_stack.count.saturating_sub(1);
                     stack_empty = item_stack.count == 0;
                 }
                 if stack_empty {

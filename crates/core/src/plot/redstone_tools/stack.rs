@@ -2,7 +2,9 @@ use super::{Plot, PlotWorld, SelectionBounds, ToolNotice};
 use crate::messages;
 use crate::player::Player;
 use crate::plot::worldedit::{self, AirPolicy};
+use crate::world::World;
 use anyhow::{bail, Context, Result};
+use mchprs_blocks::blocks::Block;
 use mchprs_blocks::{BlockFacing, BlockPos};
 
 const MAX_COPIES: u32 = 4096;
@@ -25,6 +27,10 @@ struct RStackRequest {
 
 impl RStackRequest {
     fn parse(args: &[&str], look: BlockPos) -> Result<Self> {
+        Self::parse_mode(args, look, false)
+    }
+
+    fn parse_mode(args: &[&str], look: BlockPos, live: bool) -> Result<Self> {
         let mut numbers = Vec::new();
         let mut direction = None;
         let mut air = AirPolicy::Ignore;
@@ -40,7 +46,8 @@ impl RStackRequest {
                 }
                 for flag in argument[1..].chars() {
                     match flag {
-                        'a' | 'w' => air = AirPolicy::Copy,
+                        'a' | 'w' if !live => air = AirPolicy::Copy,
+                        'a' | 'w' => bail!(messages::AUTO_STACK_ALWAYS_COPIES_REMOVALS),
                         'e' => selection = SelectionPolicy::Expand,
                         _ => bail!(messages::unknown_stack_flag(flag)),
                     }
@@ -53,7 +60,11 @@ impl RStackRequest {
             direction = Some(parse_direction(argument, look)?);
         }
         if numbers.len() > 2 {
-            bail!(messages::USAGE_RSTACK_DIRECTION_COUNT_SPACING_E);
+            bail!(if live {
+                messages::USAGE_AUTOSTACK
+            } else {
+                messages::USAGE_RSTACK_DIRECTION_COUNT_SPACING_E
+            });
         }
         let count = numbers.first().copied().unwrap_or(1);
         let mut spacing = numbers.get(1).copied().unwrap_or(2);
@@ -80,7 +91,7 @@ impl RStackRequest {
         bounds: SelectionBounds,
         world: &PlotWorld,
     ) -> Result<Vec<SelectionBounds>> {
-        if bounds.volume() * u64::from(self.count) > MAX_STACK_BLOCKS {
+        if bounds.volume() * (u64::from(self.count) + 1) > MAX_STACK_BLOCKS.min(crate::config::CONFIG.worldedit_max_blocks) {
             bail!(messages::stack_block_limit(MAX_STACK_BLOCKS));
         }
         let mut destinations = Vec::new();
@@ -94,7 +105,100 @@ impl RStackRequest {
     }
 }
 
+/// A fixed source selection and validated translations, belonging to one player
+/// in one plot. Only explicit player placements/removals invoke this session.
+pub(crate) struct AutoStack {
+    bounds: SelectionBounds,
+    offsets: Vec<BlockPos>,
+}
+
+impl AutoStack {
+    fn new(bounds: SelectionBounds, destinations: &[SelectionBounds]) -> Result<Self> {
+        let offsets: Vec<_> = destinations
+            .iter()
+            .map(|area| area.start - bounds.start)
+            .collect();
+        if offsets.is_empty() || offsets.contains(&BlockPos::new(0, 0, 0)) {
+            bail!(messages::AUTO_STACK_NEEDS_NONZERO_COPIES_AND_SPACING);
+        }
+        Ok(Self { bounds, offsets })
+    }
+
+    fn destinations(&self, pos: BlockPos) -> impl Iterator<Item = BlockPos> + '_ {
+        let inside = pos.min(self.bounds.start) == self.bounds.start
+            && pos.max(self.bounds.end) == self.bounds.end;
+        self.offsets
+            .iter()
+            .filter(move |_| inside)
+            .map(move |&offset| pos + offset)
+    }
+
+    pub(crate) fn mirror(&self, world: &mut PlotWorld, pos: BlockPos) {
+        // Snapshot once: overlapping destinations must not change the source for
+        // later copies. Going through placement/destruction updates attachments,
+        // redstone and block entities without triggering another auto stack.
+        let block = world.get_block(pos);
+        let entity = world.get_block_entity(pos).cloned();
+        for destination in self.destinations(pos) {
+            let old = world.get_block(destination);
+            if !matches!(old, Block::Air {}) {
+                crate::interaction::destroy(old, world, destination);
+            }
+            if !matches!(block, Block::Air {}) {
+                world.delete_block_entity(destination);
+                world.set_block(destination, block);
+                if let Some(entity) = &entity {
+                    // Clients need the block before its entity packet.
+                    world.flush_block_changes();
+                    world.set_block_entity(destination, entity.clone());
+                }
+                crate::interaction::place_in_world(block, world, destination, &None);
+            }
+        }
+    }
+}
+
 impl Plot {
+    pub(super) fn auto_stack(&mut self, player: usize, args: &[&str]) -> Result<()> {
+        if args == ["off"] {
+            self.players[player].redstone_tools.auto_stack = None;
+            ToolNotice::AutoStackDisabled.send(&self.players[player]);
+            return Ok(());
+        }
+        let request = RStackRequest::parse_mode(args, look_direction(&self.players[player]), true)?;
+        let bounds = SelectionBounds::from_player(&self.players[player], &self.world)?;
+        let destinations = request.destinations(bounds, &self.world)?;
+        let session = AutoStack::new(bounds, &destinations)?;
+        let player = &mut self.players[player];
+        player.redstone_tools.auto_stack = Some(session);
+        if matches!(request.selection, SelectionPolicy::Expand) {
+            let last = destinations
+                .last()
+                .expect("nonempty auto stack destinations");
+            player.worldedit_set_first_position(bounds.start.min(last.start));
+            player.worldedit_set_second_position(bounds.end.max(last.end));
+        }
+        ToolNotice::AutoStackEnabled.send(player);
+        Ok(())
+    }
+
+    pub(in crate::plot) fn mirror_auto_stack(&mut self, player: usize, pos: BlockPos) {
+        if self.players[player].redstone_tools.auto_stack.is_none() {
+            return;
+        }
+        if self
+            .check_tool_access(player, super::ToolCommand::AutoStack)
+            .is_err()
+        {
+            self.players[player].redstone_tools.auto_stack = None;
+            ToolNotice::AutoStackDisabled.send(&self.players[player]);
+            return;
+        }
+        if let Some(session) = &self.players[player].redstone_tools.auto_stack {
+            session.mirror(&mut self.world, pos);
+        }
+    }
+
     pub(super) fn redstone_stack(&mut self, player: usize, args: &[&str]) -> Result<()> {
         let look = look_direction(&self.players[player]);
         let request = RStackRequest::parse(args, look)?;
@@ -120,6 +224,7 @@ impl Plot {
         let player = &mut self.players[player];
         player.worldedit_undo.push(undo);
         player.worldedit_redo.clear();
+        worldedit::trim_history(player);
 
         if matches!(request.selection, SelectionPolicy::Expand) {
             let last = destinations
@@ -216,6 +321,112 @@ fn parse_direction(token: &str, look: BlockPos) -> Result<BlockPos> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn session(world: &PlotWorld, start: BlockPos, end: BlockPos, args: &[&str]) -> AutoStack {
+        let bounds = SelectionBounds::new(start, end, world).unwrap();
+        let request = RStackRequest::parse_mode(args, BlockPos::new(0, 0, 1), true).unwrap();
+        AutoStack::new(bounds, &request.destinations(bounds, world).unwrap()).unwrap()
+    }
+
+    #[test]
+    fn auto_stack_overlaps_without_recursive_copies_and_ignores_outside_edits() {
+        let mut world = super::super::tests::test_world();
+        let pos = BlockPos::new(10, 30, 10);
+        let stack = session(&world, pos, BlockPos::new(12, 30, 10), &["east", "2", "1"]);
+        crate::interaction::place_in_world(Block::Stone {}, &mut world, pos, &None);
+        stack.mirror(&mut world, pos);
+        for x in 10..=12 {
+            assert_eq!(world.get_block(BlockPos::new(x, 30, 10)), Block::Stone {});
+        }
+        assert_eq!(world.get_block(BlockPos::new(13, 30, 10)), Block::Air {});
+        let outside = BlockPos::new(13, 30, 10);
+        world.set_block(outside, Block::Sand {});
+        stack.mirror(&mut world, outside);
+        assert_eq!(world.get_block(BlockPos::new(14, 30, 10)), Block::Air {});
+        crate::interaction::destroy(Block::Stone {}, &mut world, pos);
+        stack.mirror(&mut world, pos);
+        for x in 10..=12 {
+            assert_eq!(world.get_block(BlockPos::new(x, 30, 10)), Block::Air {});
+        }
+    }
+
+    #[test]
+    fn auto_stack_copies_container_data_and_cleans_replaced_entities() {
+        use mchprs_blocks::block_entities::{ContainerType, SignalStrength};
+        use mchprs_blocks::items::ItemStack;
+        let mut world = super::super::tests::test_world();
+        let pos = BlockPos::new(10, 30, 10);
+        let stack = session(&world, pos, pos, &["east", "2", "2"]);
+        let item =
+            ItemStack::container_with_ss(ContainerType::Chest, SignalStrength::new(13).unwrap());
+        crate::interaction::place_in_world(
+            Block::from_name("chest").unwrap(),
+            &mut world,
+            pos,
+            &item.nbt,
+        );
+        stack.mirror(&mut world, pos);
+        for x in [12, 14] {
+            let destination = BlockPos::new(x, 30, 10);
+            assert_eq!(
+                crate::redstone::comparator::get_override(
+                    world.get_block(destination),
+                    &world,
+                    destination
+                ),
+                13
+            );
+            assert_eq!(
+                bincode::serialize(world.get_block_entity(destination).unwrap()).unwrap(),
+                bincode::serialize(world.get_block_entity(pos).unwrap()).unwrap()
+            );
+        }
+        crate::interaction::destroy(world.get_block(pos), &mut world, pos);
+        crate::interaction::place_in_world(Block::Stone {}, &mut world, pos, &None);
+        stack.mirror(&mut world, pos);
+        for x in [12, 14] {
+            let destination = BlockPos::new(x, 30, 10);
+            assert_eq!(world.get_block(destination), Block::Stone {});
+            assert!(world.get_block_entity(destination).is_none());
+        }
+    }
+
+    #[test]
+    fn auto_stack_updates_redstone_at_the_destinations() {
+        let mut world = super::super::tests::test_world();
+        let pos = BlockPos::new(10, 30, 10);
+        let stack = session(&world, pos, pos, &["east", "1", "4"]);
+        let lamp = BlockPos::new(15, 30, 10);
+        world.set_block(lamp, Block::RedstoneLamp { lit: false });
+        crate::interaction::place_in_world(Block::RedstoneBlock {}, &mut world, pos, &None);
+        assert_eq!(world.get_block(lamp), Block::RedstoneLamp { lit: false });
+        stack.mirror(&mut world, pos);
+        assert_eq!(world.get_block(lamp), Block::RedstoneLamp { lit: true });
+    }
+
+    #[test]
+    fn auto_stack_rejects_noop_and_out_of_bounds_configurations() {
+        let world = super::super::tests::test_world();
+        let pos = BlockPos::new(250, 30, 10);
+        let bounds = SelectionBounds::new(pos, pos, &world).unwrap();
+        for args in [["east", "0", "2"], ["east", "2", "0"]] {
+            let request = RStackRequest::parse_mode(&args, BlockPos::new(0, 0, 1), true).unwrap();
+            assert!(
+                AutoStack::new(bounds, &request.destinations(bounds, &world).unwrap()).is_err()
+            );
+        }
+        let request =
+            RStackRequest::parse_mode(&["east", "4", "2"], BlockPos::new(0, 0, 1), true).unwrap();
+        assert!(request.destinations(bounds, &world).is_err());
+        for flag in ["-w", "-a"] {
+            assert!(RStackRequest::parse_mode(&[flag], BlockPos::new(0, 0, 1), true).is_err());
+        }
+        let stack = session(&world, pos, pos, &["east", "-2", "2"]);
+        assert_eq!(
+            stack.destinations(pos).collect::<Vec<_>>(),
+            [BlockPos::new(248, 30, 10), BlockPos::new(246, 30, 10)]
+        );
+    }
 
     #[test]
     fn stack_arguments_are_flexible_signed_and_strict() {

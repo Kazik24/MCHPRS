@@ -4,6 +4,7 @@ use crate::messages;
 mod execute;
 mod schematic;
 mod schematic_paths;
+mod safety;
 #[cfg(test)]
 mod stack_tests;
 #[cfg(test)]
@@ -39,13 +40,13 @@ pub fn execute_command(
     args: &mut Vec<&str>,
 ) -> bool {
     let player = &mut plot.players[player_idx];
-    let command = if let Some(command) = COMMANDS.get(command) {
-        command
+    let (command_name, command) = if let Some(definition) = COMMANDS.get(command) {
+        (command, definition)
     } else if let Some(command) = ALIASES.get(command) {
         let mut alias: Vec<&str> = command.split(' ').collect();
         let command = alias.remove(0);
         args.append(&mut alias);
-        &COMMANDS[command]
+        (command, &COMMANDS[command])
     } else {
         return false;
     };
@@ -74,6 +75,11 @@ pub fn execute_command(
         }
         let first_pos = player.first_position.unwrap();
         let second_pos = player.second_position.unwrap();
+        if !(0..super::PLOT_BLOCK_HEIGHT).contains(&first_pos.y)
+            || !(0..super::PLOT_BLOCK_HEIGHT).contains(&second_pos.y) {
+            player.send_error_message("Selection is outside the world height");
+            return true;
+        }
         if !Plot::in_plot_bounds(plot_x, plot_z, first_pos.x, first_pos.z) {
             player.send_system_message(messages::FIRST_POSITION_OUTSIDE_PLOT_BOUNDS);
             return true;
@@ -146,6 +152,10 @@ pub fn execute_command(
             }
         }
     }
+    if let Err(error) = safety::validate_request(&plot.world, &plot.players[player_idx], command_name, command, &arguments) {
+        plot.players[player_idx].send_error_message(&error);
+        return true;
+    }
     if command.mutates_world {
         plot.reset_redpiler();
     }
@@ -156,6 +166,7 @@ pub fn execute_command(
         flags: ctx_flags,
     };
     (command.execute_fn)(ctx);
+    trim_history(&mut plot.players[player_idx]);
     true
 }
 
@@ -744,6 +755,20 @@ pub struct WorldEditUndo {
     plot_z: i32,
 }
 
+/// Bound retained undo/redo across repeated commands, including redstone stacks.
+pub(in crate::plot) fn trim_history(player: &mut Player) {
+    let entries = |history: &[WorldEditUndo]| -> u64 {
+        history.iter().flat_map(|undo| &undo.clipboards)
+            .map(|cb| cb.data.entries() as u64).sum()
+    };
+    let mut blocks = entries(&player.worldedit_undo) + entries(&player.worldedit_redo);
+    while blocks > crate::config::CONFIG.worldedit_history_blocks {
+        let history = if !player.worldedit_undo.is_empty() { &mut player.worldedit_undo } else { &mut player.worldedit_redo };
+        let removed = history.remove(0);
+        blocks -= removed.clipboards.iter().map(|cb| cb.data.entries() as u64).sum::<u64>();
+    }
+}
+
 pub enum PatternParseError {
     UnknownBlock(String),
     InvalidPattern(String),
@@ -797,7 +822,7 @@ impl FromStr for WorldEditPattern {
                         .get(5)
                         .map_or("0", |m| m.as_str())
                         .parse::<u32>()
-                        .unwrap(),
+                        .map_err(|_| PatternParseError::InvalidPattern(part.to_owned()))?,
                 )
             } else {
                 let block_name = pattern_match
@@ -819,8 +844,11 @@ impl FromStr for WorldEditPattern {
                 .get(2)
                 .map_or("100", |m| m.as_str())
                 .parse::<f32>()
-                .unwrap()
+                .map_err(|_| PatternParseError::InvalidPattern(part.to_owned()))?
                 / 100.0;
+            if !weight.is_finite() || pattern.parts.len() >= 256 {
+                return Err(PatternParseError::InvalidPattern(part.to_owned()));
+            }
 
             pattern.parts.push(WorldEditPatternPart {
                 weight,
@@ -828,6 +856,10 @@ impl FromStr for WorldEditPattern {
             });
         }
 
+        let weight: f32 = pattern.parts.iter().map(|part| part.weight).sum();
+        if !weight.is_finite() || weight <= 0.0 {
+            return Err(PatternParseError::InvalidPattern(pattern_str.to_owned()));
+        }
         Ok(pattern)
     }
 }
@@ -842,6 +874,9 @@ impl WorldEditPattern {
         let mut weight_sum = 0.0;
         for part in &self.parts {
             weight_sum += part.weight;
+        }
+        if !weight_sum.is_finite() || weight_sum <= 0.0 {
+            return Block::Air {};
         }
 
         let mut rng = rand::thread_rng();

@@ -155,6 +155,7 @@ These are the commands that are currently implemented:
 | `//undo` | None | Undoes the last action (from history) |
 | `//redo` | None | Redoes the last action (from history) |
 | `//rstack` | `//rs` | Stack with more options, Refer to [RedstoneTools](https://github.com/paulikauro/RedstoneTools) |
+| `/autostack [direction] [count] [spacing] [-e]` | None | Automatically stack your placements and removals in the selected region; `/autostack off` stops it. |
 | `//stack` | `//s` | Repeat the contents of the selection |
 | `//move` | None | Move the contents of the selection |
 | `//count` | None | Counts the number of blocks matching a mask |
@@ -167,6 +168,14 @@ These are the commands that are currently implemented:
 | `//rotate` | `//r` | Rotate the contents of the clipboard |
 | `//update` | None | Updates all blocks in the selection (`-p` to update the entire plot) |
 | `//help` | None | Displays help for WorldEdit commands |
+
+Select a source region before enabling `/autostack`, for example
+`/autostack east 5 2` for five copies spaced two blocks apart. Defaults are your
+look direction, one copy, and spacing two. It mirrors your future placements
+and removals; existing blocks can be copied first with `//rstack`. The source
+region stays fixed even if you change the selection or use `-e` to expand it.
+WorldEdit operations and simulation changes do not trigger automatic copies.
+Leaving the plot, disconnecting, or running `/autostack off` clears the session.
 
 ## Acknowledgments
 - [@AL1L](https://github.com/AL1L) for his contributions to worldedit and other various features.

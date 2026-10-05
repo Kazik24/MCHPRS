@@ -33,6 +33,7 @@ npm ci --prefix tools --ignore-scripts
 cargo build --locked
 python tools/run_protocol_smoke.py
 python tools/run_plot_load_smoke.py
+node tools/autostack_smoke.js
 ```
 
 On Windows, `py` can replace `python`. Each Python runner starts the server in a

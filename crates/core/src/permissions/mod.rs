@@ -6,7 +6,7 @@ use once_cell::sync::OnceCell;
 use postgres::{Client, NoTls};
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet, VecDeque};
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 mod rank;
 pub use rank::{Rank, RankProfile};
@@ -205,6 +205,13 @@ fn now() -> i64 {
         .unwrap_or_default()
         .as_secs() as i64
 }
+fn earliest_expiry(a: i64, b: i64) -> i64 {
+    match (a, b) {
+        (0, _) => b,
+        (_, 0) => a,
+        _ => a.min(b),
+    }
+}
 impl RawNode {
     fn applies(&self, config: &PermissionsConfig, time: i64) -> bool {
         if (self.expiry != 0 && self.expiry <= time)
@@ -257,6 +264,7 @@ pub struct PlayerPermissionsCache {
     plotsquared_compat: bool,
     pub rank_profile: Option<RankProfile>,
     mchprs_permissions: bool,
+    valid_until: Option<Instant>,
 }
 
 /// Keep existing handler permission names while isolating MCHPRS from Paper's
@@ -302,7 +310,12 @@ impl PlayerPermissionsCache {
     }
 
     fn stored_node_val(&self, name: &str) -> Option<i32> {
-        let time = now();
+        self.stored_node_val_at(name, now())
+    }
+    fn stored_node_val_at(&self, name: &str, time: i64) -> Option<i32> {
+        if self.valid_until.is_some_and(|deadline| Instant::now() >= deadline) {
+            return None;
+        }
         self.nodes
             .iter()
             .filter(|n| (n.expiry == 0 || n.expiry > time) && n.matches(name))
@@ -367,19 +380,20 @@ impl PlayerPermissionsCache {
             .filter_map(|n| {
                 n.permission
                     .strip_prefix("group.")
-                    .map(|g| (g.to_owned(), 0))
+                    .map(|g| (g.to_owned(), 0, n.expiry))
             })
             .collect();
         if roots.is_empty() && !denied.contains("default") {
-            roots.push_back(("default".to_owned(), 0));
+            roots.push_back(("default".to_owned(), 0, 0));
         }
         let mut result = Self {
             nodes: Vec::new(),
             plotsquared_compat: config.plotsquared_compat,
             rank_profile: None,
             mchprs_permissions: config.mchprs_permissions,
+            valid_until: Some(Instant::now() + Duration::from_secs(30)),
         };
-        let mut add = |node: &RawNode, direct: bool, depth: usize, weight: i64| {
+        let mut add = |node: &RawNode, direct: bool, depth: usize, weight: i64, expiry: i64| {
             if ["group.", "weight.", "prefix.", "suffix."]
                 .iter()
                 .any(|prefix| node.permission.starts_with(prefix))
@@ -390,7 +404,7 @@ impl PlayerPermissionsCache {
             result.nodes.push(PermissionNode {
                 permission: node.permission.clone(),
                 value: node.value,
-                expiry: node.expiry,
+                expiry: earliest_expiry(node.expiry, expiry),
                 priority: (
                     direct,
                     usize::from(node.server != "global")
@@ -404,13 +418,25 @@ impl PlayerPermissionsCache {
             });
         };
         for node in &users {
-            add(node, true, 0, 0);
+            add(node, true, 0, 0, 0);
         }
-        let mut visited = HashSet::new();
-        while let Some((name, depth)) = roots.pop_front() {
-            if denied.contains(&name) || !visited.insert(name.clone()) {
+        // A group can have multiple paths: a shorter temporary path and a longer
+        // permanent path must both survive. Dominated paths also bound cycles.
+        let mut visited: HashMap<String, Vec<(usize, i64)>> = HashMap::new();
+        while let Some((name, depth, expiry)) = roots.pop_front() {
+            if denied.contains(&name) {
                 continue;
             }
+            let paths = visited.entry(name.clone()).or_default();
+            let lasts_at_least = |a: i64, b: i64| a == 0 || (b != 0 && a >= b);
+            if paths
+                .iter()
+                .any(|&(d, e)| d <= depth && lasts_at_least(e, expiry))
+            {
+                continue;
+            }
+            paths.retain(|&(d, e)| !(depth <= d && lasts_at_least(expiry, e)));
+            paths.push((depth, expiry));
             let Some(nodes) = grouped.get(&name) else {
                 continue;
             };
@@ -423,16 +449,20 @@ impl PlayerPermissionsCache {
             for node in nodes {
                 if let Some(parent) = node.permission.strip_prefix("group.") {
                     if node.value {
-                        roots.push_back((parent.to_owned(), depth + 1));
+                        roots.push_back((
+                            parent.to_owned(),
+                            depth + 1,
+                            earliest_expiry(expiry, node.expiry),
+                        ));
                     }
                 } else {
-                    add(node, false, depth, weight);
+                    add(node, false, depth, weight, expiry);
                 }
             }
         }
         if config.redstonefun_ranks {
             let rank = visited
-                .iter()
+                .keys()
                 .filter_map(|group| Rank::from_group(group))
                 .max()
                 .unwrap_or_default();

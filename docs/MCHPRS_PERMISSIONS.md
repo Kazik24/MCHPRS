@@ -115,6 +115,32 @@ change a plot. Changing the shared history memory limit additionally requires
 `mchprs.plots.admin.rewind.memory`; exceeding the ordinary history tick limit
 requires `mchprs.plots.admin.rewind.unlimited`.
 
+### History capacity limits
+
+| Rank | Maximum history buffer / rewind request |
+| --- | --- |
+| Zaawansowany `[Z]`, Ekspert `[E]` | 200 game ticks |
+| Inżynier `[I]` | 1,000 game ticks |
+| Moderator `[M]`, Admin `[A]` | No permission-based tick-count ceiling |
+| Budowniczy `[B]`, Gracz `[G]` | No history commands |
+
+The maximum effective positive `mchprs.history.limit.<ticks>` node controls the
+finite limit. `advanced` has `mchprs.history.limit.200`; `expert` inherits it.
+`engineer` additionally has `mchprs.history.limit.1000`. Exact denials and node
+expiry apply when resolving the numeric nodes. If no numeric node applies, a
+non-unlimited player has no history allowance. The command's default buffer is
+still 100 ticks; users can request a larger allowed buffer explicitly.
+
+`admin` and `moderator` have an explicit
+`mchprs.plots.admin.rewind.unlimited` grant. This removes the tick-count ceiling,
+while the shared history memory budget, work budget and allocation checks still
+apply. Limits are checked before allocation and before a rewind changes a plot.
+Standalone servers retain the previous 1,000-tick/unlimited permission behavior.
+
+For a custom cap, deny any larger inherited numeric nodes and grant the desired
+node in `server=mchprs`. To give a finite cap to staff, also deny their unlimited
+node. As with other permission changes, reconnect to refresh the cache.
+
 | `/plot` subcommands | Permission |
 | --- | --- |
 | `info`, `i` | `mchprs.plots.info` |
@@ -145,7 +171,7 @@ WorldEdit uses the existing per-command nodes with the `mchprs.` prefix:
 The MCHPRS-specific commands retain their existing native nodes:
 `mchprs.we.update`, `mchprs.we.invalidatecaches`, and
 `mchprs.we.replacecontainer`. Redstone tools use
-`mchprs.redstonetools.find`, `.signsearch`, `.rstack`, `.container`, and `.cursel`.
+`mchprs.redstonetools.find`, `.signsearch`, `.rstack`, `.autostack`, `.container`, and `.cursel`.
 WorldEdit commands and plot searches/stacking require editing access to the
 current plot. Selection bounds still stay inside that plot, even for staff.
 
@@ -170,7 +196,7 @@ reapply the baseline or overwrite later permission edits.
 
 ## Provisioning record: 2026-10-05
 
-44 group permission rows were added in the `mchprs` server scope. Lord225's
+Initial rank provisioning added 44 group permission rows in the `mchprs` server scope. Lord225's
 authenticated UUID is `ec223c83-35a1-4838-9429-76de03eb2fb8`. His permanent global
 `group.engineer` membership was replaced with `group.moderator`, and
 `luckperms_players.primary_group` was set to `moderator`. The two existing
@@ -202,3 +228,11 @@ identical before and after cleanup. Plot database ownership/visual rows outside
 Lord225 ownership and all player files were preserved. MCHPRS was restarted;
 Paper remained running. Exploring other coordinates can generate fresh empty
 plots normally.
+
+## History limit record: 2026-10-05
+
+Four additional scoped nodes establish the 200/1,000/unlimited limits above.
+The validated database backup immediately before this change is
+`/srv/mchprs/deploy-backups/history-limits-20261005T132510Z/rf.dump`.
+The history-limit build deployed successfully as
+`sha256:1fde895df857c50bda2b0bf06507894713fae48625fcb5e013fb79e0007a0006`.

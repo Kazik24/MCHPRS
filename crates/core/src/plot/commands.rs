@@ -6,7 +6,6 @@ use crate::plot::data::sleep_time_for_tps;
 use crate::profile::PlayerProfile;
 use crate::redpiler::CompilerOptions;
 use crate::server::Message;
-use bitflags::_core::i32::MAX;
 use mchprs_network::packets::clientbound::{
     CDeclareCommands, CDeclareCommandsNode as Node, CDeclareCommandsNodeParser as Parser,
     ClientBoundPacket,
@@ -15,23 +14,47 @@ use mchprs_network::packets::PacketEncoder;
 use mchprs_network::PlayerPacketSender;
 use mchprs_save_data::plot_data::{Tps, WorldSendRate};
 use once_cell::sync::Lazy;
-use std::ops::Add;
 use std::str::FromStr;
 use std::time::Instant;
 use tracing::{debug, info, warn};
 
 // Parses a relative or absolute coordinate relative to a reference coordinate
-fn parse_relative_coord<F: FromStr + Add + Add<Output = F>>(
+trait RelativeCoordinate: FromStr {
+    fn checked_offset(self, offset: Self) -> Option<Self>;
+}
+impl RelativeCoordinate for i32 {
+    fn checked_offset(self, offset: Self) -> Option<Self> { self.checked_add(offset) }
+}
+impl RelativeCoordinate for f64 {
+    fn checked_offset(self, offset: Self) -> Option<Self> {
+        let result = self + offset;
+        result.is_finite().then_some(result)
+    }
+}
+fn parse_relative_coord<F: RelativeCoordinate>(
     coord: &str,
     ref_coord: F,
-) -> Result<F, <F as FromStr>::Err> {
+) -> Result<F, &'static str> {
     if coord == "~" {
         Ok(ref_coord)
     } else if let Some(offset_str) = coord.strip_prefix('~') {
-        offset_str.parse::<F>().map(|x| ref_coord + x)
+        let offset = offset_str.parse::<F>().map_err(|_| "Invalid coordinate")?;
+        ref_coord.checked_offset(offset).ok_or("Coordinate overflow")
     } else {
-        coord.parse::<F>()
+        coord.parse::<F>().map_err(|_| "Invalid coordinate")
     }
+}
+
+fn advance_bounded(ticks: u32, mut step: impl FnMut()) -> u32 {
+    let started = Instant::now();
+    let budget = std::time::Duration::from_millis(crate::config::CONFIG.command_work_time_ms);
+    let mut advanced = 0;
+    for _ in 0..ticks {
+        if started.elapsed() >= budget { break; }
+        step();
+        advanced += 1;
+    }
+    advanced
 }
 
 impl Plot {
@@ -69,22 +92,18 @@ impl Plot {
                 }
             }
             "claim" | "c" => {
-                if database::is_claimed(plot_x, plot_z).unwrap() {
-                    self.players[player].send_system_message(messages::PLOT_ALREADY_CLAIMED);
-                } else {
-                    self.claim_plot(plot_x, plot_z, player);
-                }
+                self.claim_plot(plot_x, plot_z, player);
             }
             "auto" | "a" => {
                 let mut start = (0, 0);
-                for _ in 0..MAX {
-                    if database::is_claimed(start.0, start.1).unwrap() {
-                        start = Plot::get_next_plot(start.0, start.1);
-                    } else {
-                        self.claim_plot(start.0, start.1, player);
-                        break;
+                for _ in 0..10_000 {
+                    match database::is_claimed(start.0, start.1) {
+                        Some(true) => start = Plot::get_next_plot(start.0, start.1),
+                        Some(false) => { self.claim_plot(start.0, start.1, player); return; },
+                        None => { self.players[player].send_error_message("Could not read plot claims"); return; },
                     }
                 }
+                self.players[player].send_error_message("No free plot in the automatic search area; choose a plot and use /plot claim");
             }
             "middle" => {
                 let center = Plot::get_center(plot_x, plot_z);
@@ -112,7 +131,10 @@ impl Plot {
                     0
                 };
 
-                let plots = database::get_owned_plots(args[0]);
+                let plots = match database::get_owned_plots(args[0]) {
+                    Ok(plots) => plots,
+                    Err(error) => { self.players[player].send_error_message(&format!("Could not read plots: {error}")); return; },
+                };
                 if !plots.is_empty() {
                     if let Some(&(plot_x, plot_z)) = plots.get(idx) {
                         let center = Plot::get_center(plot_x, plot_z);
@@ -459,6 +481,15 @@ impl Plot {
                 }
             }
             "/radv" | "/radvance" => {
+                let count = match args.as_slice() {
+                    [count] => count.parse::<u32>(),
+                    [unit, count] if matches!(unit.to_ascii_lowercase().as_str(), "nano" | "pico") => count.parse::<u32>(),
+                    _ => { self.players[player].send_error_message("Usage: /radvance [nano|pico] <ticks>"); return false; },
+                };
+                if !matches!(count, Ok(ticks) if ticks <= crate::config::CONFIG.max_command_ticks) {
+                    self.players[player].send_error_message(&format!("Tick count must be between 0 and {}", crate::config::CONFIG.max_command_ticks));
+                    return false;
+                }
                 let Some(arg0) = args.get(0) else {
                     self.players[player]
                         .send_error_message(messages::PLEASE_SPECIFY_NUMBER_TICKS_ADVANCE);
@@ -490,8 +521,8 @@ impl Plot {
                             );
                             return false;
                         }
-                        self.world.nanotick_advance(ticks);
-                        format!("{ticks} nano-ticks")
+                        let advanced = advance_bounded(ticks, || self.world.nanotick_advance(1));
+                        format!("{advanced} of {ticks} nano-ticks")
                     }
                     "pico" => {
                         let Some(num) = args.get(1) else {
@@ -517,18 +548,16 @@ impl Plot {
                             );
                             return false;
                         }
-                        self.world.picotick_advance(ticks);
-                        format!("{ticks} pico-ticks")
+                        let advanced = advance_bounded(ticks, || self.world.picotick_advance(1));
+                        format!("{advanced} of {ticks} pico-ticks")
                     }
                     num => {
                         let Ok(ticks) = num.parse::<u32>() else {
                             self.players[player].send_error_message(messages::UNABLE_PARSE_TICKS);
                             return false;
                         };
-                        for _ in 0..ticks {
-                            self.tick();
-                        }
-                        format!("{ticks} ticks")
+                        let advanced = advance_bounded(ticks, || self.tick());
+                        format!("{advanced} of {ticks} ticks")
                     }
                 };
 
@@ -798,7 +827,7 @@ pub static DECLARE_COMMANDS: Lazy<PacketEncoder> = Lazy::new(|| {
                 children: &[
                     1, 4, 5, 6, 11, 12, 14, 16, 18, 19, 20, 21, 22, 23, 24, 26, 29, 31, 32, 34, 36,
                     47, 49, 53, 60, 61, 63, 65, 66, 67, 71, 73, 74, 75, 82, 83, 85, 88, 90, 91,
-                    101, 106, 111, 112, 113, 114, 115, 116, 118, 120, 121,
+                    101, 106, 111, 112, 113, 114, 115, 116, 118, 120, 121, 124,
                 ],
                 redirect_node: None,
                 name: None,
@@ -1716,7 +1745,7 @@ pub static DECLARE_COMMANDS: Lazy<PacketEncoder> = Lazy::new(|| {
                 children: &[],
                 redirect_node: None,
                 name: Some("ticks"),
-                parser: Some(Parser::Integer(1, MAX)),
+                parser: Some(Parser::Integer(1, i32::MAX)),
                 suggestions_type: None,
             },
             Node {
@@ -1748,7 +1777,7 @@ pub static DECLARE_COMMANDS: Lazy<PacketEncoder> = Lazy::new(|| {
                 children: &[],
                 redirect_node: None,
                 name: Some("ticks"),
-                parser: Some(Parser::Integer(1, MAX)),
+                parser: Some(Parser::Integer(1, i32::MAX)),
                 suggestions_type: None,
             },
             // 108–109: server history memory limit, in MiB
@@ -1765,7 +1794,7 @@ pub static DECLARE_COMMANDS: Lazy<PacketEncoder> = Lazy::new(|| {
                 children: &[],
                 redirect_node: None,
                 name: Some("MiB"),
-                parser: Some(Parser::Integer(0, MAX)),
+                parser: Some(Parser::Integer(0, i32::MAX)),
                 suggestions_type: None,
             },
             // 110: flexible tool arguments, validated by the command handler
@@ -1892,6 +1921,15 @@ pub static DECLARE_COMMANDS: Lazy<PacketEncoder> = Lazy::new(|| {
                 children: &[],
                 redirect_node: None,
                 name: Some("off"),
+                parser: None,
+                suggestions_type: None,
+            },
+            // 124: /autostack
+            Node {
+                flags: (CommandFlags::LITERAL | CommandFlags::EXECUTABLE).bits() as i8,
+                children: &[110],
+                redirect_node: None,
+                name: Some("autostack"),
                 parser: None,
                 suggestions_type: None,
             },

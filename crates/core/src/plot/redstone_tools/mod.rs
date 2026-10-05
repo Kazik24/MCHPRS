@@ -18,6 +18,7 @@ use serde_json::{json, Value};
 /// Session state only: none of these preferences or caches alter player saves.
 #[derive(Default)]
 pub(crate) struct PlayerTools {
+    pub auto_stack: Option<stack::AutoStack>,
     pub selection_visible: bool,
     pub block_search: Option<SearchCache>,
     pub sign_search: Option<SearchCache>,
@@ -29,6 +30,7 @@ enum ToolCommand {
     Find,
     SignSearch,
     RStack,
+    AutoStack,
     Container,
     CurrentSelection,
 }
@@ -39,6 +41,7 @@ impl ToolCommand {
             "//find" => Some(Self::Find),
             "//signsearch" | "//ss" => Some(Self::SignSearch),
             "//rstack" | "//rs" => Some(Self::RStack),
+            "/autostack" => Some(Self::AutoStack),
             "/container" => Some(Self::Container),
             "/cursel" => Some(Self::CurrentSelection),
             _ => None,
@@ -50,6 +53,7 @@ impl ToolCommand {
             Self::Find => "redstonetools.find",
             Self::SignSearch => "redstonetools.signsearch",
             Self::RStack => "redstonetools.rstack",
+            Self::AutoStack => "redstonetools.autostack",
             Self::Container => "redstonetools.container",
             Self::CurrentSelection => "redstonetools.cursel",
         }
@@ -73,6 +77,8 @@ enum ToolNotice {
     SelectionDisabled,
     ItemGiven,
     Stacked(u32),
+    AutoStackEnabled,
+    AutoStackDisabled,
 }
 
 impl ToolNotice {
@@ -85,6 +91,8 @@ impl ToolNotice {
             }
             Self::ItemGiven => (messages::TOOL_ITEM_GIVEN.into(), "light_purple"),
             Self::Stacked(count) => (messages::copies_stacked(count), "light_purple"),
+            Self::AutoStackEnabled => (messages::AUTO_STACK_ENABLED.into(), "light_purple"),
+            Self::AutoStackDisabled => (messages::AUTO_STACK_DISABLED.into(), "light_purple"),
         };
         player.send_raw_system_message(json!({"text": text, "color": color}).to_string());
     }
@@ -171,6 +179,12 @@ impl Plot {
         let Some(tool) = ToolCommand::parse(command) else {
             return false;
         };
+        // Stopping a session must remain available if its permissions changed.
+        if matches!(tool, ToolCommand::AutoStack) && args == ["off"] {
+            self.players[player].redstone_tools.auto_stack = None;
+            ToolNotice::AutoStackDisabled.send(&self.players[player]);
+            return true;
+        }
         let result = self
             .check_tool_access(player, tool)
             .and_then(|()| self.execute_tool(player, tool, args));
@@ -187,7 +201,10 @@ impl Plot {
         }
         if matches!(
             command,
-            ToolCommand::Find | ToolCommand::SignSearch | ToolCommand::RStack
+            ToolCommand::Find
+                | ToolCommand::SignSearch
+                | ToolCommand::RStack
+                | ToolCommand::AutoStack
         ) && if crate::permissions::dedicated_permissions() {
             !player.can_edit_plot(self.owner)
         } else {
@@ -203,6 +220,7 @@ impl Plot {
             ToolCommand::Find => self.search_blocks(player, args),
             ToolCommand::SignSearch => self.search_signs(player, args),
             ToolCommand::RStack => self.redstone_stack(player, args),
+            ToolCommand::AutoStack => self.auto_stack(player, args),
             ToolCommand::Container => items::give_container(&mut self.players[player], args),
             ToolCommand::CurrentSelection => selection::toggle(&mut self.players[player], args),
         }

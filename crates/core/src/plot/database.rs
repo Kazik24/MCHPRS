@@ -65,7 +65,7 @@ pub fn get_cached_username(uuid: String) -> Option<String> {
         .ok()
 }
 
-pub fn get_owned_plots(player: &str) -> Vec<(i32, i32)> {
+pub fn get_owned_plots(player: &str) -> rusqlite::Result<Vec<(i32, i32)>> {
     let conn = lock();
     let mut stmt = conn
         .prepare_cached(
@@ -80,12 +80,10 @@ pub fn get_owned_plots(player: &str) -> Vec<(i32, i32)> {
                 WHERE
                     name=?1
                     AND is_owner=TRUE",
-        )
-        .unwrap();
-    stmt.query_map(params![player], |row| Ok((row.get(0)?, row.get(1)?)))
-        .unwrap()
-        .map(Result::unwrap)
-        .collect()
+        )?;
+    let plots = stmt.query_map(params![player], |row| Ok((row.get(0)?, row.get(1)?)))?
+        .collect();
+    plots
 }
 
 pub fn is_claimed(plot_x: i32, plot_z: i32) -> Option<bool> {
@@ -98,39 +96,51 @@ pub fn is_claimed(plot_x: i32, plot_z: i32) -> Option<bool> {
         .ok()
 }
 
-pub fn claim_plot(plot_x: i32, plot_z: i32, uuid: &str) {
-    let conn = lock();
-    conn.execute(
+pub fn claim_plot(plot_x: i32, plot_z: i32, uuid: &str) -> rusqlite::Result<bool> {
+    claim_plot_in(&mut lock(), plot_x, plot_z, uuid)
+}
+
+fn claim_plot_in(conn: &mut Connection, plot_x: i32, plot_z: i32, uuid: &str) -> rusqlite::Result<bool> {
+    let tx = conn.transaction()?;
+    let claimed: bool = tx.query_row(
+        "SELECT EXISTS(SELECT 1 FROM plot WHERE plot_x=?1 AND plot_z=?2)",
+        params![plot_x, plot_z], |row| row.get(0),
+    )?;
+    if claimed { return Ok(false); }
+    // Resolve the user before writing either row; a failed claim leaves no orphan.
+    let user_id: i64 = tx.query_row("SELECT id FROM user WHERE uuid=?1", [uuid], |row| row.get(0))?;
+    tx.execute(
         "INSERT INTO plot(plot_x, plot_z) VALUES(?1, ?2)",
         params![plot_x, plot_z],
-    )
-    .unwrap();
-
-    conn.execute(
+    )?;
+    tx.execute(
         "INSERT INTO userplot(user_id, plot_id, is_owner)
                 VALUES(
-                    (SELECT id FROM user WHERE user.uuid = ?1),
+                    ?1,
                     LAST_INSERT_ROWID(),
                     TRUE
                 )",
-        params![uuid],
-    )
-    .unwrap();
+        params![user_id],
+    )?;
+    tx.commit()?;
+    Ok(true)
 }
 
-pub fn ensure_user(uuid: &str, name: &str) {
+pub fn ensure_user(uuid: &str, name: &str) -> rusqlite::Result<()> {
     lock()
         .execute(
             "INSERT INTO user(uuid, name)
                 VALUES (?1, ?2)
                 ON CONFLICT (uuid) DO UPDATE SET name = ?3",
             params![uuid, name, name],
-        )
-        .unwrap();
+        )?;
+    Ok(())
 }
 
 pub fn init() {
     let conn = lock();
+    conn.pragma_update(None, "foreign_keys", true).expect("Could not enable plot foreign keys");
+    conn.busy_timeout(std::time::Duration::from_secs(5)).expect("Could not set plot database timeout");
 
     conn.execute(
         "CREATE TABLE IF NOT EXISTS plot_visual_settings(
@@ -174,4 +184,7 @@ pub fn init() {
         [],
     )
     .unwrap();
+    // Fail visibly on legacy duplicate claims instead of selecting an arbitrary owner.
+    conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS plot_coordinates ON plot(plot_x, plot_z)", [])
+        .expect("Duplicate plot coordinates must be repaired before startup");
 }

@@ -630,12 +630,18 @@ pub struct UseOnBlockContext<'a> {
     pub cursor_y: f32,
 }
 
-/// Returns true when the client placement must be cancelled.
+pub enum ItemUseResult {
+    Cancelled,
+    Used,
+    Placed(BlockPos),
+}
+
+/// Distinguishes successful placement from interaction and rejected placement.
 pub fn use_item_on_block(
     item: &ItemStack,
     world: &mut PlotWorld,
     ctx: UseOnBlockContext<'_>,
-) -> bool {
+) -> ItemUseResult {
     let use_pos = ctx.block_pos;
     let use_block = world.get_block(use_pos);
     let block_pos = ctx.block_pos.offset(ctx.block_face);
@@ -643,7 +649,7 @@ pub fn use_item_on_block(
     top_pos.y += 1;
     if (block_pos == ctx.player.pos.block_pos() || block_pos == top_pos) && !CONFIG.block_in_hitbox
     {
-        return false;
+        return ItemUseResult::Used;
     }
     let can_place = item.item_type.is_block() && world.get_block(block_pos).can_place_block_in();
     if !ctx.player.crouching
@@ -656,7 +662,7 @@ pub fn use_item_on_block(
         )
         .is_success()
     {
-        return false;
+        return ItemUseResult::Used;
     }
 
     if can_place && world.contains_position(block_pos) {
@@ -664,7 +670,7 @@ pub fn use_item_on_block(
             && !ctx.player.has_permission("mchprs.build.place")
         {
             ctx.player.send_no_permission_message();
-            return true;
+            return ItemUseResult::Cancelled;
         }
         let block = get_state_for_placement(world, block_pos, item.item_type, &ctx);
         let block = apply_item_properties(block, &item.nbt);
@@ -687,9 +693,9 @@ pub fn use_item_on_block(
         }
 
         place_in_world(block, world, block_pos, &item.nbt);
-        false
+        ItemUseResult::Placed(block_pos)
     } else {
-        true
+        ItemUseResult::Cancelled
     }
 }
 

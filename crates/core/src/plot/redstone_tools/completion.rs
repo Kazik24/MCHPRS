@@ -37,6 +37,12 @@ impl Plot {
             ]
             .map(str::to_owned)
             .to_vec(),
+            ToolCommand::AutoStack => [
+                "off", "me", "north", "south", "east", "west", "up", "down", "ne", "nw", "se",
+                "sw", "neu", "ned", "forward", "back", "left", "right", "-e",
+            ]
+            .map(str::to_owned)
+            .to_vec(),
             ToolCommand::Find | ToolCommand::SignSearch if args.first() == Some(&"-p") => {
                 let cache = match tool {
                     ToolCommand::Find => self.players[player].redstone_tools.block_search.as_ref(),

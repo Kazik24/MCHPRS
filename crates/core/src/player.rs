@@ -94,6 +94,12 @@ pub struct PlayerPos {
 }
 
 impl PlayerPos {
+    /// Keep coordinates inside Minecraft's border and away from integer overflow.
+    pub fn is_valid(self) -> bool {
+        self.x.is_finite() && self.y.is_finite() && self.z.is_finite()
+            && self.x.abs() <= 30_000_000.0 && self.z.abs() <= 30_000_000.0
+            && (-2048.0..=2048.0).contains(&self.y)
+    }
     pub fn new(x: f64, y: f64, z: f64) -> PlayerPos {
         PlayerPos { x, y, z }
     }
@@ -130,6 +136,10 @@ pub struct Player {
     pub inventory: Vec<Option<ItemStack>>,
     /// The selected slot of the player's hotbar (1-9)
     pub selected_slot: u32,
+    permissions_refresh: Option<std::sync::mpsc::Receiver<anyhow::Result<PlayerPermissionsCache>>>,
+    next_permissions_refresh: Instant,
+    chat_window: Instant,
+    chat_count: u32,
     pub pos: PlayerPos,
     /// The last X chunk the player was in. This is used for updated view position.
     pub last_chunk_x: i32,
@@ -223,6 +233,10 @@ impl Player {
             skin_parts: Default::default(),
             inventory,
             selected_slot: player_data.selected_item_slot as u32,
+            permissions_refresh: None,
+            next_permissions_refresh: Instant::now() + std::time::Duration::from_secs(25),
+            chat_window: Instant::now(),
+            chat_count: 0,
             pos: PlayerPos {
                 x: player_data.position[0],
                 y: player_data.position[1],
@@ -292,6 +306,12 @@ impl Player {
             };
             if !(0..9).contains(&player.selected_item_slot) {
                 anyhow::bail!("invalid hotbar slot");
+            }
+            if !PlayerPos::new(player.position[0], player.position[1], player.position[2]).is_valid()
+                || player.rotation.iter().any(|angle| !angle.is_finite())
+                || !player.fly_speed.is_finite() || !(0.0..=10.0).contains(&player.fly_speed)
+                || !player.walk_speed.is_finite() || !(0.0..=10.0).contains(&player.walk_speed) {
+                anyhow::bail!("invalid player coordinates, rotation or speed");
             }
             let mut inventory_slots = std::collections::HashSet::new();
             for entry in &mut player.inventory {
@@ -455,7 +475,7 @@ impl Player {
 
     pub fn teleport(&mut self, pos: PlayerPos) {
         // Prevent from teleporting to Infinity or NaN
-        if !pos.x.is_finite() || !pos.y.is_finite() || !pos.z.is_finite() {
+        if !pos.is_valid() {
             self.send_error_message(messages::INVALID_TELEPORT_COORDINATES);
             return;
         }
@@ -561,6 +581,48 @@ impl Player {
             // An authenticated proxy deployment must not grant all permissions
             // when its LuckPerms configuration is accidentally omitted.
             CONFIG.velocity.is_none()
+        }
+    }
+    pub(super) fn accept_chat_message(&mut self) -> bool {
+        if self.chat_window.elapsed() >= std::time::Duration::from_secs(1) {
+            self.chat_window = Instant::now();
+            self.chat_count = 0;
+        }
+        if self.chat_count >= 5 { return false; }
+        self.chat_count += 1;
+        true
+    }
+
+    /// Refresh off the plot thread. A stale cache stops granting permissions
+    /// after 30 seconds even if the database is slow or unavailable.
+    pub(super) fn refresh_permissions(&mut self) {
+        if self.permissions_cache.is_none() {
+            return;
+        }
+        if let Some(receiver) = &self.permissions_refresh {
+            match receiver.try_recv() {
+                Ok(result) => {
+                    self.permissions_cache = Some(result.unwrap_or_else(|error| {
+                        tracing::error!("LuckPerms refresh failed: {error}; denying permissions");
+                        PlayerPermissionsCache::default()
+                    }));
+                    self.permissions_refresh = None;
+                    self.next_permissions_refresh = Instant::now() + std::time::Duration::from_secs(25);
+                }
+                Err(std::sync::mpsc::TryRecvError::Disconnected) => {
+                    self.permissions_cache = Some(PlayerPermissionsCache::default());
+                    self.permissions_refresh = None;
+                }
+                Err(std::sync::mpsc::TryRecvError::Empty) => return,
+            }
+        }
+        if Instant::now() >= self.next_permissions_refresh {
+            let (sender, receiver) = std::sync::mpsc::sync_channel(1);
+            let uuid = self.uuid;
+            self.permissions_refresh = Some(receiver);
+            std::thread::spawn(move || {
+                let _ = sender.send(permissions::load_player_cache(uuid));
+            });
         }
     }
 
