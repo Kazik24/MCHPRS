@@ -140,6 +140,10 @@ macro_rules! items {
 
 // list of ids: https://github.com/PrismarineJS/minecraft-data/blob/master/data/pc/1.18/items.json
 items! {
+    Compass {
+        get_id: 795,
+        from_id(_id): 795 => {},
+    },
     // Wooden Axe
     WEWand {
         get_id: 702,
@@ -593,6 +597,9 @@ mod registry_tests {
             Item::Piston { sticky: true }
         );
         assert_eq!(Item::from_name("stone").unwrap().get_id(), 1);
+        assert_eq!(Item::from_name("compass"), Some(Item::Compass));
+        assert_eq!(Item::from_id(Item::Compass.get_id()), Item::Compass);
+        assert!(!Item::Compass.is_block());
         assert!(Item::from_name("pale_oak_planks").unwrap().is_block());
     }
 }

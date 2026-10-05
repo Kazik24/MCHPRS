@@ -223,34 +223,26 @@ pub(super) fn execute_move(mut ctx: CommandExecuteContext<'_>) {
 pub(super) fn execute_paste(ctx: CommandExecuteContext<'_>) {
     let start_time = Instant::now();
 
-    if ctx.player.worldedit_clipboard.is_some() {
-        // Here I am cloning the clipboard. This is bad. Don't do this.
-        let cb = &ctx.player.worldedit_clipboard.clone().unwrap();
-        let pos = ctx.player.pos.block_pos();
-        let offset_x = pos.x - cb.offset_x;
-        let offset_y = pos.y - cb.offset_y;
-        let offset_z = pos.z - cb.offset_z;
-        let first_pos = BlockPos::new(offset_x, offset_y, offset_z);
-        let second_pos = BlockPos::new(
-            offset_x + cb.size_x as i32 - 1,
-            offset_y + cb.size_y as i32 - 1,
-            offset_z + cb.size_z as i32 - 1,
-        );
-        capture_undo(ctx.plot, ctx.player, first_pos, second_pos);
-        paste_clipboard(ctx.plot, cb, pos, ctx.has_flag('a'));
-        if ctx.has_flag('s') {
-            ctx.player.worldedit_set_first_position(first_pos);
-            ctx.player.worldedit_set_second_position(second_pos);
-        }
-        if ctx.has_flag('u') {
-            update(ctx.plot, first_pos, second_pos);
-        }
-        ctx.player
-            .send_worldedit_message(&messages::clipboard_pasted(start_time.elapsed()));
-    } else {
+    let Some(clipboard) = ctx.player.worldedit_clipboard.as_ref() else {
         ctx.player
             .send_system_message(messages::CLIPBOARD_EMPTY_PASTE);
+        return;
+    };
+    let pos = ctx.player.pos.block_pos();
+    let (first_pos, second_pos) = clipboard.bounds_at(pos);
+    let ignore_air = ctx.has_flag('a');
+    capture_undo(ctx.plot, ctx.player, first_pos, second_pos);
+    let clipboard = ctx.player.worldedit_clipboard.as_ref().unwrap();
+    paste_clipboard(ctx.plot, clipboard, pos, ignore_air);
+    if ctx.has_flag('s') {
+        ctx.player.worldedit_set_first_position(first_pos);
+        ctx.player.worldedit_set_second_position(second_pos);
     }
+    if ctx.has_flag('u') {
+        update(ctx.plot, first_pos, second_pos);
+    }
+    ctx.player
+        .send_worldedit_message(&messages::clipboard_pasted(start_time.elapsed()));
 }
 
 pub(super) fn execute_load(ctx: CommandExecuteContext<'_>) {
@@ -364,26 +356,7 @@ pub(super) fn execute_undo(ctx: CommandExecuteContext<'_>) {
             .send_error_message(messages::CANNOT_UNDO_OUTSIDE_CURRENT_PLOT);
         return;
     }
-    let redo = WorldEditUndo {
-        clipboards: undo
-            .clipboards
-            .iter()
-            .map(|clipboard| {
-                let first_pos = BlockPos {
-                    x: undo.pos.x - clipboard.offset_x,
-                    y: undo.pos.y - clipboard.offset_y,
-                    z: undo.pos.z - clipboard.offset_z,
-                };
-                let second_pos = BlockPos {
-                    x: first_pos.x + clipboard.size_x as i32 - 1,
-                    y: first_pos.y + clipboard.size_y as i32 - 1,
-                    z: first_pos.z + clipboard.size_z as i32 - 1,
-                };
-                create_clipboard(ctx.plot, undo.pos, first_pos, second_pos)
-            })
-            .collect(),
-        ..undo
-    };
+    let redo = undo.capture_inverse(ctx.plot);
     for clipboard in undo.clipboards.iter().rev() {
         paste_clipboard(ctx.plot, clipboard, undo.pos, false);
     }
@@ -402,26 +375,7 @@ pub(super) fn execute_redo(ctx: CommandExecuteContext<'_>) {
             .send_error_message(messages::CANNOT_REDO_OUTSIDE_CURRENT_PLOT);
         return;
     }
-    let undo = WorldEditUndo {
-        clipboards: redo
-            .clipboards
-            .iter()
-            .map(|clipboard| {
-                let first_pos = BlockPos {
-                    x: redo.pos.x - clipboard.offset_x,
-                    y: redo.pos.y - clipboard.offset_y,
-                    z: redo.pos.z - clipboard.offset_z,
-                };
-                let second_pos = BlockPos {
-                    x: first_pos.x + clipboard.size_x as i32 - 1,
-                    y: first_pos.y + clipboard.size_y as i32 - 1,
-                    z: first_pos.z + clipboard.size_z as i32 - 1,
-                };
-                create_clipboard(ctx.plot, redo.pos, first_pos, second_pos)
-            })
-            .collect(),
-        ..redo
-    };
+    let undo = redo.capture_inverse(ctx.plot);
     for clipboard in &redo.clipboards {
         paste_clipboard(ctx.plot, clipboard, redo.pos, false);
     }

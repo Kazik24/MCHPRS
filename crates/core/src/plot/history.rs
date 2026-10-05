@@ -91,10 +91,7 @@ impl TickHistory {
 
     fn status(&self) -> String {
         let (used, limit) = self.budget.stats();
-        let state = match self.enabled() {
-            true => "on",
-            false => "off",
-        };
+        let state = if self.enabled() { "on" } else { "off" };
 
         messages::history_status(
             state,
@@ -331,10 +328,8 @@ impl Plot {
         if !player.has_permission(permission) {
             return Err(messages::COMMAND_PERMISSION_DENIED.into());
         }
-        if mutating {
-            if !player.can_edit_plot(self.owner, (self.world.x, self.world.z)) {
-                return Err(messages::PLOT_PERMISSION_DENIED.into());
-            }
+        if mutating && !player.can_edit_plot(self.owner, (self.world.x, self.world.z)) {
+            return Err(messages::PLOT_PERMISSION_DENIED.into());
         }
         Ok(())
     }

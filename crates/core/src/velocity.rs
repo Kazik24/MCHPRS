@@ -1,5 +1,5 @@
 //! Velocity modern forwarding. Verify the MAC before interpreting any identity.
-use anyhow::{bail, ensure, Context, Result};
+use anyhow::{ensure, Context, Result};
 use hmac::{Hmac, Mac};
 use mchprs_network::packets::clientbound::CPlayerInfoAddPlayerProperty;
 use mchprs_network::packets::PacketDecoderExt;
@@ -55,7 +55,6 @@ fn verify_with_secret(secret: &[u8], data: &[u8], username: &str) -> Result<Forw
         .map_err(|_| anyhow::anyhow!("Invalid forwarding signature"))?;
 
     let mut reader = Cursor::new(payload);
-    let decode = || -> Result<ForwardedProfile> { bail!("Malformed forwarding payload") };
     let version = reader
         .read_varint()
         .map_err(|_| anyhow::anyhow!("Missing forwarding version"))?;
@@ -81,12 +80,8 @@ fn verify_with_secret(secret: &[u8], data: &[u8], username: &str) -> Result<Forw
     ensure!((0..=16).contains(&count), "Too many profile properties");
     let mut properties = Vec::new();
     for _ in 0..count {
-        let Ok(name) = reader.read_string() else {
-            return decode();
-        };
-        let Ok(value) = reader.read_string() else {
-            return decode();
-        };
+        let name = reader.read_string().map_err(|_| malformed_payload())?;
+        let value = reader.read_string().map_err(|_| malformed_payload())?;
         ensure!(
             name.len() <= 64 && value.len() <= 16384,
             "Profile property too large"
@@ -94,13 +89,11 @@ fn verify_with_secret(secret: &[u8], data: &[u8], username: &str) -> Result<Forw
         let signature = match reader.read_unsigned_byte() {
             Ok(0) => None,
             Ok(1) => {
-                let Ok(signature) = reader.read_string() else {
-                    return decode();
-                };
+                let signature = reader.read_string().map_err(|_| malformed_payload())?;
                 ensure!(signature.len() <= 4096, "Profile signature too large");
                 Some(signature)
             }
-            _ => return decode(),
+            _ => return Err(malformed_payload()),
         };
         properties.push(CPlayerInfoAddPlayerProperty {
             name,
@@ -117,6 +110,10 @@ fn verify_with_secret(secret: &[u8], data: &[u8], username: &str) -> Result<Forw
 
 pub fn valid_username(name: &str) -> bool {
     (1..=16).contains(&name.len()) && name.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_')
+}
+
+fn malformed_payload() -> anyhow::Error {
+    anyhow::anyhow!("Malformed forwarding payload")
 }
 
 #[cfg(test)]

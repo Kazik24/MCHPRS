@@ -454,7 +454,12 @@ pub fn update_wire_neighbors(world: &mut impl World, pos: BlockPos) {
         for n_direction in &BlockFace::values() {
             let n_neighbor_pos = neighbor_pos.offset(*n_direction);
             let block = world.get_block(n_neighbor_pos);
-            update(block, world, n_neighbor_pos, Some(n_direction.opposite()));
+            // These are power notifications through a neighboring block. Its
+            // state did not change, so an observer watching it must not pulse.
+            // Observers adjacent to the changed wire are notified above.
+            if !matches!(block, Block::Observer { .. }) {
+                update(block, world, n_neighbor_pos, Some(n_direction.opposite()));
+            }
         }
     }
 }

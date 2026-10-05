@@ -69,6 +69,7 @@ The folowing options are available at the toplevel (under no header):
 | `proxy_chat` | Submit public chat to Velocity; requires authenticated modern forwarding | `false` |
 | `max_players` | Maximum number of simultaneous players | `99999` |
 | `view_distance` | Maximal distance (in chunks) between players and loaded chunks | `8` |
+| `neighbor_update_interval_ms` | Refresh interval for neighboring plot snapshots; `2000` = 0.5 Hz, `0` hides neighbors | `2000` |
 | `bungeecord` | Enable compatibility with [BungeeCord](https://github.com/SpigotMC/BungeeCord) | `false` |
 | `whitelist` | Whether or not the whitelist (in `whitelist.json`) shoud be enabled | `false` |
 | `schemati` | Mimic the verification and directory layout used by the Open Redstone Engineers [Schemati plugin](https://github.com/OpenRedstoneEngineers/Schemati) | `false` |
@@ -76,6 +77,19 @@ The folowing options are available at the toplevel (under no header):
 | `auto_redpiler` | Use redpiler automatically | true |
 
 To change the plot size edit the constants defined in [plot/mod.rs](./crates/core/src/plot/mod.rs).
+
+Neighboring builds inside the view distance are shown as snapshots, with static
+pistons, refreshed only when their chunk data changes. The current plot keeps its
+normal simulation and visual update rates. Neighboring plots are read-only until
+you enter them; players and sounds are shown only within the current plot.
+Unloaded plots use saved data without starting simulation. Snapshot caches are
+bounded, and reading neighboring saves does not migrate or rewrite them.
+
+Right-click with a compass in either hand to teleport onto the block you are
+pointing at, up to 256 blocks away within the current plot. The compass centers
+you on top of the block and preserves your view direction. Teleportation requires
+space for your full standing body; a miss or blocked destination leaves you in
+place. Collision checks are conservative for blocks with complex shapes.
 
 For shared public chat between Paper RedstoneFun and MROWW, see
 [the network chat setup](docs/NETWORK_CHAT.md). The Velocity and Paper plugins

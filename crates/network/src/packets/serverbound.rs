@@ -27,6 +27,7 @@ pub trait ServerBoundPacketHandler {
     fn handle_player_digging(&mut self, _packet: SPlayerDigging, _player_idx: usize) {}
     fn handle_entity_action(&mut self, _packet: SEntityAction, _player_idx: usize) {}
     fn handle_animation(&mut self, _packet: SAnimation, _player_idx: usize) {}
+    fn handle_use_item(&mut self, _packet: SUseItem, _player_idx: usize) {}
     fn handle_player_block_placement(&mut self, _packet: SPlayerBlockPlacemnt, _player_idx: usize) {
     }
     fn handle_held_item_change(&mut self, _packet: SHeldItemChange, _player_idx: usize) {}
@@ -530,6 +531,28 @@ impl ServerBoundPacket for SPlayerBlockPlacemnt {
 
     fn handle(self: Box<Self>, handler: &mut dyn ServerBoundPacketHandler, player_idx: usize) {
         handler.handle_player_block_placement(*self, player_idx);
+    }
+}
+
+pub struct SUseItem {
+    pub hand: i32,
+    pub sequence: i32,
+    pub yaw: f32,
+    pub pitch: f32,
+}
+
+impl ServerBoundPacket for SUseItem {
+    fn decode<T: PacketDecoderExt>(decoder: &mut T) -> DecodeResult<Self> {
+        Ok(Self {
+            hand: decoder.read_varint()?,
+            sequence: decoder.read_varint()?,
+            yaw: decoder.read_float()?,
+            pitch: decoder.read_float()?,
+        })
+    }
+
+    fn handle(self: Box<Self>, handler: &mut dyn ServerBoundPacketHandler, player_idx: usize) {
+        handler.handle_use_item(*self, player_idx);
     }
 }
 

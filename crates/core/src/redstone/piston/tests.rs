@@ -5,12 +5,65 @@ use crate::world::World;
 use mchprs_blocks::block_entities::{BlockEntity, MovingPistonEntity};
 use mchprs_blocks::blocks::{Block, RedstoneObserver, RedstonePiston, RedstonePistonHead};
 use mchprs_blocks::{BlockFace, BlockFacing, BlockPos};
+use crate::plot::worldedit::{load_schematic, paste_clipboard};
 
 fn empty_world() -> PlotWorld {
     let chunks = (0..PLOT_WIDTH)
         .flat_map(|x| (0..PLOT_WIDTH).map(move |z| Chunk::empty(x, z)))
         .collect();
     PlotWorld::from_chunks(0, 0, chunks, Default::default())
+}
+
+#[test]
+fn dust_shape_change_does_not_start_piston_observer_early() {
+    use sha2::{Digest, Sha256};
+    let schematic = include_bytes!("../../../../../test_data/EDGECASE_PISTION.schem");
+    let reference: serde_json::Value = serde_json::from_str(include_str!(
+        "../../../../../test_data/piston-repair/java-piston-oscillator-trace.json"
+    )).unwrap();
+    assert_eq!(reference["version"], "1.21.5");
+    assert_eq!(reference["server_sha1"], "e6ec2f64e6080b9b5d9b471b291c33cc7f509733");
+    assert_eq!(reference["schematic_sha256"], format!("{:x}", Sha256::digest(schematic)));
+    let cb = load_schematic(std::io::Cursor::new(schematic)).unwrap();
+    let expected = reference["trace"].as_array().unwrap();
+    for stepping in ["game", "nano", "pico"] {
+        let mut world = empty_world();
+        paste_clipboard(&mut world, &cb, BlockPos::new(40 + cb.offset_x, 30 + cb.offset_y, 40 + cb.offset_z), false);
+        for _ in 0..8 { world.tick_interpreted(); }
+        let source = BlockPos::new(40, 31, 40);
+        crate::interaction::destroy(world.get_block(source), &mut world, source);
+        // Dust changed from a line to a cross, but the piston watched by the
+        // observer has not changed yet. Only its later retraction starts a pulse.
+        assert!(!world.pending_tick_at(BlockPos::new(40, 32, 42)));
+        for (tick, sample) in expected.iter().enumerate() {
+            let piston_state = |z| match world.get_block(BlockPos::new(40, 31, z)) {
+                Block::Piston { piston } if piston.extended => "sticky_piston[extended=true]",
+                Block::Piston { .. } => "sticky_piston[extended=false]",
+                Block::MovingPiston { .. } => "moving_piston",
+                block => panic!("unexpected piston state {block:?}"),
+            };
+            let observer_powered = |z| matches!(world.get_block(BlockPos::new(40, 32, z)), Block::Observer { observer } if observer.powered);
+            let wire_state = |z| {
+                let block = world.get_block(BlockPos::new(40, 31, z));
+                let Block::RedstoneWire { wire } = block else { panic!("missing wire") };
+                serde_json::json!([wire.power, block.property("north").unwrap(), block.property("south").unwrap(), block.property("east").unwrap(), block.property("west").unwrap()])
+            };
+            let actual = serde_json::json!([piston_state(42), piston_state(46), observer_powered(42), observer_powered(46), wire_state(41), wire_state(45)]);
+            assert_eq!(&actual, sample, "Java oscillator trace at tick {tick} with {stepping} stepping");
+            let target_tick = world.piston_state().logical_tick + 1;
+            for _ in 0..256 {
+                match stepping {
+                    "game" => world.tick_interpreted(),
+                    "nano" => world.nanotick_advance(1),
+                    "pico" => world.picotick_advance(1),
+                    _ => unreachable!(),
+                }
+                if world.piston_state().logical_tick == target_tick && world.piston_state().phase == mchprs_world::AdvancePhase::BetweenTicks { break; }
+            }
+            assert_eq!(world.piston_state().logical_tick, target_tick);
+            assert_eq!(world.piston_state().phase, mchprs_world::AdvancePhase::BetweenTicks);
+        }
+    }
 }
 
 #[test]

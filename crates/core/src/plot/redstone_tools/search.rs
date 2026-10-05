@@ -112,9 +112,10 @@ impl SearchCache {
             return Ok(());
         }
         let hits = self.page(page)?;
-        let suffix = match self.truncated {
-            true => messages::SEARCH_RESULT_LIMIT,
-            false => "",
+        let suffix = if self.truncated {
+            messages::SEARCH_RESULT_LIMIT
+        } else {
+            ""
         };
         player.send_raw_system_message(
             json!({

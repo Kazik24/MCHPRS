@@ -2,6 +2,7 @@ use crate::messages;
 #[cfg(test)]
 mod command_block_tests;
 pub mod commands;
+mod compass;
 mod containers;
 mod data;
 pub mod database;
@@ -9,6 +10,7 @@ mod help;
 mod history;
 mod interpreter_cache;
 mod monitor;
+mod neighbors;
 mod packet_handlers;
 mod picking;
 #[cfg(test)]
@@ -106,6 +108,8 @@ pub struct Plot {
     async_rt: Runtime, //todo use one runtime for all plots since it's heavy object used just for some small requests
     scoreboard: Scoreboard,
     last_sidebar_update: Instant,
+    neighbor_views: neighbors::Views,
+    neighbor_source: Option<neighbors::LiveSource>,
 }
 
 pub struct PlotWorld {
@@ -616,8 +620,7 @@ impl World for PlotWorld {
     fn get_block_entity_mut(&mut self, pos: BlockPos) -> Option<&mut BlockEntity> {
         let index = self.get_chunk_index_for_block(pos.x, pos.z)?;
         self.chunks[index]
-            .block_entities
-            .get_mut(&BlockPos::new(pos.x & 15, pos.y, pos.z & 15))
+            .get_block_entity_mut(BlockPos::new(pos.x & 15, pos.y, pos.z & 15))
     }
 
     fn piston_state(&self) -> &PistonState {
@@ -635,15 +638,8 @@ impl World for PlotWorld {
     }
 
     fn advance_piston_motion(&mut self, index: usize) -> (bool, f32) {
-        let s = &mut self.piston_state;
-        let m = &mut s.motions[index];
-        m.last_tick = s.logical_tick;
-        m.previous_progress = m.progress;
-        let complete = m.progress >= 1.0;
-        if !complete {
-            m.progress = (m.progress + 0.5).min(1.0);
-        }
-        (complete, m.previous_progress)
+        let state = &mut self.piston_state;
+        state.motions[index].advance(state.logical_tick)
     }
 
     fn remove_piston_motion(&mut self, index: usize) {
@@ -964,6 +960,12 @@ impl Plot {
 
     /// Send a block change to all connected players
     pub fn send_block_change(&mut self, pos: BlockPos, id: u32) {
+        if !Self::in_plot_bounds(self.world.x, self.world.z, pos.x, pos.z) {
+            for player in 0..self.players.len() {
+                self.restore_neighbor_chunk(player, pos);
+            }
+            return;
+        }
         let block_change = CBlockChange {
             block_id: id as i32,
             pos: pos.packed(),
@@ -1190,10 +1192,16 @@ impl Plot {
         should_be_loaded: bool,
     ) {
         if was_loaded && !should_be_loaded {
+            self.neighbor_views
+                .unload(self.players[player_idx].uuid, (chunk_x, chunk_z));
             let unload_chunk = CUnloadChunk { chunk_x, chunk_z }.encode();
             self.players[player_idx].client.send_packet(&unload_chunk);
         } else if !was_loaded && should_be_loaded {
             if !Plot::chunk_in_plot_bounds(self.world.x, self.world.z, chunk_x, chunk_z) {
+                if CONFIG.neighbor_update_interval_ms != 0 {
+                    self.neighbor_views
+                        .load(self.players[player_idx].uuid, (chunk_x, chunk_z));
+                }
                 self.players[player_idx]
                     .client
                     .send_packet(&Chunk::encode_empty_packet(chunk_x, chunk_z));
@@ -1351,6 +1359,7 @@ impl Plot {
         self.close_open_container(player_idx);
         self.world.packet_senders.remove(player_idx);
         let mut player = self.players.remove(player_idx);
+        self.neighbor_views.remove_player(player.uuid);
         self.disable_empty_plot_history();
 
         let destroy_other_entities = CDestroyEntities {
@@ -1359,13 +1368,11 @@ impl Plot {
         .encode();
         player.client.send_packet(&destroy_other_entities);
 
-        let chunk_offset_x = self.world.x << PLOT_SCALE;
-        let chunk_offset_z = self.world.z << PLOT_SCALE;
         for chunk in &self.world.chunks {
             player.client.send_packet(
                 &CUnloadChunk {
-                    chunk_x: chunk_offset_x + chunk.x,
-                    chunk_z: chunk_offset_z + chunk.z,
+                    chunk_x: chunk.x,
+                    chunk_z: chunk.z,
                 }
                 .encode(),
             );
@@ -1506,7 +1513,7 @@ impl Plot {
                 BroadcastMessage::PlayerJoinedInfo(player_join_info) => {
                     let join_message = (crate::permissions::ranked_chat()
                         && !crate::proxy_chat::enabled())
-                        .then(|| ChatComponent::player_joined(&player_join_info.username));
+                    .then(|| ChatComponent::player_joined(&player_join_info.username));
                     let player_info = CPlayerInfo::AddPlayer(vec![CPlayerInfoAddPlayer {
                         name: player_join_info.username,
                         properties: player_join_info.properties,
@@ -1749,6 +1756,7 @@ impl Plot {
 
         self.remove_dc_players();
         self.remove_oob_players();
+        self.update_neighbor_views();
     }
 
     fn create_async_rt() -> Runtime {
@@ -1853,6 +1861,8 @@ impl Plot {
             async_rt: Plot::create_async_rt(),
             scoreboard: Default::default(),
             last_sidebar_update: Instant::now(),
+            neighbor_views: Default::default(),
+            neighbor_source: None,
             world,
         }
     }
@@ -1877,6 +1887,11 @@ impl Plot {
 
     fn run(&mut self, initial_player: Option<Player>) {
         let _guard = self.async_rt.enter();
+
+        if CONFIG.neighbor_update_interval_ms != 0 {
+            self.neighbor_source =
+                Some(neighbors::LiveSource::register((self.world.x, self.world.z)));
+        }
 
         if let Some(player) = initial_player {
             self.enter_plot(player);

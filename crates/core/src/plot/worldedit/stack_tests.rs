@@ -47,12 +47,14 @@ fn overlapping_stacks_use_one_source_and_restore_original_entities() {
             15
         );
         let after = snapshot(&world, &positions);
-        let redo = create_clipboard(&mut world, start, start, BlockPos::new(8, 30, 4));
+        let redo = undo.capture_inverse(&mut world);
         for clipboard in undo.clipboards.iter().rev() {
             paste_clipboard(&mut world, clipboard, undo.pos, false);
         }
         assert_eq!(snapshot(&world, &positions), original);
-        paste_clipboard(&mut world, &redo, start, false);
+        for clipboard in &redo.clipboards {
+            paste_clipboard(&mut world, clipboard, redo.pos, false);
+        }
         assert_eq!(snapshot(&world, &positions), after);
     }
 }

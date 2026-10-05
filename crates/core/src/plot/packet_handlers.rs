@@ -341,6 +341,14 @@ impl ServerBoundPacketHandler for Plot {
         }
     }
 
+    fn handle_use_item(&mut self, packet: SUseItem, player: usize) {
+        let _acknowledgement = mchprs_network::BlockActionAcknowledgement::new(
+            &self.players[player].client,
+            packet.sequence,
+        );
+        self.use_compass(player, packet.hand, packet.yaw, packet.pitch);
+    }
+
     fn handle_player_block_placement(
         &mut self,
         player_block_placement: SPlayerBlockPlacemnt,
@@ -350,9 +358,19 @@ impl ServerBoundPacketHandler for Plot {
             &self.players[player].client,
             player_block_placement.sequence,
         );
+        let data = &self.players[player];
+        if self.use_compass(player, player_block_placement.hand, data.yaw, data.pitch) {
+            return;
+        }
         let block_pos = BlockPos::from_packed(player_block_placement.pos);
-        if !Plot::in_plot_bounds(self.world.x, self.world.z, block_pos.x, block_pos.z)
-            || !(0..super::PLOT_BLOCK_HEIGHT).contains(&block_pos.y)
+        if !Plot::in_plot_bounds(self.world.x, self.world.z, block_pos.x, block_pos.z) {
+            self.restore_neighbor_chunk(player, block_pos);
+            if let Some(face) = BlockFace::try_from_id(player_block_placement.face as u32) {
+                self.restore_neighbor_chunk(player, block_pos.offset(face));
+            }
+            return;
+        }
+        if !(0..super::PLOT_BLOCK_HEIGHT).contains(&block_pos.y)
             || !self.container_in_reach(player, block_pos)
             || !(0..=1).contains(&player_block_placement.hand)
             || [
@@ -369,6 +387,11 @@ impl ServerBoundPacketHandler for Plot {
             warn!("Invalid block face: {}", player_block_placement.face);
             return;
         };
+
+        let offset_pos = block_pos.offset(block_face);
+        if !Plot::in_plot_bounds(self.world.x, self.world.z, offset_pos.x, offset_pos.z) {
+            self.restore_neighbor_chunk(player, offset_pos);
+        }
 
         let cancel = |plot: &mut Plot| {
             plot.send_block_change(block_pos, plot.world.get_block_raw(block_pos));
@@ -546,7 +569,9 @@ impl ServerBoundPacketHandler for Plot {
     fn handle_plugin_message(&mut self, plugin_message: SPluginMessage, player: usize) {
         if plugin_message.channel == crate::proxy_chat::CHANNEL {
             let player = &mut self.players[player];
-            player.proxy_chat.receive(&plugin_message.data, &player.client);
+            player
+                .proxy_chat
+                .receive(&plugin_message.data, &player.client);
             return;
         }
         if plugin_message.channel == "worldedit:cui" {
@@ -711,8 +736,11 @@ impl ServerBoundPacketHandler for Plot {
         );
         if player_digging.status == 0 {
             let block_pos = BlockPos::from_packed(player_digging.pos);
-            if !Plot::in_plot_bounds(self.world.x, self.world.z, block_pos.x, block_pos.z)
-                || !(0..super::PLOT_BLOCK_HEIGHT).contains(&block_pos.y)
+            if !Plot::in_plot_bounds(self.world.x, self.world.z, block_pos.x, block_pos.z) {
+                self.restore_neighbor_chunk(player, block_pos);
+                return;
+            }
+            if !(0..super::PLOT_BLOCK_HEIGHT).contains(&block_pos.y)
                 || !self.container_in_reach(player, block_pos)
             {
                 return;

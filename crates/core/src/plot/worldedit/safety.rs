@@ -1,7 +1,7 @@
 //! Validate geometry and work before capturing undo data or mutating a plot.
 use super::*;
 use crate::config::CONFIG;
-use crate::plot::{PLOT_BLOCK_HEIGHT, PLOT_BLOCK_WIDTH};
+use crate::plot::PLOT_BLOCK_HEIGHT;
 
 fn volume(first: BlockPos, second: BlockPos) -> Result<u64, String> {
     [
@@ -139,6 +139,7 @@ pub(super) fn validate_request(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::plot::PLOT_BLOCK_WIDTH;
     #[test]
     fn malicious_clipboard_offsets_and_volumes_are_rejected() {
         assert!(volume(

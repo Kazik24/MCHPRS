@@ -47,15 +47,8 @@ pub trait World {
     }
 
     fn advance_piston_motion(&mut self, index: usize) -> (bool, f32) {
-        let s = self.piston_state_mut();
-        let m = &mut s.motions[index];
-        m.last_tick = s.logical_tick;
-        m.previous_progress = m.progress;
-        let complete = m.progress >= 1.0;
-        if !complete {
-            m.progress = (m.progress + 0.5).min(1.0);
-        }
-        (complete, m.previous_progress)
+        let state = self.piston_state_mut();
+        state.motions[index].advance(state.logical_tick)
     }
 
     fn remove_piston_motion(&mut self, index: usize) {

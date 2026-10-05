@@ -14,6 +14,9 @@ use rustc_hash::FxHashMap;
 use serde::Serialize;
 use std::convert::TryInto;
 use std::mem;
+use std::sync::atomic::{AtomicU64, Ordering};
+
+static CHUNK_INSTANCE: AtomicU64 = AtomicU64::new(1);
 
 // Match ChunkData's binary layout while borrowing buffers and entities.
 #[derive(Serialize)]
@@ -451,9 +454,22 @@ pub struct Chunk {
     pub x: i32,
     pub z: i32,
     pub block_entities: FxHashMap<BlockPos, BlockEntity>,
+    instance: u64,
+    revision: u64,
 }
 
 impl Chunk {
+    /// Independent of local packet flushes, including replacement during rewind.
+    pub(crate) fn snapshot_version(&self) -> (u64, u64) {
+        (self.instance, self.revision)
+    }
+
+    pub(crate) fn get_block_entity_mut(&mut self, pos: BlockPos) -> Option<&mut BlockEntity> {
+        let entity = self.block_entities.get_mut(&pos)?;
+        self.revision = self.revision.wrapping_add(1);
+        Some(entity)
+    }
+
     pub(crate) fn prepare_history(&mut self) {
         for section in &mut self.sections {
             section.flush();
@@ -482,27 +498,26 @@ impl Chunk {
     }
 
     pub fn requires_interpreter(&self) -> bool {
-        let piston = |id| {
-            if mchprs_blocks::blocks::Block::from_id(id).is_command_block() {
-                return true;
-            }
-            matches!(
-                mchprs_blocks::blocks::Block::from_id(id),
-                mchprs_blocks::blocks::Block::Piston { .. }
-                    | mchprs_blocks::blocks::Block::PistonHead { .. }
-                    | mchprs_blocks::blocks::Block::MovingPiston { .. }
-                    | mchprs_blocks::blocks::Block::Observer { .. }
-            )
+        let requires_interpreter = |id| {
+            let block = Block::from_id(id);
+            block.is_command_block()
+                || matches!(
+                    block,
+                    Block::Piston { .. }
+                        | Block::PistonHead { .. }
+                        | Block::MovingPiston { .. }
+                        | Block::Observer { .. }
+                )
         };
         self.sections.iter().any(|s| {
             s.changed_blocks
                 .iter()
                 .flat_map(|blocks| blocks.iter())
-                .any(|id| *id >= 0 && piston(*id as u32))
+                .any(|id| *id >= 0 && requires_interpreter(*id as u32))
                 || if s.buffer.use_palette {
-                    s.buffer.palette.iter().any(|id| piston(*id))
+                    s.buffer.palette.iter().any(|id| requires_interpreter(*id))
                 } else {
-                    (0..4096).any(|i| piston(s.buffer.get_entry(i)))
+                    (0..4096).any(|i| requires_interpreter(s.buffer.get_entry(i)))
                 }
         })
     }
@@ -647,7 +662,11 @@ impl Chunk {
     pub fn set_block(&mut self, x: u32, y: u32, z: u32, block_id: u32) -> bool {
         let section_y = (y >> 4) as usize;
         let section = &mut self.sections[section_y];
-        section.set_block(x, y & 0xF, z, block_id)
+        let changed = section.set_block(x, y & 0xF, z, block_id);
+        if changed {
+            self.revision = self.revision.wrapping_add(1);
+        }
+        changed
     }
 
     pub fn get_block(&self, x: u32, y: u32, z: u32) -> u32 {
@@ -663,11 +682,14 @@ impl Chunk {
     }
 
     pub fn delete_block_entity(&mut self, pos: BlockPos) {
-        self.block_entities.remove(&pos);
+        if self.block_entities.remove(&pos).is_some() {
+            self.revision = self.revision.wrapping_add(1);
+        }
     }
 
     pub fn set_block_entity(&mut self, pos: BlockPos, block_entity: BlockEntity) {
         self.block_entities.insert(pos, block_entity);
+        self.revision = self.revision.wrapping_add(1);
     }
 
     pub fn save(&mut self) -> ChunkData<PLOT_SECTIONS> {
@@ -687,6 +709,8 @@ impl Chunk {
         Chunk {
             x,
             z,
+            instance: CHUNK_INSTANCE.fetch_add(1, Ordering::Relaxed),
+            revision: 0,
             sections: IntoIterator::into_iter(chunk_data.sections)
                 .map(ChunkSection::load)
                 .collect_vec()
@@ -708,6 +732,8 @@ impl Chunk {
             sections: std::array::from_fn(|_| Default::default()),
             x,
             z,
+            instance: CHUNK_INSTANCE.fetch_add(1, Ordering::Relaxed),
+            revision: 0,
             block_entities: FxHashMap::default(),
         }
     }

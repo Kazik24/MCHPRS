@@ -200,6 +200,7 @@ fn decode_packet<T: PacketDecoderExt>(
             0x3a => Box::new(SUpdateSign::decode(reader)?),
             0x3b => Box::new(SAnimation::decode(reader)?),
             0x3e => Box::new(SPlayerBlockPlacemnt::decode(reader)?),
+            0x3f => Box::new(SUseItem::decode(reader)?),
             _ => unknown(),
         },
         _ => {

@@ -100,9 +100,9 @@ fn selection_lines(first: Option<BlockPos>, second: Option<BlockPos>) -> Vec<Str
     let (Some(first), Some(second)) = (first, second) else {
         return vec![messages::SELECTION_SIDEBAR_INCOMPLETE.into()];
     };
-    let width = (i64::from(first.x) - i64::from(second.x)).unsigned_abs() + 1;
-    let height = (i64::from(first.y) - i64::from(second.y)).unsigned_abs() + 1;
-    let depth = (i64::from(first.z) - i64::from(second.z)).unsigned_abs() + 1;
+    let width = u64::from(first.x.abs_diff(second.x)) + 1;
+    let height = u64::from(first.y.abs_diff(second.y)) + 1;
+    let depth = u64::from(first.z.abs_diff(second.z)) + 1;
     let volume = u128::from(width) * u128::from(height) * u128::from(depth);
     let color = match volume {
         0..=4096 => "§a",

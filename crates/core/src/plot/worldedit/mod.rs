@@ -758,12 +758,48 @@ pub struct WorldEditClipboard {
     pub block_entities: FxHashMap<BlockPos, BlockEntity>,
 }
 
+impl WorldEditClipboard {
+    /// Destination bounds for a clipboard whose geometry has already been validated.
+    fn bounds_at(&self, pos: BlockPos) -> (BlockPos, BlockPos) {
+        let first = BlockPos::new(
+            pos.x - self.offset_x,
+            pos.y - self.offset_y,
+            pos.z - self.offset_z,
+        );
+        let second = BlockPos::new(
+            first.x + self.size_x as i32 - 1,
+            first.y + self.size_y as i32 - 1,
+            first.z + self.size_z as i32 - 1,
+        );
+        (first, second)
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct WorldEditUndo {
     clipboards: Vec<WorldEditClipboard>,
     pos: BlockPos,
     plot_x: i32,
     plot_z: i32,
+}
+
+impl WorldEditUndo {
+    /// Capture all destination regions before applying undo or redo.
+    fn capture_inverse(&self, plot: &mut PlotWorld) -> Self {
+        Self {
+            clipboards: self
+                .clipboards
+                .iter()
+                .map(|clipboard| {
+                    let (first, second) = clipboard.bounds_at(self.pos);
+                    create_clipboard(plot, self.pos, first, second)
+                })
+                .collect(),
+            pos: self.pos,
+            plot_x: self.plot_x,
+            plot_z: self.plot_z,
+        }
+    }
 }
 
 /// Bound retained undo/redo across repeated commands, including redstone stacks.

@@ -1,7 +1,7 @@
 //! Frozen format-3 payload. Do not add/reorder its fields.
 use super::super::{ChunkData, PlotData, PlotLoadError, Tps, WorldSendRate};
 use mchprs_blocks::block_entities::{BlockEntity, MovingPistonEntity};
-use mchprs_blocks::blocks::{Block, RedstoneMovingPiston, RedstonePistonHead};
+use mchprs_blocks::blocks::Block;
 use mchprs_blocks::{BlockFace, BlockPos};
 use mchprs_world::{TickEntry, TickPriority};
 use serde::{Deserialize, Serialize};
@@ -96,10 +96,7 @@ pub fn convert_motion<const N: usize>(plot: &mut PlotData<N>) -> Result<(), Plot
                     width,
                     destination,
                     Block::MovingPiston {
-                        moving: RedstoneMovingPiston {
-                            facing: piston.facing,
-                            sticky: piston.sticky,
-                        },
+                        moving: piston.into(),
                     },
                 )?;
                 set_entity(
@@ -118,11 +115,7 @@ pub fn convert_motion<const N: usize>(plot: &mut PlotData<N>) -> Result<(), Plot
                 head,
                 Some(MovingPistonEntity {
                     block_state: Block::PistonHead {
-                        head: RedstonePistonHead {
-                            facing: piston.facing,
-                            sticky: piston.sticky,
-                            short: false,
-                        },
+                        head: piston.into(),
                     }
                     .get_id(),
                     ..entity

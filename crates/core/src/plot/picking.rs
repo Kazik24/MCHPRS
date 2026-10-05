@@ -1,9 +1,9 @@
+use crate::container::item_components;
 use crate::player::PlayerPos;
 use crate::world::World;
 use mchprs_blocks::blocks::Block;
 use mchprs_blocks::items::{Item, ItemStack};
 use mchprs_blocks::BlockPos;
-use mchprs_network::packets::{PacketEncoderExt, SlotData};
 
 const MAIN_INVENTORY_START: usize = 9;
 const HOTBAR_START: usize = 36;
@@ -68,28 +68,18 @@ pub(super) fn picked_stack(
     })
 }
 
-fn components(item: &ItemStack) -> Vec<u8> {
-    let mut bytes = Vec::new();
-    bytes.write_slot_data(&Some(SlotData {
-        item_id: item.item_type.get_id() as i32,
-        item_count: 1,
-        nbt: item.nbt.clone(),
-    }));
-    bytes
-}
-
 // Inventory protocol order: main inventory 9..36, then hotbar 36..45.
 pub(super) fn pick_into_inventory(
     inventory: &mut [Option<ItemStack>],
     selected: &mut u32,
     picked: ItemStack,
 ) -> Vec<usize> {
-    let wanted = components(&picked);
+    let wanted = item_components(&picked);
     let matching = (HOTBAR_START..HOTBAR_END)
         .chain(MAIN_INVENTORY_START..HOTBAR_START)
         .find(|&slot| {
             inventory[slot].as_ref().is_some_and(|item| {
-                item.item_type == picked.item_type && components(item) == wanted
+                item.item_type == picked.item_type && item_components(item) == wanted
             })
         });
     if let Some(slot) = matching.filter(|slot| *slot >= HOTBAR_START) {

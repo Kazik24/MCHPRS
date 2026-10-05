@@ -1,6 +1,6 @@
 use crate::world::{BlockAction, World};
 use mchprs_blocks::block_entities::{BlockEntity, MovingPistonEntity};
-use mchprs_blocks::blocks::{Block, RedstoneMovingPiston, RedstonePiston, RedstonePistonHead};
+use mchprs_blocks::blocks::{Block, RedstonePiston};
 use mchprs_blocks::{BlockFace, BlockFacing, BlockPos};
 use mchprs_world::{AdvancePhase, PistonAction, PistonEvent};
 use smallvec::SmallVec;
@@ -44,10 +44,11 @@ pub fn should_piston_extend(world: &impl World, facing: BlockFacing, pos: BlockP
         return true;
     }
     // Direct signal from below, and quasi-connectivity around the block above.
-    powered(world, pos.offset(BlockFace::Top), BlockFace::Bottom)
+    let above = pos.offset(BlockFace::Top);
+    powered(world, above, BlockFace::Bottom)
         || NEIGHBORS
             .into_iter()
-            .any(|f| f != BlockFace::Bottom && powered(world, pos.offset(BlockFace::Top), f))
+            .any(|f| f != BlockFace::Bottom && powered(world, above, f))
 }
 
 pub fn update_piston_state(world: &mut impl World, piston: RedstonePiston, pos: BlockPos) {
@@ -66,12 +67,12 @@ pub fn update_piston_state(world: &mut impl World, piston: RedstonePiston, pos: 
         let early = match world.get_block_entity(ahead) {
             Some(BlockEntity::MovingPiston(e)) if e.extending && e.facing == facing => {
                 let index = world.piston_motion_index(ahead, None);
-                let s = world.piston_state();
-                index.map(|i| &s.motions[i]).is_some_and(|m| {
-                    m.previous_progress < 0.5
-                        || m.last_tick == s.logical_tick
+                let state = world.piston_state();
+                index.map(|i| &state.motions[i]).is_some_and(|motion| {
+                    motion.previous_progress < 0.5
+                        || motion.last_tick == state.logical_tick
                         || matches!(
-                            s.phase,
+                            state.phase,
                             AdvancePhase::ScheduledTicks | AdvancePhase::PistonEvents
                         )
                 })
@@ -142,10 +143,7 @@ fn moving(
     world.set_block(
         pos,
         Block::MovingPiston {
-            moving: RedstoneMovingPiston {
-                facing: piston.facing,
-                sticky: piston.sticky,
-            },
+            moving: piston.into(),
         },
     );
     world.set_block_entity(
@@ -181,11 +179,7 @@ fn extend(world: &mut impl World, piston: RedstonePiston, pos: BlockPos) -> bool
         pos.offset(facing),
         piston,
         Block::PistonHead {
-            head: RedstonePistonHead {
-                facing: piston.facing,
-                sticky: piston.sticky,
-                short: false,
-            },
+            head: piston.into(),
         },
         true,
         true,
@@ -340,7 +334,9 @@ fn finish(world: &mut impl World, pos: BlockPos, interrupted: bool) {
 fn shape_changed(world: &mut impl World, pos: BlockPos) {
     for face in SHAPE_NEIGHBORS {
         let neighbor = pos.offset(face);
-        crate::interaction::change(world.get_block(neighbor), world, neighbor, face.opposite());
+        // interaction::change takes the direction from the changed block to
+        // its neighbor; observer callbacks below take the opposite direction.
+        crate::interaction::change(world.get_block(neighbor), world, neighbor, face);
         // Observers watch shape/state changes, not ordinary neighbor power callbacks.
         let block = world.get_block(neighbor);
         if matches!(block, Block::Observer { .. }) {

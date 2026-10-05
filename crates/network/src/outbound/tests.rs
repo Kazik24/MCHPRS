@@ -3,7 +3,11 @@ use std::io::Read;
 use std::net::TcpListener;
 
 fn queued() -> Outbound {
-    Outbound(Arc::new(Handle(Arc::new(Shared::default()))))
+    Outbound {
+        handle: Arc::new(Handle {
+            shared: Arc::new(Shared::default()),
+        }),
+    }
 }
 
 fn block(id: u32) -> CMultiBlockChange {
@@ -30,7 +34,7 @@ fn backlog_keeps_latest_state_without_crossing_packet_barriers() {
     }
     sender.packet(&barrier, true);
     sender.blocks(&block(20_000), true);
-    let pending = sender.0 .0.pending.lock().unwrap();
+    let pending = sender.handle.shared.pending.lock().unwrap();
     assert_eq!(pending.items.len(), 4);
     let Payload::Blocks(blocks) = &pending.items[1].payload else {
         panic!()
@@ -43,8 +47,8 @@ fn backlog_keeps_latest_state_without_crossing_packet_barriers() {
     assert_eq!(blocks[&(-3, 15, 7)][&0xfd_e], 20_000);
     assert_eq!(
         sender
-            .0
-             .0
+            .handle
+            .shared
             .counters
             .coalesced_blocks
             .load(Ordering::Relaxed),
@@ -57,7 +61,7 @@ fn compression_transition_is_an_ordering_boundary() {
     let sender = queued();
     sender.blocks(&block(1), false);
     sender.blocks(&block(2), true);
-    assert_eq!(sender.0 .0.pending.lock().unwrap().items.len(), 2);
+    assert_eq!(sender.handle.shared.pending.lock().unwrap().items.len(), 2);
 }
 
 #[test]
@@ -77,7 +81,7 @@ fn ordered_writer_matches_protocol_bytes_and_drains_on_close() {
     sender.blocks(&block(2), true);
     sender.packet(&login, true);
     sender.close();
-    let shared = sender.0 .0.clone();
+    let shared = sender.handle.shared.clone();
     let worker = std::thread::spawn(move || {
         Outbound::run(&shared, &server);
         server.shutdown(Shutdown::Both).unwrap();
@@ -101,7 +105,7 @@ fn ordered_writer_matches_protocol_bytes_and_drains_on_close() {
 #[test]
 fn dropping_last_handle_closes_shared_writer_and_overflow_closes_connection() {
     let sender = queued();
-    let shared = sender.0 .0.clone();
+    let shared = sender.handle.shared.clone();
     let clone = sender.clone();
     drop(sender);
     assert!(!shared.pending.lock().unwrap().closed);
@@ -113,11 +117,19 @@ fn dropping_last_handle_closes_shared_writer_and_overflow_closes_connection() {
     for _ in 0..=MAX_QUEUED_ITEMS {
         sender.packet(&packet, true);
     }
-    let pending = sender.0 .0.pending.lock().unwrap();
+    let pending = sender.handle.shared.pending.lock().unwrap();
     assert!(pending.closed);
     assert!(pending.items.is_empty());
     assert_eq!(pending.bytes, 0);
-    assert_eq!(sender.0 .0.counters.failures.load(Ordering::Relaxed), 1);
+    assert_eq!(
+        sender
+            .handle
+            .shared
+            .counters
+            .failures
+            .load(Ordering::Relaxed),
+        1
+    );
 }
 
 #[test]
@@ -174,7 +186,7 @@ fn compare_no_client_synchronous_and_background_sending() {
         let output = Arc::new(Mutex::new(Vec::new()));
         let sender = queued();
         let worker = if mode == "background" {
-            let shared = sender.0 .0.clone();
+            let shared = sender.handle.shared.clone();
             let output = output.clone();
             Some(std::thread::spawn(move || {
                 Outbound::run(&shared, SlowSink(output))

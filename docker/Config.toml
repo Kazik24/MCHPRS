@@ -3,6 +3,7 @@ motd = "§4§lmroww.redstoneFUN.pl §r§71.21.5\n§cMinecraft Redstone o Wysokie
 chat_format = "<{username}> {message}"
 max_players = 100
 view_distance = 8
+neighbor_update_interval_ms = 2000
 bungeecord = false
 whitelist = false
 schemati = false

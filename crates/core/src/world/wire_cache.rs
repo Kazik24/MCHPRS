@@ -62,11 +62,11 @@ impl Topology {
     ) -> Neighborhood {
         let section = (cell >> 12) as usize;
         let local = (cell & 4095) as usize;
-        if let Some(Some(cached)) = self
+        if let Some(cached) = self
             .sections
             .get(section)
             .and_then(|s| s.as_ref())
-            .map(|s| &s[local])
+            .and_then(|s| s[local].as_ref())
         {
             return cached.clone();
         }

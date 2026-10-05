@@ -177,6 +177,7 @@ pub struct Player {
     pub flying: bool,
     pub sprinting: bool,
     pub crouching: bool,
+    pub(crate) last_compass_use: Option<Instant>,
     pub on_ground: bool,
     pub fly_speed: f32,
     pub walk_speed: f32,
@@ -277,6 +278,7 @@ impl Player {
             flying: player_data.flying,
             sprinting: false,
             crouching: false,
+            last_compass_use: None,
             gamemode: if permissions::dedicated_permissions()
                 && !permissions_cache
                     .as_ref()

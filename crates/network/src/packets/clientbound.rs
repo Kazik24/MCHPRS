@@ -347,6 +347,59 @@ pub struct CDeclareCommandsNode<'a> {
     pub suggestions_type: Option<&'static str>,
 }
 
+impl<'a> CDeclareCommandsNode<'a> {
+    pub fn root(children: &'a [i32]) -> Self {
+        Self {
+            flags: 0,
+            children,
+            redirect_node: None,
+            name: None,
+            parser: None,
+            suggestions_type: None,
+        }
+    }
+
+    pub fn literal(name: &'static str, children: &'a [i32]) -> Self {
+        Self {
+            flags: 0x01,
+            name: Some(name),
+            ..Self::root(children)
+        }
+    }
+
+    pub fn argument(
+        name: &'static str,
+        parser: CDeclareCommandsNodeParser,
+        children: &'a [i32],
+    ) -> Self {
+        Self {
+            flags: 0x02,
+            name: Some(name),
+            parser: Some(parser),
+            ..Self::root(children)
+        }
+    }
+
+    pub fn redirect(name: &'static str, target: i32) -> Self {
+        Self {
+            flags: 0x01 | 0x08,
+            redirect_node: Some(target),
+            ..Self::literal(name, &[])
+        }
+    }
+
+    pub fn executable(mut self) -> Self {
+        self.flags |= 0x04;
+        self
+    }
+
+    pub fn suggestions(mut self, provider: &'static str) -> Self {
+        self.flags |= 0x10;
+        self.suggestions_type = Some(provider);
+        self
+    }
+}
+
 pub struct CDeclareCommands<'a> {
     pub nodes: &'a [CDeclareCommandsNode<'a>],
     pub root_index: i32,

@@ -481,52 +481,49 @@ fn write_schematic(mut file: impl std::io::Write, clipboard: &WorldEditClipboard
     }
 
     let mut data = Vec::new();
-    let mut pallette = Vec::new();
-    for y_offset in (0..size_y).map(|y| y * size_z * size_x) {
-        for z_offset in (0..size_z).map(|z| z * size_x) {
-            for x in 0..size_x {
-                let entry = blocks.get_entry((y_offset + z_offset + x) as usize);
-                let block = Block::from_id(entry);
+    let mut palette = Vec::new();
+    // Clipboard entries already use schematic order: x, then z, then y.
+    for index in 0..volume as usize {
+        let entry = blocks.get_entry(index);
+        let block = Block::from_id(entry);
 
-                let name = format!("minecraft:{}", block.get_name());
-                let props = mchprs_blocks::generated::STATE_PROPERTIES
-                    .get(entry as usize)
-                    .context("invalid clipboard block state")?;
-                let full_name = if !props.is_empty() {
-                    let props_strs: Vec<String> = props
-                        .iter()
-                        .map(|(name, val)| format!("{}={}", name, val))
-                        .collect();
-                    format!("{}[{}]", name, props_strs.join(","))
-                } else {
-                    name
-                };
-                let mut idx = if let Some(idx) = pallette.iter().position(|s| *s == full_name) {
-                    idx
-                } else {
-                    let idx = pallette.len();
-                    pallette.push(full_name);
-                    idx
-                };
+        let name = format!("minecraft:{}", block.get_name());
+        let props = mchprs_blocks::generated::STATE_PROPERTIES
+            .get(entry as usize)
+            .context("invalid clipboard block state")?;
+        let full_name = if !props.is_empty() {
+            let props_strs: Vec<String> = props
+                .iter()
+                .map(|(name, val)| format!("{}={}", name, val))
+                .collect();
+            format!("{}[{}]", name, props_strs.join(","))
+        } else {
+            name
+        };
+        let mut idx = if let Some(idx) = palette.iter().position(|s| *s == full_name) {
+            idx
+        } else {
+            let idx = palette.len();
+            palette.push(full_name);
+            idx
+        };
 
-                loop {
-                    let mut temp = (idx & 0b0111_1111) as u8;
-                    idx >>= 7;
-                    if idx != 0 {
-                        temp |= 0b1000_0000;
-                    }
-                    data.push(temp as i8);
-                    if idx == 0 {
-                        break;
-                    }
-                }
+        loop {
+            let mut temp = (idx & 0b0111_1111) as u8;
+            idx >>= 7;
+            if idx != 0 {
+                temp |= 0b1000_0000;
+            }
+            data.push(temp as i8);
+            if idx == 0 {
+                break;
             }
         }
     }
 
-    let mut encoded_pallete = nbt::Blob::new();
-    for (i, entry) in pallette.iter().enumerate() {
-        encoded_pallete.insert(entry, i as i32)?;
+    let mut encoded_palette = nbt::Blob::new();
+    for (i, entry) in palette.iter().enumerate() {
+        encoded_palette.insert(entry, i as i32)?;
     }
 
     let mut block_entities = Vec::new();
@@ -548,8 +545,8 @@ fn write_schematic(mut file: impl std::io::Write, clipboard: &WorldEditClipboard
     schematic.insert("Height", size_y as i16)?;
     schematic.insert("BlockData", nbt::Value::ByteArray(data))?;
     schematic.insert("BlockEntities", nbt::Value::List(block_entities))?;
-    schematic.insert("Palette", nbt::Value::Compound(encoded_pallete.content))?;
-    schematic.insert("PaletteMax", pallette.len() as i32)?;
+    schematic.insert("Palette", nbt::Value::Compound(encoded_palette.content))?;
+    schematic.insert("PaletteMax", palette.len() as i32)?;
     schematic.insert(
         "Metadata",
         nbt::Value::Compound(Compound::from([

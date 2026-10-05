@@ -260,6 +260,32 @@ fn pick_packets_dispatch_and_reject_truncated_payloads() {
 }
 
 #[test]
+fn use_item_packet_dispatches_hand_sequence_and_rotation() {
+    use super::serverbound::*;
+    struct Handler(bool);
+    impl ServerBoundPacketHandler for Handler {
+        fn handle_use_item(&mut self, packet: SUseItem, _: usize) {
+            self.0 = packet.hand == 1
+                && packet.sequence == 123
+                && packet.yaw == 90.0
+                && packet.pitch == -30.0;
+        }
+    }
+    let mut payload = vec![0x3f];
+    payload.write_varint(1);
+    payload.write_varint(123);
+    payload.write_float(90.0);
+    let mut state = NetworkState::Play;
+    assert!(read_decompressed(&mut Cursor::new(&payload), &mut state).is_err());
+    payload.write_float(-30.0);
+    let mut handler = Handler(false);
+    read_decompressed(&mut Cursor::new(payload), &mut state)
+        .unwrap()
+        .handle(&mut handler, 0);
+    assert!(handler.0);
+}
+
+#[test]
 fn command_block_updates_validate_mode_flags_and_dispatch() {
     use super::serverbound::*;
     struct Handler(bool);

@@ -259,17 +259,16 @@ fn slot_limit(ty: Option<ContainerType>, slot: usize, item: &ItemStack) -> u8 {
 }
 
 pub(crate) fn same_item(a: &ItemStack, b: &ItemStack) -> bool {
-    if a.item_type != b.item_type {
-        return false;
-    }
-    let encode = |item: &ItemStack| {
-        let mut bytes = Vec::new();
-        let mut slot = slot_data(item);
-        slot.item_count = 1;
-        bytes.write_slot_data(&Some(slot));
-        bytes
-    };
-    encode(a) == encode(b)
+    a.item_type == b.item_type && item_components(a) == item_components(b)
+}
+
+/// Compare item identity independently of stack count, using the wire representation.
+pub(crate) fn item_components(item: &ItemStack) -> Vec<u8> {
+    let mut bytes = Vec::new();
+    let mut slot = slot_data(item);
+    slot.item_count = 1;
+    bytes.write_slot_data(&Some(slot));
+    bytes
 }
 
 pub(crate) fn signature(slots: &[Option<ItemStack>], cursor: &Option<ItemStack>) -> Vec<u8> {

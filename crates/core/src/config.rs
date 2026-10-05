@@ -98,6 +98,7 @@ gen_config! {
     proxy_chat: bool = false,
     max_players: i64 = 99999,
     view_distance: i64 = 8,
+    neighbor_update_interval_ms: u64 = 2000,
     bungeecord: bool = false,
     velocity: Option<VelocityConfig> = None,
     whitelist: bool = false,
@@ -140,6 +141,8 @@ mod tests {
         fs::remove_file(&path).unwrap();
         assert_eq!(config.motd, "Selected container config");
         assert_eq!(config.fast_render_send_rate, 10);
+        assert_eq!(config.neighbor_update_interval_ms, 2000);
+        assert!(patched.contains("neighbor_update_interval_ms"));
         assert!(patched.contains("rhistory_memory_limit_mib"));
     }
 }

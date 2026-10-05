@@ -68,11 +68,7 @@ pub fn convert<const N: usize>(old: Plot<N>) -> Result<PlotData<N>, PlotLoadErro
                     "invalid chunk section data length".into(),
                 ));
             }
-            if bits < 9 {
-                for id in &mut section.palette {
-                    *id = state(*id as u32)? as i32;
-                }
-            } else {
+            if bits >= 9 {
                 let mut data = vec![0i64; section.entries.div_ceil(4)];
                 for i in 0..section.entries {
                     let id = ((section.data[i / per] as u64 >> ((i % per) * bits))
@@ -81,10 +77,10 @@ pub fn convert<const N: usize>(old: Plot<N>) -> Result<PlotData<N>, PlotLoadErro
                 }
                 section.bits_per_block = 15;
                 section.data = data;
-                // The palette is unused in direct mode, but old numeric IDs must not remain.
-                for id in &mut section.palette {
-                    *id = state(*id as u32)? as i32;
-                }
+            }
+            // Remap even an unused direct-mode palette so no legacy IDs remain.
+            for id in &mut section.palette {
+                *id = state(*id as u32)? as i32;
             }
         }
         let mut entities = FxHashMap::default();

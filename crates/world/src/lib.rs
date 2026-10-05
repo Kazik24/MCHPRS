@@ -66,6 +66,20 @@ pub struct PistonMotion {
     pub carried_entity: Option<Box<mchprs_blocks::block_entities::BlockEntity>>,
 }
 
+impl PistonMotion {
+    /// Advance one half-step; completion is checked before changing progress.
+    /// Return the previous progress used by the block entity's interpolation.
+    pub fn advance(&mut self, logical_tick: u64) -> (bool, f32) {
+        self.last_tick = logical_tick;
+        self.previous_progress = self.progress;
+        let complete = self.progress >= 1.0;
+        if !complete {
+            self.progress = (self.progress + 0.5).min(1.0);
+        }
+        (complete, self.previous_progress)
+    }
+}
+
 #[derive(Serialize, Deserialize, Debug, Clone, Default)]
 pub struct PistonState {
     pub logical_tick: u64,

@@ -91,7 +91,9 @@ impl RStackRequest {
         bounds: SelectionBounds,
         world: &PlotWorld,
     ) -> Result<Vec<SelectionBounds>> {
-        if bounds.volume() * (u64::from(self.count) + 1) > MAX_STACK_BLOCKS.min(crate::config::CONFIG.worldedit_max_blocks) {
+        if bounds.volume() * (u64::from(self.count) + 1)
+            > MAX_STACK_BLOCKS.min(crate::config::CONFIG.worldedit_max_blocks)
+        {
             bail!(messages::stack_block_limit(MAX_STACK_BLOCKS));
         }
         let mut destinations = Vec::new();
@@ -274,10 +276,7 @@ fn look_direction(player: &Player) -> BlockPos {
         direction.z = z.signum() as i32;
     }
     if player.pitch.abs() > 22.5 {
-        direction.y = match player.pitch < 0.0 {
-            true => 1,
-            false => -1,
-        };
+        direction.y = if player.pitch < 0.0 { 1 } else { -1 };
     }
     direction
 }

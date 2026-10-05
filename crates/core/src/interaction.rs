@@ -557,36 +557,22 @@ pub fn is_valid_position(block: Block, world: &impl World, pos: BlockPos) -> boo
             let parent_block = world.get_block(pos.offset(direction.opposite().block_face()));
             supports_attachment(parent_block, direction.block_face())
         }
-        Block::Lever { lever } => match lever.face {
-            LeverFace::Floor => {
-                let bottom_block = world.get_block(pos.offset(BlockFace::Bottom));
-                supports_attachment(bottom_block, BlockFace::Top)
-            }
-            LeverFace::Ceiling => {
-                let top_block = world.get_block(pos.offset(BlockFace::Top));
-                supports_attachment(top_block, BlockFace::Bottom)
-            }
-            LeverFace::Wall => {
-                let parent_block =
-                    world.get_block(pos.offset(lever.facing.opposite().block_face()));
-                supports_attachment(parent_block, lever.facing.block_face())
-            }
-        },
-        Block::StoneButton { button } => match button.face {
-            ButtonFace::Floor => {
-                let bottom_block = world.get_block(pos.offset(BlockFace::Bottom));
-                supports_attachment(bottom_block, BlockFace::Top)
-            }
-            ButtonFace::Ceiling => {
-                let top_block = world.get_block(pos.offset(BlockFace::Top));
-                supports_attachment(top_block, BlockFace::Bottom)
-            }
-            ButtonFace::Wall => {
-                let parent_block =
-                    world.get_block(pos.offset(button.facing.opposite().block_face()));
-                supports_attachment(parent_block, button.facing.block_face())
-            }
-        },
+        Block::Lever { lever } => {
+            let face = match lever.face {
+                LeverFace::Floor => BlockFace::Top,
+                LeverFace::Ceiling => BlockFace::Bottom,
+                LeverFace::Wall => lever.facing.block_face(),
+            };
+            supports_attachment(world.get_block(pos.offset(face.opposite())), face)
+        }
+        Block::StoneButton { button } => {
+            let face = match button.face {
+                ButtonFace::Floor => BlockFace::Top,
+                ButtonFace::Ceiling => BlockFace::Bottom,
+                ButtonFace::Wall => button.facing.block_face(),
+            };
+            supports_attachment(world.get_block(pos.offset(face.opposite())), face)
+        }
         Block::PistonHead { head } => {
             matches!(
                 world.get_block(pos.offset(BlockFace::from(head.facing).opposite())),

@@ -66,19 +66,23 @@ struct Shared {
 }
 
 #[derive(Debug)]
-struct Handle(Arc<Shared>);
+struct Handle {
+    shared: Arc<Shared>,
+}
 
 impl Drop for Handle {
     fn drop(&mut self) {
         // The worker owns Shared, but never Handle: the last sender wakes it
         // to drain and exit rather than keeping a waiting thread alive forever.
-        self.0.pending.lock().unwrap().closed = true;
-        self.0.ready.notify_one();
+        self.shared.pending.lock().unwrap().closed = true;
+        self.shared.ready.notify_one();
     }
 }
 
 #[derive(Clone, Debug)]
-pub(crate) struct Outbound(Arc<Handle>);
+pub(crate) struct Outbound {
+    handle: Arc<Handle>,
+}
 
 impl Outbound {
     pub(crate) fn new(stream: TcpStream) -> Self {
@@ -89,11 +93,13 @@ impl Outbound {
             Self::run(&worker, &stream);
             let _ = stream.shutdown(Shutdown::Both);
         });
-        Self(Arc::new(Handle(shared)))
+        Self {
+            handle: Arc::new(Handle { shared }),
+        }
     }
 
     pub(crate) fn packet(&self, packet: &PacketEncoder, compressed: bool) {
-        let mut pending = self.0 .0.pending.lock().unwrap();
+        let mut pending = self.handle.shared.pending.lock().unwrap();
         if pending.closed {
             return;
         }
@@ -111,7 +117,7 @@ impl Outbound {
         if packet.records.is_empty() {
             return;
         }
-        let mut pending = self.0 .0.pending.lock().unwrap();
+        let mut pending = self.handle.shared.pending.lock().unwrap();
         if pending.closed {
             return;
         }
@@ -138,8 +144,8 @@ impl Outbound {
             let position =
                 (u16::from(record.x) << 8) | (u16::from(record.z) << 4) | u16::from(record.y);
             if records.insert(position, record.block_id).is_some() {
-                self.0
-                     .0
+                self.handle
+                    .shared
                     .counters
                     .coalesced_blocks
                     .fetch_add(1, Ordering::Relaxed);
@@ -159,19 +165,23 @@ impl Outbound {
             pending.closed = true;
             pending.items.clear();
             pending.bytes = 0;
-            self.0 .0.counters.failures.fetch_add(1, Ordering::Relaxed);
+            self.handle
+                .shared
+                .counters
+                .failures
+                .fetch_add(1, Ordering::Relaxed);
             tracing::warn!("Closing client: outbound queue exceeded its limit");
         }
-        self.0 .0.ready.notify_one();
+        self.handle.shared.ready.notify_one();
     }
 
     pub(crate) fn close(&self) {
-        self.0 .0.pending.lock().unwrap().closed = true;
-        self.0 .0.ready.notify_one();
+        self.handle.shared.pending.lock().unwrap().closed = true;
+        self.handle.shared.ready.notify_one();
     }
 
     pub(crate) fn stats(&self) -> SendStats {
-        let c = &self.0 .0.counters;
+        let c = &self.handle.shared.counters;
         SendStats {
             packets: c.packets.load(Ordering::Relaxed),
             bytes: c.bytes.load(Ordering::Relaxed),
@@ -180,7 +190,7 @@ impl Outbound {
             write_ns: c.write_ns.load(Ordering::Relaxed),
             coalesced_blocks: c.coalesced_blocks.load(Ordering::Relaxed),
             failures: c.failures.load(Ordering::Relaxed),
-            queued_bytes: self.0 .0.pending.lock().unwrap().bytes,
+            queued_bytes: self.handle.shared.pending.lock().unwrap().bytes,
         }
     }
 
