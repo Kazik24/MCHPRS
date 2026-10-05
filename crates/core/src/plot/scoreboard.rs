@@ -68,6 +68,10 @@ fn compact_memory(bytes: usize) -> String {
         value /= 1024.0;
         unit += 1;
     }
+    if value >= 999.95 && unit + 1 < UNITS.len() {
+        value /= 1024.0;
+        unit += 1;
+    }
     if unit == 0 {
         format!("{bytes}B")
     } else {
@@ -132,6 +136,9 @@ impl Scoreboard {
 
     fn set_lines(&mut self, players: &[Player], lines: Vec<String>) {
         debug_assert!(lines.iter().all(|line| line.is_ascii() && line.len() <= 20));
+        debug_assert!(lines
+            .first()
+            .is_some_and(|first| lines.iter().all(|line| first.len() >= line.len())));
         if lines == self.current_state {
             return;
         }
