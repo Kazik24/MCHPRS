@@ -44,6 +44,97 @@ impl PlayerPacketSender {
     }
 }
 
+/// Finish client prediction only after all authoritative updates for the action
+/// have entered the same ordered writer. Drop also covers rejected early returns.
+pub struct BlockActionAcknowledgement {
+    sender: PlayerPacketSender,
+    sequence: i32,
+}
+impl BlockActionAcknowledgement {
+    pub fn new(conn: &PlayerConn, sequence: i32) -> Self {
+        Self {
+            sender: PlayerPacketSender::new(conn),
+            sequence,
+        }
+    }
+}
+impl Drop for BlockActionAcknowledgement {
+    fn drop(&mut self) {
+        use packets::PacketEncoderExt;
+        let mut payload = Vec::new();
+        payload.write_varint(self.sequence);
+        self.sender.send_packet(&PacketEncoder::new(payload, 0x04));
+    }
+}
+
+#[cfg(test)]
+mod acknowledgement_tests {
+    use super::*;
+    use packets::clientbound::{C3BMultiBlockChangeRecord, CMultiBlockChange, ClientBoundPacket};
+    use packets::PacketDecoderExt;
+    use std::io::Cursor;
+    #[test]
+    fn authoritative_blocks_reach_the_wire_before_prediction_acknowledgement() {
+        for compressed in [false, true] {
+            let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+            let mut incoming = TcpStream::connect(listener.local_addr().unwrap()).unwrap();
+            incoming
+                .set_read_timeout(Some(std::time::Duration::from_secs(3)))
+                .unwrap();
+            let (outgoing, _) = listener.accept().unwrap();
+            let sender = PlayerPacketSender {
+                outbound: outbound::Outbound::new(outgoing),
+                compressed: Arc::new(AtomicBool::new(compressed)),
+            };
+            {
+                let _ack = BlockActionAcknowledgement {
+                    sender: PlayerPacketSender {
+                        outbound: sender.outbound.clone(),
+                        compressed: sender.compressed.clone(),
+                    },
+                    sequence: 42,
+                };
+                sender.send_block_changes(&CMultiBlockChange {
+                    chunk_x: 0,
+                    chunk_y: 4,
+                    chunk_z: 0,
+                    records: vec![C3BMultiBlockChangeRecord {
+                        x: 1,
+                        y: 1,
+                        z: 1,
+                        block_id: 1,
+                    }],
+                });
+            }
+            let mut ids = Vec::new();
+            for _ in 0..2 {
+                let length = incoming.read_varint().unwrap();
+                let mut frame = Cursor::new(incoming.read_bytes(length as usize).unwrap());
+                if compressed {
+                    assert_eq!(frame.read_varint().unwrap(), 0);
+                }
+                ids.push(frame.read_varint().unwrap());
+                if ids.len() == 2 {
+                    assert_eq!(frame.read_varint().unwrap(), 42);
+                }
+            }
+            let expected = CMultiBlockChange {
+                chunk_x: 0,
+                chunk_y: 0,
+                chunk_z: 0,
+                records: vec![],
+            }
+            .encode();
+            // Use the registered block-update ID from its encoder, then the ACK.
+            let mut bytes = Vec::new();
+            expected.write_uncompressed(&mut bytes).unwrap();
+            let mut encoded = Cursor::new(bytes);
+            encoded.read_varint().unwrap();
+            assert_eq!(ids, [encoded.read_varint().unwrap(), 0x04]);
+        }
+    }
+}
+
 /// The minecraft protocol has these 4 different states.
 #[derive(PartialEq, Eq, Clone)]
 pub enum NetworkState {

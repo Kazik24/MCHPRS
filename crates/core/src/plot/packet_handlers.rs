@@ -12,7 +12,6 @@ use mchprs_blocks::items::{Item, ItemStack};
 use mchprs_blocks::{BlockFace, BlockPos};
 use mchprs_network::packets::clientbound::*;
 use mchprs_network::packets::serverbound::*;
-use mchprs_network::packets::PacketEncoderExt;
 use mchprs_network::packets::SlotData;
 use serde_json::json;
 use std::fs;
@@ -334,14 +333,10 @@ impl ServerBoundPacketHandler for Plot {
         player_block_placement: SPlayerBlockPlacemnt,
         player: usize,
     ) {
-        let mut acknowledgement = Vec::new();
-        acknowledgement.write_varint(player_block_placement.sequence);
-        self.players[player]
-            .client
-            .send_packet(&mchprs_network::packets::PacketEncoder::new(
-                acknowledgement,
-                4,
-            ));
+        let _acknowledgement = mchprs_network::BlockActionAcknowledgement::new(
+            &self.players[player].client,
+            player_block_placement.sequence,
+        );
         let block_pos = BlockPos::from_packed(player_block_placement.pos);
         if !Plot::in_plot_bounds(self.world.x, self.world.z, block_pos.x, block_pos.z)
             || !(0..super::PLOT_BLOCK_HEIGHT).contains(&block_pos.y)
@@ -676,14 +671,10 @@ impl ServerBoundPacketHandler for Plot {
     }
 
     fn handle_player_digging(&mut self, player_digging: SPlayerDigging, player: usize) {
-        let mut acknowledgement = Vec::new();
-        acknowledgement.write_varint(player_digging.sequence);
-        self.players[player]
-            .client
-            .send_packet(&mchprs_network::packets::PacketEncoder::new(
-                acknowledgement,
-                4,
-            ));
+        let _acknowledgement = mchprs_network::BlockActionAcknowledgement::new(
+            &self.players[player].client,
+            player_digging.sequence,
+        );
         if player_digging.status == 0 {
             let block_pos = BlockPos::from_packed(player_digging.pos);
             if !Plot::in_plot_bounds(self.world.x, self.world.z, block_pos.x, block_pos.z)

@@ -21,7 +21,7 @@ explicit denials, wildcard nodes and configured server/world contexts.
 `redstonefun_ranks` enables rank prefixes and the RedstoneFun join/chat format;
 it grants no permissions by itself. Both settings default to false.
 
-Permission and rank changes take effect when players reconnect. The server
+Permissions refresh during sessions within 30 seconds; an expired cache denies access if the database cannot refresh it. Rank display and command suggestions fully refresh on reconnect. The server
 reads LuckPerms using its existing read-only database login. Manage later
 changes through the existing LuckPerms plugin; MCHPRS does not write the tables.
 Supported contexts are static `server` and `world`; other dynamic contexts do
@@ -36,7 +36,7 @@ not apply. This reader is not the complete LuckPerms engine.
 | `engineer` | Cyan `[I]` | Edit own plots and use ordinary commands |
 | `expert` | Purple `[E]` | Edit own plots and use ordinary commands |
 | `advanced` | Orange `[Z]` | Edit own plots and use ordinary commands |
-| `builder` | Yellow `[B]` | Join and chat; spectator mode, no edits or backend commands |
+| `builder` | Yellow `[B]` | Own-plot building and ordinary features; history disabled |
 | `default` | Gray `[G]` | Join and chat; spectator mode, no edits or backend commands |
 
 The existing database prefixes supply the exact tag and nickname colors. All
@@ -54,7 +54,7 @@ formatting. These are global messages, including players on different plots.
 The baseline has `mchprs.* = false` plus join/chat grants on `default`.
 `advanced` has explicit ordinary-command and own-plot editing grants, and
 explicit denials for administration. `expert` and `engineer` inherit `advanced`
-through their existing memberships. `builder` inherits the read-only baseline.
+through their existing memberships. `builder` inherits the default baseline, with dedicated own-plot grants and explicit denials for history. /curse and /bless are denied to builder, advanced, expert and engineer.
 `admin` and `moderator` have `mchprs.* = true`.
 All new baseline nodes use `server=mchprs`; Paper's existing nodes and group
 inheritance were retained. User overrides can deliberately change this policy.
@@ -102,7 +102,7 @@ permission as their canonical command.
 | `/rp`, `/redpiler` | `mchprs.commands.redpiler.compile`, `.reset`, `.inspect` or `.help` |
 | `/radv`, `/radvance` | `mchprs.commands.radvance` |
 | `/toggleautorp` | `mchprs.commands.toggleautorp` |
-| `/curse`, `/bless` | `mchprs.commands.curse`, `mchprs.commands.bless` |
+| `/curse`, `/bless` | `mchprs.commands.curse`, `mchprs.commands.bless`; granted only to Admin/Moderator |
 | `/rhistory` | `mchprs.commands.rhistory`, plus `.status`, `.enable`, `.disable`, `.limit.view` or `.limit.set` |
 | `/rback` | `mchprs.commands.rback` |
 | `/say`, `/tellraw` | `mchprs.commands.say`, `mchprs.commands.tellraw` |
@@ -139,7 +139,7 @@ Standalone servers retain the previous 1,000-tick/unlimited permission behavior.
 
 For a custom cap, deny any larger inherited numeric nodes and grant the desired
 node in `server=mchprs`. To give a finite cap to staff, also deny their unlimited
-node. As with other permission changes, reconnect to refresh the cache.
+node. As with other permission changes, the cache refreshes within 30 seconds.
 
 | `/plot` subcommands | Permission |
 | --- | --- |
@@ -236,3 +236,7 @@ The validated database backup immediately before this change is
 `/srv/mchprs/deploy-backups/history-limits-20261005T132510Z/rf.dump`.
 The history-limit build deployed successfully as
 `sha256:1fde895df857c50bda2b0bf06507894713fae48625fcb5e013fb79e0007a0006`.
+
+## Latest rank and security changes
+
+See [the complete rank list](MCHPRS_RANKS.md) and [the security audit](SECURITY_AUDIT.md). Builder now has own-plot features with history disabled. Expert and Engineer have explicit history command grants to preserve their access despite parallel inheritance from Builder. Dedicated changes affect only server=mchprs nodes.

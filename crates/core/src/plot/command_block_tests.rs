@@ -242,7 +242,8 @@ fn looping_chain_stops_at_the_command_limit() {
     }
     redstone::command_block::update(&mut world, start);
     advance(&mut world, 2);
-    assert_eq!(world.command_messages.len(), 257);
+    // The chain still terminates at 256 links; only 64 messages may be queued.
+    assert_eq!(world.command_messages.len(), 64);
 }
 
 #[test]

@@ -3,8 +3,8 @@
 MCHPRS reads an existing SQL-backed LuckPerms database. PostgreSQL, MySQL and
 MariaDB are supported. It issues SELECT statements in read-only transactions;
 it does not create/migrate tables, update users, or change permission nodes.
-Use the existing LuckPerms plugin to manage permissions. Players must reconnect
-to refresh permission changes.
+Use the existing LuckPerms plugin to manage permissions. Permissions refresh
+during sessions within 30 seconds; stale caches deny access.
 
 The live server uses dedicated `mchprs.*` permissions and RedstoneFun rank/chat
 formatting. See [MCHPRS_PERMISSIONS.md](MCHPRS_PERMISSIONS.md) for the active rank
@@ -68,7 +68,9 @@ mapping should be applied to the shared database.
 - Explicit denials, deterministic precedence, and group weights.
 - `global` and configured server/world scopes, plus matching `server` and `world`
   JSON contexts. Unsupported dynamic contexts are excluded.
-- Expired nodes are excluded. Group membership changes require reconnecting.
+- Expired nodes and membership paths are excluded. Permissions refresh during
+  sessions; stale caches deny access after 30 seconds. Rank display fully refreshes
+  on reconnect. See [the security audit](SECURITY_AUDIT.md).
 - Prefixes, suffixes and weights are metadata, not permission grants.
 
 This is a basic reader, not the complete LuckPerms engine. Direct user nodes take
@@ -167,7 +169,7 @@ See [VELOCITY.md](VELOCITY.md) for the Docker Compose deployment command.
 Before the dedicated permission policy, isolated protocol checks verified
 default-user denial of administrative commands, builder WorldEdit access, and
 administrator commands with existing account UUIDs. The active policy now makes
-Gracz and Budowniczy read-only; see [MCHPRS_PERMISSIONS.md](MCHPRS_PERMISSIONS.md).
+Gracz read-only; Budowniczy has own-plot features with history disabled; see [MCHPRS_PERMISSIONS.md](MCHPRS_PERMISSIONS.md).
 Existing offline player files and plot ownership were preserved. Any transfer to
 account UUIDs requires verified ownership; never copy permission rows or trust a
 submitted account name to establish identity.

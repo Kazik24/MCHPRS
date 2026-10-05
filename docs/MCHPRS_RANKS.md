@@ -197,11 +197,60 @@ See [the permission catalog](MCHPRS_PERMISSIONS.md) for individual command/actio
 ## Budowniczy — [B]
 
 - Database group: `builder`; yellow tag.
-- Allowed: `mchprs.access.join = true`.
-- Allowed: `mchprs.access.chat = true`.
-- Baseline: `mchprs.* = false`, with only the join/chat exceptions above.
-- Spectator access: cannot place/break blocks, change signs or containers, interact with circuits, or trigger pressure plates.
-- No creative inventory edits, backend commands, WorldEdit, redstone tools, plot claims, simulation settings, or history commands.
+- Join and chat; creative inventory and ordinary backend commands.
+- Edit, interact, use WorldEdit, and change simulation/render settings **only on plots owned by the player**.
+- History is disabled: no `/rhistory` or `/rback`, including history status and memory settings.
+
+### Allowed permissions
+
+- `mchprs.access.join = true`
+- `mchprs.access.chat = true`
+- `mchprs.access.commands = true`
+- `mchprs.build = true`
+- `mchprs.build.* = true`
+- `mchprs.inventory.creative = true`
+- `mchprs.worldedit.* = true`
+- `mchprs.we.* = true`
+- `mchprs.redstonetools.* = true`
+- `mchprs.plots.info = true`
+- `mchprs.plots.claim = true`
+- `mchprs.plots.auto = true`
+- `mchprs.plots.visit = true`
+- `mchprs.plots.middle = true`
+- `mchprs.plots.lock = true`
+- `mchprs.plots.select = true`
+- `mchprs.commands.help = true`
+- `mchprs.commands.version = true`
+- `mchprs.commands.teleport = true`
+- `mchprs.commands.speed = true`
+- `mchprs.commands.gamemode = true`
+- `mchprs.commands.gamemode.* = true`
+- `mchprs.commands.rtps.* = true`
+- `mchprs.commands.worldsendrate.* = true`
+- `mchprs.commands.screenonly.* = true`
+- `mchprs.commands.piston_anim.* = true`
+- `mchprs.commands.redpiler.* = true`
+- `mchprs.commands.radvance = true`
+- `mchprs.commands.toggleautorp = true`
+- `mchprs.commands.commandblock.edit = true`
+
+### Denied permissions
+
+- `mchprs.commands.rhistory = false`
+- `mchprs.commands.rhistory.* = false`
+- `mchprs.commands.rback = false`
+- `mchprs.history.limit.* = false`
+
+- `mchprs.commands.curse = false`
+- `mchprs.commands.bless = false`
+
+- `mchprs.plots.admin.* = false`
+- `mchprs.plots.worldedit.bypass = false`
+- `mchprs.commands.stop = false`
+- `mchprs.commands.whitelist = false`
+- `mchprs.commands.say = false`
+- `mchprs.commands.tellraw = false`
+- Editing other players' plots or unclaimed plots; changing the shared history memory budget; unlimited history.
 
 ## Gracz — [G]
 
@@ -214,10 +263,11 @@ See [the permission catalog](MCHPRS_PERMISSIONS.md) for individual command/actio
 
 ## Inheritance and limits
 
-- `builder` inherits `default`.
+- `builder` inherits `default`, with dedicated own-plot grants and history denials; its Paper inheritance was preserved.
 - `advanced` inherits `builder` and `default`.
 - `expert` inherits `advanced`, `builder`, and `default`.
 - `engineer` inherits `expert`, `advanced`, `builder`, and `default`; its 1000-tick node increases the inherited 200-tick cap.
+- `expert` and `engineer` also have explicit history command grants so the parallel builder inheritance cannot remove their history access.
 - `admin` and `moderator` each have their own MCHPRS wildcard grant.
 - The default denial remains inherited by ordinary ranks; more specific positive nodes grant their listed actions.
 - History tick limits use the maximum effective positive numeric node. For a smaller custom limit, deny larger inherited numeric nodes.
