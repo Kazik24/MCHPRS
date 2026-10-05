@@ -233,6 +233,25 @@ impl Block {
             }
         }
     }
+
+    /// Clear only waterlogging, preserving every other property and opaque IDs.
+    /// Piston completion calls this for every payload, including ordinary stone.
+    pub fn without_waterlogging(self) -> Self {
+        match self {
+            Self::Chest { mut chest } => {
+                chest.waterlogged = false;
+                Self::Chest { chest }
+            }
+            Self::Unknown { id } => Self::Unknown {
+                id: crate::generated::STATE_DRY_IDS
+                    .get(id as usize)
+                    .copied()
+                    .map(u32::from)
+                    .unwrap_or(id),
+            },
+            _ => self,
+        }
+    }
     pub fn registry_id(self) -> u32 {
         self.definition().expect("invalid block state").1
     }
@@ -2008,6 +2027,28 @@ blocks! {
 #[cfg(test)]
 mod decoded_state_tests {
     use super::*;
+
+    #[test]
+    fn dry_states_match_property_updates_for_entire_registry() {
+        for id in 0..crate::generated::STATE_PROPERTIES.len() as u32 {
+            // Opaque states must keep their representation, even when a modeled
+            // block happens to share the same registry ID.
+            for block in [Block::from_id(id), Block::Unknown { id }] {
+                let mut expected = block;
+                expected.set_properties(HashMap::from([("waterlogged", "false")]));
+                assert_eq!(block.without_waterlogging(), expected, "state {id}");
+                assert_eq!(
+                    block.without_waterlogging().without_waterlogging(),
+                    expected,
+                    "idempotence {id}"
+                );
+            }
+        }
+        for id in [crate::generated::STATE_PROPERTIES.len() as u32, u32::MAX] {
+            let block = Block::Unknown { id };
+            assert_eq!(block.without_waterlogging(), block);
+        }
+    }
 
     #[test]
     fn cached_states_preserve_decode_and_properties() {

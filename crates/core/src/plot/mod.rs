@@ -124,6 +124,7 @@ pub struct PlotWorld {
     command_output_window: Instant,
     command_output_count: usize,
     command_output_bytes: usize,
+    command_output_limits_enabled: bool,
     history: history::TickHistory,
     update_stats: UpdateStats,
 }
@@ -163,6 +164,7 @@ impl PlotWorld {
             command_output_window: Instant::now(),
             command_output_count: 0,
             command_output_bytes: 0,
+            command_output_limits_enabled: true,
             history: Default::default(),
             update_stats: Default::default(),
         };
@@ -338,6 +340,12 @@ impl PlotWorld {
             .map(|message| message.message.as_str())
     }
 
+    /// Disable wall-clock and queue output limits for deterministic offline replay.
+    /// Live plots retain their default limits; this is never called by the server.
+    pub fn disable_command_output_limits_for_replay(&mut self) {
+        self.command_output_limits_enabled = false;
+    }
+
     fn register_motion(&mut self, pos: BlockPos, progress: f32) {
         self.remove_motions_at(pos);
         let state = &mut self.piston_state;
@@ -494,18 +502,19 @@ impl World for PlotWorld {
             self.command_output_count = 0;
             self.command_output_bytes = 0;
         }
-        if self.command_messages.len() >= 64
-            || self.command_output_count >= 64
+        if (self.command_output_limits_enabled
+            && (self.command_messages.len() >= 64 || self.command_output_count >= 64))
             || command.len() > 131_068
             || source.len() > 256
         {
             return Err("Command-block output limit reached".into());
         }
         let message = crate::chat_commands::parse(command, source, None)?;
-        if self
-            .command_output_bytes
-            .saturating_add(message.message.len())
-            > 65_536
+        if self.command_output_limits_enabled
+            && self
+                .command_output_bytes
+                .saturating_add(message.message.len())
+                > 65_536
         {
             return Err("Command-block output byte limit reached".into());
         }

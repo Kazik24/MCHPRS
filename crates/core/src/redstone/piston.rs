@@ -3,6 +3,7 @@ use mchprs_blocks::block_entities::{BlockEntity, MovingPistonEntity};
 use mchprs_blocks::blocks::{Block, RedstoneMovingPiston, RedstonePiston, RedstonePistonHead};
 use mchprs_blocks::{BlockFace, BlockFacing, BlockPos};
 use mchprs_world::{AdvancePhase, PistonAction, PistonEvent};
+use smallvec::SmallVec;
 
 #[cfg(test)]
 mod tests;
@@ -56,7 +57,7 @@ pub fn update_piston_state(world: &mut impl World, piston: RedstonePiston, pos: 
     }
     let facing = piston.facing.into();
     let action = if extending {
-        if payload_line(world, pos.offset(facing), facing).is_none() {
+        if !walk_payload_line(world, pos.offset(facing), facing, |_| {}) {
             return;
         }
         PistonAction::Extend
@@ -166,20 +167,12 @@ fn extend(world: &mut impl World, piston: RedstonePiston, pos: BlockPos) -> bool
         return false;
     };
     // Snapshot before writing overlapping source and destination cells.
-    let payloads: Vec<_> = line
+    let payloads: SmallVec<[_; 2]> = line
         .iter()
         .map(|&p| (p, world.get_block(p), world.get_block_entity(p).cloned()))
         .collect();
-    for (p, block, entity) in payloads.iter().rev() {
-        moving(
-            world,
-            p.offset(facing),
-            piston,
-            *block,
-            true,
-            false,
-            entity.clone(),
-        );
+    for (p, block, entity) in payloads.into_iter().rev() {
+        moving(world, p.offset(facing), piston, block, true, false, entity);
     }
     // Every source is overwritten by the preceding payload's destination;
     // the first source is replaced by the moving head below.
@@ -199,10 +192,10 @@ fn extend(world: &mut impl World, piston: RedstonePiston, pos: BlockPos) -> bool
         None,
     );
     // Destination writes notify watched faces as well as vacated sources.
-    for &(p, _, _) in payloads.iter().rev() {
+    for &p in line.iter().rev() {
         shape_changed(world, p.offset(facing));
     }
-    for &(p, _, _) in payloads.iter().rev() {
+    for &p in line.iter().rev() {
         notify(world, p);
     }
     notify(world, pos.offset(facing));
@@ -305,7 +298,7 @@ fn finish(world: &mut impl World, pos: BlockPos, interrupted: bool) {
         Block::from_id(entity.block_state)
     };
     if !interrupted {
-        block.set_properties(std::collections::HashMap::from([("waterlogged", "false")]));
+        block = block.without_waterlogging();
     }
     let carried_entity = world
         .piston_motion_index(pos, None)
@@ -427,8 +420,23 @@ fn immovable_container(block: Block) -> bool {
     mchprs_blocks::block_entities::ContainerType::from_block(block).is_some()
 }
 
-fn payload_line(world: &impl World, start: BlockPos, facing: BlockFace) -> Option<Vec<BlockPos>> {
-    let mut line = Vec::new();
+fn payload_line(
+    world: &impl World,
+    start: BlockPos,
+    facing: BlockFace,
+) -> Option<SmallVec<[BlockPos; 8]>> {
+    let mut line = SmallVec::new();
+    walk_payload_line(world, start, facing, |pos| line.push(pos)).then_some(line)
+}
+
+// Validation and collection share the movement rules. The no-op visitor used
+// while requesting an event avoids allocating a line that would be discarded.
+fn walk_payload_line(
+    world: &impl World,
+    start: BlockPos,
+    facing: BlockFace,
+    mut visit: impl FnMut(BlockPos),
+) -> bool {
     let mut pos = start;
     loop {
         if !(0..crate::plot::PLOT_BLOCK_HEIGHT).contains(&pos.y)
@@ -436,17 +444,17 @@ fn payload_line(world: &impl World, start: BlockPos, facing: BlockFace) -> Optio
                 .get_chunk(pos.x.div_euclid(16), pos.z.div_euclid(16))
                 .is_none()
         {
-            return None;
+            return false;
         }
         let block = world.get_block(pos);
         if immovable_container(block) {
-            return None;
+            return false;
         }
         match block {
-            Block::Air => return Some(line),
+            Block::Air => return true,
             // A moving entity belongs to another operation; do not nest its state.
-            Block::MovingPiston { .. } | Block::PistonHead { .. } => return None,
-            _ => line.push(pos),
+            Block::MovingPiston { .. } | Block::PistonHead { .. } => return false,
+            _ => visit(pos),
         }
         pos = pos.offset(facing);
     }

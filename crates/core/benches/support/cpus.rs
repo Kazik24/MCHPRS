@@ -195,7 +195,11 @@ pub fn load_cpu(cpu: Cpu) -> PlotWorld {
         cpu.sha256,
         "frozen schematic changed"
     );
-    load(cpu.schematic)
+    let mut world = load(cpu.schematic);
+    // Frozen traces measure simulated execution, independent of wall-clock speed
+    // and the live client's bounded chat queue. Retain every emitted message.
+    world.disable_command_output_limits_for_replay();
+    world
 }
 
 pub fn collect_chat(world: &PlotWorld, tick: u32, trace: &mut Vec<(u32, String)>) {

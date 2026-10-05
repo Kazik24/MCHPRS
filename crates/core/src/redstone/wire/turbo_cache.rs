@@ -27,9 +27,7 @@ impl SpatialNodes {
     pub fn get(&self, cell: u32) -> Option<NodeId> {
         let section = self.sections.get((cell >> 12) as usize)?.as_ref()?;
         let stamp = section[(cell & 4095) as usize];
-        (stamp.epoch == self.epoch).then_some(NodeId {
-            index: stamp.node as usize,
-        })
+        (stamp.epoch == self.epoch).then_some(NodeId { index: stamp.node })
     }
 
     pub fn put(&mut self, cell: u32, node: NodeId) {
@@ -41,7 +39,7 @@ impl SpatialNodes {
             self.sections[section].get_or_insert_with(|| Box::new([Stamp::default(); 4096]));
         section[(cell & 4095) as usize] = Stamp {
             epoch: self.epoch,
-            node: u32::try_from(node.index).expect("bounded plot wire node index"),
+            node: node.index,
         };
     }
 }
@@ -54,15 +52,10 @@ mod tests {
         let mut nodes = SpatialNodes::default();
         nodes.begin();
         for cell in [0, 4095, 4096, 16_777_215] {
-            nodes.put(
-                cell,
-                NodeId {
-                    index: cell as usize + 1,
-                },
-            );
+            nodes.put(cell, NodeId { index: cell + 1 });
         }
         for cell in [0, 4095, 4096, 16_777_215] {
-            assert_eq!(nodes.get(cell).unwrap().index, cell as usize + 1);
+            assert_eq!(nodes.get(cell).unwrap().index, cell + 1);
         }
         nodes.begin();
         assert!(nodes.get(0).is_none());

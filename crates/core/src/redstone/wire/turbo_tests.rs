@@ -3,6 +3,20 @@ use crate::world::{storage::Chunk, BlockAction};
 use mchprs_blocks::block_entities::BlockEntity;
 use mchprs_world::{PistonState, TickPriority};
 
+#[test]
+fn compact_node_ids_preserve_boundary_indices() {
+    for index in [0, 4095, 4096, u32::MAX as usize] {
+        assert_eq!(NodeId::new(index).index(), index);
+    }
+}
+
+#[cfg(target_pointer_width = "64")]
+#[test]
+#[should_panic(expected = "wire walk exceeds u32 node capacity")]
+fn compact_node_ids_cannot_silently_wrap() {
+    NodeId::new(u32::MAX as usize + 1);
+}
+
 /// An omitted callback must not even read the world: any observable work panics.
 struct UntouchedWorld;
 impl World for UntouchedWorld {

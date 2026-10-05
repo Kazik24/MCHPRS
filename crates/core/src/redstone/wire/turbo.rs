@@ -10,6 +10,7 @@ use mchprs_blocks::{BlockFace, BlockPos};
 use rustc_hash::FxHashMap;
 use std::cell::RefCell;
 use std::collections::hash_map::Entry;
+use std::num::NonZeroU32;
 #[path = "turbo_cache.rs"]
 mod spatial;
 
@@ -43,7 +44,20 @@ fn wire_mut(block: &mut Block) -> &mut RedstoneWire {
 
 #[derive(Clone, Copy)]
 struct NodeId {
-    index: usize,
+    index: u32,
+}
+
+impl NodeId {
+    fn new(index: usize) -> Self {
+        Self {
+            index: u32::try_from(index).expect("wire walk exceeds u32 node capacity"),
+        }
+    }
+
+    #[inline]
+    fn index(self) -> usize {
+        self.index as usize
+    }
 }
 
 struct UpdateNode {
@@ -54,7 +68,8 @@ struct UpdateNode {
     /// other nodes already use an immutable cached state in this algorithm.
     facts: Facts,
     /// This will only be `Some` when all the neighbors are identified.
-    neighbors: Option<usize>,
+    // A one-based ID gives Option a zero sentinel without a separate tag.
+    neighbors: Option<NonZeroU32>,
     visited: bool,
     xbias: i32,
     zbias: i32,
@@ -62,6 +77,11 @@ struct UpdateNode {
 }
 
 impl UpdateNode {
+    #[inline]
+    fn neighborhood_index(&self) -> usize {
+        self.neighbors.expect("wire neighbors not identified").get() as usize - 1
+    }
+
     fn new(world: &impl World, pos: BlockPos) -> UpdateNode {
         let state = world.get_block(pos);
         UpdateNode {
@@ -110,7 +130,7 @@ impl RedstoneWireTurbo {
     }
 
     fn get_node(&self, node_id: NodeId) -> &UpdateNode {
-        &self.nodes[node_id.index]
+        &self.nodes[node_id.index()]
     }
 
     fn compute_heading(rx: i32, rz: i32) -> usize {
@@ -137,7 +157,7 @@ impl RedstoneWireTurbo {
     // ];
 
     fn identify_neighbors(&mut self, world: &mut impl World, upd1: NodeId) {
-        let pos = self.nodes[upd1.index].pos;
+        let pos = self.nodes[upd1.index()].pos;
         let cached = world.wire_neighborhood(pos);
         let local;
         let neighbors = if let Some(ref cached) = cached {
@@ -155,7 +175,7 @@ impl RedstoneWireTurbo {
         for (i, location) in neighbors.iter().enumerate() {
             let neighbor = self.node_at(world, *location);
 
-            let node = &self.nodes[neighbor.index];
+            let node = &self.nodes[neighbor.index()];
             neighbor_nodes[i] = neighbor;
             neighbors_visited[i] = node.visited;
         }
@@ -180,7 +200,7 @@ impl RedstoneWireTurbo {
             cz -= 1;
         };
 
-        let UpdateNode { xbias, zbias, .. } = &self.nodes[upd1.index];
+        let UpdateNode { xbias, zbias, .. } = &self.nodes[upd1.index()];
         let xbias = *xbias;
         let zbias = *zbias;
 
@@ -190,7 +210,7 @@ impl RedstoneWireTurbo {
 
             for node_id in &neighbor_nodes {
                 // if let Some(node_id) = node_id {
-                let nn = &mut self.nodes[node_id.index];
+                let nn = &mut self.nodes[node_id.index()];
                 nn.xbias = xbias;
                 nn.zbias = zbias;
                 // }
@@ -208,7 +228,7 @@ impl RedstoneWireTurbo {
 
             for node_id in &neighbor_nodes {
                 // if let Some(node_id) = node_id {
-                let nn = &mut self.nodes[node_id.index];
+                let nn = &mut self.nodes[node_id.index()];
                 nn.xbias = cx;
                 nn.zbias = cz;
                 // }
@@ -223,9 +243,7 @@ impl RedstoneWireTurbo {
             if let Some(node) = self.spatial.get(cell) {
                 return node;
             }
-            let node = NodeId {
-                index: self.nodes.len(),
-            };
+            let node = NodeId::new(self.nodes.len());
             self.nodes.push(UpdateNode::new(world, location.pos));
             self.spatial.put(cell, node);
             node
@@ -233,9 +251,7 @@ impl RedstoneWireTurbo {
             match self.node_cache.entry(location.pos) {
                 Entry::Occupied(entry) => *entry.get(),
                 Entry::Vacant(entry) => {
-                    let node = NodeId {
-                        index: self.nodes.len(),
-                    };
+                    let node = NodeId::new(self.nodes.len());
                     self.nodes.push(UpdateNode::new(world, location.pos));
                     *entry.insert(node)
                 }
@@ -259,9 +275,15 @@ impl RedstoneWireTurbo {
     ];
 
     fn orient_neighbors(&mut self, src: &[NodeId; 24], dst_id: NodeId, heading: usize) {
-        let dst = &mut self.nodes[dst_id.index];
+        let dst = &mut self.nodes[dst_id.index()];
         let re = Self::REORDING[heading];
-        dst.neighbors = Some(self.neighbor_lists.len());
+        dst.neighbors = Some(
+            u32::try_from(self.neighbor_lists.len())
+                .ok()
+                .and_then(|index| index.checked_add(1))
+                .and_then(NonZeroU32::new)
+                .expect("wire walk exceeds u32 neighborhood capacity"),
+        );
         self.neighbor_lists.push(Neighborhood {
             oriented: re.map(|i| src[i]),
             direct: [src[3], src[2], src[4], src[5], src[1], src[0]],
@@ -281,7 +303,7 @@ impl RedstoneWireTurbo {
                 cell: world.wire_location(pos),
             },
         );
-        turbo.nodes[node_id.index].visited = true;
+        turbo.nodes[node_id.index()].visited = true;
         turbo.propagate_changes(world, node_id, 0);
         turbo.breadth_first_walk(world);
         // Discard all live state, orientation and traversal metadata. Canonical
@@ -298,16 +320,16 @@ impl RedstoneWireTurbo {
     }
 
     fn propagate_changes(&mut self, world: &mut impl World, upd1: NodeId, layer: u32) {
-        if self.nodes[upd1.index].neighbors.is_none() {
+        if self.nodes[upd1.index()].neighbors.is_none() {
             self.identify_neighbors(world, upd1);
         }
 
-        let neighbors = self.neighbor_lists[self.nodes[upd1.index].neighbors.unwrap()].oriented;
+        let neighbors = self.neighbor_lists[self.nodes[upd1.index()].neighborhood_index()].oriented;
 
         let layer1 = layer + 1;
 
         for neighbor_id in neighbors {
-            let neighbor = &mut self.nodes[neighbor_id.index];
+            let neighbor = &mut self.nodes[neighbor_id.index()];
             if layer1 > neighbor.layer {
                 neighbor.layer = layer1;
                 if neighbor.facts.updates {
@@ -319,7 +341,7 @@ impl RedstoneWireTurbo {
         let layer2 = layer + 2;
 
         for neighbor_id in &neighbors[0..4] {
-            let neighbor = &mut self.nodes[neighbor_id.index];
+            let neighbor = &mut self.nodes[neighbor_id.index()];
             if layer2 > neighbor.layer {
                 neighbor.layer = layer2;
                 if neighbor.facts.updates {
@@ -340,7 +362,7 @@ impl RedstoneWireTurbo {
             let count = self.update_queue[0].len();
             for index in 0..count {
                 let node_id = self.update_queue[0][index];
-                match self.nodes[node_id.index].state {
+                match self.nodes[node_id.index()].state {
                     Block::RedstoneWire { .. } => {
                         self.update_node(world, node_id, self.current_walk_layer);
                     }
@@ -349,7 +371,7 @@ impl RedstoneWireTurbo {
                     // This only works because updating any other block than a wire will
                     // never change the state of the block. If that changes in the future,
                     // the cached state will need to be updated
-                    block => redstone::update(block, world, self.nodes[node_id.index].pos, None),
+                    block => redstone::update(block, world, self.nodes[node_id.index()].pos, None),
                 }
             }
 
@@ -368,14 +390,14 @@ impl RedstoneWireTurbo {
 
     fn update_node(&mut self, world: &mut impl World, upd1: NodeId, layer: u32) {
         let old_wire = {
-            let node = &mut self.nodes[upd1.index];
+            let node = &mut self.nodes[upd1.index()];
             node.visited = true;
             unwrap_wire(node.state)
         };
 
         let new_wire = self.calculate_current_changes(world, upd1);
         if old_wire.power != new_wire.power {
-            wire_mut(&mut self.nodes[upd1.index].state).power = new_wire.power;
+            wire_mut(&mut self.nodes[upd1.index()].state).power = new_wire.power;
 
             self.propagate_changes(world, upd1, layer);
         }
@@ -386,21 +408,21 @@ impl RedstoneWireTurbo {
     const RS_NEIGHBORS_DN: [usize; 4] = [8, 10, 12, 14];
 
     fn calculate_current_changes(&mut self, world: &mut impl World, upd: NodeId) -> RedstoneWire {
-        let mut wire = unwrap_wire(self.nodes[upd.index].state);
+        let mut wire = unwrap_wire(self.nodes[upd.index()].state);
         let i = wire.power;
         let mut block_power = 0;
 
-        if self.nodes[upd.index].neighbors.is_none() {
+        if self.nodes[upd.index()].neighbors.is_none() {
             self.identify_neighbors(world, upd);
         }
 
-        let pos = self.nodes[upd.index].pos;
+        let pos = self.nodes[upd.index()].pos;
 
         let mut wire_power = 0;
-        let direct = self.neighbor_lists[self.nodes[upd.index].neighbors.unwrap()].direct;
+        let direct = self.neighbor_lists[self.nodes[upd.index()].neighborhood_index()].direct;
         for (side, neighbor_id) in BlockFace::values().iter().zip(direct) {
             let neighbor_pos = pos.offset(*side);
-            let neighbor = self.nodes[neighbor_id.index].state;
+            let neighbor = self.nodes[neighbor_id.index()].state;
             wire_power = wire_power.max(redstone::get_redstone_power_no_dust(
                 neighbor,
                 world,
@@ -410,9 +432,10 @@ impl RedstoneWireTurbo {
         }
 
         if wire_power < 15 {
-            let neighbors = &self.neighbor_lists[self.nodes[upd.index].neighbors.unwrap()].oriented;
+            let neighbors =
+                &self.neighbor_lists[self.nodes[upd.index()].neighborhood_index()].oriented;
 
-            let center_up = self.nodes[neighbors[1].index].facts;
+            let center_up = self.nodes[neighbors[1].index()].facts;
 
             for m in 0..4 {
                 let n = Self::RS_NEIGHBORS[m];
@@ -443,7 +466,7 @@ impl RedstoneWireTurbo {
     }
 
     fn get_max_current_strength(&self, upd: NodeId, strength: u8) -> u8 {
-        let node = &self.nodes[upd.index];
+        let node = &self.nodes[upd.index()];
         if let Block::RedstoneWire { wire } = node.state {
             wire.power.max(strength)
         } else {

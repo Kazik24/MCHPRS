@@ -54,6 +54,14 @@ slab_types = [
     for _, name, properties in new
 ]
 text += array("STATE_SLAB_TYPES", slab_types, "u8")
+# Piston completion needs only a numeric lookup, never property strings/maps.
+# Resolve the waterlogged=false state from the pinned registry at generation time.
+dry_states = [
+    index[(name, tuple((k, "false" if k == "waterlogged" else v) for k, v in properties))]
+    for _, name, properties in new
+]
+assert max(dry_states) <= 65535
+text += array("STATE_DRY_IDS", dry_states, "u16")
 text += "#[rustfmt::skip]\npub static BLOCKS: &[(&str,u32,u32,u32,u32)] = &[\n" + "\n".join(f'    ("{b["name"]}",{b["id"]},{b["minStateId"]},{b["maxStateId"]},{b["defaultState"]}),' for b in load("blocks")) + "\n];\n"
 text += "#[rustfmt::skip]\npub static STATE_PROPERTIES: &[&[(&str,&str)]] = &[\n" + "\n".join("    &[" + ",".join(f'(\"{k}\",\"{v}\")' for k,v in props) + "]," for _,_,props in new) + "\n];\n"
 old_items = load("legacy_items")

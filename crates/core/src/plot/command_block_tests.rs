@@ -33,6 +33,20 @@ fn command_blocks_cannot_dispatch_privileged_commands_or_flood_output() {
     assert!(world.execute_command_block("say overflow", "@").is_err());
     assert_eq!(world.command_output().count(), 64);
 }
+
+#[test]
+fn offline_replay_retains_all_output_without_enabling_other_commands() {
+    let mut world = world();
+    world.disable_command_output_limits_for_replay();
+    for _ in 0..1_535 {
+        world.execute_command_block("say hello", "@").unwrap();
+    }
+    assert_eq!(world.command_output().count(), 1_535);
+    assert!(world.execute_command_block("stop", "@").is_err());
+    assert!(world
+        .execute_command_block(&"x".repeat(131_069), "@")
+        .is_err());
+}
 fn place(
     world: &mut PlotWorld,
     pos: BlockPos,

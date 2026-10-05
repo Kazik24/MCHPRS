@@ -105,3 +105,77 @@ cargo bench -p mchprs_core --bench cpus -- --iterations 3 --label indexed_piston
 cargo bench -p mchprs_core --bench piston -- piston-cycle/independent --noplot
 cargo test --workspace --release --locked --no-fail-fast -- --test-threads=1
 ```
+
+## Piston allocations and compact wire IDs
+
+`piston-wire-performance.json` compares commit
+`aedde3e14d0e237680cd4bb5a132201c16ac34e6` with this additional batch:
+
+- Event-request validation walks the payload line without allocating a list.
+  Validation and collection share the same movement rules. Execution still
+  revalidates the line, since queued events can outlive changes to the world.
+- Payload positions use `SmallVec<[BlockPos; 8]>`; snapshots use two inline
+  payloads. Longer lines spill onto the heap and retain unrestricted length.
+  Movement consumes snapshots, avoiding a second clone of carried block entities.
+  Destination and source notifications keep their original reverse order.
+- Normal completion clears waterlogging using typed chest fields or a generated
+  `u16` registry lookup. The static table occupies 55,828 bytes and replaces
+  property-string hashing and allocation in this path. Generation resolves all
+  properties from pinned inputs; an exhaustive comparison checks the original
+  setter for every modeled and opaque registry representation. Interrupted
+  completion retains waterlogging.
+- Wire node IDs use checked `u32` indices, halving the 24-oriented/6-direct
+  neighbor record from 240 to 120 bytes on x64. Optional neighbor-list IDs use
+  `NonZeroU32`, reducing that field from 16 to 4 bytes. Queues and fallback maps
+  use the same compact IDs. Overflow fails explicitly rather than wrapping.
+
+The later live-server chat limits depend on wall time and queue length. Both
+benchmark versions use an explicit offline replay mode that retains all output;
+live plots default to their existing limits. `piston-wire-replay.patch` is the
+shared patch applied to the baseline. Frozen references remain unchanged, and
+unsupported commands and command/source size checks remain enforced in replay.
+
+Three fresh processes per CPU per version, alternating version order, pinned to
+logical processor 2 with AboveNormal priority, Rust 1.98.1/MSVC, release fat LTO:
+
+| CPU | Before seconds / 50,000 ticks | After seconds | Before active TPS | After active TPS | Active throughput gain |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| PM1 SORT | 73.028 | 67.343 | 165 | 179 | 8.4% |
+| ANPU Pong | 5.435 | 5.338 | 920 | 937 | 1.8% |
+
+These are medians. PM1 ranges were 71.344–77.160 seconds before and
+62.454–71.568 after; ANPU ranges were 5.412–5.805 before and 5.337–5.824 after.
+Ranges overlap, especially for ANPU; the small ANPU gain is an observation from
+these runs. Active windows remain 12,051 and 5,000 game ticks. Client work is
+excluded. The combined batch is measured together, so these measurements do not
+attribute gains to individual changes.
+
+Two Criterion processes per version, alternating order, each with 20 samples,
+one-second warmup and three-second measurement. The table uses the midpoint of
+the two cycle slope estimates; individual confidence intervals are in the JSON.
+
+| Workload | Before cycle time | After cycle time | Throughput gain |
+| --- | ---: | ---: | ---: |
+| 1 independent piston | 4.489 µs | 3.932 µs | 14.2% |
+| 64 independent pistons | 323.198 µs | 283.895 µs | 13.8% |
+| 256 independent pistons | 1.471 ms | 1.340 ms | 9.7% |
+| 1,024 independent pistons | 9.080 ms | 8.507 ms | 6.7% |
+| 8-block chain | 10.086 µs | 8.934 µs | 12.9% |
+| 32-block chain | 29.337 µs | 26.845 µs | 9.3% |
+| 128-block chain | 111.333 µs | 101.293 µs | 9.9% |
+
+All 233 ordinary workspace tests and all twelve frozen CPU replays passed.
+Source/executable hashes and full per-run measurements are saved in the JSON.
+The generated data reproduces with `py tools/generate_mc_data.py`.
+
+To reproduce the comparison, build the baseline at the recorded commit after
+applying the shared replay patch, and build the candidate using the same bench
+profile. Copy the `cpus` and `piston` executables emitted by Cargo into
+`target/piston-wire-comparison` as `cpus-baseline.exe`, `cpus-optimized.exe`,
+`piston-baseline.exe`, and `piston-optimized.exe`; write the baseline commit to
+`base-commit.txt` in that directory. Run:
+
+```powershell
+cargo bench -p mchprs_core --bench piston --bench cpus --no-run --message-format=json
+./tools/run_piston_wire_bench.ps1
+```

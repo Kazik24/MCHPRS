@@ -547,6 +547,37 @@ fn push_chain_snapshots_preserve_overlapping_payloads() {
 }
 
 #[test]
+fn long_payload_lines_spill_and_preserve_every_block() {
+    let mut world = empty_world();
+    let pos = base();
+    let length = 32;
+    for offset in 1..=length {
+        world.set_block(
+            BlockPos::new(pos.x + offset, pos.y, pos.z),
+            if offset % 2 == 0 {
+                Block::GoldBlock {}
+            } else {
+                Block::Stone {}
+            },
+        );
+    }
+    start(&mut world, pos, BlockFacing::East, Block::Stone {});
+    settle(&mut world);
+    assert!(extended(&world, pos));
+    for offset in 1..=length {
+        assert_eq!(
+            world.get_block(BlockPos::new(pos.x + offset + 1, pos.y, pos.z)),
+            if offset % 2 == 0 {
+                Block::GoldBlock {}
+            } else {
+                Block::Stone {}
+            },
+            "payload {offset}"
+        );
+    }
+}
+
+#[test]
 fn canceled_event_rechecks_power_and_is_deduplicated() {
     let mut world = empty_world();
     let pos = base();
