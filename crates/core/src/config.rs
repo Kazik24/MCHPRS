@@ -5,17 +5,20 @@ use std::fs;
 use std::io::Write;
 use toml_edit::{value, Document};
 
-pub static CONFIG: Lazy<ServerConfig> = Lazy::new(|| ServerConfig::load("Config.toml"));
+static CONFIG_PATH: Lazy<std::path::PathBuf> = Lazy::new(|| {
+    std::env::var_os("MCHPRS_CONFIG")
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(|| "Config.toml".into())
+});
+
+pub static CONFIG: Lazy<ServerConfig> = Lazy::new(|| ServerConfig::load(&CONFIG_PATH));
 
 pub(crate) fn save_history_limit(mib: i64) -> Result<(), String> {
-    let text = fs::read_to_string("Config.toml").map_err(|e| e.to_string())?;
+    let text = fs::read_to_string(&*CONFIG_PATH).map_err(|e| e.to_string())?;
     let mut doc = text.parse::<Document>().map_err(|e| e.to_string())?;
     doc["rhistory_memory_limit_mib"] = value(mib);
-    mchprs_save_data::atomic::write(
-        std::path::Path::new("Config.toml"),
-        doc.to_string().as_bytes(),
-    )
-    .map_err(|e| format!("Cannot save history limit: {e}"))
+    mchprs_save_data::atomic::write(&CONFIG_PATH, doc.to_string().as_bytes())
+        .map_err(|e| format!("Cannot save history limit: {e}"))
 }
 
 trait ConfigSerializeDefault {
@@ -54,8 +57,8 @@ macro_rules! gen_config {
         }
 
         impl ServerConfig {
-            fn load(config_file: &str) -> ServerConfig {
-                let str = fs::read_to_string("Config.toml").unwrap_or_default();
+            fn load(config_file: &std::path::Path) -> ServerConfig {
+                let str = fs::read_to_string(config_file).unwrap_or_default();
                 let mut doc = str.parse::<Document>().unwrap();
 
                 $(
@@ -64,7 +67,7 @@ macro_rules! gen_config {
 
                 let patched = doc.to_string();
                 if str != patched {
-                    let mut file = fs::OpenOptions::new().create(true).write(true).open(&config_file).unwrap();
+                    let mut file = fs::OpenOptions::new().create(true).truncate(true).write(true).open(config_file).unwrap();
                     write!(file, "{}", patched).unwrap();
                 }
 
@@ -87,7 +90,35 @@ gen_config! {
     block_in_hitbox: bool = true,
     auto_redpiler: bool = false,
     fast_render_threshold: i64 = 200,
-    fast_render_send_rate: i64 = 2,
+    fast_render_send_rate: i64 = 10,
     rhistory_memory_limit_mib: i64 = 2048,
     rhistory_work_memory_limit_mib: i64 = 256
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn reads_and_patches_the_selected_config_file() {
+        let unique = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let path = std::env::temp_dir().join(format!(
+            "mchprs-config-{}-{unique}.toml",
+            std::process::id()
+        ));
+        fs::write(
+            &path,
+            "motd = \"Selected container config\"\nfast_render_send_rate = 10\n",
+        )
+        .unwrap();
+        let config = ServerConfig::load(&path);
+        let patched = fs::read_to_string(&path).unwrap();
+        fs::remove_file(&path).unwrap();
+        assert_eq!(config.motd, "Selected container config");
+        assert_eq!(config.fast_render_send_rate, 10);
+        assert!(patched.contains("rhistory_memory_limit_mib"));
+    }
 }

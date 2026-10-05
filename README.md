@@ -40,6 +40,12 @@ Once complete, the optimized executable will be located at `./target/release/mch
 
 MCHPRS will generate a `Config.toml` file in the current working directory when starting the server if it does not exist.
 
+Set `MCHPRS_CONFIG` to use a different configuration file. The production Docker
+image copies the repository's local `Config.toml` to `/etc/mchprs/Config.toml`
+and reads it there, independently of the `/data` world-data mount. Rebuild and
+recreate the container after editing the local config. Runtime changes to this
+copy last until the container is recreated.
+
 The folowing options are available at the toplevel (under no header):
 | Field | Description | Default |
 | --- | --- |--- |
