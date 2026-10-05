@@ -82,7 +82,11 @@ impl Plot {
             return;
         }
         let pos = menu.pos;
-        if !self.players[player_idx].can_build_action("container", self.owner) {
+        if !self.players[player_idx].can_build_action(
+            "container",
+            self.owner,
+            (self.world.x, self.world.z),
+        ) {
             self.players[player_idx].send_no_permission_message();
             self.close_open_container(player_idx);
             return;

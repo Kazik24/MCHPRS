@@ -32,6 +32,12 @@ pub type DecodeResult<T> = std::result::Result<T, PacketDecodeError>;
 
 #[derive(Debug)]
 pub enum PacketDecodeError {
+    /// The peer closed between packets, before starting another frame.
+    ConnectionClosed,
+    Packet {
+        packet_id: i32,
+        source: Box<PacketDecodeError>,
+    },
     Io(io::Error),
     FromUtf8(std::string::FromUtf8Error),
     Nbt(nbt::Error),
@@ -99,6 +105,17 @@ fn read_decompressed<T: PacketDecoderExt>(
     state: &mut NetworkState,
 ) -> DecodeResult<Box<dyn ServerBoundPacket>> {
     let packet_id = reader.read_varint()?;
+    decode_packet(reader, state, packet_id).map_err(|source| PacketDecodeError::Packet {
+        packet_id,
+        source: Box::new(source),
+    })
+}
+
+fn decode_packet<T: PacketDecoderExt>(
+    reader: &mut T,
+    state: &mut NetworkState,
+    packet_id: i32,
+) -> DecodeResult<Box<dyn ServerBoundPacket>> {
     let unknown = || -> Box<dyn ServerBoundPacket> { Box::new(SUnknown) };
     Ok(match *state {
         NetworkState::Handshake if packet_id == 0 => {
@@ -200,7 +217,17 @@ pub fn read_packet<T: PacketDecoderExt>(
     compressed: &Arc<AtomicBool>,
     network_state: &mut NetworkState,
 ) -> DecodeResult<Box<dyn ServerBoundPacket>> {
-    let length = reader.read_varint()?;
+    let mut first = [0];
+    loop {
+        match reader.read(&mut first) {
+            Ok(0) => return Err(PacketDecodeError::ConnectionClosed),
+            Ok(_) => break,
+            Err(error) if error.kind() == io::ErrorKind::Interrupted => continue,
+            Err(error) => return Err(error.into()),
+        }
+    }
+    // EOF after this byte means an incomplete header/body, not a clean close.
+    let length = read_varint_with_first(reader, first[0])?;
     if !(1..=2097152).contains(&length) {
         return Err(io::Error::new(io::ErrorKind::InvalidData, "invalid packet length").into());
     }
@@ -215,6 +242,25 @@ pub fn read_packet<T: PacketDecoderExt>(
 
 impl<T: std::convert::AsRef<[u8]>> PacketDecoderExt for Cursor<T> {}
 impl PacketDecoderExt for TcpStream {}
+
+fn read_varint_with_first<T: PacketDecoderExt>(reader: &mut T, first: u8) -> DecodeResult<i32> {
+    let mut result = 0u32;
+    for n in 0..5 {
+        let byte = if n == 0 {
+            first
+        } else {
+            reader.read_unsigned_byte()?
+        };
+        if n == 4 && byte & 0xf0 != 0 {
+            return Err(io::Error::new(io::ErrorKind::InvalidData, "VarInt too big").into());
+        }
+        result |= ((byte & 127) as u32) << (7 * n);
+        if byte & 128 == 0 {
+            return Ok(result as i32);
+        }
+    }
+    Err(io::Error::new(io::ErrorKind::InvalidData, "VarInt too big").into())
+}
 
 pub trait PacketDecoderExt: Read + Sized {
     fn read_unsigned_byte(&mut self) -> DecodeResult<u8> {
@@ -264,18 +310,8 @@ pub trait PacketDecoderExt: Read + Sized {
     }
 
     fn read_varint(&mut self) -> DecodeResult<i32> {
-        let mut result = 0u32;
-        for n in 0..5 {
-            let byte = self.read_unsigned_byte()?;
-            if n == 4 && byte & 0xf0 != 0 {
-                return Err(io::Error::new(io::ErrorKind::InvalidData, "VarInt too big").into());
-            }
-            result |= ((byte & 127) as u32) << (7 * n);
-            if byte & 128 == 0 {
-                return Ok(result as i32);
-            }
-        }
-        Err(io::Error::new(io::ErrorKind::InvalidData, "VarInt too big").into())
+        let first = self.read_unsigned_byte()?;
+        read_varint_with_first(self, first)
     }
     fn read_varlong(&mut self) -> DecodeResult<i64> {
         let mut result = 0u64;

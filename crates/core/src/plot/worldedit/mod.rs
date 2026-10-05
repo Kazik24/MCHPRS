@@ -5,6 +5,7 @@ mod execute;
 mod safety;
 mod schematic;
 mod schematic_paths;
+pub(super) use schematic_paths::complete_names as complete_schematic_names;
 #[cfg(test)]
 mod stack_tests;
 #[cfg(test)]
@@ -52,9 +53,12 @@ pub fn execute_command(
     };
 
     let allowed = if crate::permissions::dedicated_permissions() {
-        player.can_edit_plot(plot.owner)
+        player.can_edit_plot(plot.owner, (plot.world.x, plot.world.z))
     } else {
-        player.has_permission("plots.worldedit.bypass") || plot.owner == Some(player.uuid)
+        player.has_permission("plots.worldedit.bypass")
+            || plot.owner == Some(player.uuid)
+            || (plot.owner.is_some()
+                && super::database::is_plot_member(plot.world.x, plot.world.z, player.uuid))
     };
     if !allowed {
         player.send_no_permission_message();
@@ -907,7 +911,9 @@ impl WorldEditPattern {
         };
 
         for part in &self.parts {
-            if part.weight <= 0.0 { continue; }
+            if part.weight <= 0.0 {
+                continue;
+            }
             random -= part.weight;
             if random <= 0.0 {
                 selected = part;

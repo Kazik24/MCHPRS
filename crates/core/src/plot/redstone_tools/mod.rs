@@ -206,9 +206,12 @@ impl Plot {
                 | ToolCommand::RStack
                 | ToolCommand::AutoStack
         ) && if crate::permissions::dedicated_permissions() {
-            !player.can_edit_plot(self.owner)
+            !player.can_edit_plot(self.owner, (self.world.x, self.world.z))
         } else {
-            !player.has_permission("plots.worldedit.bypass") && self.owner != Some(player.uuid)
+            !player.has_permission("plots.worldedit.bypass")
+                && self.owner != Some(player.uuid)
+                && !(self.owner.is_some()
+                    && super::database::is_plot_member(self.world.x, self.world.z, player.uuid))
         } {
             bail!(messages::YOU_CAN_ONLY_USE_WORLDEDIT_ON);
         }

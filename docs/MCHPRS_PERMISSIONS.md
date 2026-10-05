@@ -82,7 +82,7 @@ inheritance were retained. User overrides can deliberately change this policy.
 | `mchprs.plots.limit.unlimited`        | Remove the ownership limit; granted only to Admin/Moderator                                             |
 
 Direct world actions require the base build permission, the action permission,
-and ownership or the corresponding other/unowned permission. WorldEdit and
+and ownership, plot membership or the corresponding other/unowned permission. WorldEdit and
 mutating plot commands use the same ownership rule. Inventory and command access
 are independent of building. A player without `mchprs.build` starts in spectator
 mode; spectators do not trigger pressure plates. Ordinary ranks cannot bypass
@@ -163,12 +163,20 @@ node. As with other permission changes, the cache refreshes within 30 seconds.
 | `/plot` subcommands            | Permission            |
 | ------------------------------ | --------------------- |
 | `info`, `i`                    | `mchprs.plots.info`   |
-| `claim`, `c`                   | `mchprs.plots.claim`  |
+| `claim`, `c`, `add`, `remove`  | `mchprs.plots.claim`  |
 | `auto`, `a`                    | `mchprs.plots.auto`   |
-| `visit`, `v`, `teleport`, `tp` | `mchprs.plots.visit`  |
+| `visit`, `v`, `teleport`, `tp`, `home`, `h` | `mchprs.plots.visit`  |
 | `middle`                       | `mchprs.plots.middle` |
 | `lock`, `unlock`               | `mchprs.plots.lock`   |
 | `select`, `sel`                | `mchprs.plots.select` |
+
+`/p home` (or `/p h`) visits your first claimed plot, ordered by claim ID.
+`/p add <nick>` and `/p remove <nick>` manage members of the current plot. They
+reuse the claim permission; only the owner or a player with the other-plot admin
+permission can change membership. A member cannot delegate access or remove the
+owner. Names are matched case-insensitively against players who have joined this
+server; members retain their normal build and command permission requirements.
+Membership persists in `world/plots.db` and grants access only to the named plot.
 
 ## WorldEdit and redstone tools
 

@@ -1,6 +1,14 @@
 use once_cell::sync::Lazy;
-use rusqlite::{params, Connection};
-use std::sync::{Mutex, MutexGuard};
+use rusqlite::{params, Connection, OptionalExtension};
+use std::collections::HashSet;
+use std::sync::{Mutex, MutexGuard, RwLock};
+
+// Interaction checks read memory rather than querying SQLite for every block action.
+static MEMBERS: Lazy<RwLock<HashSet<(i32, i32, u128)>>> = Lazy::new(Default::default);
+
+pub fn is_plot_member(x: i32, z: i32, uuid: u128) -> bool {
+    MEMBERS.read().unwrap().contains(&(x, z, uuid))
+}
 
 static CONN: Lazy<Mutex<Connection>> = Lazy::new(|| {
     Mutex::new(Connection::open("./world/plots.db").expect("Error opening plot database!"))
@@ -77,13 +85,153 @@ pub fn get_owned_plots(player: &str) -> rusqlite::Result<Vec<(i32, i32)>> {
                 JOIN
                     user ON user.id = userplot.user_id
                 WHERE
-                    name=?1
-                    AND is_owner=TRUE",
+                    name=?1 COLLATE NOCASE
+                    AND is_owner=TRUE
+                ORDER BY plot.id",
     )?;
     let plots = stmt
         .query_map(params![player], |row| Ok((row.get(0)?, row.get(1)?)))?
         .collect();
     plots
+}
+
+pub fn get_owned_plots_by_uuid(uuid: u128) -> rusqlite::Result<Vec<(i32, i32)>> {
+    get_owned_plots_by_uuid_in(&lock(), uuid)
+}
+
+fn get_owned_plots_by_uuid_in(conn: &Connection, uuid: u128) -> rusqlite::Result<Vec<(i32, i32)>> {
+    let mut stmt = conn.prepare_cached(
+        "SELECT plot_x, plot_z FROM plot
+         JOIN userplot ON userplot.plot_id=plot.id
+         JOIN user ON user.id=userplot.user_id
+         WHERE uuid=?1 AND is_owner=TRUE ORDER BY plot.id",
+    )?;
+    let result = stmt
+        .query_map([format!("{uuid:032x}")], |row| {
+            Ok((row.get(0)?, row.get(1)?))
+        })?
+        .collect();
+    result
+}
+
+pub fn known_usernames() -> rusqlite::Result<Vec<String>> {
+    let conn = lock();
+    let mut stmt =
+        conn.prepare_cached("SELECT DISTINCT name FROM user ORDER BY name COLLATE NOCASE")?;
+    let result = stmt.query_map([], |row| row.get(0))?.collect();
+    result
+}
+
+pub fn plot_member_names(x: i32, z: i32) -> rusqlite::Result<Vec<String>> {
+    let conn = lock();
+    let mut stmt = conn.prepare_cached(
+        "SELECT DISTINCT name FROM user
+         JOIN userplot ON userplot.user_id=user.id
+         JOIN plot ON plot.id=userplot.plot_id
+         WHERE plot_x=?1 AND plot_z=?2 AND is_owner=FALSE ORDER BY name COLLATE NOCASE",
+    )?;
+    let result = stmt.query_map(params![x, z], |row| row.get(0))?.collect();
+    result
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub enum MembershipResult {
+    Changed { uuid: u128, name: String },
+    Unchanged,
+    UnknownPlayer,
+    AmbiguousPlayer,
+    PlotUnclaimed,
+    NotOwner,
+    IsOwner,
+}
+
+pub fn set_plot_member(
+    x: i32,
+    z: i32,
+    actor: u128,
+    admin: bool,
+    name: &str,
+    add: bool,
+) -> rusqlite::Result<MembershipResult> {
+    let mut conn = lock();
+    let result = set_plot_member_in(&mut conn, x, z, actor, admin, name, add)?;
+    if let MembershipResult::Changed { uuid, .. } = &result {
+        let mut members = MEMBERS.write().unwrap();
+        if add {
+            members.insert((x, z, *uuid));
+        } else {
+            members.remove(&(x, z, *uuid));
+        }
+    }
+    Ok(result)
+}
+
+fn set_plot_member_in(
+    conn: &mut Connection,
+    x: i32,
+    z: i32,
+    actor: u128,
+    admin: bool,
+    name: &str,
+    add: bool,
+) -> rusqlite::Result<MembershipResult> {
+    let tx = conn.transaction()?;
+    let owner: Option<(i64, String)> = tx
+        .query_row(
+            "SELECT plot.id, user.uuid FROM plot
+         JOIN userplot ON userplot.plot_id=plot.id
+         JOIN user ON user.id=userplot.user_id
+         WHERE plot_x=?1 AND plot_z=?2 AND is_owner=TRUE",
+            params![x, z],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )
+        .optional()?;
+    let Some((plot_id, owner)) = owner else {
+        return Ok(MembershipResult::PlotUnclaimed);
+    };
+    if owner != format!("{actor:032x}") && !admin {
+        return Ok(MembershipResult::NotOwner);
+    }
+    let mut stmt =
+        tx.prepare("SELECT id, uuid, name FROM user WHERE name=?1 COLLATE NOCASE LIMIT 2")?;
+    let mut users: Vec<(i64, String, String)> = stmt
+        .query_map([name], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)))?
+        .collect::<rusqlite::Result<_>>()?;
+    drop(stmt);
+    if users.len() > 1 {
+        return Ok(MembershipResult::AmbiguousPlayer);
+    }
+    let Some((user_id, uuid, name)) = users.pop() else {
+        return Ok(MembershipResult::UnknownPlayer);
+    };
+    if uuid == owner {
+        return Ok(MembershipResult::IsOwner);
+    }
+    let parsed_uuid = u128::from_str_radix(&uuid, 16).map_err(|error| {
+        rusqlite::Error::FromSqlConversionFailure(1, rusqlite::types::Type::Text, Box::new(error))
+    })?;
+    let changed = if add {
+        tx.execute(
+            "INSERT INTO userplot(user_id, plot_id, is_owner)
+             SELECT ?1, ?2, FALSE WHERE NOT EXISTS(
+                 SELECT 1 FROM userplot WHERE user_id=?1 AND plot_id=?2)",
+            params![user_id, plot_id],
+        )?
+    } else {
+        tx.execute(
+            "DELETE FROM userplot WHERE user_id=?1 AND plot_id=?2 AND is_owner=FALSE",
+            params![user_id, plot_id],
+        )?
+    };
+    tx.commit()?;
+    Ok(if changed > 0 {
+        MembershipResult::Changed {
+            uuid: parsed_uuid,
+            name,
+        }
+    } else {
+        MembershipResult::Unchanged
+    })
 }
 
 pub fn is_claimed(plot_x: i32, plot_z: i32) -> Option<bool> {
@@ -226,11 +374,130 @@ pub fn init() {
         [],
     )
     .expect("Duplicate plot coordinates must be repaired before startup");
+    let mut stmt = conn
+        .prepare(
+            "SELECT plot_x, plot_z, uuid FROM plot
+         JOIN userplot ON userplot.plot_id=plot.id
+         JOIN user ON user.id=userplot.user_id WHERE is_owner=FALSE",
+        )
+        .expect("Could not read plot members");
+    let rows = stmt
+        .query_map([], |row| {
+            Ok((
+                row.get::<_, i32>(0)?,
+                row.get::<_, i32>(1)?,
+                row.get::<_, String>(2)?,
+            ))
+        })
+        .expect("Could not read plot members");
+    let mut members = MEMBERS.write().unwrap();
+    members.clear();
+    for row in rows {
+        let (x, z, uuid) = row.expect("Could not read plot member");
+        members.insert((
+            x,
+            z,
+            u128::from_str_radix(&uuid, 16).expect("Invalid plot member UUID"),
+        ));
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn only_owners_or_admins_can_manage_members_and_ownership_is_preserved() {
+        let mut conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch("PRAGMA foreign_keys=ON;
+            CREATE TABLE user(id INTEGER PRIMARY KEY, uuid TEXT UNIQUE, name TEXT);
+            CREATE TABLE plot(id INTEGER PRIMARY KEY, plot_x INTEGER, plot_z INTEGER, UNIQUE(plot_x, plot_z));
+            CREATE TABLE userplot(user_id INTEGER REFERENCES user(id), plot_id INTEGER REFERENCES plot(id), is_owner BOOLEAN);").unwrap();
+        for (id, name) in [(1, "Owner"), (2, "Builder"), (3, "Other")] {
+            conn.execute(
+                "INSERT INTO user VALUES(?1, ?2, ?3)",
+                params![id, format!("{id:032x}"), name],
+            )
+            .unwrap();
+        }
+        assert_eq!(
+            claim_plot_in(&mut conn, 2, 3, &format!("{:032x}", 1), None).unwrap(),
+            ClaimResult::Claimed
+        );
+        assert_eq!(
+            set_plot_member_in(&mut conn, 2, 3, 3, false, "Builder", true).unwrap(),
+            MembershipResult::NotOwner
+        );
+        assert_eq!(
+            set_plot_member_in(&mut conn, 2, 3, 1, false, "bUiLdEr", true).unwrap(),
+            MembershipResult::Changed {
+                uuid: 2,
+                name: "Builder".into()
+            }
+        );
+        assert_eq!(get_owned_plots_by_uuid_in(&conn, 1).unwrap(), [(2, 3)]);
+        conn.execute("UPDATE user SET name='BUILDER' WHERE id=3", [])
+            .unwrap();
+        assert_eq!(
+            set_plot_member_in(&mut conn, 2, 3, 1, false, "Builder", true).unwrap(),
+            MembershipResult::AmbiguousPlayer
+        );
+        conn.execute("UPDATE user SET name='Other' WHERE id=3", [])
+            .unwrap();
+        assert!(get_owned_plots_by_uuid_in(&conn, 2).unwrap().is_empty());
+        conn.execute("UPDATE user SET name='RenamedOwner' WHERE id=1", [])
+            .unwrap();
+        assert_eq!(get_owned_plots_by_uuid_in(&conn, 1).unwrap(), [(2, 3)]);
+        conn.execute("UPDATE user SET name='Owner' WHERE id=1", [])
+            .unwrap();
+        assert_eq!(
+            claim_plot_in(&mut conn, -10, -20, &format!("{:032x}", 1), None).unwrap(),
+            ClaimResult::Claimed
+        );
+        assert_eq!(
+            get_owned_plots_by_uuid_in(&conn, 1).unwrap(),
+            [(2, 3), (-10, -20)]
+        );
+        assert_eq!(
+            set_plot_member_in(&mut conn, 2, 3, 1, false, "Builder", true).unwrap(),
+            MembershipResult::Unchanged
+        );
+        assert_eq!(
+            set_plot_member_in(&mut conn, 2, 3, 2, false, "Other", true).unwrap(),
+            MembershipResult::NotOwner
+        );
+        assert_eq!(
+            set_plot_member_in(&mut conn, 2, 3, 1, false, "Owner", false).unwrap(),
+            MembershipResult::IsOwner
+        );
+        assert_eq!(
+            set_plot_member_in(&mut conn, 2, 3, 1, false, "Missing", true).unwrap(),
+            MembershipResult::UnknownPlayer
+        );
+        assert_eq!(
+            set_plot_member_in(&mut conn, 20, 30, 1, true, "Builder", true).unwrap(),
+            MembershipResult::PlotUnclaimed
+        );
+        assert_eq!(
+            set_plot_member_in(&mut conn, 2, 3, 3, true, "Builder", false).unwrap(),
+            MembershipResult::Changed {
+                uuid: 2,
+                name: "Builder".into()
+            }
+        );
+        assert_eq!(
+            set_plot_member_in(&mut conn, 2, 3, 1, false, "Builder", false).unwrap(),
+            MembershipResult::Unchanged
+        );
+        let rows: Vec<(i64, bool)> = conn
+            .prepare("SELECT user_id, is_owner FROM userplot")
+            .unwrap()
+            .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))
+            .unwrap()
+            .map(Result::unwrap)
+            .collect();
+        assert_eq!(rows, [(1, true), (1, true)]);
+    }
+
     #[test]
     fn claims_are_atomic_and_duplicate_claims_cannot_change_the_owner() {
         let mut conn = Connection::open_in_memory().unwrap();

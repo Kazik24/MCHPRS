@@ -332,7 +332,7 @@ impl Plot {
             return Err(messages::COMMAND_PERMISSION_DENIED.into());
         }
         if mutating {
-            if !player.can_edit_plot(self.owner) {
+            if !player.can_edit_plot(self.owner, (self.world.x, self.world.z)) {
                 return Err(messages::PLOT_PERMISSION_DENIED.into());
             }
         }

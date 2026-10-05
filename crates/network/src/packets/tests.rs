@@ -3,6 +3,118 @@ use super::*;
 use std::io::Cursor;
 
 #[test]
+fn clean_connection_closes_are_distinct_from_truncated_packet_frames() {
+    let compression = Arc::new(AtomicBool::new(false));
+    let mut state = NetworkState::Status;
+    assert!(matches!(
+        read_packet(&mut Cursor::new(Vec::<u8>::new()), &compression, &mut state),
+        Err(PacketDecodeError::ConnectionClosed)
+    ));
+    // Partial length VarInt, partial body, and a complete frame with a short Ping.
+    for bytes in [vec![0x80], vec![9, 1, 0], vec![2, 1, 0]] {
+        let error = match read_packet(&mut Cursor::new(bytes), &compression, &mut state) {
+            Err(error) => error,
+            Ok(_) => panic!("truncated packet was accepted"),
+        };
+        match error {
+            PacketDecodeError::Io(error) => assert_eq!(error.kind(), io::ErrorKind::UnexpectedEof),
+            PacketDecodeError::Packet { packet_id, source } => {
+                assert_eq!(packet_id, 1);
+                assert!(
+                    matches!(*source, PacketDecodeError::Io(ref error) if error.kind() == io::ErrorKind::UnexpectedEof)
+                );
+            }
+            _ => panic!("truncated frame must remain a decode error: {error:?}"),
+        }
+    }
+}
+
+#[test]
+fn fragmented_and_interrupted_reads_preserve_frames_and_clean_closes() {
+    struct Fragmented {
+        data: Cursor<Vec<u8>>,
+        interrupt: bool,
+    }
+    impl Read for Fragmented {
+        fn read(&mut self, buffer: &mut [u8]) -> io::Result<usize> {
+            if std::mem::take(&mut self.interrupt) {
+                return Err(io::ErrorKind::Interrupted.into());
+            }
+            let size = buffer.len().min(1);
+            self.data.read(&mut buffer[..size])
+        }
+    }
+    impl PacketDecoderExt for Fragmented {}
+    #[derive(Default)]
+    struct Handler {
+        address: String,
+        ping: i64,
+    }
+    impl ServerBoundPacketHandler for Handler {
+        fn handle_handshake(&mut self, packet: SHandshake, _: usize) {
+            self.address = packet.server_address;
+        }
+        fn handle_ping(&mut self, packet: SPing, _: usize) {
+            self.ping = packet.payload;
+        }
+    }
+    let address = "a".repeat(200); // Forces a multibyte frame length and string length.
+    let mut handshake = vec![];
+    handshake.write_varint(770);
+    handshake.write_string(255, &address);
+    handshake.write_unsigned_short(25565);
+    handshake.write_varint(1);
+    let mut bytes = vec![];
+    PacketEncoder::new(handshake, 0)
+        .write_uncompressed(&mut bytes)
+        .unwrap();
+    CPong { payload: 123456789 }
+        .encode()
+        .write_uncompressed(&mut bytes)
+        .unwrap();
+    let mut reader = Fragmented {
+        data: Cursor::new(bytes),
+        interrupt: true,
+    };
+    let mut state = NetworkState::Handshake;
+    let compression = Arc::new(AtomicBool::new(false));
+    let mut handler = Handler::default();
+    read_packet(&mut reader, &compression, &mut state)
+        .unwrap()
+        .handle(&mut handler, 0);
+    assert_eq!(state, NetworkState::Status);
+    assert_eq!(handler.address, address);
+    reader.interrupt = true;
+    read_packet(&mut reader, &compression, &mut state)
+        .unwrap()
+        .handle(&mut handler, 0);
+    assert_eq!(handler.ping, 123456789);
+    assert!(matches!(
+        read_packet(&mut reader, &compression, &mut state),
+        Err(PacketDecodeError::ConnectionClosed)
+    ));
+}
+
+#[test]
+fn compressed_payload_errors_retain_packet_identity() {
+    let mut bytes = vec![];
+    PacketEncoder::new(vec![0], 1)
+        .write_compressed(&mut bytes)
+        .unwrap();
+    let error = match read_packet(
+        &mut Cursor::new(bytes),
+        &Arc::new(AtomicBool::new(true)),
+        &mut NetworkState::Status,
+    ) {
+        Err(error) => error,
+        Ok(_) => panic!("short Ping was accepted"),
+    };
+    assert!(
+        matches!(error, PacketDecodeError::Packet { packet_id: 1, source } if matches!(*source, PacketDecodeError::Io(ref error) if error.kind() == io::ErrorKind::UnexpectedEof))
+    );
+}
+
+#[test]
 fn forwarding_response_keeps_login_state_until_acknowledgement() {
     #[derive(Default)]
     struct Handler {

@@ -1,7 +1,7 @@
 # Mixed piston/redstone CPU references
 
 These fixtures freeze interpreted execution of the two original, unmodified
-schematics. They are regression references for interpreter optimizations, not
+schematic files. They are regression references for interpreter optimizations, not
 independent proofs that the CPUs implement their instruction sets correctly.
 
 | CPU | Schematic | Start button (selection-local) | Stop button |
@@ -48,6 +48,13 @@ piston timing, queued callback, or output difference is silently tolerated.
 An optimization that intentionally changes internal states should introduce a
 specific, reviewed normalization while retaining the chat and screen checks;
 it should not replace these frozen outputs with newly generated expectations.
+
+Schematic imports simplify custom inventory stacks to plain items. ANPU's five
+Charge Capsule stacks consequently lose their names, enchantments and HideFlags;
+item IDs, counts and comparator fullness remain unchanged. The entity hashes were
+migrated only after a 50,000-tick replay matched every original checkpoint with
+those five cosmetic tags restored for comparison, plus the original per-tick
+screen trace. Block, scheduler, piston, chat and screen expectations were retained.
 
 The schematic SHA-256 values are asserted before each run. Registry ID changes
 also invalidate the block snapshots; review those as a version migration.

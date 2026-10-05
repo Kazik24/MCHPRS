@@ -87,10 +87,10 @@ impl Plot {
 
         let permission_node = match command {
             "info" | "i" => "plots.info",
-            "claim" | "c" => "plots.claim",
+            "claim" | "c" | "add" | "remove" => "plots.claim",
             "auto" | "a" => "plots.auto",
             "middle" => "plots.middle",
-            "visit" | "v" => "plots.visit",
+            "visit" | "v" | "home" | "h" => "plots.visit",
             "teleport" | "tp" => "plots.visit",
             "lock" | "unlock" => "plots.lock",
             "select" | "sel" => "plots.select",
@@ -105,6 +105,80 @@ impl Plot {
         }
 
         match command {
+            "home" | "h" => {
+                if !args.is_empty() {
+                    self.players[player].send_error_message("Usage: /p home");
+                    return;
+                }
+                match database::get_owned_plots_by_uuid(self.players[player].uuid) {
+                    Ok(plots) => {
+                        if let Some(&(x, z)) = plots.first() {
+                            let center = Plot::get_center(x, z);
+                            self.players[player].teleport(PlayerPos::new(center.0, 64.0, center.1));
+                        } else {
+                            self.players[player].send_error_message(
+                                "You do not own a plot. Use /p auto to claim one.",
+                            );
+                        }
+                    }
+                    Err(error) => self.players[player]
+                        .send_error_message(&format!("Could not read plots: {error}")),
+                }
+            }
+            "add" | "remove" => {
+                let [name] = args else {
+                    self.players[player].send_error_message(&format!("Usage: /p {command} <nick>"));
+                    return;
+                };
+                let add = command == "add";
+                let actor = &self.players[player];
+                let result = database::set_plot_member(
+                    self.world.x,
+                    self.world.z,
+                    actor.uuid,
+                    actor.has_permission("plots.admin.interact.other"),
+                    name,
+                    add,
+                );
+                use database::MembershipResult;
+                match result {
+                    Ok(MembershipResult::Changed { name, .. }) => self.players[player]
+                        .send_system_message(&format!(
+                            "{name} {} plot ({}, {}).",
+                            if add {
+                                "can now build on"
+                            } else {
+                                "was removed from"
+                            },
+                            self.world.x,
+                            self.world.z,
+                        )),
+                    Ok(MembershipResult::Unchanged) => {
+                        self.players[player].send_system_message(if add {
+                            "That player is already a plot member."
+                        } else {
+                            "That player is not a plot member."
+                        })
+                    }
+                    Ok(MembershipResult::UnknownPlayer) => self.players[player].send_error_message(
+                        "Unknown player. They must have joined this server at least once.",
+                    ),
+                    Ok(MembershipResult::AmbiguousPlayer) => self.players[player].send_error_message(
+                        "Multiple cached players have that nickname. They must rejoin with distinct current names before access can be changed.",
+                    ),
+                    Ok(MembershipResult::PlotUnclaimed) => {
+                        self.players[player].send_error_message(messages::PLOT_UNCLAIMED)
+                    }
+                    Ok(MembershipResult::NotOwner) => {
+                        self.players[player].send_no_permission_message()
+                    }
+                    Ok(MembershipResult::IsOwner) => self.players[player].send_error_message(
+                        "The plot owner cannot be added or removed as a member.",
+                    ),
+                    Err(error) => self.players[player]
+                        .send_error_message(&format!("Could not update plot members: {error}")),
+                }
+            }
             "info" | "i" => {
                 if let Some(owner) = database::get_plot_owner(plot_x, plot_z) {
                     self.players[player].send_system_message(&messages::plot_owner(
@@ -287,7 +361,9 @@ impl Plot {
         if crate::permissions::dedicated_permissions() {
             if native_command_permission(command, &args)
                 .is_some_and(|node| !self.players[player].has_permission(&node))
-                || (changes_plot(command, &args) && !self.players[player].can_edit_plot(self.owner))
+                || (changes_plot(command, &args)
+                    && !self.players[player]
+                        .can_edit_plot(self.owner, (self.world.x, self.world.z)))
             {
                 self.players[player].send_no_permission_message();
                 return false;
@@ -970,7 +1046,9 @@ pub static DECLARE_COMMANDS: Lazy<PacketEncoder> = Lazy::new(|| {
             // 6: /plot
             Node {
                 flags: (CommandFlags::LITERAL).bits() as i8,
-                children: &[7, 8, 9, 10, 38, 39, 40, 41, 43, 44, 46, 58, 59, 80, 81],
+                children: &[
+                    7, 8, 9, 10, 38, 39, 40, 41, 43, 44, 46, 58, 59, 80, 81, 128, 129, 130, 132,
+                ],
                 redirect_node: None,
                 name: Some("plot"),
                 parser: None,
@@ -2047,6 +2125,61 @@ pub static DECLARE_COMMANDS: Lazy<PacketEncoder> = Lazy::new(|| {
                 name: Some("rback"),
                 parser: None,
                 suggestions_type: None,
+            },
+            // 128-133: /p home, /p h, /p add <nick>, /p remove <nick>.
+            Node {
+                flags: (CommandFlags::LITERAL | CommandFlags::EXECUTABLE).bits() as i8,
+                children: &[],
+                redirect_node: None,
+                name: Some("home"),
+                parser: None,
+                suggestions_type: None,
+            },
+            Node {
+                flags: (CommandFlags::LITERAL | CommandFlags::REDIRECT).bits() as i8,
+                children: &[],
+                redirect_node: Some(128),
+                name: Some("h"),
+                parser: None,
+                suggestions_type: None,
+            },
+            Node {
+                flags: CommandFlags::LITERAL.bits() as i8,
+                children: &[131],
+                redirect_node: None,
+                name: Some("add"),
+                parser: None,
+                suggestions_type: None,
+            },
+            Node {
+                flags: (CommandFlags::ARGUMENT
+                    | CommandFlags::EXECUTABLE
+                    | CommandFlags::HAS_SUGGESTIONS_TYPE)
+                    .bits() as i8,
+                children: &[],
+                redirect_node: None,
+                name: Some("nick"),
+                parser: Some(Parser::String(0)),
+                suggestions_type: Some("minecraft:ask_server"),
+            },
+            Node {
+                flags: CommandFlags::LITERAL.bits() as i8,
+                children: &[133],
+                redirect_node: None,
+                name: Some("remove"),
+                parser: None,
+                suggestions_type: None,
+            },
+            Node {
+                flags: (CommandFlags::ARGUMENT
+                    | CommandFlags::EXECUTABLE
+                    | CommandFlags::HAS_SUGGESTIONS_TYPE)
+                    .bits() as i8,
+                children: &[],
+                redirect_node: None,
+                name: Some("nick"),
+                parser: Some(Parser::String(0)),
+                suggestions_type: Some("minecraft:ask_server"),
             },
         ],
         root_index: 0,

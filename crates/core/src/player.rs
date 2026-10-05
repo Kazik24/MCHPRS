@@ -136,7 +136,13 @@ mod coordinate_security_tests {
     use super::*;
     #[test]
     fn player_coordinates_reject_nonfinite_and_extreme_positions() {
-        for value in [f64::NAN, f64::INFINITY, f64::NEG_INFINITY, 30_000_001.0, -30_000_001.0] {
+        for value in [
+            f64::NAN,
+            f64::INFINITY,
+            f64::NEG_INFINITY,
+            30_000_001.0,
+            -30_000_001.0,
+        ] {
             assert!(!PlayerPos::new(value, 64.0, 0.0).is_valid());
             assert!(!PlayerPos::new(0.0, 64.0, value).is_valid());
         }
@@ -665,18 +671,23 @@ impl Player {
             .and_then(|cache| cache.numeric_limit(prefix))
     }
 
-    pub fn can_edit_plot(&self, owner: Option<u128>) -> bool {
+    pub fn can_edit_plot(&self, owner: Option<u128>, plot: (i32, i32)) -> bool {
         if permissions::dedicated_permissions() && !self.has_permission("mchprs.build") {
             return false;
         }
         match owner {
-            Some(owner) => owner == self.uuid || self.has_permission("plots.admin.interact.other"),
+            Some(owner) => {
+                let (x, z) = plot;
+                owner == self.uuid
+                    || crate::plot::database::is_plot_member(x, z, self.uuid)
+                    || self.has_permission("plots.admin.interact.other")
+            }
             None => self.has_permission("plots.admin.interact.unowned"),
         }
     }
 
-    pub fn can_build_action(&self, action: &str, owner: Option<u128>) -> bool {
-        self.can_edit_plot(owner)
+    pub fn can_build_action(&self, action: &str, owner: Option<u128>, plot: (i32, i32)) -> bool {
+        self.can_edit_plot(owner, plot)
             && (!permissions::dedicated_permissions()
                 || self.has_permission(&format!("mchprs.build.{action}")))
     }

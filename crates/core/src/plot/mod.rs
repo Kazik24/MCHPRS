@@ -1010,7 +1010,11 @@ impl Plot {
     fn on_player_move(&mut self, player_idx: usize, old: PlayerPos, new: PlayerPos) {
         if matches!(self.players[player_idx].gamemode, Gamemode::Spectator)
             || (crate::permissions::dedicated_permissions()
-                && !self.players[player_idx].can_build_action("interact", self.owner))
+                && !self.players[player_idx].can_build_action(
+                    "interact",
+                    self.owner,
+                    (self.world.x, self.world.z),
+                ))
         {
             return;
         }
@@ -1054,7 +1058,11 @@ impl Plot {
                 && player.on_ground
                 && !matches!(player.gamemode, Gamemode::Spectator)
                 && (!crate::permissions::dedicated_permissions()
-                    || player.can_build_action("interact", self.owner))
+                    || player.can_build_action(
+                        "interact",
+                        self.owner,
+                        (self.world.x, self.world.z),
+                    ))
             {
                 return true;
             }

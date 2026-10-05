@@ -14,7 +14,6 @@ use mchprs_network::packets::clientbound::*;
 use mchprs_network::packets::serverbound::*;
 use mchprs_network::packets::SlotData;
 use serde_json::json;
-use std::fs;
 use std::path::PathBuf;
 use std::time::Instant;
 use tracing::{error, warn};
@@ -22,6 +21,54 @@ use tracing::{error, warn};
 pub(super) const ERROR_IO_ONLY: &str = messages::PLOT_CANNOT_INTERACTED_WHILE_REDPILER_ACTIVE;
 
 impl Plot {
+    fn complete_plot_members(&self, player: usize, id: i32, text: &str) -> Option<CTabComplete> {
+        let (command, tail) = text.split_once(' ')?;
+        if !matches!(command, "/p" | "/plot") {
+            return None;
+        }
+        let (action, prefix) = tail.split_once(' ')?;
+        if !matches!(action, "add" | "remove") {
+            return None;
+        }
+        let mut response = CTabComplete {
+            id,
+            start: (text.len() - prefix.len()) as i32,
+            length: prefix.encode_utf16().count() as i32,
+            matches: Vec::new(),
+        };
+        let actor = &self.players[player];
+        if !actor.has_permission("plots.claim")
+            || (self.owner != Some(actor.uuid)
+                && !actor.has_permission("plots.admin.interact.other"))
+            || prefix.chars().any(char::is_whitespace)
+        {
+            return Some(response);
+        }
+        let names = if action == "add" {
+            super::database::known_usernames()
+        } else {
+            super::database::plot_member_names(self.world.x, self.world.z)
+        };
+        match names {
+            Ok(names) => {
+                let prefix = prefix.to_lowercase();
+                response.matches = names
+                    .into_iter()
+                    .filter(|name| {
+                        name.to_lowercase().starts_with(&prefix) && name != &actor.username
+                    })
+                    .take(100)
+                    .map(|name| CTabCompleteMatch {
+                        match_: name,
+                        tooltip: None,
+                    })
+                    .collect();
+            }
+            Err(error) => error!("Could not complete plot member names: {error}"),
+        }
+        Some(response)
+    }
+
     pub(super) fn handle_packets_for_player(&mut self, player: usize) {
         self.players[player].refresh_permissions();
         let packets = self.players[player].client.receive_packets();
@@ -29,54 +76,6 @@ impl Plot {
             packet.handle(self, player);
         }
     }
-}
-
-fn traverse_dir(
-    path: &std::path::Path,
-    to_complete: &str,
-    matches: &mut Vec<CTabCompleteMatch>,
-    base: &std::path::Path,
-    max_depth: usize,
-) -> anyhow::Result<()> {
-    if max_depth == 0 {
-        return Ok(());
-    }
-    if path.is_dir() {
-        for entry in fs::read_dir(path)? {
-            if matches.len() >= 256 {
-                break;
-            }
-            let entry = entry?;
-            let kind = entry.file_type()?;
-            if kind.is_symlink() {
-                continue;
-            }
-            let path = entry.path();
-            if let Some(file_name) = path.file_name() {
-                let file_name = file_name.to_string_lossy();
-
-                if path
-                    .to_string_lossy()
-                    .starts_with(base.join(to_complete).to_string_lossy().as_ref())
-                {
-                    let relative = path.strip_prefix(base)?;
-                    let relative = relative.to_string_lossy();
-                    matches.push(CTabCompleteMatch {
-                        match_: relative.to_string(),
-                        tooltip: None,
-                    });
-                }
-                if kind.is_dir() {
-                    matches.push(CTabCompleteMatch {
-                        match_: format!("{}/", file_name),
-                        tooltip: None,
-                    });
-                    traverse_dir(&path, to_complete, matches, base, max_depth - 1)?;
-                }
-            }
-        }
-    }
-    Ok(())
 }
 
 impl ServerBoundPacketHandler for Plot {
@@ -94,7 +93,7 @@ impl ServerBoundPacketHandler for Plot {
         {
             return;
         }
-        if !data.can_build_action("commandblock", self.owner) {
+        if !data.can_build_action("commandblock", self.owner, (self.world.x, self.world.z)) {
             data.send_no_permission_message();
             return;
         }
@@ -185,6 +184,12 @@ impl ServerBoundPacketHandler for Plot {
             return;
         }
         if let Some(completion) =
+            self.complete_plot_members(player_idx, packet.transaction_id, &packet.text)
+        {
+            self.players[player_idx].send_packet(&completion.encode());
+            return;
+        }
+        if let Some(completion) =
             self.complete_redstone_tools(player_idx, packet.transaction_id, &packet.text)
         {
             self.players[player_idx].send_packet(&completion.encode());
@@ -192,7 +197,7 @@ impl ServerBoundPacketHandler for Plot {
         }
         if !packet.text.starts_with("//load ")
             || !self.players[player_idx].has_permission("worldedit.clipboard.load")
-            || !self.players[player_idx].can_edit_plot(self.owner)
+            || !self.players[player_idx].can_edit_plot(self.owner, (self.world.x, self.world.z))
         {
             return;
         }
@@ -211,9 +216,17 @@ impl ServerBoundPacketHandler for Plot {
             matches: Vec::new(),
         };
 
-        if let Err(err) = traverse_dir(&path, &current, &mut res.matches, &path, 5) {
-            error!("Error while tab completing: {:?}", err);
-            return;
+        match super::worldedit::complete_schematic_names(&path, current) {
+            Ok(names) => {
+                res.matches = names
+                    .into_iter()
+                    .map(|name| CTabCompleteMatch {
+                        match_: name,
+                        tooltip: None,
+                    })
+                    .collect()
+            }
+            Err(err) => error!("Error while tab completing: {err:?}"),
         }
 
         self.players[player_idx].send_packet(&res.encode());
@@ -364,7 +377,7 @@ impl ServerBoundPacketHandler for Plot {
             plot.send_block_change(offset_pos, plot.world.get_block_raw(offset_pos));
         };
 
-        if !self.players[player].can_edit_plot(self.owner) {
+        if !self.players[player].can_edit_plot(self.owner, (self.world.x, self.world.z)) {
             self.players[player].send_no_permission_message();
             cancel(self);
             return;
@@ -405,7 +418,11 @@ impl ServerBoundPacketHandler for Plot {
             let block = self.world.get_block(block_pos);
             let lever_or_button = matches!(block, Block::Lever { .. } | Block::StoneButton { .. });
             if lever_or_button && !self.players[player].crouching {
-                if !self.players[player].can_build_action("interact", self.owner) {
+                if !self.players[player].can_build_action(
+                    "interact",
+                    self.owner,
+                    (self.world.x, self.world.z),
+                ) {
                     self.players[player].send_no_permission_message();
                     cancel(self);
                     return;
@@ -716,7 +733,11 @@ impl ServerBoundPacketHandler for Plot {
                 }
             }
 
-            if !self.players[player].can_build_action("break", self.owner) {
+            if !self.players[player].can_build_action(
+                "break",
+                self.owner,
+                (self.world.x, self.world.z),
+            ) {
                 self.players[player].send_no_permission_message();
                 self.send_block_change(block_pos, block.get_id());
                 return;
@@ -842,7 +863,7 @@ impl ServerBoundPacketHandler for Plot {
 
     fn handle_update_sign(&mut self, packet: SUpdateSign, player: usize) {
         let pos = BlockPos::from_packed(packet.pos);
-        if !self.players[player].can_build_action("sign", self.owner)
+        if !self.players[player].can_build_action("sign", self.owner, (self.world.x, self.world.z))
             || !Plot::in_plot_bounds(self.world.x, self.world.z, pos.x, pos.z)
             || !(0..super::PLOT_BLOCK_HEIGHT).contains(&pos.y)
             || !self.container_in_reach(player, pos)

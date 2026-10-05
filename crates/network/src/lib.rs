@@ -5,12 +5,12 @@ pub mod text;
 pub use outbound::SendStats;
 
 use packets::serverbound::ServerBoundPacket;
-use packets::{read_packet, PacketEncoder};
+use packets::{read_packet, PacketDecodeError, PacketEncoder};
 use std::net::{Shutdown, TcpListener, TcpStream};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{mpsc, Arc};
 use std::thread;
-use tracing::warn;
+use tracing::{debug, warn};
 
 #[derive(Debug)]
 pub struct PlayerPacketSender {
@@ -136,7 +136,7 @@ mod acknowledgement_tests {
 }
 
 /// The minecraft protocol has these 4 different states.
-#[derive(PartialEq, Eq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub enum NetworkState {
     Handshake,
     Status,
@@ -147,8 +147,81 @@ pub enum NetworkState {
     Play,
 }
 
+#[cfg(test)]
+mod connection_cleanup_tests {
+    use super::*;
+    use std::io::Read;
+
+    fn client(
+        id: u32,
+    ) -> (
+        HandshakingConn,
+        mpsc::SyncSender<Box<dyn ServerBoundPacket>>,
+        TcpStream,
+    ) {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let peer = TcpStream::connect(listener.local_addr().unwrap()).unwrap();
+        peer.set_read_timeout(Some(std::time::Duration::from_secs(3)))
+            .unwrap();
+        let (stream, _) = listener.accept().unwrap();
+        let (sender, packets) = mpsc::sync_channel(64);
+        (
+            HandshakingConn {
+                client: NetworkClient {
+                    id,
+                    outbound: outbound::Outbound::new(stream),
+                    packets,
+                    compressed: Arc::new(AtomicBool::new(false)),
+                },
+                alive: true,
+                username: None,
+                uuid: None,
+                profile_properties: Vec::new(),
+                forwarding_pending: false,
+                protocol_phase: 0,
+            },
+            sender,
+            peer,
+        )
+    }
+
+    #[test]
+    fn closed_status_clients_are_pruned_and_idle_writer_sockets_are_released() {
+        let (mut closed, closed_sender, mut closed_peer) = client(1);
+        let (mut live, live_sender, mut live_peer) = client(2);
+        drop(closed_sender); // The reader thread ended after a status connection closed.
+        assert!(closed.receive_packets().is_empty());
+        assert!(!closed.alive);
+        assert!(live.receive_packets().is_empty());
+        assert!(live.alive);
+        let (_sender, receiver) = mpsc::channel();
+        let mut server = NetworkServer {
+            client_receiver: receiver,
+            handshaking_clients: vec![closed, live],
+        };
+        server.update();
+        assert_eq!(server.handshaking_clients.len(), 1);
+        assert_eq!(server.handshaking_clients[0].client.id, 2);
+        assert_eq!(closed_peer.read(&mut [0]).unwrap(), 0);
+        server.handshaking_clients[0].close_connection();
+        server.update();
+        assert!(server.handshaking_clients.is_empty());
+        assert_eq!(live_peer.read(&mut [0]).unwrap(), 0);
+        drop(live_sender);
+    }
+
+    #[test]
+    fn login_transition_does_not_revive_a_closed_connection() {
+        let (mut connection, _sender, _peer) = client(1);
+        connection.close_connection();
+        let player = PlayerConn::from(connection);
+        assert!(!player.alive());
+    }
+}
+
 pub struct HandshakingConn {
     client: NetworkClient,
+    alive: bool,
     pub username: Option<String>,
     pub uuid: Option<u128>,
     pub profile_properties: Vec<packets::clientbound::CPlayerInfoAddPlayerProperty>,
@@ -161,15 +234,16 @@ impl HandshakingConn {
         self.client.send_packet(data);
     }
 
-    pub fn receive_packets(&self) -> Vec<Box<dyn ServerBoundPacket>> {
-        self.client.receive_packets(&mut true)
+    pub fn receive_packets(&mut self) -> Vec<Box<dyn ServerBoundPacket>> {
+        self.client.receive_packets(&mut self.alive)
     }
 
     pub fn set_compressed(&self, compressed: bool) {
         self.client.compressed.store(compressed, Ordering::Relaxed)
     }
 
-    pub fn close_connection(&self) {
+    pub fn close_connection(&mut self) {
+        self.alive = false;
         self.client.close_connection();
     }
 }
@@ -178,7 +252,7 @@ impl From<HandshakingConn> for PlayerConn {
     fn from(conn: HandshakingConn) -> Self {
         PlayerConn {
             client: conn.client,
-            alive: true,
+            alive: conn.alive,
         }
     }
 }
@@ -224,18 +298,34 @@ impl NetworkClient {
         compressed: Arc<AtomicBool>,
     ) {
         let mut state = NetworkState::Handshake;
+        let peer = stream.peer_addr().ok();
         loop {
             let packet = match read_packet(&mut stream, &compressed, &mut state) {
                 Ok(packet) => packet,
+                Err(PacketDecodeError::ConnectionClosed) => {
+                    debug!(?peer, ?state, "Client connection closed between packets");
+                    let _ = stream.shutdown(Shutdown::Both);
+                    return;
+                }
                 // This will cause the client to disconnect
                 Err(error) => {
-                    warn!("Client packet decode failed: {:?}", error);
+                    warn!(?peer, ?state, ?error, "Client packet decode failed");
                     let _ = stream.shutdown(Shutdown::Both);
                     return;
                 }
             };
             // Disconnect a flooding client instead of growing an unbounded queue.
-            if sender.try_send(packet).is_err() {
+            if let Err(error) = sender.try_send(packet) {
+                match error {
+                    mpsc::TrySendError::Full(_) => warn!(
+                        ?peer,
+                        ?state,
+                        "Client incoming packet queue is full; disconnecting"
+                    ),
+                    mpsc::TrySendError::Disconnected(_) => {
+                        debug!(?peer, ?state, "Client packet receiver closed")
+                    }
+                }
                 let _ = stream.shutdown(Shutdown::Both);
                 return;
             }
@@ -311,10 +401,14 @@ impl NetworkServer {
     }
 
     pub fn update(&mut self) {
+        // Dropping closed pre-login/status clients also releases their sender
+        // handles, waking idle writer threads so they can exit.
+        self.handshaking_clients.retain(|client| client.alive);
         loop {
             match self.client_receiver.try_recv() {
                 Ok(client) => self.handshaking_clients.push(HandshakingConn {
                     client,
+                    alive: true,
                     username: None,
                     uuid: None,
                     profile_properties: Vec::new(),
