@@ -285,6 +285,22 @@ pub fn ranked_chat() -> bool {
         .is_some_and(|config| config.redstonefun_ranks)
 }
 impl PlayerPermissionsCache {
+    /// Numeric limits are ordinary boolean nodes such as mchprs.history.limit.200.
+    /// Only effective positive nodes count, so exact denials and expiry apply.
+    pub fn numeric_limit(&self, prefix: &str) -> Option<usize> {
+        self.nodes
+            .iter()
+            .filter_map(|node| {
+                let limit = node
+                    .permission
+                    .strip_prefix(prefix)?
+                    .parse::<usize>()
+                    .ok()?;
+                (self.get_node_val(&node.permission) == Some(1)).then_some(limit)
+            })
+            .max()
+    }
+
     fn stored_node_val(&self, name: &str) -> Option<i32> {
         let time = now();
         self.nodes

@@ -572,6 +572,12 @@ impl Player {
         }
     }
 
+    pub fn numeric_permission_limit(&self, prefix: &str) -> Option<usize> {
+        self.permissions_cache
+            .as_ref()
+            .and_then(|cache| cache.numeric_limit(prefix))
+    }
+
     pub fn can_edit_plot(&self, owner: Option<u128>) -> bool {
         if permissions::dedicated_permissions() && !self.has_permission("mchprs.build") {
             return false;

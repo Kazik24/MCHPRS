@@ -300,6 +300,27 @@ pub(super) fn format_memory(bytes: usize) -> String {
 }
 
 impl Plot {
+    fn validate_player_history_limit(&self, player: usize, ticks: usize) -> Result<(), String> {
+        let player = &self.players[player];
+        if player.has_explicit_permission(UNLIMITED_HISTORY_PERMISSION) {
+            return Ok(());
+        }
+        let (limit, permission) = if crate::permissions::dedicated_permissions() {
+            (
+                player
+                    .numeric_permission_limit("mchprs.history.limit.")
+                    .unwrap_or(0),
+                "mchprs.plots.admin.rewind.unlimited",
+            )
+        } else {
+            (NORMAL_HISTORY_LIMIT, UNLIMITED_HISTORY_PERMISSION)
+        };
+        if ticks > limit {
+            return Err(messages::history_tick_limit_permission(limit, permission));
+        }
+        Ok(())
+    }
+
     fn authorize_history(
         &self,
         player: usize,
@@ -379,7 +400,11 @@ impl Plot {
                 };
                 let unlimited =
                     self.players[player].has_explicit_permission(UNLIMITED_HISTORY_PERMISSION);
-                let projected = self.world.enable_history(capacity, unlimited)?;
+                self.validate_player_history_limit(player, capacity)?;
+                let projected = self.world.enable_history(
+                    capacity,
+                    unlimited || crate::permissions::dedicated_permissions(),
+                )?;
                 self.reset_timings();
                 Ok(messages::history_enabled(
                     capacity,
@@ -403,7 +428,11 @@ impl Plot {
             return Err(messages::TICK_REWIND_ONLY_AVAILABLE_DURING_INTERPRETED.into());
         }
         let unlimited = self.players[player].has_explicit_permission(UNLIMITED_HISTORY_PERMISSION);
-        self.world.rewind_ticks(ticks, unlimited)?;
+        self.validate_player_history_limit(player, ticks)?;
+        self.world.rewind_ticks(
+            ticks,
+            unlimited || crate::permissions::dedicated_permissions(),
+        )?;
         self.close_all_containers();
         self.tps = Tps::Limited(0);
         self.sleep_time = sleep_time_for_tps(self.tps);
