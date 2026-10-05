@@ -791,7 +791,8 @@ impl Instrument {
     }
 
     pub const fn to_sound_id(&self) -> i32 {
-        match self {
+        // Registry IDs are zero based; sound packets encode them as ID + 1.
+        (match self {
             Instrument::Harp => 1031,
             Instrument::Basedrum => 1025,
             Instrument::Snare => 1034,
@@ -808,7 +809,7 @@ impl Instrument {
             Instrument::Bit => 1039,
             Instrument::Banjo => 1040,
             Instrument::Pling => 1033,
-        }
+        }) - 1
     }
 }
 

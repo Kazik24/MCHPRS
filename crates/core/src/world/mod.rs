@@ -2,7 +2,7 @@ pub mod storage;
 pub(crate) mod wire_cache;
 pub use wire_cache::Neighbor as WireNeighbor;
 
-use mchprs_blocks::block_entities::BlockEntity;
+use mchprs_blocks::block_entities::{BlockEntity, ContainerType};
 use mchprs_blocks::blocks::{Block, RedstonePiston};
 use mchprs_blocks::BlockPos;
 pub use mchprs_world::PistonAction;
@@ -122,6 +122,19 @@ pub trait World {
         volume: f32,
         pitch: f32,
     );
+    /// Feedback for a successful player action, even while fast rendering.
+    fn play_sound_for_action(
+        &mut self,
+        pos: BlockPos,
+        sound_id: i32,
+        category: i32,
+        volume: f32,
+        pitch: f32,
+        _excluded: Option<u128>,
+    ) {
+        self.play_sound(pos, sound_id, category, volume, pitch);
+    }
+    fn container_opened(&mut self, _pos: BlockPos, _ty: ContainerType) {}
 }
 
 // https://wiki.vg/Block_Actions#Piston

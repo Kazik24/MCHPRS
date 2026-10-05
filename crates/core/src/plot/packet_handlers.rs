@@ -411,6 +411,14 @@ impl ServerBoundPacketHandler for Plot {
                     return;
                 }
                 self.redpiler.on_use_block(block_pos);
+                self.redpiler.flush(&mut self.world);
+                crate::sound::control_used(
+                    &mut self.world,
+                    block_pos,
+                    block,
+                    self.players[player].uuid,
+                );
+                self.world.flush_block_changes();
                 return;
             } else {
                 match self.redpiler.current_flags() {

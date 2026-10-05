@@ -113,12 +113,18 @@ pub(crate) fn set_barrel_open(world: &mut impl crate::world::World, pos: BlockPo
     }
 
     world.set_block(pos, Block::Barrel { facing, open });
-    // Protocol 770 sound registry: block.barrel.close/open; category BLOCKS.
-    let sound = match open {
-        true => 130,
-        false => 129,
-    };
-    world.play_sound(pos, sound, 4, 0.5, 0.95);
+    crate::sound::play(
+        world,
+        pos,
+        if open {
+            "block.barrel.open"
+        } else {
+            "block.barrel.close"
+        },
+        0.5,
+        0.95,
+        None,
+    );
     crate::redstone::update_surrounding_blocks(world, pos);
 }
 

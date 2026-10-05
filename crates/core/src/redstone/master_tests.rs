@@ -239,6 +239,87 @@ fn slab_tops_support_dust_without_conducting_to_the_lamp_below() {
 }
 
 #[test]
+fn downward_piston_dust_step_only_transmits_upward() {
+    use mchprs_blocks::blocks::RedstonePiston;
+    // Exercise ordinary power calculation at placement and the subsequent Turbo
+    // walk, for all horizontal directions and both piston variants/states.
+    for direction in [
+        BlockFace::North,
+        BlockFace::South,
+        BlockFace::West,
+        BlockFace::East,
+    ] {
+        for sticky in [false, true] {
+            for extended in [false, true] {
+                for upward in [false, true] {
+                    let mut world = world();
+                    let step = BlockPos::new(40, 30, 40);
+                    let high = step.offset(BlockFace::Top);
+                    let low = step.offset(direction);
+                    world.set_block(
+                        step,
+                        Block::Piston {
+                            piston: RedstonePiston {
+                                facing: BlockFacing::Down,
+                                sticky,
+                                extended,
+                            },
+                        },
+                    );
+                    world.set_block(low.offset(BlockFace::Bottom), Block::Stone {});
+                    let (input, output) = if upward { (low, high) } else { (high, low) };
+                    let source = if upward {
+                        input.offset(direction)
+                    } else {
+                        input.offset(direction.opposite())
+                    };
+                    world.set_block(source, Block::RedstoneBlock {});
+                    world.set_block(
+                        input,
+                        Block::RedstoneWire {
+                            wire: wire::get_state_for_placement(&world, input),
+                        },
+                    );
+                    world.set_block(
+                        output,
+                        Block::RedstoneWire {
+                            wire: wire::get_state_for_placement(&world, output),
+                        },
+                    );
+                    assert!(crate::interaction::is_valid_position(
+                        world.get_block(high),
+                        &world,
+                        high
+                    ));
+                    let expected = if upward { 14 } else { 0 };
+                    assert!(matches!(world.get_block(output), Block::RedstoneWire { wire } if wire.power == expected),
+                        "placement: {direction:?}, sticky={sticky}, extended={extended}, upward={upward}");
+                    // Toggle the actual input, rather than merely inspecting
+                    // prepowered dust; this exercises cached propagation too.
+                    for power in [Block::Air, Block::RedstoneBlock {}, Block::Air] {
+                        world.set_block(source, power);
+                        update(world.get_block(input), &mut world, input, None);
+                        assert_eq!(
+                            get_redstone_power(
+                                world.get_block(step),
+                                &world,
+                                step,
+                                BlockFace::Bottom
+                            ),
+                            0,
+                            "the piston must not conduct dust power through its base"
+                        );
+                        assert!(matches!(world.get_block(output), Block::RedstoneWire { wire }
+                            if wire.power == if power == Block::Air { 0 } else { expected }),
+                            "Turbo: {direction:?}, sticky={sticky}, extended={extended}, upward={upward}, source={power:?}");
+                    }
+                }
+            }
+        }
+    }
+}
+
+#[test]
 fn dust_steps_over_opaque_blocks_and_powers_the_block_below_in_both_backends() {
     for name in ["iron_block", "stone", "dirt", "netherite_block"] {
         for backend in ["interpreted", "", "-O", "-O -io"] {

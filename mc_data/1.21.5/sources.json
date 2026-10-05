@@ -35,7 +35,13 @@
     "url": "https://piston-data.mojang.com/v1/objects/e6ec2f64e6080b9b5d9b471b291c33cc7f509733/server.jar",
     "sha1": "e6ec2f64e6080b9b5d9b471b291c33cc7f509733",
     "protocol": 770,
-    "data_version": 4325
+    "data_version": 4325,
+    "block_sounds": {
+      "file": "block_sounds.json",
+      "generator": "tools/ExportBlockSounds.java",
+      "source": "defaultBlockState().getSoundType()",
+      "count": 1104
+    }
   },
   "codec_reference": {
     "repository": "https://github.com/GeyserMC/MCProtocolLib",

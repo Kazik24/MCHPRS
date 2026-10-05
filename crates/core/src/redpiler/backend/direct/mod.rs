@@ -24,6 +24,7 @@ use tracing::{debug, warn};
 
 enum Event {
     NoteBlockPlay { noteblock_id: u16 },
+    ButtonRelease { pos: BlockPos },
 }
 
 #[derive(Default)]
@@ -168,6 +169,13 @@ impl JITBackend for DirectBackend {
                     let (pos, instrument, note) = self.noteblock_info[noteblock_id as usize];
                     noteblock::play_note(world, pos, instrument, note);
                 }
+                Event::ButtonRelease { pos } => world.play_sound(
+                    pos,
+                    crate::sound::event_id("block.stone_button.click_off"),
+                    4,
+                    1.0,
+                    1.0,
+                ),
             }
         }
         for (i, node) in self.nodes.inner_mut().iter_mut().enumerate() {

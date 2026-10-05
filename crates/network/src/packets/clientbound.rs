@@ -1137,6 +1137,7 @@ pub struct CSoundEffect {
     pub z: i32,
     pub volume: f32,
     pub pitch: f32,
+    pub seed: i64,
 }
 
 impl ClientBoundPacket for CSoundEffect {
@@ -1149,7 +1150,7 @@ impl ClientBoundPacket for CSoundEffect {
         buf.write_int(self.z);
         buf.write_float(self.volume);
         buf.write_float(self.pitch);
-        buf.write_long(0);
+        buf.write_long(self.seed);
         PacketEncoder::new(buf, 0x6e)
     }
 }

@@ -121,6 +121,8 @@ pub struct PlotWorld {
     is_cursed: bool,
     fast_rendering: bool,
     command_messages: Vec<crate::chat_commands::ChatCommand>,
+    sounds: Vec<crate::sound::Emission>,
+    open_chests: HashSet<BlockPos>,
     command_output_window: Instant,
     command_output_count: usize,
     command_output_bytes: usize,
@@ -161,6 +163,8 @@ impl PlotWorld {
             is_cursed: false,
             fast_rendering: false,
             command_messages: Vec::new(),
+            sounds: Vec::new(),
+            open_chests: HashSet::new(),
             command_output_window: Instant::now(),
             command_output_count: 0,
             command_output_bytes: 0,
@@ -807,24 +811,39 @@ impl World for PlotWorld {
         volume: f32,
         pitch: f32,
     ) {
+        // Fast rendering suppresses automated circuit sounds.
         if self.fast_rendering {
             return;
         }
-        // FIXME: We do not know the players location here, so we send the sound packet to all players
-        // A notchian server would only send to players in hearing distance (volume.clamp(0.0, 1.0) * 16.0)
-        let sound_effect_data = CSoundEffect {
-            sound_id,
-            sound_category,
-            x: pos.x * 8 + 4,
-            y: pos.y * 8 + 4,
-            z: pos.z * 8 + 4,
-            volume,
-            pitch,
-        }
-        .encode();
+        self.play_sound_for_action(pos, sound_id, sound_category, volume, pitch, None);
+    }
 
-        for player in &self.packet_senders {
-            player.send_packet(&sound_effect_data);
+    fn play_sound_for_action(
+        &mut self,
+        pos: BlockPos,
+        sound_id: i32,
+        sound_category: i32,
+        volume: f32,
+        pitch: f32,
+        excluded: Option<u128>,
+    ) {
+        if self.sounds.len() >= 256 {
+            return;
+        }
+        if let Some(sound) =
+            crate::sound::Emission::new(pos, sound_id, sound_category, volume, pitch, excluded)
+        {
+            self.sounds.push(sound);
+        }
+    }
+    fn container_opened(
+        &mut self,
+        pos: BlockPos,
+        ty: mchprs_blocks::block_entities::ContainerType,
+    ) {
+        if ty == mchprs_blocks::block_entities::ContainerType::Chest && self.open_chests.insert(pos)
+        {
+            crate::sound::play(self, pos, "block.chest.open", 0.5, 0.95, None);
         }
     }
 }
@@ -1671,6 +1690,15 @@ impl Plot {
         }
 
         self.refresh_sidebar(false);
+
+        for sound in self.world.sounds.drain(..) {
+            let packet = sound.packet();
+            for player in &self.players {
+                if sound.audible(player.uuid, player.pos) {
+                    player.send_packet(&packet);
+                }
+            }
+        }
 
         for command in self.world.command_messages.drain(..) {
             // Automated plot circuits cannot flood chat on unrelated plots.

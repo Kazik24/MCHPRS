@@ -75,11 +75,13 @@ pub fn on_use(
             comparator.mode = comparator.mode.toggle();
             redstone::comparator::tick(comparator, world, pos);
             world.set_block(pos, Block::RedstoneComparator { comparator });
+            crate::sound::control_used(world, pos, block, player.uuid);
             ActionResult::Success
         }
         Block::Lever { mut lever } => {
             lever.powered = !lever.powered;
             world.set_block(pos, Block::Lever { lever });
+            crate::sound::control_used(world, pos, block, player.uuid);
             redstone::update_surrounding_blocks(world, pos);
             match lever.face {
                 LeverFace::Ceiling => {
@@ -99,6 +101,7 @@ pub fn on_use(
             if !button.powered {
                 button.powered = true;
                 world.set_block(pos, Block::StoneButton { button });
+                crate::sound::control_used(world, pos, block, player.uuid);
                 world.schedule_tick(pos, 10, TickPriority::Normal);
                 redstone::update_surrounding_blocks(world, pos);
                 match button.face {
@@ -148,7 +151,7 @@ pub fn on_use(
                 },
             );
             if redstone::noteblock::is_noteblock_unblocked(world, pos) {
-                redstone::noteblock::play_note(world, pos, instrument, (note + 1) % 25);
+                redstone::noteblock::play_note_for_action(world, pos, instrument, (note + 1) % 25);
             }
             ActionResult::Success
         }
@@ -191,6 +194,7 @@ pub fn on_use(
             let block_entity = world.get_block_entity(pos);
             if let Some(BlockEntity::Container { inventory, ty, .. }) = block_entity {
                 player.open_container(pos, inventory, *ty);
+                world.container_opened(pos, *ty);
                 crate::container::set_barrel_open(world, pos, true);
                 ActionResult::Success
             } else {
@@ -498,6 +502,22 @@ fn supports_attachment(block: Block, face: BlockFace) -> bool {
     }
 }
 
+fn supports_dust(world: &impl World, pos: BlockPos) -> bool {
+    let block = world.get_block(pos);
+    if !matches!(block, Block::MovingPiston { .. }) {
+        return supports_attachment(block, BlockFace::Top);
+    }
+    // The downward source base keeps its upper face throughout retraction.
+    // Transported payloads and moving heads do not provide stationary support.
+    matches!(
+        world.get_block_entity(pos),
+        Some(BlockEntity::MovingPiston(entity))
+            if entity.source && !entity.extending && entity.facing == BlockFace::Bottom
+                && matches!(Block::from_id(entity.block_state), Block::Piston { piston }
+                    if piston.facing == mchprs_blocks::BlockFacing::Down && !piston.extended)
+    )
+}
+
 pub fn is_valid_position(block: Block, world: &impl World, pos: BlockPos) -> bool {
     if world.is_cursed() {
         return true;
@@ -521,8 +541,8 @@ pub fn is_valid_position(block: Block, world: &impl World, pos: BlockPos) -> boo
     }
 
     match block {
-        Block::RedstoneWire { .. }
-        | Block::RedstoneComparator { .. }
+        Block::RedstoneWire { .. } => supports_dust(world, pos.offset(BlockFace::Bottom)),
+        Block::RedstoneComparator { .. }
         | Block::RedstoneRepeater { .. }
         | Block::Sign { .. }
         | Block::RedstoneTorch { .. } => {
@@ -693,6 +713,7 @@ pub fn use_item_on_block(
         }
 
         place_in_world(block, world, block_pos, &item.nbt);
+        crate::sound::placed(world, block_pos, block, ctx.player.uuid);
         ItemUseResult::Placed(block_pos)
     } else {
         ItemUseResult::Cancelled

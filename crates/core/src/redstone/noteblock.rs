@@ -20,11 +20,27 @@ pub fn get_noteblock_instrument(world: &impl World, pos: BlockPos) -> Instrument
 }
 
 pub fn play_note(world: &mut impl World, pos: BlockPos, instrument: Instrument, note: u32) {
+    let Some(&pitch) = PITCHES_TABLE.get(note as usize) else {
+        return;
+    };
     world.play_sound(
         pos,
         instrument.to_sound_id(),
-        2, // Sound Caregory ID for Records
+        2, // RECORDS sound category
         3.0,
-        PITCHES_TABLE[note as usize],
+        pitch,
     );
+}
+
+/// The client waits for the server to play a manually tuned note.
+pub fn play_note_for_action(
+    world: &mut impl World,
+    pos: BlockPos,
+    instrument: Instrument,
+    note: u32,
+) {
+    let Some(&pitch) = PITCHES_TABLE.get(note as usize) else {
+        return;
+    };
+    world.play_sound_for_action(pos, instrument.to_sound_id(), 2, 3.0, pitch, None);
 }

@@ -1,0 +1,7730 @@
+[
+  {
+    "name": "air",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "stone",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "granite",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "polished_granite",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "diorite",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "polished_diorite",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "andesite",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "polished_andesite",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "grass_block",
+    "place": "block.grass.place",
+    "break": "block.grass.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "dirt",
+    "place": "block.gravel.place",
+    "break": "block.gravel.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "coarse_dirt",
+    "place": "block.gravel.place",
+    "break": "block.gravel.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "podzol",
+    "place": "block.gravel.place",
+    "break": "block.gravel.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "cobblestone",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "oak_planks",
+    "place": "block.wood.place",
+    "break": "block.wood.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "spruce_planks",
+    "place": "block.wood.place",
+    "break": "block.wood.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "birch_planks",
+    "place": "block.wood.place",
+    "break": "block.wood.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "jungle_planks",
+    "place": "block.wood.place",
+    "break": "block.wood.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "acacia_planks",
+    "place": "block.wood.place",
+    "break": "block.wood.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "cherry_planks",
+    "place": "block.cherry_wood.place",
+    "break": "block.cherry_wood.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "dark_oak_planks",
+    "place": "block.wood.place",
+    "break": "block.wood.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "pale_oak_wood",
+    "place": "block.wood.place",
+    "break": "block.wood.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "pale_oak_planks",
+    "place": "block.wood.place",
+    "break": "block.wood.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "mangrove_planks",
+    "place": "block.wood.place",
+    "break": "block.wood.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "bamboo_planks",
+    "place": "block.bamboo_wood.place",
+    "break": "block.bamboo_wood.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "bamboo_mosaic",
+    "place": "block.bamboo_wood.place",
+    "break": "block.bamboo_wood.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "oak_sapling",
+    "place": "block.grass.place",
+    "break": "block.grass.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "spruce_sapling",
+    "place": "block.grass.place",
+    "break": "block.grass.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "birch_sapling",
+    "place": "block.grass.place",
+    "break": "block.grass.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "jungle_sapling",
+    "place": "block.grass.place",
+    "break": "block.grass.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "acacia_sapling",
+    "place": "block.grass.place",
+    "break": "block.grass.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "cherry_sapling",
+    "place": "block.cherry_sapling.place",
+    "break": "block.cherry_sapling.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "dark_oak_sapling",
+    "place": "block.grass.place",
+    "break": "block.grass.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "pale_oak_sapling",
+    "place": "block.grass.place",
+    "break": "block.grass.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "mangrove_propagule",
+    "place": "block.grass.place",
+    "break": "block.grass.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "bedrock",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "water",
+    "place": "intentionally_empty",
+    "break": "intentionally_empty",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "lava",
+    "place": "intentionally_empty",
+    "break": "intentionally_empty",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "sand",
+    "place": "block.sand.place",
+    "break": "block.sand.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "suspicious_sand",
+    "place": "block.suspicious_sand.place",
+    "break": "block.suspicious_sand.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "red_sand",
+    "place": "block.sand.place",
+    "break": "block.sand.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "gravel",
+    "place": "block.gravel.place",
+    "break": "block.gravel.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "suspicious_gravel",
+    "place": "block.suspicious_gravel.place",
+    "break": "block.suspicious_gravel.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "gold_ore",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "deepslate_gold_ore",
+    "place": "block.deepslate.place",
+    "break": "block.deepslate.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "iron_ore",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "deepslate_iron_ore",
+    "place": "block.deepslate.place",
+    "break": "block.deepslate.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "coal_ore",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "deepslate_coal_ore",
+    "place": "block.deepslate.place",
+    "break": "block.deepslate.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "nether_gold_ore",
+    "place": "block.nether_gold_ore.place",
+    "break": "block.nether_gold_ore.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "oak_log",
+    "place": "block.wood.place",
+    "break": "block.wood.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "spruce_log",
+    "place": "block.wood.place",
+    "break": "block.wood.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "birch_log",
+    "place": "block.wood.place",
+    "break": "block.wood.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "jungle_log",
+    "place": "block.wood.place",
+    "break": "block.wood.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "acacia_log",
+    "place": "block.wood.place",
+    "break": "block.wood.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "cherry_log",
+    "place": "block.cherry_wood.place",
+    "break": "block.cherry_wood.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "dark_oak_log",
+    "place": "block.wood.place",
+    "break": "block.wood.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "pale_oak_log",
+    "place": "block.wood.place",
+    "break": "block.wood.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "mangrove_log",
+    "place": "block.wood.place",
+    "break": "block.wood.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "mangrove_roots",
+    "place": "block.mangrove_roots.place",
+    "break": "block.mangrove_roots.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "muddy_mangrove_roots",
+    "place": "block.muddy_mangrove_roots.place",
+    "break": "block.muddy_mangrove_roots.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "bamboo_block",
+    "place": "block.bamboo_wood.place",
+    "break": "block.bamboo_wood.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "stripped_spruce_log",
+    "place": "block.wood.place",
+    "break": "block.wood.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "stripped_birch_log",
+    "place": "block.wood.place",
+    "break": "block.wood.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "stripped_jungle_log",
+    "place": "block.wood.place",
+    "break": "block.wood.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "stripped_acacia_log",
+    "place": "block.wood.place",
+    "break": "block.wood.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "stripped_cherry_log",
+    "place": "block.cherry_wood.place",
+    "break": "block.cherry_wood.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "stripped_dark_oak_log",
+    "place": "block.wood.place",
+    "break": "block.wood.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "stripped_pale_oak_log",
+    "place": "block.wood.place",
+    "break": "block.wood.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "stripped_oak_log",
+    "place": "block.wood.place",
+    "break": "block.wood.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "stripped_mangrove_log",
+    "place": "block.wood.place",
+    "break": "block.wood.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "stripped_bamboo_block",
+    "place": "block.bamboo_wood.place",
+    "break": "block.bamboo_wood.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "oak_wood",
+    "place": "block.wood.place",
+    "break": "block.wood.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "spruce_wood",
+    "place": "block.wood.place",
+    "break": "block.wood.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "birch_wood",
+    "place": "block.wood.place",
+    "break": "block.wood.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "jungle_wood",
+    "place": "block.wood.place",
+    "break": "block.wood.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "acacia_wood",
+    "place": "block.wood.place",
+    "break": "block.wood.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "cherry_wood",
+    "place": "block.cherry_wood.place",
+    "break": "block.cherry_wood.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "dark_oak_wood",
+    "place": "block.wood.place",
+    "break": "block.wood.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "mangrove_wood",
+    "place": "block.wood.place",
+    "break": "block.wood.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "stripped_oak_wood",
+    "place": "block.wood.place",
+    "break": "block.wood.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "stripped_spruce_wood",
+    "place": "block.wood.place",
+    "break": "block.wood.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "stripped_birch_wood",
+    "place": "block.wood.place",
+    "break": "block.wood.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "stripped_jungle_wood",
+    "place": "block.wood.place",
+    "break": "block.wood.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "stripped_acacia_wood",
+    "place": "block.wood.place",
+    "break": "block.wood.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "stripped_cherry_wood",
+    "place": "block.cherry_wood.place",
+    "break": "block.cherry_wood.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "stripped_dark_oak_wood",
+    "place": "block.wood.place",
+    "break": "block.wood.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "stripped_pale_oak_wood",
+    "place": "block.wood.place",
+    "break": "block.wood.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "stripped_mangrove_wood",
+    "place": "block.wood.place",
+    "break": "block.wood.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "oak_leaves",
+    "place": "block.grass.place",
+    "break": "block.grass.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "spruce_leaves",
+    "place": "block.grass.place",
+    "break": "block.grass.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "birch_leaves",
+    "place": "block.grass.place",
+    "break": "block.grass.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "jungle_leaves",
+    "place": "block.grass.place",
+    "break": "block.grass.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "acacia_leaves",
+    "place": "block.grass.place",
+    "break": "block.grass.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "cherry_leaves",
+    "place": "block.cherry_leaves.place",
+    "break": "block.cherry_leaves.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "dark_oak_leaves",
+    "place": "block.grass.place",
+    "break": "block.grass.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "pale_oak_leaves",
+    "place": "block.grass.place",
+    "break": "block.grass.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "mangrove_leaves",
+    "place": "block.grass.place",
+    "break": "block.grass.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "azalea_leaves",
+    "place": "block.azalea_leaves.place",
+    "break": "block.azalea_leaves.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "flowering_azalea_leaves",
+    "place": "block.azalea_leaves.place",
+    "break": "block.azalea_leaves.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "sponge",
+    "place": "block.sponge.place",
+    "break": "block.sponge.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "wet_sponge",
+    "place": "block.wet_sponge.place",
+    "break": "block.wet_sponge.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "glass",
+    "place": "block.glass.place",
+    "break": "block.glass.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "lapis_ore",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "deepslate_lapis_ore",
+    "place": "block.deepslate.place",
+    "break": "block.deepslate.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "lapis_block",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "dispenser",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "sandstone",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "chiseled_sandstone",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "cut_sandstone",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "note_block",
+    "place": "block.wood.place",
+    "break": "block.wood.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "white_bed",
+    "place": "block.wood.place",
+    "break": "block.wood.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "orange_bed",
+    "place": "block.wood.place",
+    "break": "block.wood.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "magenta_bed",
+    "place": "block.wood.place",
+    "break": "block.wood.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "light_blue_bed",
+    "place": "block.wood.place",
+    "break": "block.wood.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "yellow_bed",
+    "place": "block.wood.place",
+    "break": "block.wood.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "lime_bed",
+    "place": "block.wood.place",
+    "break": "block.wood.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "pink_bed",
+    "place": "block.wood.place",
+    "break": "block.wood.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "gray_bed",
+    "place": "block.wood.place",
+    "break": "block.wood.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "light_gray_bed",
+    "place": "block.wood.place",
+    "break": "block.wood.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "cyan_bed",
+    "place": "block.wood.place",
+    "break": "block.wood.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "purple_bed",
+    "place": "block.wood.place",
+    "break": "block.wood.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "blue_bed",
+    "place": "block.wood.place",
+    "break": "block.wood.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "brown_bed",
+    "place": "block.wood.place",
+    "break": "block.wood.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "green_bed",
+    "place": "block.wood.place",
+    "break": "block.wood.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "red_bed",
+    "place": "block.wood.place",
+    "break": "block.wood.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "black_bed",
+    "place": "block.wood.place",
+    "break": "block.wood.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "powered_rail",
+    "place": "block.metal.place",
+    "break": "block.metal.break",
+    "volume": 1.0,
+    "pitch": 1.5
+  },
+  {
+    "name": "detector_rail",
+    "place": "block.metal.place",
+    "break": "block.metal.break",
+    "volume": 1.0,
+    "pitch": 1.5
+  },
+  {
+    "name": "sticky_piston",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "cobweb",
+    "place": "block.cobweb.place",
+    "break": "block.cobweb.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "short_grass",
+    "place": "block.grass.place",
+    "break": "block.grass.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "fern",
+    "place": "block.grass.place",
+    "break": "block.grass.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "dead_bush",
+    "place": "block.grass.place",
+    "break": "block.grass.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "bush",
+    "place": "block.grass.place",
+    "break": "block.grass.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "short_dry_grass",
+    "place": "block.grass.place",
+    "break": "block.grass.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "tall_dry_grass",
+    "place": "block.grass.place",
+    "break": "block.grass.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "seagrass",
+    "place": "block.wet_grass.place",
+    "break": "block.wet_grass.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "tall_seagrass",
+    "place": "block.wet_grass.place",
+    "break": "block.wet_grass.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "piston",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "piston_head",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "white_wool",
+    "place": "block.wool.place",
+    "break": "block.wool.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "orange_wool",
+    "place": "block.wool.place",
+    "break": "block.wool.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "magenta_wool",
+    "place": "block.wool.place",
+    "break": "block.wool.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "light_blue_wool",
+    "place": "block.wool.place",
+    "break": "block.wool.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "yellow_wool",
+    "place": "block.wool.place",
+    "break": "block.wool.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "lime_wool",
+    "place": "block.wool.place",
+    "break": "block.wool.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "pink_wool",
+    "place": "block.wool.place",
+    "break": "block.wool.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "gray_wool",
+    "place": "block.wool.place",
+    "break": "block.wool.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "light_gray_wool",
+    "place": "block.wool.place",
+    "break": "block.wool.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "cyan_wool",
+    "place": "block.wool.place",
+    "break": "block.wool.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "purple_wool",
+    "place": "block.wool.place",
+    "break": "block.wool.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "blue_wool",
+    "place": "block.wool.place",
+    "break": "block.wool.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "brown_wool",
+    "place": "block.wool.place",
+    "break": "block.wool.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "green_wool",
+    "place": "block.wool.place",
+    "break": "block.wool.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "red_wool",
+    "place": "block.wool.place",
+    "break": "block.wool.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "black_wool",
+    "place": "block.wool.place",
+    "break": "block.wool.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "moving_piston",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "dandelion",
+    "place": "block.grass.place",
+    "break": "block.grass.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "torchflower",
+    "place": "block.grass.place",
+    "break": "block.grass.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "poppy",
+    "place": "block.grass.place",
+    "break": "block.grass.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "blue_orchid",
+    "place": "block.grass.place",
+    "break": "block.grass.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "allium",
+    "place": "block.grass.place",
+    "break": "block.grass.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "azure_bluet",
+    "place": "block.grass.place",
+    "break": "block.grass.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "red_tulip",
+    "place": "block.grass.place",
+    "break": "block.grass.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "orange_tulip",
+    "place": "block.grass.place",
+    "break": "block.grass.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "white_tulip",
+    "place": "block.grass.place",
+    "break": "block.grass.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "pink_tulip",
+    "place": "block.grass.place",
+    "break": "block.grass.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "oxeye_daisy",
+    "place": "block.grass.place",
+    "break": "block.grass.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "cornflower",
+    "place": "block.grass.place",
+    "break": "block.grass.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "wither_rose",
+    "place": "block.grass.place",
+    "break": "block.grass.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "lily_of_the_valley",
+    "place": "block.grass.place",
+    "break": "block.grass.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "brown_mushroom",
+    "place": "block.grass.place",
+    "break": "block.grass.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "red_mushroom",
+    "place": "block.grass.place",
+    "break": "block.grass.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "gold_block",
+    "place": "block.metal.place",
+    "break": "block.metal.break",
+    "volume": 1.0,
+    "pitch": 1.5
+  },
+  {
+    "name": "iron_block",
+    "place": "block.iron.place",
+    "break": "block.iron.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "bricks",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "tnt",
+    "place": "block.grass.place",
+    "break": "block.grass.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "bookshelf",
+    "place": "block.wood.place",
+    "break": "block.wood.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "chiseled_bookshelf",
+    "place": "block.chiseled_bookshelf.place",
+    "break": "block.chiseled_bookshelf.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "mossy_cobblestone",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "obsidian",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "torch",
+    "place": "block.wood.place",
+    "break": "block.wood.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "wall_torch",
+    "place": "block.wood.place",
+    "break": "block.wood.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "fire",
+    "place": "block.wool.place",
+    "break": "block.wool.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "soul_fire",
+    "place": "block.wool.place",
+    "break": "block.wool.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "spawner",
+    "place": "block.spawner.place",
+    "break": "block.spawner.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "creaking_heart",
+    "place": "block.creaking_heart.place",
+    "break": "block.creaking_heart.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "oak_stairs",
+    "place": "block.wood.place",
+    "break": "block.wood.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "chest",
+    "place": "block.wood.place",
+    "break": "block.wood.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "redstone_wire",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "diamond_ore",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "deepslate_diamond_ore",
+    "place": "block.deepslate.place",
+    "break": "block.deepslate.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "diamond_block",
+    "place": "block.metal.place",
+    "break": "block.metal.break",
+    "volume": 1.0,
+    "pitch": 1.5
+  },
+  {
+    "name": "crafting_table",
+    "place": "block.wood.place",
+    "break": "block.wood.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "wheat",
+    "place": "item.crop.plant",
+    "break": "block.crop.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "farmland",
+    "place": "block.gravel.place",
+    "break": "block.gravel.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "furnace",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "oak_sign",
+    "place": "block.wood.place",
+    "break": "block.wood.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "spruce_sign",
+    "place": "block.wood.place",
+    "break": "block.wood.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "birch_sign",
+    "place": "block.wood.place",
+    "break": "block.wood.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "acacia_sign",
+    "place": "block.wood.place",
+    "break": "block.wood.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "cherry_sign",
+    "place": "block.cherry_wood.place",
+    "break": "block.cherry_wood.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "jungle_sign",
+    "place": "block.wood.place",
+    "break": "block.wood.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "dark_oak_sign",
+    "place": "block.wood.place",
+    "break": "block.wood.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "pale_oak_sign",
+    "place": "block.wood.place",
+    "break": "block.wood.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "mangrove_sign",
+    "place": "block.wood.place",
+    "break": "block.wood.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "bamboo_sign",
+    "place": "block.bamboo_wood.place",
+    "break": "block.bamboo_wood.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "oak_door",
+    "place": "block.wood.place",
+    "break": "block.wood.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "ladder",
+    "place": "block.ladder.place",
+    "break": "block.ladder.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "rail",
+    "place": "block.metal.place",
+    "break": "block.metal.break",
+    "volume": 1.0,
+    "pitch": 1.5
+  },
+  {
+    "name": "cobblestone_stairs",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "oak_wall_sign",
+    "place": "block.wood.place",
+    "break": "block.wood.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "spruce_wall_sign",
+    "place": "block.wood.place",
+    "break": "block.wood.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "birch_wall_sign",
+    "place": "block.wood.place",
+    "break": "block.wood.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "acacia_wall_sign",
+    "place": "block.wood.place",
+    "break": "block.wood.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "cherry_wall_sign",
+    "place": "block.cherry_wood.place",
+    "break": "block.cherry_wood.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "jungle_wall_sign",
+    "place": "block.wood.place",
+    "break": "block.wood.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "dark_oak_wall_sign",
+    "place": "block.wood.place",
+    "break": "block.wood.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "pale_oak_wall_sign",
+    "place": "block.wood.place",
+    "break": "block.wood.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "mangrove_wall_sign",
+    "place": "block.wood.place",
+    "break": "block.wood.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "bamboo_wall_sign",
+    "place": "block.bamboo_wood.place",
+    "break": "block.bamboo_wood.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "oak_hanging_sign",
+    "place": "block.hanging_sign.place",
+    "break": "block.hanging_sign.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "spruce_hanging_sign",
+    "place": "block.hanging_sign.place",
+    "break": "block.hanging_sign.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "birch_hanging_sign",
+    "place": "block.hanging_sign.place",
+    "break": "block.hanging_sign.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "acacia_hanging_sign",
+    "place": "block.hanging_sign.place",
+    "break": "block.hanging_sign.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "cherry_hanging_sign",
+    "place": "block.cherry_wood_hanging_sign.place",
+    "break": "block.cherry_wood_hanging_sign.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "jungle_hanging_sign",
+    "place": "block.hanging_sign.place",
+    "break": "block.hanging_sign.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "dark_oak_hanging_sign",
+    "place": "block.hanging_sign.place",
+    "break": "block.hanging_sign.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "pale_oak_hanging_sign",
+    "place": "block.hanging_sign.place",
+    "break": "block.hanging_sign.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "crimson_hanging_sign",
+    "place": "block.nether_wood_hanging_sign.place",
+    "break": "block.nether_wood_hanging_sign.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "warped_hanging_sign",
+    "place": "block.nether_wood_hanging_sign.place",
+    "break": "block.nether_wood_hanging_sign.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "mangrove_hanging_sign",
+    "place": "block.hanging_sign.place",
+    "break": "block.hanging_sign.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "bamboo_hanging_sign",
+    "place": "block.bamboo_wood_hanging_sign.place",
+    "break": "block.bamboo_wood_hanging_sign.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "oak_wall_hanging_sign",
+    "place": "block.hanging_sign.place",
+    "break": "block.hanging_sign.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "spruce_wall_hanging_sign",
+    "place": "block.hanging_sign.place",
+    "break": "block.hanging_sign.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "birch_wall_hanging_sign",
+    "place": "block.hanging_sign.place",
+    "break": "block.hanging_sign.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "acacia_wall_hanging_sign",
+    "place": "block.hanging_sign.place",
+    "break": "block.hanging_sign.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "cherry_wall_hanging_sign",
+    "place": "block.cherry_wood_hanging_sign.place",
+    "break": "block.cherry_wood_hanging_sign.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "jungle_wall_hanging_sign",
+    "place": "block.hanging_sign.place",
+    "break": "block.hanging_sign.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "dark_oak_wall_hanging_sign",
+    "place": "block.hanging_sign.place",
+    "break": "block.hanging_sign.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "pale_oak_wall_hanging_sign",
+    "place": "block.hanging_sign.place",
+    "break": "block.hanging_sign.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "mangrove_wall_hanging_sign",
+    "place": "block.hanging_sign.place",
+    "break": "block.hanging_sign.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "crimson_wall_hanging_sign",
+    "place": "block.nether_wood_hanging_sign.place",
+    "break": "block.nether_wood_hanging_sign.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "warped_wall_hanging_sign",
+    "place": "block.nether_wood_hanging_sign.place",
+    "break": "block.nether_wood_hanging_sign.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "bamboo_wall_hanging_sign",
+    "place": "block.bamboo_wood_hanging_sign.place",
+    "break": "block.bamboo_wood_hanging_sign.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "lever",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "stone_pressure_plate",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "iron_door",
+    "place": "block.iron.place",
+    "break": "block.iron.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "oak_pressure_plate",
+    "place": "block.wood.place",
+    "break": "block.wood.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "spruce_pressure_plate",
+    "place": "block.wood.place",
+    "break": "block.wood.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "birch_pressure_plate",
+    "place": "block.wood.place",
+    "break": "block.wood.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "jungle_pressure_plate",
+    "place": "block.wood.place",
+    "break": "block.wood.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "acacia_pressure_plate",
+    "place": "block.wood.place",
+    "break": "block.wood.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "cherry_pressure_plate",
+    "place": "block.cherry_wood.place",
+    "break": "block.cherry_wood.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "dark_oak_pressure_plate",
+    "place": "block.wood.place",
+    "break": "block.wood.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "pale_oak_pressure_plate",
+    "place": "block.wood.place",
+    "break": "block.wood.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "mangrove_pressure_plate",
+    "place": "block.wood.place",
+    "break": "block.wood.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "bamboo_pressure_plate",
+    "place": "block.bamboo_wood.place",
+    "break": "block.bamboo_wood.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "redstone_ore",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "deepslate_redstone_ore",
+    "place": "block.deepslate.place",
+    "break": "block.deepslate.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "redstone_torch",
+    "place": "block.wood.place",
+    "break": "block.wood.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "redstone_wall_torch",
+    "place": "block.wood.place",
+    "break": "block.wood.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "stone_button",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "snow",
+    "place": "block.snow.place",
+    "break": "block.snow.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "ice",
+    "place": "block.glass.place",
+    "break": "block.glass.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "snow_block",
+    "place": "block.snow.place",
+    "break": "block.snow.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "cactus",
+    "place": "block.wool.place",
+    "break": "block.wool.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "cactus_flower",
+    "place": "block.cactus_flower.place",
+    "break": "block.cactus_flower.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "clay",
+    "place": "block.gravel.place",
+    "break": "block.gravel.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "sugar_cane",
+    "place": "block.grass.place",
+    "break": "block.grass.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "jukebox",
+    "place": "block.wood.place",
+    "break": "block.wood.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "oak_fence",
+    "place": "block.wood.place",
+    "break": "block.wood.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "netherrack",
+    "place": "block.netherrack.place",
+    "break": "block.netherrack.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "soul_sand",
+    "place": "block.soul_sand.place",
+    "break": "block.soul_sand.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "soul_soil",
+    "place": "block.soul_soil.place",
+    "break": "block.soul_soil.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "basalt",
+    "place": "block.basalt.place",
+    "break": "block.basalt.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "polished_basalt",
+    "place": "block.basalt.place",
+    "break": "block.basalt.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "soul_torch",
+    "place": "block.wood.place",
+    "break": "block.wood.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "soul_wall_torch",
+    "place": "block.wood.place",
+    "break": "block.wood.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "glowstone",
+    "place": "block.glass.place",
+    "break": "block.glass.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "nether_portal",
+    "place": "block.glass.place",
+    "break": "block.glass.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "carved_pumpkin",
+    "place": "block.wood.place",
+    "break": "block.wood.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "jack_o_lantern",
+    "place": "block.wood.place",
+    "break": "block.wood.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "cake",
+    "place": "block.wool.place",
+    "break": "block.wool.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "repeater",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "white_stained_glass",
+    "place": "block.glass.place",
+    "break": "block.glass.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "orange_stained_glass",
+    "place": "block.glass.place",
+    "break": "block.glass.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "magenta_stained_glass",
+    "place": "block.glass.place",
+    "break": "block.glass.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "light_blue_stained_glass",
+    "place": "block.glass.place",
+    "break": "block.glass.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "yellow_stained_glass",
+    "place": "block.glass.place",
+    "break": "block.glass.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "lime_stained_glass",
+    "place": "block.glass.place",
+    "break": "block.glass.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "pink_stained_glass",
+    "place": "block.glass.place",
+    "break": "block.glass.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "gray_stained_glass",
+    "place": "block.glass.place",
+    "break": "block.glass.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "light_gray_stained_glass",
+    "place": "block.glass.place",
+    "break": "block.glass.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "cyan_stained_glass",
+    "place": "block.glass.place",
+    "break": "block.glass.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "purple_stained_glass",
+    "place": "block.glass.place",
+    "break": "block.glass.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "blue_stained_glass",
+    "place": "block.glass.place",
+    "break": "block.glass.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "brown_stained_glass",
+    "place": "block.glass.place",
+    "break": "block.glass.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "green_stained_glass",
+    "place": "block.glass.place",
+    "break": "block.glass.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "red_stained_glass",
+    "place": "block.glass.place",
+    "break": "block.glass.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "black_stained_glass",
+    "place": "block.glass.place",
+    "break": "block.glass.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "oak_trapdoor",
+    "place": "block.wood.place",
+    "break": "block.wood.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "spruce_trapdoor",
+    "place": "block.wood.place",
+    "break": "block.wood.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "birch_trapdoor",
+    "place": "block.wood.place",
+    "break": "block.wood.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "jungle_trapdoor",
+    "place": "block.wood.place",
+    "break": "block.wood.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "acacia_trapdoor",
+    "place": "block.wood.place",
+    "break": "block.wood.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "cherry_trapdoor",
+    "place": "block.cherry_wood.place",
+    "break": "block.cherry_wood.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "dark_oak_trapdoor",
+    "place": "block.wood.place",
+    "break": "block.wood.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "pale_oak_trapdoor",
+    "place": "block.wood.place",
+    "break": "block.wood.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "mangrove_trapdoor",
+    "place": "block.wood.place",
+    "break": "block.wood.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "bamboo_trapdoor",
+    "place": "block.bamboo_wood.place",
+    "break": "block.bamboo_wood.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "stone_bricks",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "mossy_stone_bricks",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "cracked_stone_bricks",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "chiseled_stone_bricks",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "packed_mud",
+    "place": "block.packed_mud.place",
+    "break": "block.packed_mud.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "mud_bricks",
+    "place": "block.mud_bricks.place",
+    "break": "block.mud_bricks.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "infested_stone",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "infested_cobblestone",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "infested_stone_bricks",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "infested_mossy_stone_bricks",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "infested_cracked_stone_bricks",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "infested_chiseled_stone_bricks",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "brown_mushroom_block",
+    "place": "block.wood.place",
+    "break": "block.wood.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "red_mushroom_block",
+    "place": "block.wood.place",
+    "break": "block.wood.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "mushroom_stem",
+    "place": "block.wood.place",
+    "break": "block.wood.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "iron_bars",
+    "place": "block.iron.place",
+    "break": "block.iron.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "chain",
+    "place": "block.chain.place",
+    "break": "block.chain.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "glass_pane",
+    "place": "block.glass.place",
+    "break": "block.glass.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "pumpkin",
+    "place": "block.wood.place",
+    "break": "block.wood.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "melon",
+    "place": "block.wood.place",
+    "break": "block.wood.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "attached_pumpkin_stem",
+    "place": "block.wood.place",
+    "break": "block.wood.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "attached_melon_stem",
+    "place": "block.wood.place",
+    "break": "block.wood.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "pumpkin_stem",
+    "place": "item.crop.plant",
+    "break": "block.wood.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "melon_stem",
+    "place": "item.crop.plant",
+    "break": "block.wood.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "vine",
+    "place": "block.vine.place",
+    "break": "block.vine.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "glow_lichen",
+    "place": "block.grass.place",
+    "break": "block.grass.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "resin_clump",
+    "place": "block.resin.place",
+    "break": "block.resin.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "oak_fence_gate",
+    "place": "block.wood.place",
+    "break": "block.wood.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "brick_stairs",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "stone_brick_stairs",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "mud_brick_stairs",
+    "place": "block.mud_bricks.place",
+    "break": "block.mud_bricks.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "mycelium",
+    "place": "block.grass.place",
+    "break": "block.grass.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "lily_pad",
+    "place": "block.lily_pad.place",
+    "break": "block.big_dripleaf.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "resin_block",
+    "place": "block.resin.place",
+    "break": "block.resin.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "resin_bricks",
+    "place": "block.resin_bricks.place",
+    "break": "block.resin_bricks.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "resin_brick_stairs",
+    "place": "block.resin_bricks.place",
+    "break": "block.resin_bricks.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "resin_brick_slab",
+    "place": "block.resin_bricks.place",
+    "break": "block.resin_bricks.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "resin_brick_wall",
+    "place": "block.resin_bricks.place",
+    "break": "block.resin_bricks.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "chiseled_resin_bricks",
+    "place": "block.resin_bricks.place",
+    "break": "block.resin_bricks.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "nether_bricks",
+    "place": "block.nether_bricks.place",
+    "break": "block.nether_bricks.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "nether_brick_fence",
+    "place": "block.nether_bricks.place",
+    "break": "block.nether_bricks.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "nether_brick_stairs",
+    "place": "block.nether_bricks.place",
+    "break": "block.nether_bricks.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "nether_wart",
+    "place": "item.nether_wart.plant",
+    "break": "block.nether_wart.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "enchanting_table",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "brewing_stand",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "cauldron",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "water_cauldron",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "lava_cauldron",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "powder_snow_cauldron",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "end_portal",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "end_portal_frame",
+    "place": "block.glass.place",
+    "break": "block.glass.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "end_stone",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "dragon_egg",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "redstone_lamp",
+    "place": "block.glass.place",
+    "break": "block.glass.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "cocoa",
+    "place": "block.wood.place",
+    "break": "block.wood.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "sandstone_stairs",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "emerald_ore",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "deepslate_emerald_ore",
+    "place": "block.deepslate.place",
+    "break": "block.deepslate.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "ender_chest",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "tripwire_hook",
+    "place": "block.wood.place",
+    "break": "block.wood.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "tripwire",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "emerald_block",
+    "place": "block.metal.place",
+    "break": "block.metal.break",
+    "volume": 1.0,
+    "pitch": 1.5
+  },
+  {
+    "name": "spruce_stairs",
+    "place": "block.wood.place",
+    "break": "block.wood.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "birch_stairs",
+    "place": "block.wood.place",
+    "break": "block.wood.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "jungle_stairs",
+    "place": "block.wood.place",
+    "break": "block.wood.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "command_block",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "beacon",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "cobblestone_wall",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "mossy_cobblestone_wall",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "flower_pot",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "potted_torchflower",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "potted_oak_sapling",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "potted_spruce_sapling",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "potted_birch_sapling",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "potted_jungle_sapling",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "potted_acacia_sapling",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "potted_cherry_sapling",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "potted_dark_oak_sapling",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "potted_pale_oak_sapling",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "potted_mangrove_propagule",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "potted_fern",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "potted_dandelion",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "potted_poppy",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "potted_blue_orchid",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "potted_allium",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "potted_azure_bluet",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "potted_red_tulip",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "potted_orange_tulip",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "potted_white_tulip",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "potted_pink_tulip",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "potted_oxeye_daisy",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "potted_cornflower",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "potted_lily_of_the_valley",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "potted_wither_rose",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "potted_red_mushroom",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "potted_brown_mushroom",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "potted_dead_bush",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "potted_cactus",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "carrots",
+    "place": "item.crop.plant",
+    "break": "block.crop.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "potatoes",
+    "place": "item.crop.plant",
+    "break": "block.crop.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "oak_button",
+    "place": "block.wood.place",
+    "break": "block.wood.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "spruce_button",
+    "place": "block.wood.place",
+    "break": "block.wood.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "birch_button",
+    "place": "block.wood.place",
+    "break": "block.wood.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "jungle_button",
+    "place": "block.wood.place",
+    "break": "block.wood.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "acacia_button",
+    "place": "block.wood.place",
+    "break": "block.wood.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "cherry_button",
+    "place": "block.cherry_wood.place",
+    "break": "block.cherry_wood.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "dark_oak_button",
+    "place": "block.wood.place",
+    "break": "block.wood.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "pale_oak_button",
+    "place": "block.wood.place",
+    "break": "block.wood.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "mangrove_button",
+    "place": "block.wood.place",
+    "break": "block.wood.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "bamboo_button",
+    "place": "block.bamboo_wood.place",
+    "break": "block.bamboo_wood.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "skeleton_skull",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "skeleton_wall_skull",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "wither_skeleton_skull",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "wither_skeleton_wall_skull",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "zombie_head",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "zombie_wall_head",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "player_head",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "player_wall_head",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "creeper_head",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "creeper_wall_head",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "dragon_head",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "dragon_wall_head",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "piglin_head",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "piglin_wall_head",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "anvil",
+    "place": "block.anvil.place",
+    "break": "block.anvil.break",
+    "volume": 0.3,
+    "pitch": 1.0
+  },
+  {
+    "name": "chipped_anvil",
+    "place": "block.anvil.place",
+    "break": "block.anvil.break",
+    "volume": 0.3,
+    "pitch": 1.0
+  },
+  {
+    "name": "damaged_anvil",
+    "place": "block.anvil.place",
+    "break": "block.anvil.break",
+    "volume": 0.3,
+    "pitch": 1.0
+  },
+  {
+    "name": "trapped_chest",
+    "place": "block.wood.place",
+    "break": "block.wood.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "light_weighted_pressure_plate",
+    "place": "block.metal.place",
+    "break": "block.metal.break",
+    "volume": 1.0,
+    "pitch": 1.5
+  },
+  {
+    "name": "heavy_weighted_pressure_plate",
+    "place": "block.iron.place",
+    "break": "block.iron.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "comparator",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "daylight_detector",
+    "place": "block.wood.place",
+    "break": "block.wood.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "redstone_block",
+    "place": "block.metal.place",
+    "break": "block.metal.break",
+    "volume": 1.0,
+    "pitch": 1.5
+  },
+  {
+    "name": "nether_quartz_ore",
+    "place": "block.nether_ore.place",
+    "break": "block.nether_ore.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "hopper",
+    "place": "block.metal.place",
+    "break": "block.metal.break",
+    "volume": 1.0,
+    "pitch": 1.5
+  },
+  {
+    "name": "quartz_block",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "chiseled_quartz_block",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "quartz_pillar",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "quartz_stairs",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "activator_rail",
+    "place": "block.metal.place",
+    "break": "block.metal.break",
+    "volume": 1.0,
+    "pitch": 1.5
+  },
+  {
+    "name": "dropper",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "white_terracotta",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "orange_terracotta",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "magenta_terracotta",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "light_blue_terracotta",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "yellow_terracotta",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "lime_terracotta",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "pink_terracotta",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "gray_terracotta",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "light_gray_terracotta",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "cyan_terracotta",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "purple_terracotta",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "blue_terracotta",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "brown_terracotta",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "green_terracotta",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "red_terracotta",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "black_terracotta",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "white_stained_glass_pane",
+    "place": "block.glass.place",
+    "break": "block.glass.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "orange_stained_glass_pane",
+    "place": "block.glass.place",
+    "break": "block.glass.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "magenta_stained_glass_pane",
+    "place": "block.glass.place",
+    "break": "block.glass.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "light_blue_stained_glass_pane",
+    "place": "block.glass.place",
+    "break": "block.glass.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "yellow_stained_glass_pane",
+    "place": "block.glass.place",
+    "break": "block.glass.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "lime_stained_glass_pane",
+    "place": "block.glass.place",
+    "break": "block.glass.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "pink_stained_glass_pane",
+    "place": "block.glass.place",
+    "break": "block.glass.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "gray_stained_glass_pane",
+    "place": "block.glass.place",
+    "break": "block.glass.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "light_gray_stained_glass_pane",
+    "place": "block.glass.place",
+    "break": "block.glass.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "cyan_stained_glass_pane",
+    "place": "block.glass.place",
+    "break": "block.glass.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "purple_stained_glass_pane",
+    "place": "block.glass.place",
+    "break": "block.glass.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "blue_stained_glass_pane",
+    "place": "block.glass.place",
+    "break": "block.glass.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "brown_stained_glass_pane",
+    "place": "block.glass.place",
+    "break": "block.glass.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "green_stained_glass_pane",
+    "place": "block.glass.place",
+    "break": "block.glass.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "red_stained_glass_pane",
+    "place": "block.glass.place",
+    "break": "block.glass.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "black_stained_glass_pane",
+    "place": "block.glass.place",
+    "break": "block.glass.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "acacia_stairs",
+    "place": "block.wood.place",
+    "break": "block.wood.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "cherry_stairs",
+    "place": "block.cherry_wood.place",
+    "break": "block.cherry_wood.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "dark_oak_stairs",
+    "place": "block.wood.place",
+    "break": "block.wood.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "pale_oak_stairs",
+    "place": "block.wood.place",
+    "break": "block.wood.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "mangrove_stairs",
+    "place": "block.wood.place",
+    "break": "block.wood.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "bamboo_stairs",
+    "place": "block.bamboo_wood.place",
+    "break": "block.bamboo_wood.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "bamboo_mosaic_stairs",
+    "place": "block.bamboo_wood.place",
+    "break": "block.bamboo_wood.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "slime_block",
+    "place": "block.slime_block.place",
+    "break": "block.slime_block.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "barrier",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "light",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "iron_trapdoor",
+    "place": "block.iron.place",
+    "break": "block.iron.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "prismarine",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "prismarine_bricks",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "dark_prismarine",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "prismarine_stairs",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "prismarine_brick_stairs",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "dark_prismarine_stairs",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "prismarine_slab",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "prismarine_brick_slab",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "dark_prismarine_slab",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "sea_lantern",
+    "place": "block.glass.place",
+    "break": "block.glass.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "hay_block",
+    "place": "block.grass.place",
+    "break": "block.grass.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "white_carpet",
+    "place": "block.wool.place",
+    "break": "block.wool.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "orange_carpet",
+    "place": "block.wool.place",
+    "break": "block.wool.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "magenta_carpet",
+    "place": "block.wool.place",
+    "break": "block.wool.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "light_blue_carpet",
+    "place": "block.wool.place",
+    "break": "block.wool.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "yellow_carpet",
+    "place": "block.wool.place",
+    "break": "block.wool.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "lime_carpet",
+    "place": "block.wool.place",
+    "break": "block.wool.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "pink_carpet",
+    "place": "block.wool.place",
+    "break": "block.wool.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "gray_carpet",
+    "place": "block.wool.place",
+    "break": "block.wool.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "light_gray_carpet",
+    "place": "block.wool.place",
+    "break": "block.wool.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "cyan_carpet",
+    "place": "block.wool.place",
+    "break": "block.wool.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "purple_carpet",
+    "place": "block.wool.place",
+    "break": "block.wool.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "blue_carpet",
+    "place": "block.wool.place",
+    "break": "block.wool.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "brown_carpet",
+    "place": "block.wool.place",
+    "break": "block.wool.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "green_carpet",
+    "place": "block.wool.place",
+    "break": "block.wool.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "red_carpet",
+    "place": "block.wool.place",
+    "break": "block.wool.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "black_carpet",
+    "place": "block.wool.place",
+    "break": "block.wool.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "terracotta",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "coal_block",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "packed_ice",
+    "place": "block.glass.place",
+    "break": "block.glass.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "sunflower",
+    "place": "block.grass.place",
+    "break": "block.grass.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "lilac",
+    "place": "block.grass.place",
+    "break": "block.grass.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "rose_bush",
+    "place": "block.grass.place",
+    "break": "block.grass.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "peony",
+    "place": "block.grass.place",
+    "break": "block.grass.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "tall_grass",
+    "place": "block.grass.place",
+    "break": "block.grass.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "large_fern",
+    "place": "block.grass.place",
+    "break": "block.grass.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "white_banner",
+    "place": "block.wood.place",
+    "break": "block.wood.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "orange_banner",
+    "place": "block.wood.place",
+    "break": "block.wood.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "magenta_banner",
+    "place": "block.wood.place",
+    "break": "block.wood.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "light_blue_banner",
+    "place": "block.wood.place",
+    "break": "block.wood.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "yellow_banner",
+    "place": "block.wood.place",
+    "break": "block.wood.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "lime_banner",
+    "place": "block.wood.place",
+    "break": "block.wood.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "pink_banner",
+    "place": "block.wood.place",
+    "break": "block.wood.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "gray_banner",
+    "place": "block.wood.place",
+    "break": "block.wood.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "light_gray_banner",
+    "place": "block.wood.place",
+    "break": "block.wood.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "cyan_banner",
+    "place": "block.wood.place",
+    "break": "block.wood.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "purple_banner",
+    "place": "block.wood.place",
+    "break": "block.wood.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "blue_banner",
+    "place": "block.wood.place",
+    "break": "block.wood.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "brown_banner",
+    "place": "block.wood.place",
+    "break": "block.wood.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "green_banner",
+    "place": "block.wood.place",
+    "break": "block.wood.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "red_banner",
+    "place": "block.wood.place",
+    "break": "block.wood.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "black_banner",
+    "place": "block.wood.place",
+    "break": "block.wood.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "white_wall_banner",
+    "place": "block.wood.place",
+    "break": "block.wood.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "orange_wall_banner",
+    "place": "block.wood.place",
+    "break": "block.wood.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "magenta_wall_banner",
+    "place": "block.wood.place",
+    "break": "block.wood.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "light_blue_wall_banner",
+    "place": "block.wood.place",
+    "break": "block.wood.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "yellow_wall_banner",
+    "place": "block.wood.place",
+    "break": "block.wood.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "lime_wall_banner",
+    "place": "block.wood.place",
+    "break": "block.wood.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "pink_wall_banner",
+    "place": "block.wood.place",
+    "break": "block.wood.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "gray_wall_banner",
+    "place": "block.wood.place",
+    "break": "block.wood.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "light_gray_wall_banner",
+    "place": "block.wood.place",
+    "break": "block.wood.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "cyan_wall_banner",
+    "place": "block.wood.place",
+    "break": "block.wood.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "purple_wall_banner",
+    "place": "block.wood.place",
+    "break": "block.wood.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "blue_wall_banner",
+    "place": "block.wood.place",
+    "break": "block.wood.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "brown_wall_banner",
+    "place": "block.wood.place",
+    "break": "block.wood.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "green_wall_banner",
+    "place": "block.wood.place",
+    "break": "block.wood.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "red_wall_banner",
+    "place": "block.wood.place",
+    "break": "block.wood.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "black_wall_banner",
+    "place": "block.wood.place",
+    "break": "block.wood.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "red_sandstone",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "chiseled_red_sandstone",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "cut_red_sandstone",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "red_sandstone_stairs",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "oak_slab",
+    "place": "block.wood.place",
+    "break": "block.wood.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "spruce_slab",
+    "place": "block.wood.place",
+    "break": "block.wood.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "birch_slab",
+    "place": "block.wood.place",
+    "break": "block.wood.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "jungle_slab",
+    "place": "block.wood.place",
+    "break": "block.wood.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "acacia_slab",
+    "place": "block.wood.place",
+    "break": "block.wood.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "cherry_slab",
+    "place": "block.cherry_wood.place",
+    "break": "block.cherry_wood.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "dark_oak_slab",
+    "place": "block.wood.place",
+    "break": "block.wood.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "pale_oak_slab",
+    "place": "block.wood.place",
+    "break": "block.wood.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "mangrove_slab",
+    "place": "block.wood.place",
+    "break": "block.wood.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "bamboo_slab",
+    "place": "block.bamboo_wood.place",
+    "break": "block.bamboo_wood.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "bamboo_mosaic_slab",
+    "place": "block.bamboo_wood.place",
+    "break": "block.bamboo_wood.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "stone_slab",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "smooth_stone_slab",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "sandstone_slab",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "cut_sandstone_slab",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "petrified_oak_slab",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "cobblestone_slab",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "brick_slab",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "stone_brick_slab",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "mud_brick_slab",
+    "place": "block.mud_bricks.place",
+    "break": "block.mud_bricks.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "nether_brick_slab",
+    "place": "block.nether_bricks.place",
+    "break": "block.nether_bricks.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "quartz_slab",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "red_sandstone_slab",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "cut_red_sandstone_slab",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "purpur_slab",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "smooth_stone",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "smooth_sandstone",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "smooth_quartz",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "smooth_red_sandstone",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "spruce_fence_gate",
+    "place": "block.wood.place",
+    "break": "block.wood.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "birch_fence_gate",
+    "place": "block.wood.place",
+    "break": "block.wood.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "jungle_fence_gate",
+    "place": "block.wood.place",
+    "break": "block.wood.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "acacia_fence_gate",
+    "place": "block.wood.place",
+    "break": "block.wood.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "cherry_fence_gate",
+    "place": "block.cherry_wood.place",
+    "break": "block.cherry_wood.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "dark_oak_fence_gate",
+    "place": "block.wood.place",
+    "break": "block.wood.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "pale_oak_fence_gate",
+    "place": "block.wood.place",
+    "break": "block.wood.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "mangrove_fence_gate",
+    "place": "block.wood.place",
+    "break": "block.wood.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "bamboo_fence_gate",
+    "place": "block.bamboo_wood.place",
+    "break": "block.bamboo_wood.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "spruce_fence",
+    "place": "block.wood.place",
+    "break": "block.wood.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "birch_fence",
+    "place": "block.wood.place",
+    "break": "block.wood.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "jungle_fence",
+    "place": "block.wood.place",
+    "break": "block.wood.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "acacia_fence",
+    "place": "block.wood.place",
+    "break": "block.wood.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "cherry_fence",
+    "place": "block.cherry_wood.place",
+    "break": "block.cherry_wood.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "dark_oak_fence",
+    "place": "block.wood.place",
+    "break": "block.wood.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "pale_oak_fence",
+    "place": "block.wood.place",
+    "break": "block.wood.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "mangrove_fence",
+    "place": "block.wood.place",
+    "break": "block.wood.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "bamboo_fence",
+    "place": "block.bamboo_wood.place",
+    "break": "block.bamboo_wood.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "spruce_door",
+    "place": "block.wood.place",
+    "break": "block.wood.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "birch_door",
+    "place": "block.wood.place",
+    "break": "block.wood.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "jungle_door",
+    "place": "block.wood.place",
+    "break": "block.wood.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "acacia_door",
+    "place": "block.wood.place",
+    "break": "block.wood.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "cherry_door",
+    "place": "block.cherry_wood.place",
+    "break": "block.cherry_wood.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "dark_oak_door",
+    "place": "block.wood.place",
+    "break": "block.wood.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "pale_oak_door",
+    "place": "block.wood.place",
+    "break": "block.wood.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "mangrove_door",
+    "place": "block.wood.place",
+    "break": "block.wood.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "bamboo_door",
+    "place": "block.bamboo_wood.place",
+    "break": "block.bamboo_wood.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "end_rod",
+    "place": "block.wood.place",
+    "break": "block.wood.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "chorus_plant",
+    "place": "block.wood.place",
+    "break": "block.wood.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "chorus_flower",
+    "place": "block.wood.place",
+    "break": "block.wood.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "purpur_block",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "purpur_pillar",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "purpur_stairs",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "end_stone_bricks",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "torchflower_crop",
+    "place": "item.crop.plant",
+    "break": "block.crop.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "pitcher_crop",
+    "place": "item.crop.plant",
+    "break": "block.crop.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "pitcher_plant",
+    "place": "item.crop.plant",
+    "break": "block.crop.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "beetroots",
+    "place": "item.crop.plant",
+    "break": "block.crop.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "dirt_path",
+    "place": "block.grass.place",
+    "break": "block.grass.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "end_gateway",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "repeating_command_block",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "chain_command_block",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "frosted_ice",
+    "place": "block.glass.place",
+    "break": "block.glass.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "magma_block",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "nether_wart_block",
+    "place": "block.wart_block.place",
+    "break": "block.wart_block.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "red_nether_bricks",
+    "place": "block.nether_bricks.place",
+    "break": "block.nether_bricks.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "bone_block",
+    "place": "block.bone_block.place",
+    "break": "block.bone_block.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "structure_void",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "observer",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "shulker_box",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "white_shulker_box",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "orange_shulker_box",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "magenta_shulker_box",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "light_blue_shulker_box",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "yellow_shulker_box",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "lime_shulker_box",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "pink_shulker_box",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "gray_shulker_box",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "light_gray_shulker_box",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "cyan_shulker_box",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "purple_shulker_box",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "blue_shulker_box",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "brown_shulker_box",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "green_shulker_box",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "red_shulker_box",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "black_shulker_box",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "white_glazed_terracotta",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "orange_glazed_terracotta",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "magenta_glazed_terracotta",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "light_blue_glazed_terracotta",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "yellow_glazed_terracotta",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "lime_glazed_terracotta",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "pink_glazed_terracotta",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "gray_glazed_terracotta",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "light_gray_glazed_terracotta",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "cyan_glazed_terracotta",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "purple_glazed_terracotta",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "blue_glazed_terracotta",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "brown_glazed_terracotta",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "green_glazed_terracotta",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "red_glazed_terracotta",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "black_glazed_terracotta",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "white_concrete",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "orange_concrete",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "magenta_concrete",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "light_blue_concrete",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "yellow_concrete",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "lime_concrete",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "pink_concrete",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "gray_concrete",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "light_gray_concrete",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "cyan_concrete",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "purple_concrete",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "blue_concrete",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "brown_concrete",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "green_concrete",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "red_concrete",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "black_concrete",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "white_concrete_powder",
+    "place": "block.sand.place",
+    "break": "block.sand.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "orange_concrete_powder",
+    "place": "block.sand.place",
+    "break": "block.sand.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "magenta_concrete_powder",
+    "place": "block.sand.place",
+    "break": "block.sand.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "light_blue_concrete_powder",
+    "place": "block.sand.place",
+    "break": "block.sand.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "yellow_concrete_powder",
+    "place": "block.sand.place",
+    "break": "block.sand.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "lime_concrete_powder",
+    "place": "block.sand.place",
+    "break": "block.sand.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "pink_concrete_powder",
+    "place": "block.sand.place",
+    "break": "block.sand.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "gray_concrete_powder",
+    "place": "block.sand.place",
+    "break": "block.sand.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "light_gray_concrete_powder",
+    "place": "block.sand.place",
+    "break": "block.sand.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "cyan_concrete_powder",
+    "place": "block.sand.place",
+    "break": "block.sand.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "purple_concrete_powder",
+    "place": "block.sand.place",
+    "break": "block.sand.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "blue_concrete_powder",
+    "place": "block.sand.place",
+    "break": "block.sand.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "brown_concrete_powder",
+    "place": "block.sand.place",
+    "break": "block.sand.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "green_concrete_powder",
+    "place": "block.sand.place",
+    "break": "block.sand.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "red_concrete_powder",
+    "place": "block.sand.place",
+    "break": "block.sand.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "black_concrete_powder",
+    "place": "block.sand.place",
+    "break": "block.sand.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "kelp",
+    "place": "block.wet_grass.place",
+    "break": "block.wet_grass.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "kelp_plant",
+    "place": "block.wet_grass.place",
+    "break": "block.wet_grass.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "dried_kelp_block",
+    "place": "block.grass.place",
+    "break": "block.grass.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "turtle_egg",
+    "place": "block.metal.place",
+    "break": "block.metal.break",
+    "volume": 1.0,
+    "pitch": 1.5
+  },
+  {
+    "name": "sniffer_egg",
+    "place": "block.metal.place",
+    "break": "block.metal.break",
+    "volume": 1.0,
+    "pitch": 1.5
+  },
+  {
+    "name": "dead_tube_coral_block",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "dead_brain_coral_block",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "dead_bubble_coral_block",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "dead_fire_coral_block",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "dead_horn_coral_block",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "tube_coral_block",
+    "place": "block.coral_block.place",
+    "break": "block.coral_block.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "brain_coral_block",
+    "place": "block.coral_block.place",
+    "break": "block.coral_block.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "bubble_coral_block",
+    "place": "block.coral_block.place",
+    "break": "block.coral_block.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "fire_coral_block",
+    "place": "block.coral_block.place",
+    "break": "block.coral_block.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "horn_coral_block",
+    "place": "block.coral_block.place",
+    "break": "block.coral_block.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "dead_tube_coral",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "dead_brain_coral",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "dead_bubble_coral",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "dead_fire_coral",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "dead_horn_coral",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "tube_coral",
+    "place": "block.wet_grass.place",
+    "break": "block.wet_grass.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "brain_coral",
+    "place": "block.wet_grass.place",
+    "break": "block.wet_grass.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "bubble_coral",
+    "place": "block.wet_grass.place",
+    "break": "block.wet_grass.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "fire_coral",
+    "place": "block.wet_grass.place",
+    "break": "block.wet_grass.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "horn_coral",
+    "place": "block.wet_grass.place",
+    "break": "block.wet_grass.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "dead_tube_coral_fan",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "dead_brain_coral_fan",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "dead_bubble_coral_fan",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "dead_fire_coral_fan",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "dead_horn_coral_fan",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "tube_coral_fan",
+    "place": "block.wet_grass.place",
+    "break": "block.wet_grass.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "brain_coral_fan",
+    "place": "block.wet_grass.place",
+    "break": "block.wet_grass.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "bubble_coral_fan",
+    "place": "block.wet_grass.place",
+    "break": "block.wet_grass.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "fire_coral_fan",
+    "place": "block.wet_grass.place",
+    "break": "block.wet_grass.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "horn_coral_fan",
+    "place": "block.wet_grass.place",
+    "break": "block.wet_grass.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "dead_tube_coral_wall_fan",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "dead_brain_coral_wall_fan",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "dead_bubble_coral_wall_fan",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "dead_fire_coral_wall_fan",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "dead_horn_coral_wall_fan",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "tube_coral_wall_fan",
+    "place": "block.wet_grass.place",
+    "break": "block.wet_grass.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "brain_coral_wall_fan",
+    "place": "block.wet_grass.place",
+    "break": "block.wet_grass.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "bubble_coral_wall_fan",
+    "place": "block.wet_grass.place",
+    "break": "block.wet_grass.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "fire_coral_wall_fan",
+    "place": "block.wet_grass.place",
+    "break": "block.wet_grass.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "horn_coral_wall_fan",
+    "place": "block.wet_grass.place",
+    "break": "block.wet_grass.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "sea_pickle",
+    "place": "block.slime_block.place",
+    "break": "block.slime_block.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "blue_ice",
+    "place": "block.glass.place",
+    "break": "block.glass.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "conduit",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "bamboo_sapling",
+    "place": "block.bamboo_sapling.place",
+    "break": "block.bamboo_sapling.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "bamboo",
+    "place": "block.bamboo.place",
+    "break": "block.bamboo.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "potted_bamboo",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "void_air",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "cave_air",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "bubble_column",
+    "place": "intentionally_empty",
+    "break": "intentionally_empty",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "polished_granite_stairs",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "smooth_red_sandstone_stairs",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "mossy_stone_brick_stairs",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "polished_diorite_stairs",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "mossy_cobblestone_stairs",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "end_stone_brick_stairs",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "stone_stairs",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "smooth_sandstone_stairs",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "smooth_quartz_stairs",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "granite_stairs",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "andesite_stairs",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "red_nether_brick_stairs",
+    "place": "block.nether_bricks.place",
+    "break": "block.nether_bricks.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "polished_andesite_stairs",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "diorite_stairs",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "polished_granite_slab",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "smooth_red_sandstone_slab",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "mossy_stone_brick_slab",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "polished_diorite_slab",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "mossy_cobblestone_slab",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "end_stone_brick_slab",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "smooth_sandstone_slab",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "smooth_quartz_slab",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "granite_slab",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "andesite_slab",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "red_nether_brick_slab",
+    "place": "block.nether_bricks.place",
+    "break": "block.nether_bricks.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "polished_andesite_slab",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "diorite_slab",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "brick_wall",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "prismarine_wall",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "red_sandstone_wall",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "mossy_stone_brick_wall",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "granite_wall",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "stone_brick_wall",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "mud_brick_wall",
+    "place": "block.mud_bricks.place",
+    "break": "block.mud_bricks.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "nether_brick_wall",
+    "place": "block.nether_bricks.place",
+    "break": "block.nether_bricks.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "andesite_wall",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "red_nether_brick_wall",
+    "place": "block.nether_bricks.place",
+    "break": "block.nether_bricks.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "sandstone_wall",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "end_stone_brick_wall",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "diorite_wall",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "scaffolding",
+    "place": "block.scaffolding.place",
+    "break": "block.scaffolding.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "loom",
+    "place": "block.wood.place",
+    "break": "block.wood.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "barrel",
+    "place": "block.wood.place",
+    "break": "block.wood.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "smoker",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "blast_furnace",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "cartography_table",
+    "place": "block.wood.place",
+    "break": "block.wood.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "fletching_table",
+    "place": "block.wood.place",
+    "break": "block.wood.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "grindstone",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "lectern",
+    "place": "block.wood.place",
+    "break": "block.wood.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "smithing_table",
+    "place": "block.wood.place",
+    "break": "block.wood.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "stonecutter",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "bell",
+    "place": "block.anvil.place",
+    "break": "block.anvil.break",
+    "volume": 0.3,
+    "pitch": 1.0
+  },
+  {
+    "name": "lantern",
+    "place": "block.lantern.place",
+    "break": "block.lantern.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "soul_lantern",
+    "place": "block.lantern.place",
+    "break": "block.lantern.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "campfire",
+    "place": "block.wood.place",
+    "break": "block.wood.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "soul_campfire",
+    "place": "block.wood.place",
+    "break": "block.wood.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "sweet_berry_bush",
+    "place": "block.sweet_berry_bush.place",
+    "break": "block.sweet_berry_bush.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "warped_stem",
+    "place": "block.stem.place",
+    "break": "block.stem.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "stripped_warped_stem",
+    "place": "block.stem.place",
+    "break": "block.stem.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "warped_hyphae",
+    "place": "block.stem.place",
+    "break": "block.stem.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "stripped_warped_hyphae",
+    "place": "block.stem.place",
+    "break": "block.stem.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "warped_nylium",
+    "place": "block.nylium.place",
+    "break": "block.nylium.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "warped_fungus",
+    "place": "block.fungus.place",
+    "break": "block.fungus.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "warped_wart_block",
+    "place": "block.wart_block.place",
+    "break": "block.wart_block.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "warped_roots",
+    "place": "block.roots.place",
+    "break": "block.roots.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "nether_sprouts",
+    "place": "block.nether_sprouts.place",
+    "break": "block.nether_sprouts.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "crimson_stem",
+    "place": "block.stem.place",
+    "break": "block.stem.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "stripped_crimson_stem",
+    "place": "block.stem.place",
+    "break": "block.stem.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "crimson_hyphae",
+    "place": "block.stem.place",
+    "break": "block.stem.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "stripped_crimson_hyphae",
+    "place": "block.stem.place",
+    "break": "block.stem.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "crimson_nylium",
+    "place": "block.nylium.place",
+    "break": "block.nylium.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "crimson_fungus",
+    "place": "block.fungus.place",
+    "break": "block.fungus.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "shroomlight",
+    "place": "block.shroomlight.place",
+    "break": "block.shroomlight.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "weeping_vines",
+    "place": "block.weeping_vines.place",
+    "break": "block.weeping_vines.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "weeping_vines_plant",
+    "place": "block.weeping_vines.place",
+    "break": "block.weeping_vines.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "twisting_vines",
+    "place": "block.weeping_vines.place",
+    "break": "block.weeping_vines.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "twisting_vines_plant",
+    "place": "block.weeping_vines.place",
+    "break": "block.weeping_vines.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "crimson_roots",
+    "place": "block.roots.place",
+    "break": "block.roots.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "crimson_planks",
+    "place": "block.nether_wood.place",
+    "break": "block.nether_wood.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "warped_planks",
+    "place": "block.nether_wood.place",
+    "break": "block.nether_wood.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "crimson_slab",
+    "place": "block.nether_wood.place",
+    "break": "block.nether_wood.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "warped_slab",
+    "place": "block.nether_wood.place",
+    "break": "block.nether_wood.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "crimson_pressure_plate",
+    "place": "block.nether_wood.place",
+    "break": "block.nether_wood.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "warped_pressure_plate",
+    "place": "block.nether_wood.place",
+    "break": "block.nether_wood.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "crimson_fence",
+    "place": "block.nether_wood.place",
+    "break": "block.nether_wood.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "warped_fence",
+    "place": "block.nether_wood.place",
+    "break": "block.nether_wood.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "crimson_trapdoor",
+    "place": "block.nether_wood.place",
+    "break": "block.nether_wood.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "warped_trapdoor",
+    "place": "block.nether_wood.place",
+    "break": "block.nether_wood.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "crimson_fence_gate",
+    "place": "block.nether_wood.place",
+    "break": "block.nether_wood.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "warped_fence_gate",
+    "place": "block.nether_wood.place",
+    "break": "block.nether_wood.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "crimson_stairs",
+    "place": "block.nether_wood.place",
+    "break": "block.nether_wood.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "warped_stairs",
+    "place": "block.nether_wood.place",
+    "break": "block.nether_wood.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "crimson_button",
+    "place": "block.nether_wood.place",
+    "break": "block.nether_wood.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "warped_button",
+    "place": "block.nether_wood.place",
+    "break": "block.nether_wood.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "crimson_door",
+    "place": "block.nether_wood.place",
+    "break": "block.nether_wood.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "warped_door",
+    "place": "block.nether_wood.place",
+    "break": "block.nether_wood.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "crimson_sign",
+    "place": "block.nether_wood.place",
+    "break": "block.nether_wood.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "warped_sign",
+    "place": "block.nether_wood.place",
+    "break": "block.nether_wood.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "crimson_wall_sign",
+    "place": "block.nether_wood.place",
+    "break": "block.nether_wood.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "warped_wall_sign",
+    "place": "block.nether_wood.place",
+    "break": "block.nether_wood.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "structure_block",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "jigsaw",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "test_block",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "test_instance_block",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "composter",
+    "place": "block.wood.place",
+    "break": "block.wood.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "target",
+    "place": "block.grass.place",
+    "break": "block.grass.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "bee_nest",
+    "place": "block.wood.place",
+    "break": "block.wood.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "beehive",
+    "place": "block.wood.place",
+    "break": "block.wood.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "honey_block",
+    "place": "block.honey_block.place",
+    "break": "block.honey_block.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "honeycomb_block",
+    "place": "block.coral_block.place",
+    "break": "block.coral_block.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "netherite_block",
+    "place": "block.netherite_block.place",
+    "break": "block.netherite_block.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "ancient_debris",
+    "place": "block.ancient_debris.place",
+    "break": "block.ancient_debris.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "crying_obsidian",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "respawn_anchor",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "potted_crimson_fungus",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "potted_warped_fungus",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "potted_crimson_roots",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "potted_warped_roots",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "lodestone",
+    "place": "block.lodestone.place",
+    "break": "block.lodestone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "blackstone",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "blackstone_stairs",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "blackstone_wall",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "blackstone_slab",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "polished_blackstone",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "polished_blackstone_bricks",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "cracked_polished_blackstone_bricks",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "chiseled_polished_blackstone",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "polished_blackstone_brick_slab",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "polished_blackstone_brick_stairs",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "polished_blackstone_brick_wall",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "gilded_blackstone",
+    "place": "block.gilded_blackstone.place",
+    "break": "block.gilded_blackstone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "polished_blackstone_stairs",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "polished_blackstone_slab",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "polished_blackstone_pressure_plate",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "polished_blackstone_button",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "polished_blackstone_wall",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "chiseled_nether_bricks",
+    "place": "block.nether_bricks.place",
+    "break": "block.nether_bricks.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "cracked_nether_bricks",
+    "place": "block.nether_bricks.place",
+    "break": "block.nether_bricks.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "quartz_bricks",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "candle",
+    "place": "block.candle.place",
+    "break": "block.candle.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "white_candle",
+    "place": "block.candle.place",
+    "break": "block.candle.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "orange_candle",
+    "place": "block.candle.place",
+    "break": "block.candle.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "magenta_candle",
+    "place": "block.candle.place",
+    "break": "block.candle.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "light_blue_candle",
+    "place": "block.candle.place",
+    "break": "block.candle.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "yellow_candle",
+    "place": "block.candle.place",
+    "break": "block.candle.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "lime_candle",
+    "place": "block.candle.place",
+    "break": "block.candle.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "pink_candle",
+    "place": "block.candle.place",
+    "break": "block.candle.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "gray_candle",
+    "place": "block.candle.place",
+    "break": "block.candle.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "light_gray_candle",
+    "place": "block.candle.place",
+    "break": "block.candle.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "cyan_candle",
+    "place": "block.candle.place",
+    "break": "block.candle.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "purple_candle",
+    "place": "block.candle.place",
+    "break": "block.candle.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "blue_candle",
+    "place": "block.candle.place",
+    "break": "block.candle.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "brown_candle",
+    "place": "block.candle.place",
+    "break": "block.candle.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "green_candle",
+    "place": "block.candle.place",
+    "break": "block.candle.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "red_candle",
+    "place": "block.candle.place",
+    "break": "block.candle.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "black_candle",
+    "place": "block.candle.place",
+    "break": "block.candle.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "candle_cake",
+    "place": "block.wool.place",
+    "break": "block.wool.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "white_candle_cake",
+    "place": "block.wool.place",
+    "break": "block.wool.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "orange_candle_cake",
+    "place": "block.wool.place",
+    "break": "block.wool.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "magenta_candle_cake",
+    "place": "block.wool.place",
+    "break": "block.wool.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "light_blue_candle_cake",
+    "place": "block.wool.place",
+    "break": "block.wool.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "yellow_candle_cake",
+    "place": "block.wool.place",
+    "break": "block.wool.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "lime_candle_cake",
+    "place": "block.wool.place",
+    "break": "block.wool.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "pink_candle_cake",
+    "place": "block.wool.place",
+    "break": "block.wool.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "gray_candle_cake",
+    "place": "block.wool.place",
+    "break": "block.wool.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "light_gray_candle_cake",
+    "place": "block.wool.place",
+    "break": "block.wool.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "cyan_candle_cake",
+    "place": "block.wool.place",
+    "break": "block.wool.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "purple_candle_cake",
+    "place": "block.wool.place",
+    "break": "block.wool.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "blue_candle_cake",
+    "place": "block.wool.place",
+    "break": "block.wool.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "brown_candle_cake",
+    "place": "block.wool.place",
+    "break": "block.wool.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "green_candle_cake",
+    "place": "block.wool.place",
+    "break": "block.wool.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "red_candle_cake",
+    "place": "block.wool.place",
+    "break": "block.wool.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "black_candle_cake",
+    "place": "block.wool.place",
+    "break": "block.wool.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "amethyst_block",
+    "place": "block.amethyst_block.place",
+    "break": "block.amethyst_block.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "budding_amethyst",
+    "place": "block.amethyst_block.place",
+    "break": "block.amethyst_block.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "amethyst_cluster",
+    "place": "block.amethyst_cluster.place",
+    "break": "block.amethyst_cluster.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "large_amethyst_bud",
+    "place": "block.medium_amethyst_bud.place",
+    "break": "block.medium_amethyst_bud.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "medium_amethyst_bud",
+    "place": "block.large_amethyst_bud.place",
+    "break": "block.large_amethyst_bud.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "small_amethyst_bud",
+    "place": "block.small_amethyst_bud.place",
+    "break": "block.small_amethyst_bud.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "tuff",
+    "place": "block.tuff.place",
+    "break": "block.tuff.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "tuff_slab",
+    "place": "block.tuff.place",
+    "break": "block.tuff.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "tuff_stairs",
+    "place": "block.tuff.place",
+    "break": "block.tuff.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "tuff_wall",
+    "place": "block.tuff.place",
+    "break": "block.tuff.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "polished_tuff",
+    "place": "block.polished_tuff.place",
+    "break": "block.polished_tuff.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "polished_tuff_slab",
+    "place": "block.polished_tuff.place",
+    "break": "block.polished_tuff.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "polished_tuff_stairs",
+    "place": "block.polished_tuff.place",
+    "break": "block.polished_tuff.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "polished_tuff_wall",
+    "place": "block.polished_tuff.place",
+    "break": "block.polished_tuff.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "chiseled_tuff",
+    "place": "block.tuff.place",
+    "break": "block.tuff.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "tuff_bricks",
+    "place": "block.tuff_bricks.place",
+    "break": "block.tuff_bricks.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "tuff_brick_slab",
+    "place": "block.tuff_bricks.place",
+    "break": "block.tuff_bricks.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "tuff_brick_stairs",
+    "place": "block.tuff_bricks.place",
+    "break": "block.tuff_bricks.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "tuff_brick_wall",
+    "place": "block.tuff_bricks.place",
+    "break": "block.tuff_bricks.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "chiseled_tuff_bricks",
+    "place": "block.tuff_bricks.place",
+    "break": "block.tuff_bricks.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "calcite",
+    "place": "block.calcite.place",
+    "break": "block.calcite.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "tinted_glass",
+    "place": "block.glass.place",
+    "break": "block.glass.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "powder_snow",
+    "place": "block.powder_snow.place",
+    "break": "block.powder_snow.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "sculk_sensor",
+    "place": "block.sculk_sensor.place",
+    "break": "block.sculk_sensor.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "calibrated_sculk_sensor",
+    "place": "block.sculk_sensor.place",
+    "break": "block.sculk_sensor.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "sculk",
+    "place": "block.sculk.place",
+    "break": "block.sculk.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "sculk_vein",
+    "place": "block.sculk_vein.place",
+    "break": "block.sculk_vein.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "sculk_catalyst",
+    "place": "block.sculk_catalyst.place",
+    "break": "block.sculk_catalyst.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "sculk_shrieker",
+    "place": "block.sculk_shrieker.place",
+    "break": "block.sculk_shrieker.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "copper_block",
+    "place": "block.copper.place",
+    "break": "block.copper.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "exposed_copper",
+    "place": "block.copper.place",
+    "break": "block.copper.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "weathered_copper",
+    "place": "block.copper.place",
+    "break": "block.copper.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "oxidized_copper",
+    "place": "block.copper.place",
+    "break": "block.copper.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "copper_ore",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "deepslate_copper_ore",
+    "place": "block.deepslate.place",
+    "break": "block.deepslate.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "oxidized_cut_copper",
+    "place": "block.copper.place",
+    "break": "block.copper.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "weathered_cut_copper",
+    "place": "block.copper.place",
+    "break": "block.copper.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "exposed_cut_copper",
+    "place": "block.copper.place",
+    "break": "block.copper.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "cut_copper",
+    "place": "block.copper.place",
+    "break": "block.copper.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "oxidized_chiseled_copper",
+    "place": "block.copper.place",
+    "break": "block.copper.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "weathered_chiseled_copper",
+    "place": "block.copper.place",
+    "break": "block.copper.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "exposed_chiseled_copper",
+    "place": "block.copper.place",
+    "break": "block.copper.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "chiseled_copper",
+    "place": "block.copper.place",
+    "break": "block.copper.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "waxed_oxidized_chiseled_copper",
+    "place": "block.copper.place",
+    "break": "block.copper.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "waxed_weathered_chiseled_copper",
+    "place": "block.copper.place",
+    "break": "block.copper.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "waxed_exposed_chiseled_copper",
+    "place": "block.copper.place",
+    "break": "block.copper.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "waxed_chiseled_copper",
+    "place": "block.copper.place",
+    "break": "block.copper.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "oxidized_cut_copper_stairs",
+    "place": "block.copper.place",
+    "break": "block.copper.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "weathered_cut_copper_stairs",
+    "place": "block.copper.place",
+    "break": "block.copper.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "exposed_cut_copper_stairs",
+    "place": "block.copper.place",
+    "break": "block.copper.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "cut_copper_stairs",
+    "place": "block.copper.place",
+    "break": "block.copper.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "oxidized_cut_copper_slab",
+    "place": "block.copper.place",
+    "break": "block.copper.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "weathered_cut_copper_slab",
+    "place": "block.copper.place",
+    "break": "block.copper.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "exposed_cut_copper_slab",
+    "place": "block.copper.place",
+    "break": "block.copper.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "cut_copper_slab",
+    "place": "block.copper.place",
+    "break": "block.copper.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "waxed_copper_block",
+    "place": "block.copper.place",
+    "break": "block.copper.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "waxed_weathered_copper",
+    "place": "block.copper.place",
+    "break": "block.copper.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "waxed_exposed_copper",
+    "place": "block.copper.place",
+    "break": "block.copper.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "waxed_oxidized_copper",
+    "place": "block.copper.place",
+    "break": "block.copper.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "waxed_oxidized_cut_copper",
+    "place": "block.copper.place",
+    "break": "block.copper.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "waxed_weathered_cut_copper",
+    "place": "block.copper.place",
+    "break": "block.copper.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "waxed_exposed_cut_copper",
+    "place": "block.copper.place",
+    "break": "block.copper.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "waxed_cut_copper",
+    "place": "block.copper.place",
+    "break": "block.copper.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "waxed_oxidized_cut_copper_stairs",
+    "place": "block.copper.place",
+    "break": "block.copper.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "waxed_weathered_cut_copper_stairs",
+    "place": "block.copper.place",
+    "break": "block.copper.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "waxed_exposed_cut_copper_stairs",
+    "place": "block.copper.place",
+    "break": "block.copper.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "waxed_cut_copper_stairs",
+    "place": "block.copper.place",
+    "break": "block.copper.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "waxed_oxidized_cut_copper_slab",
+    "place": "block.copper.place",
+    "break": "block.copper.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "waxed_weathered_cut_copper_slab",
+    "place": "block.copper.place",
+    "break": "block.copper.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "waxed_exposed_cut_copper_slab",
+    "place": "block.copper.place",
+    "break": "block.copper.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "waxed_cut_copper_slab",
+    "place": "block.copper.place",
+    "break": "block.copper.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "copper_door",
+    "place": "block.copper.place",
+    "break": "block.copper.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "exposed_copper_door",
+    "place": "block.copper.place",
+    "break": "block.copper.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "oxidized_copper_door",
+    "place": "block.copper.place",
+    "break": "block.copper.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "weathered_copper_door",
+    "place": "block.copper.place",
+    "break": "block.copper.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "waxed_copper_door",
+    "place": "block.copper.place",
+    "break": "block.copper.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "waxed_exposed_copper_door",
+    "place": "block.copper.place",
+    "break": "block.copper.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "waxed_oxidized_copper_door",
+    "place": "block.copper.place",
+    "break": "block.copper.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "waxed_weathered_copper_door",
+    "place": "block.copper.place",
+    "break": "block.copper.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "copper_trapdoor",
+    "place": "block.copper.place",
+    "break": "block.copper.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "exposed_copper_trapdoor",
+    "place": "block.copper.place",
+    "break": "block.copper.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "oxidized_copper_trapdoor",
+    "place": "block.copper.place",
+    "break": "block.copper.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "weathered_copper_trapdoor",
+    "place": "block.copper.place",
+    "break": "block.copper.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "waxed_copper_trapdoor",
+    "place": "block.copper.place",
+    "break": "block.copper.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "waxed_exposed_copper_trapdoor",
+    "place": "block.copper.place",
+    "break": "block.copper.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "waxed_oxidized_copper_trapdoor",
+    "place": "block.copper.place",
+    "break": "block.copper.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "waxed_weathered_copper_trapdoor",
+    "place": "block.copper.place",
+    "break": "block.copper.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "copper_grate",
+    "place": "block.copper_grate.place",
+    "break": "block.copper_grate.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "exposed_copper_grate",
+    "place": "block.copper_grate.place",
+    "break": "block.copper_grate.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "weathered_copper_grate",
+    "place": "block.copper_grate.place",
+    "break": "block.copper_grate.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "oxidized_copper_grate",
+    "place": "block.copper_grate.place",
+    "break": "block.copper_grate.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "waxed_copper_grate",
+    "place": "block.copper_grate.place",
+    "break": "block.copper_grate.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "waxed_exposed_copper_grate",
+    "place": "block.copper_grate.place",
+    "break": "block.copper_grate.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "waxed_weathered_copper_grate",
+    "place": "block.copper_grate.place",
+    "break": "block.copper_grate.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "waxed_oxidized_copper_grate",
+    "place": "block.copper_grate.place",
+    "break": "block.copper_grate.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "copper_bulb",
+    "place": "block.copper_bulb.place",
+    "break": "block.copper_bulb.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "exposed_copper_bulb",
+    "place": "block.copper_bulb.place",
+    "break": "block.copper_bulb.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "weathered_copper_bulb",
+    "place": "block.copper_bulb.place",
+    "break": "block.copper_bulb.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "oxidized_copper_bulb",
+    "place": "block.copper_bulb.place",
+    "break": "block.copper_bulb.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "waxed_copper_bulb",
+    "place": "block.copper_bulb.place",
+    "break": "block.copper_bulb.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "waxed_exposed_copper_bulb",
+    "place": "block.copper_bulb.place",
+    "break": "block.copper_bulb.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "waxed_weathered_copper_bulb",
+    "place": "block.copper_bulb.place",
+    "break": "block.copper_bulb.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "waxed_oxidized_copper_bulb",
+    "place": "block.copper_bulb.place",
+    "break": "block.copper_bulb.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "lightning_rod",
+    "place": "block.copper.place",
+    "break": "block.copper.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "pointed_dripstone",
+    "place": "block.pointed_dripstone.place",
+    "break": "block.pointed_dripstone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "dripstone_block",
+    "place": "block.dripstone_block.place",
+    "break": "block.dripstone_block.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "cave_vines",
+    "place": "block.cave_vines.place",
+    "break": "block.cave_vines.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "cave_vines_plant",
+    "place": "block.cave_vines.place",
+    "break": "block.cave_vines.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "spore_blossom",
+    "place": "block.spore_blossom.place",
+    "break": "block.spore_blossom.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "azalea",
+    "place": "block.azalea.place",
+    "break": "block.azalea.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "flowering_azalea",
+    "place": "block.flowering_azalea.place",
+    "break": "block.flowering_azalea.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "moss_carpet",
+    "place": "block.moss_carpet.place",
+    "break": "block.moss_carpet.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "pink_petals",
+    "place": "block.pink_petals.place",
+    "break": "block.pink_petals.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "wildflowers",
+    "place": "block.pink_petals.place",
+    "break": "block.pink_petals.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "leaf_litter",
+    "place": "block.leaf_litter.place",
+    "break": "block.leaf_litter.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "moss_block",
+    "place": "block.moss.place",
+    "break": "block.moss.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "big_dripleaf",
+    "place": "block.big_dripleaf.place",
+    "break": "block.big_dripleaf.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "big_dripleaf_stem",
+    "place": "block.big_dripleaf.place",
+    "break": "block.big_dripleaf.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "small_dripleaf",
+    "place": "block.small_dripleaf.place",
+    "break": "block.small_dripleaf.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "hanging_roots",
+    "place": "block.hanging_roots.place",
+    "break": "block.hanging_roots.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "rooted_dirt",
+    "place": "block.rooted_dirt.place",
+    "break": "block.rooted_dirt.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "mud",
+    "place": "block.mud.place",
+    "break": "block.mud.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "deepslate",
+    "place": "block.deepslate.place",
+    "break": "block.deepslate.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "cobbled_deepslate",
+    "place": "block.deepslate.place",
+    "break": "block.deepslate.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "cobbled_deepslate_stairs",
+    "place": "block.deepslate.place",
+    "break": "block.deepslate.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "cobbled_deepslate_slab",
+    "place": "block.deepslate.place",
+    "break": "block.deepslate.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "cobbled_deepslate_wall",
+    "place": "block.deepslate.place",
+    "break": "block.deepslate.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "polished_deepslate",
+    "place": "block.polished_deepslate.place",
+    "break": "block.polished_deepslate.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "polished_deepslate_stairs",
+    "place": "block.polished_deepslate.place",
+    "break": "block.polished_deepslate.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "polished_deepslate_slab",
+    "place": "block.polished_deepslate.place",
+    "break": "block.polished_deepslate.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "polished_deepslate_wall",
+    "place": "block.polished_deepslate.place",
+    "break": "block.polished_deepslate.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "deepslate_tiles",
+    "place": "block.deepslate_tiles.place",
+    "break": "block.deepslate_tiles.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "deepslate_tile_stairs",
+    "place": "block.deepslate_tiles.place",
+    "break": "block.deepslate_tiles.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "deepslate_tile_slab",
+    "place": "block.deepslate_tiles.place",
+    "break": "block.deepslate_tiles.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "deepslate_tile_wall",
+    "place": "block.deepslate_tiles.place",
+    "break": "block.deepslate_tiles.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "deepslate_bricks",
+    "place": "block.deepslate_bricks.place",
+    "break": "block.deepslate_bricks.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "deepslate_brick_stairs",
+    "place": "block.deepslate_bricks.place",
+    "break": "block.deepslate_bricks.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "deepslate_brick_slab",
+    "place": "block.deepslate_bricks.place",
+    "break": "block.deepslate_bricks.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "deepslate_brick_wall",
+    "place": "block.deepslate_bricks.place",
+    "break": "block.deepslate_bricks.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "chiseled_deepslate",
+    "place": "block.deepslate_bricks.place",
+    "break": "block.deepslate_bricks.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "cracked_deepslate_bricks",
+    "place": "block.deepslate_bricks.place",
+    "break": "block.deepslate_bricks.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "cracked_deepslate_tiles",
+    "place": "block.deepslate_tiles.place",
+    "break": "block.deepslate_tiles.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "infested_deepslate",
+    "place": "block.deepslate.place",
+    "break": "block.deepslate.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "smooth_basalt",
+    "place": "block.basalt.place",
+    "break": "block.basalt.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "raw_iron_block",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "raw_copper_block",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "raw_gold_block",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "potted_azalea_bush",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "potted_flowering_azalea_bush",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "ochre_froglight",
+    "place": "block.froglight.place",
+    "break": "block.froglight.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "verdant_froglight",
+    "place": "block.froglight.place",
+    "break": "block.froglight.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "pearlescent_froglight",
+    "place": "block.froglight.place",
+    "break": "block.froglight.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "frogspawn",
+    "place": "block.frogspawn.place",
+    "break": "block.frogspawn.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "reinforced_deepslate",
+    "place": "block.deepslate.place",
+    "break": "block.deepslate.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "decorated_pot",
+    "place": "block.decorated_pot.place",
+    "break": "block.decorated_pot.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "crafter",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "trial_spawner",
+    "place": "block.trial_spawner.place",
+    "break": "block.trial_spawner.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "vault",
+    "place": "block.vault.place",
+    "break": "block.vault.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "heavy_core",
+    "place": "block.heavy_core.place",
+    "break": "block.heavy_core.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "pale_moss_block",
+    "place": "block.moss.place",
+    "break": "block.moss.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "pale_moss_carpet",
+    "place": "block.moss_carpet.place",
+    "break": "block.moss_carpet.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "pale_hanging_moss",
+    "place": "block.moss_carpet.place",
+    "break": "block.moss_carpet.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "open_eyeblossom",
+    "place": "block.grass.place",
+    "break": "block.grass.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "closed_eyeblossom",
+    "place": "block.grass.place",
+    "break": "block.grass.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "potted_open_eyeblossom",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "potted_closed_eyeblossom",
+    "place": "block.stone.place",
+    "break": "block.stone.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  },
+  {
+    "name": "firefly_bush",
+    "place": "block.sweet_berry_bush.place",
+    "break": "block.sweet_berry_bush.break",
+    "volume": 1.0,
+    "pitch": 1.0
+  }
+]

@@ -390,6 +390,99 @@ fn moving_support_breaks_torch_above_old_payload() {
         "Java shape updates remove a torch when its support becomes a horizontal piston head"
     );
 }
+
+#[test]
+fn dust_on_downward_piston_survives_repeated_extension_and_retraction() {
+    use mchprs_blocks::blocks::RedstoneWire;
+    for sticky in [false, true] {
+        let mut world = empty_world();
+        let pos = base();
+        let dust = pos.offset(BlockFace::Top);
+        let power = pos.offset(BlockFace::North);
+        world.set_block(
+            pos,
+            Block::Piston {
+                piston: piston(BlockFacing::Down, sticky, false),
+            },
+        );
+        world.set_block(
+            dust,
+            Block::RedstoneWire {
+                wire: RedstoneWire::default(),
+            },
+        );
+        world.set_block(pos.offset(BlockFace::Bottom), Block::Stone {});
+        for _ in 0..2 {
+            for source in [Block::RedstoneBlock {}, Block::Air] {
+                world.set_block(power, source);
+                crate::redstone::update(world.get_block(pos), &mut world, pos, None);
+                for phase in 0..80 {
+                    world.picotick_advance(1);
+                    assert!(
+                        matches!(world.get_block(dust), Block::RedstoneWire { .. }),
+                        "dust disappeared: sticky={sticky}, source={source:?}, phase={phase}, base={:?}",
+                        world.get_block(pos)
+                    );
+                }
+                assert_eq!(extended(&world, pos), source != Block::Air);
+            }
+        }
+    }
+}
+
+#[test]
+fn dust_does_not_attach_to_moving_heads_or_payloads() {
+    use mchprs_blocks::blocks::{RedstoneMovingPiston, RedstoneWire};
+    let pos = base();
+    let dust = pos.offset(BlockFace::Top);
+    let base_state = Block::Piston {
+        piston: piston(BlockFacing::Down, false, false),
+    }
+    .get_id();
+    for facing in BlockFace::values() {
+        for (source, extending, block_state) in [
+            (false, false, base_state),
+            (false, true, base_state),
+            (true, true, base_state),
+            (true, false, Block::Stone {}.get_id()),
+            (true, false, base_state),
+        ] {
+            let mut world = empty_world();
+            world.set_block(
+                pos,
+                Block::MovingPiston {
+                    moving: RedstoneMovingPiston {
+                        facing: facing.into(),
+                        sticky: false,
+                    },
+                },
+            );
+            world.set_block_entity(
+                pos,
+                BlockEntity::MovingPiston(MovingPistonEntity {
+                    facing,
+                    source,
+                    extending,
+                    block_state,
+                    progress: 0,
+                }),
+            );
+            world.set_block(
+                dust,
+                Block::RedstoneWire {
+                    wire: RedstoneWire::default(),
+                },
+            );
+            let expected =
+                facing == BlockFace::Bottom && source && !extending && block_state == base_state;
+            assert_eq!(
+                crate::interaction::is_valid_position(world.get_block(dust), &world, dust),
+                expected,
+                "facing={facing:?}, source={source}, extending={extending}, state={block_state}"
+            );
+        }
+    }
+}
 fn world_observer() -> Block {
     Block::Observer {
         observer: RedstoneObserver {

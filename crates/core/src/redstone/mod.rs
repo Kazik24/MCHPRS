@@ -383,6 +383,13 @@ pub fn tick(block: Block, world: &mut impl World, pos: BlockPos) {
             if button.powered {
                 button.powered = false;
                 world.set_block(pos, Block::StoneButton { button });
+                world.play_sound(
+                    pos,
+                    crate::sound::event_id("block.stone_button.click_off"),
+                    4,
+                    1.0,
+                    1.0,
+                );
                 update_surrounding_blocks(world, pos);
                 match button.face {
                     ButtonFace::Ceiling => {
