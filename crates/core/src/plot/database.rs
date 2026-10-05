@@ -96,8 +96,20 @@ pub fn is_claimed(plot_x: i32, plot_z: i32) -> Option<bool> {
         .ok()
 }
 
-pub fn claim_plot(plot_x: i32, plot_z: i32, uuid: &str) -> rusqlite::Result<bool> {
-    claim_plot_in(&mut lock(), plot_x, plot_z, uuid)
+#[derive(Debug, PartialEq, Eq)]
+pub enum ClaimResult {
+    Claimed,
+    AlreadyClaimed,
+    LimitReached(usize),
+}
+
+pub fn claim_plot(
+    plot_x: i32,
+    plot_z: i32,
+    uuid: &str,
+    limit: Option<usize>,
+) -> rusqlite::Result<ClaimResult> {
+    claim_plot_in(&mut lock(), plot_x, plot_z, uuid, limit)
 }
 
 fn claim_plot_in(
@@ -105,7 +117,8 @@ fn claim_plot_in(
     plot_x: i32,
     plot_z: i32,
     uuid: &str,
-) -> rusqlite::Result<bool> {
+    limit: Option<usize>,
+) -> rusqlite::Result<ClaimResult> {
     let tx = conn.transaction()?;
     let claimed: bool = tx.query_row(
         "SELECT EXISTS(SELECT 1 FROM plot WHERE plot_x=?1 AND plot_z=?2)",
@@ -113,12 +126,24 @@ fn claim_plot_in(
         |row| row.get(0),
     )?;
     if claimed {
-        return Ok(false);
+        return Ok(ClaimResult::AlreadyClaimed);
     }
     // Resolve the user before writing either row; a failed claim leaves no orphan.
     let user_id: i64 = tx.query_row("SELECT id FROM user WHERE uuid=?1", [uuid], |row| {
         row.get(0)
     })?;
+    if let Some(limit) = limit {
+        // Count and insert under the same transaction and connection lock.
+        // UUID ownership covers every plot, including unloaded plots.
+        let owned: u64 = tx.query_row(
+            "SELECT COUNT(DISTINCT plot_id) FROM userplot WHERE user_id=?1 AND is_owner=TRUE",
+            [user_id],
+            |row| row.get(0),
+        )?;
+        if owned >= limit as u64 {
+            return Ok(ClaimResult::LimitReached(limit));
+        }
+    }
     tx.execute(
         "INSERT INTO plot(plot_x, plot_z) VALUES(?1, ?2)",
         params![plot_x, plot_z],
@@ -133,7 +158,7 @@ fn claim_plot_in(
         params![user_id],
     )?;
     tx.commit()?;
-    Ok(true)
+    Ok(ClaimResult::Claimed)
 }
 
 pub fn ensure_user(uuid: &str, name: &str) -> rusqlite::Result<()> {
@@ -214,19 +239,25 @@ mod tests {
             CREATE TABLE plot(id INTEGER PRIMARY KEY, plot_x INTEGER, plot_z INTEGER, UNIQUE(plot_x, plot_z));
             CREATE TABLE userplot(user_id INTEGER REFERENCES user(id), plot_id INTEGER REFERENCES plot(id), is_owner BOOLEAN);
             INSERT INTO user VALUES(1, 'first', 'First'), (2, 'second', 'Second');").unwrap();
-        assert!(claim_plot_in(&mut conn, 0, 0, "missing").is_err());
+        assert!(claim_plot_in(&mut conn, 0, 0, "missing", None).is_err());
         let count: i64 = conn
             .query_row("SELECT COUNT(*) FROM plot", [], |row| row.get(0))
             .unwrap();
         assert_eq!(count, 0);
-        assert!(claim_plot_in(&mut conn, 0, 0, "first").unwrap());
-        assert!(!claim_plot_in(&mut conn, 0, 0, "second").unwrap());
+        assert_eq!(
+            claim_plot_in(&mut conn, 0, 0, "first", None).unwrap(),
+            ClaimResult::Claimed
+        );
+        assert_eq!(
+            claim_plot_in(&mut conn, 0, 0, "second", None).unwrap(),
+            ClaimResult::AlreadyClaimed
+        );
         let owner: i64 = conn
             .query_row("SELECT user_id FROM userplot", [], |row| row.get(0))
             .unwrap();
         assert_eq!(owner, 1);
         conn.execute_batch("CREATE TRIGGER fail_claim BEFORE INSERT ON userplot BEGIN SELECT RAISE(ABORT, 'failure'); END;").unwrap();
-        assert!(claim_plot_in(&mut conn, 1, 0, "second").is_err());
+        assert!(claim_plot_in(&mut conn, 1, 0, "second", None).is_err());
         let count: i64 = conn
             .query_row("SELECT COUNT(*) FROM plot", [], |row| row.get(0))
             .unwrap();

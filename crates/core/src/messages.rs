@@ -58,11 +58,11 @@ catalog! {
         ARGUMENT_UNKNOWN_DIRECTION = "unknown direction";
         CONTAINER_INVALID_POWER = "Pup, container power must be 0..15 or lowercase a..f.";
         HELP_CHAT = "Chat and command blocks\n/say <text> sends a message to everyone.\n/tellraw @a {\"text\":\"Hello\"} sends formatted text.\nUse @a, @s or a player name; selector filters are ignored.\nCommand blocks support say and tellraw. They require creative mode and permission. Other commands are saved in schematics but do not run.";
-        HELP_HISTORY = "Tick history\n/rhistory on [ticks] records ticks (default 100); /rhistory off clears it.\n/rhistory shows count and memory. /rback [ticks] rewinds; resume with /rtps 20.\nRewind clears WorldEdit undo/redo. History needs the interpreter and resets on compile or restart.\nOld ticks drop at the shared 2 GiB limit. Admins can use /rhistory limit <MiB>.";
+        HELP_HISTORY = "Tick history\n/rhistory on [ticks] records ticks (default 100); /rhistory off clears it.\n/rhistory shows count and memory. /back [ticks] rewinds; resume with /tps 20.\nRewind clears WorldEdit undo/redo. History needs the interpreter and resets when the plot becomes empty, on compile or restart.\nOld ticks drop at the shared 2 GiB limit. Admins can use /rhistory limit <MiB>.";
         HELP_PISTONS = "Piston animation and updates\n/piston_anim [auto|on|off] controls animations. /bisdon_anim is an alias.\n/wsr [rate|0] shows or sets the update rate; 0 stops periodic updates.\nAbove the server TPS threshold (200 by default), updates cap at 10 Hz. A lower /wsr still applies.";
         HELP_PLOTS = "Plots\n/p auto claims an empty plot; /p claim claims the plot you're in.\n/p info shows the owner; /p middle goes to the centre.\n/p visit <player> [number] visits a plot.\n/p tp <x> <z> uses plot coordinates.\n/p lock and /p unlock control leaving. /p select selects the plot for WorldEdit.";
-        HELP_QUICK_START = "Help\n/p auto claims a plot.\n/help plots - Claim and visit plots.\n/help rtps - Control and step simulation.\n/help we - WorldEdit.\n/help tools - Redstone tools.\n/help schematics - Load and save builds.\n/help screenonly - Reduce visual updates.\n/help pistons - Animations and update rate.\n/help rewind - Tick history.\n/help chat - Chat and command blocks.\n/help redpiler - Compiled simulation.";
-        HELP_REDPILER = "Compiled simulation\n/rp compile enables compiled mode; /rp reset returns to the interpreter.\n/rp inspect checks the targeted block. /toggleautorp toggles automatic compilation.\nPistons, observers and command blocks require the interpreter.\nUse /rtps 0 to step: /radvance nano 1 or /radvance pico 1.";
+        HELP_QUICK_START = "MROWW — Minecraft Redstone o Wysokiej Wydajności\n/p auto claims a plot.\n/help plots - Claim and visit plots.\n/help tps - Control and step simulation.\n/help we - WorldEdit.\n/help tools - Redstone tools.\n/help schematics - Load and save builds.\n/help screenonly - Reduce visual updates.\n/help pistons - Animations and update rate.\n/help rewind - Tick history.\n/help chat - Chat and command blocks.\n/help redpiler - Compiled simulation.";
+        HELP_REDPILER = "Compiled simulation\n/rp compile enables compiled mode; /rp reset returns to the interpreter.\n/rp inspect checks the targeted block. /toggleautorp toggles automatic compilation.\nPistons, observers and command blocks require the interpreter.\nUse /tps 0 to step: /adv nano 1 or /adv pico 1.";
         HELP_REDSTONE_TOOLS = "Redstone tools\n//find <block> searches your selection.\n//ss <regex> searches signs; -p <page> shows more.\n//rs [direction] [count] [spacing] stacks copies; -e expands selection; -w includes air.\n/autostack [direction] [count] [spacing] [-e] automatically stacks your placements and removals in the selected region; /autostack off stops it. Leaving the plot stops it.\n/container <type> <0..15> creates a comparator container.\n/cursel toggles the selection sidebar.";
         USAGE_AUTOSTACK = "Usage: /autostack [direction] [count] [spacing] [-e], or /autostack off.";
         AUTO_STACK_ENABLED = "Enabled auto stack. From now on, blocks you place or remove in the selected region will automatically be stacked at the corresponding positions. Use /autostack off to stop.";
@@ -70,7 +70,7 @@ catalog! {
         AUTO_STACK_ALWAYS_COPIES_REMOVALS = "Auto stack always copies removals; omit -a and -w.";
         AUTO_STACK_NEEDS_NONZERO_COPIES_AND_SPACING = "Auto stack needs at least one copy and nonzero spacing.";
         HELP_SCHEMATICS = "Schematics\n//load <file>.schem loads a schematic; //paste places it.\nTo save: select the build, //copy, then //save <file>.schem.\nRedstoneFun schematics are in the rf/ folder.";
-        HELP_TICKS = "Tick control\n/rtps shows or sets speed: 20 is normal, 0 pauses, unlimited runs as fast as possible.\n/radvance [count] steps game ticks; /radv is an alias. Pause first.\n/radvance nano 1 steps a nanotick; /radvance pico 1 steps a picotick.";
+        HELP_TICKS = "Tick control\n/tps shows or sets speed: 20 is normal, 0 pauses, unlimited runs as fast as possible.\n/adv [count] steps game ticks; /radv and /radvance are aliases. Pause first.\n/adv nano 1 steps a nanotick; /adv pico 1 steps a picotick.";
         HELP_WORLD_EDIT = "WorldEdit\nThis server supports a subset of WorldEdit. Type // and use tab completion to see available commands.";
         WE_HELP_INVALIDATE_CACHES = "Clears interpreter caches for the current plot";
         INTERPRETER_CACHES_INVALIDATED = "Interpreter caches cleared for this plot.";
@@ -136,7 +136,7 @@ catalog! {
         CONNECTION_TIMEOUT = "Your connection wandered off. Timed out.";
         DISABLE_TICK_HISTORY_BEFORE_NANO_PICO = "Tick history records whole game ticks, so these paws can't advance nano/pico steps while it's enabled. Run /rhistory off first.";
         EXPECTED_TEXT_STRING_OBJECT_OR_ARRAY = "Invalid text component, pup. Use a string, object or array.";
-        FINISH_PARTIAL_TICK_RADVANCE_BEFORE_USING = "A game tick is still in progress. Finish that pawstep with /radvance 1 before using tick history.";
+        FINISH_PARTIAL_TICK_RADVANCE_BEFORE_USING = "A game tick is still in progress. Finish that pawstep with /adv 1 before using tick history.";
         FIRST_POSITION_OUTSIDE_PLOT_BOUNDS = "Your first selection paw landed outside this plot. Set it inside the bounds.";
         FLAG_ARGUMENT_MUST_LAST_GROUPING = "Pup, put a flag that takes an argument last in a combined group.";
         FLAG_NAME_MUST_FOLLOW = "Missing flag name after -. Give that flag its tail back.";
@@ -234,7 +234,7 @@ catalog! {
         UNABLE_ALLOCATE_HISTORY_BUFFER = "Unable to allocate the history buffer.";
         UNABLE_PARSE_NANO_TICKS = "Unable to parse those nano-ticks!";
         UNABLE_PARSE_PICO_TICKS = "Couldn't parse the pico-tick count, pup. Use a nonnegative integer.";
-        UNABLE_PARSE_RTPS = "RTPS has me chasing my tail. Use a number or unlimited.";
+        UNABLE_PARSE_RTPS = "TPS has me chasing my tail. Use a number or unlimited.";
         UNABLE_PARSE_SEND_RATE = "Invalid world send rate, pup. Use a nonnegative integer in hertz.";
         UNABLE_PARSE_SPEED_VALUE = "Can't make a flying pace out of that value. Try /speed <0-10>.";
         UNABLE_PARSE_TICKS = "Invalid game-tick count; these paws need a nonnegative integer.";
@@ -248,7 +248,7 @@ catalog! {
         USAGE_FIND_MASK_OR_FIND_P = "Send the block sniff patrol with //find <mask>, or revisit //find -p <page>.";
         USAGE_HELP_TOPIC = "Looking for a pawbook? Use /help [topic].";
         USAGE_PISTON_ANIM_AUTO_ON_OFF = "Pick how the pistons wiggle: /piston_anim [auto|on|off].";
-        USAGE_RBACK_TICKS = "Follow the tick trail backward with /rback [ticks].";
+        USAGE_RBACK_TICKS = "Follow the tick trail backward with /back [ticks].";
         USAGE_RHISTORY_ON_TICKS_OFF_STATUS = "Tend the tick-history trail with /rhistory [on [ticks]|off|status|limit [MiB]].";
         USAGE_RSTACK_DIRECTION_COUNT_SPACING_E = "Line up your copies with //rstack [direction] [count] [spacing] [-e] [-w].";
         USAGE_SAY_MESSAGE = "Bark to the server with /say <message>.";
@@ -270,6 +270,7 @@ catalog! {
         YOU_NOT_WHITELISTED_ON_SERVER = "You are not whitelisted on this server";
     }
     formatted {
+        plot_claim_limit(limit: impl Display) = "You can own at most {limit} plot(s).";
         argument_error(kind: impl Debug, reason: &str) = "Error parsing argument of type {kind:?}: {reason}";
         unknown_pattern_block(block: &str) = "unknown block: {block}";
         invalid_pattern(pattern: &str) = "invalid pattern: {pattern}";
@@ -305,7 +306,7 @@ catalog! {
         region_shifted(blocks: impl Display) = "Scooted your region {blocks} block(s) along.";
         rewind_available(available: impl Display) = "Only {available} game ticks are available to rewind; that's where the pawprint trail ends.";
         rtps_no_data(configured: impl Display) = "&6Haven't caught this circuit's heartbeat yet. No timings data. &a({configured})";
-        rtps_report(ten_seconds: f32, one_minute: f32, five_minutes: f32, fifteen_minutes: f32, configured: impl Display) = "&6Circuit heartbeat over 10s, 1m, 5m, 15m (RTPS): &a{ten_seconds:.1}, {one_minute:.1}, {five_minutes:.1}, {fifteen_minutes:.1} ({configured})";
+        rtps_report(ten_seconds: f32, one_minute: f32, five_minutes: f32, fifteen_minutes: f32, configured: impl Display) = "&6Circuit heartbeat over 10s, 1m, 5m, 15m (TPS): &a{ten_seconds:.1}, {one_minute:.1}, {five_minutes:.1}, {fifteen_minutes:.1} ({configured})";
         schematic_load_failed(reason: impl Display) = "Could not load schematic: {reason}";
         schematic_loaded(elapsed: Duration) = "Fetched the schematic into your clipboard ({elapsed:.00?}). Give //paste a boop to place it.";
         schematic_save_failed(reason: impl Display) = "Could not save schematic: {reason}";

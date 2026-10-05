@@ -10,7 +10,7 @@ pub(super) fn page(topic: Option<&str>) -> Option<&'static str> {
     Some(match topic.as_str() {
         "" => messages::HELP_QUICK_START,
         "plots" | "plot" | "p" => messages::HELP_PLOTS,
-        "rtps" | "ticks" | "radvance" | "radv" => messages::HELP_TICKS,
+        "tps" | "adv" | "rtps" | "ticks" | "radvance" | "radv" => messages::HELP_TICKS,
         "we" | "worldedit" => messages::HELP_WORLD_EDIT,
         "tools" | "redstonetools" | "find" | "signsearch" | "ss" | "rstack" | "rs"
         | "autostack" | "container" | "cursel" => messages::HELP_REDSTONE_TOOLS,
@@ -19,7 +19,9 @@ pub(super) fn page(topic: Option<&str>) -> Option<&'static str> {
         "pistons" | "animations" | "piston_anim" | "bisdon_anim" | "wsr" | "worldsendrate" => {
             messages::HELP_PISTONS
         }
-        "rewind" | "history" | "tick_rewind" | "rhistory" | "rback" => messages::HELP_HISTORY,
+        "back" | "rewind" | "history" | "tick_rewind" | "rhistory" | "rback" => {
+            messages::HELP_HISTORY
+        }
         "chat" | "commands" | "commandblocks" | "command_blocks" | "say" | "tellraw" => {
             messages::HELP_CHAT
         }

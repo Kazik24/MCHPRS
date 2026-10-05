@@ -1,4 +1,7 @@
-# MCHPRS ranks and permissions
+# MROWW ranks and permissions
+
+MROWW is based on MCHPRS. Its existing `mchprs.*` permission nodes and
+`server=mchprs` context remain compatible with the deployed LuckPerms data.
 
 ## Active configuration
 
@@ -20,13 +23,13 @@ it grants no permissions by itself. Both settings default to false.
 
 Permissions refresh during sessions within 30 seconds; an expired cache denies access if the database cannot refresh it. Rank display and command suggestions fully refresh on reconnect. The server
 reads LuckPerms using its existing read-only database login. Manage later
-changes through the existing LuckPerms plugin; MCHPRS does not write the tables.
+changes through the existing LuckPerms plugin; MROWW does not write the tables.
 Supported contexts are static `server` and `world`; other dynamic contexts do
 not apply. This reader is not the complete LuckPerms engine.
 
 ## Rank policy
 
-| Database group | Display          | Current MCHPRS access                                             |
+| Database group | Display          | Current MROWW access                                             |
 | -------------- | ---------------- | ----------------------------------------------------------------- |
 | `admin`        | Bold red `[A]`   | All permissions, including other/unowned plots and administration |
 | `moderator`    | Bold green `[M]` | All permissions, including other/unowned plots and administration |
@@ -34,7 +37,7 @@ not apply. This reader is not the complete LuckPerms engine.
 | `expert`       | Purple `[E]`     | Edit own plots and use ordinary commands                          |
 | `advanced`     | Orange `[Z]`     | Edit own plots and use ordinary commands                          |
 | `builder`      | Yellow `[B]`     | Own-plot building and ordinary features; history disabled         |
-| `default`      | Gray `[G]`       | Join and chat; spectator mode, no edits or backend commands       |
+| `default`      | Gray `[G]`       | Join, chat and `/speed`; spectator mode, no edits or other commands |
 
 The existing database prefixes supply the exact tag and nickname colors. All
 seven database groups currently have equal weights, so the display rank is the
@@ -48,7 +51,9 @@ nickname. Chat: `[Rank] Nick » message`, with the database prefix/nickname colo
 dark-gray `»`, and gray literal message text. Player text cannot inject prefix
 formatting. These are global messages, including players on different plots.
 
-The baseline has `mchprs.* = false` plus join/chat grants on `default`.
+The baseline has `mchprs.* = false` plus join/chat, command access and
+`mchprs.commands.speed` grants on `default`. Every rank can use `/speed <0–10>`;
+the command access gate still requires a separate permission for each command.
 `advanced` has explicit ordinary-command and own-plot editing grants, and
 explicit denials for administration. `expert` and `engineer` inherit `advanced`
 through their existing memberships. `builder` inherits the default baseline, with dedicated own-plot grants and explicit denials for history. /curse and /bless are denied to builder, advanced, expert and engineer.
@@ -60,7 +65,7 @@ inheritance were retained. User overrides can deliberately change this policy.
 
 | Permission                            | Controls                                                                                               |
 | ------------------------------------- | ------------------------------------------------------------------------------------------------------ |
-| `mchprs.access.join`                  | Join MCHPRS after authentication                                                                       |
+| `mchprs.access.join`                  | Join MROWW after authentication                                                                       |
 | `mchprs.access.chat`                  | Send ordinary chat                                                                                     |
 | `mchprs.access.commands`              | Run any backend command; command-specific grants are also required                                     |
 | `mchprs.build`                        | Base permission to edit an owned plot                                                                  |
@@ -73,6 +78,8 @@ inheritance were retained. User overrides can deliberately change this policy.
 | `mchprs.build.container`              | Open/change container contents                                                                         |
 | `mchprs.build.commandblock`           | Open/update command blocks; also requires the command-block editing node below                         |
 | `mchprs.inventory.creative`           | Creative inventory changes and block picking                                                           |
+| `mchprs.plots.limit.<count>`          | Maximum owned plots; default is one                                                                    |
+| `mchprs.plots.limit.unlimited`        | Remove the ownership limit; granted only to Admin/Moderator                                             |
 
 Direct world actions require the base build permission, the action permission,
 and ownership or the corresponding other/unowned permission. WorldEdit and
@@ -80,6 +87,14 @@ mutating plot commands use the same ownership rule. Inventory and command access
 are independent of building. A player without `mchprs.build` starts in spectator
 mode; spectators do not trigger pressure plates. Ordinary ranks cannot bypass
 ownership by carrying a command-block item or sending a sign/container packet.
+
+All ordinary ranks inherit `mchprs.plots.limit.1` and a denial of
+`mchprs.plots.limit.unlimited` from `default`. Admin and Moderator have explicit
+unlimited grants. The cap does not grant claim access: Gracz remains read-only.
+`/plot claim` and `/plot auto` count UUID ownership and enforce the limit inside
+the same database transaction as the claim, including plots that are not loaded.
+The largest effective positive numeric limit applies; missing limits default to
+one. Paper's existing `plots.plot.*` nodes are not used in dedicated MCHPRS mode.
 
 ## Native commands
 
@@ -92,16 +107,16 @@ permission as their canonical command.
 | `/tp`, `/teleport`             | `mchprs.commands.teleport`                                                                       |
 | `/speed`                       | `mchprs.commands.speed`                                                                          |
 | `/gamemode`, `/gmc`, `/gmsp`   | `mchprs.commands.gamemode`, plus `.creative` or `.spectator`                                     |
-| `/rtps`                        | `mchprs.commands.rtps.view` or `.set`; `timings` uses `.view`                                    |
+| `/tps` (`/rtps`)               | `mchprs.commands.rtps.view` or `.set`; `timings` uses `.view`                                    |
 | `/wsr`, `/worldsendrate`       | `mchprs.commands.worldsendrate.view` or `.set`                                                   |
 | `/screenonly`                  | `mchprs.commands.screenonly`, plus `.view` or `.set`                                             |
 | `/piston_anim`, `/bisdon_anim` | `mchprs.commands.piston_anim`, plus `.view` or `.set`                                            |
 | `/rp`, `/redpiler`             | `mchprs.commands.redpiler.compile`, `.reset`, `.inspect` or `.help`                              |
-| `/radv`, `/radvance`           | `mchprs.commands.radvance`                                                                       |
+| `/adv` (`/radv`, `/radvance`)   | `mchprs.commands.radvance`                                                                       |
 | `/toggleautorp`                | `mchprs.commands.toggleautorp`                                                                   |
 | `/curse`, `/bless`             | `mchprs.commands.curse`, `mchprs.commands.bless`; granted only to Admin/Moderator                |
 | `/rhistory`                    | `mchprs.commands.rhistory`, plus `.status`, `.enable`, `.disable`, `.limit.view` or `.limit.set` |
-| `/rback`                       | `mchprs.commands.rback`                                                                          |
+| `/back` (`/rback`)              | `mchprs.commands.rback`                                                                          |
 | `/say`, `/tellraw`             | `mchprs.commands.say`, `mchprs.commands.tellraw`                                                 |
 | `/stop`, `/whitelist`          | `mchprs.commands.stop`, `mchprs.commands.whitelist`                                              |
 | Command-block editor           | `mchprs.commands.commandblock.edit`                                                              |
@@ -134,6 +149,13 @@ while the shared history memory budget, work budget and allocation checks still
 apply. Limits are checked before allocation and before a rewind changes a plot.
 Standalone servers retain the previous 1,000-tick/unlimited permission behavior.
 
+Recording stops and its buffer is cleared when the last player leaves the plot,
+including disconnections and transfers. It continues while any player remains.
+Returning players must enable `/rhistory` again. New plots start at
+`default_tps = 20`, including plots copied from the template; saved plot speeds
+and explicit `/tps` settings remain per plot. Old command names remain aliases,
+and existing permission node names are retained for compatibility.
+
 For a custom cap, deny any larger inherited numeric nodes and grant the desired
 node in `server=mchprs`. To give a finite cap to staff, also deny their unlimited
 node. As with other permission changes, the cache refreshes within 30 seconds.
@@ -165,7 +187,7 @@ WorldEdit uses the existing per-command nodes with the `mchprs.` prefix:
 | `//count`                                                              | `analysis.count`                                                         |
 | `//help`, `//wand`                                                     | `help`, `wand`                                                           |
 
-The MCHPRS-specific commands retain their existing native nodes:
+The MROWW-specific commands retain their existing native nodes:
 `mchprs.we.update`, `mchprs.we.invalidatecaches`, and
 `mchprs.we.replacecontainer`. Redstone tools use
 `mchprs.redstonetools.find`, `.signsearch`, `.rstack`, `.autostack`, `.container`, and `.cursel`.
@@ -188,7 +210,7 @@ user nodes take precedence over inherited group nodes. More specific scoped
 nodes can override wildcard grants or denials; an equal-priority denial wins.
 The standard syntax is documented in the
 [LuckPerms permission command reference](https://luckperms.net/wiki/Permission-Commands).
-Reconnect affected MCHPRS players after saving a change. Deployment does not
+Reconnect affected MROWW players after saving a change. Deployment does not
 reapply the baseline or overwrite later permission edits.
 
 ## Provisioning record: 2026-10-05
@@ -215,14 +237,14 @@ unchanged.
 
 ## Requested plot cleanup: 2026-10-05
 
-With MCHPRS stopped, the whole `world/` directory was archived and its compressed
+With MROWW stopped, the whole `world/` directory was archived and its compressed
 backup validated at
 `/srv/mchprs/deploy-backups/plot-cleanup-20261005T132052Z/world.tar.gz`.
 The saved plots `p-1,0`, `p0,-1`, `p1,-1` and `p1,0`, plus `p1,0.bak`, were removed.
 The central `p0,0` file and its two backups were retained; its SHA-256 was
 identical before and after cleanup. Plot database ownership/visual rows outside
 `(0,0)` were removed, and the SQLite integrity check passed. The central plot's
-Lord225 ownership and all player files were preserved. MCHPRS was restarted;
+Lord225 ownership and all player files were preserved. MROWW was restarted;
 Paper remained running. Exploring other coordinates can generate fresh empty
 plots normally.
 

@@ -93,7 +93,7 @@ macro_rules! gen_config {
 
 gen_config! {
     bind_address: String = "0.0.0.0:25565".to_string(),
-    motd: String = "Redstonefun's PISTON MCHPRS".to_string(),
+    motd: String = "§4§lmroww.redstoneFUN.pl §r§71.21.5\n§cMinecraft Redstone o Wysokiej Wydajności".to_string(),
     chat_format: String = "<{username}> {message}".to_string(),
     max_players: i64 = 99999,
     view_distance: i64 = 8,
@@ -104,6 +104,7 @@ gen_config! {
     luckperms: Option<PermissionsConfig> = None,
     block_in_hitbox: bool = true,
     auto_redpiler: bool = false,
+    default_tps: u32 = 20,
     fast_render_threshold: i64 = 200,
     fast_render_send_rate: i64 = 10,
     rhistory_memory_limit_mib: i64 = 2048,

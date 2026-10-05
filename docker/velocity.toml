@@ -1,6 +1,6 @@
 config-version = "2.9"
 bind = "0.0.0.0:25565"
-motd = "<dark_red><bold>RedstoneFUN.pl</bold></dark_red> <gray>1.21.5</gray>\n<red>Szybki Serwer Redstone!</red>"
+motd = "<dark_red><bold>mroww.redstoneFUN.pl</bold></dark_red> <gray>1.21.5</gray>\n<red>Minecraft Redstone o Wysokiej Wydajności</red>"
 show-max-players = 100
 online-mode = true
 force-key-authentication = true

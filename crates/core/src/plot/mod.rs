@@ -1343,6 +1343,7 @@ impl Plot {
         self.close_open_container(player_idx);
         self.world.packet_senders.remove(player_idx);
         let mut player = self.players.remove(player_idx);
+        self.disable_empty_plot_history();
 
         let destroy_other_entities = CDestroyEntities {
             entity_ids: self.players.iter().map(|p| p.entity_id as i32).collect(),
@@ -1371,6 +1372,18 @@ impl Plot {
         player
     }
 
+    fn disable_empty_plot_history(&mut self) {
+        if self.players.is_empty() && self.world.history.enabled() {
+            let bytes = self.world.history.disable();
+            debug!(
+                plot_x = self.world.x,
+                plot_z = self.world.z,
+                bytes,
+                "Disabled tick history because the plot is empty"
+            );
+        }
+    }
+
     fn chunk_in_plot_bounds(plot_x: i32, plot_z: i32, chunk_x: i32, chunk_z: i32) -> bool {
         let (x, z) = (chunk_x >> PLOT_SCALE, chunk_z >> PLOT_SCALE);
         plot_x == x && plot_z == z
@@ -1382,10 +1395,24 @@ impl Plot {
 
     pub fn claim_plot(&mut self, plot_x: i32, plot_z: i32, player: usize) {
         let player = &mut self.players[player];
-        match database::claim_plot(plot_x, plot_z, &format!("{:032x}", player.uuid)) {
-            Ok(true) => {}
-            Ok(false) => {
+        let limit = if player.has_permission("plots.limit.unlimited") {
+            None
+        } else {
+            let prefix = if crate::permissions::dedicated_permissions() {
+                "mchprs.plots.limit."
+            } else {
+                "plots.plot."
+            };
+            Some(player.numeric_permission_limit(prefix).unwrap_or(1))
+        };
+        match database::claim_plot(plot_x, plot_z, &format!("{:032x}", player.uuid), limit) {
+            Ok(database::ClaimResult::Claimed) => {}
+            Ok(database::ClaimResult::AlreadyClaimed) => {
                 player.send_system_message(messages::PLOT_ALREADY_CLAIMED);
+                return;
+            }
+            Ok(database::ClaimResult::LimitReached(limit)) => {
+                player.send_error_message(&messages::plot_claim_limit(limit));
                 return;
             }
             Err(error) => {
@@ -1498,6 +1525,7 @@ impl Plot {
                 BroadcastMessage::Shutdown => {
                     self.close_all_containers();
                     let mut players: Vec<Player> = self.players.drain(..).collect();
+                    self.disable_empty_plot_history();
                     for player in players.iter_mut() {
                         player.save();
                         player.kick(
@@ -1580,6 +1608,7 @@ impl Plot {
         for entity_id in disconnected_players {
             self.destroy_entity(entity_id);
         }
+        self.disable_empty_plot_history();
     }
 
     /// Update player view positions and handle packets

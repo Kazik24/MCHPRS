@@ -1,12 +1,17 @@
-# Minecraft High-Performance Redstone Server
+# MROWW
+
+**Minecraft Redstone o Wysokiej Wydajności**
+
+MROWW is RedstoneFUN's redstone server, built on
+[MCHPRS (Minecraft High-Performance Redstone Server)](https://github.com/MCHPR/MCHPRS).
 
 [![Build Status](https://travis-ci.org/MCHPR/MCHPRS.svg?branch=master)](https://travis-ci.org/MCHPR/MCHPRS) [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT) [![Discord Banner 2](https://discordapp.com/api/guilds/724072903083163679/widget.png)](https://discord.com/invite/svK9JU7)
 
 A Minecraft 1.21.5 creative server built for redstone. Each 256x256 plot runs on a separate thread, allowing for less lag, more concurrency, and many awesome extra features!
 
-MCHPRS is very different from traditional servers. Because this server is tailored to the use of computation redstone, many things that are a part of Vanilla Minecraft servers don't exist here. That being said, MCHPRS comes with many of its own unique features.
+MROWW is very different from traditional servers. Because this server is tailored to the use of computation redstone, many things that are a part of Vanilla Minecraft servers don't exist here. That being said, MROWW comes with many of its own unique features.
 
-MCHPRS has made it possible to run programs such as [Graph Rendering, Conway's Game of Life, and Mandelbrot Rendering](https://www.youtube.com/watch?v=FDiapbD0Xfg) on CPUs in Minecraft. To accomplish these speeds, we created [Redpiler](docs/Redpiler.md), the "Redstone Compiler".
+MCHPRS made it possible to run programs such as [Graph Rendering, Conway's Game of Life, and Mandelbrot Rendering](https://www.youtube.com/watch?v=FDiapbD0Xfg) on CPUs in Minecraft. MROWW uses its [Redpiler](docs/Redpiler.md), the "Redstone Compiler", to run circuits at these speeds.
 
 This branch ports the recovered piston implementation to protocol **770** (Minecraft DataVersion **4325**). See [implementation and validation](docs/PORTING_1_21_5.md) and [Sponge v2/v3 support](docs/SPONGE_V3_IMPLEMENTATION.md). Full piston reference compliance remains a separate follow-up.
 
@@ -38,19 +43,28 @@ Once complete, the optimized executable will be located at `./target/release/mch
 
 ## Configuration
 
-MCHPRS will generate a `Config.toml` file in the current working directory when starting the server if it does not exist.
+MROWW will generate a `Config.toml` file in the current working directory when starting the server if it does not exist.
 
-Set `MCHPRS_CONFIG` to use a different configuration file. The production Docker
-image copies the repository's local `Config.toml` to `/etc/mchprs/Config.toml`
-and reads it there, independently of the `/data` world-data mount. Rebuild and
-recreate the container after editing the local config. Runtime changes to this
-copy last until the container is recreated.
+Set `MCHPRS_CONFIG` to use a different configuration file. The Docker image ships
+the tracked `docker/Config.toml` at `/etc/mchprs/Config.toml`. The production Compose
+deployment uses the host's `/srv/mchprs/backend-config/Config.toml`, mounted at
+`/run/config/Config.toml`, so its settings persist across image updates.
+
+The executable/crate names, `MCHPRS_CONFIG` and `MCHPRS_LOG` environment variables,
+`mchprs.*` permission nodes, and LuckPerms `server=mchprs` context retain their
+existing identifiers for compatibility with deployments and saved worlds.
+
+For existing installations, set the top-level `motd` in the active `Config.toml`
+to `"§4§lmroww.redstoneFUN.pl §r§71.21.5\n§cMinecraft Redstone o Wysokiej Wydajności"`.
+The production backend reads `/srv/mchprs/backend-config/Config.toml`; its custom
+MOTD survives image updates. Deploy the updated Velocity image to update the
+public proxy listing. New configurations use the MROWW MOTD automatically.
 
 The folowing options are available at the toplevel (under no header):
 | Field | Description | Default |
 | --- | --- |--- |
 | `bind_address` | Bind address and port | `0.0.0.0:25565` |
-| `motd` | Message of the day | `"Minecraft High Performance Redstone Server"` |
+| `motd` | Message of the day | `"§4§lmroww.redstoneFUN.pl §r§71.21.5\n§cMinecraft Redstone o Wysokiej Wydajności"` |
 | `chat_format` | How to format chat message interpolating `username` and `message` with curly braces | `<{username}> {message}` |
 | `max_players` | Maximum number of simultaneous players | `99999` |
 | `view_distance` | Maximal distance (in chunks) between players and loaded chunks | `8` |
@@ -64,7 +78,7 @@ To change the plot size edit the constants defined in [plot/mod.rs](./crates/cor
 
 ### LuckPerms
 
-MCHPRS reads existing LuckPerms permission data from PostgreSQL, MySQL or MariaDB.
+MROWW reads existing LuckPerms permission data from PostgreSQL, MySQL or MariaDB.
 Manage permissions through LuckPerms on another server (`/lp`) or proxy (`/lpb`).
 Use a database login with SELECT access only. See [LuckPerms setup](docs/LUCKPERMS.md)
 for PostgreSQL configuration, account UUID requirements and compatibility details.
@@ -96,19 +110,19 @@ plotsquared_compat = false
 ## Usage
 
 ### General Commands
-Use `/help` for a quick start and topic list. `/help rtps`, `/help we`,
+Use `/help` for a quick start and topic list. `/help tps`, `/help we`,
 `/help plots`, `/help schematics`, `/help pistons`, `/help chat` and
 `/help redpiler` explain the usual workflows. `/help rewind` describes the
-`/rhistory` and `/rback` commands for recording and restoring interpreter ticks.
+`/rhistory` and `/back` commands for recording and restoring interpreter ticks.
 `//help <command>` still shows detailed WorldEdit arguments and flags.
 
 | Command | Alias | Description |
 | --- | --- |--- |
 | `/help [topic]` | None | Show the quick-start guide or a topic tutorial. |
-| `/rtps [rtps\|unlimited]` | None | Set game ticks per second in the plot. `0` pauses; `20` is normal game speed. There are two game ticks in a redstone tick. |
-| `/radvance [ticks]` | `/radv` | Advances the plot by `[ticks]` game ticks. |
-| `/rhistory [on [ticks]\|off\|status\|limit [MiB]]` | None | Record interpreter history, keeping up to 100 ticks by default; show compressed/uncompressed sizes. Admins can change the shared memory limit (default 2 GiB). |
-| `/rback [ticks]` | None | Rewind one or more recorded game ticks and pause the plot. Restores the entire plot, including later edits, and clears WorldEdit undo/redo. |
+| `/tps [tps\|unlimited]` | `/rtps` | Set game ticks per second in the plot. `0` pauses; `20` is normal game speed and the default for new plots. There are two game ticks in a redstone tick. |
+| `/adv [ticks]` | `/radv`, `/radvance` | Advances the plot by `[ticks]` game ticks. |
+| `/rhistory [on [ticks]\|off\|status\|limit [MiB]]` | None | Record interpreter history, keeping up to 100 ticks by default; recording stops and clears when the last player leaves the plot; show compressed/uncompressed sizes. Admins can change the shared memory limit (default 2 GiB). |
+| `/back [ticks]` | `/rback` | Rewind one or more recorded game ticks and pause the plot. Restores the entire plot, including later edits, and clears WorldEdit undo/redo. |
 | `/teleport [player]` | `/tp` | Teleports you to `[player]`. |
 | `/teleport [x] [y] [z]` | `/tp` | Teleports you to `[x] [y] [z]`. Supports relative coordinates. Floats can be expressed as described [here](https://doc.rust-lang.org/std/primitive.f64.html#grammar). |
 | `/speed [speed]` | None | Sets your flyspeed. |
@@ -117,11 +131,11 @@ Use `/help` for a quick start and topic list. `/help rtps`, `/help we`,
 | `/redpiler compile` | `/rp c` | Manually starts redpiler compilation. Available flags: --io-only --optimize --export --update (or in short: -ioeu) |
 | `/redpiler reset` | `/rp r` | Stops redpiler. |
 | `/toggleautorp` | None | Toggles automatic redpiler compilation. |
-| `/radvance nano/pico [ticks]` | `/radv nano/pico` | Advances the plot by `[ticks]` redstone nano or pico-ticks, useful for debugging piston circuits. |
+| `/adv nano/pico [ticks]` | `/radv nano/pico`, `/radvance nano/pico` | Advances the plot by `[ticks]` redstone nano or pico-ticks, useful for debugging piston circuits. |
 | `/stop` | None | Stops the server. |
 
 ### Plot Ownership
-The plot ownership system in MCHPRS is very incomplete.
+The plot ownership system in MROWW is very incomplete.
 These are the commands that are currently implemented:
 | Command | Alias | Description |
 | --- | --- |--- |
@@ -135,7 +149,7 @@ These are the commands that are currently implemented:
 | `/plot unlock` | None | Reverses the locking done by `/plot lock`. |
 
 ### Worldedit
-MCHPRS provides its own implementation of [WorldEdit](https://github.com/EngineHub/WorldEdit). Visit their [documentation](https://worldedit.enginehub.org/en/latest/commands/) for more information.
+MROWW provides its own implementation of [WorldEdit](https://github.com/EngineHub/WorldEdit). Visit their [documentation](https://worldedit.enginehub.org/en/latest/commands/) for more information.
 These are the commands that are currently implemented:
 | Command | Alias | Description |
 | --- | --- |--- |

@@ -1,4 +1,7 @@
-# MCHPRS rank permissions
+# MROWW rank permissions
+
+The server is branded MROWW; permission identifiers retain the `mchprs.*`
+namespace and `server=mchprs` context for compatibility.
 
 Database snapshot: 2026-10-05, including the restriction of /curse and /bless to Admin and Moderator. Applies to `server=mchprs`, world context `redstoneplots`.
 
@@ -9,16 +12,18 @@ See [the permission catalog](MCHPRS_PERMISSIONS.md) for individual command/actio
 ## Admin — [A]
 
 - Database group: `admin`; bold red tag.
-- Allowed: `mchprs.* = true` — every MCHPRS permission, including edits on owned, other, and unclaimed plots.
+- Allowed: `mchprs.* = true` — every MROWW permission, including edits on owned, other, and unclaimed plots.
 - Allowed: `mchprs.plots.admin.rewind.unlimited = true` — no history tick-count ceiling.
+- Allowed: `mchprs.plots.limit.unlimited = true` — unlimited owned plots.
 - Includes server shutdown, whitelist management, global say/tellraw, and shared history memory settings.
 - History allocation and server resource validation still apply.
 
 ## Moderator — [M]
 
 - Database group: `moderator`; bold green tag.
-- Allowed: `mchprs.* = true` — every MCHPRS permission, including edits on owned, other, and unclaimed plots.
+- Allowed: `mchprs.* = true` — every MROWW permission, including edits on owned, other, and unclaimed plots.
 - Allowed: `mchprs.plots.admin.rewind.unlimited = true` — no history tick-count ceiling.
+- Allowed: `mchprs.plots.limit.unlimited = true` — unlimited owned plots.
 - Includes server shutdown, whitelist management, global say/tellraw, and shared history memory settings.
 - History allocation and server resource validation still apply.
 
@@ -47,6 +52,7 @@ See [the permission catalog](MCHPRS_PERMISSIONS.md) for individual command/actio
 - `mchprs.plots.middle = true`
 - `mchprs.plots.lock = true`
 - `mchprs.plots.select = true`
+- `mchprs.plots.limit.1 = true`
 - `mchprs.commands.help = true`
 - `mchprs.commands.version = true`
 - `mchprs.commands.teleport = true`
@@ -69,6 +75,7 @@ See [the permission catalog](MCHPRS_PERMISSIONS.md) for individual command/actio
 
 ### Denied permissions
 
+- `mchprs.plots.limit.unlimited = false`
 - `mchprs.commands.curse = false`
 - `mchprs.commands.bless = false`
 
@@ -105,6 +112,7 @@ See [the permission catalog](MCHPRS_PERMISSIONS.md) for individual command/actio
 - `mchprs.plots.middle = true`
 - `mchprs.plots.lock = true`
 - `mchprs.plots.select = true`
+- `mchprs.plots.limit.1 = true`
 - `mchprs.commands.help = true`
 - `mchprs.commands.version = true`
 - `mchprs.commands.teleport = true`
@@ -126,6 +134,7 @@ See [the permission catalog](MCHPRS_PERMISSIONS.md) for individual command/actio
 
 ### Denied permissions
 
+- `mchprs.plots.limit.unlimited = false`
 - `mchprs.commands.curse = false`
 - `mchprs.commands.bless = false`
 
@@ -162,6 +171,7 @@ See [the permission catalog](MCHPRS_PERMISSIONS.md) for individual command/actio
 - `mchprs.plots.middle = true`
 - `mchprs.plots.lock = true`
 - `mchprs.plots.select = true`
+- `mchprs.plots.limit.1 = true`
 - `mchprs.commands.help = true`
 - `mchprs.commands.version = true`
 - `mchprs.commands.teleport = true`
@@ -183,6 +193,7 @@ See [the permission catalog](MCHPRS_PERMISSIONS.md) for individual command/actio
 
 ### Denied permissions
 
+- `mchprs.plots.limit.unlimited = false`
 - `mchprs.commands.curse = false`
 - `mchprs.commands.bless = false`
 
@@ -199,7 +210,7 @@ See [the permission catalog](MCHPRS_PERMISSIONS.md) for individual command/actio
 - Database group: `builder`; yellow tag.
 - Join and chat; creative inventory and ordinary backend commands.
 - Edit, interact, use WorldEdit, and change simulation/render settings **only on plots owned by the player**.
-- History is disabled: no `/rhistory` or `/rback`, including history status and memory settings.
+- History is disabled: no `/rhistory` or `/back` (including `/rback`), including history status and memory settings.
 
 ### Allowed permissions
 
@@ -219,6 +230,7 @@ See [the permission catalog](MCHPRS_PERMISSIONS.md) for individual command/actio
 - `mchprs.plots.middle = true`
 - `mchprs.plots.lock = true`
 - `mchprs.plots.select = true`
+- `mchprs.plots.limit.1 = true`
 - `mchprs.commands.help = true`
 - `mchprs.commands.version = true`
 - `mchprs.commands.teleport = true`
@@ -236,6 +248,7 @@ See [the permission catalog](MCHPRS_PERMISSIONS.md) for individual command/actio
 
 ### Denied permissions
 
+- `mchprs.plots.limit.unlimited = false`
 - `mchprs.commands.rhistory = false`
 - `mchprs.commands.rhistory.* = false`
 - `mchprs.commands.rback = false`
@@ -257,18 +270,27 @@ See [the permission catalog](MCHPRS_PERMISSIONS.md) for individual command/actio
 - Database group: `default`; gray tag.
 - Allowed: `mchprs.access.join = true`.
 - Allowed: `mchprs.access.chat = true`.
-- Baseline: `mchprs.* = false`, with only the join/chat exceptions above.
+- Allowed: `mchprs.access.commands = true` — command access gate; individual command permissions still apply.
+- Allowed: `mchprs.commands.speed = true` — `/speed <0–10>` changes personal flying speed.
+- Allowed: `mchprs.plots.limit.1 = true` — at most one owned plot, if separately granted claim permission.
+- Denied: `mchprs.plots.limit.unlimited = false`.
+- Baseline: `mchprs.* = false`, with only the join/chat, command access, speed and numeric plot limit exceptions above.
 - Spectator access: cannot place/break blocks, change signs or containers, interact with circuits, or trigger pressure plates.
-- No creative inventory edits, backend commands, WorldEdit, redstone tools, plot claims, simulation settings, or history commands.
+- No creative inventory edits, other backend commands, WorldEdit, redstone tools, plot claims, simulation settings, or history commands.
 
 ## Inheritance and limits
 
+- Ordinary ranks may own at most one plot: `mchprs.plots.limit.1 = true` and `mchprs.plots.limit.unlimited = false`, inherited from `default`. Claim permission is still required.
+- Admin and Moderator have `mchprs.plots.limit.unlimited = true` and may own unlimited plots.
+- `/rhistory` turns off and clears its buffer when the last player leaves the plot; another player leaving does not stop recording.
+- Primary tick commands are `/tps`, `/adv` and `/back`; `/rtps`, `/radv`, `/radvance` and `/rback` remain aliases with their existing permission nodes.
+- New plots default to 20 TPS (`default_tps = 20`).
 - `builder` inherits `default`, with dedicated own-plot grants and history denials; its Paper inheritance was preserved.
 - `advanced` inherits `builder` and `default`.
 - `expert` inherits `advanced`, `builder`, and `default`.
 - `engineer` inherits `expert`, `advanced`, `builder`, and `default`; its 1000-tick node increases the inherited 200-tick cap.
 - `expert` and `engineer` also have explicit history command grants so the parallel builder inheritance cannot remove their history access.
-- `admin` and `moderator` each have their own MCHPRS wildcard grant.
+- `admin` and `moderator` each have their own MROWW wildcard grant.
 - The default denial remains inherited by ordinary ranks; more specific positive nodes grant their listed actions.
 - History tick limits use the maximum effective positive numeric node. For a smaller custom limit, deny larger inherited numeric nodes.
 - Staff have all permissions by the user-requested policy. Resource bounds and validated inputs still apply.

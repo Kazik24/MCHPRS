@@ -462,7 +462,7 @@ impl Plot {
                     return false;
                 }
             },
-            "/rtps" => {
+            "/tps" | "/rtps" => {
                 if args == ["timings"] {
                     self.players[player].send_system_message(&self.update_timing_report());
                     return false;
@@ -510,12 +510,12 @@ impl Plot {
                 Ok(message) => self.players[player].send_system_message(&message),
                 Err(error) => self.players[player].send_error_message(&error),
             },
-            "/rback" => {
+            "/back" | "/rback" => {
                 if let Err(error) = self.rewind_plot(player, &args) {
                     self.players[player].send_error_message(&error);
                 }
             }
-            "/radv" | "/radvance" => {
+            "/adv" | "/radv" | "/radvance" => {
                 let count = match args.as_slice() {
                     [count] => count.parse::<u32>(),
                     [unit, count]
@@ -524,8 +524,7 @@ impl Plot {
                         count.parse::<u32>()
                     }
                     _ => {
-                        self.players[player]
-                            .send_error_message("Usage: /radvance [nano|pico] <ticks>");
+                        self.players[player].send_error_message("Usage: /adv [nano|pico] <ticks>");
                         return false;
                     }
                 };
@@ -792,7 +791,7 @@ fn native_command_permission(command: &str, args: &[&str]) -> Option<String> {
         "/whitelist" => "whitelist".to_owned(),
         "/tellraw" => "tellraw".to_owned(),
         "/say" => "say".to_owned(),
-        "/rtps" => format!(
+        "/tps" | "/rtps" => format!(
             "rtps.{}",
             if args.is_empty() || args == ["timings"] {
                 "view"
@@ -803,7 +802,7 @@ fn native_command_permission(command: &str, args: &[&str]) -> Option<String> {
         "/worldsendrate" | "/wsr" => format!("worldsendrate.{action}"),
         "/screenonly" => format!("screenonly.{action}"),
         "/piston_anim" | "/bisdon_anim" => format!("piston_anim.{action}"),
-        "/radv" | "/radvance" => "radvance".to_owned(),
+        "/adv" | "/radv" | "/radvance" => "radvance".to_owned(),
         "/toggleautorp" => "toggleautorp".to_owned(),
         "/curse" => "curse".to_owned(),
         "/bless" => "bless".to_owned(),
@@ -824,11 +823,11 @@ fn native_command_permission(command: &str, args: &[&str]) -> Option<String> {
 
 fn changes_plot(command: &str, args: &[&str]) -> bool {
     match command {
-        "/rtps" => !args.is_empty() && args != ["timings"],
+        "/tps" | "/rtps" => !args.is_empty() && args != ["timings"],
         "/worldsendrate" | "/wsr" | "/screenonly" | "/piston_anim" | "/bisdon_anim" => {
             !args.is_empty()
         }
-        "/radv" | "/radvance" | "/toggleautorp" | "/curse" | "/bless" => true,
+        "/adv" | "/radv" | "/radvance" | "/toggleautorp" | "/curse" | "/bless" => true,
         "/redpiler" | "/rp" => !matches!(args.first().copied(), Some("inspect" | "i")),
         _ => false,
     }
@@ -917,7 +916,7 @@ pub static DECLARE_COMMANDS: Lazy<PacketEncoder> = Lazy::new(|| {
                 children: &[
                     1, 4, 5, 6, 11, 12, 14, 16, 18, 19, 20, 21, 22, 23, 24, 26, 29, 31, 32, 34, 36,
                     47, 49, 53, 60, 61, 63, 65, 66, 67, 71, 73, 74, 75, 82, 83, 85, 88, 90, 91,
-                    101, 106, 111, 112, 113, 114, 115, 116, 118, 120, 121, 124,
+                    101, 106, 111, 112, 113, 114, 115, 116, 118, 120, 121, 124, 125, 126, 127,
                 ],
                 redirect_node: None,
                 name: None,
@@ -1023,21 +1022,21 @@ pub static DECLARE_COMMANDS: Lazy<PacketEncoder> = Lazy::new(|| {
                 parser: None,
                 suggestions_type: None,
             },
-            // 12: /rtps
+            // 12: /tps
             Node {
                 flags: (CommandFlags::LITERAL | CommandFlags::EXECUTABLE).bits() as i8,
                 children: &[13, 117],
                 redirect_node: None,
-                name: Some("rtps"),
+                name: Some("tps"),
                 parser: None,
                 suggestions_type: None,
             },
-            // 13: /rtps [rtps]
+            // 13: /tps [tps]
             Node {
                 flags: (CommandFlags::ARGUMENT | CommandFlags::EXECUTABLE).bits() as i8,
                 children: &[],
                 redirect_node: None,
-                name: Some("rtps"),
+                name: Some("tps"),
                 parser: Some(Parser::Integer(0, i32::MAX)),
                 suggestions_type: None,
             },
@@ -1176,16 +1175,16 @@ pub static DECLARE_COMMANDS: Lazy<PacketEncoder> = Lazy::new(|| {
                 parser: Some(Parser::BlockState),
                 suggestions_type: None,
             },
-            // 29: /radvance
+            // 29: /adv
             Node {
                 flags: (CommandFlags::LITERAL).bits() as i8,
                 children: &[30, 76, 78],
                 redirect_node: None,
-                name: Some("radvance"),
+                name: Some("adv"),
                 parser: None,
                 suggestions_type: None,
             },
-            // 30: /radvance [rticks]
+            // 30: /adv [rticks]
             Node {
                 flags: (CommandFlags::ARGUMENT | CommandFlags::EXECUTABLE).bits() as i8,
                 children: &[],
@@ -1602,7 +1601,7 @@ pub static DECLARE_COMMANDS: Lazy<PacketEncoder> = Lazy::new(|| {
                 parser: None,
                 suggestions_type: None,
             },
-            // 76: /radvance nano
+            // 76: /adv nano
             Node {
                 flags: (CommandFlags::LITERAL).bits() as i8,
                 children: &[77],
@@ -1611,7 +1610,7 @@ pub static DECLARE_COMMANDS: Lazy<PacketEncoder> = Lazy::new(|| {
                 parser: None,
                 suggestions_type: None,
             },
-            // 77: /radvance nano [nticks]
+            // 77: /adv nano [nticks]
             Node {
                 flags: (CommandFlags::ARGUMENT | CommandFlags::EXECUTABLE).bits() as i8,
                 children: &[],
@@ -1620,7 +1619,7 @@ pub static DECLARE_COMMANDS: Lazy<PacketEncoder> = Lazy::new(|| {
                 parser: Some(Parser::Integer(0, 100000)),
                 suggestions_type: None,
             },
-            // 78: /radvance pico
+            // 78: /adv pico
             Node {
                 flags: (CommandFlags::LITERAL).bits() as i8,
                 children: &[79],
@@ -1629,7 +1628,7 @@ pub static DECLARE_COMMANDS: Lazy<PacketEncoder> = Lazy::new(|| {
                 parser: None,
                 suggestions_type: None,
             },
-            // 79: /radvance pico [pticks]
+            // 79: /adv pico [pticks]
             Node {
                 flags: (CommandFlags::ARGUMENT | CommandFlags::EXECUTABLE).bits() as i8,
                 children: &[],
@@ -1761,7 +1760,7 @@ pub static DECLARE_COMMANDS: Lazy<PacketEncoder> = Lazy::new(|| {
                 flags: (CommandFlags::LITERAL | CommandFlags::EXECUTABLE).bits() as i8,
                 children: &[],
                 redirect_node: None,
-                name: Some("rtps"),
+                name: Some("tps"),
                 parser: None,
                 suggestions_type: None,
             },
@@ -1858,7 +1857,7 @@ pub static DECLARE_COMMANDS: Lazy<PacketEncoder> = Lazy::new(|| {
                 flags: (CommandFlags::LITERAL | CommandFlags::EXECUTABLE).bits() as i8,
                 children: &[107],
                 redirect_node: None,
-                name: Some("rback"),
+                name: Some("back"),
                 parser: None,
                 suggestions_type: None,
             },
@@ -1953,7 +1952,7 @@ pub static DECLARE_COMMANDS: Lazy<PacketEncoder> = Lazy::new(|| {
                 parser: None,
                 suggestions_type: None,
             },
-            // 117: /rtps timings
+            // 117: /tps timings
             Node {
                 flags: (CommandFlags::LITERAL | CommandFlags::EXECUTABLE).bits() as i8,
                 children: &[],
@@ -2020,6 +2019,33 @@ pub static DECLARE_COMMANDS: Lazy<PacketEncoder> = Lazy::new(|| {
                 children: &[110],
                 redirect_node: None,
                 name: Some("autostack"),
+                parser: None,
+                suggestions_type: None,
+            },
+            // 125-127: legacy aliases for /tps, /adv and /back.
+            Node {
+                flags: (CommandFlags::LITERAL | CommandFlags::REDIRECT | CommandFlags::EXECUTABLE)
+                    .bits() as i8,
+                children: &[],
+                redirect_node: Some(12),
+                name: Some("rtps"),
+                parser: None,
+                suggestions_type: None,
+            },
+            Node {
+                flags: (CommandFlags::LITERAL | CommandFlags::REDIRECT).bits() as i8,
+                children: &[],
+                redirect_node: Some(29),
+                name: Some("radvance"),
+                parser: None,
+                suggestions_type: None,
+            },
+            Node {
+                flags: (CommandFlags::LITERAL | CommandFlags::REDIRECT | CommandFlags::EXECUTABLE)
+                    .bits() as i8,
+                children: &[],
+                redirect_node: Some(106),
+                name: Some("rback"),
                 parser: None,
                 suggestions_type: None,
             },

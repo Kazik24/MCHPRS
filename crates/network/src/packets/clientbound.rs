@@ -514,6 +514,14 @@ pub struct CChunkData {
     pub block_entities: Vec<CChunkDataBlockEntity>,
 }
 
+fn write_light_section_mask(buf: &mut Vec<u8>, section_count: usize) {
+    buf.write_varint(section_count.div_ceil(64) as i32);
+    for start in (0..section_count).step_by(64) {
+        let bits = (section_count - start).min(64);
+        buf.write_long((u64::MAX >> (64 - bits)) as i64);
+    }
+}
+
 impl ClientBoundPacket for CChunkData {
     fn encode(&self) -> PacketEncoder {
         let mut buf = Vec::new();
@@ -588,36 +596,26 @@ impl ClientBoundPacket for CChunkData {
             buf.write_nbt_blob(&block_entity.data);
         }
 
-        // We don't do lighting because we have max ambient light
-        // These will all be zeros
-
-        // Trust Edges
-
+        // MCHPRS uses full daylight rather than simulating light propagation.
+        // Ambient brightness alone does not initialize shader light maps. Send
+        // actual level-15 skylight, including the sections below/above the world.
+        let light_sections = self.chunk_sections.len() + 2;
         // Sky Light Mask
-        buf.write_varint(0);
+        write_light_section_mask(&mut buf, light_sections);
         // Block Light Mask
         buf.write_varint(0);
-
-        // fixes compilation on 32-bit platforms
         // Empty Sky Light Mask
-        let mut count = self.chunk_sections.len() + 2;
-        let mask_start = buf.len();
-        buf.write_varint(count.div_ceil(64) as i32);
-        for _ in 0..count.div_ceil(64) {
-            match count.checked_sub(64) {
-                Some(new_count) => {
-                    count = new_count;
-                    buf.write_long(-1); //all bits to 1
-                }
-                None => buf.write_long(((1u64 << count) - 1) as i64), //'count' bits to 1
-            }
-        }
-
-        // Empty Block Light Mask (same as Sky Light Mask)
-        buf.extend_from_within(mask_start..);
-
-        // Sky Light array count
         buf.write_varint(0);
+        // Empty Block Light Mask: explicitly clear stale block lighting.
+        write_light_section_mask(&mut buf, light_sections);
+        // Sky Light array count
+        buf.write_varint(light_sections as i32);
+        // One nibble per block: two level-15 values in each byte.
+        static FULL_SKY_LIGHT: [u8; 2048] = [0xff; 2048];
+        for _ in 0..light_sections {
+            buf.write_varint(FULL_SKY_LIGHT.len() as i32);
+            buf.write_bytes(&FULL_SKY_LIGHT);
+        }
         // Block Light array count
         buf.write_varint(0);
 

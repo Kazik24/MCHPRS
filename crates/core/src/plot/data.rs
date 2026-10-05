@@ -51,6 +51,10 @@ static EMPTY_PLOT: Lazy<Result<PlotData<PLOT_SECTIONS>, String>> = Lazy::new(|| 
     let template_path = Path::new("./world/plots/pTEMPLATE");
     if template_path.exists() {
         PlotData::load_from_file(template_path, true)
+            .map(|mut plot| {
+                plot.tps = Tps::Limited(crate::config::CONFIG.default_tps);
+                plot
+            })
             .map_err(|error| format!("failed to read template plot: {}", error))
     } else {
         let mut chunks = Vec::new();
@@ -62,7 +66,7 @@ static EMPTY_PLOT: Lazy<Result<PlotData<PLOT_SECTIONS>, String>> = Lazy::new(|| 
         let chunk_data: Vec<ChunkData<PLOT_SECTIONS>> =
             chunks.iter_mut().map(|c| c.save()).collect();
         Ok(PlotData {
-            tps: Tps::Limited(10),
+            tps: Tps::Limited(crate::config::CONFIG.default_tps),
             world_send_rate: WorldSendRate::default(),
             chunk_data,
             pending_ticks: Vec::new(),

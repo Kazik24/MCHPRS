@@ -35,7 +35,7 @@ pub const PROTOCOL_VERSION: i32 = 770;
 
 pub fn version_string() -> String {
     format!(
-        "MCHPRS {} (Minecraft {}, protocol {})",
+        "MROWW {} (Minecraft {}, protocol {})",
         env!("MCHPRS_VERSION"),
         MC_VERSION,
         PROTOCOL_VERSION
@@ -152,7 +152,7 @@ impl MinecraftServer {
             error!("plot {}\n{:?}", panic_info.to_string(), backtrace);
         }));
 
-        info!("Starting server...");
+        info!("Starting MROWW server...");
         let start_time = Instant::now();
 
         // Create world folders if they don't exist yet
@@ -438,7 +438,7 @@ impl MinecraftServer {
             channel: String::from("minecraft:brand"),
             data: {
                 let mut data = Vec::new();
-                data.write_string(32767, "Minecraft High Performance Redstone");
+                data.write_string(32767, "MROWW");
                 data
             },
         }
