@@ -2,9 +2,6 @@
 
 ## Active configuration
 
-The private `/srv/mchprs/backend-config/Config.toml` enables these LuckPerms
-settings alongside its existing database credentials:
-
 ```toml
 [luckperms]
 # Existing connection settings omitted.
@@ -29,15 +26,15 @@ not apply. This reader is not the complete LuckPerms engine.
 
 ## Rank policy
 
-| Database group | Display | Current MCHPRS access |
-| --- | --- | --- |
-| `admin` | Bold red `[A]` | All permissions, including other/unowned plots and administration |
-| `moderator` | Bold green `[M]` | All permissions, including other/unowned plots and administration |
-| `engineer` | Cyan `[I]` | Edit own plots and use ordinary commands |
-| `expert` | Purple `[E]` | Edit own plots and use ordinary commands |
-| `advanced` | Orange `[Z]` | Edit own plots and use ordinary commands |
-| `builder` | Yellow `[B]` | Own-plot building and ordinary features; history disabled |
-| `default` | Gray `[G]` | Join and chat; spectator mode, no edits or backend commands |
+| Database group | Display          | Current MCHPRS access                                             |
+| -------------- | ---------------- | ----------------------------------------------------------------- |
+| `admin`        | Bold red `[A]`   | All permissions, including other/unowned plots and administration |
+| `moderator`    | Bold green `[M]` | All permissions, including other/unowned plots and administration |
+| `engineer`     | Cyan `[I]`       | Edit own plots and use ordinary commands                          |
+| `expert`       | Purple `[E]`     | Edit own plots and use ordinary commands                          |
+| `advanced`     | Orange `[Z]`     | Edit own plots and use ordinary commands                          |
+| `builder`      | Yellow `[B]`     | Own-plot building and ordinary features; history disabled         |
+| `default`      | Gray `[G]`       | Join and chat; spectator mode, no edits or backend commands       |
 
 The existing database prefixes supply the exact tag and nickname colors. All
 seven database groups currently have equal weights, so the display rank is the
@@ -61,21 +58,21 @@ inheritance were retained. User overrides can deliberately change this policy.
 
 ## Access, ownership and direct actions
 
-| Permission | Controls |
-| --- | --- |
-| `mchprs.access.join` | Join MCHPRS after authentication |
-| `mchprs.access.chat` | Send ordinary chat |
-| `mchprs.access.commands` | Run any backend command; command-specific grants are also required |
-| `mchprs.build` | Base permission to edit an owned plot |
-| `mchprs.plots.admin.interact.other` | Extend editing to someone else's plot |
-| `mchprs.plots.admin.interact.unowned` | Extend editing to unclaimed plots |
-| `mchprs.build.place` | Place blocks |
-| `mchprs.build.break` | Break blocks |
-| `mchprs.build.interact` | Change repeaters/comparators, use levers/buttons, trigger pressure plates and other block interactions |
-| `mchprs.build.sign` | Update sign text |
-| `mchprs.build.container` | Open/change container contents |
-| `mchprs.build.commandblock` | Open/update command blocks; also requires the command-block editing node below |
-| `mchprs.inventory.creative` | Creative inventory changes and block picking |
+| Permission                            | Controls                                                                                               |
+| ------------------------------------- | ------------------------------------------------------------------------------------------------------ |
+| `mchprs.access.join`                  | Join MCHPRS after authentication                                                                       |
+| `mchprs.access.chat`                  | Send ordinary chat                                                                                     |
+| `mchprs.access.commands`              | Run any backend command; command-specific grants are also required                                     |
+| `mchprs.build`                        | Base permission to edit an owned plot                                                                  |
+| `mchprs.plots.admin.interact.other`   | Extend editing to someone else's plot                                                                  |
+| `mchprs.plots.admin.interact.unowned` | Extend editing to unclaimed plots                                                                      |
+| `mchprs.build.place`                  | Place blocks                                                                                           |
+| `mchprs.build.break`                  | Break blocks                                                                                           |
+| `mchprs.build.interact`               | Change repeaters/comparators, use levers/buttons, trigger pressure plates and other block interactions |
+| `mchprs.build.sign`                   | Update sign text                                                                                       |
+| `mchprs.build.container`              | Open/change container contents                                                                         |
+| `mchprs.build.commandblock`           | Open/update command blocks; also requires the command-block editing node below                         |
+| `mchprs.inventory.creative`           | Creative inventory changes and block picking                                                           |
 
 Direct world actions require the base build permission, the action permission,
 and ownership or the corresponding other/unowned permission. WorldEdit and
@@ -89,25 +86,25 @@ ownership by carrying a command-block item or sending a sign/container packet.
 All commands also require `mchprs.access.commands`. Aliases use the same
 permission as their canonical command.
 
-| Command | Permission(s) |
-| --- | --- |
-| `/help`, `/version` | `mchprs.commands.help`, `mchprs.commands.version` |
-| `/tp`, `/teleport` | `mchprs.commands.teleport` |
-| `/speed` | `mchprs.commands.speed` |
-| `/gamemode`, `/gmc`, `/gmsp` | `mchprs.commands.gamemode`, plus `.creative` or `.spectator` |
-| `/rtps` | `mchprs.commands.rtps.view` or `.set`; `timings` uses `.view` |
-| `/wsr`, `/worldsendrate` | `mchprs.commands.worldsendrate.view` or `.set` |
-| `/screenonly` | `mchprs.commands.screenonly`, plus `.view` or `.set` |
-| `/piston_anim`, `/bisdon_anim` | `mchprs.commands.piston_anim`, plus `.view` or `.set` |
-| `/rp`, `/redpiler` | `mchprs.commands.redpiler.compile`, `.reset`, `.inspect` or `.help` |
-| `/radv`, `/radvance` | `mchprs.commands.radvance` |
-| `/toggleautorp` | `mchprs.commands.toggleautorp` |
-| `/curse`, `/bless` | `mchprs.commands.curse`, `mchprs.commands.bless`; granted only to Admin/Moderator |
-| `/rhistory` | `mchprs.commands.rhistory`, plus `.status`, `.enable`, `.disable`, `.limit.view` or `.limit.set` |
-| `/rback` | `mchprs.commands.rback` |
-| `/say`, `/tellraw` | `mchprs.commands.say`, `mchprs.commands.tellraw` |
-| `/stop`, `/whitelist` | `mchprs.commands.stop`, `mchprs.commands.whitelist` |
-| Command-block editor | `mchprs.commands.commandblock.edit` |
+| Command                        | Permission(s)                                                                                    |
+| ------------------------------ | ------------------------------------------------------------------------------------------------ |
+| `/help`, `/version`            | `mchprs.commands.help`, `mchprs.commands.version`                                                |
+| `/tp`, `/teleport`             | `mchprs.commands.teleport`                                                                       |
+| `/speed`                       | `mchprs.commands.speed`                                                                          |
+| `/gamemode`, `/gmc`, `/gmsp`   | `mchprs.commands.gamemode`, plus `.creative` or `.spectator`                                     |
+| `/rtps`                        | `mchprs.commands.rtps.view` or `.set`; `timings` uses `.view`                                    |
+| `/wsr`, `/worldsendrate`       | `mchprs.commands.worldsendrate.view` or `.set`                                                   |
+| `/screenonly`                  | `mchprs.commands.screenonly`, plus `.view` or `.set`                                             |
+| `/piston_anim`, `/bisdon_anim` | `mchprs.commands.piston_anim`, plus `.view` or `.set`                                            |
+| `/rp`, `/redpiler`             | `mchprs.commands.redpiler.compile`, `.reset`, `.inspect` or `.help`                              |
+| `/radv`, `/radvance`           | `mchprs.commands.radvance`                                                                       |
+| `/toggleautorp`                | `mchprs.commands.toggleautorp`                                                                   |
+| `/curse`, `/bless`             | `mchprs.commands.curse`, `mchprs.commands.bless`; granted only to Admin/Moderator                |
+| `/rhistory`                    | `mchprs.commands.rhistory`, plus `.status`, `.enable`, `.disable`, `.limit.view` or `.limit.set` |
+| `/rback`                       | `mchprs.commands.rback`                                                                          |
+| `/say`, `/tellraw`             | `mchprs.commands.say`, `mchprs.commands.tellraw`                                                 |
+| `/stop`, `/whitelist`          | `mchprs.commands.stop`, `mchprs.commands.whitelist`                                              |
+| Command-block editor           | `mchprs.commands.commandblock.edit`                                                              |
 
 Changing plot timing, render settings, redpiler state, history or curse state
 also requires permission to edit the current plot. Viewing settings does not
@@ -117,12 +114,12 @@ requires `mchprs.plots.admin.rewind.unlimited`.
 
 ### History capacity limits
 
-| Rank | Maximum history buffer / rewind request |
-| --- | --- |
-| Zaawansowany `[Z]`, Ekspert `[E]` | 200 game ticks |
-| Inżynier `[I]` | 1,000 game ticks |
-| Moderator `[M]`, Admin `[A]` | No permission-based tick-count ceiling |
-| Budowniczy `[B]`, Gracz `[G]` | No history commands |
+| Rank                              | Maximum history buffer / rewind request |
+| --------------------------------- | --------------------------------------- |
+| Zaawansowany `[Z]`, Ekspert `[E]` | 200 game ticks                          |
+| Inżynier `[I]`                    | 1,000 game ticks                        |
+| Moderator `[M]`, Admin `[A]`      | No permission-based tick-count ceiling  |
+| Budowniczy `[B]`, Gracz `[G]`     | No history commands                     |
 
 The maximum effective positive `mchprs.history.limit.<ticks>` node controls the
 finite limit. `advanced` has `mchprs.history.limit.200`; `expert` inherits it.
@@ -141,32 +138,32 @@ For a custom cap, deny any larger inherited numeric nodes and grant the desired
 node in `server=mchprs`. To give a finite cap to staff, also deny their unlimited
 node. As with other permission changes, the cache refreshes within 30 seconds.
 
-| `/plot` subcommands | Permission |
-| --- | --- |
-| `info`, `i` | `mchprs.plots.info` |
-| `claim`, `c` | `mchprs.plots.claim` |
-| `auto`, `a` | `mchprs.plots.auto` |
-| `visit`, `v`, `teleport`, `tp` | `mchprs.plots.visit` |
-| `middle` | `mchprs.plots.middle` |
-| `lock`, `unlock` | `mchprs.plots.lock` |
-| `select`, `sel` | `mchprs.plots.select` |
+| `/plot` subcommands            | Permission            |
+| ------------------------------ | --------------------- |
+| `info`, `i`                    | `mchprs.plots.info`   |
+| `claim`, `c`                   | `mchprs.plots.claim`  |
+| `auto`, `a`                    | `mchprs.plots.auto`   |
+| `visit`, `v`, `teleport`, `tp` | `mchprs.plots.visit`  |
+| `middle`                       | `mchprs.plots.middle` |
+| `lock`, `unlock`               | `mchprs.plots.lock`   |
+| `select`, `sel`                | `mchprs.plots.select` |
 
 ## WorldEdit and redstone tools
 
 WorldEdit uses the existing per-command nodes with the `mchprs.` prefix:
 
-| Commands | Permission suffix after `mchprs.worldedit.` |
-| --- | --- |
-| `/up`, `/ascend`, `/descend` | `navigation.up`, `.ascend`, `.descend` |
-| `//pos1`, `//pos2` | `selection.pos` |
-| `//hpos1`, `//hpos2` | `selection.hpos` |
-| `//sel` | `selection.sel` |
-| `//expand`, `//contract`, `//shift` | `selection.expand`, `.contract`, `.shift` |
-| `//set`, `//replace`, `//stack`, `//move` | `region.set`, `.replace`, `.stack`, `.move` |
+| Commands                                                               | Permission suffix after `mchprs.worldedit.`                              |
+| ---------------------------------------------------------------------- | ------------------------------------------------------------------------ |
+| `/up`, `/ascend`, `/descend`                                           | `navigation.up`, `.ascend`, `.descend`                                   |
+| `//pos1`, `//pos2`                                                     | `selection.pos`                                                          |
+| `//hpos1`, `//hpos2`                                                   | `selection.hpos`                                                         |
+| `//sel`                                                                | `selection.sel`                                                          |
+| `//expand`, `//contract`, `//shift`                                    | `selection.expand`, `.contract`, `.shift`                                |
+| `//set`, `//replace`, `//stack`, `//move`                              | `region.set`, `.replace`, `.stack`, `.move`                              |
 | `//copy`, `//cut`, `//paste`, `//load`, `//save`, `//flip`, `//rotate` | `clipboard.copy`, `.cut`, `.paste`, `.load`, `.save`, `.flip`, `.rotate` |
-| `//undo`, `//redo` | `history.undo`, `.redo` |
-| `//count` | `analysis.count` |
-| `//help`, `//wand` | `help`, `wand` |
+| `//undo`, `//redo`                                                     | `history.undo`, `.redo`                                                  |
+| `//count`                                                              | `analysis.count`                                                         |
+| `//help`, `//wand`                                                     | `help`, `wand`                                                           |
 
 The MCHPRS-specific commands retain their existing native nodes:
 `mchprs.we.update`, `mchprs.we.invalidatecaches`, and
