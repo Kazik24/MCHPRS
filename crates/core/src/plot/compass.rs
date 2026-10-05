@@ -7,8 +7,9 @@ use mchprs_blocks::BlockPos;
 use mchprs_network::packets::clientbound::{CEntityTeleport, ClientBoundPacket};
 use std::time::{Duration, Instant};
 
-const RANGE: f64 = 256.0;
+const RANGE: f64 = 1024.0;
 const HALF_WIDTH: f64 = 0.3;
+const SEARCH_DISTANCE: f64 = 8.0;
 
 impl Plot {
     /// Returns true when the held item consumes this interaction, even on a miss.
@@ -53,8 +54,7 @@ impl Plot {
                 Some(self.world.get_block(pos))
             }
         };
-        let destination = pointed_block(eye, yaw, pitch, &read)
-            .and_then(|target| landing_position(target, &read));
+        let destination = compass_destination(eye, yaw, pitch, &read);
         let Some(destination) = destination else {
             self.players[player].send_error_message("No safe compass destination in sight.");
             return true;
@@ -95,7 +95,7 @@ fn pointed_block(
     yaw: f32,
     pitch: f32,
     read: &impl Fn(BlockPos) -> Option<Block>,
-) -> Option<BlockPos> {
+) -> Option<RayHit> {
     if !eye.is_valid() || !yaw.is_finite() || !pitch.is_finite() {
         return None;
     }
@@ -129,13 +129,40 @@ fn pointed_block(
             (f64::from(boundary) - origin[axis]) / direction[axis]
         };
     }
+    let mut entry = 0.0;
     loop {
         let pos = BlockPos::new(cell[0], cell[1], cell[2]);
         let block = read(pos)?;
-        if !is_air(block) && !matches!(block.get_name(), "water" | "lava") {
-            return Some(pos);
-        }
         let distance = next.into_iter().fold(f64::INFINITY, f64::min);
+        let below = BlockPos::new(pos.x, pos.y - 1, pos.z);
+        let extended = read(below)
+            .and_then(|block| collision_bounds(block).filter(|bounds| bounds.max[1] > 1.0));
+        let current =
+            collision_bounds(block).filter(|_| !matches!(block.get_name(), "water" | "lava"));
+        let mut closest: Option<RayHit> = None;
+        // Fence and wall collision bounds extend into the voxel above them.
+        for (target, bounds) in [(pos, current), (below, extended)] {
+            if let Some(hit_distance) =
+                bounds.and_then(|bounds| bounds.ray_intersection(target, origin, direction))
+            {
+                if hit_distance >= entry - 1e-9 && hit_distance <= distance.min(RANGE) + 1e-9 {
+                    if closest
+                        .as_ref()
+                        .is_none_or(|previous| hit_distance < previous.distance)
+                    {
+                        closest = Some(RayHit {
+                            block: target,
+                            distance: hit_distance,
+                            origin,
+                            direction,
+                        });
+                    }
+                }
+            }
+        }
+        if closest.is_some() {
+            return closest;
+        }
         if distance > RANGE {
             return None;
         }
@@ -146,7 +173,151 @@ fn pointed_block(
                 next[axis] += delta[axis];
             }
         }
+        entry = distance;
     }
+}
+
+struct RayHit {
+    block: BlockPos,
+    distance: f64,
+    origin: [f64; 3],
+    direction: [f64; 3],
+}
+
+impl RayHit {
+    fn point(&self, distance: f64) -> PlayerPos {
+        PlayerPos::new(
+            self.origin[0] + self.direction[0] * distance,
+            self.origin[1] + self.direction[1] * distance,
+            self.origin[2] + self.direction[2] * distance,
+        )
+    }
+}
+
+fn compass_destination(
+    eye: PlayerPos,
+    yaw: f32,
+    pitch: f32,
+    read: &impl Fn(BlockPos) -> Option<Block>,
+) -> Option<PlayerPos> {
+    let hit = pointed_block(eye, yaw, pitch, read)?;
+    if let Some(pos) = landing_position(hit.block, read) {
+        return Some(pos);
+    }
+    let contact = hit.point(hit.distance);
+    let mut best: Option<(f64, PlayerPos)> = None;
+    let mut checked = std::collections::HashSet::new();
+    // Search surfaces around the last eight blocks of the visible line, including
+    // a few blocks above the hit so walls and steps have usable landing spots.
+    for sample in 0..=(SEARCH_DISTANCE * 2.0) as usize {
+        let distance = hit.distance - sample as f64 * 0.5;
+        if distance < 0.0 {
+            break;
+        }
+        let cell = hit.point(distance).block_pos();
+        for dx in -1..=1 {
+            for dz in -1..=1 {
+                for dy in -3..=3 {
+                    let target = BlockPos::new(cell.x + dx, cell.y + dy, cell.z + dz);
+                    if !checked.insert(target) || !(0..PLOT_BLOCK_HEIGHT).contains(&target.y) {
+                        continue;
+                    }
+                    let Some(pos) = landing_position(target, read) else {
+                        continue;
+                    };
+                    let offset = [
+                        pos.x - hit.origin[0],
+                        pos.y + 0.9 - hit.origin[1],
+                        pos.z - hit.origin[2],
+                    ];
+                    let projection: f64 =
+                        offset.iter().zip(hit.direction).map(|(a, b)| a * b).sum();
+                    // Keep alternatives on the visible side, rather than finding
+                    // an empty room behind the block that stopped the ray.
+                    if projection > hit.distance + 1.0 {
+                        continue;
+                    }
+                    let from_hit = (pos.x - contact.x).powi(2)
+                        + (pos.y - contact.y).powi(2)
+                        + (pos.z - contact.z).powi(2);
+                    let from_line: f64 = offset
+                        .iter()
+                        .zip(hit.direction)
+                        .map(|(a, b)| (a - projection * b).powi(2))
+                        .sum();
+                    let score = from_hit + from_line;
+                    if best.as_ref().is_none_or(|(previous, _)| score < *previous) {
+                        best = Some((score, pos));
+                    }
+                }
+            }
+        }
+    }
+    best.map(|(_, pos)| pos)
+}
+
+#[derive(Clone, Copy)]
+struct Bounds {
+    min: [f64; 3],
+    max: [f64; 3],
+}
+
+impl Bounds {
+    fn ray_intersection(
+        self,
+        block: BlockPos,
+        origin: [f64; 3],
+        direction: [f64; 3],
+    ) -> Option<f64> {
+        let location = [f64::from(block.x), f64::from(block.y), f64::from(block.z)];
+        let mut near: f64 = 0.0;
+        let mut far = RANGE;
+        for axis in 0..3 {
+            let min = location[axis] + self.min[axis];
+            let max = location[axis] + self.max[axis];
+            if direction[axis].abs() < 1e-12 {
+                if origin[axis] < min || origin[axis] > max {
+                    return None;
+                }
+                continue;
+            }
+            let a = (min - origin[axis]) / direction[axis];
+            let b = (max - origin[axis]) / direction[axis];
+            near = near.max(a.min(b));
+            far = far.min(a.max(b));
+            if near > far {
+                return None;
+            }
+        }
+        Some(near)
+    }
+}
+
+fn collision_bounds(block: Block) -> Option<Bounds> {
+    let (bottom, top) = vertical_bounds(block)?;
+    let mut bounds = Bounds {
+        min: [0.0, bottom, 0.0],
+        max: [1.0, top, 1.0],
+    };
+    let name = block.get_name();
+    if name.ends_with("_trapdoor") {
+        if block.property("open") == Some("true") {
+            bounds.min[1] = 0.0;
+            bounds.max[1] = 1.0;
+            match block.property("facing") {
+                Some("north") => bounds.min[2] = 0.8125,
+                Some("south") => bounds.max[2] = 0.1875,
+                Some("west") => bounds.min[0] = 0.8125,
+                Some("east") => bounds.max[0] = 0.1875,
+                _ => {}
+            }
+        } else if block.property("half") == Some("top") {
+            bounds.min[1] = 0.8125;
+        } else {
+            bounds.max[1] = 0.1875;
+        }
+    }
+    Some(bounds)
 }
 
 /// Conservative vertical collision bounds; unmodeled blocks occupy a full cube.
@@ -163,10 +334,42 @@ fn vertical_bounds(block: Block) -> Option<(f64, f64)> {
         });
     }
     let name = block.get_name();
+    // These decorations do not obstruct the player or provide a landing floor.
+    // Fluids/hazards retain bounds for clearance, but are skipped as ray targets.
+    if name.ends_with("_sign")
+        || name.ends_with("_banner")
+        || name.ends_with("_button")
+        || name.ends_with("_torch")
+        || name.ends_with("_rail")
+        || matches!(
+            name,
+            "torch"
+                | "soul_torch"
+                | "redstone_torch"
+                | "redstone_wire"
+                | "lever"
+                | "rail"
+                | "short_grass"
+                | "tall_grass"
+                | "fern"
+                | "large_fern"
+                | "dead_bush"
+                | "tripwire"
+                | "tripwire_hook"
+        )
+    {
+        return None;
+    }
+    if name.ends_with("_fence_gate") && block.property("open") == Some("true") {
+        return None;
+    }
     let height = match name {
         "soul_sand" => 0.875,
         "farmland" | "dirt_path" => 0.9375,
         "snow" => block.property("layers")?.parse::<f64>().ok()? / 8.0,
+        "repeater" | "comparator" => 0.125,
+        name if name.ends_with("_carpet") => 0.0625,
+        name if name.ends_with("_pressure_plate") => 0.0625,
         name if name.ends_with("_fence")
             || name.ends_with("_wall")
             || name.ends_with("_fence_gate") =>
@@ -182,7 +385,18 @@ fn landing_position(
     target: BlockPos,
     read: &impl Fn(BlockPos) -> Option<Block>,
 ) -> Option<PlayerPos> {
-    let (_, top) = vertical_bounds(read(target)?)?;
+    let block = read(target)?;
+    if matches!(
+        block.get_name(),
+        "water" | "lava" | "fire" | "soul_fire" | "cactus" | "magma_block" | "powder_snow"
+    ) {
+        return None;
+    }
+    let floor = collision_bounds(block)?;
+    if floor.min[0] > 0.5 || floor.max[0] < 0.5 || floor.min[2] > 0.5 || floor.max[2] < 0.5 {
+        return None;
+    }
+    let top = floor.max[1];
     let pos = PlayerPos::new(
         f64::from(target.x) + 0.5,
         f64::from(target.y) + top,
@@ -201,8 +415,14 @@ fn landing_position(
         for z in min_z..max_z {
             // Include blocks below the feet: fences/walls can extend 1.5 blocks up.
             for y in ((pos.y - 1.5).floor() as i32).max(0)..(pos.y + height).ceil() as i32 {
-                if let Some((bottom, top)) = vertical_bounds(read(BlockPos::new(x, y, z))?) {
-                    if f64::from(y) + top > pos.y + 1e-9 && f64::from(y) + bottom < pos.y + height {
+                if let Some(bounds) = collision_bounds(read(BlockPos::new(x, y, z))?) {
+                    if f64::from(y) + bounds.max[1] > pos.y + 1e-9
+                        && f64::from(y) + bounds.min[1] < pos.y + height
+                        && f64::from(x) + bounds.max[0] > pos.x - HALF_WIDTH
+                        && f64::from(x) + bounds.min[0] < pos.x + HALF_WIDTH
+                        && f64::from(z) + bounds.max[2] > pos.z - HALF_WIDTH
+                        && f64::from(z) + bounds.min[2] < pos.z + HALF_WIDTH
+                    {
                         return None;
                     }
                 }
@@ -236,14 +456,15 @@ mod tests {
                 })
             };
             assert_eq!(
-                pointed_block(PlayerPos::new(0.5, 64.5, 0.5), yaw, pitch, &read),
+                pointed_block(PlayerPos::new(0.5, 64.5, 0.5), yaw, pitch, &read)
+                    .map(|hit| hit.block),
                 Some(target)
             );
         }
         let read = |pos: BlockPos| if pos.z < 4 { Some(Block::Air) } else { None };
         assert!(pointed_block(PlayerPos::new(0.5, 64.5, 0.5), 0.0, 0.0, &read).is_none());
         let read = |pos: BlockPos| {
-            Some(if pos.z == 257 {
+            Some(if pos.z == RANGE as i32 + 1 {
                 Block::Stone {}
             } else {
                 Block::Air
@@ -302,5 +523,124 @@ mod tests {
         assert!(pointed_block(eye, 0.0, 0.0, &read).is_none());
         assert!(pointed_block(eye, f32::NAN, 0.0, &read).is_none());
         assert!(pointed_block(PlayerPos::new(f64::INFINITY, 64.0, 0.0), 0.0, 0.0, &read).is_none());
+    }
+
+    #[test]
+    fn range_extends_beyond_old_limit_and_partial_blocks_do_not_hide_targets() {
+        let target = BlockPos::new(0, 64, 700);
+        let slab = Block::from_name("stone_slab").unwrap();
+        let read = |p| {
+            Some(if p == BlockPos::new(0, 64, 5) {
+                slab
+            } else if p == target {
+                Block::Stone {}
+            } else {
+                Block::Air
+            })
+        };
+        let hit = pointed_block(PlayerPos::new(0.5, 64.75, 0.5), 0.0, 0.0, &read).unwrap();
+        assert_eq!(hit.block, target);
+        let hit = pointed_block(PlayerPos::new(0.5, 64.25, 0.5), 0.0, 0.0, &read).unwrap();
+        assert_eq!(hit.block, BlockPos::new(0, 64, 5));
+    }
+
+    #[test]
+    fn obstructed_target_searches_back_along_the_visible_line() {
+        // A wall blocks the aim, with a floor in front and no room on the wall.
+        let read = |p: BlockPos| {
+            Some(
+                if (p.z == 10 && (63..=70).contains(&p.y)) || (p.y == 62 && (2..=9).contains(&p.z))
+                {
+                    Block::Stone {}
+                } else {
+                    Block::Air
+                },
+            )
+        };
+        let pos = compass_destination(PlayerPos::new(0.5, 64.5, 0.5), 0.0, 0.0, &read).unwrap();
+        assert_eq!((pos.x, pos.y, pos.z), (0.5, 63.0, 9.5));
+    }
+
+    #[test]
+    fn search_can_find_the_top_of_a_wall_but_does_not_tunnel_through_it() {
+        let read = |p: BlockPos| {
+            Some(if p.x == 0 && p.z == 10 && (63..=66).contains(&p.y) {
+                Block::Stone {}
+            } else {
+                Block::Air
+            })
+        };
+        let pos = compass_destination(PlayerPos::new(0.5, 64.5, 0.5), 0.0, 0.0, &read).unwrap();
+        assert_eq!((pos.x, pos.y, pos.z), (0.5, 67.0, 10.5));
+        let read = |p: BlockPos| {
+            Some(
+                if (p.z == 10 && (60..=75).contains(&p.y)) || (p.y == 62 && p.z > 10) {
+                    Block::Stone {}
+                } else {
+                    Block::Air
+                },
+            )
+        };
+        assert!(compass_destination(PlayerPos::new(0.5, 64.5, 0.5), 0.0, 0.0, &read).is_none());
+    }
+
+    #[test]
+    fn decorations_do_not_block_clearance_and_search_rejects_hazards() {
+        let target = BlockPos::new(0, 63, 10);
+        let read = |p| {
+            Some(if p == target {
+                Block::Stone {}
+            } else if p == BlockPos::new(0, 64, 10) {
+                Block::from_name("redstone_wire").unwrap()
+            } else {
+                Block::Air
+            })
+        };
+        assert_eq!(landing_position(target, &read).unwrap().y, 64.0);
+        let read = |p: BlockPos| {
+            Some(if p.y == 63 {
+                Block::from_name("lava").unwrap()
+            } else {
+                Block::Air
+            })
+        };
+        assert!(landing_position(target, &read).is_none());
+    }
+
+    #[test]
+    fn ray_hits_tall_shapes_above_their_voxel_and_passes_through_open_trapdoor_gap() {
+        let fence = BlockPos::new(0, 64, 5);
+        let read = |p| {
+            Some(if p == fence {
+                Block::from_name("oak_fence").unwrap()
+            } else {
+                Block::Air
+            })
+        };
+        assert_eq!(
+            pointed_block(PlayerPos::new(0.5, 65.25, 0.5), 0.0, 0.0, &read)
+                .unwrap()
+                .block,
+            fence
+        );
+        let mut trapdoor = Block::from_name("oak_trapdoor").unwrap();
+        trapdoor.set_properties(HashMap::from([("open", "true"), ("facing", "east")]));
+        let target = BlockPos::new(0, 64, 10);
+        let read = |p| {
+            Some(if p == fence {
+                trapdoor
+            } else if p == target {
+                Block::Stone {}
+            } else {
+                Block::Air
+            })
+        };
+        assert_eq!(
+            pointed_block(PlayerPos::new(0.5, 64.5, 0.5), 0.0, 0.0, &read)
+                .unwrap()
+                .block,
+            target
+        );
+        assert!(landing_position(fence, &read).is_none());
     }
 }

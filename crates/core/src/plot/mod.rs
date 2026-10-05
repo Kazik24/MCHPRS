@@ -18,6 +18,8 @@ mod piston_tests;
 pub(crate) mod redstone_tools;
 mod scoreboard;
 mod screen_updates;
+#[cfg(test)]
+mod sign_tests;
 mod visuals;
 pub mod worldedit;
 
@@ -559,6 +561,12 @@ impl World for PlotWorld {
         if matches!(old, Block::MovingPiston { .. }) && old.get_id() != block {
             self.delete_block_entity(pos);
         }
+        if old.is_sign()
+            && !new.is_sign()
+            && matches!(self.get_block_entity(pos), Some(BlockEntity::Sign(_)))
+        {
+            self.delete_block_entity(pos);
+        }
         let chunk = &mut self.chunks[chunk_index];
         let changed = chunk.set_block(
             (pos.x & 0xF) as u32,
@@ -579,6 +587,16 @@ impl World for PlotWorld {
                     },
                 );
             }
+        }
+        if new.is_sign()
+            && !matches!(
+                chunk.get_block_entity(local_pos),
+                Some(BlockEntity::Sign(_))
+            )
+        {
+            // The client creates signs from chunk block-entity entries on join.
+            // Keep an existing sign's text when only its block state changes.
+            chunk.set_block_entity(local_pos, BlockEntity::Sign(Default::default()));
         }
         if changed {
             if let Some(previous) = previous_screen {
@@ -619,8 +637,7 @@ impl World for PlotWorld {
 
     fn get_block_entity_mut(&mut self, pos: BlockPos) -> Option<&mut BlockEntity> {
         let index = self.get_chunk_index_for_block(pos.x, pos.z)?;
-        self.chunks[index]
-            .get_block_entity_mut(BlockPos::new(pos.x & 15, pos.y, pos.z & 15))
+        self.chunks[index].get_block_entity_mut(BlockPos::new(pos.x & 15, pos.y, pos.z & 15))
     }
 
     fn piston_state(&self) -> &PistonState {
@@ -1889,8 +1906,10 @@ impl Plot {
         let _guard = self.async_rt.enter();
 
         if CONFIG.neighbor_update_interval_ms != 0 {
-            self.neighbor_source =
-                Some(neighbors::LiveSource::register((self.world.x, self.world.z)));
+            self.neighbor_source = Some(neighbors::LiveSource::register((
+                self.world.x,
+                self.world.z,
+            )));
         }
 
         if let Some(player) = initial_player {

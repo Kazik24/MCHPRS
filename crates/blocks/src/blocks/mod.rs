@@ -131,8 +131,14 @@ impl Block {
     }
 
     pub fn is_sign(self) -> bool {
-        let name = self.get_name();
-        name.ends_with("_sign") && !name.ends_with("_hanging_sign")
+        match self {
+            Self::Sign { .. } | Self::WallSign { .. } => true,
+            Self::Unknown { .. } => {
+                let name = self.get_name();
+                name.ends_with("_sign") && !name.ends_with("_hanging_sign")
+            }
+            _ => false,
+        }
     }
 
     #[inline]

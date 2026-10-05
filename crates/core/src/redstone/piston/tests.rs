@@ -106,6 +106,174 @@ fn dust_shape_change_does_not_start_piston_observer_early() {
 }
 
 #[test]
+fn redstone_update_edgecase_spits_then_recaptures_block_like_java_1_21_5() {
+    use mchprs_blocks::blocks::RotateAmt;
+    use serde::Deserialize;
+    use sha2::{Digest, Sha256};
+    use std::collections::BTreeMap;
+
+    #[derive(Debug, Deserialize)]
+    struct Sample {
+        name: String,
+        properties: BTreeMap<String, String>,
+    }
+    #[derive(Deserialize)]
+    struct Case {
+        rotation: u32,
+        positions: Vec<[i32; 3]>,
+        trace: Vec<Vec<Sample>>,
+    }
+    #[derive(Deserialize)]
+    struct Reference {
+        version: String,
+        server_sha1: String,
+        schematic_sha256: String,
+        cases: Vec<Case>,
+    }
+
+    let schematic =
+        include_bytes!("../../../../../test_data/MCHPRS_REDSTONE_UPDATE_EDGECASE.schem");
+    let reference: Reference = serde_json::from_str(include_str!(
+        "../../../../../test_data/piston-repair/java-redstone-update-edgecase.json"
+    ))
+    .unwrap();
+    assert_eq!(reference.version, "1.21.5");
+    assert_eq!(
+        reference.server_sha1,
+        "e6ec2f64e6080b9b5d9b471b291c33cc7f509733"
+    );
+    assert_eq!(
+        reference.schematic_sha256,
+        format!("{:x}", Sha256::digest(schematic))
+    );
+    assert_eq!(
+        reference
+            .cases
+            .iter()
+            .map(|case| case.rotation)
+            .collect::<Vec<_>>(),
+        [0, 90, 180, 270]
+    );
+    let original = load_schematic(std::io::Cursor::new(schematic)).unwrap();
+    assert_eq!(
+        (original.size_x, original.size_y, original.size_z),
+        (7, 8, 7)
+    );
+
+    for case in reference.cases {
+        let rotate = |mut pos: BlockPos| {
+            for _ in 0..case.rotation / 90 {
+                pos = BlockPos::new(6 - pos.z, pos.y, pos.x);
+            }
+            pos
+        };
+        let absolute = |pos: BlockPos| {
+            let pos = rotate(pos);
+            BlockPos::new(40 + pos.x, 30 + pos.y, 40 + pos.z)
+        };
+        let mut cb = original.clone();
+        for y in 0..8 {
+            for z in 0..7 {
+                for x in 0..7 {
+                    let mut block =
+                        Block::from_id(original.data.get_entry((y * 49 + z * 7 + x) as usize));
+                    for _ in 0..case.rotation / 90 {
+                        block.rotate(RotateAmt::Rotate90);
+                    }
+                    let pos = rotate(BlockPos::new(x, y, z));
+                    cb.data
+                        .set_entry((pos.y * 49 + pos.z * 7 + pos.x) as usize, block.get_id());
+                }
+            }
+        }
+        cb.block_entities = original
+            .block_entities
+            .iter()
+            .map(|(&pos, entity)| (rotate(pos), entity.clone()))
+            .collect();
+
+        for stepping in ["game", "nano", "pico"] {
+            let mut world = empty_world();
+            paste_clipboard(
+                &mut world,
+                &cb,
+                BlockPos::new(40 + cb.offset_x, 30 + cb.offset_y, 40 + cb.offset_z),
+                false,
+            );
+            for _ in 0..8 {
+                world.tick_interpreted();
+            }
+            let trigger = absolute(BlockPos::new(6, 5, 6));
+            assert_eq!(world.get_block(trigger), Block::RedstoneBlock {});
+            crate::interaction::destroy(world.get_block(trigger), &mut world, trigger);
+
+            assert_eq!(case.trace.len(), 49);
+            for (tick, samples) in case.trace.iter().enumerate() {
+                assert_eq!(samples.len(), case.positions.len());
+                for (local, sample) in case.positions.iter().zip(samples) {
+                    // Captured positions and properties are already rotated.
+                    let pos = BlockPos::new(40 + local[0], 30 + local[1], 40 + local[2]);
+                    let block = world.get_block(pos);
+                    let context = format!(
+                        "tick {tick}, rotation {}, {stepping} stepping, {pos:?}",
+                        case.rotation
+                    );
+                    assert_eq!(block.get_name(), sample.name, "{context}");
+                    for (key, value) in &sample.properties {
+                        assert_eq!(
+                            block.property(key),
+                            Some(value.as_str()),
+                            "{context}: {key}"
+                        );
+                    }
+                }
+                // This release is expected, not a wire-update failure. Keep the
+                // actual payload cells in the check so base motion alone cannot
+                // hide a permanently lost block or a suppressed vanilla spit.
+                let front = absolute(BlockPos::new(2, 3, 2));
+                let ahead = absolute(BlockPos::new(2, 2, 2));
+                match tick {
+                    5 => {
+                        assert_eq!(world.get_block(front), Block::Air);
+                        assert_eq!(world.get_block(ahead), Block::RedstoneBlock {});
+                    }
+                    9 => {
+                        assert_eq!(world.get_block(ahead), Block::Air);
+                        assert!(
+                            matches!(world.get_block_entity(front), Some(BlockEntity::MovingPiston(entity)) if !entity.extending && !entity.source && entity.block_state == Block::RedstoneBlock {}.get_id())
+                        );
+                    }
+                    11 => assert_eq!(world.get_block(front), Block::RedstoneBlock {}),
+                    _ => {}
+                }
+                if tick + 1 == case.trace.len() {
+                    break;
+                }
+                let target_tick = world.piston_state().logical_tick + 1;
+                for _ in 0..256 {
+                    match stepping {
+                        "game" => world.tick_interpreted(),
+                        "nano" => world.nanotick_advance(1),
+                        "pico" => world.picotick_advance(1),
+                        _ => unreachable!(),
+                    }
+                    if world.piston_state().logical_tick == target_tick
+                        && world.piston_state().phase == mchprs_world::AdvancePhase::BetweenTicks
+                    {
+                        break;
+                    }
+                }
+                assert_eq!(world.piston_state().logical_tick, target_tick);
+                assert_eq!(
+                    world.piston_state().phase,
+                    mchprs_world::AdvancePhase::BetweenTicks
+                );
+            }
+        }
+    }
+}
+
+#[test]
 fn containers_cannot_be_pushed_or_pulled_in_any_state() {
     let mut world = empty_world();
     let pos = base();

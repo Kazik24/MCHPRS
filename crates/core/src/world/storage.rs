@@ -706,7 +706,7 @@ impl Chunk {
     }
 
     pub fn load(x: i32, z: i32, chunk_data: ChunkData<PLOT_SECTIONS>) -> Chunk {
-        Chunk {
+        let mut chunk = Chunk {
             x,
             z,
             instance: CHUNK_INSTANCE.fetch_add(1, Ordering::Relaxed),
@@ -718,7 +718,35 @@ impl Chunk {
                 .map_err(|_| ())
                 .unwrap(),
             block_entities: chunk_data.block_entities,
+        };
+        // Older saves can have sign blocks without entities. These signs need
+        // an entry in the initial chunk packet even when their text is empty.
+        for (section_y, section) in chunk.sections.iter().enumerate() {
+            if section.block_count == 0
+                || (section.buffer.use_palette
+                    && !section
+                        .buffer
+                        .palette
+                        .iter()
+                        .any(|&id| Block::from_id(id).is_sign()))
+            {
+                continue;
+            }
+            for index in 0..4096 {
+                if Block::from_id(section.buffer.get_entry(index)).is_sign() {
+                    let pos = BlockPos::new(
+                        (index & 15) as i32,
+                        (section_y * 16 + (index >> 8)) as i32,
+                        ((index >> 4) & 15) as i32,
+                    );
+                    chunk
+                        .block_entities
+                        .entry(pos)
+                        .or_insert_with(|| BlockEntity::Sign(Default::default()));
+                }
+            }
         }
+        chunk
     }
 
     pub fn compress(&mut self) {
@@ -761,6 +789,103 @@ impl Chunk {
 #[cfg(test)]
 mod heightmap_tests {
     use super::*;
+    #[test]
+    fn loading_repairs_missing_sign_entities_in_join_snapshots() {
+        let mut chunk = Chunk::empty(-2, 3);
+        let positions = [BlockPos::new(15, 20, 14), BlockPos::new(1, 255, 2)];
+        for (name, pos) in ["oak_sign", "cherry_wall_sign"].into_iter().zip(positions) {
+            chunk.set_block(
+                pos.x as u32,
+                pos.y as u32,
+                pos.z as u32,
+                Block::from_name(name).unwrap().get_id(),
+            );
+        }
+        // Older plots and block-only schematics can contain signs without entities.
+        let loaded = Chunk::load(-2, 3, chunk.save());
+        for fast in [false, true] {
+            let data = loaded.client_data(fast);
+            assert_eq!(data.block_entities.len(), positions.len());
+            for pos in positions {
+                let entity = data
+                    .block_entities
+                    .iter()
+                    .find(|entity| {
+                        entity.x == pos.x as i8
+                            && entity.y == pos.y as i16
+                            && entity.z == pos.z as i8
+                    })
+                    .unwrap();
+                assert_eq!(
+                    entity.ty,
+                    mchprs_blocks::generated::block_entity_types::SIGN
+                );
+                assert!(entity.data.get("front_text").is_some());
+                assert!(entity.data.get("back_text").is_some());
+            }
+        }
+    }
+
+    #[test]
+    fn sign_text_and_styles_survive_save_load_and_join_snapshots() {
+        use mchprs_blocks::block_entities::SignBlockEntity;
+        let mut chunk = Chunk::empty(2, -3);
+        let pos = BlockPos::new(15, 20, 14);
+        chunk.set_block(
+            15,
+            20,
+            14,
+            Block::from_name("oak_wall_sign").unwrap().get_id(),
+        );
+        let entity = BlockEntity::Sign(Box::new(SignBlockEntity {
+            rows: std::array::from_fn(|_| r#"{"text":"front","bold":true}"#.into()),
+            back_rows: std::array::from_fn(|_| r#""back""#.into()),
+            front_color: "red".into(),
+            back_color: "blue".into(),
+            front_glow: true,
+            waxed: true,
+            ..Default::default()
+        }));
+        chunk.set_block_entity(pos, entity.clone());
+        let loaded = Chunk::load(2, -3, chunk.save());
+        assert_eq!(
+            loaded
+                .get_block_entity(pos)
+                .unwrap()
+                .to_nbt(false)
+                .unwrap()
+                .content,
+            entity.to_nbt(false).unwrap().content
+        );
+        for fast in [false, true] {
+            let data = loaded.client_data(fast);
+            assert_eq!(data.block_entities.len(), 1);
+            let nbt::Value::Compound(front) =
+                data.block_entities[0].data.get("front_text").unwrap()
+            else {
+                panic!()
+            };
+            assert_eq!(front["color"], nbt::Value::String("red".into()));
+            assert_eq!(front["has_glowing_text"], nbt::Value::Byte(1));
+            let nbt::Value::List(messages) = &front["messages"] else {
+                panic!()
+            };
+            assert_eq!(messages.len(), 4);
+            let nbt::Value::Compound(line) = &messages[0] else {
+                panic!()
+            };
+            assert_eq!(line["text"], nbt::Value::String("front".into()));
+            assert_eq!(line["bold"], nbt::Value::Byte(1));
+            let nbt::Value::Compound(back) = data.block_entities[0].data.get("back_text").unwrap()
+            else {
+                panic!()
+            };
+            assert_eq!(
+                back["messages"],
+                nbt::Value::List(vec![nbt::Value::String("back".into()); 4])
+            );
+        }
+    }
     #[test]
     fn client_snapshots_include_pending_changes_and_project_air_height() {
         let mut chunk = Chunk::empty(0, 0);

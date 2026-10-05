@@ -86,10 +86,12 @@ Unloaded plots use saved data without starting simulation. Snapshot caches are
 bounded, and reading neighboring saves does not migrate or rewrite them.
 
 Right-click with a compass in either hand to teleport onto the block you are
-pointing at, up to 256 blocks away within the current plot. The compass centers
+pointing at, up to 1,024 blocks away within the current plot. The compass centers
 you on top of the block and preserves your view direction. Teleportation requires
-space for your full standing body; a miss or blocked destination leaves you in
-place. Collision checks are conservative for blocks with complex shapes.
+space for your full standing body. If the spot above the target is blocked, it
+searches nearby surfaces along the last eight blocks of the sight line and a few
+blocks above the hit. A miss or lack of a safe surface leaves you in place.
+Collision checks are conservative for blocks with complex shapes.
 
 For shared public chat between Paper RedstoneFun and MROWW, see
 [the network chat setup](docs/NETWORK_CHAT.md). The Velocity and Paper plugins
