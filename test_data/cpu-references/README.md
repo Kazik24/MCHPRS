@@ -143,6 +143,12 @@ Samples vary (PM1 88.915–97.442 seconds, ANPU 6.179–6.534 seconds), so the m
 describe these runs rather than a guarantee for other machines or CPU workloads.
 All 188 ordinary workspace tests also passed with the final runtime changes.
 
+Later client-update work reuses the existing render settings and moves visual
+encoding/compression and writes to an ordered background sender. Its diagnostics
+and separate validation are described in [client-updates.md](client-updates.md).
+The CPU timings above were recorded before that client-path change and measure
+interpreter throughput without connected clients.
+
 ## Capture deliberately
 
 The capture tool refuses to replace an existing CPU JSON file. Use a new output

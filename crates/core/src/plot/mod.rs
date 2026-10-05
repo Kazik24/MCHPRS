@@ -103,6 +103,7 @@ pub struct Plot {
     owner: Option<u128>,
     async_rt: Runtime, //todo use one runtime for all plots since it's heavy object used just for some small requests
     scoreboard: Scoreboard,
+    last_sidebar_update: Instant,
 }
 
 pub struct PlotWorld {
@@ -706,6 +707,32 @@ impl Plot {
         )
     }
 
+    fn refresh_sidebar(&mut self, force: bool) {
+        if self.players.is_empty()
+            || (!force && self.last_sidebar_update.elapsed() < Duration::from_secs(1))
+        {
+            return;
+        }
+
+        self.last_sidebar_update = Instant::now();
+        let actual_tps = if self.tps == Tps::Limited(0) {
+            Some(0.0)
+        } else {
+            self.timings.generate_report().map(|report| report.ten_s)
+        };
+        let visual_update_rate = (self.world_send_rate.0 != 0).then(|| self.effective_send_rate());
+        self.scoreboard.update_plot_metrics(
+            &self.players,
+            self.tps,
+            actual_tps,
+            self.world.history.enabled(),
+            self.world.history.len(),
+            self.world.history.capacity(),
+            self.world.history.memory_bytes(),
+            visual_update_rate,
+        );
+    }
+
     fn update_render_mode(&mut self) {
         let fast = visuals::static_pistons(
             self.piston_animation,
@@ -933,6 +960,7 @@ impl Plot {
             .push(PlayerPacketSender::new(&player.client));
         self.scoreboard.add_player(&player);
         self.players.push(player);
+        self.refresh_sidebar(true);
         self.update_view_pos_for_player(self.players.len() - 1, true);
     }
 
@@ -1442,6 +1470,8 @@ impl Plot {
             redstone_tools::selection::update(player);
         }
 
+        self.refresh_sidebar(false);
+
         for command in self.world.command_messages.drain(..) {
             self.message_sender
                 .send(Message::CommandChat(command))
@@ -1551,6 +1581,7 @@ impl Plot {
             owner: database::get_plot_owner(x, z).map(|s| s.parse::<HyphenatedUUID>().unwrap().0),
             async_rt: Plot::create_async_rt(),
             scoreboard: Default::default(),
+            last_sidebar_update: Instant::now(),
             world,
         }
     }

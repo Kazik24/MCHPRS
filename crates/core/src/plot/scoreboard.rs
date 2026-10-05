@@ -5,6 +5,9 @@ use crate::redpiler::CompilerOptions;
 use mchprs_network::packets::clientbound::{
     CDisplayScoreboard, CScoreboardObjective, CUpdateScore, ClientBoundPacket,
 };
+use mchprs_save_data::plot_data::Tps;
+
+const OBJECTIVE_NAME: &str = "redpiler_status";
 
 #[derive(PartialEq, Eq, Default, Clone, Copy)]
 pub enum RedpilerState {
@@ -17,71 +20,153 @@ pub enum RedpilerState {
 impl RedpilerState {
     fn to_str(self) -> &'static str {
         match self {
-            RedpilerState::Stopped => "§d§lStopped",
-            RedpilerState::Compiling => "§e§lCompiling",
-            RedpilerState::Running => "§a§lRunning",
+            RedpilerState::Stopped => "Engine: Interpreter",
+            RedpilerState::Compiling => "Engine: Compiling...",
+            RedpilerState::Running => "Engine: Redpiler ON",
         }
     }
+}
+
+fn compact_number(value: f64) -> String {
+    if !value.is_finite() {
+        return "-".to_owned();
+    }
+    let value = value.max(0.0);
+    if value < 10_000.0 {
+        let rounded = value.round();
+        if rounded < 10_000.0 {
+            return format!("{rounded:.0}");
+        }
+    }
+    if value < 1_000_000.0 {
+        let thousands = (value / 1_000.0).round();
+        if thousands < 1_000.0 {
+            return format!("{thousands:.0}k");
+        }
+    }
+    if value < 1_000_000_000.0 {
+        let millions = value / 1_000_000.0;
+        if millions < 10.0 {
+            let tenths = (millions * 10.0).round() / 10.0;
+            if tenths < 10.0 {
+                return format!("{tenths:.1}m");
+            }
+        }
+        let rounded = millions.round();
+        if rounded < 1_000.0 {
+            return format!("{rounded:.0}m");
+        }
+    }
+    format!("{:.1}b", value / 1_000_000_000.0)
+}
+
+fn compact_memory(bytes: usize) -> String {
+    const UNITS: [&str; 7] = ["B", "KiB", "MiB", "GiB", "TiB", "PiB", "EiB"];
+    let mut value = bytes as f64;
+    let mut unit = 0;
+    while value >= 1024.0 && unit + 1 < UNITS.len() {
+        value /= 1024.0;
+        unit += 1;
+    }
+    if unit == 0 {
+        format!("{bytes}B")
+    } else {
+        format!("{value:.1}{}", UNITS[unit])
+    }
+}
+
+#[derive(Default)]
+struct PlotMetrics {
+    tps: String,
+    history: String,
+    history_ticks: String,
+    history_memory: String,
+    visual_updates: String,
 }
 
 #[derive(Default)]
 pub struct Scoreboard {
     current_state: Vec<String>,
+    redpiler_state: RedpilerState,
+    compiler_flags: Vec<String>,
+    metrics: PlotMetrics,
 }
 
 impl Scoreboard {
-    fn make_update_packet(&self, line: usize) -> CUpdateScore {
+    fn make_update_packet(entity_name: &str, value: u32) -> CUpdateScore {
         CUpdateScore {
-            entity_name: self.current_state[line].clone(),
+            entity_name: entity_name.to_owned(),
             action: 0,
-            objective_name: "redpiler_status".to_string(),
-            value: (self.current_state.len() - line) as u32,
+            objective_name: OBJECTIVE_NAME.to_owned(),
+            value,
         }
     }
 
-    fn make_removal_packet(&self, line: usize) -> CUpdateScore {
+    fn make_removal_packet(entity_name: &str) -> CUpdateScore {
         CUpdateScore {
-            entity_name: self.current_state[line].clone(),
+            entity_name: entity_name.to_owned(),
             action: 1,
-            objective_name: "redpiler_status".to_string(),
+            objective_name: OBJECTIVE_NAME.to_owned(),
             value: 0,
         }
     }
 
+    fn lines(&self) -> Vec<String> {
+        let mut lines = vec![
+            self.redpiler_state.to_str().to_owned(),
+            self.metrics.tps.clone(),
+            self.metrics.history.clone(),
+            self.metrics.history_ticks.clone(),
+            self.metrics.history_memory.clone(),
+            self.metrics.visual_updates.clone(),
+        ];
+        if self.redpiler_state == RedpilerState::Running && !self.compiler_flags.is_empty() {
+            lines.extend(
+                self.compiler_flags
+                    .iter()
+                    .map(|flag| format!("Flag: {flag}")),
+            );
+        }
+        lines
+    }
+
     fn set_lines(&mut self, players: &[Player], lines: Vec<String>) {
-        for line in 0..self.current_state.len() {
-            let removal_packet = self.make_removal_packet(line).encode();
-            players.iter().for_each(|p| p.send_packet(&removal_packet));
+        debug_assert!(lines.iter().all(|line| line.is_ascii() && line.len() <= 20));
+        if lines == self.current_state {
+            return;
         }
 
-        self.current_state = lines;
+        let old_lines = std::mem::replace(&mut self.current_state, lines);
+        for old_line in &old_lines {
+            if !self.current_state.iter().any(|line| line == old_line) {
+                let packet = Self::make_removal_packet(old_line).encode();
+                players.iter().for_each(|player| player.send_packet(&packet));
+            }
+        }
 
-        for line in 0..self.current_state.len() {
-            let update_packet = self.make_update_packet(line).encode();
-            players.iter().for_each(|p| p.send_packet(&update_packet));
+        for (index, line) in self.current_state.iter().enumerate() {
+            let value = (self.current_state.len() - index) as u32;
+            let old_value = old_lines
+                .iter()
+                .position(|old_line| old_line == line)
+                .map(|old_index| (old_lines.len() - old_index) as u32);
+            if old_value != Some(value) {
+                let packet = Self::make_update_packet(line, value).encode();
+                players.iter().for_each(|player| player.send_packet(&packet));
+            }
         }
     }
 
-    fn set_line(&mut self, players: &[Player], line: usize, text: String) {
-        if line == self.current_state.len() {
-            self.current_state.push(text);
-        } else {
-            let removal_packet = self.make_removal_packet(line).encode();
-            players.iter().for_each(|p| p.send_packet(&removal_packet));
-
-            self.current_state[line] = text;
-        }
-
-        let update_packet = self.make_update_packet(line).encode();
-        players.iter().for_each(|p| p.send_packet(&update_packet));
+    fn refresh_lines(&mut self, players: &[Player]) {
+        self.set_lines(players, self.lines());
     }
 
     pub fn add_player(&self, player: &Player) {
         player.send_packet(
             &CScoreboardObjective {
-                objective_name: "redpiler_status".into(),
+                objective_name: OBJECTIVE_NAME.into(),
                 mode: 0,
-                objective_value: ChatComponentBuilder::new(messages::REDPILER_SIDEBAR_TITLE.into())
+                objective_value: ChatComponentBuilder::new(messages::PLOT_SIDEBAR_TITLE.into())
                     .color_code(ColorCode::Red)
                     .finish()
                     .encode_json(),
@@ -92,12 +177,15 @@ impl Scoreboard {
         player.send_packet(
             &CDisplayScoreboard {
                 position: 1,
-                score_name: "redpiler_status".into(),
+                score_name: OBJECTIVE_NAME.into(),
             }
             .encode(),
         );
-        for i in 0..self.current_state.len() {
-            player.send_packet(&self.make_update_packet(i).encode());
+        for (index, line) in self.current_state.iter().enumerate() {
+            player.send_packet(
+                &Self::make_update_packet(line, (self.current_state.len() - index) as u32)
+                    .encode(),
+            );
         }
     }
 
@@ -106,7 +194,7 @@ impl Scoreboard {
         // so the destination plot can create it again, even on a same-plot /tp.
         player.send_packet(
             &CScoreboardObjective {
-                objective_name: "redpiler_status".into(),
+                objective_name: OBJECTIVE_NAME.into(),
                 mode: 1,
                 objective_value: String::new(),
                 ty: 0,
@@ -116,30 +204,74 @@ impl Scoreboard {
     }
 
     pub fn set_redpiler_state(&mut self, players: &[Player], state: RedpilerState) {
-        self.set_line(players, 0, state.to_str().to_string());
+        self.redpiler_state = state;
+        if state != RedpilerState::Running {
+            self.compiler_flags.clear();
+        }
+        self.refresh_lines(players);
     }
 
     pub fn set_redpiler_options(&mut self, players: &[Player], options: &CompilerOptions) {
-        let mut new_lines = vec![self.current_state[0].clone()];
-
-        let mut flags = Vec::new();
+        self.compiler_flags.clear();
         if options.optimize {
-            flags.push("§b- optimize");
+            self.compiler_flags.push("optimize".to_owned());
         }
         if options.export {
-            flags.push("§b- export");
+            self.compiler_flags.push("export".to_owned());
         }
         if options.io_only {
-            flags.push("§b- io only");
+            self.compiler_flags.push("io-only".to_owned());
         }
-        if options.io_only {
-            flags.push("§b- update");
+        if options.update {
+            self.compiler_flags.push("update".to_owned());
         }
+        if options.export_dot_graph {
+            self.compiler_flags.push("export-dot".to_owned());
+        }
+        self.refresh_lines(players);
+    }
 
-        if !flags.is_empty() {
-            new_lines.push("§7Flags:".to_string());
-            new_lines.extend(flags.iter().map(|s| s.to_string()));
-        }
-        self.set_lines(players, new_lines);
+    pub fn update_plot_metrics(
+        &mut self,
+        players: &[Player],
+        target_tps: Tps,
+        actual_tps: Option<f32>,
+        history_enabled: bool,
+        history_ticks: usize,
+        history_capacity: usize,
+        history_memory_bytes: usize,
+        visual_update_rate: Option<u32>,
+    ) {
+        let actual = match target_tps {
+            Tps::Limited(0) => "0".to_owned(),
+            _ => actual_tps
+                .map(|tps| compact_number(f64::from(tps)))
+                .unwrap_or_else(|| "-".to_owned()),
+        };
+        let target = match target_tps {
+            Tps::Limited(rate) => compact_number(f64::from(rate)),
+            Tps::Unlimited => "oo".to_owned(),
+        };
+        self.metrics.tps = format!("TPS: {actual}/{target}");
+        self.metrics.history = if history_enabled {
+            "History: ON".to_owned()
+        } else {
+            "History: OFF".to_owned()
+        };
+        self.metrics.history_ticks = if history_enabled {
+            format!(
+                "Ticks: {}/{}",
+                compact_number(history_ticks as f64),
+                compact_number(history_capacity as f64)
+            )
+        } else {
+            "Ticks: OFF".to_owned()
+        };
+        self.metrics.history_memory = format!("Hist mem: {}", compact_memory(history_memory_bytes));
+        self.metrics.visual_updates = match visual_update_rate {
+            Some(rate) => format!("Visual: {rate}hz"),
+            None => "Visual: OFF".to_owned(),
+        };
+        self.refresh_lines(players);
     }
 }

@@ -173,7 +173,7 @@ catalog! {
         REDPILER_AUTO_ENABLED = "Automatic Redpiler compilation enabled—I'll handle that trick for you.";
         REDPILER_INVALID_ARGUMENT = "/redpiler hasn't learned that trick. Check /help redpiler.";
         REDPILER_OPTIMIZATION_HIGHLY_UNSTABLE_CAN_BREAK = "Redpiler optimization is highly unstable and can break builds. Use with caution!";
-        REDPILER_SIDEBAR_TITLE = "Redpiler watch";
+        PLOT_SIDEBAR_TITLE = "Plot monitor";
         RESULT_ACTION_HOVER = "Boop to follow this trail.";
         ROTATE_AMOUNT_MUST_MULTIPLE = "These rotation paws turn in 90-degree steps. Choose a multiple of 90.";
         RTPS_SET = "The circuit's new tick pace is set. Awoo!";
