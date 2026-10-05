@@ -263,8 +263,6 @@ fn retract(
         // Java finalizes an in-flight payload here even for a normal retract event.
         finish(world, ahead, true);
     } else if piston.sticky && action == PistonAction::Retract {
-        // For this timing repair, the front payload is assumed to stick.
-        // Slime/honey side attachments and push reactions are deliberately deferred.
         let block = world.get_block(ahead);
         if block != Block::Air
             && !matches!(block, Block::MovingPiston { .. })
