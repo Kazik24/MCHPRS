@@ -1,0 +1,3 @@
+# Enable only after Paper is privately reachable through authenticated modern forwarding.
+# Until enabled, this plugin leaves Paper's chat/join/quit handling untouched.
+proxy-mode: false

@@ -6,6 +6,7 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+mchprs_proc_macros = { path = "../proc_macros" }
 hematite-nbt = "0.5"
 flate2 = "1"
 serde = "1"

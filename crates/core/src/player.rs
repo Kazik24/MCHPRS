@@ -164,6 +164,7 @@ pub struct Player {
     next_permissions_refresh: Instant,
     chat_window: Instant,
     chat_count: u32,
+    pub(crate) proxy_chat: crate::proxy_chat::Session,
     pub pos: PlayerPos,
     /// The last X chunk the player was in. This is used for updated view position.
     pub last_chunk_x: i32,
@@ -261,6 +262,7 @@ impl Player {
             next_permissions_refresh: Instant::now() + std::time::Duration::from_secs(25),
             chat_window: Instant::now(),
             chat_count: 0,
+            proxy_chat: Default::default(),
             pos: PlayerPos {
                 x: player_data.position[0],
                 y: player_data.position[1],

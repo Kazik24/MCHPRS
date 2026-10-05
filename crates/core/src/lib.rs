@@ -12,6 +12,7 @@ mod permissions;
 mod player;
 pub mod plot;
 mod profile;
+mod proxy_chat;
 pub mod redpiler;
 pub mod redstone;
 pub mod server;

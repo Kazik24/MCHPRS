@@ -95,6 +95,7 @@ gen_config! {
     bind_address: String = "0.0.0.0:25565".to_string(),
     motd: String = "§4§lmroww.redstoneFUN.pl §r§71.21.5\n§cMinecraft Redstone o Wysokiej Wydajności".to_string(),
     chat_format: String = "<{username}> {message}".to_string(),
+    proxy_chat: bool = false,
     max_players: i64 = 99999,
     view_distance: i64 = 8,
     bungeecord: bool = false,

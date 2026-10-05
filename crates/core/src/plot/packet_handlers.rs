@@ -507,11 +507,15 @@ impl ServerBoundPacketHandler for Plot {
             }
             self.players[player].command_queue.push(message);
         } else {
-            let player = &self.players[player];
+            let player = &mut self.players[player];
             if crate::permissions::dedicated_permissions()
                 && !player.has_permission("mchprs.access.chat")
             {
                 player.send_no_permission_message();
+                return;
+            }
+            if crate::proxy_chat::enabled() {
+                crate::proxy_chat::send(player, &message);
                 return;
             }
             let broadcast_message =
@@ -540,6 +544,11 @@ impl ServerBoundPacketHandler for Plot {
     }
 
     fn handle_plugin_message(&mut self, plugin_message: SPluginMessage, player: usize) {
+        if plugin_message.channel == crate::proxy_chat::CHANNEL {
+            let player = &mut self.players[player];
+            player.proxy_chat.receive(&plugin_message.data, &player.client);
+            return;
+        }
         if plugin_message.channel == "worldedit:cui" {
             self.players[player].worldedit_send_cui("s|cuboid");
         }

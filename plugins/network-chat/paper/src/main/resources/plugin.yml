@@ -1,0 +1,10 @@
+name: RedstoneFunChatBridge
+version: '1.0.0'
+main: pl.redstonefun.chat.paper.ChatBridge
+api-version: '1.21'
+description: Forwards accepted public chat to the RedstoneFun Velocity proxy
+softdepend: [Essentials, EssentialsChat, RFCORE, rfapi]
+permissions:
+  redstonefun.chat.send:
+    description: Submit public chat to Velocity (backend mutes still apply)
+    default: true

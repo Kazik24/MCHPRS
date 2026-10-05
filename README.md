@@ -66,6 +66,7 @@ The folowing options are available at the toplevel (under no header):
 | `bind_address` | Bind address and port | `0.0.0.0:25565` |
 | `motd` | Message of the day | `"§4§lmroww.redstoneFUN.pl §r§71.21.5\n§cMinecraft Redstone o Wysokiej Wydajności"` |
 | `chat_format` | How to format chat message interpolating `username` and `message` with curly braces | `<{username}> {message}` |
+| `proxy_chat` | Submit public chat to Velocity; requires authenticated modern forwarding | `false` |
 | `max_players` | Maximum number of simultaneous players | `99999` |
 | `view_distance` | Maximal distance (in chunks) between players and loaded chunks | `8` |
 | `bungeecord` | Enable compatibility with [BungeeCord](https://github.com/SpigotMC/BungeeCord) | `false` |
@@ -75,6 +76,10 @@ The folowing options are available at the toplevel (under no header):
 | `auto_redpiler` | Use redpiler automatically | true |
 
 To change the plot size edit the constants defined in [plot/mod.rs](./crates/core/src/plot/mod.rs).
+
+For shared public chat between Paper RedstoneFun and MROWW, see
+[the network chat setup](docs/NETWORK_CHAT.md). The Velocity and Paper plugins
+build with Maven or standard Docker Compose; MROWW includes a native adapter.
 
 ### LuckPerms
 

@@ -1,4 +1,9 @@
 # syntax=docker/dockerfile:1
+FROM maven:3.9.11-eclipse-temurin-21@sha256:6fdc855a6ed81d288ca7ca37ac6ff5e9308b612485c0801d70b25a858c83d237 AS chat-build
+WORKDIR /build
+COPY plugins/network-chat/ ./
+RUN --mount=type=cache,target=/root/.m2 mvn -B -ntp -DskipTests package
+
 FROM itzg/mc-proxy:java25@sha256:7b7ff61d2a60ac34601fcafd4a11b9063b072643af7270ae2be5bd3766a53bb3
 
 # Pin the official release in the image; restarts need no JAR download.
@@ -12,3 +17,11 @@ RUN chmod 0755 /opt/velocity
 
 # The standard image initializer syncs this into /server on every start.
 COPY docker/velocity.toml /config/velocity.toml
+COPY --from=chat-build /build/velocity/target/redstonefun-chat-velocity.jar /plugins/redstonefun-chat-velocity.jar
+
+# LuckPerms supplies authenticated rank membership and network.chat.* permissions.
+# Configure /srv/mchprs/velocity/plugins/luckperms/config.yml to use the shared DB.
+ADD --checksum=sha256:87c615867be29167aebbe0b194bc4f11f8f7865a6c43b6586c7698fb826d8dd2 \
+    --chmod=0644 \
+    https://download.luckperms.net/1674/velocity/LuckPerms-Velocity-5.5.87.jar \
+    /plugins/LuckPerms-Velocity-5.5.87.jar

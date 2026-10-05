@@ -2,6 +2,30 @@ use proc_macro::TokenStream;
 use quote::quote;
 use syn::{parse_macro_input, Data, DeriveInput, Error, Ident, Type};
 
+mod minecraft_data;
+
+/// Expand the pinned Minecraft 1.21.5 block/item tables and legacy ID mappings.
+#[proc_macro]
+pub fn minecraft_blocks(input: TokenStream) -> TokenStream {
+    parse_macro_input!(input as syn::parse::Nothing);
+    minecraft_data::blocks()
+        .unwrap_or_else(|message| {
+            Error::new(proc_macro2::Span::call_site(), message).to_compile_error()
+        })
+        .into()
+}
+
+/// Expand the pinned Minecraft 1.21.5 network registry constants.
+#[proc_macro]
+pub fn minecraft_protocol(input: TokenStream) -> TokenStream {
+    parse_macro_input!(input as syn::parse::Nothing);
+    minecraft_data::protocol()
+        .unwrap_or_else(|message| {
+            Error::new(proc_macro2::Span::call_site(), message).to_compile_error()
+        })
+        .into()
+}
+
 #[proc_macro_derive(BlockProperty)]
 pub fn derive_block_property(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DeriveInput);

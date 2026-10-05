@@ -12,4 +12,5 @@ target/
 /run/
 /test_proxy/
 /Config.toml
+/plugins/
 docker-compose*.yml

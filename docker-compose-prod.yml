@@ -1,4 +1,5 @@
 services:
+
   mchprs:
     image: mchprs-mchprs:velocity
     build:
@@ -35,6 +36,8 @@ services:
       CUSTOM_FAMILY: velocity
       BUNGEE_JAR_FILE: /opt/velocity/velocity.jar
       MEMORY: 512m
+      # Docker networks on this host have no IPv6 route; keep authentication on IPv4.
+      JVM_OPTS: "-Djava.net.preferIPv4Stack=true"
       ENABLE_RCON: "false"
       SERVER_PORT: "25565"
       SYNC_SKIP_NEWER_IN_DESTINATION: "false"
@@ -45,6 +48,7 @@ services:
     networks:
       - default
       - backend
+      - redstonefun
     volumes:
       - /srv/mchprs/velocity:/server
     healthcheck:

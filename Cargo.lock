@@ -1595,6 +1595,7 @@ dependencies = [
  "byteorder",
  "flate2",
  "hematite-nbt",
+ "mchprs_proc_macros",
  "serde",
  "serde_json",
  "tracing",
@@ -1604,7 +1605,10 @@ dependencies = [
 name = "mchprs_proc_macros"
 version = "0.1.0"
 dependencies = [
+ "proc-macro2",
  "quote",
+ "serde",
+ "serde_json",
  "syn 1.0.109",
 ]
 
