@@ -900,7 +900,7 @@ impl Plot {
         let actual_tps = if self.tps == Tps::Limited(0) {
             Some(0.0)
         } else {
-            self.timings.generate_report().map(|report| report.ten_s)
+            self.timings.generate_report().map(|report| report.two_s)
         };
         let visual_update_rate = (self.world_send_rate.0 != 0).then(|| self.effective_send_rate());
         self.scoreboard.update_plot_metrics(

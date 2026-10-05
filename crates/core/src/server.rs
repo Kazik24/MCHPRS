@@ -560,6 +560,10 @@ impl MinecraftServer {
             Message::PlayerLeft(uuid) => {
                 if let Some((_, player)) = self.online_players.remove_entry(&uuid) {
                     info!("{} left the game", player.username);
+                    self.broadcaster.broadcast(BroadcastMessage::Chat(
+                        0,
+                        ChatComponent::player_left(&player.username),
+                    ));
                 }
                 self.broadcaster
                     .broadcast(BroadcastMessage::PlayerLeft(uuid));

@@ -7,6 +7,7 @@ use crate::world::storage::PalettedBitBuffer;
 use anyhow::{bail, Context, Result};
 use mchprs_blocks::block_entities::BlockEntity;
 use mchprs_blocks::blocks::Block;
+use mchprs_blocks::items::Item;
 use mchprs_blocks::BlockPos;
 use once_cell::sync::Lazy;
 use regex::Regex;
@@ -193,7 +194,81 @@ impl<'a> Schema<'a> {
         })
     }
 }
-pub fn load_schematic(mut file: impl Read) -> Result<WorldEditClipboard> {
+#[derive(Debug, Default, PartialEq, Eq)]
+pub struct SchematicImportWarnings {
+    pub simplified_stacks: usize,
+    pub removed_stacks: usize,
+}
+
+impl SchematicImportWarnings {
+    pub fn notification(&self) -> Option<String> {
+        (self.simplified_stacks > 0 || self.removed_stacks > 0).then(|| {
+            format!(
+                "Warning: schematic contains unsupported items/components. Simplified {} item stacks to plain items; removed {} unsupported item stacks. Custom data was discarded and vanilla stack limits applied.",
+                self.simplified_stacks, self.removed_stacks
+            )
+        })
+    }
+}
+
+fn simplify_inventory(entity: &mut Compound, warnings: &mut SchematicImportWarnings) {
+    use nbt::Value;
+    let Some(Value::List(items)) = entity.get_mut("Items") else {
+        return;
+    };
+    items.retain_mut(|entry| {
+        let Value::Compound(item) = entry else {
+            return true; // Structural errors are still diagnosed by the entity decoder.
+        };
+        let vanilla = match item.get("Id").or_else(|| item.get("id")) {
+            Some(Value::String(name)) => {
+                let name = name.strip_prefix("minecraft:").unwrap_or(name);
+                (!name.contains(':'))
+                    .then(|| Item::from_name(name))
+                    .flatten()
+            }
+            _ => None,
+        };
+        let Some(vanilla) = vanilla.filter(|item| item.get_id() != 0) else {
+            warnings.removed_stacks += 1;
+            return false;
+        };
+        let mut simplified = false;
+        for key in ["components", "tag"] {
+            if let Some(value) = item.remove(key) {
+                simplified |= !matches!(value, Value::Compound(ref data) if data.is_empty());
+            }
+        }
+        let count_key = if item.contains_key("count") {
+            "count"
+        } else {
+            "Count"
+        };
+        if let Some(count) = item.get_mut(count_key) {
+            match count {
+                Value::Int(n) if *n > vanilla.max_stack_size() as i32 => {
+                    *n = vanilla.max_stack_size() as i32;
+                    simplified = true;
+                }
+                Value::Byte(n) if *n as i32 > vanilla.max_stack_size() as i32 => {
+                    *n = vanilla.max_stack_size() as i8;
+                    simplified = true;
+                }
+                _ => {}
+            }
+        }
+        warnings.simplified_stacks += usize::from(simplified);
+        true
+    });
+}
+
+pub fn load_schematic(file: impl Read) -> Result<WorldEditClipboard> {
+    load_schematic_with_warnings(file).map(|(clipboard, _)| clipboard)
+}
+
+pub fn load_schematic_with_warnings(
+    mut file: impl Read,
+) -> Result<(WorldEditClipboard, SchematicImportWarnings)> {
     let nbt = nbt::Blob::from_gzip_reader(&mut file).context("reading gzip schematic NBT")?;
     let schema = Schema::read(&nbt).context("schematic schema")?;
     tracing::debug!(
@@ -208,7 +283,7 @@ pub fn load_schematic(mut file: impl Read) -> Result<WorldEditClipboard> {
         )
     })
 }
-fn decode_schematic(schema: &Schema<'_>) -> Result<WorldEditClipboard> {
+fn decode_schematic(schema: &Schema<'_>) -> Result<(WorldEditClipboard, SchematicImportWarnings)> {
     use nbt::Value;
     let [size_x, size_y, size_z] = schema.dimensions;
     let entries = size_x
@@ -266,6 +341,7 @@ fn decode_schematic(schema: &Schema<'_>) -> Result<WorldEditClipboard> {
         bail!("block data: trailing bytes after {entries} entries");
     }
     let mut parsed_block_entities = FxHashMap::default();
+    let mut warnings = SchematicImportWarnings::default();
     let mut unsupported = std::collections::BTreeMap::<String, usize>::new();
     for (index, entry) in schema.entities.iter().enumerate() {
         let Value::Compound(envelope) = entry else {
@@ -295,6 +371,12 @@ fn decode_schematic(schema: &Schema<'_>) -> Result<WorldEditClipboard> {
         };
         entity.remove("Id");
         entity.insert("id".into(), Value::String(id.clone()));
+        if matches!(
+            id.as_str(),
+            "minecraft:barrel" | "minecraft:furnace" | "minecraft:hopper" | "minecraft:chest"
+        ) {
+            simplify_inventory(&mut entity, &mut warnings);
+        }
         if schema.data_version < 4325 {
             // Earlier versions stored JSON strings rather than NBT text components.
             for side in ["front_text", "back_text"] {
@@ -343,16 +425,22 @@ fn decode_schematic(schema: &Schema<'_>) -> Result<WorldEditClipboard> {
         );
     }
     let [offset_x, offset_y, offset_z] = schema.offset;
-    Ok(WorldEditClipboard {
-        size_x,
-        size_y,
-        size_z,
-        offset_x,
-        offset_y,
-        offset_z,
-        data,
-        block_entities: parsed_block_entities,
-    })
+    if let Some(message) = warnings.notification() {
+        tracing::warn!("{message}");
+    }
+    Ok((
+        WorldEditClipboard {
+            size_x,
+            size_y,
+            size_z,
+            offset_x,
+            offset_y,
+            offset_z,
+            data,
+            block_entities: parsed_block_entities,
+        },
+        warnings,
+    ))
 }
 
 pub fn save_schematic(file_name: &str, clipboard: &WorldEditClipboard) -> Result<()> {

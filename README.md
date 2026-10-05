@@ -119,7 +119,7 @@ Use `/help` for a quick start and topic list. `/help tps`, `/help we`,
 | Command | Alias | Description |
 | --- | --- |--- |
 | `/help [topic]` | None | Show the quick-start guide or a topic tutorial. |
-| `/tps [tps\|unlimited]` | `/rtps` | Set game ticks per second in the plot. `0` pauses; `20` is normal game speed and the default for new plots. There are two game ticks in a redstone tick. |
+| `/tps [tps\|unlimited]` | `/rtps` | Show TPS averages over 2 seconds, 10 seconds and 1 minute, or set game ticks per second in the plot. `0` pauses; `20` is normal game speed and the default for new plots. There are two game ticks in a redstone tick. |
 | `/adv [ticks]` | `/radv`, `/radvance` | Advances the plot by `[ticks]` game ticks. |
 | `/rhistory [on [ticks]\|off\|status\|limit [MiB]]` | None | Record interpreter history, keeping up to 100 ticks by default; recording stops and clears when the last player leaves the plot; show compressed/uncompressed sizes. Admins can change the shared memory limit (default 2 GiB). |
 | `/back [ticks]` | `/rback` | Rewind one or more recorded game ticks and pause the plot. Restores the entire plot, including later edits, and clears WorldEdit undo/redo. |

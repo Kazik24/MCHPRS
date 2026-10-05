@@ -11,7 +11,7 @@ use mchprs_blocks::items::{Item, ItemStack};
 use mchprs_blocks::{BlockFace, BlockFacing, BlockPos};
 use mchprs_network::packets::clientbound::*;
 use mchprs_network::packets::SlotData;
-use schematic::{load_schematic, save_schematic};
+use schematic::{load_schematic_with_warnings, save_schematic};
 use std::fs::File;
 use std::path::PathBuf;
 use std::time::Instant;
@@ -264,11 +264,14 @@ pub(super) fn execute_load(ctx: CommandExecuteContext<'_>) {
 
     let clipboard = super::schematic_paths::load_path(&library, file_name)
         .and_then(|path| File::open(path).map_err(anyhow::Error::from))
-        .and_then(load_schematic)
+        .and_then(load_schematic_with_warnings)
         .map_err(|e| e.context(format!("loading schematic ./schems/{file_name}")));
     match clipboard {
-        Ok(cb) => {
+        Ok((cb, warnings)) => {
             ctx.player.worldedit_clipboard = Some(cb);
+            if let Some(message) = warnings.notification() {
+                ctx.player.send_worldedit_message(&message);
+            }
             ctx.player
                 .send_worldedit_message(&messages::schematic_loaded(start_time.elapsed()));
         }

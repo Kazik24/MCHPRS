@@ -473,10 +473,9 @@ impl Plot {
                         self.players[player].send_chat_message(
                             0,
                             &ChatComponent::from_legacy_text(&messages::rtps_report(
+                                report.two_s,
                                 report.ten_s,
                                 report.one_m,
-                                report.five_m,
-                                report.fifteen_m,
                                 self.tps,
                             )),
                         );

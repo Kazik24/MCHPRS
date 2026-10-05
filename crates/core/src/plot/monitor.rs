@@ -7,6 +7,9 @@ use std::thread::JoinHandle;
 use std::time::Duration;
 use tracing::warn;
 
+const SAMPLES_PER_SECOND: usize = 2;
+const MAX_SAMPLES: usize = 60 * SAMPLES_PER_SECOND;
+
 #[derive(Default)]
 struct AtomicTps {
     tps: AtomicU32,
@@ -50,10 +53,9 @@ struct MonitorData {
 
 #[derive(Debug)]
 pub struct TimingsReport {
+    pub two_s: f32,
     pub ten_s: f32,
     pub one_m: f32,
-    pub five_m: f32,
-    pub fifteen_m: f32,
 }
 
 pub struct TimingsMonitor {
@@ -94,30 +96,20 @@ impl TimingsMonitor {
             return None;
         }
 
-        let mut ticks_10s = 0u64;
-        let mut ticks_1m = 0u64;
-        let mut ticks_5m = 0u64;
-        let mut ticks_15m = 0u64;
-        // TODO: https://github.com/rust-lang/rust-clippy/issues/8987
-        #[allow(clippy::significant_drop_in_scrutinee)]
-        for (i, ticks) in records.iter().enumerate() {
-            if i < 20 {
-                ticks_10s += *ticks as u64;
-            }
-            if i < 120 {
-                ticks_1m += *ticks as u64;
-            }
-            if i < 600 {
-                ticks_5m += *ticks as u64;
-            }
-            ticks_15m += *ticks as u64;
-        }
+        let average = |seconds: usize| {
+            let samples = records.len().min(seconds * SAMPLES_PER_SECOND);
+            let ticks: u64 = records
+                .iter()
+                .take(samples)
+                .map(|&ticks| u64::from(ticks))
+                .sum();
+            ticks as f32 / samples as f32 * SAMPLES_PER_SECOND as f32
+        };
 
         Some(TimingsReport {
-            ten_s: ticks_10s as f32 / records.len().min(20) as f32 * 2.0,
-            one_m: ticks_1m as f32 / records.len().min(120) as f32 * 2.0,
-            five_m: ticks_5m as f32 / records.len().min(600) as f32 * 2.0,
-            fifteen_m: ticks_15m as f32 / records.len() as f32 * 2.0,
+            two_s: average(2),
+            ten_s: average(10),
+            one_m: average(60),
         })
     }
 
@@ -150,7 +142,7 @@ impl TimingsMonitor {
 
             let mut behind_for = 0;
             loop {
-                thread::sleep(Duration::from_millis(500));
+                thread::sleep(Duration::from_secs(1) / SAMPLES_PER_SECOND as u32);
                 if !data.running.load(Ordering::Relaxed) {
                     return;
                 }
@@ -196,11 +188,9 @@ impl TimingsMonitor {
                     // );
                 }
 
-                // The timings record will only go back 15 minutes.
-                // This means that, with the 500ms interval, the timings record will
-                // have a max size of 1800 entries.
+                // Retain one minute at the 500 ms sample interval.
                 let mut timings_record = data.timings_record.lock().unwrap();
-                if timings_record.len() == 1800 {
+                if timings_record.len() == MAX_SAMPLES {
                     timings_record.pop_back();
                 }
                 timings_record.push_front(ticks_passed);
@@ -238,10 +228,10 @@ mod tests {
             .timings_record
             .lock()
             .unwrap()
-            .extend(std::iter::repeat_n(u32::MAX, 1800));
+            .extend(std::iter::repeat_n(u32::MAX, MAX_SAMPLES));
         let report = monitor.generate_report().unwrap();
-        assert!(report.fifteen_m.is_finite());
-        assert_eq!(report.fifteen_m, u32::MAX as f32 * 2.0);
+        assert!(report.one_m.is_finite());
+        assert_eq!(report.one_m, u32::MAX as f32 * 2.0);
         monitor.stop();
     }
 }

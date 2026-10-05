@@ -174,6 +174,10 @@ impl ChatComponent {
         Self::from_legacy_text(&format!("&8&l[&2&l+&8&l]&7 {username}"))
     }
 
+    pub fn player_left(username: &str) -> Vec<Self> {
+        Self::from_legacy_text(&format!("&8&l[&4&l-&8&l]&7 {username}"))
+    }
+
     pub fn from_legacy_text(message: &str) -> Vec<ChatComponent> {
         let mut components = Vec::new();
 

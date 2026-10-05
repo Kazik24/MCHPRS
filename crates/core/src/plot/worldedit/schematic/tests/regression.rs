@@ -7,7 +7,159 @@ use std::io::Cursor;
 const ADDER: &[u8] = include_bytes!("../../../../../../../test_data/ADDER_GWIEZDNY_TEST.schem");
 
 #[test]
-fn all_container_states_and_item_components_survive_schematic_round_trip() {
+fn supplied_minesweeper_loads_plain_items_and_reports_discarded_components() {
+    let (cb, warnings) = load_schematic_with_warnings(Cursor::new(include_bytes!(
+        "../../../../../../../test_data/Q2CK_minesweeper.schem"
+    )))
+    .unwrap();
+    assert_eq!((cb.size_x, cb.size_y, cb.size_z), (126, 39, 126));
+    assert_eq!(warnings.simplified_stacks, 12_288);
+    assert_eq!(warnings.removed_stacks, 0);
+    assert!(warnings
+        .notification()
+        .unwrap()
+        .contains("unsupported items/components"));
+    let mut capsules = 0;
+    for entity in cb.block_entities.values() {
+        if let BlockEntity::Container { inventory, .. } = entity {
+            for entry in inventory {
+                assert!(entry.nbt.is_none());
+                if mchprs_blocks::items::Item::from_id(entry.id).get_name() == "heart_of_the_sea" {
+                    capsules += 1;
+                    assert_eq!(entry.count, 64);
+                }
+            }
+        }
+    }
+    assert_eq!(capsules, 12_288);
+    assert!(matches!(
+        cb.block_entities[&BlockPos::new(11, 19, 2)],
+        BlockEntity::Container {
+            comparator_override: 13,
+            ..
+        }
+    ));
+    assert_roundtrip(&cb);
+}
+
+#[test]
+fn imports_strip_custom_data_remove_unknown_items_and_apply_vanilla_stack_limits() {
+    for version in [2, 3] {
+        let mut blob = base(version);
+        let item = |slot, name: &str, count, data| {
+            Value::Compound(Compound::from([
+                ("Slot".into(), Value::Byte(slot)),
+                ("id".into(), Value::String(name.into())),
+                ("count".into(), Value::Int(count)),
+                data,
+            ]))
+        };
+        let entity = Compound::from([(
+            "Items".into(),
+            Value::List(vec![
+                item(
+                    0,
+                    "minecraft:stone",
+                    16,
+                    (
+                        "components".into(),
+                        Value::Compound(Compound::from([
+                            ("minecraft:max_stack_size".into(), Value::Int(16)),
+                            (
+                                "mod:unknown_component".into(),
+                                Value::String("anything".into()),
+                            ),
+                        ])),
+                    ),
+                ),
+                item(
+                    1,
+                    "minecraft:wooden_shovel",
+                    64,
+                    (
+                        "tag".into(),
+                        Value::Compound(Compound::from([("Damage".into(), Value::Int(5))])),
+                    ),
+                ),
+                item(
+                    2,
+                    "mod:stone",
+                    1,
+                    ("tag".into(), Value::Compound(Compound::new())),
+                ),
+                item(
+                    3,
+                    "minecraft:missing",
+                    1,
+                    ("components".into(), Value::Int(42)),
+                ),
+                item(
+                    4,
+                    "minecraft:redstone",
+                    64,
+                    ("components".into(), Value::String("malformed".into())),
+                ),
+                item(
+                    5,
+                    "minecraft:air",
+                    1,
+                    ("components".into(), Value::Compound(Compound::new())),
+                ),
+                item(
+                    6,
+                    "minecraft:stone",
+                    64,
+                    ("tag".into(), Value::Compound(Compound::new())),
+                ),
+            ]),
+        )]);
+        let mut envelope = Compound::from([
+            ("Id".into(), Value::String("minecraft:barrel".into())),
+            ("Pos".into(), Value::IntArray(vec![0, 0, 0])),
+        ]);
+        if version == 3 {
+            envelope.insert("Data".into(), Value::Compound(entity));
+        } else {
+            envelope.extend(entity);
+        }
+        blocks(&mut blob).insert(
+            "BlockEntities".into(),
+            Value::List(vec![Value::Compound(envelope)]),
+        );
+        let mut bytes = Vec::new();
+        blob.to_gzip_writer(&mut bytes).unwrap();
+        let (cb, warnings) = load_schematic_with_warnings(Cursor::new(bytes)).unwrap();
+        assert_eq!(warnings.simplified_stacks, 3);
+        assert_eq!(warnings.removed_stacks, 3);
+        let BlockEntity::Container {
+            inventory,
+            comparator_override,
+            ..
+        } = &cb.block_entities[&BlockPos::new(0, 0, 0)]
+        else {
+            panic!()
+        };
+        assert_eq!(inventory.len(), 4);
+        assert!(inventory.iter().all(|entry| entry.nbt.is_none()));
+        assert_eq!(inventory[0].count, 16);
+        assert_eq!(inventory[1].count, 1);
+        assert_eq!(*comparator_override, 2); // Vanilla fullness: (0.25 + 1 + 1 + 1) / 27.
+        let mut bytes = Vec::new();
+        write_schematic(&mut bytes, &cb).unwrap();
+        let (plain, warnings) = load_schematic_with_warnings(Cursor::new(bytes)).unwrap();
+        assert!(warnings.notification().is_none());
+        assert_eq!(plain.block_entities.len(), cb.block_entities.len());
+        for (pos, entity) in &cb.block_entities {
+            assert_eq!(
+                plain.block_entities[pos].to_nbt(false).unwrap().content,
+                entity.to_nbt(false).unwrap().content
+            );
+        }
+    }
+}
+
+#[test]
+fn all_container_states_and_plain_items_survive_schematic_round_trip() {
     use mchprs_blocks::block_entities::ContainerType;
     use mchprs_blocks::items::ItemStack;
     for (ty, ids) in [
@@ -18,15 +170,11 @@ fn all_container_states_and_item_components_survive_schematic_round_trip() {
     ] {
         let mut world = PlotWorld::from_chunks(0, 0, vec![Chunk::empty(0, 0)], Default::default());
         let pos = BlockPos::new(4, 30, 4);
-        let mut tag = nbt::Blob::new();
-        tag.insert("__mchprs_components_770", Value::ByteArray(vec![1, 0, 0]))
-            .unwrap();
-        tag.insert("__mchprs_max_stack_size", 16i32).unwrap();
         let slots = vec![
             Some(ItemStack {
                 item_type: mchprs_blocks::items::Item::from_name("redstone").unwrap(),
-                count: 16,
-                nbt: Some(tag),
+                count: 64,
+                nbt: None,
             });
             ty.num_slots() as usize
         ];

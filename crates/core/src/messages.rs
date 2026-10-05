@@ -306,7 +306,7 @@ catalog! {
         region_shifted(blocks: impl Display) = "Scooted your region {blocks} block(s) along.";
         rewind_available(available: impl Display) = "Only {available} game ticks are available to rewind; that's where the pawprint trail ends.";
         rtps_no_data(configured: impl Display) = "&6Haven't caught this circuit's heartbeat yet. No timings data. &a({configured})";
-        rtps_report(ten_seconds: f32, one_minute: f32, five_minutes: f32, fifteen_minutes: f32, configured: impl Display) = "&6Circuit heartbeat over 10s, 1m, 5m, 15m (TPS): &a{ten_seconds:.1}, {one_minute:.1}, {five_minutes:.1}, {fifteen_minutes:.1} ({configured})";
+        rtps_report(two_seconds: f32, ten_seconds: f32, one_minute: f32, configured: impl Display) = "&6Circuit heartbeat over 2s, 10s, 1m (TPS): &a{two_seconds:.1}, {ten_seconds:.1}, {one_minute:.1} ({configured})";
         schematic_load_failed(reason: impl Display) = "Could not load schematic: {reason}";
         schematic_loaded(elapsed: Duration) = "Fetched the schematic into your clipboard ({elapsed:.00?}). Give //paste a boop to place it.";
         schematic_save_failed(reason: impl Display) = "Could not save schematic: {reason}";
