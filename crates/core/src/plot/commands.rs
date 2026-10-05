@@ -251,6 +251,42 @@ impl Plot {
         }
 
         match command {
+            "/screenonly" => {
+                if !self.players[player].has_permission("commands.screenonly") {
+                    self.players[player].send_no_permission_message();
+                    return false;
+                }
+                let enabled = match args.as_slice() {
+                    [] => None,
+                    ["on"] => Some(true),
+                    ["off"] => Some(false),
+                    _ => {
+                        self.players[player].send_error_message(messages::USAGE_SCREEN_ONLY);
+                        return false;
+                    }
+                };
+                if let Some(enabled) = enabled {
+                    if self.owner != Some(self.players[player].uuid)
+                        && !self.players[player].has_permission("plots.worldedit.bypass")
+                    {
+                        self.players[player].send_no_permission_message();
+                        return false;
+                    }
+                    if let Err(error) =
+                        database::set_screen_only(self.world.x, self.world.z, enabled)
+                    {
+                        self.players[player]
+                            .send_error_message(&format!("Could not save visual setting: {error}"));
+                        return false;
+                    }
+                    self.world.set_screen_only(enabled);
+                }
+                self.players[player].send_system_message(if self.world.screen_only() {
+                    messages::SCREEN_ONLY_ON
+                } else {
+                    messages::SCREEN_ONLY_OFF
+                });
+            }
             "/help" => {
                 if args.len() > 1 {
                     self.players[player].send_error_message(messages::USAGE_HELP_TOPIC);
@@ -679,7 +715,7 @@ pub static DECLARE_COMMANDS: Lazy<PacketEncoder> = Lazy::new(|| {
                 children: &[
                     1, 4, 5, 6, 11, 12, 14, 16, 18, 19, 20, 21, 22, 23, 24, 26, 29, 31, 32, 34, 36,
                     47, 49, 53, 60, 61, 63, 65, 66, 67, 71, 73, 74, 75, 82, 83, 85, 88, 90, 91,
-                    101, 106, 111, 112, 113, 114, 115, 116, 118, 120,
+                    101, 106, 111, 112, 113, 114, 115, 116, 118, 120, 121,
                 ],
                 redirect_node: None,
                 name: None,
@@ -1748,6 +1784,31 @@ pub static DECLARE_COMMANDS: Lazy<PacketEncoder> = Lazy::new(|| {
                 children: &[],
                 redirect_node: None,
                 name: Some("/invalidatecaches"),
+                parser: None,
+                suggestions_type: None,
+            },
+            // 121-123: /screenonly [on|off]
+            Node {
+                flags: (CommandFlags::LITERAL | CommandFlags::EXECUTABLE).bits() as i8,
+                children: &[122, 123],
+                redirect_node: None,
+                name: Some("screenonly"),
+                parser: None,
+                suggestions_type: None,
+            },
+            Node {
+                flags: (CommandFlags::LITERAL | CommandFlags::EXECUTABLE).bits() as i8,
+                children: &[],
+                redirect_node: None,
+                name: Some("on"),
+                parser: None,
+                suggestions_type: None,
+            },
+            Node {
+                flags: (CommandFlags::LITERAL | CommandFlags::EXECUTABLE).bits() as i8,
+                children: &[],
+                redirect_node: None,
+                name: Some("off"),
                 parser: None,
                 suggestions_type: None,
             },

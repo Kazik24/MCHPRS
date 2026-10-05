@@ -10,6 +10,25 @@ fn lock<'a>() -> MutexGuard<'a, Connection> {
     CONN.lock().unwrap()
 }
 
+pub fn get_screen_only(plot_x: i32, plot_z: i32) -> bool {
+    lock()
+        .query_row(
+            "SELECT screen_only FROM plot_visual_settings WHERE plot_x=?1 AND plot_z=?2",
+            params![plot_x, plot_z],
+            |row| row.get(0),
+        )
+        .unwrap_or(false)
+}
+
+pub fn set_screen_only(plot_x: i32, plot_z: i32, enabled: bool) -> rusqlite::Result<()> {
+    lock().execute(
+        "INSERT INTO plot_visual_settings(plot_x, plot_z, screen_only) VALUES(?1, ?2, ?3)
+         ON CONFLICT(plot_x, plot_z) DO UPDATE SET screen_only=excluded.screen_only",
+        params![plot_x, plot_z, enabled],
+    )?;
+    Ok(())
+}
+
 pub fn get_plot_owner(plot_x: i32, plot_z: i32) -> Option<String> {
     lock()
         .query_row(
@@ -112,6 +131,17 @@ pub fn ensure_user(uuid: &str, name: &str) {
 
 pub fn init() {
     let conn = lock();
+
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS plot_visual_settings(
+            plot_x INTEGER NOT NULL,
+            plot_z INTEGER NOT NULL,
+            screen_only BOOLEAN NOT NULL DEFAULT FALSE,
+            PRIMARY KEY(plot_x, plot_z)
+        )",
+        [],
+    )
+    .unwrap();
 
     conn.execute(
         "CREATE TABLE IF NOT EXISTS user(

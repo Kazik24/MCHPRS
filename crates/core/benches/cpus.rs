@@ -28,6 +28,15 @@ fn main() {
         .find(|pair| pair[0] == "--label")
         .map_or("current", |pair| pair[1].as_str());
     let mut reports = Vec::new();
+    let screen_only = args.iter().any(|arg| arg == "--screen-only");
+    let flush_every = args
+        .windows(2)
+        .find(|pair| pair[0] == "--flush-every")
+        .map_or(0, |pair| {
+            pair[1]
+                .parse::<u32>()
+                .expect("--flush-every needs a tick interval")
+        });
     if let Some(name) = selected {
         assert!(
             CPUS.iter().any(|cpu| cpu.name == name),
@@ -42,12 +51,20 @@ fn main() {
         let mut times = Vec::new();
         let mut active_times = Vec::new();
         let mut active_ticks = 0;
+        let mut visual_counts = Vec::new();
         for sample in 1..=iterations {
-            let timing = replay(cpu, &expected);
+            let timing = replay_with_visuals(cpu, &expected, screen_only, flush_every);
             println!("{} sample {sample}: {:.6}s / 50,000 game ticks ({:.1} TPS); active window: {} ticks / {:.6}s ({:.1} TPS); all assertions passed",cpu.name,timing.total.as_secs_f64(),50_000.0/timing.total.as_secs_f64(),timing.active_ticks,timing.active.as_secs_f64(),f64::from(timing.active_ticks)/timing.active.as_secs_f64());
             times.push(timing.total);
             active_times.push(timing.active);
             active_ticks = timing.active_ticks;
+            visual_counts.push(timing.visual_counts);
+            if flush_every != 0 {
+                println!(
+                    "visual totals: {} flushes, {} sections, {} block records",
+                    timing.visual_counts.0, timing.visual_counts.1, timing.visual_counts.2
+                );
+            }
         }
         times.sort();
         active_times.sort();
@@ -66,6 +83,9 @@ fn main() {
             "active_median_seconds":active_times[active_times.len()/2].as_secs_f64(),
             "active_median_tps":f64::from(active_ticks)/active_times[active_times.len()/2].as_secs_f64(),
             "assertions":"whole-world checkpoints, ordered chat, per-tick Pong screen",
+            "visual_mode":if screen_only { "screen" } else { "all" },
+            "visual_flush_every_game_ticks":flush_every,
+            "visual_counts":visual_counts,
         }));
     }
     if let Some(path) = output {

@@ -15,6 +15,7 @@ mod picking;
 mod piston_tests;
 pub(crate) mod redstone_tools;
 mod scoreboard;
+mod screen_updates;
 mod visuals;
 pub mod worldedit;
 
@@ -115,6 +116,7 @@ pub struct PlotWorld {
     piston_state: PistonState,
     piston_index: std::cell::RefCell<interpreter_cache::PistonIndex>,
     wire_topology: std::cell::RefCell<crate::world::wire_cache::Topology>,
+    screen_updates: Option<screen_updates::ScreenUpdates>,
     packet_senders: Vec<PlayerPacketSender>,
     is_cursed: bool,
     fast_rendering: bool,
@@ -150,6 +152,7 @@ impl PlotWorld {
             piston_state: PistonState::default(),
             piston_index: Default::default(),
             wire_topology: Default::default(),
+            screen_updates: None,
             packet_senders: Vec::new(),
             is_cursed: false,
             fast_rendering: false,
@@ -232,7 +235,11 @@ impl PlotWorld {
         Some(((chunk_x << PLOT_SCALE) + chunk_z).unsigned_abs() as usize)
     }
 
-    fn flush_block_changes(&mut self) {
+    pub fn flush_block_changes(&mut self) {
+        if self.screen_only() {
+            self.flush_screen_changes();
+            return;
+        }
         let started = Instant::now();
         let mut enqueue_time = Duration::ZERO;
         self.update_stats.flushes += 1;
@@ -494,6 +501,12 @@ impl World for PlotWorld {
 
         let old = self.get_block(pos);
         let new = Block::from_id(block);
+        let screen_change = self.screen_updates.as_ref().is_some_and(|updates| {
+            matches!(old, Block::RedstoneLamp { .. })
+                || matches!(new, Block::RedstoneLamp { .. })
+                || (matches!(old, Block::MovingPiston { .. }) && updates.contains(pos))
+        });
+        let previous_screen = screen_change.then(|| self.screen_state(pos));
         if mchprs_blocks::block_entities::ContainerType::from_block(old).is_some()
             && mchprs_blocks::block_entities::ContainerType::from_block(new).is_none()
         {
@@ -521,6 +534,11 @@ impl World for PlotWorld {
                         comparator_override: 0,
                     },
                 );
+            }
+        }
+        if changed {
+            if let Some(previous) = previous_screen {
+                self.track_screen_change(pos, previous);
             }
         }
         changed
@@ -650,6 +668,18 @@ impl World for PlotWorld {
             self.remove_motions_at(pos);
         }
         let send_command = matches!(&block_entity, BlockEntity::CommandBlock(_));
+        if let BlockEntity::MovingPiston(entity) = &block_entity {
+            if self.screen_only()
+                && matches!(
+                    Block::from_id(entity.block_state),
+                    Block::RedstoneLamp { .. }
+                )
+            {
+                // A newly moved lamp may replace a previously non-screen block.
+                // Existing tracked pixels retain their actual previous state.
+                self.track_screen_change(pos, 0);
+            }
+        }
         if let Some(nbt) = block_entity.to_nbt(!send_command) {
             let block_entity_data = CBlockEntityData {
                 pos: pos.packed(),
@@ -706,7 +736,7 @@ impl World for PlotWorld {
     fn block_action(&mut self, pos: BlockPos, block_action: BlockAction) {
         match block_action {
             BlockAction::Piston { action, piston } => {
-                if self.fast_rendering {
+                if self.fast_rendering || self.screen_only() {
                     return;
                 }
                 let piston_action_data = CBlockAction {
@@ -786,9 +816,10 @@ impl Plot {
             failures += s.failures;
         }
         format!(
-            "Plot totals: {} ticks, simulation {:.3}s; {} visual flushes, {} sections, {} block records; collection {:.3}s, enqueue {:.3}s. Current visual rate: {} Hz.\nCurrent clients (connection totals): {} packets, {} bytes; visual encoding {:.3}s, framing/compression {:.3}s, socket writes {:.3}s; {} queued bytes, {} coalesced blocks, {} send failures.",
+            "Plot totals: {} ticks, simulation {:.3}s; {} visual flushes, {} sections, {} block records; collection {:.3}s, enqueue {:.3}s. Current visual rate: {} Hz; mode: {}.\nCurrent clients (connection totals): {} packets, {} bytes; visual encoding {:.3}s, framing/compression {:.3}s, socket writes {:.3}s; {} queued bytes, {} coalesced blocks, {} send failures.",
             p.simulated_ticks, p.simulation.as_secs_f64(), p.flushes, p.sections, p.records,
             p.collection.as_secs_f64(), p.enqueue.as_secs_f64(), self.effective_send_rate(),
+            if self.world.screen_only() { "screen" } else { "all" },
             packets, bytes, encode_ns as f64 / 1e9, compress_ns as f64 / 1e9, write_ns as f64 / 1e9,
             queued_bytes, coalesced, failures,
         )
@@ -853,7 +884,7 @@ impl Plot {
             .collect();
         for index in chunks {
             let chunk = &self.world.chunks[index];
-            let encoded = chunk.encode_packet_for_client(fast);
+            let encoded = chunk.encode_packet_for_client(fast || self.world.screen_only());
             for player in &self.players {
                 if Self::get_chunk_distance(
                     chunk.x,
@@ -1085,7 +1116,7 @@ impl Plot {
             } else {
                 let chunk_data = self.world.chunks
                     [self.world.get_chunk_index_for_chunk(chunk_x, chunk_z)]
-                .encode_packet_for_client(self.world.fast_rendering);
+                .encode_packet_for_client(self.world.fast_rendering || self.world.screen_only());
                 self.players[player_idx].client.send_packet(&chunk_data);
             }
         }
@@ -1655,6 +1686,7 @@ impl Plot {
             CONFIG.fast_render_threshold,
         );
         let world_send_rate = plot_data.world_send_rate;
+        world.set_screen_only(database::get_screen_only(x, z));
         Plot {
             last_player_time: Instant::now(),
             last_update_time: Instant::now(),

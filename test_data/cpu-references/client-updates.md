@@ -20,6 +20,21 @@ are independent. `/piston_anim off` alone no longer throttles a low-TPS plot's
 ordinary block updates. No duplicate visual-update configuration was added.
 Simulation, command execution, and interactions retain their game-tick behavior.
 
+`/screenonly on` enables lamp-only visual deltas for the current plot. The default
+is off; `/screenonly off` sends the latest suppressed states and restores full
+visual updates. `/screenonly` reports the setting, and `/help screenonly` explains
+it. The flag persists in the plot database without changing the plot save format.
+Changing it requires `commands.screenonly` and plot ownership or WorldEdit bypass.
+
+This mode tracks only sections whose lamp pixels change, skips frames returning
+to the already displayed state, and includes replacement states needed to clear
+removed lamps. Moving lamps use their carried state; piston animations are
+suppressed. Normal block snapshots and redstone simulation remain authoritative.
+Non-screen changes stay in the storage overlay for reads, saves, new clients and
+catch-up when the mode is turned off. This trades retained overlay memory for
+less packet generation, encoding and client rendering work. It does not skip
+redstone execution. `/rtps timings` reports whether the mode is `screen` or `all`.
+
 Each connection has one background writer, shared by its player connection and
 all plot packet senders. Visual section encoding, packet framing/compression,
 and socket writes run there. Chunk snapshots and other ordinary packets enter

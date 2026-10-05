@@ -231,10 +231,26 @@ pub struct RunTiming {
     pub total: Duration,
     pub active: Duration,
     pub active_ticks: u32,
+    pub visual_counts: (u64, u64, u64),
 }
 
 pub fn replay(cpu: Cpu, expected: &Reference) -> RunTiming {
+    replay_with_visuals(cpu, expected, false, 0)
+}
+
+pub fn replay_with_visuals(
+    cpu: Cpu,
+    expected: &Reference,
+    screen_only: bool,
+    flush_every: u32,
+) -> RunTiming {
     let mut world = load_cpu(cpu);
+    if flush_every != 0 {
+        // Flush imported initial blocks outside timing in both modes.
+        world.flush_block_changes();
+    }
+    world.set_screen_only(screen_only);
+    let initial_visual_counts = world.visual_update_counts();
     let mut trace = Vec::new();
     let mut screen_trace = Vec::new();
     if cpu.name == "anpu_pong" {
@@ -258,6 +274,9 @@ pub fn replay(cpu: Cpu, expected: &Reference) -> RunTiming {
     for tick in 1..=50_000 {
         let now = Instant::now();
         world.tick_interpreted();
+        if flush_every != 0 && tick % flush_every == 0 {
+            world.flush_block_changes();
+        }
         let tick_elapsed = now.elapsed();
         elapsed += tick_elapsed;
         if tick <= active_ticks {
@@ -327,6 +346,14 @@ pub fn replay(cpu: Cpu, expected: &Reference) -> RunTiming {
         total: elapsed,
         active,
         active_ticks,
+        visual_counts: {
+            let final_counts = world.visual_update_counts();
+            (
+                final_counts.0 - initial_visual_counts.0,
+                final_counts.1 - initial_visual_counts.1,
+                final_counts.2 - initial_visual_counts.2,
+            )
+        },
     }
 }
 

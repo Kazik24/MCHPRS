@@ -15,6 +15,7 @@ pub(super) fn page(topic: Option<&str>) -> Option<&'static str> {
         "tools" | "redstonetools" | "find" | "signsearch" | "ss" | "rstack" | "rs"
         | "container" | "cursel" => messages::HELP_REDSTONE_TOOLS,
         "schematics" | "schematic" | "load" | "save" => messages::HELP_SCHEMATICS,
+        "screenonly" | "screens" => messages::HELP_SCREEN_ONLY,
         "pistons" | "animations" | "piston_anim" | "bisdon_anim" | "wsr" | "worldsendrate" => {
             messages::HELP_PISTONS
         }

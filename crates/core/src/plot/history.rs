@@ -429,7 +429,8 @@ impl Plot {
             if visible.is_empty() {
                 continue;
             }
-            let packet = chunk.encode_packet_for_client(self.world.fast_rendering);
+            let packet = chunk
+                .encode_packet_for_client(self.world.fast_rendering || self.world.screen_only());
             for player in visible {
                 player.client.send_packet(&packet);
             }
