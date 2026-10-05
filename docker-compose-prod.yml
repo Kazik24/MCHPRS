@@ -1,5 +1,4 @@
 services:
-
   mchprs:
     image: mchprs-mchprs:velocity
     build:

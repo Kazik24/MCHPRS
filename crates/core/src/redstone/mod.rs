@@ -487,13 +487,20 @@ pub fn skipping_update_surrounding_blocks(
 
         let up_pos = neighbor_pos.offset(BlockFace::Top);
         let up_block = world.get_block(up_pos);
-        if !skip_pistons || !matches!(up_block, Block::Piston { .. }) {
+        // Diagonals receive power rechecks, not changes to their watched block.
+        // A premature observer pulse can quasi-power a piston before its first
+        // movement and leave it extended when the external source is removed.
+        if !matches!(up_block, Block::Observer { .. })
+            && (!skip_pistons || !matches!(up_block, Block::Piston { .. }))
+        {
             update(up_block, world, up_pos, Some(BlockFace::Bottom));
         }
 
         let down_pos = neighbor_pos.offset(BlockFace::Bottom);
         let down_block = world.get_block(down_pos);
-        if !skip_pistons || !matches!(down_block, Block::Piston { .. }) {
+        if !matches!(down_block, Block::Observer { .. })
+            && (!skip_pistons || !matches!(down_block, Block::Piston { .. }))
+        {
             update(down_block, world, down_pos, Some(BlockFace::Top));
         }
     }

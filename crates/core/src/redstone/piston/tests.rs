@@ -274,6 +274,145 @@ fn redstone_update_edgecase_spits_then_recaptures_block_like_java_1_21_5() {
 }
 
 #[test]
+fn observer_piston_feedback_matches_java_for_block_and_dust_triggers() {
+    use serde::Deserialize;
+
+    #[derive(Deserialize)]
+    struct Case {
+        facing: String,
+        dust: bool,
+        hold: usize,
+        trace: Vec<(String, Option<String>, String)>,
+    }
+    #[derive(Deserialize)]
+    struct Reference {
+        version: String,
+        server_sha1: String,
+        cases: Vec<Case>,
+    }
+    let reference: Reference = serde_json::from_str(include_str!(
+        "../../../../../test_data/piston-repair/java-observer-piston-feedback.json"
+    ))
+    .unwrap();
+    assert_eq!(reference.version, "1.21.5");
+    assert_eq!(
+        reference.server_sha1,
+        "e6ec2f64e6080b9b5d9b471b291c33cc7f509733"
+    );
+    assert_eq!(reference.cases.len(), 16);
+
+    for facing in [
+        BlockFacing::East,
+        BlockFacing::South,
+        BlockFacing::West,
+        BlockFacing::North,
+    ] {
+        for stepping in ["game", "nano", "pico"] {
+            for case in &reference.cases {
+                let mut world = empty_world();
+                let pos = base();
+                let observer_pos = pos.offset(BlockFace::Top);
+                let behind = pos.offset(BlockFace::from(facing).opposite());
+                let source = if case.dust {
+                    behind.offset(BlockFace::from(facing).opposite())
+                } else {
+                    behind
+                };
+                world.set_block(
+                    pos,
+                    Block::Piston {
+                        piston: piston(facing, false, false),
+                    },
+                );
+                world.set_block(
+                    observer_pos,
+                    Block::Observer {
+                        observer: RedstoneObserver {
+                            facing: match case.facing.as_str() {
+                                "down" => BlockFacing::Down, // Watches piston; red output dot points up.
+                                "up" => BlockFacing::Up,
+                                _ => panic!("unexpected observer facing"),
+                            },
+                            powered: false,
+                        },
+                    },
+                );
+                world.set_block(observer_pos.offset(BlockFace::Top), Block::Stone {});
+                if case.dust {
+                    world.set_block(behind.offset(BlockFace::Bottom), Block::Stone {});
+                    crate::interaction::place_in_world(
+                        Block::RedstoneWire {
+                            wire: Default::default(),
+                        },
+                        &mut world,
+                        behind,
+                        &None,
+                    );
+                }
+                let advance = |world: &mut PlotWorld| {
+                    let target = world.piston_state().logical_tick + 1;
+                    for _ in 0..256 {
+                        match stepping {
+                            "game" => world.tick_interpreted(),
+                            "nano" => world.nanotick_advance(1),
+                            "pico" => world.picotick_advance(1),
+                            _ => unreachable!(),
+                        }
+                        if world.piston_state().logical_tick == target
+                            && world.piston_state().phase
+                                == mchprs_world::AdvancePhase::BetweenTicks
+                        {
+                            break;
+                        }
+                    }
+                    assert_eq!(world.piston_state().logical_tick, target);
+                    assert_eq!(
+                        world.piston_state().phase,
+                        mchprs_world::AdvancePhase::BetweenTicks
+                    );
+                };
+                for _ in 0..8 {
+                    advance(&mut world);
+                }
+                crate::interaction::place_in_world(
+                    Block::RedstoneBlock {},
+                    &mut world,
+                    source,
+                    &None,
+                );
+                // Placement requests piston movement, but has not changed the
+                // watched piston yet. A diagonal power recheck must not start
+                // the observer early and quasi-power the piston on removal.
+                assert!(
+                    !world.pending_tick_at(observer_pos),
+                    "premature observer pulse: {facing:?}, dust={}",
+                    case.dust
+                );
+                assert!(!extended(&world, pos));
+                for _ in 0..case.hold {
+                    advance(&mut world);
+                }
+                crate::interaction::destroy(world.get_block(source), &mut world, source);
+                assert_eq!(case.trace.len(), 33);
+                for (tick, expected) in case.trace.iter().enumerate() {
+                    let block = world.get_block(pos);
+                    let observer = world.get_block(observer_pos);
+                    let actual = (
+                        block.get_name().to_owned(),
+                        block.property("extended").map(str::to_owned),
+                        observer.property("powered").unwrap().to_owned(),
+                    );
+                    assert_eq!(&actual, expected, "Java feedback at tick {tick}: {facing:?}, observer={}, dust={}, hold={}, {stepping} stepping", case.facing, case.dust, case.hold);
+                    if tick + 1 < case.trace.len() {
+                        advance(&mut world);
+                    }
+                }
+            }
+        }
+    }
+}
+
+#[test]
 fn containers_cannot_be_pushed_or_pulled_in_any_state() {
     let mut world = empty_world();
     let pos = base();
