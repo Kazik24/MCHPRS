@@ -28,8 +28,96 @@ fn copy_saved(world: &mut PlotWorld) -> PlotWorld {
     let mut resumed =
         PlotWorld::from_chunks(0, 0, chunks, data.pending_ticks.into_iter().collect());
     resumed.piston_state = data.piston_state;
+    resumed.invalidate_interpreter_caches();
     resumed
 }
+
+#[test]
+fn persistent_wire_addresses_observe_block_changes_and_plot_boundaries() {
+    let mut w = world();
+    let p = BlockPos::new(15, 15, 15);
+    let cached = w.wire_neighborhood(p).unwrap();
+    let same = w.wire_neighborhood(p).unwrap();
+    assert!(std::sync::Arc::ptr_eq(&cached, &same));
+    for neighbor in cached.iter() {
+        assert_eq!(neighbor.cell, w.wire_location(neighbor.pos));
+    }
+    let changed = p.offset(BlockFace::East);
+    w.set_block(changed, Block::Stone {});
+    assert!(std::sync::Arc::ptr_eq(
+        &cached,
+        &w.wire_neighborhood(p).unwrap()
+    ));
+    assert_eq!(w.get_block(changed), Block::Stone {});
+    w.set_block(changed, Block::Air);
+    assert_eq!(w.get_block(changed), Block::Air);
+    let edge = w.wire_neighborhood(BlockPos::new(0, 0, 0)).unwrap();
+    assert!(edge.iter().any(|n| n.cell.is_none()));
+    assert_eq!(
+        w.wire_location(BlockPos::new(255, 255, 255)),
+        Some(16_777_215)
+    );
+
+    let chunks = (0..PLOT_WIDTH)
+        .flat_map(|x| (0..PLOT_WIDTH).map(move |z| Chunk::empty(x + 16, z - 16)))
+        .collect();
+    let other = PlotWorld::from_chunks(1, -1, chunks, Default::default());
+    let q = BlockPos::new(271, 15, -241);
+    assert_eq!(w.wire_location(p), other.wire_location(q));
+    let other_cached = other.wire_neighborhood(q).unwrap();
+    assert!(!std::sync::Arc::ptr_eq(&cached, &other_cached));
+    for (a, b) in cached.iter().zip(other_cached.iter()) {
+        assert_eq!(a.cell, b.cell);
+        assert_eq!(a.pos.x + 256, b.pos.x);
+        assert_eq!(a.pos.z - 256, b.pos.z);
+    }
+}
+
+#[test]
+fn clearing_interpreter_caches_preserves_pending_motion_events_and_ticks() {
+    let mut original = world();
+    let pos = BlockPos::new(40, 30, 40);
+    original.set_block(
+        pos,
+        Block::MovingPiston {
+            moving: mchprs_blocks::blocks::RedstoneMovingPiston {
+                facing: BlockFacing::East,
+                sticky: true,
+            },
+        },
+    );
+    original.set_block_entity(
+        pos,
+        BlockEntity::MovingPiston(mchprs_blocks::block_entities::MovingPistonEntity {
+            block_state: Block::Stone {}.get_id(),
+            ..Default::default()
+        }),
+    );
+    original.enqueue_piston_event(mchprs_world::PistonEvent {
+        pos: pos.offset(BlockFace::West),
+        sticky: false,
+        facing: BlockFace::East,
+        action: mchprs_world::PistonAction::Extend,
+    });
+    original.schedule_tick(pos, 3, TickPriority::Normal);
+    let mut cleared = copy_saved(&mut original);
+    let cached = cleared.wire_neighborhood(pos).unwrap();
+    let identity = cleared.piston_state.motions[0].identity;
+    assert_eq!(cleared.piston_motion_index(pos, Some(identity)), Some(0));
+    cleared.clear_interpreter_caches();
+    assert!(!std::sync::Arc::ptr_eq(
+        &cached,
+        &cleared.wire_neighborhood(pos).unwrap()
+    ));
+    assert_eq!(cleared.piston_motion_index(pos, Some(identity)), Some(0));
+    assert_same(&mut original, &mut cleared);
+    for _ in 0..8 {
+        original.tick_interpreted();
+        cleared.tick_interpreted();
+        assert_same(&mut original, &mut cleared);
+    }
+}
+
 fn assert_same(a: &mut PlotWorld, b: &mut PlotWorld) {
     for x in 40..=43 {
         let pos = BlockPos::new(x, 30, 40);

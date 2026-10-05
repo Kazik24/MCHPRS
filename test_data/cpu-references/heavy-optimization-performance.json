@@ -1,0 +1,49 @@
+{
+  "label": "indexed_pistons_spatial_wire_adaptive",
+  "profile": "bench/release",
+  "samples": [
+    {
+      "active_median_seconds": 63.9948442,
+      "active_median_tps": 188.31204530067438,
+      "active_samples_seconds": [
+        63.9493774,
+        63.9948442,
+        64.4955521
+      ],
+      "active_window_game_ticks": 12051,
+      "assertions": "whole-world checkpoints, ordered chat, per-tick Pong screen",
+      "cpu": "pm1_sort",
+      "game_ticks": 50000,
+      "median_seconds": 64.0014473,
+      "median_tps": 781.2323331631909,
+      "samples_seconds": [
+        63.9559775,
+        64.0014473,
+        64.5023245
+      ],
+      "schematic_sha256": "e338028d50a4400056e25037d1f43d37c08baed079edede6298f78b0a6341654"
+    },
+    {
+      "active_median_seconds": 5.5420814,
+      "active_median_tps": 902.1881201528365,
+      "active_samples_seconds": [
+        5.2760955,
+        5.5420814,
+        5.5863102
+      ],
+      "active_window_game_ticks": 5000,
+      "assertions": "whole-world checkpoints, ordered chat, per-tick Pong screen",
+      "cpu": "anpu_pong",
+      "game_ticks": 50000,
+      "median_seconds": 5.5438152,
+      "median_tps": 9019.059654080822,
+      "samples_seconds": [
+        5.2777613,
+        5.5438152,
+        5.5880661
+      ],
+      "schematic_sha256": "f4068257797399531ce31d56c972af32d0f73f7d8d496ce1b7b8cd1c178decec"
+    }
+  ],
+  "schema": 1
+}

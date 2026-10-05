@@ -64,8 +64,9 @@ pub fn update_piston_state(world: &mut impl World, piston: RedstonePiston, pos: 
         let ahead = pos.offset(facing).offset(facing);
         let early = match world.get_block_entity(ahead) {
             Some(BlockEntity::MovingPiston(e)) if e.extending && e.facing == facing => {
+                let index = world.piston_motion_index(ahead, None);
                 let s = world.piston_state();
-                s.motions.iter().find(|m| m.pos == ahead).is_some_and(|m| {
+                index.map(|i| &s.motions[i]).is_some_and(|m| {
                     m.previous_progress < 0.5
                         || m.last_tick == s.logical_tick
                         || matches!(
@@ -88,9 +89,7 @@ pub fn update_piston_state(world: &mut impl World, piston: RedstonePiston, pos: 
         facing,
         action,
     };
-    if !world.piston_state().events.contains(&event) {
-        world.piston_state_mut().events.push_back(event);
-    }
+    world.enqueue_piston_event(event);
 }
 
 // Legacy scheduled base ticks become requests, never movement completion or cooldowns.
@@ -158,14 +157,7 @@ fn moving(
             source,
         }),
     );
-    if let Some(motion) = world
-        .piston_state_mut()
-        .motions
-        .iter_mut()
-        .find(|m| m.pos == pos)
-    {
-        motion.carried_entity = carried_entity.map(Box::new);
-    }
+    world.set_piston_carried_entity(pos, carried_entity.map(Box::new));
 }
 
 fn extend(world: &mut impl World, piston: RedstonePiston, pos: BlockPos) -> bool {
@@ -280,12 +272,7 @@ fn retract(
 }
 
 pub(crate) fn tick_motion(world: &mut impl World, pos: BlockPos, identity: u64) {
-    let Some(i) = world
-        .piston_state()
-        .motions
-        .iter()
-        .position(|m| m.pos == pos && m.identity == identity)
-    else {
+    let Some(i) = world.piston_motion_index(pos, Some(identity)) else {
         return;
     };
     if !matches!(world.get_block(pos), Block::MovingPiston { .. })
@@ -294,22 +281,10 @@ pub(crate) fn tick_motion(world: &mut impl World, pos: BlockPos, identity: u64) 
             Some(BlockEntity::MovingPiston(_))
         )
     {
-        world.piston_state_mut().motions.remove(i);
+        world.remove_piston_motion(i);
         return;
     }
-    let complete;
-    let progress;
-    {
-        let s = world.piston_state_mut();
-        let motion = &mut s.motions[i];
-        motion.last_tick = s.logical_tick;
-        motion.previous_progress = motion.progress;
-        complete = motion.progress >= 1.0;
-        if !complete {
-            motion.progress = (motion.progress + 0.5).min(1.0);
-        }
-        progress = motion.previous_progress;
-    }
+    let (complete, progress) = world.advance_piston_motion(i);
     if complete {
         finish(world, pos, false);
     } else if let Some(BlockEntity::MovingPiston(e)) = world.get_block_entity_mut(pos) {
@@ -333,11 +308,8 @@ fn finish(world: &mut impl World, pos: BlockPos, interrupted: bool) {
         block.set_properties(std::collections::HashMap::from([("waterlogged", "false")]));
     }
     let carried_entity = world
-        .piston_state()
-        .motions
-        .iter()
-        .find(|m| m.pos == pos)
-        .and_then(|m| m.carried_entity.clone());
+        .piston_motion_index(pos, None)
+        .and_then(|i| world.piston_state().motions[i].carried_entity.clone());
     world.delete_block_entity(pos);
     world.set_block(pos, block);
     if let Some(entity) = carried_entity {

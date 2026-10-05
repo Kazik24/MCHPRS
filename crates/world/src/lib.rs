@@ -39,7 +39,7 @@ pub enum PistonAction {
     RetractWithoutPull = 2,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, Copy, Eq, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, Eq, PartialEq, Hash)]
 pub struct PistonEvent {
     pub pos: BlockPos,
     pub sticky: bool,

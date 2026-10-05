@@ -6,6 +6,10 @@ use mchprs_blocks::blocks::{Block, RedstoneWire, RedstoneWireSide};
 use mchprs_blocks::{BlockDirection, BlockFace, BlockPos};
 use turbo::RedstoneWireTurbo;
 
+pub(crate) fn invalidate_turbo_cache() {
+    turbo::invalidate_scratch();
+}
+
 fn make_cross(power: u8) -> RedstoneWire {
     RedstoneWire {
         north: RedstoneWireSide::Side,
@@ -102,7 +106,7 @@ pub fn on_use(wire: RedstoneWire, world: &mut impl World, pos: BlockPos) -> Acti
     ActionResult::Pass
 }
 
-fn can_connect_to(block: Block, side: BlockDirection) -> bool {
+pub(crate) fn can_connect_to_uncached(block: Block, side: BlockDirection) -> bool {
     if block.pressure_plate_powered().is_some() {
         return true;
     }
@@ -143,7 +147,7 @@ pub fn get_side(world: &impl World, pos: BlockPos, side: BlockDirection) -> Reds
     let neighbor_pos = pos.offset(side.block_face());
     let neighbor = world.get_block(neighbor_pos);
 
-    if can_connect_to(neighbor, side) {
+    if crate::world::wire_cache::connects(neighbor, side) {
         return RedstoneWireSide::Side;
     }
 

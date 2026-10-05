@@ -83,7 +83,6 @@ fn compact_memory(bytes: usize) -> String {
 struct PlotMetrics {
     tps: String,
     history: String,
-    history_ticks: String,
     history_memory: String,
     visual_updates: String,
 }
@@ -120,7 +119,6 @@ impl Scoreboard {
             self.redpiler_state.to_str().to_owned(),
             self.metrics.tps.clone(),
             self.metrics.history.clone(),
-            self.metrics.history_ticks.clone(),
             self.metrics.history_memory.clone(),
             self.metrics.visual_updates.clone(),
         ];
@@ -147,7 +145,9 @@ impl Scoreboard {
         for old_line in &old_lines {
             if !self.current_state.iter().any(|line| line == old_line) {
                 let packet = Self::make_removal_packet(old_line).encode();
-                players.iter().for_each(|player| player.send_packet(&packet));
+                players
+                    .iter()
+                    .for_each(|player| player.send_packet(&packet));
             }
         }
 
@@ -159,7 +159,9 @@ impl Scoreboard {
                 .map(|old_index| (old_lines.len() - old_index) as u32);
             if old_value != Some(value) {
                 let packet = Self::make_update_packet(line, value).encode();
-                players.iter().for_each(|player| player.send_packet(&packet));
+                players
+                    .iter()
+                    .for_each(|player| player.send_packet(&packet));
             }
         }
     }
@@ -190,8 +192,7 @@ impl Scoreboard {
         );
         for (index, line) in self.current_state.iter().enumerate() {
             player.send_packet(
-                &Self::make_update_packet(line, (self.current_state.len() - index) as u32)
-                    .encode(),
+                &Self::make_update_packet(line, (self.current_state.len() - index) as u32).encode(),
             );
         }
     }
@@ -261,18 +262,13 @@ impl Scoreboard {
         };
         self.metrics.tps = format!("TPS: {actual}/{target}");
         self.metrics.history = if history_enabled {
-            "History: ON".to_owned()
-        } else {
-            "History: OFF".to_owned()
-        };
-        self.metrics.history_ticks = if history_enabled {
             format!(
-                "Ticks: {}/{}",
+                "Hist: {}/{}",
                 compact_number(history_ticks as f64),
                 compact_number(history_capacity as f64)
             )
         } else {
-            "Ticks: OFF".to_owned()
+            "Hist: Off".to_owned()
         };
         self.metrics.history_memory = format!("Hist mem: {}", compact_memory(history_memory_bytes));
         self.metrics.visual_updates = match visual_update_rate {

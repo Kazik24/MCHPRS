@@ -86,8 +86,8 @@ gen_config! {
     luckperms: Option<PermissionsConfig> = None,
     block_in_hitbox: bool = true,
     auto_redpiler: bool = false,
-    fast_render_threshold: i64 = 100,
-    fast_render_send_rate: i64 = 10,
+    fast_render_threshold: i64 = 200,
+    fast_render_send_rate: i64 = 2,
     rhistory_memory_limit_mib: i64 = 2048,
     rhistory_work_memory_limit_mib: i64 = 256
 }

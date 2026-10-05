@@ -4,7 +4,7 @@ target/
 test_proxy/
 generators
 Config.toml
-world/
+/world/
 logs/
 schems/
 tools/node_modules/

@@ -679,7 +679,7 @@ pub static DECLARE_COMMANDS: Lazy<PacketEncoder> = Lazy::new(|| {
                 children: &[
                     1, 4, 5, 6, 11, 12, 14, 16, 18, 19, 20, 21, 22, 23, 24, 26, 29, 31, 32, 34, 36,
                     47, 49, 53, 60, 61, 63, 65, 66, 67, 71, 73, 74, 75, 82, 83, 85, 88, 90, 91,
-                    101, 106, 111, 112, 113, 114, 115, 116,
+                    101, 106, 111, 112, 113, 114, 115, 116, 118, 120,
                 ],
                 redirect_node: None,
                 name: None,
@@ -1721,6 +1721,33 @@ pub static DECLARE_COMMANDS: Lazy<PacketEncoder> = Lazy::new(|| {
                 children: &[],
                 redirect_node: None,
                 name: Some("timings"),
+                parser: None,
+                suggestions_type: None,
+            },
+            // 118: //update
+            Node {
+                flags: (CommandFlags::LITERAL | CommandFlags::EXECUTABLE).bits() as i8,
+                children: &[119],
+                redirect_node: None,
+                name: Some("/update"),
+                parser: None,
+                suggestions_type: None,
+            },
+            // 119: //update -p
+            Node {
+                flags: (CommandFlags::LITERAL | CommandFlags::EXECUTABLE).bits() as i8,
+                children: &[],
+                redirect_node: None,
+                name: Some("-p"),
+                parser: None,
+                suggestions_type: None,
+            },
+            // 120: //invalidatecaches
+            Node {
+                flags: (CommandFlags::LITERAL | CommandFlags::EXECUTABLE).bits() as i8,
+                children: &[],
+                redirect_node: None,
+                name: Some("/invalidatecaches"),
                 parser: None,
                 suggestions_type: None,
             },

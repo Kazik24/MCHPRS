@@ -26,5 +26,22 @@
     "crates/core/benches/cpus.rs": "2ba35d37c93d89fd34ec2d98206000955fdf44dc5409c6045ac2f6431c2538e7",
     "crates/core/benches/support/cpus.rs": "6ae12f3f04cfa427635152f2cbea4d14a86b1fa19f15ee69a0104b26233a58fd"
   },
-  "measurement_notes": "Three fresh-world samples per CPU; medians of tick_interpreted durations only. Immutable decode table and cleared wire allocation scratch remain warm between samples. Active windows: PM1 12051 ticks; ANPU 5000 ticks."
+  "measurement_notes": "Three fresh-world samples per CPU; medians of tick_interpreted durations only. Immutable decode table and cleared wire allocation scratch remain warm between samples. Active windows: PM1 12051 ticks; ANPU 5000 ticks.",
+  "heavy_optimization_source_sha256": {
+    "crates/blocks/src/lib.rs": "da0bbad164076f72a3c6772f94746fa3ac16e332d602aea19c6bd0156e7eea55",
+    "crates/core/src/redstone/piston.rs": "de2b57cb21973ddcdfb4f29ea2894941184ee1ebfbee1248e542b1f2bd8f4999",
+    "crates/core/src/redstone/wire/mod.rs": "e9620af63ca01f0441ee3e9af5451636ecc25c8ae21d4469b6f4a4775189d8c8",
+    "crates/core/src/redstone/wire/turbo.rs": "6da00a22282431cb0715de93410dee826c7480d0b5d27e071186438bb7fe64ee",
+    "crates/core/src/redstone/wire/turbo_cache.rs": "74157830fc55e6164a884984ab2c1d2b1feaeecdaf37e196f003ae051958e5a2",
+    "crates/core/src/plot/mod.rs": "f1d29b7bba44033d5d50bd0643691d735f4dceb6b27d689bb24e6180b532fc42",
+    "crates/core/src/plot/interpreter_cache.rs": "716273649ffb930b8ddbb6a36c3b4e4c2b976a81b3b1213604d93d951bb2ea3c",
+    "crates/core/src/plot/history/codec.rs": "6864527e490222674f8431ebcbecdcb5ba0fac314a0646a9ed71e20538762cb3",
+    "crates/core/src/world/mod.rs": "ff221a60b7403e2cfdd81ffca927e9378ab0dd83a124f94cfda9f9ed5f3c5181",
+    "crates/core/src/world/wire_cache.rs": "c78a652cc03e7349933d44af427684f3d9a02830e59514e096848c1beb7759a3",
+    "crates/world/src/lib.rs": "199a9d3d205b93332ddcea9c3f75858e0bc9e93654e5539ede9bc1c1e73d248c",
+    "crates/core/benches/cpus.rs": "2ba35d37c93d89fd34ec2d98206000955fdf44dc5409c6045ac2f6431c2538e7",
+    "crates/core/benches/support/cpus.rs": "6ae12f3f04cfa427635152f2cbea4d14a86b1fa19f15ee69a0104b26233a58fd",
+    "crates/core/benches/piston.rs": "13ca452e09ca8e21e61a1f0987cacb150ccfa27aa8a61471d9366b429d28d1e3"
+  },
+  "heavy_optimization_notes": "Indexed piston collections with linear fallback at <=8 entries, section-local per-walk node stamps, plot-local canonical neighbor addresses, immutable registry facts. Same frozen outputs; three fresh-world samples per CPU. Plot-local caches start cold per sample; immutable registry tables and cleared thread scratch stay warm. CPU measurements exclude client rendering/network work."
 }

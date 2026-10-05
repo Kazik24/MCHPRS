@@ -6,12 +6,14 @@ mod schematic;
 mod schematic_paths;
 #[cfg(test)]
 mod stack_tests;
+#[cfg(test)]
+mod update_tests;
 
 use super::{Plot, PlotWorld};
 use crate::player::{PacketSender, Player, PlayerPos};
 use crate::redstone;
 use crate::world::storage::PalettedBitBuffer;
-use crate::world::{for_each_block_mut_optimized, World};
+use crate::world::World;
 use execute::*;
 use mchprs_blocks::block_entities::{BlockEntity, ContainerType};
 use mchprs_blocks::blocks::Block;
@@ -658,6 +660,13 @@ static COMMANDS: Lazy<HashMap<&'static str, WorldeditCommand>> = Lazy::new(|| {
             ],
             ..Default::default()
         },
+        "/invalidatecaches" => WorldeditCommand {
+            execute_fn: execute_invalidate_caches,
+            description: messages::WE_HELP_INVALIDATE_CACHES,
+            permission_node: "mchprs.we.invalidatecaches",
+            mutates_world: false,
+            ..Default::default()
+        },
         "/help" => WorldeditCommand {
             arguments: &[
                 argument!("command", String, messages::WE_ARGUMENT_COMMAND_TO_RETRIEVE_HELP_FOR),
@@ -1174,8 +1183,54 @@ fn expand_selection(player: &mut Player, amount: BlockPos, contract: bool) {
 }
 
 fn update(plot: &mut PlotWorld, first_pos: BlockPos, second_pos: BlockPos) {
-    for_each_block_mut_optimized(plot, first_pos, second_pos, |plot, pos| {
-        let block = plot.get_block(pos);
-        redstone::update(block, plot, pos, None)
-    });
+    // Pasted clipboards can overlap the plot boundary; update only their placed part.
+    let (plot_min, plot_max) = plot.get_corners();
+    let first = first_pos.min(second_pos).max(plot_min);
+    let second = first_pos.max(second_pos).min(plot_max);
+    if first.x <= second.x && first.y <= second.y && first.z <= second.z {
+        update_selection(plot, first, second).expect("clipped update bounds");
+    }
+}
+
+fn update_selection(
+    plot: &mut PlotWorld,
+    first_pos: BlockPos,
+    second_pos: BlockPos,
+) -> Result<(), &'static str> {
+    if !Plot::in_plot_bounds(plot.x, plot.z, first_pos.x, first_pos.z) {
+        return Err(messages::FIRST_POSITION_OUTSIDE_PLOT_BOUNDS);
+    }
+    if !Plot::in_plot_bounds(plot.x, plot.z, second_pos.x, second_pos.z) {
+        return Err(messages::SECOND_POSITION_OUTSIDE_PLOT_BOUNDS);
+    }
+    if !(0..super::PLOT_BLOCK_HEIGHT).contains(&first_pos.y)
+        || !(0..super::PLOT_BLOCK_HEIGHT).contains(&second_pos.y)
+    {
+        return Err(messages::UPDATE_SELECTION_OUTSIDE_HEIGHT);
+    }
+    let first = first_pos.min(second_pos);
+    let second = first_pos.max(second_pos);
+    // Align the section iteration before skipping empty sections. Unaligned
+    // selections can cross all three section boundaries in fewer than 16 blocks.
+    for chunk_x in first.x.div_euclid(16)..=second.x.div_euclid(16) {
+        for chunk_z in first.z.div_euclid(16)..=second.z.div_euclid(16) {
+            for section in first.y / 16..=second.y / 16 {
+                if plot.get_chunk(chunk_x, chunk_z).unwrap().sections[section as usize]
+                    .block_count()
+                    == 0
+                {
+                    continue;
+                }
+                for y in first.y.max(section * 16)..=second.y.min(section * 16 + 15) {
+                    for z in first.z.max(chunk_z * 16)..=second.z.min(chunk_z * 16 + 15) {
+                        for x in first.x.max(chunk_x * 16)..=second.x.min(chunk_x * 16 + 15) {
+                            let pos = BlockPos::new(x, y, z);
+                            redstone::update(plot.get_block(pos), plot, pos, None);
+                        }
+                    }
+                }
+            }
+        }
+    }
+    Ok(())
 }

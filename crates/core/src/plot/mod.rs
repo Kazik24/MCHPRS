@@ -7,6 +7,7 @@ mod data;
 pub mod database;
 mod help;
 mod history;
+mod interpreter_cache;
 mod monitor;
 mod packet_handlers;
 mod picking;
@@ -112,6 +113,8 @@ pub struct PlotWorld {
     chunks: Vec<Chunk>,
     to_be_ticked: TickScheduler<ScheduledBlockTick>,
     piston_state: PistonState,
+    piston_index: std::cell::RefCell<interpreter_cache::PistonIndex>,
+    wire_topology: std::cell::RefCell<crate::world::wire_cache::Topology>,
     packet_senders: Vec<PlayerPacketSender>,
     is_cursed: bool,
     fast_rendering: bool,
@@ -145,6 +148,8 @@ impl PlotWorld {
             chunks,
             to_be_ticked,
             piston_state: PistonState::default(),
+            piston_index: Default::default(),
+            wire_topology: Default::default(),
             packet_senders: Vec::new(),
             is_cursed: false,
             fast_rendering: false,
@@ -321,8 +326,8 @@ impl PlotWorld {
     }
 
     fn register_motion(&mut self, pos: BlockPos, progress: f32) {
+        self.remove_motions_at(pos);
         let state = &mut self.piston_state;
-        state.motions.retain(|m| m.pos != pos);
         state.next_identity += 1;
         state.motions.push(PistonMotion {
             pos,
@@ -332,6 +337,27 @@ impl PlotWorld {
             last_tick: state.logical_tick,
             carried_entity: None,
         });
+        self.piston_index
+            .get_mut()
+            .inserted(pos, state.motions.len() - 1);
+    }
+
+    fn remove_motions_at(&mut self, pos: BlockPos) {
+        if self.piston_motion_index(pos, None).is_some() {
+            self.piston_state.motions.retain(|m| m.pos != pos);
+            self.piston_index.get_mut().removed(pos);
+        }
+    }
+
+    fn invalidate_interpreter_caches(&mut self) {
+        self.piston_index.get_mut().invalidate();
+        self.wire_topology.get_mut().clear();
+    }
+
+    fn clear_interpreter_caches(&mut self) {
+        *self.piston_index.get_mut() = Default::default();
+        self.wire_topology.get_mut().clear();
+        redstone::wire::invalidate_turbo_cache();
     }
 
     /// Find the next operation in this game tick. All stepping commands share
@@ -359,12 +385,13 @@ impl PlotWorld {
                     if !self.piston_state.events.is_empty() {
                         return true;
                     }
-                    self.piston_state.movement_work = self
-                        .piston_state
-                        .motions
-                        .iter()
-                        .map(|m| (m.pos, m.identity))
-                        .collect();
+                    self.piston_state.movement_work.clear();
+                    self.piston_state.movement_work.extend(
+                        self.piston_state
+                            .motions
+                            .iter()
+                            .map(|m| (m.pos, m.identity)),
+                    );
                     self.piston_state.movement_cursor = 0;
                     self.piston_state.phase = AdvancePhase::MovingEntities;
                 }
@@ -395,6 +422,7 @@ impl PlotWorld {
             }
             AdvancePhase::PistonEvents => {
                 let event = self.piston_state.events.pop_front().unwrap();
+                self.piston_index.get_mut().popped(event);
                 redstone::piston::execute_event(self, event);
             }
             AdvancePhase::MovingEntities => {
@@ -509,7 +537,7 @@ impl World for PlotWorld {
     }
 
     fn delete_block_entity(&mut self, pos: BlockPos) {
-        self.piston_state.motions.retain(|m| m.pos != pos);
+        self.remove_motions_at(pos);
         let chunk_index = match self.get_chunk_index_for_block(pos.x, pos.z) {
             Some(idx) => idx,
             None => return,
@@ -538,7 +566,75 @@ impl World for PlotWorld {
         &self.piston_state
     }
     fn piston_state_mut(&mut self) -> &mut PistonState {
+        self.piston_index.get_mut().invalidate();
         &mut self.piston_state
+    }
+
+    fn piston_motion_index(&self, pos: BlockPos, identity: Option<u64>) -> Option<usize> {
+        self.piston_index
+            .borrow_mut()
+            .motion(&self.piston_state, pos, identity)
+    }
+
+    fn advance_piston_motion(&mut self, index: usize) -> (bool, f32) {
+        let s = &mut self.piston_state;
+        let m = &mut s.motions[index];
+        m.last_tick = s.logical_tick;
+        m.previous_progress = m.progress;
+        let complete = m.progress >= 1.0;
+        if !complete {
+            m.progress = (m.progress + 0.5).min(1.0);
+        }
+        (complete, m.previous_progress)
+    }
+
+    fn remove_piston_motion(&mut self, index: usize) {
+        let pos = self.piston_state.motions.remove(index).pos;
+        self.piston_index.get_mut().invalidate();
+        self.piston_index.get_mut().removed(pos);
+    }
+
+    fn set_piston_carried_entity(&mut self, pos: BlockPos, entity: Option<Box<BlockEntity>>) {
+        if let Some(i) = self.piston_motion_index(pos, None) {
+            self.piston_state.motions[i].carried_entity = entity;
+        }
+    }
+
+    fn enqueue_piston_event(&mut self, event: mchprs_world::PistonEvent) {
+        if !self
+            .piston_index
+            .borrow_mut()
+            .has_event(&self.piston_state, event)
+        {
+            self.piston_state.events.push_back(event);
+            self.piston_index.get_mut().pushed(event);
+        }
+    }
+
+    fn wire_location(&self, pos: BlockPos) -> Option<u32> {
+        if !(0..PLOT_BLOCK_HEIGHT).contains(&pos.y) {
+            return None;
+        }
+        let chunk = self.get_chunk_index_for_block(pos.x, pos.z)? as u32;
+        let section = (chunk << 4) | (pos.y as u32 >> 4);
+        Some(
+            (section << 12)
+                | ((pos.y as u32 & 15) << 8)
+                | ((pos.z as u32 & 15) << 4)
+                | (pos.x as u32 & 15),
+        )
+    }
+
+    fn wire_neighborhood(
+        &self,
+        pos: BlockPos,
+    ) -> Option<std::sync::Arc<[crate::world::WireNeighbor; 24]>> {
+        let cell = self.wire_location(pos)?;
+        Some(
+            self.wire_topology
+                .borrow_mut()
+                .neighborhood(cell, pos, |p| self.wire_location(p)),
+        )
     }
 
     fn set_block_entity(&mut self, pos: BlockPos, block_entity: BlockEntity) {
@@ -551,7 +647,7 @@ impl World for PlotWorld {
             // Repeating that linear scan here doubles the work for large piston banks.
             self.register_motion(pos, e.get_progress());
         } else {
-            self.piston_state.motions.retain(|m| m.pos != pos);
+            self.remove_motions_at(pos);
         }
         let send_command = matches!(&block_entity, BlockEntity::CommandBlock(_));
         if let Some(nbt) = block_entity.to_nbt(!send_command) {
@@ -1550,6 +1646,7 @@ impl Plot {
             || !plot_data.piston_state.motions.is_empty()
         {
             world.piston_state = plot_data.piston_state;
+            world.invalidate_interpreter_caches();
         }
         let tps = plot_data.tps;
         world.fast_rendering = visuals::static_pistons(

@@ -1,4 +1,6 @@
 pub mod storage;
+pub(crate) mod wire_cache;
+pub use wire_cache::Neighbor as WireNeighbor;
 
 use mchprs_blocks::block_entities::BlockEntity;
 use mchprs_blocks::blocks::{Block, RedstonePiston};
@@ -36,6 +38,50 @@ pub trait World {
     fn get_block_entity_mut(&mut self, pos: BlockPos) -> Option<&mut BlockEntity>;
     fn piston_state(&self) -> &mchprs_world::PistonState;
     fn piston_state_mut(&mut self) -> &mut mchprs_world::PistonState;
+
+    fn piston_motion_index(&self, pos: BlockPos, identity: Option<u64>) -> Option<usize> {
+        self.piston_state()
+            .motions
+            .iter()
+            .position(|m| m.pos == pos && identity.is_none_or(|id| id == m.identity))
+    }
+
+    fn advance_piston_motion(&mut self, index: usize) -> (bool, f32) {
+        let s = self.piston_state_mut();
+        let m = &mut s.motions[index];
+        m.last_tick = s.logical_tick;
+        m.previous_progress = m.progress;
+        let complete = m.progress >= 1.0;
+        if !complete {
+            m.progress = (m.progress + 0.5).min(1.0);
+        }
+        (complete, m.previous_progress)
+    }
+
+    fn remove_piston_motion(&mut self, index: usize) {
+        self.piston_state_mut().motions.remove(index);
+    }
+
+    fn set_piston_carried_entity(&mut self, pos: BlockPos, entity: Option<Box<BlockEntity>>) {
+        if let Some(i) = self.piston_motion_index(pos, None) {
+            self.piston_state_mut().motions[i].carried_entity = entity;
+        }
+    }
+
+    fn enqueue_piston_event(&mut self, event: mchprs_world::PistonEvent) {
+        if !self.piston_state().events.contains(&event) {
+            self.piston_state_mut().events.push_back(event);
+        }
+    }
+
+    /// Compact section/local address, when this world supports indexed wire walks.
+    fn wire_location(&self, _pos: BlockPos) -> Option<u32> {
+        None
+    }
+
+    fn wire_neighborhood(&self, _pos: BlockPos) -> Option<std::sync::Arc<[WireNeighbor; 24]>> {
+        None
+    }
 
     /// Sets the block entity at `pos`, overwriting any other block entity that was there prior.
     fn set_block_entity(&mut self, pos: BlockPos, block_entity: BlockEntity);

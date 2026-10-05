@@ -27,6 +27,7 @@ impl Snapshot {
             .collect();
         world.to_be_ticked = self.ticks.into_iter().collect();
         world.piston_state = self.piston_state;
+        world.invalidate_interpreter_caches();
         world.command_messages.clear();
     }
 }

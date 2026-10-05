@@ -56,19 +56,22 @@ also invalidate the block snapshots; review those as a version migration.
 
 Wire walks retain every cached neighbor for signal strength and direction
 calculation, but omit callbacks for blocks whose redstone dispatcher is inert.
-The classification is cached within a single walk, so piston movement cannot
-invalidate a persistent topology cache. An exhaustive registry-state test calls
+Live block snapshots are cached within a single walk; immutable block-state facts
+are shared by registry ID. An exhaustive registry-state test calls
 every omitted handler against a world that panics on reads and side effects.
 Active callbacks retain their existing relative order.
 
-Neighbor discovery uses one hash-table lookup per neighbor and fixed temporary
-arrays; oriented neighbor lists live in a contiguous array arena. The current queue
+Neighbor discovery uses section-local generation stamps for plot cells, retaining
+a hash-table fallback outside the plot. Canonical neighbor addresses persist in
+the plot, and each walk builds fresh oriented and direct neighbor lists in a
+contiguous array arena. The current queue
 layer is processed in place instead of cloning it. Propagation appends only to
 the next two layers.
 
 Wire walks reuse thread-local node, neighbor, hash-table, and queue allocations.
-Every walk clears all block states, topology, eligibility, and direction data;
-only capacity survives. The scratch space is removed from its thread-local slot
+Every walk clears all block states, oriented neighbors, eligibility, and direction
+data. Spatial entries expire by generation; immutable canonical addresses remain
+in the plot cache. The scratch space is removed from its thread-local slot
 before calling handlers, so recursive walks obtain independent scratch space.
 One returned scratch space is retained per interpreter thread. This trades the
 memory of a previous large walk for fewer allocations on subsequent walks.
@@ -81,15 +84,17 @@ An exhaustive registry test checks equality with the original decoder and ID
 round trips. Modeled enum blocks also skip command-block name lookups; the same
 test verifies classification against registry names for every state.
 
-Callback classification is lazy: neighbors cached only for power or direction
-are not classified unless they become eligible for the callback queue. Inert
-nodes still receive the original layer metadata updates, preserving deduplication.
-Known inert enum variants skip registry/name lookup; opaque registry states still
-check for command blocks.
+Callback eligibility, solidity, transparency, and directional wire connections
+use an immutable registry-state table. Inert nodes still receive the original
+layer metadata updates, preserving deduplication. Cached connection facts describe
+a block state, not its current surroundings. Power and traversal headings are
+recomputed on every walk.
 
 Moving-piston entity installation no longer removes the same previous motion
 twice: `register_motion` already performs that removal. This eliminates a
 redundant linear scan while preserving motion identity and ordering.
+Motion lookups and event membership now use derived indexes; ordered motion and
+event collections remain authoritative and keep their original save format.
 
 Scheduled priority queues use FIFO deques instead of shifting a vector on every
 front removal. Tick timing, priority, insertion order, and save formats stay the
@@ -148,6 +153,11 @@ encoding/compression and writes to an ordered background sender. Its diagnostics
 and separate validation are described in [client-updates.md](client-updates.md).
 The CPU timings above were recorded before that client-path change and measure
 interpreter throughput without connected clients.
+
+The subsequent three interpreter optimizations, memory costs, command controls,
+and newer measurements are described in [heavy-interpreter.md](heavy-interpreter.md).
+`heavy-optimization-performance.json` preserves their three-sample CPU results;
+the original references and earlier performance reports remain unchanged.
 
 ## Capture deliberately
 

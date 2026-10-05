@@ -182,6 +182,7 @@ fn command_block_automatic_repeat_and_pending_ticks_survive_restart() {
         .collect();
     let mut resumed = PlotWorld::from_chunks(0, 0, chunks, ticks.into_iter().collect());
     resumed.piston_state = state;
+    resumed.invalidate_interpreter_caches();
     advance(&mut resumed, 4);
     assert_eq!(resumed.command_messages.len(), 4);
     assert_eq!(success(&resumed, pos), 1);

@@ -5,11 +5,12 @@ automatic piston presentation:
 
 ```toml
 fast_render_threshold = 200
-fast_render_send_rate = 5
+fast_render_send_rate = 2
 ```
 
-This example caps visual block updates at 5 Hz when configured TPS exceeds 200,
-or when TPS is unlimited. The existing defaults remain 100 and 10. The threshold
+These defaults cap visual block updates at 2 Hz when configured TPS exceeds 200,
+or when TPS is unlimited. Existing configuration files also need these values
+to select the new defaults. The threshold
 is based on configured TPS, not measured TPS. Setting the threshold to zero
 disables automatic throttling. A lower plot `/wsr` limit still wins, and `/wsr 0`
 still disables ordinary block-update flushing.

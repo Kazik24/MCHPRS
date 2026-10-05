@@ -944,10 +944,19 @@ pub(super) fn execute_update(ctx: CommandExecuteContext<'_>) {
         }
     };
 
-    update(ctx.plot, first_pos, second_pos);
+    if let Err(message) = update_selection(ctx.plot, first_pos, second_pos) {
+        ctx.player.send_error_message(message);
+        return;
+    }
 
     ctx.player
         .send_worldedit_message(&messages::selection_updated(start_time.elapsed()));
+}
+
+pub(super) fn execute_invalidate_caches(ctx: CommandExecuteContext<'_>) {
+    ctx.plot.clear_interpreter_caches();
+    ctx.player
+        .send_worldedit_message(messages::INTERPRETER_CACHES_INVALIDATED);
 }
 
 pub(super) fn execute_replace_container(ctx: CommandExecuteContext<'_>) {
