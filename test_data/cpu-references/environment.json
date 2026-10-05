@@ -1,0 +1,30 @@
+{
+  "captured_on": "2026-10-05",
+  "cpu": "AMD Ryzen 9 5950X 16-Core Processor",
+  "physical_cores": 16,
+  "logical_processors": 32,
+  "os": "Windows 11 Home 10.0.26200",
+  "target": "x86_64-pc-windows-msvc",
+  "rustc": "1.98.1 (48a229cea 2026-09-01)",
+  "llvm": "22.1.8",
+  "base_commit": "c011be187dd9dfbf9980407a596039d4830bce9a",
+  "profile": "bench/release, opt-level 3, fat LTO",
+  "pre_optimization_source_sha256": {
+    "crates/core/src/redstone/mod.rs": "e2d9905607a424e67513ba68ab9cfe4d6e75580a78478754cc6d938aadd98ae9",
+    "crates/core/src/redstone/wire/turbo.rs": "d5da41168fbd6333ba318ac8254ebe3b597521f3bb27c42fbea2c3561b996de9",
+    "crates/core/src/redstone/piston.rs": "b9c1bda3b674e499f92d98e2abb01f41d490cfbae28335d2207626bd2d10c0e5",
+    "crates/core/src/plot/mod.rs": "5e55ca49eba1ab00d74ca3f593050a5753f6e2c260b95c5564fa418a7c07b6db",
+    "crates/core/src/redpiler/backend/queue.rs": "16a3c1427c3a02eb5e7749cd24fe17244d9aa057f9a223e7f72c8fc346fa06dd"
+  },
+  "optimized_source_sha256": {
+    "crates/blocks/src/blocks/mod.rs": "bed9ded903cf45caa146a0759471294ec70e185cc2a2dd660c4dbe811a411dd0",
+    "crates/core/src/redstone/mod.rs": "355e69fe40993548f031a4be6910927fb09613ecf77a9f17bddcb16c98133120",
+    "crates/core/src/redstone/wire/turbo.rs": "57c05585bf56ee178c6520b667d803063c13afa676d142aa12c1be3468a4c9e8",
+    "crates/core/src/redstone/piston.rs": "b9c1bda3b674e499f92d98e2abb01f41d490cfbae28335d2207626bd2d10c0e5",
+    "crates/core/src/plot/mod.rs": "b8d29f88da67c71b01769c10c45f1231226eed617e8f1217f337612622e29526",
+    "crates/core/src/redpiler/backend/queue.rs": "9c1b71d9fcbe184ad163efbf34e0303c61aba1f6d9cba570c85ccf9e8c0155a3",
+    "crates/core/benches/cpus.rs": "2ba35d37c93d89fd34ec2d98206000955fdf44dc5409c6045ac2f6431c2538e7",
+    "crates/core/benches/support/cpus.rs": "6ae12f3f04cfa427635152f2cbea4d14a86b1fa19f15ee69a0104b26233a58fd"
+  },
+  "measurement_notes": "Three fresh-world samples per CPU; medians of tick_interpreted durations only. Immutable decode table and cleared wire allocation scratch remain warm between samples. Active windows: PM1 12051 ticks; ANPU 5000 ticks."
+}

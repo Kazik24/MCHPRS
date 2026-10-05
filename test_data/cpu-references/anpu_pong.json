@@ -1,0 +1,97 @@
+{
+  "schema": 1,
+  "schematic_sha256": "f4068257797399531ce31d56c972af32d0f73f7d8d496ce1b7b8cd1c178decec",
+  "checkpoints": [
+    {
+      "tick": 0,
+      "blocks": "e181ae3c8c49b71cf7e9499dd8da1899e2550cf89e198a3cd1ec2c1605c38c9c",
+      "entities": "b29e86519ce9d45e966bf29b56eeab2bfd943fb18825243327b929b6bfe4763a",
+      "scheduler": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "pistons": "353fd628b7f6e7d426e5d6a27d1bc3ac22fa7f812e7594cf2ec5ca1175785b50",
+      "chat": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "messages": 0,
+      "lit_lamps": 264
+    },
+    {
+      "tick": 10,
+      "blocks": "22fc7003a61fa1fed3929ecb8a551db957b93d17b753e7b8f491ec81198e0666",
+      "entities": "b29e86519ce9d45e966bf29b56eeab2bfd943fb18825243327b929b6bfe4763a",
+      "scheduler": "fb7eaee7ef0cd130300f8d0a400171727dcdaae4b2690a0b1ddf94be675ad438",
+      "pistons": "bde38f14f9a756d92bc95b46c497d632a32524faa45c6a1e4716be145f77649e",
+      "chat": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "messages": 0,
+      "lit_lamps": 264
+    },
+    {
+      "tick": 100,
+      "blocks": "860fdaf2baf78f3f69825509738ffda1c12b563dcb4cdd73c69fd586fdd9381a",
+      "entities": "09da2b2297d73b6fac8b626566d13d672629bd35746f2671e368a69d3df70793",
+      "scheduler": "9d635c7b4f14efb7501bb57cecab934f3c80bba460d324dbcd557cd21bff72af",
+      "pistons": "09216b0399a8083bf2a00f053237ca75df269004af9aeb758917f7db7910df2e",
+      "chat": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "messages": 0,
+      "lit_lamps": 264
+    },
+    {
+      "tick": 1000,
+      "blocks": "f543d2c560775f8be30602c06d6ab0ccaef7eeeb106267ee71d9ffcdb2bdd1b5",
+      "entities": "3e1337cf02552018c70f1974af5d9bb5698ff3184590b47ce84d0e4d51309f71",
+      "scheduler": "81e1ff5d38429cfba8e414f0a5ed73a5f2c970b4f393acab8defbc7c3ea81868",
+      "pistons": "cd32232382965ba8dc41f9275fac5bb292ccbb387803f7755c3b7f5289d8c612",
+      "chat": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "messages": 0,
+      "lit_lamps": 266
+    },
+    {
+      "tick": 5000,
+      "blocks": "8aabc83acba586720e0c694b0a763b673e77d1a4ebdc0ec49cb7b1d2e385407d",
+      "entities": "b29e86519ce9d45e966bf29b56eeab2bfd943fb18825243327b929b6bfe4763a",
+      "scheduler": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "pistons": "2a07ff48ab330fd840c50ad3a440e8ab88e8f0557bccbbe23ab282804cd3f22a",
+      "chat": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "messages": 0,
+      "lit_lamps": 270
+    },
+    {
+      "tick": 10000,
+      "blocks": "8aabc83acba586720e0c694b0a763b673e77d1a4ebdc0ec49cb7b1d2e385407d",
+      "entities": "b29e86519ce9d45e966bf29b56eeab2bfd943fb18825243327b929b6bfe4763a",
+      "scheduler": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "pistons": "4e1fac7b9d81e618c0dce5bde306472cc27087b0ece875f79267592202578f0e",
+      "chat": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "messages": 0,
+      "lit_lamps": 270
+    },
+    {
+      "tick": 20000,
+      "blocks": "8aabc83acba586720e0c694b0a763b673e77d1a4ebdc0ec49cb7b1d2e385407d",
+      "entities": "b29e86519ce9d45e966bf29b56eeab2bfd943fb18825243327b929b6bfe4763a",
+      "scheduler": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "pistons": "1382586702eb3aa4d424eb3ae416b5d7650c2112d01fac943c30407ee0b58de8",
+      "chat": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "messages": 0,
+      "lit_lamps": 270
+    },
+    {
+      "tick": 30000,
+      "blocks": "8aabc83acba586720e0c694b0a763b673e77d1a4ebdc0ec49cb7b1d2e385407d",
+      "entities": "b29e86519ce9d45e966bf29b56eeab2bfd943fb18825243327b929b6bfe4763a",
+      "scheduler": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "pistons": "e63a1ca5970e1eb8dd8f8210ebb5f2769a1ebe133052e59974c784dcad68ac4e",
+      "chat": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "messages": 0,
+      "lit_lamps": 270
+    },
+    {
+      "tick": 50000,
+      "blocks": "8aabc83acba586720e0c694b0a763b673e77d1a4ebdc0ec49cb7b1d2e385407d",
+      "entities": "b29e86519ce9d45e966bf29b56eeab2bfd943fb18825243327b929b6bfe4763a",
+      "scheduler": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "pistons": "dd610cbc86476b8cf2535382c612e3bc91acc5f199c898ed3786d78bf764f187",
+      "chat": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "messages": 0,
+      "lit_lamps": 270
+    }
+  ],
+  "chat_trace": []
+}

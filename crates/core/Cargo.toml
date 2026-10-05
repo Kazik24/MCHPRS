@@ -21,6 +21,10 @@ harness = false
 name = "piston"
 harness = false
 
+[[bench]]
+name = "cpus"
+harness = false
+
 [dependencies]
 mchprs_proc_macros = { path = "../proc_macros" }
 toml = "0.7"

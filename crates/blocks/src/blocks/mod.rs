@@ -4,6 +4,11 @@ use crate::{BlockColorVariant, BlockDirection, BlockFacing, BlockProperty, SignT
 use mchprs_proc_macros::BlockTransform;
 pub use props::*;
 use std::collections::HashMap;
+use std::sync::OnceLock;
+
+// Registry states are immutable. Decode each once rather than reconstructing
+// enum properties (and checking the reverse mapping) on every world read.
+static DECODED_STATES: OnceLock<Box<[Block]>> = OnceLock::new();
 
 #[derive(Clone, Copy, Debug)]
 pub enum FlipDirection {
@@ -200,7 +205,20 @@ impl Block {
         }
         crate::generated::LEGACY_BLOCK_STATES[self.legacy_id() as usize]
     }
+    #[inline]
     pub fn from_id(id: u32) -> Self {
+        DECODED_STATES
+            .get_or_init(|| {
+                (0..crate::generated::TARGET_TO_LEGACY.len() as u32)
+                    .map(Self::decode_id)
+                    .collect()
+            })
+            .get(id as usize)
+            .copied()
+            .unwrap_or(Self::Unknown { id })
+    }
+
+    fn decode_id(id: u32) -> Self {
         let legacy = crate::generated::TARGET_TO_LEGACY
             .get(id as usize)
             .copied()
@@ -236,10 +254,13 @@ impl Block {
     }
 
     pub fn is_command_block(self) -> bool {
-        matches!(
-            self.get_name(),
-            "command_block" | "repeating_command_block" | "chain_command_block"
-        )
+        // Command blocks have no modeled enum variant. Avoid registry/name
+        // lookups for the modeled blocks on every redstone update and solid check.
+        matches!(self, Self::Unknown { .. })
+            && matches!(
+                self.get_name(),
+                "command_block" | "repeating_command_block" | "chain_command_block"
+            )
     }
 
     pub fn can_place_block_in(self) -> bool {
@@ -1983,3 +2004,29 @@ blocks! {
 }
 
 // TODO make macro for building blocks
+
+#[cfg(test)]
+mod decoded_state_tests {
+    use super::*;
+
+    #[test]
+    fn cached_states_preserve_decode_and_properties() {
+        for id in 0..crate::generated::TARGET_TO_LEGACY.len() as u32 {
+            let cached = Block::from_id(id);
+            let decoded = Block::decode_id(id);
+            assert_eq!(cached, decoded, "registry state {id}");
+            assert_eq!(cached.get_id(), id, "registry round trip {id}");
+            assert_eq!(
+                cached.is_command_block(),
+                matches!(
+                    decoded.get_name(),
+                    "command_block" | "repeating_command_block" | "chain_command_block"
+                ),
+                "command block classification {id}"
+            );
+        }
+        for id in [crate::generated::TARGET_TO_LEGACY.len() as u32, u32::MAX] {
+            assert_eq!(Block::from_id(id), Block::Unknown { id });
+        }
+    }
+}

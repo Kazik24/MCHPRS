@@ -451,6 +451,7 @@ pub trait PacketEncoderExt: Write + Sized {
     }
 }
 impl PacketEncoderExt for Vec<u8> {}
+#[derive(Clone, Debug)]
 pub struct PacketEncoder {
     pub buffer: Vec<u8>,
     pub packet_id: u32,

@@ -1,6 +1,8 @@
 pub mod generated;
+mod outbound;
 pub mod packets;
 pub mod text;
+pub use outbound::SendStats;
 
 use packets::serverbound::ServerBoundPacket;
 use packets::{read_packet, PacketEncoder};
@@ -15,25 +17,30 @@ pub struct PlayerPacketSender {
     // todo add synced player position, so that block_actions, and chunk updates can be sent more locally to
     // the player reducing lag spikes while moving around very large redstone contraptions
     // player_pos: Arc<AtomicI64>, // raw PackedPos converted with as_raw()/from_raw()
-    stream: Option<TcpStream>,
+    outbound: outbound::Outbound,
+    compressed: Arc<AtomicBool>,
 }
 
 impl PlayerPacketSender {
     pub fn new(conn: &PlayerConn) -> PlayerPacketSender {
-        let stream = conn.client.stream.try_clone().ok();
-        if stream.is_none() {
-            warn!("Creating PlayerPacketSender with dead stream")
+        PlayerPacketSender {
+            outbound: conn.client.outbound.clone(),
+            compressed: conn.client.compressed.clone(),
         }
-        PlayerPacketSender { stream }
     }
 
-    //todo maybe this will need async variant for queueing packets and sending them in background
-    //for massive piston updates
     pub fn send_packet(&self, data: &PacketEncoder) {
-        if let Some(stream) = &self.stream {
-            // Going to assume stream is compressed since it should be after login
-            let _ = data.write_compressed(stream);
-        }
+        self.outbound
+            .packet(data, self.compressed.load(Ordering::Relaxed));
+    }
+
+    pub fn send_block_changes(&self, data: &packets::clientbound::CMultiBlockChange) {
+        self.outbound
+            .blocks(data, self.compressed.load(Ordering::Relaxed));
+    }
+
+    pub fn send_stats(&self) -> SendStats {
+        self.outbound.stats()
     }
 }
 
@@ -112,7 +119,7 @@ pub struct NetworkClient {
     /// All NetworkClients are identified by this id.
     /// If the client is a player, the player's entitiy id becomes the same.
     pub id: u32,
-    stream: TcpStream,
+    outbound: outbound::Outbound,
     packets: mpsc::Receiver<Box<dyn ServerBoundPacket>>,
     compressed: Arc<AtomicBool>,
 }
@@ -157,15 +164,12 @@ impl NetworkClient {
     }
 
     pub fn send_packet(&self, data: &PacketEncoder) {
-        if self.compressed.load(Ordering::Relaxed) {
-            let _ = data.write_compressed(&self.stream);
-        } else {
-            let _ = data.write_uncompressed(&self.stream);
-        }
+        self.outbound
+            .packet(data, self.compressed.load(Ordering::Relaxed));
     }
 
     pub fn close_connection(&self) {
-        let _ = self.stream.shutdown(Shutdown::Both);
+        self.outbound.close();
     }
 }
 
@@ -193,7 +197,7 @@ impl NetworkServer {
                 .send(NetworkClient {
                     // The index will increment after each client making it unique. We'll just use this as the enitity id.
                     id: index as u32,
-                    stream,
+                    outbound: outbound::Outbound::new(stream),
                     packets: packet_receiver,
                     compressed,
                 })

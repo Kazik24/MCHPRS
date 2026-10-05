@@ -116,6 +116,18 @@ pub struct PlotWorld {
     fast_rendering: bool,
     command_messages: Vec<crate::chat_commands::ChatCommand>,
     history: history::TickHistory,
+    update_stats: UpdateStats,
+}
+
+#[derive(Default)]
+struct UpdateStats {
+    collection: Duration,
+    enqueue: Duration,
+    flushes: u64,
+    sections: u64,
+    records: u64,
+    simulation: Duration,
+    simulated_ticks: u64,
 }
 
 impl PlotWorld {
@@ -137,6 +149,7 @@ impl PlotWorld {
             fast_rendering: false,
             command_messages: Vec::new(),
             history: Default::default(),
+            update_stats: Default::default(),
         };
         // Position-only old saves bind to the loaded type once. They never
         // dispatch an observer tick into a subsequently moved/replaced block.
@@ -214,6 +227,9 @@ impl PlotWorld {
     }
 
     fn flush_block_changes(&mut self) {
+        let started = Instant::now();
+        let mut enqueue_time = Duration::ZERO;
+        self.update_stats.flushes += 1;
         let fast = self.fast_rendering;
         let moving_states: std::collections::HashMap<_, _> = if fast {
             self.piston_state
@@ -230,7 +246,7 @@ impl PlotWorld {
             Default::default()
         };
         for packet in self.chunks.iter_mut().flat_map(|c| c.multi_blocks()) {
-            let encoded = if fast {
+            let transformed = if fast {
                 let records: Vec<_> = packet
                     .records
                     .iter()
@@ -252,23 +268,29 @@ impl PlotWorld {
                         record
                     })
                     .collect();
-                CMultiBlockChange {
+                Some(CMultiBlockChange {
                     chunk_x: packet.chunk_x,
                     chunk_y: packet.chunk_y,
                     chunk_z: packet.chunk_z,
                     records,
-                }
-                .encode()
+                })
             } else {
-                packet.encode()
+                None
             };
+            let packet = transformed.as_ref().unwrap_or(packet);
+            self.update_stats.sections += 1;
+            self.update_stats.records += packet.records.len() as u64;
+            let enqueue_started = Instant::now();
             for player in &self.packet_senders {
-                player.send_packet(&encoded);
+                player.send_block_changes(packet);
             }
+            enqueue_time += enqueue_started.elapsed();
         }
         for chunk in &mut self.chunks {
             chunk.reset_multi_blocks();
         }
+        self.update_stats.enqueue += enqueue_time;
+        self.update_stats.collection += started.elapsed().saturating_sub(enqueue_time);
     }
 
     pub fn get_corners(&self) -> (BlockPos, BlockPos) {
@@ -288,6 +310,13 @@ impl PlotWorld {
 
     pub fn scheduler(&self) -> &TickScheduler<ScheduledBlockTick> {
         &self.to_be_ticked
+    }
+
+    /// Queued command-block chat, in emission order.
+    pub fn command_output(&self) -> impl Iterator<Item = &str> {
+        self.command_messages
+            .iter()
+            .map(|message| message.message.as_str())
     }
 
     fn register_motion(&mut self, pos: BlockPos, progress: f32) {
@@ -516,9 +545,12 @@ impl World for PlotWorld {
             Some(idx) => idx,
             None => return,
         };
-        self.piston_state.motions.retain(|m| m.pos != pos);
         if let BlockEntity::MovingPiston(e) = &block_entity {
+            // register_motion already removes the previous motion at this position.
+            // Repeating that linear scan here doubles the work for large piston banks.
             self.register_motion(pos, e.get_progress());
+        } else {
+            self.piston_state.motions.retain(|m| m.pos != pos);
         }
         let send_command = matches!(&block_entity, BlockEntity::CommandBlock(_));
         if let Some(nbt) = block_entity.to_nbt(!send_command) {
@@ -635,10 +667,41 @@ impl World for PlotWorld {
 }
 
 impl Plot {
+    fn update_timing_report(&self) -> String {
+        let p = &self.world.update_stats;
+        let mut encode_ns = 0u64;
+        let mut compress_ns = 0u64;
+        let mut write_ns = 0u64;
+        let mut packets = 0u64;
+        let mut bytes = 0u64;
+        let mut queued_bytes = 0usize;
+        let mut coalesced = 0u64;
+        let mut failures = 0u64;
+        for sender in &self.world.packet_senders {
+            let s = sender.send_stats();
+            encode_ns += s.encode_ns;
+            compress_ns += s.compress_ns;
+            write_ns += s.write_ns;
+            packets += s.packets;
+            bytes += s.bytes;
+            queued_bytes += s.queued_bytes;
+            coalesced += s.coalesced_blocks;
+            failures += s.failures;
+        }
+        format!(
+            "Plot totals: {} ticks, simulation {:.3}s; {} visual flushes, {} sections, {} block records; collection {:.3}s, enqueue {:.3}s. Current visual rate: {} Hz.\nCurrent clients (connection totals): {} packets, {} bytes; visual encoding {:.3}s, framing/compression {:.3}s, socket writes {:.3}s; {} queued bytes, {} coalesced blocks, {} send failures.",
+            p.simulated_ticks, p.simulation.as_secs_f64(), p.flushes, p.sections, p.records,
+            p.collection.as_secs_f64(), p.enqueue.as_secs_f64(), self.effective_send_rate(),
+            packets, bytes, encode_ns as f64 / 1e9, compress_ns as f64 / 1e9, write_ns as f64 / 1e9,
+            queued_bytes, coalesced, failures,
+        )
+    }
+
     fn effective_send_rate(&self) -> u32 {
-        visuals::send_rate(
+        visuals::visual_send_rate(
             self.world_send_rate.0,
-            self.world.fast_rendering,
+            self.tps,
+            CONFIG.fast_render_threshold,
             CONFIG.fast_render_send_rate,
         )
     }
@@ -1323,6 +1386,7 @@ impl Plot {
 
             self.last_update_time = now;
             if batch_size != 0 {
+                let simulation_started = Instant::now();
                 // 50_000 (= 3.33 MHz) here is arbitrary.
                 // We just need a number that's not too high so we actually get around to sending block updates.
                 let batch_size = batch_size.min(50_000) as u32;
@@ -1342,6 +1406,8 @@ impl Plot {
                     }
                 }
                 self.last_nspt = Some(self.last_update_time.elapsed() / ticks_completed);
+                self.world.update_stats.simulation += simulation_started.elapsed();
+                self.world.update_stats.simulated_ticks += u64::from(ticks_completed);
             }
 
             if self.auto_redpiler

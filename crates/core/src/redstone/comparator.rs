@@ -45,15 +45,13 @@ pub fn get_override(block: Block, world: &impl World, pos: BlockPos) -> u8 {
             Some(BlockEntity::CommandBlock(entity)) => entity.success_count.clamp(0, 15) as u8,
             _ => 0,
         },
-        block if ContainerType::from_block(block).is_some() => {
-            match world.get_block_entity(pos) {
-                Some(BlockEntity::Container {
-                    comparator_override,
-                    ..
-                }) => *comparator_override,
-                _ => 0,
-            }
-        }
+        block if ContainerType::from_block(block).is_some() => match world.get_block_entity(pos) {
+            Some(BlockEntity::Container {
+                comparator_override,
+                ..
+            }) => *comparator_override,
+            _ => 0,
+        },
         Block::Cauldron { level } => level,
         Block::Composter { level } => level,
         Block::Cake { bites } => 14 - 2 * bites,

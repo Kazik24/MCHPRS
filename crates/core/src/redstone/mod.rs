@@ -206,6 +206,30 @@ fn diode_get_input_strength(world: &impl World, pos: BlockPos, facing: BlockDire
     power
 }
 
+/// Whether `update` can do any work for this cached block state. Wire walks use
+/// this to omit inert callback queue entries without pruning the power/heading graph.
+/// Keep this classification in sync with the dispatcher below (tested over all states).
+pub(super) fn has_neighbor_update(block: Block) -> bool {
+    match block {
+        Block::RedstoneWire { .. }
+        | Block::RedstoneTorch { .. }
+        | Block::RedstoneWallTorch { .. }
+        | Block::RedstoneRepeater { .. }
+        | Block::RedstoneComparator { .. }
+        | Block::RedstoneLamp { .. }
+        | Block::Hopper { .. }
+        | Block::IronTrapdoor { .. }
+        | Block::Piston { .. }
+        | Block::PistonHead { .. }
+        | Block::Observer { .. }
+        | Block::NoteBlock { .. } => true,
+        // Command blocks are registry states outside the modeled enum. Known
+        // inert variants (especially air) do not need a registry/name lookup.
+        Block::Unknown { .. } => block.is_command_block(),
+        _ => false,
+    }
+}
+
 pub fn update(block: Block, world: &mut impl World, pos: BlockPos, dir: Option<BlockFace>) {
     if block.is_command_block() {
         command_block::update(world, pos);

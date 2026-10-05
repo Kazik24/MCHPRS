@@ -1,0 +1,31 @@
+{
+  "label": "pre_optimization",
+  "profile": "bench/release",
+  "samples": [
+    {
+      "assertions": "whole-world checkpoints, ordered chat, per-tick Pong screen",
+      "cpu": "pm1_sort",
+      "game_ticks": 50000,
+      "median_seconds": 149.2716102,
+      "samples_seconds": [
+        146.0840612,
+        149.2716102,
+        156.0985744
+      ],
+      "schematic_sha256": "e338028d50a4400056e25037d1f43d37c08baed079edede6298f78b0a6341654"
+    },
+    {
+      "assertions": "whole-world checkpoints, ordered chat, per-tick Pong screen",
+      "cpu": "anpu_pong",
+      "game_ticks": 50000,
+      "median_seconds": 10.4388214,
+      "samples_seconds": [
+        10.39211,
+        10.4388214,
+        10.4445317
+      ],
+      "schematic_sha256": "f4068257797399531ce31d56c972af32d0f73f7d8d496ce1b7b8cd1c178decec"
+    }
+  ],
+  "schema": 1
+}

@@ -25,6 +25,10 @@ pub(super) fn send_rate(configured: u32, fast: bool, cap: i64) -> u32 {
     }
 }
 
+pub(super) fn visual_send_rate(configured: u32, tps: Tps, threshold: i64, cap: i64) -> u32 {
+    send_rate(configured, fast_rendering(tps, threshold), cap)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -47,5 +51,22 @@ mod tests {
         assert_eq!(send_rate(0, true, 10), 0);
         assert_eq!(send_rate(60, false, 10), 60);
         assert_eq!(send_rate(60, true, -1), 1);
+    }
+
+    #[test]
+    fn general_updates_are_capped_independently_of_piston_animation() {
+        let rate = |configured, tps| visual_send_rate(configured, tps, 200, 10);
+        assert_eq!(rate(60, Tps::Limited(200)), 60);
+        assert_eq!(rate(60, Tps::Limited(201)), 10);
+        assert_eq!(rate(60, Tps::Limited(1000)), 10);
+        assert_eq!(rate(60, Tps::Limited(1001)), 10);
+        assert_eq!(rate(60, Tps::Unlimited), 10);
+        assert_eq!(rate(3, Tps::Unlimited), 3);
+        assert_eq!(rate(0, Tps::Unlimited), 0);
+        assert_eq!(rate(60, Tps::Limited(0)), 60);
+        assert_eq!(visual_send_rate(60, Tps::Unlimited, 0, 10), 60);
+        assert_eq!(visual_send_rate(60, Tps::Unlimited, 200, 5), 5);
+        assert!(!static_pistons(PistonAnimation::On, Tps::Unlimited, 200));
+        assert_eq!(rate(60, Tps::Unlimited), 10);
     }
 }

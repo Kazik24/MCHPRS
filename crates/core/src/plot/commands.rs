@@ -357,6 +357,10 @@ impl Plot {
                 }
             },
             "/rtps" => {
+                if args == ["timings"] {
+                    self.players[player].send_system_message(&self.update_timing_report());
+                    return false;
+                }
                 if args.is_empty() {
                     let report = self.timings.generate_report();
                     if let Some(report) = report {
@@ -784,7 +788,7 @@ pub static DECLARE_COMMANDS: Lazy<PacketEncoder> = Lazy::new(|| {
             // 12: /rtps
             Node {
                 flags: (CommandFlags::LITERAL | CommandFlags::EXECUTABLE).bits() as i8,
-                children: &[13],
+                children: &[13, 117],
                 redirect_node: None,
                 name: Some("rtps"),
                 parser: None,
@@ -1708,6 +1712,15 @@ pub static DECLARE_COMMANDS: Lazy<PacketEncoder> = Lazy::new(|| {
                 children: &[110],
                 redirect_node: None,
                 name: Some("cursel"),
+                parser: None,
+                suggestions_type: None,
+            },
+            // 117: /rtps timings
+            Node {
+                flags: (CommandFlags::LITERAL | CommandFlags::EXECUTABLE).bits() as i8,
+                children: &[],
+                redirect_node: None,
+                name: Some("timings"),
                 parser: None,
                 suggestions_type: None,
             },

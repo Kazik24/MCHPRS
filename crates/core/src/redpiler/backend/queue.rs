@@ -1,3 +1,4 @@
+use std::collections::VecDeque;
 use std::mem;
 
 use mchprs_blocks::blocks::Block;
@@ -12,7 +13,7 @@ use super::direct::node::NodeId;
 const NUM_QUEUES: usize = 32;
 
 #[derive(Debug, Clone)]
-pub struct Queues<T>([Vec<T>; TickPriority::COUNT]);
+pub struct Queues<T>([VecDeque<T>; TickPriority::COUNT]);
 
 impl<T> Queues<T> {
     pub fn drain_iter(&mut self) -> impl Iterator<Item = T> + '_ {
@@ -38,7 +39,7 @@ impl<T> Queues<T> {
     pub fn pop_first(&mut self) -> Option<T> {
         for queue in &mut self.0 {
             if !queue.is_empty() {
-                return Some(queue.remove(0)); //no need to be fast for now
+                return queue.pop_front();
             }
         }
         None
@@ -169,7 +170,7 @@ impl<T> TickScheduler<T> {
                 "0 delay can only be scheduled with NanoTick priority"
             );
         }
-        self.queues_deque[(self.pos + delay) % NUM_QUEUES].0[priority as usize].push(node);
+        self.queues_deque[(self.pos + delay) % NUM_QUEUES].0[priority as usize].push_back(node);
     }
 
     fn next_pos(&self) -> usize {
