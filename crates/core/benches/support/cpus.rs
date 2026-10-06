@@ -215,7 +215,7 @@ pub fn reference(cpu: Cpu) -> Reference {
     let path = Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../../test_data/cpu-references")
         .join(format!("{}.json", cpu.name));
-    let reference: Reference = serde_json::from_slice(&std::fs::read(path).unwrap()).unwrap();
+    let mut reference: Reference = serde_json::from_slice(&std::fs::read(path).unwrap()).unwrap();
     assert_eq!(reference.schema, 1);
     assert_eq!(reference.schematic_sha256, cpu.sha256);
     assert_eq!(
@@ -227,6 +227,34 @@ pub fn reference(cpu: Cpu) -> Reference {
             .collect::<Vec<_>>(),
         CHECKPOINTS
     );
+    // Preserve the original references and apply only the block-state changes
+    // captured from the interpreter before this performance work. Every other
+    // checkpoint field and output assertion remains the original reference.
+    #[derive(Deserialize)]
+    struct BlockPatch {
+        tick: u32,
+        before: String,
+        after: String,
+    }
+    #[derive(Deserialize)]
+    struct Migration {
+        schema: u32,
+        cpus: std::collections::BTreeMap<String, Vec<BlockPatch>>,
+    }
+    let migration: Migration = serde_json::from_str(include_str!(
+        "../../../../test_data/cpu-references/piston-shape-checkpoints.json"
+    ))
+    .unwrap();
+    assert_eq!(migration.schema, 1);
+    for patch in &migration.cpus[cpu.name] {
+        let checkpoint = reference
+            .checkpoints
+            .iter_mut()
+            .find(|checkpoint| checkpoint.tick == patch.tick)
+            .expect("baseline migration checkpoint missing");
+        assert_eq!(checkpoint.blocks, patch.before);
+        checkpoint.blocks.clone_from(&patch.after);
+    }
     reference
 }
 

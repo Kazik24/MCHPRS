@@ -33,6 +33,51 @@ fn copy_saved(world: &mut PlotWorld) -> PlotWorld {
 }
 
 #[test]
+fn motion_removal_preserves_order_and_removes_all_legacy_duplicates() {
+    let mut w = world();
+    for x in 0..64 {
+        w.register_motion(BlockPos::new(x, 30, 40), 0.0);
+    }
+    // Test front, middle and back removal, then the legacy duplicate fallback.
+    for x in [0, 31, 63, 1, 2] {
+        let pos = BlockPos::new(x, 30, 40);
+        let expected: Vec<_> = w
+            .piston_state
+            .motions
+            .iter()
+            .filter(|m| m.pos != pos)
+            .map(|m| m.identity)
+            .collect();
+        w.remove_motions_at(pos);
+        assert_eq!(
+            w.piston_state
+                .motions
+                .iter()
+                .map(|m| m.identity)
+                .collect::<Vec<_>>(),
+            expected
+        );
+        for (i, m) in w.piston_state.motions.iter().enumerate() {
+            assert_eq!(w.piston_motion_index(m.pos, Some(m.identity)), Some(i));
+        }
+    }
+    let duplicate = w.piston_state.motions[5].clone();
+    w.piston_state_mut().motions.push_back(duplicate.clone());
+    w.remove_motions_at(duplicate.pos);
+    assert!(w
+        .piston_state
+        .motions
+        .iter()
+        .all(|m| m.pos != duplicate.pos));
+    w.register_motion(duplicate.pos, 0.5);
+    assert_eq!(w.piston_state.motions.back().unwrap().pos, duplicate.pos);
+    assert_ne!(
+        w.piston_state.motions.back().unwrap().identity,
+        duplicate.identity
+    );
+}
+
+#[test]
 fn persistent_wire_addresses_observe_block_changes_and_plot_boundaries() {
     let mut w = world();
     let p = BlockPos::new(15, 15, 15);

@@ -93,6 +93,13 @@ searches nearby surfaces along the last eight blocks of the sight line and a few
 blocks above the hit. A miss or lack of a safe surface leaves you in place.
 Collision checks are conservative for blocks with complex shapes.
 
+Plot Git saves whole-plot commits, searches history and supports branches and
+checkout. Start with `/git commit Working build`, then `/git branch experiment`
+and `/git checkout experiment`. `/git diff main experiment` offers private glow
+markers; right-click one with a sword to inspect its From/To states. Checkout
+preserves unfinished work and pauses simulation. See [Plot Git](docs/PLOT_GIT.md)
+for commands, recovery, limits and the `mchprs.commands.git` permission.
+
 For shared public chat between Paper RedstoneFun and MROWW, see
 [the network chat setup](docs/NETWORK_CHAT.md). The Velocity and Paper plugins
 build with Maven or standard Docker Compose; MROWW includes a native adapter.

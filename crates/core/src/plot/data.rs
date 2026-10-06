@@ -21,6 +21,7 @@ pub fn sleep_time_for_tps(tps: Tps) -> Duration {
 
 pub fn load_plot(path: impl AsRef<Path>) -> Result<PlotData<PLOT_SECTIONS>> {
     let path = path.as_ref();
+    super::git::recover_pending(path).context("Recovering interrupted plot Git checkout")?;
     let data = if path.exists() {
         PlotData::load_from_file(path, true)
             .with_context(|| format!("error loading plot save file at {}", path.display()))?

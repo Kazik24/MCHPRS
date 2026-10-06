@@ -407,6 +407,15 @@ fn landing_position(
     if !pos.is_valid() || pos.y < 0.0 || pos.y + height > f64::from(PLOT_BLOCK_HEIGHT) {
         return None;
     }
+    body_clear(pos, read).then_some(pos)
+}
+
+/// Standing-body clearance shared by compass landing and plot restoration.
+pub(super) fn body_clear(pos: PlayerPos, read: &impl Fn(BlockPos) -> Option<Block>) -> bool {
+    if !pos.is_valid() {
+        return false;
+    }
+    let height = 1.8;
     let min_x = (pos.x - HALF_WIDTH).floor() as i32;
     let max_x = (pos.x + HALF_WIDTH).ceil() as i32;
     let min_z = (pos.z - HALF_WIDTH).floor() as i32;
@@ -415,7 +424,10 @@ fn landing_position(
         for z in min_z..max_z {
             // Include blocks below the feet: fences/walls can extend 1.5 blocks up.
             for y in ((pos.y - 1.5).floor() as i32).max(0)..(pos.y + height).ceil() as i32 {
-                if let Some(bounds) = collision_bounds(read(BlockPos::new(x, y, z))?) {
+                let Some(block) = read(BlockPos::new(x, y, z)) else {
+                    return false;
+                };
+                if let Some(bounds) = collision_bounds(block) {
                     if f64::from(y) + bounds.max[1] > pos.y + 1e-9
                         && f64::from(y) + bounds.min[1] < pos.y + height
                         && f64::from(x) + bounds.max[0] > pos.x - HALF_WIDTH
@@ -423,13 +435,13 @@ fn landing_position(
                         && f64::from(z) + bounds.max[2] > pos.z - HALF_WIDTH
                         && f64::from(z) + bounds.min[2] < pos.z + HALF_WIDTH
                     {
-                        return None;
+                        return false;
                     }
                 }
             }
         }
     }
-    Some(pos)
+    true
 }
 
 #[cfg(test)]

@@ -2,7 +2,7 @@
 
 This document defines the redstone simulation implemented by the **world interpreter** in this checkout. It describes a discrete, spatial, ordered transition system, including the event queues needed to reproduce its timing. The Boolean gate interpretation of redstone is a useful consequence of these rules, but does not specify the interpreter completely.
 
-The specification was derived from the working-tree sources on **2026-10-05**. The base revision was `f6e5195cb848f3857163b94a5ae7b5a58e351c69`; the working tree also contained local changes. Source links below refer to this repository, and the code is authoritative if it subsequently changes.
+The specification was reconciled with the working-tree sources on **2026-10-06**. The base revision was `4a2fb767821567ba62c5a63bb9af68fdc19d26e3`; the working tree also contained local changes. Source links below refer to this repository, and the code is authoritative if it subsequently changes.
 
 The scope is `PlotWorld::tick_interpreted` and the functions it calls. Redpiler's compiled graph executor is a separate model; its graph optimizations are not assumptions of this specification. Network rendering, permissions, and wall-clock pacing are included only where they affect inputs or observable execution results.
 
@@ -308,6 +308,8 @@ There is also a **shape/support callback**, `interaction::change`, which checks 
 
 Write $U(b,p,d)$ for a redstone neighbor update with $d\in F\cup\{\bot\}$, where $\bot$ is Rust `None`. Write $T(b,p)$ for a scheduled callback and $G(b,p,d)$ for a shape callback. These are sequential state-transforming procedures, not pure functions on a frozen world.
 
+The direction arguments of $U$ and $G$ are distinct operational inputs. In the immediate-neighbor shape notifiers below, $G$ receives the face from the changed cell toward its neighbor, while the corresponding observer update receives the opposite face. Do not normalize both callbacks to the same direction. The general shape notifier's additional vertical-diagonal calls retain their literal face argument, as specified in section 15.2.
+
 Unless a rule explicitly specifies a cached argument, every notification below reads $B$ immediately before calling $U$ or $G$. Any nested work completes before the next notification is invoked. Repeated positions are not eliminated.
 
 ### 4.2 Surrounding updates
@@ -317,16 +319,18 @@ Define $\operatorname{Around}(p,k)$, with $k$ meaning “skip diagonal piston ba
 ```text
 q := p + f
 U(B(q), q, opposite(f))
-if not k or B(q + U) is not a piston base:
+if B(q + U) is not an observer and (not k or B(q + U) is not a piston base):
     U(B(q + U), q + U, D)
-if not k or B(q + D) is not a piston base:
+if B(q + D) is not an observer and (not k or B(q + D) is not a piston base):
     U(B(q + D), q + D, U)
 ```
 
 `update_surrounding_blocks(p)` is $\operatorname{Around}(p,1)$.
 `on_torch_state_change(p)` is $\operatorname{Around}(p,0)$.
 
-The six primary neighbors are always updated. Only piston bases in the two additional vertical-diagonal positions are skipped when $k=1$. Other block types, including piston heads, are not excluded by that test.
+The six primary neighbors are always updated, including observers. Observers in either additional vertical-diagonal position are skipped for both values of $k$. Piston bases in those additional positions are also skipped when $k=1$; piston heads are not excluded by that test.
+
+The additional calls are power rechecks through a neighboring cell, not shape changes to a block watched by a diagonal observer. Sending a qualifying callback to that observer could schedule an early pulse and quasi-power a piston before the intended movement. This exclusion belongs to this notification procedure; it does not change the observer trigger predicate in section 12.1.
 
 ### 4.3 Dust-neighborhood notifications
 
@@ -338,10 +342,11 @@ for f in F:
     U(B(q), q, opposite(f))
     for g in F:
         r := q + g
-        U(B(r), r, opposite(g))
+        if the live B(r) is not an observer:
+            U(B(r), r, opposite(g))
 ```
 
-This is six first-neighbor and thirty-six second-neighbor calls, subject to nested mutations. Its repeated positions and callback direction arguments matter, particularly for observers.
+This is six first-neighbor calls and at most thirty-six second-neighbor calls, subject to nested mutations. An observer watching the changed dust can receive a first-neighbor callback. Observers are excluded from the second-neighbor power rechecks, which must not pulse an observer watching an unchanged intervening cell. Each exclusion tests the live block at that point in the sequence; repeated positions are not eliminated.
 
 This procedure is distinct from the Wire Turbo walk used after a dust **power** change. Changing dust **shape**, using a dot/cross, placement, or destruction can invoke this explicit neighborhood procedure.
 
@@ -379,14 +384,14 @@ Define $\operatorname{Shape}(p)$ by visiting $f\in F_{\mathrm{shape}}$ in order:
 
 ```text
 q := p + f
-G(B(q), q, opposite(f))
+G(B(q), q, f)
 if the live B(q) is an observer:
     U(B(q), q, opposite(f))
 ```
 
 Define $\operatorname{Notify}(p)$ as $\operatorname{Shape}(p)$ followed by, for each $f\in F_{\mathrm{piston}}$, a call $U(B(p+f),p+f,\bar f)$ if the live neighbor is not an observer.
 
-Thus piston movement explicitly notifies observers through ordered shape/state changes and excludes them from its subsequent ordinary power callbacks.
+Thus piston movement explicitly notifies observers through ordered shape/state changes and excludes them from its subsequent ordinary power callbacks. The shape callback receives $f$ while the observer callback receives $\bar f$. After $G$ and its nested work return, the observer test rereads the live neighbor; it does not use the block supplied to the shape callback.
 
 ## 5. Scheduled ticks and the game-tick transition
 
@@ -1124,6 +1129,8 @@ The $d\ne\bot$ branch tests direction without testing whether the observer is cu
 
 An observer stores no previous observed block-state ID and performs no before/after equality comparison in this dispatcher. Its input is the actual sequence of direction-bearing callbacks delivered by the notifying procedures.
 
+The observer exclusions in sections 4.2 and 4.3 prevent particular indirect power notifications from reaching this predicate. A direct qualifying callback can still trigger a pulse without a block-state comparison. In particular, a dust shape change can notify an observer adjacent to that dust without notifying an observer watching an unchanged cell one step farther away.
+
 ### 12.2 Scheduled transition and pulse
 
 At a scheduled callback,
@@ -1415,7 +1422,7 @@ G(B(p+f+U),p+f+U,f),\quad
 G(B(p+f+D),p+f+D,f).
 $$
 
-It passes $f$ directly, including to the vertical-diagonal calls. The piston shape notifier instead passes $\bar f$ and uses $F_{\mathrm{shape}}$.
+It passes $f$ directly, including to the vertical-diagonal calls. The piston shape notifier also passes $f$ to $G$, but visits only the six immediate neighbors in $F_{\mathrm{shape}}$ order. It then separately sends observer updates with $\bar f$, as defined in section 4.6.
 
 ### 15.3 Placement
 
@@ -1437,7 +1444,9 @@ The routine does not generally call $U$ directly on the placed component itself.
 
 ### 15.4 Storage housekeeping and destruction
 
-`set_block_raw` removes an old entity when a recognized container is replaced by a noncontainer, or when a moving-piston state is replaced by a different state ID. A new recognized container receives an empty entity if an entity of the required container type is absent. This is not universal deletion of every incompatible entity on every raw write.
+`set_block_raw` removes an old entity when a recognized container is replaced by a noncontainer, or when a moving-piston state is replaced by a different state ID. It also removes an existing sign entity when an ordinary sign block is replaced by a nonsign. A new recognized container receives an empty entity if an entity of the required container type is absent. A new ordinary sign receives a default sign entity if the current entity is absent or is not a sign entity; an existing sign entity and its text are retained across sign-state changes. The ordinary-sign predicate excludes hanging signs. This is not universal deletion of every incompatible entity on every raw write.
+
+These entity checks are not contingent on the block-state write returning “changed.” A raw write of the same sign or container state can therefore repair a missing entity without changing $B$. The storage operation still does not issue general redstone or shape notifications.
 
 Explicit destruction first removes owned piston counterparts and deletes the entity if the block's `has_block_entity` predicate holds. Then:
 
@@ -1501,6 +1510,8 @@ For complete reproduction of command success counts, extend $\Sigma$ with the ou
 ## 17. Initialization, persistence, and stepping
 
 ### 17.1 Initialization and saved state
+
+`Chunk::load` repairs missing entities for loaded ordinary sign blocks by inserting default sign entities. Existing entries at those positions are retained. This can make the loaded entity map differ from a legacy save that contained sign states without entities; it does not replay placement or redstone notifications. Chunk instance and revision counters used by neighboring-plot snapshots track storage changes, not electrical connections across plot boundaries.
 
 `from_chunks` initially sets logical tick $0$ and phase BetweenTicks. It binds old requests lacking a block type to the currently loaded type once. Legacy requests on moving-piston states are discarded; legacy requests on bases become delay-zero Normal state-recheck requests.
 
@@ -1624,6 +1635,32 @@ An electrical-source payload emits no original source power while represented as
 
 A queued observer callback is discarded if its position contains stone when due. It can apply to a replacement observer of the same type, even with another facing. A stale movement item $(p,i)$ cannot apply to replacement identity $i'\ne i$ at that same position.
 
+### 19.7 Dust shape observation versus an indirect power recheck
+
+Place powered North-South dust at $p$ on stone, a redstone source at $p+N$, and an unchanged stone cell at $p+S$. Place one idle observer at $p+E$ facing West, so it watches the dust, and another at $p+S+U$ facing Down, so it watches the unchanged stone.
+
+Destroy the source through the ordinary interaction path. The resulting dust shape change invokes `update_wire_neighbors(p)`. Its first-neighbor callback can schedule the observer watching the dust; its second-neighbor loop skips the observer watching the stone. The source's surrounding-update procedure also skips observers in its additional vertical-diagonal calls.
+
+After destruction, the first observer has a pending rise request and the second has none. After two completed game ticks, the first is powered and the second remains unpowered. The observer dispatcher itself has not acquired state-change detection: the difference comes from which notifications the callers send. [observer_tests.rs](../crates/core/src/redstone/observer_tests.rs) constructs this case explicitly.
+
+### 19.8 Two instant piston stages and their physical reset cycle
+
+[EDGECASE_PISTION.schem](../test_data/EDGECASE_PISTION.schem) contains two initially extended South-facing sticky pistons. Each has a redstone-block payload two cells ahead, an observer immediately above the base facing Down, and a wool cap above the observer. The first output feeds the second stage through dust. Facing Down means the observer watches the base and emits upward through the cap, providing a quasi-connectivity reset path.
+
+The [Java 1.21.5 reference](../test_data/piston-repair/java-piston-oscillator-trace.json) pastes the fixture strictly, settles eight game ticks, removes its external redstone source, and samples completed game-tick boundaries. Its first cycle is:
+
+| Tick after source removal | Both piston bases | Both observers | Second-stage input dust |
+| --- | --- | --- | --- |
+| 0 | Extended | Unpowered | $15$ |
+| 1 and 2 | Moving source bases | Unpowered | $0$ |
+| 3 | Retracted | Powered | $0$ |
+| 4 | Extended | Powered | $0$ |
+| 5 | Extended | Unpowered | $0$ |
+| 6 | Extended | Unpowered | $15$ |
+| 7 and 8 | Moving source bases | Unpowered | $0$ |
+
+Both stages begin retracting during the first game tick, so this falling computation wave does not add a game tick per stage. The reset and payload restoration span subsequent phases and ticks, and the fixture keeps cycling after source removal. Its valid computational abstraction therefore needs an observation point or input protocol; a permanently settled Boolean wire value does not describe its physical trace. The interpreter regression in [piston/tests.rs](../crates/core/src/redstone/piston/tests.rs) compares this reference using game, nano and pico stepping.
+
 ## 20. Implementation and regression-test index
 
 | Subject | Source |
@@ -1655,11 +1692,14 @@ A queued observer callback is discarded if its position contains stone when due.
 
 Existing regression evidence includes:
 
+- The in-module tests in [redstone/mod.rs](../crates/core/src/redstone/mod.rs): Java output-pulse traces, the four UpdateTester wire traces, and the memory-cell piston-state trace.
 - [redstone/master_tests.rs](../crates/core/src/redstone/master_tests.rs): repeater short pulses, torch direction, analog overrides, plate primitives, slab support, and stepped dust.
-- [redstone/observer_tests.rs](../crates/core/src/redstone/observer_tests.rs): observer emission and conduction direction.
-- [redstone/piston/tests.rs](../crates/core/src/redstone/piston/tests.rs): six-direction movement, event cancellation, short pulses, long payloads, waterlogging, owned-part removal, progress, and identities.
+- [redstone/adder_tests.rs](../crates/core/src/redstone/adder_tests.rs): the sign-defined 11-stage adder interface, stored-input arithmetic cases, moving-output observations and the retained Java changed-input circuit limitation.
+- [redstone/observer_tests.rs](../crates/core/src/redstone/observer_tests.rs): observer emission and conduction direction, and direct dust-shape observation without an indirect observer pulse.
+- [redstone/piston/tests.rs](../crates/core/src/redstone/piston/tests.rs): six-direction movement, event cancellation, short pulses, long payloads, waterlogging, owned-part removal, progress, identities, and Java reference traces for observer feedback, periodic instant resets and dropped-payload recapture.
 - [plot/piston_tests.rs](../crates/core/src/plot/piston_tests.rs): restart/partial-step state, cache clearing, stale work, and rendering independence.
+- [plot/sign_tests.rs](../crates/core/src/plot/sign_tests.rs) and [world/storage.rs](../crates/core/src/world/storage.rs): sign-entity creation, replacement, persistence and repair of legacy loaded signs.
 - [wire/turbo_tests.rs](../crates/core/src/redstone/wire/turbo_tests.rs): walk structure and traversal regressions.
 - [plot/command_block_tests.rs](../crates/core/src/plot/command_block_tests.rs): activation, stale requests, conditional chains, bounded loops, and restart behavior.
 
-These tests support their specific assertions. Their presence does not imply exhaustive conformance coverage or that this documentation change reran them.
+These tests support their specific assertions. They do not establish exhaustive conformance for every circuit or input history.

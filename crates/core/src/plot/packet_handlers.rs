@@ -80,6 +80,9 @@ impl Plot {
 
 impl ServerBoundPacketHandler for Plot {
     fn handle_update_command_block(&mut self, packet: SUpdateCommandBlock, player: usize) {
+        if self.git_checkout_locked() {
+            return;
+        }
         let pos = BlockPos::from_packed(packet.pos);
         let data = &mut self.players[player];
         if !matches!(data.gamemode, crate::player::Gamemode::Creative)
@@ -181,6 +184,11 @@ impl ServerBoundPacketHandler for Plot {
 
     fn handle_tab_complete(&mut self, packet: STabComplete, player_idx: usize) {
         if !self.players[player_idx].can_use_commands() {
+            return;
+        }
+        if let Some(completion) = self.complete_git(player_idx, packet.transaction_id, &packet.text)
+        {
+            self.players[player_idx].send_packet(&completion.encode());
             return;
         }
         if let Some(completion) =
@@ -303,6 +311,9 @@ impl ServerBoundPacketHandler for Plot {
     }
 
     fn handle_container_click(&mut self, packet: SContainerClick, player: usize) {
+        if self.git_checkout_locked() {
+            return;
+        }
         self.click_open_container(packet, player);
     }
 
@@ -346,6 +357,9 @@ impl ServerBoundPacketHandler for Plot {
             &self.players[player].client,
             packet.sequence,
         );
+        if self.sword_git(player, packet.hand, packet.yaw, packet.pitch) {
+            return;
+        }
         self.use_compass(player, packet.hand, packet.yaw, packet.pitch);
     }
 
@@ -358,8 +372,11 @@ impl ServerBoundPacketHandler for Plot {
             &self.players[player].client,
             player_block_placement.sequence,
         );
-        let data = &self.players[player];
-        if self.use_compass(player, player_block_placement.hand, data.yaw, data.pitch) {
+        let (yaw, pitch) = (self.players[player].yaw, self.players[player].pitch);
+        if self.sword_git(player, player_block_placement.hand, yaw, pitch) {
+            return;
+        }
+        if self.use_compass(player, player_block_placement.hand, yaw, pitch) {
             return;
         }
         let block_pos = BlockPos::from_packed(player_block_placement.pos);
@@ -399,6 +416,11 @@ impl ServerBoundPacketHandler for Plot {
             let offset_pos = block_pos.offset(block_face);
             plot.send_block_change(offset_pos, plot.world.get_block_raw(offset_pos));
         };
+
+        if self.git_checkout_locked() {
+            cancel(self);
+            return;
+        }
 
         if !self.players[player].can_edit_plot(self.owner, (self.world.x, self.world.z)) {
             self.players[player].send_no_permission_message();
@@ -734,6 +756,15 @@ impl ServerBoundPacketHandler for Plot {
             &self.players[player].client,
             player_digging.sequence,
         );
+        if self.git_checkout_locked() {
+            let pos = BlockPos::from_packed(player_digging.pos);
+            if Plot::in_plot_bounds(self.world.x, self.world.z, pos.x, pos.z)
+                && (0..super::PLOT_BLOCK_HEIGHT).contains(&pos.y)
+            {
+                self.send_block_change(pos, self.world.get_block_raw(pos));
+            }
+            return;
+        }
         if player_digging.status == 0 {
             let block_pos = BlockPos::from_packed(player_digging.pos);
             if !Plot::in_plot_bounds(self.world.x, self.world.z, block_pos.x, block_pos.z) {
@@ -899,6 +930,9 @@ impl ServerBoundPacketHandler for Plot {
     }
 
     fn handle_update_sign(&mut self, packet: SUpdateSign, player: usize) {
+        if self.git_checkout_locked() {
+            return;
+        }
         let pos = BlockPos::from_packed(packet.pos);
         if !self.players[player].can_build_action("sign", self.owner, (self.world.x, self.world.z))
             || !Plot::in_plot_bounds(self.world.x, self.world.z, pos.x, pos.z)

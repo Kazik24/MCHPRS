@@ -12,6 +12,115 @@ fn world() -> PlotWorld {
 }
 
 #[test]
+fn threshold_power_matches_analog_queries_for_every_registry_state_and_face() {
+    let mut w = world();
+    let pos = BlockPos::new(40, 30, 40);
+    // The early positive strong input is followed by an out-of-range comparator
+    // output. Numeric maxima must still inspect it and preserve the raw byte.
+    for output_strength in [0, 255] {
+        w.set_block_entity(pos, BlockEntity::Comparator { output_strength });
+        for side in BlockFace::values() {
+            let neighbor = pos.offset(side);
+            w.set_block(
+                neighbor,
+                Block::RedstoneComparator {
+                    comparator: mchprs_blocks::blocks::RedstoneComparator::new(
+                        if side.is_horizontal() {
+                            side.unwrap_direction()
+                        } else {
+                            BlockDirection::North
+                        },
+                        mchprs_blocks::blocks::ComparatorMode::Compare,
+                        false,
+                    ),
+                },
+            );
+            w.set_block_entity(neighbor, BlockEntity::Comparator { output_strength });
+        }
+        if output_strength != 0 {
+            w.set_block(
+                pos.offset(BlockFace::Top),
+                Block::RedstoneWire {
+                    wire: RedstoneWire {
+                        power: 15,
+                        ..Default::default()
+                    },
+                },
+            );
+            assert_eq!(
+                get_redstone_power(Block::Stone {}, &w, pos, BlockFace::Top),
+                255
+            );
+        }
+        for id in 0..mchprs_blocks::generated::STATE_PROPERTIES.len() as u32 {
+            let block = Block::from_id(id);
+            for side in BlockFace::values() {
+                assert_eq!(
+                    has_redstone_power(block, &w, pos, side),
+                    get_redstone_power(block, &w, pos, side) > 0,
+                    "state {id}, side {side:?}, comparator output {output_strength}",
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn wire_shape_keeps_raw_cross_guard_and_climbing_connection() {
+    use mchprs_blocks::blocks::RedstoneWireSide::{None, Side, Up};
+    let mut w = world();
+    let pos = BlockPos::new(40, 30, 40);
+    let dot = RedstoneWire {
+        power: 7,
+        ..Default::default()
+    };
+    let cross = RedstoneWire {
+        north: Side,
+        south: Side,
+        east: Side,
+        west: Side,
+        power: 7,
+    };
+    assert_eq!(wire::get_regulated_sides(dot, &w, pos), dot);
+    assert_eq!(wire::get_regulated_sides(cross, &w, pos), cross);
+    let north = pos.offset(BlockFace::North);
+    w.set_block(north, Block::RedstoneWire { wire: dot });
+    let straight = RedstoneWire {
+        north: Side,
+        south: Side,
+        east: None,
+        west: None,
+        power: 7,
+    };
+    assert_eq!(wire::get_regulated_sides(dot, &w, pos), straight);
+    // Recomputing the raw south side yields None, even though regulation adds
+    // a south arm. The original cross must be retained in this case.
+    assert_eq!(
+        wire::on_neighbor_changed(cross, &w, pos, BlockFace::North),
+        cross
+    );
+    assert_eq!(
+        wire::on_neighbor_changed(cross, &w, pos, BlockFace::South),
+        straight
+    );
+    w.set_block(north, Block::Stone {});
+    w.set_block(
+        north.offset(BlockFace::Top),
+        Block::RedstoneWire { wire: dot },
+    );
+    let climbing = RedstoneWire {
+        north: Up,
+        ..straight
+    };
+    assert_eq!(
+        wire::on_neighbor_changed(cross, &w, pos, BlockFace::South),
+        climbing
+    );
+    w.set_block(pos.offset(BlockFace::Top), Block::Stone {});
+    assert_eq!(wire::get_regulated_sides(dot, &w, pos), dot);
+}
+
+#[test]
 fn repeater_short_pulse_ends_after_selected_delay() {
     for delay in 1..=4 {
         let mut world = world();

@@ -52,7 +52,7 @@ reqwest = { version = "0.11", features = ["json"] }
 itertools = "0.10"
 impls = "1"
 bincode = "1.3"
-lz4_flex = { version = "0.14", default-features = false, features = ["safe-encode", "safe-decode", "checked-decode"] }
+lz4_flex = { version = "0.14", default-features = false, features = ["alloc", "safe-encode", "safe-decode", "checked-decode"] }
 crc32fast = "1"
 once_cell = "1.14.0"
 smallvec = "1.9.0"

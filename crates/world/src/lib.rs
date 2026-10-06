@@ -86,7 +86,9 @@ pub struct PistonState {
     pub phase: AdvancePhase,
     pub scheduled_advanced: bool,
     pub events: std::collections::VecDeque<PistonEvent>,
-    pub motions: Vec<PistonMotion>,
+    /// Ordered sequence; front completion avoids shifting every surviving motion.
+    /// Serde retains the same sequence representation as the former Vec.
+    pub motions: std::collections::VecDeque<PistonMotion>,
     pub next_identity: u64,
     /// Snapshot of the movement phase; new/replaced entities wait for the next phase.
     pub movement_work: Vec<(BlockPos, u64)>,

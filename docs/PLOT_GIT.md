@@ -1,0 +1,138 @@
+# Plot Git
+
+Plot Git saves the entire current plot: block states, supported block entities
+(including inventories, signs and command blocks), scheduled ticks and piston
+execution state. Commits survive server restarts. It is a native snapshot
+repository; no Git executable is required.
+
+## Start an experiment
+
+```text
+/git commit Working adder
+/git branch experiment
+/git checkout experiment
+# Edit the build.
+/git commit Smaller carry circuit
+/git diff main experiment
+/git checkout main
+```
+
+The first commit creates `main`. Creating a branch does not switch branches.
+The active branch and working build are shared by everyone on the plot.
+Checkout pauses simulation; use `/tps 20` or the existing stepping commands to
+resume. Players whose standing body would intersect the restored build are
+moved above it. Checkout closes menus and clears tick history and WorldEdit undo.
+
+## Commands
+
+| Command | Purpose |
+| --- | --- |
+| `/git`, `/git help`, `/help git` | Usage. |
+| `/git status` | Active branch, build/execution changes and storage usage. |
+| `/git commit <message>` | Save a complete snapshot and advance the active branch. |
+| `/git log [--all] [page]` | Current ancestry, or all commits; ten entries per page. |
+| `/git search [--all] [--page n] <text>` | Search commit messages. |
+| `/git show <ref>` | Commit ID, author, UTC date, message and parent. |
+| `/git branch` | List branches and their tips. |
+| `/git branch <name> [ref]` | Create a branch, defaulting to `HEAD`. |
+| `/git checkout <branch>` | Restore a branch tip, preserving unfinished work. |
+| `/git diff <from> <to>` | Prepare a comparison and show its summary. |
+| `/git diff show`, `/git diff hide` | Enable/disable the prepared glow overlay. |
+| `/git diff inspect <x> <y> <z> [from\|to]` | Inspect a changed coordinate, optionally including saved block data. |
+| `/git recoveries [page]` | List automatically saved unfinished work. |
+| `/git recover <id> <new-branch>` | Put a recovery on a new branch and check it out. |
+
+References are branch names, `HEAD`, full commit IDs or unique prefixes of at
+least eight characters. Messages are limited to 256 characters, searches to 128,
+and branch names to 48 ASCII letters/digits/underscores/hyphens, beginning with
+a letter or digit. `HEAD` and names resembling commit IDs are reserved. Each
+repository supports up to 128 branches.
+
+## Inspect changes in the world
+
+A comparison shows only added/removed/changed totals and **Show glow / Hide glow**
+buttons in chat. Execution changes are reported separately. It never lists all
+changed blocks in chat.
+
+Click **Show glow**, then **right-click a marker with any sword in either hand**
+to see that position's **From / To** block states. Optional detail buttons show
+saved block data. Green means added, red means removed, yellow means changed.
+Removed positions can be inspected even when the current world is air there.
+The nearest glowing marker along the aim line is selected, including through
+obstructions. A successful inspection consumes the interaction and its duplicate
+or offhand fallback; a miss preserves normal sword behavior.
+
+Markers are private to the viewer and never become actual world blocks/entities.
+They follow the player, showing the nearest changes in loaded chunks. Defaults
+are 128 markers within 64 blocks, with 32 changes per update. The comparison
+counts remain exact when fewer markers are visible. Comparisons expire after
+five minutes and are removed on plot exit, checkout or permission loss. Hide
+retains the prepared comparison until expiry so Show can restore it.
+
+## Permissions
+
+In dedicated permission mode, **`mchprs.commands.git`** is the single allow/deny
+node for the whole feature, including completion, glow and sword inspection.
+Backend command access (`mchprs.access.commands`) is also required.
+
+Ownership or membership is required for reading history. Commit and branch
+creation additionally require existing plot edit access. Checkout/recovery are
+restricted to the plot owner with plot edit access. `mchprs.plots.admin.git` explicitly overrides these
+plot restrictions, while the Git allow/deny node still applies.
+
+Use the existing LuckPerms installation to grant or deny access, for example:
+
+```text
+/lp group builder permission set mchprs.commands.git true server=mchprs
+/lp user PlayerName permission set mchprs.commands.git false server=mchprs
+```
+
+Missing nodes deny access on LuckPerms deployments; exact denials also override
+an inherited admin wildcard. Permission refresh follows the existing cache.
+Legacy LuckPerms mode uses `commands.git` and `plots.admin.git`; standalone
+servers retain the usual permissive command fallback and plot access checks.
+
+## Storage and recovery
+
+Each plot has `world/plot-git/p<X>,<Z>/repository.sqlite`. Compressed snapshots,
+commits, branches and recovery metadata share SQLite transactions with full
+synchronization. Snapshot hashes use canonical states/data rather than palette
+layout, inventory order or NBT compound ordering; identical snapshots share an
+object. Execution order remains significant. Version and checksum validation
+reject corrupt or incompatible snapshots.
+
+Checkout saves unfinished work before replacing the plot. `/git recoveries`
+shows the recovery IDs. A durable checkout record reconciles the atomic ordinary
+plot save with the active branch on restart. Recoverable failures roll back;
+if rollback cannot finish, the plot stays paused and locked until startup recovery.
+Back up **both** `world/plots` and `world/plot-git` while the server is stopped.
+
+The owning plot thread captures consistent state at a tick boundary. Redpiler
+is reset to export authoritative blocks/ticks. Hashing, compression, repository
+access and diff scans run on two background workers with a bounded queue. One
+Git operation runs per plot at a time; edits after a commit capture are subsequent
+working changes. Checkout temporarily locks world mutations and ordinary saves.
+
+`Config.toml` adds these defaults automatically:
+
+```toml
+git_plot_storage_mib = 1024
+git_total_storage_mib = 16384
+git_work_memory_mib = 512
+git_snapshot_max_mib = 128
+git_marker_limit = 128
+git_marker_radius = 64
+git_session_seconds = 300
+```
+
+Quotas count compressed objects, recoveries and repository metadata; every write
+checks database growth even when it reuses a snapshot. Global admission accounts
+for repository file sizes and staging headroom. Work memory
+uses conservative reservations for captures, decoded comparisons and retained
+sessions. Quota rejection preserves existing history; history is never pruned
+automatically. Radius is capped at 128 blocks, marker count at 512, session
+duration at 10–3600 seconds. Larger builds can require raising work/snapshot limits.
+
+Merges, remotes, detached checkout, branch deletion and partial restoration are
+outside this release. Glow metadata is checked against the bundled 1.21.5
+protocol; final appearance and client performance need an in-game client check.

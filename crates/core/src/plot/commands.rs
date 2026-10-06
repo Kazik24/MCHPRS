@@ -386,6 +386,11 @@ impl Plot {
         command: &str,
         mut args: Vec<&str>,
     ) -> bool {
+        if self.git_checkout_locked() && command != "/git" && command != "/help" {
+            let message = self.git_lock_message();
+            self.players[player].send_error_message(message);
+            return false;
+        }
         if !self.players[player].can_use_commands() {
             self.players[player].send_no_permission_message();
             return false;
@@ -418,6 +423,10 @@ impl Plot {
             return false;
         }
 
+        if command == "/git" {
+            self.handle_git_command(player, &args);
+            return false;
+        }
         if self.handle_redstone_tools_command(player, command, &args) {
             return false;
         }
@@ -822,6 +831,7 @@ fn native_command_permission(command: &str, args: &[&str]) -> Option<String> {
     let action = if args.is_empty() { "view" } else { "set" };
     let name = match command {
         "/help" => "help".to_owned(),
+        "/git" => "git".to_owned(),
         "/version" => "version".to_owned(),
         "/teleport" | "/tp" => "teleport".to_owned(),
         "/speed" => "speed".to_owned(),
@@ -877,12 +887,41 @@ mod security_tests {
     use super::*;
     #[test]
     fn command_declarations_preserve_original_wire_bytes() {
-        // Captured from 74bcf41 before replacing the explicit node structs.
-        // Covers node order, flags, edges, parser limits, aliases and suggestions.
-        for (packet, length, digest) in [
-            (&*DECLARE_COMMANDS, 1553, "f78c2d87c05142f9056cc44014e2a3ff"),
-            (&*NO_COMMANDS, 4, "4352d88a78aa39750bf70cd6f27bcaa5"),
-        ] {
+        // Remove only the new Git root edge and node, then verify the original
+        // declarations still have identical flags, parsers, aliases and edges.
+        use mchprs_network::packets::{PacketDecoderExt, PacketEncoderExt};
+        use std::io::Cursor;
+        let mut cursor = Cursor::new(&DECLARE_COMMANDS.buffer);
+        assert_eq!(cursor.read_varint().unwrap(), 135);
+        assert_eq!(cursor.read_byte().unwrap(), 0);
+        let children = cursor.read_varint().unwrap();
+        let mut edges = Vec::new();
+        for _ in 0..children {
+            edges.push(cursor.read_varint().unwrap());
+        }
+        assert_eq!(edges.pop(), Some(134));
+        let rest = cursor.position() as usize;
+        let git_node = [5, 1, 110, 3, b'g', b'i', b't'];
+        let end = DECLARE_COMMANDS.buffer.len() - 1 - git_node.len();
+        assert_eq!(
+            &DECLARE_COMMANDS.buffer[end..end + git_node.len()],
+            &git_node
+        );
+        let mut original = Vec::new();
+        original.write_varint(134);
+        original.push(0);
+        original.write_varint(children - 1);
+        for edge in edges {
+            original.write_varint(edge);
+        }
+        original.extend_from_slice(&DECLARE_COMMANDS.buffer[rest..end]);
+        original.push(0);
+        assert_eq!(original.len(), 1553);
+        assert_eq!(
+            format!("{:x}", md5::compute(original)),
+            "f78c2d87c05142f9056cc44014e2a3ff"
+        );
+        for (packet, length, digest) in [(&*NO_COMMANDS, 4, "4352d88a78aa39750bf70cd6f27bcaa5")] {
             assert_eq!(packet.packet_id, 0x10);
             assert_eq!(packet.buffer.len(), length);
             assert_eq!(format!("{:x}", md5::compute(&packet.buffer)), digest);
@@ -977,7 +1016,7 @@ pub static DECLARE_COMMANDS: Lazy<PacketEncoder> = Lazy::new(|| {
             Node::root(&[
                 1, 4, 5, 6, 11, 12, 14, 16, 18, 19, 20, 21, 22, 23, 24, 26, 29, 31, 32, 34, 36, 47,
                 49, 53, 60, 61, 63, 65, 66, 67, 71, 73, 74, 75, 82, 83, 85, 88, 90, 91, 101, 106,
-                111, 112, 113, 114, 115, 116, 118, 120, 121, 124, 125, 126, 127,
+                111, 112, 113, 114, 115, 116, 118, 120, 121, 124, 125, 126, 127, 134,
             ]),
             // 1: /teleport
             Node::literal("teleport", &[2, 3]),
@@ -1226,6 +1265,8 @@ pub static DECLARE_COMMANDS: Lazy<PacketEncoder> = Lazy::new(|| {
             Node::argument("nick", Parser::String(0), &[])
                 .executable()
                 .suggestions("minecraft:ask_server"),
+            // 134: /git uses the existing greedy, server-completed arguments node.
+            Node::literal("git", &[110]).executable(),
         ],
         root_index: 0,
     }

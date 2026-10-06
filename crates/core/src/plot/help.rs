@@ -26,6 +26,7 @@ pub(super) fn page(topic: Option<&str>) -> Option<&'static str> {
             messages::HELP_CHAT
         }
         "redpiler" | "rp" => messages::HELP_REDPILER,
+        "git" => super::git::HELP,
         _ => return None,
     })
 }

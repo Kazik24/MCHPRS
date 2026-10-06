@@ -1,0 +1,935 @@
+{
+  "schema": 1,
+  "date": "2026-10-06",
+  "baseline": {
+    "commit": "4a2fb767821567ba62c5a63bb9af68fdc19d26e3",
+    "source_sha256": {
+      "crates/core/src/redstone/mod.rs": "fa9c55fed55456fdd35d06a4dad2cf1642f88a49a5f97a904d4e68d28621443f",
+      "crates/core/src/redstone/piston.rs": "6662a3d2864a106498e55b924a205d029423d3f5587293412503790a14d8f8d4",
+      "crates/core/src/redstone/wire/mod.rs": "e9620af63ca01f0441ee3e9af5451636ecc25c8ae21d4469b6f4a4775189d8c8",
+      "crates/core/src/redstone/wire/turbo.rs": "01397dbabb2e31b33aef8effd8ec04ca3ebf7e0358d22edf4e7ef9fcbaa688a4",
+      "crates/core/src/plot/mod.rs": "3316e931184c7bb6035a2a42ea9d1613acdcb8e2365c45f071dfa820d7825e31",
+      "crates/core/src/plot/interpreter_cache.rs": "dbfa61476e5e71a83294e8e05cccab89da80905ebee24c0c1051b6476db18dda",
+      "crates/world/src/lib.rs": "e9c002ab8893c0e3aa5ff8af223ac02350bf9f13fb42c84d62214a4b90a6f22b",
+      "crates/core/benches/cpus.rs": "a23136ad4216de04cbed8fabc7030363760363489ecc4c9846f4ac9a139a77ce",
+      "crates/core/benches/piston.rs": "13ca452e09ca8e21e61a1f0987cacb150ccfa27aa8a61471d9366b429d28d1e3",
+      "test_data/cpu-references/pm1_sort.json": "7ba8fc6e5fc9fe9e4051080cf2b969c6bb74956018759406d6169316ce6739d1",
+      "test_data/cpu-references/anpu_pong.json": "29b8029062f32532674720fb43ce7366d1945fbb91c546251d73114e4891ca3f",
+      "test_data/cpu-references/anpu_screen.json": "86f75d16a42bbee48a052ce124ed32850def5fa757fce5dc24244421964c0b1d"
+    },
+    "rustc": "rustc 1.98.1 (48a229cea 2026-09-01)",
+    "os": "Microsoft Windows NT 10.0.26200.0"
+  },
+  "executable_sha256": {
+    "cpus-baseline.exe": "a5ecaa77d42c88b078f8fdd35c279f5a1d0dcfee1c34bf996aadb6c93e3a1309",
+    "cpus-optimized.exe": "89fc450306bf1f731da506638173b340711bae4a1f94e575d1ace06a32869617",
+    "piston-baseline.exe": "ad1b5274a64abae15f68e6531df35c1093601ca0306b92149c21524649bc1468",
+    "piston-optimized.exe": "a680fa45c82fcb2de2a0f211d388a05f7eaaa1a238c0f3002d1d9350c231f678"
+  },
+  "optimized_source_sha256": {
+    "crates/core/src/redstone/mod.rs": "a50ad1f74eb53a76b133bcb49ea04f0c29eabfe070f3907056a2cdf7ce618e2b",
+    "crates/core/src/redstone/piston.rs": "1ca544347e1f15a3ca17f1646df06d76c96fe7dfc9f25b6ee71d58f1976cd82d",
+    "crates/core/src/redstone/wire/mod.rs": "115935df301303aec7025410eab716a54784a4e0abf74a6fc67066454080dc76",
+    "crates/core/src/redstone/command_block.rs": "6a1f5f744be42a4084db6d8356d03ecd90614ca0d5517d1e7eb7c5640b4bba77",
+    "crates/core/src/plot/mod.rs": "ae66a20aff3a61a48e979f4f45ff67c3476aa457e808dc9db0b62ee1b3571c96",
+    "crates/core/src/plot/interpreter_cache.rs": "38b6aabb8a9969be00afbbaa95927e286236fd90b74e04f0289f4d55942b855e",
+    "crates/core/src/redpiler/backend/queue.rs": "0d7d25d1bb9123e13e36cf18adfbe4f0676445f1f72c0e3e0d313ef3de22b658",
+    "crates/world/src/lib.rs": "682afaaee812ec151b0ffbfbb0e11e26d7ba88257f8832b29692e6eedee4035e"
+  },
+  "raw_cpu_runs": [
+    {
+      "variant": "baseline",
+      "sample": 1,
+      "data": [
+        {
+          "active_median_seconds": 85.7487619,
+          "active_median_tps": 140.53847231116697,
+          "active_samples_seconds": [
+            85.7487619
+          ],
+          "active_window_game_ticks": 12051,
+          "assertions": "whole-world checkpoints, ordered chat, per-tick Pong screen",
+          "cpu": "pm1_sort",
+          "game_ticks": 50000,
+          "median_seconds": 85.7571218,
+          "median_tps": 583.0419555895123,
+          "samples_seconds": [
+            85.7571218
+          ],
+          "schematic_sha256": "e338028d50a4400056e25037d1f43d37c08baed079edede6298f78b0a6341654",
+          "visual_counts": [
+            [
+              0,
+              0,
+              0
+            ]
+          ],
+          "visual_flush_every_game_ticks": 0,
+          "visual_mode": "all"
+        },
+        {
+          "active_median_seconds": 6.1614469,
+          "active_median_tps": 811.4977019440029,
+          "active_samples_seconds": [
+            6.1614469
+          ],
+          "active_window_game_ticks": 5000,
+          "assertions": "whole-world checkpoints, ordered chat, per-tick Pong screen",
+          "cpu": "anpu_pong",
+          "game_ticks": 50000,
+          "median_seconds": 6.1633087,
+          "median_tps": 8112.525663366497,
+          "samples_seconds": [
+            6.1633087
+          ],
+          "schematic_sha256": "f4068257797399531ce31d56c972af32d0f73f7d8d496ce1b7b8cd1c178decec",
+          "visual_counts": [
+            [
+              0,
+              0,
+              0
+            ]
+          ],
+          "visual_flush_every_game_ticks": 0,
+          "visual_mode": "all"
+        }
+      ]
+    },
+    {
+      "variant": "baseline",
+      "sample": 2,
+      "data": [
+        {
+          "active_median_seconds": 66.5635139,
+          "active_median_tps": 181.0451295901312,
+          "active_samples_seconds": [
+            66.5635139
+          ],
+          "active_window_game_ticks": 12051,
+          "assertions": "whole-world checkpoints, ordered chat, per-tick Pong screen",
+          "cpu": "pm1_sort",
+          "game_ticks": 50000,
+          "median_seconds": 66.5705252,
+          "median_tps": 751.0831535395487,
+          "samples_seconds": [
+            66.5705252
+          ],
+          "schematic_sha256": "e338028d50a4400056e25037d1f43d37c08baed079edede6298f78b0a6341654",
+          "visual_counts": [
+            [
+              0,
+              0,
+              0
+            ]
+          ],
+          "visual_flush_every_game_ticks": 0,
+          "visual_mode": "all"
+        },
+        {
+          "active_median_seconds": 5.2747992,
+          "active_median_tps": 947.9033818007707,
+          "active_samples_seconds": [
+            5.2747992
+          ],
+          "active_window_game_ticks": 5000,
+          "assertions": "whole-world checkpoints, ordered chat, per-tick Pong screen",
+          "cpu": "anpu_pong",
+          "game_ticks": 50000,
+          "median_seconds": 5.2765002,
+          "median_tps": 9475.978035592607,
+          "samples_seconds": [
+            5.2765002
+          ],
+          "schematic_sha256": "f4068257797399531ce31d56c972af32d0f73f7d8d496ce1b7b8cd1c178decec",
+          "visual_counts": [
+            [
+              0,
+              0,
+              0
+            ]
+          ],
+          "visual_flush_every_game_ticks": 0,
+          "visual_mode": "all"
+        }
+      ]
+    },
+    {
+      "variant": "baseline",
+      "sample": 3,
+      "data": [
+        {
+          "active_median_seconds": 66.566531,
+          "active_median_tps": 181.03692379583367,
+          "active_samples_seconds": [
+            66.566531
+          ],
+          "active_window_game_ticks": 12051,
+          "assertions": "whole-world checkpoints, ordered chat, per-tick Pong screen",
+          "cpu": "pm1_sort",
+          "game_ticks": 50000,
+          "median_seconds": 66.5737968,
+          "median_tps": 751.0462434673698,
+          "samples_seconds": [
+            66.5737968
+          ],
+          "schematic_sha256": "e338028d50a4400056e25037d1f43d37c08baed079edede6298f78b0a6341654",
+          "visual_counts": [
+            [
+              0,
+              0,
+              0
+            ]
+          ],
+          "visual_flush_every_game_ticks": 0,
+          "visual_mode": "all"
+        },
+        {
+          "active_median_seconds": 5.2956878,
+          "active_median_tps": 944.1644199644851,
+          "active_samples_seconds": [
+            5.2956878
+          ],
+          "active_window_game_ticks": 5000,
+          "assertions": "whole-world checkpoints, ordered chat, per-tick Pong screen",
+          "cpu": "anpu_pong",
+          "game_ticks": 50000,
+          "median_seconds": 5.2973774,
+          "median_tps": 9438.632784592617,
+          "samples_seconds": [
+            5.2973774
+          ],
+          "schematic_sha256": "f4068257797399531ce31d56c972af32d0f73f7d8d496ce1b7b8cd1c178decec",
+          "visual_counts": [
+            [
+              0,
+              0,
+              0
+            ]
+          ],
+          "visual_flush_every_game_ticks": 0,
+          "visual_mode": "all"
+        }
+      ]
+    },
+    {
+      "variant": "optimized",
+      "sample": 1,
+      "data": [
+        {
+          "active_median_seconds": 57.9961037,
+          "active_median_tps": 207.78982088757112,
+          "active_samples_seconds": [
+            57.9961037
+          ],
+          "active_window_game_ticks": 12051,
+          "assertions": "whole-world checkpoints, ordered chat, per-tick Pong screen",
+          "cpu": "pm1_sort",
+          "game_ticks": 50000,
+          "median_seconds": 58.0031627,
+          "median_tps": 862.0219600542575,
+          "samples_seconds": [
+            58.0031627
+          ],
+          "schematic_sha256": "e338028d50a4400056e25037d1f43d37c08baed079edede6298f78b0a6341654",
+          "visual_counts": [
+            [
+              0,
+              0,
+              0
+            ]
+          ],
+          "visual_flush_every_game_ticks": 0,
+          "visual_mode": "all"
+        },
+        {
+          "active_median_seconds": 4.6277716,
+          "active_median_tps": 1080.4336151766868,
+          "active_samples_seconds": [
+            4.6277716
+          ],
+          "active_window_game_ticks": 5000,
+          "assertions": "whole-world checkpoints, ordered chat, per-tick Pong screen",
+          "cpu": "anpu_pong",
+          "game_ticks": 50000,
+          "median_seconds": 4.6294983,
+          "median_tps": 10800.306374450985,
+          "samples_seconds": [
+            4.6294983
+          ],
+          "schematic_sha256": "f4068257797399531ce31d56c972af32d0f73f7d8d496ce1b7b8cd1c178decec",
+          "visual_counts": [
+            [
+              0,
+              0,
+              0
+            ]
+          ],
+          "visual_flush_every_game_ticks": 0,
+          "visual_mode": "all"
+        }
+      ]
+    },
+    {
+      "variant": "optimized",
+      "sample": 2,
+      "data": [
+        {
+          "active_median_seconds": 62.8149146,
+          "active_median_tps": 191.84934146197182,
+          "active_samples_seconds": [
+            62.8149146
+          ],
+          "active_window_game_ticks": 12051,
+          "assertions": "whole-world checkpoints, ordered chat, per-tick Pong screen",
+          "cpu": "pm1_sort",
+          "game_ticks": 50000,
+          "median_seconds": 62.8227469,
+          "median_tps": 795.8900631898348,
+          "samples_seconds": [
+            62.8227469
+          ],
+          "schematic_sha256": "e338028d50a4400056e25037d1f43d37c08baed079edede6298f78b0a6341654",
+          "visual_counts": [
+            [
+              0,
+              0,
+              0
+            ]
+          ],
+          "visual_flush_every_game_ticks": 0,
+          "visual_mode": "all"
+        },
+        {
+          "active_median_seconds": 5.2580233,
+          "active_median_tps": 950.9276993884756,
+          "active_samples_seconds": [
+            5.2580233
+          ],
+          "active_window_game_ticks": 5000,
+          "assertions": "whole-world checkpoints, ordered chat, per-tick Pong screen",
+          "cpu": "anpu_pong",
+          "game_ticks": 50000,
+          "median_seconds": 5.2597553,
+          "median_tps": 9506.145656623987,
+          "samples_seconds": [
+            5.2597553
+          ],
+          "schematic_sha256": "f4068257797399531ce31d56c972af32d0f73f7d8d496ce1b7b8cd1c178decec",
+          "visual_counts": [
+            [
+              0,
+              0,
+              0
+            ]
+          ],
+          "visual_flush_every_game_ticks": 0,
+          "visual_mode": "all"
+        }
+      ]
+    },
+    {
+      "variant": "optimized",
+      "sample": 3,
+      "data": [
+        {
+          "active_median_seconds": 56.5734899,
+          "active_median_tps": 213.01496551302557,
+          "active_samples_seconds": [
+            56.5734899
+          ],
+          "active_window_game_ticks": 12051,
+          "assertions": "whole-world checkpoints, ordered chat, per-tick Pong screen",
+          "cpu": "pm1_sort",
+          "game_ticks": 50000,
+          "median_seconds": 56.5800788,
+          "median_tps": 883.7032584691275,
+          "samples_seconds": [
+            56.5800788
+          ],
+          "schematic_sha256": "e338028d50a4400056e25037d1f43d37c08baed079edede6298f78b0a6341654",
+          "visual_counts": [
+            [
+              0,
+              0,
+              0
+            ]
+          ],
+          "visual_flush_every_game_ticks": 0,
+          "visual_mode": "all"
+        },
+        {
+          "active_median_seconds": 4.6512116,
+          "active_median_tps": 1074.9887190683821,
+          "active_samples_seconds": [
+            4.6512116
+          ],
+          "active_window_game_ticks": 5000,
+          "assertions": "whole-world checkpoints, ordered chat, per-tick Pong screen",
+          "cpu": "anpu_pong",
+          "game_ticks": 50000,
+          "median_seconds": 4.6529399,
+          "median_tps": 10745.89422485341,
+          "samples_seconds": [
+            4.6529399
+          ],
+          "schematic_sha256": "f4068257797399531ce31d56c972af32d0f73f7d8d496ce1b7b8cd1c178decec",
+          "visual_counts": [
+            [
+              0,
+              0,
+              0
+            ]
+          ],
+          "visual_flush_every_game_ticks": 0,
+          "visual_mode": "all"
+        }
+      ]
+    }
+  ],
+  "cpu_summary": [
+    {
+      "cpu": "pm1_sort",
+      "baseline_samples_seconds": [
+        85.7571218,
+        66.5705252,
+        66.5737968
+      ],
+      "optimized_samples_seconds": [
+        58.0031627,
+        62.8227469,
+        56.5800788
+      ],
+      "baseline_median_seconds": 66.5737968,
+      "optimized_median_seconds": 58.0031627,
+      "simulation_time_reduction_percent": 12.87388508987668,
+      "baseline_median_tps": 751.0462434673698,
+      "optimized_median_tps": 862.0219600542575,
+      "active_window_game_ticks": 12051,
+      "baseline_active_median_seconds": 66.566531,
+      "optimized_active_median_seconds": 57.9961037,
+      "baseline_range_seconds": [
+        66.5705252,
+        85.7571218
+      ],
+      "optimized_range_seconds": [
+        56.5800788,
+        62.8227469
+      ]
+    },
+    {
+      "cpu": "anpu_pong",
+      "baseline_samples_seconds": [
+        6.1633087,
+        5.2765002,
+        5.2973774
+      ],
+      "optimized_samples_seconds": [
+        4.6294983,
+        5.2597553,
+        4.6529399
+      ],
+      "baseline_median_seconds": 5.2973774,
+      "optimized_median_seconds": 4.6529399,
+      "simulation_time_reduction_percent": 12.165217830241815,
+      "baseline_median_tps": 9438.632784592617,
+      "optimized_median_tps": 10745.89422485341,
+      "active_window_game_ticks": 5000,
+      "baseline_active_median_seconds": 5.2956878,
+      "optimized_active_median_seconds": 4.6512116,
+      "baseline_range_seconds": [
+        5.2765002,
+        6.1633087
+      ],
+      "optimized_range_seconds": [
+        4.6294983,
+        5.2597553
+      ]
+    }
+  ],
+  "raw_piston_runs": [
+    {
+      "pistons": 1,
+      "variant": "baseline",
+      "sample": 1,
+      "estimate": {
+        "confidence_interval": {
+          "confidence_level": 0.95,
+          "lower_bound": 3502.5692076044465,
+          "upper_bound": 3528.406118165599
+        },
+        "point_estimate": 3513.8922300772483,
+        "standard_error": 6.819580761928159
+      }
+    },
+    {
+      "pistons": 1,
+      "variant": "baseline",
+      "sample": 2,
+      "estimate": {
+        "confidence_interval": {
+          "confidence_level": 0.95,
+          "lower_bound": 3521.414432921058,
+          "upper_bound": 3548.896664952246
+        },
+        "point_estimate": 3532.9543516021313,
+        "standard_error": 7.007521498418698
+      }
+    },
+    {
+      "pistons": 1,
+      "variant": "optimized",
+      "sample": 1,
+      "estimate": {
+        "confidence_interval": {
+          "confidence_level": 0.95,
+          "lower_bound": 3490.3390485339232,
+          "upper_bound": 3526.51888407138
+        },
+        "point_estimate": 3506.5026474675356,
+        "standard_error": 9.651454779741446
+      }
+    },
+    {
+      "pistons": 1,
+      "variant": "optimized",
+      "sample": 2,
+      "estimate": {
+        "confidence_interval": {
+          "confidence_level": 0.95,
+          "lower_bound": 3537.1575325400813,
+          "upper_bound": 3582.499878156981
+        },
+        "point_estimate": 3553.1682103293883,
+        "standard_error": 12.303574915096124
+      }
+    },
+    {
+      "pistons": 64,
+      "variant": "baseline",
+      "sample": 1,
+      "estimate": {
+        "confidence_interval": {
+          "confidence_level": 0.95,
+          "lower_bound": 239723.9421717975,
+          "upper_bound": 243371.83604268765
+        },
+        "point_estimate": 241483.86411149826,
+        "standard_error": 961.390922265339
+      }
+    },
+    {
+      "pistons": 64,
+      "variant": "baseline",
+      "sample": 2,
+      "estimate": {
+        "confidence_interval": {
+          "confidence_level": 0.95,
+          "lower_bound": 239926.7228450552,
+          "upper_bound": 241809.5609223747
+        },
+        "point_estimate": 240875.70011220692,
+        "standard_error": 481.86514249959845
+      }
+    },
+    {
+      "pistons": 64,
+      "variant": "optimized",
+      "sample": 1,
+      "estimate": {
+        "confidence_interval": {
+          "confidence_level": 0.95,
+          "lower_bound": 221722.5057406781,
+          "upper_bound": 222972.73368239362
+        },
+        "point_estimate": 222242.85178236398,
+        "standard_error": 320.63411013287316
+      }
+    },
+    {
+      "pistons": 64,
+      "variant": "optimized",
+      "sample": 2,
+      "estimate": {
+        "confidence_interval": {
+          "confidence_level": 0.95,
+          "lower_bound": 222683.56865847151,
+          "upper_bound": 228562.43273607767
+        },
+        "point_estimate": 225602.04159407667,
+        "standard_error": 1547.5915510268142
+      }
+    },
+    {
+      "pistons": 256,
+      "variant": "baseline",
+      "sample": 1,
+      "estimate": {
+        "confidence_interval": {
+          "confidence_level": 0.95,
+          "lower_bound": 1113951.9491452281,
+          "upper_bound": 1137102.8219941468
+        },
+        "point_estimate": 1121300.225140713,
+        "standard_error": 6193.541069258954
+      }
+    },
+    {
+      "pistons": 256,
+      "variant": "baseline",
+      "sample": 2,
+      "estimate": {
+        "confidence_interval": {
+          "confidence_level": 0.95,
+          "lower_bound": 1106777.4684230122,
+          "upper_bound": 1116277.355157988
+        },
+        "point_estimate": 1110220.1768962746,
+        "standard_error": 2461.2186398237254
+      }
+    },
+    {
+      "pistons": 256,
+      "variant": "baseline",
+      "sample": 3,
+      "estimate": {
+        "confidence_interval": {
+          "confidence_level": 0.95,
+          "lower_bound": 1115866.0152247904,
+          "upper_bound": 1118914.5716797851
+        },
+        "point_estimate": 1117373.0420798713,
+        "standard_error": 773.6813737113321
+      }
+    },
+    {
+      "pistons": 256,
+      "variant": "baseline",
+      "sample": 4,
+      "estimate": {
+        "confidence_interval": {
+          "confidence_level": 0.95,
+          "lower_bound": 1117254.6959516783,
+          "upper_bound": 1137771.3464630768
+        },
+        "point_estimate": 1124921.5036183328,
+        "standard_error": 5657.70869013827
+      }
+    },
+    {
+      "pistons": 256,
+      "variant": "optimized",
+      "sample": 1,
+      "estimate": {
+        "confidence_interval": {
+          "confidence_level": 0.95,
+          "lower_bound": 888326.2110214725,
+          "upper_bound": 896320.870937029
+        },
+        "point_estimate": 891603.5068661611,
+        "standard_error": 2047.5613253865704
+      }
+    },
+    {
+      "pistons": 256,
+      "variant": "optimized",
+      "sample": 2,
+      "estimate": {
+        "confidence_interval": {
+          "confidence_level": 0.95,
+          "lower_bound": 1287374.4542730402,
+          "upper_bound": 1576374.5261945557
+        },
+        "point_estimate": 1401137.5831485589,
+        "standard_error": 74156.52988353668
+      }
+    },
+    {
+      "pistons": 256,
+      "variant": "optimized",
+      "sample": 3,
+      "estimate": {
+        "confidence_interval": {
+          "confidence_level": 0.95,
+          "lower_bound": 896017.4426762427,
+          "upper_bound": 910865.3080903495
+        },
+        "point_estimate": 901966.1302264809,
+        "standard_error": 4118.670246847681
+      }
+    },
+    {
+      "pistons": 256,
+      "variant": "optimized",
+      "sample": 4,
+      "estimate": {
+        "confidence_interval": {
+          "confidence_level": 0.95,
+          "lower_bound": 892403.4770799623,
+          "upper_bound": 916082.9036601223
+        },
+        "point_estimate": 901165.0979965157,
+        "standard_error": 6220.677877926763
+      }
+    },
+    {
+      "pistons": 1024,
+      "variant": "baseline",
+      "sample": 1,
+      "estimate": {
+        "confidence_interval": {
+          "confidence_level": 0.95,
+          "lower_bound": 7174318.272519452,
+          "upper_bound": 7293045.929917021
+        },
+        "point_estimate": 7228421.254355401,
+        "standard_error": 30980.406770261317
+      }
+    },
+    {
+      "pistons": 1024,
+      "variant": "baseline",
+      "sample": 2,
+      "estimate": {
+        "confidence_interval": {
+          "confidence_level": 0.95,
+          "lower_bound": 7186371.853638503,
+          "upper_bound": 7224252.03691015
+        },
+        "point_estimate": 7203607.229965157,
+        "standard_error": 9671.984289908474
+      }
+    },
+    {
+      "pistons": 1024,
+      "variant": "optimized",
+      "sample": 1,
+      "estimate": {
+        "confidence_interval": {
+          "confidence_level": 0.95,
+          "lower_bound": 3674450.541126637,
+          "upper_bound": 3717644.48161772
+        },
+        "point_estimate": 3693497.0470383274,
+        "standard_error": 11547.063925992416
+      }
+    },
+    {
+      "pistons": 1024,
+      "variant": "optimized",
+      "sample": 2,
+      "estimate": {
+        "confidence_interval": {
+          "confidence_level": 0.95,
+          "lower_bound": 3708005.733358758,
+          "upper_bound": 3743061.990824289
+        },
+        "point_estimate": 3724730.1916376306,
+        "standard_error": 9005.705606637892
+      }
+    }
+  ],
+  "piston_summary": [
+    {
+      "pistons": 1,
+      "baseline_process_samples_ns": [
+        3513.8922300772483,
+        3532.9543516021313
+      ],
+      "optimized_process_samples_ns": [
+        3506.5026474675356,
+        3553.1682103293883
+      ],
+      "baseline_median_ns": 3523.42329083969,
+      "optimized_median_ns": 3529.835428898462,
+      "cycle_time_reduction_percent": -0.18198602692565125
+    },
+    {
+      "pistons": 64,
+      "baseline_process_samples_ns": [
+        241483.86411149826,
+        240875.70011220692
+      ],
+      "optimized_process_samples_ns": [
+        222242.85178236398,
+        225602.04159407667
+      ],
+      "baseline_median_ns": 241179.7821118526,
+      "optimized_median_ns": 223922.4466882203,
+      "cycle_time_reduction_percent": 7.155382293043456
+    },
+    {
+      "pistons": 256,
+      "baseline_process_samples_ns": [
+        1121300.225140713,
+        1110220.1768962746,
+        1117373.0420798713,
+        1124921.5036183328
+      ],
+      "optimized_process_samples_ns": [
+        891603.5068661611,
+        1401137.5831485589,
+        901966.1302264809,
+        901165.0979965157
+      ],
+      "baseline_median_ns": 1119336.633610292,
+      "optimized_median_ns": 901565.6141114982,
+      "cycle_time_reduction_percent": 19.455364271997276
+    },
+    {
+      "pistons": 1024,
+      "baseline_process_samples_ns": [
+        7228421.254355401,
+        7203607.229965157
+      ],
+      "optimized_process_samples_ns": [
+        3693497.0470383274,
+        3724730.1916376306
+      ],
+      "baseline_median_ns": 7216014.242160279,
+      "optimized_median_ns": 3709113.619337979,
+      "cycle_time_reduction_percent": 48.598859496879676
+    }
+  ],
+  "methodology": {
+    "machine": "AMD Ryzen 9 5950X, Windows 11; rustc version recorded in baseline metadata.",
+    "build": "Release/bench, fat LTO. Baseline and optimized binaries built in an isolated checkout of 4a2fb767821567ba62c5a63bb9af68fdc19d26e3; optimized runtime patch then applied to the main working tree while preserving unrelated work.",
+    "cpu_runs": "Three fresh processes per version, each running PM1 then ANPU in fresh worlds. Process order: baseline-1, optimized-1, optimized-2, baseline-2, baseline-3, optimized-3. Affinity mask 4 (logical processor 2). Child benchmark process priority was Normal, as observed; the parent shell's AboveNormal setting on CPU runs did not propagate.",
+    "timing": "Only tick_interpreted is timed; no visual flushing or connected clients. Import, checkpoint hashes, chat/screen validation and the additional PM1 stop-control ticks are outside timing. Each sample times 50,000 game ticks. Original active windows retained: PM1 12,051 ticks; ANPU 5,000 ticks. Both versions disable live command-output limits for deterministic replay.",
+    "piston_runs": "Criterion, 20 samples per fresh process, 1-second warmup and 3-second measurement. Baseline-1, optimized-1, optimized-2, baseline-2 cover 1, 64, 256 and 1,024 independent pistons. Each cycle contains eight interpreted game ticks and manual power changes. Affinity mask 4, Normal priority.",
+    "piston_followup": "One optimized 256-piston process was noisy (1.401 ms, wide confidence interval). Two additional processes per version repeated only that case, in baseline/optimized/optimized/baseline order. All initial and follow-up samples are retained. Summaries use the median of per-process Criterion slope estimates, averaging the two middle values for even sample counts.",
+    "limitations": "Local simulation measurements, excluding networking and rendering. CPU sample ranges are recorded; bundled optimizations were measured together, without separate attribution. A single-piston cycle shows no measurable gain. Testing covers these fixtures and regression cases, not exhaustive equivalence for all circuits.",
+    "validation_commands": [
+      "cargo test --workspace --release --locked -- --test-threads=1",
+      "cargo test -p mchprs_core --test cpu_references --release --locked -- --ignored --test-threads=1"
+    ]
+  },
+  "correctness": {
+    "baseline_commit": "4a2fb767821567ba62c5a63bb9af68fdc19d26e3",
+    "baseline_authorization": "User explicitly authorized treating the current interpreter, including existing edge-case fixes, as the new baseline.",
+    "baseline_fixture": "piston-shape-checkpoints.json; captured before any performance edits. Applies only the 9 PM1 and 7 ANPU changed block hashes and checks each original hash before replacement. Original CPU references remain unchanged.",
+    "baseline_capture_comparison": "All original entity, scheduled-queue, piston, chat, message-count and lit-lamp checkpoint fields match the untouched capture. Both complete ordered chat traces and the complete ANPU screen trace match.",
+    "baseline_cpu_replays_passed": 6,
+    "optimized_cpu_replays_passed": 6,
+    "workspace_tests_passed_in_isolated_checkout": 284,
+    "registry_states_in_threshold_equivalence_test": 27914,
+    "verification": "Whole-world checkpoints through 50,000 ticks, PM1 stop-control checkpoint at 50,100 ticks, 1,535 ordered PM1 messages with halt at tick 12,051, and the exact ANPU screen trace sampled every game tick. Additional tests cover all registered states and six query faces, comparator output 255, dust dot/cross/climbing geometry, ring wrap, duplicate queue entries, stale motion identities, ordered motion removal, and Vec/deque save-byte equivalence.",
+    "merged_checkout_verification": "300 enabled workspace tests and both ignored full CPU regression tests passed in the main working tree after applying the performance patch alongside existing unrelated changes.",
+    "merged_workspace_tests": {
+      "passed": 300,
+      "ignored": 4
+    },
+    "merged_cpu_replays_passed": 2,
+    "total_full_cpu_replays_passed": 14,
+    "formatting": "cargo fmt --all -- --check passed in the isolated patch checkout; git diff --check passed for the patch in the main tree."
+  },
+  "memory": {
+    "tick_index": "One counted hash-map entry per distinct pending (position, expected block type). Capacity follows peak pending membership and is released by clear_interpreter_caches. Duplicate loaded requests share a count. No tick copies are added to serialization.",
+    "motion_store": "The same ordered motion records move from Vec to VecDeque. There is no second authoritative motion bank. The deque has constant container overhead and avoids relocating surviving records during front removal. Bincode bytes remain identical.",
+    "unchanged_caches": "No increase to persistent wire topology retention or Turbo scratch limits.",
+    "public_api": "PistonState.motions is now VecDeque<PistonMotion>; Rust callers use push_back/pop_back and make_contiguous when they need a contiguous slice. Saved state encoding remains compatible."
+  },
+  "implemented": [
+    {
+      "surface": "Boolean power and zero dust",
+      "files": [
+        "crates/core/src/redstone/mod.rs",
+        "crates/core/src/redstone/piston.rs",
+        "crates/core/src/redstone/command_block.rs"
+      ],
+      "change": "Use existence queries for Boolean consumers, stopping on the first positive strong input. Zero-power wires return zero without recomputing sides.",
+      "accuracy": "Analog maximum queries remain unchanged and preserve out-of-range comparator entity bytes. Emission sides and piston quasi-connectivity neighborhoods are retained."
+    },
+    {
+      "surface": "Repeated wire reads",
+      "files": [
+        "crates/core/src/redstone/wire/mod.rs"
+      ],
+      "change": "Reuse each of the six direct neighbor blocks for dust power and external power; evaluate above solidity once per query; share lazy above solidity across side queries; reuse raw sides during shape changes.",
+      "accuracy": "Keep raw opposite-side cross protection and the intermediate stored-side dot rule. Above reads remain lazy after direct connection checks. Seed and Turbo neighborhoods are not merged; callback ordering and walk snapshots are unchanged."
+    },
+    {
+      "surface": "Scheduled-tick membership",
+      "files": [
+        "crates/core/src/plot/interpreter_cache.rs",
+        "crates/core/src/plot/mod.rs",
+        "crates/core/src/redpiler/backend/queue.rs"
+      ],
+      "change": "Replace membership scans over the 32-bucket, four-priority ring with a derived counted hash index. Ordinary queries and insert/pop maintenance are expected O(1); rebuild is O(pending entries) after invalidation.",
+      "accuracy": "Keys include expected block type. Count imported duplicates, pop before callback, and invalidate on load/history/cache clearing/compiled handoff. The scheduler remains authoritative for priority, FIFO, delay and serialization."
+    },
+    {
+      "surface": "Piston motion completion",
+      "files": [
+        "crates/world/src/lib.rs",
+        "crates/core/src/plot/mod.rs",
+        "crates/core/src/plot/interpreter_cache.rs"
+      ],
+      "change": "Store motions in order in a deque; for unique positions remove the located motion rather than retaining the whole bank. Recognize ordered front lookup without repairing a shifted map index by a scan.",
+      "accuracy": "Retain remove-all behavior for legacy duplicate positions and small banks. Preserve motion order, identities, partial movement snapshots and saved bytes. Middle removals and stale-index repair can still require linear work."
+    }
+  ],
+  "remaining_candidates": [
+    {
+      "priority": 1,
+      "surface": "Direct cached-cell reads and facts lookup",
+      "files": [
+        "crates/core/src/redstone/wire/turbo.rs",
+        "crates/core/src/world/wire_cache.rs",
+        "crates/core/src/plot/mod.rs"
+      ],
+      "proposal": "Use the existing compact wire-neighbor cell address to read a block's raw state without recomputing chunk/local coordinates; index immutable facts by the raw state ID without converting a Block back to an ID.",
+      "accuracy_conditions": "Retain out-of-world fallback behavior. Capture node block states at the same walk creation point. Strong-input neighbors and comparator entities must still be live reads."
+    },
+    {
+      "priority": 2,
+      "surface": "Compact immutable wire neighborhoods",
+      "files": [
+        "crates/core/src/world/wire_cache.rs"
+      ],
+      "proposal": "Investigate storing 24 compact cell addresses and deriving positions from canonical offsets, reducing the current position-plus-optional-cell payload and allocations/Arc traffic.",
+      "accuracy_conditions": "Cache addresses only. Preserve canonical/oriented neighbor order and recursive walks' independent scratch. Do not hold a RefCell borrow through callbacks. Benchmark memory and lookup cost before adoption."
+    },
+    {
+      "priority": 3,
+      "surface": "Piston entity ownership transfer",
+      "files": [
+        "crates/core/src/redstone/piston.rs",
+        "crates/core/src/world/mod.rs"
+      ],
+      "proposal": "Take the carried entity out of a completing motion instead of cloning its Box and nested payload before deleting that motion.",
+      "accuracy_conditions": "Keep pre-move snapshots for overlapping payloads, entity restoration timing, interrupted-source rules and observer/support notifications unchanged. This is likely less relevant to CPU payloads without entities."
+    },
+    {
+      "priority": 4,
+      "surface": "Duplicate extension validation",
+      "files": [
+        "crates/core/src/redstone/piston.rs",
+        "crates/core/src/plot/interpreter_cache.rs"
+      ],
+      "proposal": "After the live power recheck, avoid rescanning a payload line when an identical Extend event is already pending.",
+      "accuracy_conditions": "Event execution must still revalidate the live payload line. Retraction action selection depends on motion progress and phase and must still be recomputed."
+    },
+    {
+      "priority": 5,
+      "surface": "Instant-network compilation",
+      "files": [
+        "docs/INSTANT_REDPILLER.md",
+        "docs/REDSTONE_MODEL.md"
+      ],
+      "proposal": "A separate Redpiler project could recognize validated instant reset groups and lower their computational behavior.",
+      "accuracy_conditions": "BUD memory, observers, quasi-connectivity, moving-cell electrical gaps, event order and transient wire states require a separate equivalence argument. Ordinary Boolean graph reduction does not establish interpreter equivalence."
+    }
+  ],
+  "merged_source_sha256": {
+    "crates/core/src/redstone/mod.rs": "c4a09f95cd4da50002649be47688cabbf6ac26b7affaf36d65c75d4837f21da5",
+    "crates/core/src/redstone/piston.rs": "146d663be8d93eeefc5c504382f96971dd1ac4267c9472b21ccfe7811a437379",
+    "crates/core/src/redstone/wire/mod.rs": "4e8ac7ab9b478505315783e2a5c066447b808e200039e2a0d3d50b7a981cc139",
+    "crates/core/src/redstone/command_block.rs": "465122daf61fae4d5288413400695af7147928872cd721c49a167bfa5b5d1604",
+    "crates/core/src/plot/mod.rs": "b46bc25cff73d0d6206cc6c5845a2e9a816f17286ebacfa06aaad4c9cb9e7c91",
+    "crates/core/src/plot/interpreter_cache.rs": "e1a62154ec8c97118514eeda0658bd06779ebbfc581fb7a5046d531c29cc4d8c",
+    "crates/core/src/redpiler/backend/queue.rs": "c78403dad790db2c56798c8604de4235141467c61a6ec14c81cb4f696b0ec7e8",
+    "crates/world/src/lib.rs": "7e4326ba43f4ffd4d1b638486f982e6efe78c6a2f9dcc76c00c3a199c24f067f",
+    "crates/core/benches/support/cpus.rs": "0224f3b2f96c52592b089b5af2c9d9127e63188c97edd92a4363c37102a1c00b",
+    "test_data/cpu-references/piston-shape-checkpoints.json": "344d0dceb8d9fc3c14c395ca4a6fc32c05d7a024557904350770b40906130158"
+  }
+}

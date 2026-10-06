@@ -530,6 +530,28 @@ mod tests {
         }
     }
     #[test]
+    fn git_access_can_be_granted_or_denied_including_an_admin_wildcard() {
+        let mut config = config();
+        config.mchprs_permissions = true;
+        let missing = PlayerPermissionsCache::resolve(vec![], vec![], &config, now());
+        assert_eq!(missing.get_node_val("commands.git"), None);
+        let granted = PlayerPermissionsCache::resolve(
+            vec![node("", "mchprs.commands.git", true)],
+            vec![],
+            &config,
+            now(),
+        );
+        assert_eq!(granted.get_node_val("commands.git"), Some(1));
+        let denied = PlayerPermissionsCache::resolve(
+            vec![node("", "mchprs.commands.git", false)],
+            vec![node("default", "mchprs.*", true)],
+            &config,
+            now(),
+        );
+        assert_eq!(denied.get_node_val("commands.git"), Some(0));
+        assert_eq!(denied.get_node_val("plots.admin.git"), Some(1));
+    }
+    #[test]
     fn exact_permissions_do_not_match_prefixes_or_panic() {
         let cache = PlayerPermissionsCache::resolve(
             vec![node("", "plots.info", true)],

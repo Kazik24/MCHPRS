@@ -166,7 +166,60 @@ and newer measurements are described in [heavy-interpreter.md](heavy-interpreter
 `heavy-optimization-performance.json` preserves their three-sample CPU results;
 the original references and earlier performance reports remain unchanged.
 
+## Interpreter hot-path measurements (2026-10-06)
+
+The next patch preserves interpreter callback order and targets repeated work:
+
+- Boolean power queries stop at the first positive strong input. Analog queries
+  still calculate the complete maximum. Zero-power dust skips side geometry.
+- Dust calculations reuse direct neighbor reads, the block above, and raw sides
+  within one geometry query. Seed and Turbo propagation keep their separate rules.
+- A counted membership index replaces full scheduler scans. Its key includes the
+  expected block type; entries are removed before dispatch and rebuilt after
+  loading, rewind, cache clearing, or compiled handoff.
+- Ordered piston motions use a deque. Ordinary front completions avoid a full
+  scan and vector compaction; legacy duplicate positions retain the old fallback.
+  Movement identities, order, and serialized bytes are preserved.
+
+Three fresh processes per version, each running PM1 then ANPU in fresh worlds,
+pinned to logical processor 2 on the Ryzen 9 5950X, produced these medians for
+50,000 interpreted game ticks:
+
+| CPU | Baseline seconds | Optimized seconds | Simulation time reduction |
+| --- | ---: | ---: | ---: |
+| PM1 SORT | 66.574 | 58.003 | 12.9% |
+| ANPU Pong | 5.297 | 4.653 | 12.2% |
+
+All 12 baseline and optimized CPU replays passed whole-world checkpoints,
+ordered chat, PM1's stop control, and the per-tick ANPU screen trace. The patch
+passed all 284 enabled workspace tests in the isolated checkout, including
+queue-wrap/duplicate tests, every registry state's Boolean power equivalence,
+dust shape cases, and Vec/deque save-byte compatibility. After applying the
+patch alongside existing work, all 300 enabled workspace tests and both full
+CPU regression tests also passed in the main checkout.
+`interpreter-hot-path-performance.json` records raw samples, piston measurements,
+source/executable hashes, memory costs, and remaining optimization candidates.
+The CPU samples vary; these are local simulation measurements excluding clients
+and rendering, and the four runtime changes were measured together.
+
+The next surfaces to investigate are direct reads through cached wire cell
+addresses and a smaller immutable neighborhood representation. Neither should
+cache live block states between walks. Removing carried-entity clones at piston
+completion is another local option, provided payload snapshot and notification
+order remain intact. Instant-network compilation needs a separate equivalence
+argument for observer callbacks and BUD memory; it is outside this interpreter
+patch.
+
 ## Capture deliberately
+
+`piston-shape-checkpoints.json` records the block-state changes from the piston
+edge-case fixes already present at `4a2fb767821567ba62c5a63bb9af68fdc19d26e3`.
+It was captured from that untouched interpreter before the next performance
+changes, with the user's authorization to adopt the current version as the
+baseline. The benchmark applies each patch only after checking the original
+block hash. All original non-block checkpoints, ordered chat, and the complete
+ANPU screen trace match the capture and remain strictly checked. The original
+reference files are retained.
 
 The capture tool refuses to replace an existing CPU JSON file. Use a new output
 directory and the unoptimized interpreter when establishing a new reference:

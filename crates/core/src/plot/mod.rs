@@ -6,6 +6,7 @@ mod compass;
 mod containers;
 mod data;
 pub mod database;
+mod git;
 mod help;
 mod history;
 mod interpreter_cache;
@@ -112,6 +113,7 @@ pub struct Plot {
     last_sidebar_update: Instant,
     neighbor_views: neighbors::Views,
     neighbor_source: Option<neighbors::LiveSource>,
+    git: git::State,
 }
 
 pub struct PlotWorld {
@@ -119,6 +121,7 @@ pub struct PlotWorld {
     z: i32,
     chunks: Vec<Chunk>,
     to_be_ticked: TickScheduler<ScheduledBlockTick>,
+    tick_index: interpreter_cache::TickIndex,
     piston_state: PistonState,
     piston_index: std::cell::RefCell<interpreter_cache::PistonIndex>,
     wire_topology: std::cell::RefCell<crate::world::wire_cache::Topology>,
@@ -161,6 +164,7 @@ impl PlotWorld {
             z,
             chunks,
             to_be_ticked,
+            tick_index: Default::default(),
             piston_state: PistonState::default(),
             piston_index: Default::default(),
             wire_topology: Default::default(),
@@ -360,7 +364,7 @@ impl PlotWorld {
         self.remove_motions_at(pos);
         let state = &mut self.piston_state;
         state.next_identity += 1;
-        state.motions.push(PistonMotion {
+        state.motions.push_back(PistonMotion {
             pos,
             identity: state.next_identity,
             progress,
@@ -374,18 +378,28 @@ impl PlotWorld {
     }
 
     fn remove_motions_at(&mut self, pos: BlockPos) {
-        if self.piston_motion_index(pos, None).is_some() {
-            self.piston_state.motions.retain(|m| m.pos != pos);
+        if let Some(index) = self.piston_motion_index(pos, None) {
+            if self.piston_state.motions.len() <= 8
+                || self.piston_index.get_mut().has_duplicate_motions(pos)
+            {
+                // Legacy saves can contain repeated positions; remove all of
+                // them as before. Small banks are cheap to retain in order.
+                self.piston_state.motions.retain(|m| m.pos != pos);
+            } else {
+                self.piston_state.motions.remove(index);
+            }
             self.piston_index.get_mut().removed(pos);
         }
     }
 
     fn invalidate_interpreter_caches(&mut self) {
+        self.tick_index.invalidate();
         self.piston_index.get_mut().invalidate();
         self.wire_topology.get_mut().clear();
     }
 
     fn clear_interpreter_caches(&mut self) {
+        self.tick_index = Default::default();
         *self.piston_index.get_mut() = Default::default();
         self.wire_topology.get_mut().clear();
         redstone::wire::invalidate_turbo_cache();
@@ -446,6 +460,7 @@ impl PlotWorld {
         match self.piston_state.phase {
             AdvancePhase::ScheduledTicks => {
                 let tick = self.to_be_ticked.this_tick().pop_first().unwrap();
+                self.tick_index.popped(tick);
                 let block = self.get_block(tick.pos);
                 if tick.block_type == Some(block.registry_id()) {
                     redstone::tick(block, self, tick.pos);
@@ -660,7 +675,7 @@ impl World for PlotWorld {
     }
 
     fn remove_piston_motion(&mut self, index: usize) {
-        let pos = self.piston_state.motions.remove(index).pos;
+        let pos = self.piston_state.motions.remove(index).unwrap().pos;
         self.piston_index.get_mut().invalidate();
         self.piston_index.get_mut().removed(pos);
     }
@@ -773,17 +788,19 @@ impl World for PlotWorld {
             pos,
             block_type: Some(self.get_block(pos).registry_id()),
         };
-        if !self.to_be_ticked.contains(&node) {
+        if !self.tick_index.contains(&self.to_be_ticked, node) {
             self.to_be_ticked
                 .schedule_half_tick(node, delay as usize, priority);
+            self.tick_index.pushed(node);
         }
     }
 
     fn pending_tick_at(&mut self, pos: BlockPos) -> bool {
-        self.to_be_ticked.contains(&ScheduledBlockTick {
+        let node = ScheduledBlockTick {
             pos,
             block_type: Some(self.get_block(pos).registry_id()),
-        })
+        };
+        self.tick_index.contains(&self.to_be_ticked, node)
     }
 
     fn block_action(&mut self, pos: BlockPos, block_action: BlockAction) {
@@ -1027,6 +1044,9 @@ impl Plot {
     }
 
     fn on_player_move(&mut self, player_idx: usize, old: PlayerPos, new: PlayerPos) {
+        if self.git_checkout_locked() {
+            return;
+        }
         if matches!(self.players[player_idx].gamemode, Gamemode::Spectator)
             || (crate::permissions::dedicated_permissions()
                 && !self.players[player_idx].can_build_action(
@@ -1209,6 +1229,7 @@ impl Plot {
         should_be_loaded: bool,
     ) {
         if was_loaded && !should_be_loaded {
+            self.unload_git_chunk(player_idx, chunk_x, chunk_z);
             self.neighbor_views
                 .unload(self.players[player_idx].uuid, (chunk_x, chunk_z));
             let unload_chunk = CUnloadChunk { chunk_x, chunk_z }.encode();
@@ -1313,6 +1334,7 @@ impl Plot {
         let monitor = Default::default();
         let ticks = self.world.to_be_ticked.iter_entries().collect();
         self.world.to_be_ticked.clear();
+        self.world.tick_index.invalidate();
 
         let mut players_need_updates = HashSet::new();
         thread::scope(|s| {
@@ -1373,6 +1395,7 @@ impl Plot {
 
     fn leave_plot(&mut self, uuid: u128) -> Player {
         let player_idx = self.players.iter().position(|p| p.uuid == uuid).unwrap();
+        self.hide_git(player_idx, true);
         self.close_open_container(player_idx);
         self.world.packet_senders.remove(player_idx);
         let mut player = self.players.remove(player_idx);
@@ -1658,6 +1681,7 @@ impl Plot {
     }
 
     fn update(&mut self) {
+        self.update_git();
         self.handle_messages();
         self.update_render_mode();
 
@@ -1720,6 +1744,7 @@ impl Plot {
             }
 
             if self.auto_redpiler
+                && !self.git_checkout_locked()
                 && !self.world.chunks.iter().any(Chunk::requires_interpreter)
                 && !self.redpiler.is_active()
                 && (self.tps == Tps::Unlimited || self.timings.is_running_behind())
@@ -1880,11 +1905,16 @@ impl Plot {
             last_sidebar_update: Instant::now(),
             neighbor_views: Default::default(),
             neighbor_source: None,
+            git: Default::default(),
             world,
         }
     }
 
     fn save(&mut self) {
+        // The checkout worker owns the durable save until its result is applied.
+        if self.git_checkout_locked() {
+            return;
+        }
         let world = &mut self.world;
         let chunk_data: Vec<ChunkData<PLOT_SECTIONS>> =
             world.chunks.iter_mut().map(|c| c.save()).collect();
@@ -1975,6 +2005,7 @@ impl Plot {
 
 impl Drop for Plot {
     fn drop(&mut self) {
+        self.finish_git();
         self.close_all_containers();
         if !self.players.is_empty() {
             for player in &mut self.players {

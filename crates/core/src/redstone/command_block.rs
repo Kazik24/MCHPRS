@@ -56,7 +56,7 @@ pub(crate) fn update(world: &mut impl World, pos: BlockPos) {
     }
     let powered = BlockFace::values().into_iter().any(|face| {
         let neighbor = pos.offset(face);
-        super::get_redstone_power(world.get_block(neighbor), world, neighbor, face) > 0
+        super::has_redstone_power(world.get_block(neighbor), world, neighbor, face)
     });
     let Some(BlockEntity::CommandBlock(entity)) = world.get_block_entity_mut(pos) else {
         return;

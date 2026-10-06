@@ -131,7 +131,7 @@ pub struct PlotData<const NUM_CHUNK_SECTIONS: usize> {
 }
 
 impl<const NUM_CHUNK_SECTIONS: usize> PlotData<NUM_CHUNK_SECTIONS> {
-    pub(crate) fn validate(&self) -> Result<(), PlotLoadError> {
+    pub fn validate(&self) -> Result<(), PlotLoadError> {
         let invalid = |message: &str| PlotLoadError::InvalidLegacyId(message.into());
         let states = mchprs_blocks::generated::TARGET_TO_LEGACY.len() as u32;
         for chunk in &self.chunk_data {

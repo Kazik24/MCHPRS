@@ -121,7 +121,7 @@ impl TickScheduler<NodeId> {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct ScheduledBlockTick {
     pub pos: BlockPos,
     pub block_type: Option<u32>,

@@ -55,7 +55,7 @@ fn get_weak_power(
                 0
             }
         }
-        Block::RedstoneWire { wire } if dust_power => match side {
+        Block::RedstoneWire { wire } if dust_power && wire.power != 0 => match side {
             BlockFace::Top => wire.power,
             BlockFace::Bottom => 0,
             _ => {
@@ -139,6 +139,19 @@ pub fn get_redstone_power(
     }
 }
 
+/// Threshold consumers need existence, whereas analog consumers need the
+/// complete maximum. Reads here do not issue callbacks or mutate the world.
+fn has_redstone_power(block: Block, world: &impl World, pos: BlockPos, facing: BlockFace) -> bool {
+    if block.is_solid() {
+        BlockFace::values().into_iter().any(|side| {
+            let neighbor = pos.offset(side);
+            get_strong_power(world.get_block(neighbor), world, neighbor, side, true) > 0
+        })
+    } else {
+        get_weak_power(block, world, pos, facing, true) > 0
+    }
+}
+
 fn get_redstone_power_no_dust(
     block: Block,
     world: &impl World,
@@ -155,7 +168,7 @@ fn get_redstone_power_no_dust(
 pub fn torch_should_be_off(world: &impl World, pos: BlockPos) -> bool {
     let bottom_pos = pos.offset(BlockFace::Bottom);
     let bottom_block = world.get_block(bottom_pos);
-    get_redstone_power(bottom_block, world, bottom_pos, BlockFace::Top) > 0
+    has_redstone_power(bottom_block, world, bottom_pos, BlockFace::Top)
 }
 
 pub fn on_state_change(facing: BlockFacing, world: &mut impl World, pos: BlockPos) {
@@ -176,18 +189,18 @@ pub fn wall_torch_should_be_off(
 ) -> bool {
     let wall_pos = pos.offset(direction.opposite().block_face());
     let wall_block = world.get_block(wall_pos);
-    get_redstone_power(
+    has_redstone_power(
         wall_block,
         world,
         wall_pos,
         direction.opposite().block_face(),
-    ) > 0
+    )
 }
 
 pub fn redstone_lamp_should_be_lit(world: &impl World, pos: BlockPos) -> bool {
     for face in &BlockFace::values() {
         let neighbor_pos = pos.offset(*face);
-        if get_redstone_power(world.get_block(neighbor_pos), world, neighbor_pos, *face) > 0 {
+        if has_redstone_power(world.get_block(neighbor_pos), world, neighbor_pos, *face) {
             return true;
         }
     }

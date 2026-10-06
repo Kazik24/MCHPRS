@@ -32,7 +32,7 @@ const SHAPE_NEIGHBORS: [BlockFace; 6] = [
 
 fn powered(world: &impl World, pos: BlockPos, face: BlockFace) -> bool {
     let p = pos.offset(face);
-    super::get_redstone_power(world.get_block(p), world, p, face) > 0
+    super::has_redstone_power(world.get_block(p), world, p, face)
 }
 
 pub fn should_piston_extend(world: &impl World, facing: BlockFacing, pos: BlockPos) -> bool {

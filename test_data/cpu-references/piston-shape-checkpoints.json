@@ -1,0 +1,91 @@
+{
+  "schema": 1,
+  "baseline_commit": "4a2fb767821567ba62c5a63bb9af68fdc19d26e3",
+  "reason": "Captured before performance changes from the current interpreter, as authorized by the user. Existing piston edge-case fixes change dust block states. Original entity, scheduler, piston, chat, lamp-count checkpoints and the complete ANPU screen trace still match.",
+  "cpus": {
+    "pm1_sort": [
+      {
+        "tick": 10,
+        "before": "a8ed3af79f718b970754d898fd43f4be3d61e4167f49445e1e2573df4c5207b7",
+        "after": "e27248b306c875508e0562af69dfcc48b64eb9f64fd40c411e143fde63ebbb1c"
+      },
+      {
+        "tick": 100,
+        "before": "19e9283fd2aa01ed122c2524c73f1484425c281c4238a772bd9fafc96bdb3732",
+        "after": "9968f5bdac0d76250a15586505511ba5ab0c45cfeb01c3df3ebf1d77dcf5f625"
+      },
+      {
+        "tick": 1000,
+        "before": "59d4fbaa39aba90d3a1bab08081f4b7de6b55455b66bda25c96c1d602563fd6e",
+        "after": "76dc550c5a49d0b98cd4995fad2989aac3e07da82e879707f3cf693bb681c4ab"
+      },
+      {
+        "tick": 5000,
+        "before": "7d48371ec80feca1dd5c009561a10f41c8a51c50fc0b7507166f8fede0dd134f",
+        "after": "995b7c4dc0f0eb8187cfd956f7313d653b16bfba74b5c016c2a853f2d77695c7"
+      },
+      {
+        "tick": 10000,
+        "before": "4ab3017013eb669c90e839537e9d784f42516bf671cdb207cd7aed6680fe84f2",
+        "after": "5916e53dfea660e01613d5643d30bd585ee9c5964ba8803abb81398f43d7a052"
+      },
+      {
+        "tick": 20000,
+        "before": "4169d951af4b89b62cb1e96884d6421076cacbb43f648f073e320dba2b0a78db",
+        "after": "10bc8a3f692d95c898eb3b100dc9d7bb0bb1f1915bebc4f69c435e77e28ed350"
+      },
+      {
+        "tick": 30000,
+        "before": "4169d951af4b89b62cb1e96884d6421076cacbb43f648f073e320dba2b0a78db",
+        "after": "10bc8a3f692d95c898eb3b100dc9d7bb0bb1f1915bebc4f69c435e77e28ed350"
+      },
+      {
+        "tick": 50000,
+        "before": "4169d951af4b89b62cb1e96884d6421076cacbb43f648f073e320dba2b0a78db",
+        "after": "10bc8a3f692d95c898eb3b100dc9d7bb0bb1f1915bebc4f69c435e77e28ed350"
+      },
+      {
+        "tick": 50100,
+        "before": "4169d951af4b89b62cb1e96884d6421076cacbb43f648f073e320dba2b0a78db",
+        "after": "10bc8a3f692d95c898eb3b100dc9d7bb0bb1f1915bebc4f69c435e77e28ed350"
+      }
+    ],
+    "anpu_pong": [
+      {
+        "tick": 100,
+        "before": "860fdaf2baf78f3f69825509738ffda1c12b563dcb4cdd73c69fd586fdd9381a",
+        "after": "8a7f2710f79435c9c88746f22315f06c2964251d26e04f00ba613bf34eb12dca"
+      },
+      {
+        "tick": 1000,
+        "before": "f543d2c560775f8be30602c06d6ab0ccaef7eeeb106267ee71d9ffcdb2bdd1b5",
+        "after": "037720720bbe2ba85eaa5972638374b99ad246227b3fe27fe86222647402de13"
+      },
+      {
+        "tick": 5000,
+        "before": "8aabc83acba586720e0c694b0a763b673e77d1a4ebdc0ec49cb7b1d2e385407d",
+        "after": "ab09a4fd413e0fe3b552d079f2bbfe0f7a7a1f7e153063d013e0eabdf37859ae"
+      },
+      {
+        "tick": 10000,
+        "before": "8aabc83acba586720e0c694b0a763b673e77d1a4ebdc0ec49cb7b1d2e385407d",
+        "after": "ab09a4fd413e0fe3b552d079f2bbfe0f7a7a1f7e153063d013e0eabdf37859ae"
+      },
+      {
+        "tick": 20000,
+        "before": "8aabc83acba586720e0c694b0a763b673e77d1a4ebdc0ec49cb7b1d2e385407d",
+        "after": "ab09a4fd413e0fe3b552d079f2bbfe0f7a7a1f7e153063d013e0eabdf37859ae"
+      },
+      {
+        "tick": 30000,
+        "before": "8aabc83acba586720e0c694b0a763b673e77d1a4ebdc0ec49cb7b1d2e385407d",
+        "after": "ab09a4fd413e0fe3b552d079f2bbfe0f7a7a1f7e153063d013e0eabdf37859ae"
+      },
+      {
+        "tick": 50000,
+        "before": "8aabc83acba586720e0c694b0a763b673e77d1a4ebdc0ec49cb7b1d2e385407d",
+        "after": "ab09a4fd413e0fe3b552d079f2bbfe0f7a7a1f7e153063d013e0eabdf37859ae"
+      }
+    ]
+  }
+}

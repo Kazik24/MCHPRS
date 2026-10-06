@@ -25,6 +25,10 @@ use tracing::error;
 pub type EntityId = u32;
 static ENTITY_ID_COUNTER: AtomicU32 = AtomicU32::new(0);
 
+pub(crate) fn allocate_entity_id() -> EntityId {
+    ENTITY_ID_COUNTER.fetch_add(1, Ordering::Relaxed)
+}
+
 #[derive(Copy, Clone, Debug, Serialize, Deserialize)]
 pub enum Gamemode {
     Creative,
@@ -273,7 +277,7 @@ impl Player {
             yaw: player_data.rotation[1],
             last_chunk_x: 0,
             last_chunk_z: 0,
-            entity_id: ENTITY_ID_COUNTER.fetch_add(1, Ordering::Relaxed),
+            entity_id: allocate_entity_id(),
             client,
             flying: player_data.flying,
             sprinting: false,

@@ -104,6 +104,7 @@ permission as their canonical command.
 | Command                        | Permission(s)                                                                                    |
 | ------------------------------ | ------------------------------------------------------------------------------------------------ |
 | `/help`, `/version`            | `mchprs.commands.help`, `mchprs.commands.version`                                                |
+| `/git` (all subcommands and sword diff inspection) | `mchprs.commands.git` |
 | `/tp`, `/teleport`             | `mchprs.commands.teleport`                                                                       |
 | `/speed`                       | `mchprs.commands.speed`                                                                          |
 | `/gamemode`, `/gmc`, `/gmsp`   | `mchprs.commands.gamemode`, plus `.creative` or `.spectator`                                     |
@@ -126,6 +127,21 @@ also requires permission to edit the current plot. Viewing settings does not
 change a plot. Changing the shared history memory limit additionally requires
 `mchprs.plots.admin.rewind.memory`; exceeding the ordinary history tick limit
 requires `mchprs.plots.admin.rewind.unlimited`.
+
+### Plot Git access
+
+`mchprs.commands.git` is a single allow/deny permission for Git commands,
+completion, glow and sword inspection. Missing nodes deny access. An exact
+denial overrides inherited wildcards and is enforced even when the player has
+`mchprs.plots.admin.git`.
+
+Owners and plot members can read their repository; creating commits or branches
+also requires ordinary plot edit access. Checkout and recovery require ownership
+and plot edit access.
+`mchprs.plots.admin.git` explicitly overrides plot restrictions. Git still
+requires `mchprs.access.commands`. Use `/lp group <group> permission set
+mchprs.commands.git true server=mchprs` to allow it, or `false` to deny it; no
+rank-name grants are implicit. See [Plot Git](PLOT_GIT.md).
 
 ### History capacity limits
 
