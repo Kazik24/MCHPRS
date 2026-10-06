@@ -97,7 +97,7 @@ catalog! {
         GIT_STORAGE_LOCK_FAILED = "The Git helper could not lock the pawprint store.";
         GIT_COMMIT_MESSAGE_LIMIT = "Give this pawprint a commit message containing 1..256 characters.";
         GIT_NOTHING_CHANGED = "No new pawprints: nothing changed since the last commit.";
-        GIT_BRANCH_NAME_RULES = "Name your branch trail with 1..48 letters, digits, _ or -; no HEAD or commit-like names.";
+        GIT_BRANCH_NAME_RULES = "Name your branch trail with 1..20 letters, digits, _ or -; no HEAD or commit-like names.";
         GIT_BRANCH_LIMIT = "All 128 branch trails are taken, pup.";
         GIT_BRANCH_EXISTS = "That branch trail already exists. Pick another name.";
         GIT_NO_BRANCHES_HINT = "No branch trails yet. Start with /git commit <message>.";
@@ -163,6 +163,13 @@ catalog! {
         SCOREBOARD_ENGINE_REDPILER = "Engine: Redpiler ON";
         SCOREBOARD_HISTORY_OFF = "Hist: Off :3";
         SCOREBOARD_VISUAL_OFF = "Visual: OFF :3";
+        SCOREBOARD_ON = "on";
+        SCOREBOARD_OFF = "off";
+        SCOREBOARD_GIT_LOADING = "Git: loading...";
+        SCOREBOARD_GIT_NONE = "Git: none :3";
+        SCOREBOARD_GIT_RESTORING = "Git: fetching...";
+        SCOREBOARD_GIT_RECOVERY = "Git: recovery!";
+        SCOREBOARD_GIT_HIDDEN = "Git: paws off :3";
         SIGN_FRONT_LABEL = "front";
         SIGN_BACK_LABEL = "back";
         USAGE_SCREEN_ONLY = "Usage: /screenonly [on|off]";
@@ -488,6 +495,10 @@ catalog! {
         scoreboard_tps(actual: impl Display, target: impl Display) = "TPS: {actual}/{target}";
         scoreboard_history_memory(memory: impl Display) = "Hist mem: {memory}";
         scoreboard_visual_rate(rate: u32) = "Visual: {rate}hz";
+        scoreboard_pistons(mode: impl Display, effective: impl Display) = "Pistons: {mode}/{effective}";
+        scoreboard_screen_only(state: impl Display) = "Screen only: {state}";
+        scoreboard_git_branch(branch: impl Display) = "Git: {branch}";
+        scoreboard_git_detached(id: impl Display) = "Git: @{id}";
         plot_claim_limit(limit: impl Display) = "You can own at most {limit} plot(s).";
         argument_error(kind: impl Debug, reason: &str) = "Error parsing argument of type {kind:?}: {reason}";
         unknown_pattern_block(block: &str) = "unknown block: {block}";

@@ -138,8 +138,10 @@ struct Pending {
 struct Reply {
     payload: Payload,
     names: Vec<String>,
+    head: Option<String>,
 }
 enum Payload {
+    Metadata,
     Text(String),
     Chat(Value),
     Diff(Arc<Diff>),
@@ -160,8 +162,10 @@ struct Session {
 #[derive(Default)]
 pub(super) struct State {
     pending: Option<Pending>,
-    locked: bool,
-    fatal: bool,
+    pub(super) locked: bool,
+    pub(super) fatal: bool,
+    pub(super) head: Option<String>,
+    metadata_retry_at: Option<Instant>,
     sessions: HashMap<u128, Session>,
     names: Vec<String>,
     clicks: HashMap<u128, Instant>,
@@ -211,7 +215,7 @@ impl Plot {
         }
     }
 
-    fn git_access(&self, player: usize, action: &str) -> bool {
+    pub(super) fn git_access(&self, player: usize, action: &str) -> bool {
         let actor = &self.players[player];
         let admin = actor.has_explicit_permission("plots.admin.git");
         let member = self.owner == Some(actor.uuid)
@@ -372,6 +376,7 @@ impl Plot {
                     Ok(Reply {
                         payload: Payload::Chat(diff.inspect(pos, side.as_deref())?),
                         names: Vec::new(),
+                        head: None,
                     })
                 }),
             );
@@ -485,6 +490,7 @@ impl Plot {
             Ok(Reply {
                 payload,
                 names: repo.names().unwrap_or_default(),
+                head: repo.sidebar_head().ok(),
             })
         });
         self.start_git(actor, previous, task)?;
@@ -512,10 +518,14 @@ impl Plot {
         }
         match result {
             Ok(reply) => {
+                if let Some(head) = reply.head {
+                    self.git.head = Some(head);
+                }
                 if !reply.names.is_empty() {
                     self.git.names = reply.names;
                 }
                 match reply.payload {
+                    Payload::Metadata => {}
                     Payload::Checkout(snapshot, message, _reservation) => {
                         self.apply_git(snapshot);
                         self.broadcast_plot_chat_message(&message);
@@ -604,7 +614,45 @@ impl Plot {
         }
     }
 
+    fn load_git_sidebar(&mut self) {
+        if self.players.is_empty()
+            || self.git.head.is_some()
+            || self.git.pending.is_some()
+            || self
+                .git
+                .metadata_retry_at
+                .is_some_and(|at| at > Instant::now())
+        {
+            return;
+        }
+        let plot = (self.world.x, self.world.z);
+        let path = Path::new(ROOT)
+            .join(format!("p{},{}", plot.0, plot.1))
+            .join("repository.sqlite");
+        if !path.exists() {
+            // Visiting a plot must not create a Git repository.
+            self.git.head = Some(String::new());
+            return;
+        }
+        self.git.metadata_retry_at = Some(Instant::now() + Duration::from_secs(30));
+        // Metadata has no requesting player. Database reads stay on a worker;
+        // subsequent sidebar refreshes only use the cached head.
+        let _ = self.start_git(
+            0,
+            None,
+            Box::new(move || {
+                let repo = Repository::open(Path::new(ROOT), plot, limits())?;
+                Ok(Reply {
+                    payload: Payload::Metadata,
+                    names: repo.names().unwrap_or_default(),
+                    head: Some(repo.sidebar_head()?),
+                })
+            }),
+        );
+    }
+
     pub(super) fn update_git(&mut self) {
+        self.load_git_sidebar();
         if let Some(pending) = self.git.pending.take() {
             match pending.receiver.try_recv() {
                 Ok(result) => self.accept_git(pending, result),
@@ -666,6 +714,7 @@ impl Plot {
                 Ok(Reply {
                     payload: Payload::Markers(diff.near(center, radius.min(view), limit)?, center),
                     names: Vec::new(),
+                    head: None,
                 })
             });
             let _ = self.start_git(uuid, None, task);
@@ -803,6 +852,7 @@ impl Plot {
                     Ok(Reply {
                         payload: Payload::Chat(diff.inspect(pos, None)?),
                         names: Vec::new(),
+                        head: None,
                     })
                 }),
             );

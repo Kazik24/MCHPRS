@@ -101,7 +101,9 @@ fn persistent_commits_branch_divergence_and_ordered_search() {
     let mut repo = root.repo();
     let mut snapshot = empty();
     assert!(repo.resolve("HEAD").is_err());
+    assert_eq!(repo.sidebar_head().unwrap(), "");
     repo.commit(&snapshot, 42, "Alice", "root build").unwrap();
+    assert_eq!(repo.sidebar_head().unwrap(), "main");
     let first = repo.resolve("HEAD").unwrap();
     repo.branch("experiment", "HEAD").unwrap();
     assert_eq!(repo.head().unwrap().0, "main");
@@ -131,6 +133,7 @@ fn persistent_commits_branch_divergence_and_ordered_search() {
     assert!(repo.show(&experiment).unwrap().contains("Bob"));
     drop(repo);
     let repo = root.repo();
+    assert_eq!(repo.sidebar_head().unwrap(), "experiment");
     assert_eq!(
         repo.head().unwrap(),
         ("experiment".into(), Some(experiment.clone()))
@@ -672,12 +675,22 @@ fn no_op_commits_branch_validation_and_memory_limit() {
     let before = repo.head().unwrap();
     assert!(repo.commit(&snapshot, 1, "Alice", "unchanged").is_err());
     assert_eq!(repo.head().unwrap(), before);
-    for name in ["", "HEAD", "../bad", "with space", "deadbeef"] {
+    for name in [
+        "",
+        "HEAD",
+        "../bad",
+        "with space",
+        "deadbeef",
+        "branch-name-too-long-1",
+    ] {
         assert!(!repository::valid_branch(name));
     }
-    for name in ["main", "experiment-1", "trial_2"] {
+    for name in ["main", "experiment-1", "trial_2", "branch-name-length20"] {
         assert!(repository::valid_branch(name));
     }
+    let longest = "b".repeat(19) + "z";
+    assert!(repo.branch(&longest, "HEAD").is_ok());
+    assert!(repo.branch(&(longest + "z"), "HEAD").is_err());
     assert!(Reservation::new(usize::MAX).is_err());
     assert_eq!(
         parse_search(&["--all", "--page", "2", "hello", "world"]).unwrap(),
@@ -747,6 +760,7 @@ fn commit_checkout_detaches_head_and_keeps_branch_tips_and_dirty_work() {
     assert_eq!(repo.resolve("HEAD").unwrap(), first);
     assert_eq!(repo.resolve("main").unwrap(), main);
     assert!(repo.status(&restored).unwrap().contains("detached HEAD"));
+    assert_eq!(repo.sidebar_head().unwrap(), format!("@{first}"));
     assert!(repo.branches().unwrap().contains("detached HEAD"));
     let recovery: String = root
         .db()
@@ -757,11 +771,13 @@ fn commit_checkout_detaches_head_and_keeps_branch_tips_and_dirty_work() {
 
     let mut repo = root.repo();
     assert_eq!(repo.resolve("HEAD").unwrap(), first);
+    assert_eq!(repo.sidebar_head().unwrap(), format!("@{first}"));
     let mut experiment = restored;
     set(&mut experiment, 4, 64, 4, Block::Stone {}, None);
     repo.commit(&experiment, 1, "Alice", "detached experiment")
         .unwrap();
     let detached = repo.resolve("HEAD").unwrap();
+    assert_eq!(repo.sidebar_head().unwrap(), format!("@{detached}"));
     assert_ne!(detached, first);
     assert_eq!(repo.resolve("main").unwrap(), main);
     repo.branch("experiment", "HEAD").unwrap();

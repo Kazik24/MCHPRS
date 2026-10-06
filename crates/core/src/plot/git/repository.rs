@@ -26,7 +26,7 @@ pub(super) struct Repository {
 
 pub(super) fn valid_branch(name: &str) -> bool {
     !name.is_empty()
-        && name.len() <= 48
+        && name.len() <= 20
         && name != "HEAD"
         && name.as_bytes()[0].is_ascii_alphanumeric()
         && name
@@ -36,6 +36,11 @@ pub(super) fn valid_branch(name: &str) -> bool {
 }
 
 impl Repository {
+    pub fn sidebar_head(&self) -> Result<String> {
+        let (head, tip) = self.head()?;
+        Ok(if tip.is_some() { head } else { String::new() })
+    }
+
     pub fn open(root: &Path, plot: (i32, i32), limits: Limits) -> Result<Self> {
         let dir = root.join(format!("p{},{}", plot.0, plot.1));
         std::fs::create_dir_all(&dir)?;

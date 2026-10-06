@@ -951,6 +951,10 @@ impl Plot {
             self.timings.generate_report().map(|report| report.two_s)
         };
         let visual_update_rate = (self.world_send_rate.0 != 0).then(|| self.effective_send_rate());
+        let git_readers = (0..self.players.len())
+            .filter(|&player| self.git_access(player, "read"))
+            .map(|player| self.players[player].uuid)
+            .collect();
         self.scoreboard.update_plot_metrics(
             &self.players,
             self.tps,
@@ -960,6 +964,15 @@ impl Plot {
             self.world.history.capacity(),
             self.world.history.memory_bytes(),
             visual_update_rate,
+            scoreboard::PlotStatus {
+                piston_mode: self.piston_animation,
+                pistons_animated: !self.world.fast_rendering && !self.world.screen_only(),
+                screen_only: self.world.screen_only(),
+                git_head: self.git.head.as_deref(),
+                git_restoring: self.git.locked,
+                git_recovery: self.git.fatal,
+                git_readers,
+            },
         );
     }
 
@@ -1226,8 +1239,10 @@ impl Plot {
         self.world
             .packet_senders
             .push(PlayerPacketSender::new(&player.client));
-        self.scoreboard.add_player(&player);
         self.players.push(player);
+        let player = self.players.len() - 1;
+        let git_read = self.git_access(player, "read");
+        self.scoreboard.add_player(&self.players[player], git_read);
         self.refresh_sidebar(true);
         self.update_view_pos_for_player(self.players.len() - 1, true);
     }
