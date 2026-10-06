@@ -25,23 +25,81 @@ impl<W: World> Pass<W> for IdentifyNodes {
         graph: &mut CompileGraph,
         options: &CompilerOptions,
         input: &CompilerInput<'_, W>,
-    ) {
+    ) -> Result<(), super::GraphError> {
         let ignore_wires = options.optimize;
         let plot = input.world;
 
         let mut nodes_by_position = FxHashMap::default();
 
+        if let Some(boundaries) = input.boundaries {
+            for (group, payload) in boundaries.report.payload_groups.iter().enumerate() {
+                for &alias in &payload.positions {
+                    graph.add_node(CompileNode {
+                        ty: NodeType::MobileSource { group, alias },
+                        block: None,
+                        state: NodeState::ss(if plot.get_block(alias) == Block::RedstoneBlock {
+                            15
+                        } else {
+                            0
+                        }),
+                        is_input: false,
+                        is_output: false,
+                    });
+                }
+            }
+            for piston in 0..boundaries.report.pistons.len() {
+                if boundaries.executable { break; }
+                let strength = boundaries.report.recognition[piston]
+                    .inputs
+                    .sources
+                    .iter()
+                    .filter(|source| !boundaries.internal_dependency(piston, source))
+                    .map(|source| {
+                        redstone::source_strength(
+                            plot.get_block(source.source),
+                            plot,
+                            source.source,
+                        )
+                        .saturating_sub(source.attenuation)
+                    })
+                    .max()
+                    .unwrap_or(0);
+                graph.add_node(CompileNode {
+                    ty: NodeType::InstantInput { piston },
+                    block: None,
+                    state: NodeState::ss(strength),
+                    is_input: false,
+                    is_output: false,
+                });
+            }
+        }
+
         let (first_pos, second_pos) = input.bounds;
 
         for_each_block_optimized(plot, first_pos, second_pos, |pos| {
+            if input.boundaries.is_some_and(|b| b.is_owned(pos)) {
+                return;
+            }
             for_pos(graph, &mut nodes_by_position, ignore_wires, plot, pos);
         });
+
+        if let Some(boundaries) = input.boundaries {
+            for node in graph.node_weights_mut() {
+                if node.block.is_some_and(|(pos, _)| boundaries.is_retained(pos)) {
+                    node.is_input = true;
+                }
+                if node.block.is_some_and(|(pos, _)| boundaries.is_output(pos)) {
+                    node.is_output = true;
+                }
+            }
+        }
 
         for entry in input.ticks {
             if let Some(&idx) = nodes_by_position.get(&entry.pos) {
                 graph[idx].state.pending_tick = true;
             }
         }
+        Ok(())
     }
 
     fn should_run(&self, _: &CompilerOptions) -> bool {

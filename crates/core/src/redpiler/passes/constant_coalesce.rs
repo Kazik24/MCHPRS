@@ -12,7 +12,12 @@ use rustc_hash::{FxHashMap, FxHashSet};
 pub struct ConstantCoalesce;
 
 impl<W: World> Pass<W> for ConstantCoalesce {
-    fn run_pass(&self, graph: &mut CompileGraph, _: &CompilerOptions, _: &CompilerInput<'_, W>) {
+    fn run_pass(
+        &self,
+        graph: &mut CompileGraph,
+        _: &CompilerOptions,
+        _: &CompilerInput<'_, W>,
+    ) -> Result<(), super::GraphError> {
         let mut vertex_sets = UnionFind::new(graph.node_bound());
         for edge in graph.edge_references() {
             let (src, dest) = (edge.source(), edge.target());
@@ -58,6 +63,7 @@ impl<W: World> Pass<W> for ConstantCoalesce {
             }
             graph.remove_node(idx);
         }
+        Ok(())
     }
 
     fn status_message(&self) -> &'static str {
@@ -91,8 +97,11 @@ mod tests {
             world: &world,
             bounds: (BlockPos::new(0, 0, 0), BlockPos::new(0, 0, 0)),
             ticks: &[],
+            boundaries: None,
         };
-        ConstantCoalesce.run_pass(&mut graph, &CompilerOptions::default(), &input);
+        ConstantCoalesce
+            .run_pass(&mut graph, &CompilerOptions::default(), &input)
+            .unwrap();
         let inputs: Vec<_> = graph
             .neighbors_directed(output, Direction::Incoming)
             .collect();

@@ -2,7 +2,7 @@ use super::*;
 use crate::plot::{PlotWorld, PLOT_WIDTH};
 use crate::redpiler::{Compiler, CompilerOptions};
 use crate::world::storage::Chunk;
-use mchprs_blocks::blocks::{Lever, RedstoneRepeater, RedstoneWire, SlabType};
+use mchprs_blocks::blocks::{Lever, LeverFace, RedstoneRepeater, RedstoneWire, SlabType};
 
 fn world() -> PlotWorld {
     let chunks = (0..PLOT_WIDTH)

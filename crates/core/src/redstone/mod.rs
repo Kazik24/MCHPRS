@@ -4,22 +4,23 @@
 
 #[cfg(test)]
 mod adder_tests;
-#[cfg(test)]
-pub(crate) mod instant_piston_tests;
 pub(crate) mod command_block;
 pub mod comparator;
+#[cfg(test)]
+pub(crate) mod instant_piston_tests;
 #[cfg(test)]
 mod master_tests;
 pub mod noteblock;
 #[cfg(test)]
 mod observer_tests;
 pub(crate) mod piston;
+pub(crate) mod power;
 pub mod repeater;
 pub mod wire;
 
 use crate::world::World;
 use mchprs_blocks::block_entities::BlockEntity;
-use mchprs_blocks::blocks::{Block, ButtonFace, LeverFace};
+use mchprs_blocks::blocks::{Block, ButtonFace};
 use mchprs_blocks::{BlockDirection, BlockFace, BlockFacing, BlockPos};
 use mchprs_world::TickPriority;
 
@@ -37,44 +38,32 @@ fn get_weak_power(
     side: BlockFace,
     dust_power: bool,
 ) -> u8 {
+    let strength = source_strength(block, world, pos);
+    if strength > 0 && power::emits_weak_power(block, world, pos, side, dust_power) {
+        strength
+    } else {
+        0
+    }
+}
+
+pub(crate) fn source_strength(block: Block, world: &impl World, pos: BlockPos) -> u8 {
     match block {
-        Block::RedstoneTorch { lit: true } if side != BlockFace::Top => 15,
-        Block::RedstoneWallTorch { lit: true, facing } if facing.block_face() != side => 15,
+        Block::RedstoneTorch { lit: true } | Block::RedstoneWallTorch { lit: true, .. } => 15,
         Block::RedstoneBlock => 15,
         Block::StonePressurePlate { powered: true } => 15,
         block if block.pressure_plate_powered() == Some(true) => 15,
         Block::Lever { lever } if lever.powered => 15,
         Block::StoneButton { button } if button.powered => 15,
-        Block::RedstoneRepeater { repeater }
-            if repeater.facing.block_face() == side && repeater.powered =>
-        {
-            15
-        }
-        Block::RedstoneComparator { comparator } if comparator.facing.block_face() == side => {
+        Block::RedstoneRepeater { repeater } if repeater.powered => 15,
+        Block::RedstoneComparator { .. } => {
             if let Some(BlockEntity::Comparator { output_strength }) = world.get_block_entity(pos) {
                 *output_strength
             } else {
                 0
             }
         }
-        Block::RedstoneWire { wire } if dust_power && wire.power != 0 => match side {
-            BlockFace::Top => wire.power,
-            BlockFace::Bottom => 0,
-            _ => {
-                let direction = side.unwrap_direction();
-                if wire::get_current_side(
-                    wire::get_regulated_sides(wire, world, pos),
-                    direction.opposite(),
-                )
-                .is_none()
-                {
-                    0
-                } else {
-                    wire.power
-                }
-            }
-        },
-        Block::Observer { observer } if observer.facing == side.into() && observer.powered => 15,
+        Block::RedstoneWire { wire } => wire.power,
+        Block::Observer { observer } if observer.powered => 15,
         _ => 0,
     }
 }
@@ -86,30 +75,11 @@ fn get_strong_power(
     side: BlockFace,
     dust_power: bool,
 ) -> u8 {
-    match block {
-        Block::RedstoneTorch { lit: true } if side == BlockFace::Bottom => 15,
-        Block::RedstoneWallTorch { lit: true, .. } if side == BlockFace::Bottom => 15,
-        Block::Lever { lever } => bool_to_ss(
-            match side {
-                BlockFace::Top => lever.face == LeverFace::Floor,
-                BlockFace::Bottom => lever.face == LeverFace::Ceiling,
-                _ => lever.face == LeverFace::Wall && lever.facing == side.unwrap_direction(),
-            } && lever.powered,
-        ),
-        Block::StoneButton { button } => bool_to_ss(
-            match side {
-                BlockFace::Top => button.face == ButtonFace::Floor,
-                BlockFace::Bottom => button.face == ButtonFace::Ceiling,
-                _ => button.face == ButtonFace::Wall && button.facing == side.unwrap_direction(),
-            } && button.powered,
-        ),
-        Block::StonePressurePlate { powered: true } if side == BlockFace::Top => 15,
-        block if side == BlockFace::Top && block.pressure_plate_powered() == Some(true) => 15,
-        Block::RedstoneWire { .. } => get_weak_power(block, world, pos, side, dust_power),
-        Block::RedstoneRepeater { .. } => get_weak_power(block, world, pos, side, dust_power),
-        Block::RedstoneComparator { .. } => get_weak_power(block, world, pos, side, dust_power),
-        Block::Observer { observer } if observer.facing == side.into() && observer.powered => 15,
-        _ => 0,
+    let strength = source_strength(block, world, pos);
+    if strength > 0 && power::emits_strong_power(block, world, pos, side, dust_power) {
+        strength
+    } else {
+        0
     }
 }
 

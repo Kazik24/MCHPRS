@@ -1068,6 +1068,7 @@ impl Plot {
         if crate::permissions::dedicated_permissions() {
             let name = match gamemode {
                 Gamemode::Creative => "creative",
+                Gamemode::Adventure => "adventure",
                 Gamemode::Spectator => "spectator",
             };
             if !self.players[player_idx].has_permission(&format!("commands.gamemode.{name}")) {

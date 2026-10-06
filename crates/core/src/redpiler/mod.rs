@@ -27,6 +27,9 @@ pub enum CompileError {
     Analysis(analysis::AnalysisError),
     Unsupported(Box<analysis::AnalysisReport>),
     Cancelled,
+    Backend(backend::BackendError),
+    Graph(compile_graph::GraphError),
+    Instant(String),
 }
 
 impl std::fmt::Display for CompileError {
@@ -42,6 +45,9 @@ impl std::fmt::Display for CompileError {
                 Ok(())
             }
             Self::Cancelled => f.write_str("compilation cancelled"),
+            Self::Backend(error) => error.fmt(f),
+            Self::Graph(error) => error.fmt(f),
+            Self::Instant(error) => f.write_str(error),
         }
     }
 }
@@ -157,7 +163,7 @@ impl Compiler {
         }
         let report = analysis::analyze(world, bounds, &ticks, &monitor, Default::default())
             .map_err(CompileError::Analysis)?;
-        if !report.can_compile() {
+        if report.pistons.is_empty() && !report.can_compile() {
             return Err(CompileError::Unsupported(Box::new(report)));
         }
 
@@ -173,9 +179,15 @@ impl Compiler {
             world,
             bounds,
             ticks: &ticks,
+            boundaries: None,
         };
         let pass_manager = make_default_pass_manager::<W>();
-        let graph = pass_manager.run_passes(&options, &input, monitor.clone());
+        let (graph, instant) = if report.pistons.is_empty() {
+            (pass_manager.run_passes(&options, &input, monitor.clone()).map_err(CompileError::Graph)?, None)
+        } else {
+            let (graph, program) = instant::program::prepare(world, &report, &ticks, &options, monitor.clone()).map_err(CompileError::Instant)?;
+            (graph, Some(program))
+        };
 
         if monitor.cancelled() {
             return Err(CompileError::Cancelled);
@@ -188,7 +200,11 @@ impl Compiler {
         };
         trace!("Compiling backend");
         monitor.set_message("Compiling backend".to_string());
-        jit.compile(graph, ticks, &options, monitor.clone());
+        if let Some(program) = instant {
+            match &mut jit { BackendDispatcher::DirectBackend(backend) => backend.compile_instant(graph, program, ticks, &options, monitor.clone()).map_err(CompileError::Backend)? }
+        } else {
+            jit.compile(graph, ticks, &options, monitor.clone()).map_err(CompileError::Backend)?;
+        }
         if monitor.cancelled() {
             return Err(CompileError::Cancelled);
         }
@@ -261,6 +277,7 @@ pub struct CompilerInput<'w, W: World> {
     pub world: &'w W,
     pub bounds: (BlockPos, BlockPos),
     pub ticks: &'w [TickEntry],
+    pub(crate) boundaries: Option<&'w instant::boundary::Boundaries<'w>>,
 }
 
 #[cfg(test)]

@@ -68,6 +68,19 @@ fn parse_relative_coord<F: RelativeCoordinate>(
     }
 }
 
+fn parse_teleport_coord(coord: &str, reference: f64, center: bool) -> Result<f64, &'static str> {
+    let value = parse_relative_coord(coord, reference)?;
+    if !value.is_finite() {
+        return Err(messages::INVALID_TELEPORT_COORDINATES);
+    }
+    let integer = coord.trim_start_matches(['+', '-']);
+    if center && !integer.is_empty() && integer.bytes().all(|byte| byte.is_ascii_digit()) {
+        Ok(value + 0.5)
+    } else {
+        Ok(value)
+    }
+}
+
 fn advance_bounded(ticks: u32, mut step: impl FnMut()) -> u32 {
     let started = Instant::now();
     let budget = std::time::Duration::from_millis(crate::config::CONFIG.command_work_time_ms);
@@ -340,6 +353,35 @@ impl Plot {
                     return;
                 }
                 let ticks: Vec<_> = self.world.scheduler().iter_entries().collect();
+                if args.contains(&"--graph") {
+                    let flags = args
+                        .iter()
+                        .copied()
+                        .filter(|&arg| arg != "--graph")
+                        .collect::<Vec<_>>()
+                        .join(" ");
+                    let options = crate::redpiler::CompilerOptions::parse(&flags);
+                    match crate::redpiler::analysis::graph::prepare_candidate_graph(
+                        &self.world,
+                        self.world.get_corners(),
+                        &ticks,
+                        &options,
+                        Default::default(),
+                    ) {
+                        Ok(candidate) => {
+                            let summary = candidate.summary();
+                            self.players[player].send_system_message(&format!(
+                                "Candidate graph: {} ordinary nodes, {} instant inputs, {} mobile sources, {} electrical links; execution remains disabled",
+                                summary.ordinary_nodes, summary.instant_inputs, summary.mobile_sources, summary.electrical_links,
+                            ));
+                            self.players[player]
+                                .send_system_message(&candidate.report.recognition_summary());
+                            debug!(report = %serde_json::to_string(&candidate.report).unwrap(), graph = ?candidate.graph, "Redpiler candidate graph");
+                        }
+                        Err(error) => self.players[player].send_error_message(&error.to_string()),
+                    }
+                    return;
+                }
                 match crate::redpiler::analysis::analyze(
                     &self.world,
                     self.world.get_corners(),
@@ -349,6 +391,9 @@ impl Plot {
                 ) {
                     Ok(report) => {
                         self.players[player].send_system_message(&report.summary());
+                        if !report.pistons.is_empty() {
+                            self.players[player].send_system_message(&report.recognition_summary());
+                        }
                         // The complete structured report is available in logs;
                         // keep a large plot from flooding the player's chat.
                         debug!(report = %serde_json::to_string(&report).unwrap(), "Redpiler analysis");
@@ -693,19 +738,19 @@ impl Plot {
                     let x;
                     let y;
                     let z;
-                    if let Ok(x_arg) = parse_relative_coord(args[0], player_pos.x) {
+                    if let Ok(x_arg) = parse_teleport_coord(args[0], player_pos.x, true) {
                         x = x_arg;
                     } else {
                         self.players[player].send_error_message(messages::INVALID_X_COORDINATE);
                         return false;
                     }
-                    if let Ok(y_arg) = parse_relative_coord(args[1], player_pos.y) {
+                    if let Ok(y_arg) = parse_teleport_coord(args[1], player_pos.y, false) {
                         y = y_arg;
                     } else {
                         self.players[player].send_error_message(messages::INVALID_Y_COORDINATE);
                         return false;
                     }
-                    if let Ok(z_arg) = parse_relative_coord(args[2], player_pos.z) {
+                    if let Ok(z_arg) = parse_teleport_coord(args[2], player_pos.z, true) {
                         z = z_arg;
                     } else {
                         self.players[player].send_error_message(messages::INVALID_Z_COORDINATE);
@@ -777,14 +822,15 @@ impl Plot {
             }
             "/gmsp" => self.change_player_gamemode(player, Gamemode::Spectator),
             "/gmc" => self.change_player_gamemode(player, Gamemode::Creative),
-            "/gamemode" => {
-                if args.is_empty() {
+            "/gamemode" | "/gm" => {
+                if args.len() != 1 {
                     self.players[player].send_error_message(messages::INVALID_ARGUMENT_COUNT);
                     return false;
                 }
                 let name = args.remove(0);
                 let gamemode = match name {
                     "creative" | "1" => Gamemode::Creative,
+                    "adventure" | "2" => Gamemode::Adventure,
                     "spectator" | "3" => Gamemode::Spectator,
                     _ => {
                         self.players[player].send_error_message(messages::UNKNOWN_GAMEMODE);
@@ -857,7 +903,7 @@ fn native_command_permission(command: &str, args: &[&str]) -> Option<String> {
         "/version" => "version".to_owned(),
         "/teleport" | "/tp" => "teleport".to_owned(),
         "/speed" => "speed".to_owned(),
-        "/gmsp" | "/gmc" | "/gamemode" => "gamemode".to_owned(),
+        "/gmsp" | "/gmc" | "/gamemode" | "/gm" => "gamemode".to_owned(),
         "/stop" => "stop".to_owned(),
         "/whitelist" => "whitelist".to_owned(),
         "/tellraw" => "tellraw".to_owned(),
@@ -922,7 +968,7 @@ pub static DECLARE_COMMANDS: Lazy<PacketEncoder> = Lazy::new(|| {
             Node::root(&[
                 1, 4, 5, 6, 11, 12, 14, 16, 18, 19, 20, 21, 22, 23, 24, 26, 29, 31, 32, 34, 36, 47,
                 49, 53, 60, 61, 63, 65, 66, 67, 71, 73, 74, 75, 82, 83, 85, 88, 90, 91, 101, 106,
-                111, 112, 113, 114, 115, 116, 118, 120, 121, 124, 125, 126, 127, 134,
+                111, 112, 113, 114, 115, 116, 118, 120, 121, 124, 125, 126, 127, 134, 138, 139, 146, 147,
             ]),
             // 1: /teleport
             Node::literal("teleport", &[2, 3]),
@@ -1184,7 +1230,21 @@ pub static DECLARE_COMMANDS: Lazy<PacketEncoder> = Lazy::new(|| {
             // 134: /git uses the existing greedy, server-completed arguments node.
             Node::literal("git", &[110]).executable(),
             // 135: /redpiler analyze
-            Node::literal("analyze", &[]).executable(),
+            Node::literal("analyze", &[136]).executable(),
+            // 136-137: read-only graph preparation and ordinary optimization flags.
+            Node::literal("--graph", &[137]).executable(),
+            Node::argument("options", Parser::String(2), &[]).executable(),
+            // 138-147: gamemode alias, names, IDs and legacy shortcuts.
+            Node::redirect("gm", 139),
+            Node::literal("gamemode", &[140, 141, 142, 143, 144, 145]),
+            Node::literal("creative", &[]).executable(),
+            Node::literal("adventure", &[]).executable(),
+            Node::literal("spectator", &[]).executable(),
+            Node::literal("1", &[]).executable(),
+            Node::literal("2", &[]).executable(),
+            Node::literal("3", &[]).executable(),
+            Node::literal("gmc", &[]).executable(),
+            Node::literal("gmsp", &[]).executable(),
         ],
         root_index: 0,
     }
@@ -1201,18 +1261,24 @@ mod security_tests {
         use mchprs_network::packets::{PacketDecoderExt, PacketEncoderExt};
         use std::io::Cursor;
         let mut cursor = Cursor::new(&DECLARE_COMMANDS.buffer);
-        assert_eq!(cursor.read_varint().unwrap(), 136);
+        assert_eq!(cursor.read_varint().unwrap(), 148);
         assert_eq!(cursor.read_byte().unwrap(), 0);
         let children = cursor.read_varint().unwrap();
         let mut edges = Vec::new();
         for _ in 0..children {
             edges.push(cursor.read_varint().unwrap());
         }
-        assert_eq!(edges.pop(), Some(134));
+        for expected in [147, 146, 139, 138, 134] {
+            assert_eq!(edges.pop(), Some(expected));
+        }
         let rest = cursor.position() as usize;
         let git_node = [5, 1, 110, 3, b'g', b'i', b't'];
-        let analyze_node = [5, 0, 7, b'a', b'n', b'a', b'l', b'y', b'z', b'e'];
-        let analyze_start = DECLARE_COMMANDS.buffer.len() - 1 - analyze_node.len();
+        let analyze_node = [5, 1, 0x88, 1, 7, b'a', b'n', b'a', b'l', b'y', b'z', b'e'];
+        let analyze_start = DECLARE_COMMANDS
+            .buffer
+            .windows(analyze_node.len())
+            .position(|bytes| bytes == analyze_node)
+            .unwrap();
         assert_eq!(
             &DECLARE_COMMANDS.buffer[analyze_start..analyze_start + analyze_node.len()],
             &analyze_node
@@ -1225,7 +1291,7 @@ mod security_tests {
         let mut original = Vec::new();
         original.write_varint(134);
         original.push(0);
-        original.write_varint(children - 1);
+        original.write_varint(children - 5);
         for edge in edges {
             original.write_varint(edge);
         }
@@ -1302,6 +1368,25 @@ mod security_tests {
         ));
     }
     #[test]
+    fn teleport_coordinates_center_blocks_and_keep_precision() {
+        for (input, reference, center, expected) in [
+            ("10", 0.0, true, 10.5),
+            ("-10", 0.0, true, -9.5),
+            ("64", 0.0, false, 64.0),
+            ("10.0", 0.0, true, 10.0),
+            ("10.25", 0.0, true, 10.25),
+            ("~", 2.25, true, 2.25),
+            ("~1", 2.25, true, 3.25),
+        ] {
+            assert_eq!(parse_teleport_coord(input, reference, center), Ok(expected));
+        }
+        for input in ["NaN", "inf", "1e309", "~1e309", "invalid"] {
+            assert!(parse_teleport_coord(input, 0.0, true).is_err());
+        }
+        assert_eq!(Gamemode::Adventure.get_id(), 2);
+    }
+
+    #[test]
     fn relative_plot_coordinates_cannot_overflow() {
         assert!(parse_relative_coord("~2147483647", 1i32).is_err());
         assert!(parse_relative_coord("~-2147483648", -1i32).is_err());
@@ -1316,6 +1401,7 @@ mod security_tests {
             ("/radv", "/radvance", vec!["1"]),
             ("/rp", "/redpiler", vec!["compile"]),
             ("/tp", "/teleport", vec!["Admin"]),
+            ("/gm", "/gamemode", vec!["2"]),
         ] {
             assert_eq!(
                 native_command_permission(alias, &args),

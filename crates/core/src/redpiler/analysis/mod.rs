@@ -14,6 +14,11 @@ use rustc_hash::{FxHashMap, FxHashSet};
 use serde::Serialize;
 use std::fmt;
 
+pub mod families;
+pub mod graph;
+pub mod ports;
+pub mod topology;
+
 #[cfg(test)]
 mod tests;
 
@@ -23,6 +28,8 @@ pub struct AnalysisLimits {
     /// are skipped without allocating a dense whole-plot snapshot.
     pub max_cells: usize,
     pub max_pistons: usize,
+    /// Shared budget for reset guards, wire walks and consumer searches.
+    pub max_dependency_steps: usize,
 }
 
 impl Default for AnalysisLimits {
@@ -30,6 +37,7 @@ impl Default for AnalysisLimits {
         Self {
             max_cells: 16 * 1024 * 1024,
             max_pistons: 65_536,
+            max_dependency_steps: 4 * 1024 * 1024,
         }
     }
 }
@@ -41,6 +49,7 @@ pub enum AnalysisError {
     UnloadedChunk { x: i32, z: i32 },
     CellLimit,
     PistonLimit,
+    DependencyLimit,
 }
 
 impl fmt::Display for AnalysisError {
@@ -53,6 +62,7 @@ impl fmt::Display for AnalysisError {
             Self::UnloadedChunk { x, z } => write!(f, "analysis requires loaded chunk {x}, {z}"),
             Self::CellLimit => f.write_str("analysis cell budget exceeded"),
             Self::PistonLimit => f.write_str("analysis piston budget exceeded"),
+            Self::DependencyLimit => f.write_str("analysis dependency budget exceeded"),
         }
     }
 }
@@ -169,6 +179,10 @@ pub struct AnalysisReport {
     pub pending_ticks: usize,
     pub pistons: Vec<PistonDescriptor>,
     pub payload_groups: Vec<PayloadGroup>,
+    pub recognition: Vec<families::PistonRecognition>,
+    pub group_recognition: Vec<families::GroupRecognition>,
+    pub ports: ports::PortReport,
+    pub dependency_steps: usize,
     pub observers: Vec<BlockPos>,
     pub issues: Vec<AdmissionIssue>,
 }
@@ -188,6 +202,13 @@ impl AnalysisReport {
             "{} pistons, {} reset candidates, {} payload groups, {} observers; {} compilation blockers",
             self.pistons.len(), candidates, self.payload_groups.len(), self.observers.len(), self.issues.len()
         )
+    }
+
+    pub fn recognition_summary(&self) -> String {
+        format!("{} matched reset mechanisms, {} groups with reset closure, {} ordinary consumer interfaces; runtime activation pending",
+            self.recognition.iter().filter(|p| p.is_matched()).count(),
+            self.group_recognition.iter().filter(|g| g.has_reset_closure()).count(),
+            self.ports.outputs.len())
     }
 }
 
@@ -220,17 +241,22 @@ pub fn analyze(
     }
     monitor.set_message("Analyzing live piston geometry".into());
     let mut report = AnalysisReport {
-        schema_version: 1,
+        schema_version: 3,
         bounds,
         inspected_cells: 0,
         nonair_blocks: 0,
         pending_ticks: ticks.len(),
         pistons: Vec::new(),
         payload_groups: Vec::new(),
+        recognition: Vec::new(),
+        group_recognition: Vec::new(),
+        ports: Default::default(),
+        dependency_steps: 0,
         observers: Vec::new(),
         issues: Vec::new(),
     };
     let mut heads = Vec::new();
+    let mut consumers = Vec::new();
     // Iterate sections rather than allocating all cells or scanning unused
     // palette entries. Cancellation also applies to empty-section traversal.
     for chunk_x in bounds.0.x.div_euclid(16)..=bounds.1.x.div_euclid(16) {
@@ -267,6 +293,9 @@ pub fn analyze(
                                 continue;
                             }
                             report.nonair_blocks += 1;
+                            if ports::is_consumer(block) {
+                                consumers.push((pos, block));
+                            }
                             match block {
                                 Block::Piston { piston } => {
                                     if report.pistons.len() >= limits.max_pistons {
@@ -313,6 +342,36 @@ pub fn analyze(
         }
     }
     report.payload_groups = payload_groups(&report.pistons);
+    if !report.pistons.is_empty() {
+        let mobile = report
+            .payload_groups
+            .iter()
+            .enumerate()
+            .filter(|(_, group)| {
+                group
+                    .positions
+                    .iter()
+                    .any(|&pos| world.get_block(pos) == Block::RedstoneBlock)
+            })
+            .flat_map(|(index, group)| group.positions.iter().map(move |&pos| (pos, index)))
+            .collect();
+        let mut topology =
+            topology::Topology::new(world, bounds, monitor, limits.max_dependency_steps, mobile);
+        (report.recognition, report.group_recognition) = families::recognize(
+            &mut topology,
+            &report.pistons,
+            &report.payload_groups,
+            ticks,
+        )?;
+        report.ports = ports::discover(
+            &mut topology,
+            &report.pistons,
+            &report.recognition,
+            &report.payload_groups,
+            &consumers,
+        )?;
+        report.dependency_steps = topology.visited;
+    }
     let state = world.piston_state();
     if state.phase != AdvancePhase::BetweenTicks {
         report

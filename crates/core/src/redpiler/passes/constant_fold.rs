@@ -10,7 +10,12 @@ use tracing::trace;
 pub struct ConstantFold;
 
 impl<W: World> Pass<W> for ConstantFold {
-    fn run_pass(&self, graph: &mut CompileGraph, _: &CompilerOptions, _: &CompilerInput<'_, W>) {
+    fn run_pass(
+        &self,
+        graph: &mut CompileGraph,
+        _: &CompilerOptions,
+        _: &CompilerInput<'_, W>,
+    ) -> Result<(), super::GraphError> {
         loop {
             let num_folded = fold(graph);
             if num_folded == 0 {
@@ -18,6 +23,7 @@ impl<W: World> Pass<W> for ConstantFold {
             }
             trace!("Fold iteration: {} nodes", num_folded);
         }
+        Ok(())
     }
 
     fn status_message(&self) -> &'static str {

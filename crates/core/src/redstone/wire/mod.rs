@@ -159,20 +159,28 @@ fn get_side_with_above(
     side: BlockDirection,
     above_solid: &mut Option<bool>,
 ) -> RedstoneWireSide {
+    get_side_from(pos, side, above_solid, &|pos| world.get_block(pos))
+}
+
+fn get_side_from(
+    pos: BlockPos,
+    side: BlockDirection,
+    above_solid: &mut Option<bool>,
+    read: &impl Fn(BlockPos) -> Block,
+) -> RedstoneWireSide {
     let neighbor_pos = pos.offset(side.block_face());
-    let neighbor = world.get_block(neighbor_pos);
+    let neighbor = read(neighbor_pos);
 
     if crate::world::wire_cache::connects(neighbor, side) {
         return RedstoneWireSide::Side;
     }
 
-    let up_solid =
-        *above_solid.get_or_insert_with(|| world.get_block(pos.offset(BlockFace::Top)).is_solid());
+    let up_solid = *above_solid.get_or_insert_with(|| read(pos.offset(BlockFace::Top)).is_solid());
 
-    if !up_solid && can_connect_diagonal_to(world.get_block(neighbor_pos.offset(BlockFace::Top))) {
+    if !up_solid && can_connect_diagonal_to(read(neighbor_pos.offset(BlockFace::Top))) {
         RedstoneWireSide::Up
     } else if !neighbor.is_solid()
-        && can_connect_diagonal_to(world.get_block(neighbor_pos.offset(BlockFace::Bottom)))
+        && can_connect_diagonal_to(read(neighbor_pos.offset(BlockFace::Bottom)))
     {
         RedstoneWireSide::Side
     } else {
@@ -191,6 +199,22 @@ fn get_all_sides(mut wire: RedstoneWire, world: &impl World, pos: BlockPos) -> R
 
 pub fn get_regulated_sides(wire: RedstoneWire, world: &impl World, pos: BlockPos) -> RedstoneWire {
     regulate_sides(wire, get_all_sides(wire, world, pos))
+}
+
+/// The same shape rule over a compiler occupancy assignment. No world changes
+/// or redstone notifications are needed to inspect conditional connections.
+pub(crate) fn get_regulated_sides_from(
+    wire: RedstoneWire,
+    pos: BlockPos,
+    read: impl Fn(BlockPos) -> Block,
+) -> RedstoneWire {
+    let mut state = wire;
+    let mut above = None;
+    state.north = get_side_from(pos, BlockDirection::North, &mut above, &read);
+    state.south = get_side_from(pos, BlockDirection::South, &mut above, &read);
+    state.east = get_side_from(pos, BlockDirection::East, &mut above, &read);
+    state.west = get_side_from(pos, BlockDirection::West, &mut above, &read);
+    regulate_sides(wire, state)
 }
 
 fn regulate_sides(wire: RedstoneWire, mut state: RedstoneWire) -> RedstoneWire {

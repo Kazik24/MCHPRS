@@ -23,6 +23,17 @@ pub enum NodeType {
     Trapdoor,
     Wire,
     Constant,
+    /// Aggregate electrical input to a recognized actuator. Qualifying updates
+    /// remain in the boundary side table, never diode Side links.
+    InstantInput {
+        piston: usize,
+    },
+    /// One physical alias of a group's mobile redstone supply. A single payload
+    /// can occupy several aliases; none is an immutable constant.
+    MobileSource {
+        group: usize,
+        alias: BlockPos,
+    },
     NoteBlock {
         instrument: Instrument,
         note: u32,
@@ -85,7 +96,13 @@ pub struct CompileNode {
 
 impl CompileNode {
     pub fn is_removable(&self) -> bool {
-        !self.is_input && !self.is_output && !self.state.pending_tick
+        !self.is_input
+            && !self.is_output
+            && !self.state.pending_tick
+            && !matches!(
+                self.ty,
+                NodeType::InstantInput { .. } | NodeType::MobileSource { .. }
+            )
     }
 }
 
@@ -107,18 +124,36 @@ impl CompileLink {
     }
 
     pub fn default(ss: u8) -> CompileLink {
-        CompileLink {
-            ty: LinkType::Default,
-            ss,
-        }
+        Self::new(LinkType::Default, ss)
     }
 
     pub fn side(ss: u8) -> CompileLink {
-        CompileLink {
-            ty: LinkType::Side,
-            ss,
-        }
+        Self::new(LinkType::Side, ss)
     }
 }
 
 pub type CompileGraph = StableGraph<CompileNode, CompileLink>;
+
+#[derive(Debug)]
+pub enum GraphError {
+    Cancelled,
+    MissingSource { pos: BlockPos },
+    UnsupportedInstantExport,
+    Export(std::io::Error),
+}
+
+impl std::fmt::Display for GraphError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Cancelled => f.write_str("graph preparation cancelled"),
+            Self::MissingSource { pos } => {
+                write!(f, "electrical source at {pos:?} has no graph owner")
+            }
+            Self::UnsupportedInstantExport => {
+                f.write_str("instant graph export is not implemented")
+            }
+            Self::Export(error) => write!(f, "graph export failed: {error}"),
+        }
+    }
+}
+impl std::error::Error for GraphError {}

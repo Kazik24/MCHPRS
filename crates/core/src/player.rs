@@ -33,12 +33,14 @@ pub(crate) fn allocate_entity_id() -> EntityId {
 pub enum Gamemode {
     Creative,
     Spectator,
+    Adventure,
 }
 
 impl Gamemode {
     pub fn get_id(self) -> i32 {
         match self {
             Gamemode::Creative => 1,
+            Gamemode::Adventure => 2,
             Gamemode::Spectator => 3,
         }
     }
@@ -579,7 +581,11 @@ impl Player {
 
     pub fn update_player_abilities(&self) {
         let player_abilities = CPlayerAbilities {
-            flags: 0x0D | ((self.flying as u8) << 1),
+            flags: match self.gamemode {
+                Gamemode::Creative => 0x0D | ((self.flying as u8) << 1),
+                Gamemode::Spectator => 0x07,
+                Gamemode::Adventure => 0x01,
+            },
             fly_speed: 0.05 * self.fly_speed,
             fov_modifier: 0.1,
         }
@@ -595,6 +601,12 @@ impl Player {
         }
         .encode();
         self.client.send_packet(&change_game_state);
+        match gamemode {
+            Gamemode::Adventure => self.flying = false,
+            Gamemode::Spectator => self.flying = true,
+            Gamemode::Creative => {}
+        }
+        self.update_player_abilities();
     }
 
     pub fn has_permission(&self, node: &str) -> bool {

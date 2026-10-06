@@ -68,7 +68,7 @@ $$
 
 $\mathbf d_k$ is the prepared data, $\mathbf e_k$ identifies the accepted triggering events, and $\mathbf q_k$ is the memory visible to this computation. An instant-only region has no persistent data memory. Its reset or clock activity can still require execution state.
 
-The formula applies under the region's protocol, synchronization assumption and output decoder. Wave grouping belongs to the protocol; arbitrary changes are not combined just because they occur near each other. Examples from the characterized first wave are:
+The formula applies under the region's protocol, ideal internal synchronization and output decoder. Physical synchronization is a compatibility property, not a prerequisite for evaluating the logical function. Wave grouping belongs to the protocol; arbitrary changes are not combined just because they occur near each other. Examples from the characterized first wave are:
 
 | Mechanism | Logical projection | Evidence |
 | --- | --- | --- |
@@ -83,7 +83,7 @@ These formulas describe the declared result projection. They do not certify ever
 
 Shared-output OR is one region with a shared payload, rather than two independently owned output blocks. Ownership may transfer or a payload may be dropped and recaptured. The region must preserve its permitted payload states and have a valid reset for every supported ownership outcome. [OR_Interpreter_illigal](INSTANT_PISTON_SCHEMATICS.md#or-interpreter-illigal) fails that reset requirement and is author-excluded from compiler scope.
 
-## 4. Inhibition and the synchronization assumption
+## 4. Inhibition and ideal internal synchronization
 
 Negation is inhibition of another activation. Let $i_k$ be the effective inhibit bit for a supported wave. Then
 
@@ -91,13 +91,13 @@ $$
 y_k=e_{T,k}\land\neg i_k.
 $$
 
-**Assume supported instant circuits are correctly synchronized in Java/interpreter execution. Redpiler does not model their internal nanoticks.** It evaluates the logical function from the wave's inputs, without reproducing actuator delays, callback traversal, event FIFO or internal piston movement order.
+**Redpiler does not preserve internal nanoticks. It evaluates recognized instant logic with ideal internal synchronization, even when the physical circuit is misaligned in Java/interpreter execution.** It evaluates the logical function from the finalized wave's inputs, without reproducing actuator delays, callback traversal, event FIFO or internal piston movement order. This applies to both the full-net reference plan and the optimized plan; minimization must preserve the same logical semantics.
 
-Physically, this assumption means inhibition becomes effective before a receiving operation accepts an activation that it should suppress. Equal-game-tick firing is allowed. This is a condition on the supported physical construction, not a runtime ordering graph for Redpiler.
+In physical execution, correct synchronization makes inhibition effective before a receiving operation accepts an activation that it should suppress; equal-game-tick firing is allowed. In compiled execution, the inhibit bit participates directly in the same logical evaluation, so extra internal actuator depth cannot make it arrive too late. Delays in ordinary components and distinct declared sampling transactions remain meaningful boundaries.
 
-The [measured order relations](INSTANT_PISTON_SCHEMATICS.md#negation-partial-orders-and-compiler-boundary) justify this assumption for specific episodes. A correct final Boolean value still needs the right consumer contract: NOT_1 has a raw-wire transient that its tested repeater probe filters. A BUD or observer cannot automatically be assumed to filter it.
+The [measured order relations](INSTANT_PISTON_SCHEMATICS.md#negation-partial-orders-and-compiler-boundary) document physical compatibility for specific episodes. The compiled result still needs a declared consumer contract: NOT_1 has a physical raw-wire transient that its tested repeater probe filters. A BUD or observer cannot automatically be assigned that same adapter. Physical transients caused solely by internal misalignment may be omitted under the compiled contract.
 
-[NANOTICK_EXAMPLE](INSTANT_PISTON_SCHEMATICS.md#nanotick-example) violates the synchronization assumption and remains outside this logical model. Preserve it as a physical diagnostic; supporting it is not a reason to add a nanotick simulator to Redpiler.
+[NANOTICK_EXAMPLE](INSTANT_PISTON_SCHEMATICS.md#nanotick-example) demonstrates delayed physical inhibition. Under the author's revised compiler contract, misalignment alone does not exclude its recognized logical function: compilation should suppress the activation that the intended inhibit expression forbids. Preserve the physical diagnostic and add a separately established logical expectation when its ports/protocol are certified. This is an intentional difference from physical execution, not a claim of implemented support. Invalid reset or payload ownership remains a separate exclusion.
 
 ## 5. BUD memory samples on an update
 
@@ -115,7 +115,7 @@ $$
 
 Equivalently, $q_j^+=(u_j\land d_j)\lor(\neg u_j\land q_j)$. The cell can store either bit on an update; this is not restricted to falling data events. Repeated samples of an unchanged value retain that value.
 
-This is a target contract for certified BUD families. The physical power and update connections must implement the declared sample under the synchronization assumption. Redpiler can then perform the storage update directly, without replaying callbacks or movement. A moving physical cell is not a valid stationary bit observation. Multiple logical updates are separate transactions; their data dependencies remain explicit.
+This is a target contract for certified BUD families. Recognition must establish the data decoder, qualifying update and state visibility for the declared sample. Redpiler performs the storage update directly with ideal internal synchronization, without replaying callbacks or movement. A moving physical cell is not a valid stationary bit observation. Multiple logical updates are separate transactions; their data dependencies remain explicit. Their ordering is not erased by ignoring internal nanoticks.
 
 The decoder establishes polarity. For a cell with stationary extended state $m$, a possible convention is $q=\neg m$; then sampling physical power $b$ stores $d=\neg b$. COUNTER_BASIC uses retracted=one, extended=zero. Other recognized families must declare their own decoder.
 
@@ -125,7 +125,7 @@ Memory remains explicit when simplifying the surrounding instant logic. A region
 
 ## 6. Protocol, validity and reset
 
-Attach a protocol $\mathcal P$ to each recognized region. It specifies the synchronization assumption, ready condition, preparation, accepted triggers, observation windows, reset/clock response and next-use condition.
+Attach a protocol $\mathcal P$ to each recognized region. It specifies logical wave grouping, ready condition, preparation, accepted triggers, observation windows, reset/clock response and next-use condition. Record physical synchronization/compatibility separately; internal misalignment is normalized by compiled evaluation.
 
 For an externally launched computation, the ready condition includes the stable extended mechanism, permitted payload arrangement, reset state and relevant queued work. Prepared inputs remain stable through the supported computation/reset episode. New external data or another computation during reset is outside initial conformance. The input adapter must make the promised protocol achievable.
 
@@ -154,7 +154,7 @@ $$
 | --- | --- |
 | $F$ | Logical computation within a certified wave |
 | $H$ | Accepted BUD transactions and any reset/clock state transitions |
-| $\mathcal P$ | Supported synchronized input histories, readiness and observation validity |
+| $\mathcal P$ | Supported logical input histories, wave grouping, readiness and observation validity |
 | $\mathcal A$ | Port adapters: internal event/value connections and electrical strengths, transitions, updates and relevant timing at ordinary consumers |
 
 With retained state $z=(\mathbf q,c)$, where $c$ is any required reset/clock state, the transition is
@@ -165,18 +165,18 @@ $$
 
 Logical steps are accepted waves, memory updates or required clock deadlines. They are not individual piston callbacks. For a pure combinational region, $z$ is empty.
 
-$F$ is eligible for Boolean minimization and composition into a larger graph. $H$ can be omitted only when boundary behavior needs no retained memory, reset or generator state. It preserves logical state dependencies and the external timing required by $\mathcal P$, with no internal nanotick model. A successful simplification preserves the consumer behavior:
+$F$ is eligible for Boolean minimization and composition into a larger graph. $H$ can be omitted only when boundary behavior needs no retained memory, reset or generator state. It preserves logical state dependencies and the external timing required by $\mathcal P$, with no internal nanotick model. Let $\operatorname{Logical}(\mathcal R,h)$ be execution of the extracted logical circuit with ideal internal synchronization. A successful simplification preserves that reference semantics:
 
 $$
 \forall h\in\mathcal P:\quad
-\operatorname{Obs}_{boundary}(\operatorname{Interpret}(h))
+\operatorname{Obs}_{boundary}(\operatorname{Logical}(\mathcal R,h))
 =\operatorname{Obs}_{boundary}(\operatorname{Compile}(\mathcal R,h)).
 $$
 
-$h$ is an ordered input history from an equivalent ready state. The observation includes consumer states, consequential callbacks and relevant timing throughout the accepted episode, including reset. Internal animation and internal wire display can be omitted when this equality holds. Rendering frequency does not weaken simulation correctness.
+$h$ is an ordered input history from an equivalent ready state. The observation includes declared consumer states, consequential updates and relevant timing throughout the accepted episode, including reset. For physically synchronized compatible histories, the physical interpreter must agree with this projection as well. For a circuit failing solely because of internal nanotick misalignment, physical and compiled outputs may intentionally differ; the compiled result follows the established logical function. Internal animation and internal wire display can be omitted. Rendering frequency does not weaken the logical contract.
 
-The parser must establish the port decoders, reset/payload closure, supported synchronized protocol and consumer adapters before activation. Recognition can rely on validated families; no detailed nanotick analysis or simulation is required in the compiled evaluator. If the contract is unknown, report the candidate and keep interpreted execution. Restoring an interpreter world also requires an equivalent materialized state with appropriate pending work; a final output bit is insufficient.
+The parser must establish the port decoders, reset/payload closure, logical protocol and consumer adapters before activation. Recognition can rely on validated families; physical synchronization is not an admission requirement and no nanotick analysis or simulation is required in the compiled evaluator. If the logical contract is unknown, report the candidate and keep interpreted execution. Restoring an interpreter world also requires an equivalent materialized state with appropriate pending work; a final output bit is insufficient. A physically misaligned circuit resumes its physical semantics after handoff, so continuing agreement with compiled logical execution is not promised.
 
 Existing [graph node types](../crates/core/src/redpiler/compile_graph.rs) provide ordinary input/output components, but no instant/BUD execution. Existing [node discovery](../crates/core/src/redpiler/passes/identify_nodes.rs) also does not discover these region boundaries. Power links cannot stand in for independent BUD updates, and region ports must not be confused with existing world-I/O flags. These are requirements for the future parser/backend, with implementation stages in the [plan](INSTANT_PISTON_IMPLEMENTATION_PLAN.md).
 
-The [separate lever/repeater revision](INSTANT_PISTON_IO_SCHEMATICS.md) now establishes ordinary input adapters and standalone BUD data/update sampling, retained state and quiet resampling for two families. Observer-generated updates also demonstrate data-before-sample synchronization. One BUD selection still lacks its saved update control, and XOR reset response depends on the recorded spatial/order context. General consumer adapters, unrestricted reuse and compiled/interpreter handoff remain unverified. The supplied nanotick and illegal-reset counterexamples remain rejection cases. CPU analysis stays deferred.
+The [separate lever/repeater revision](INSTANT_PISTON_IO_SCHEMATICS.md) now establishes ordinary input adapters and standalone BUD data/update sampling, retained state and quiet resampling for two families. Observer-generated updates also demonstrate data-before-sample synchronization. One BUD selection still lacks its saved update control, and XOR reset response depends on the recorded spatial/order context. General consumer adapters, unrestricted reuse and compiled/interpreter handoff remain unverified. The supplied nanotick example is now a candidate logical normalization case; the illegal-reset counterexample remains excluded. Earlier catalog admission statements record the prior policy; frozen physical observations remain unchanged. CPU analysis stays deferred.

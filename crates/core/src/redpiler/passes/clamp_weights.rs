@@ -6,8 +6,14 @@ use crate::world::World;
 pub struct ClampWeights;
 
 impl<W: World> Pass<W> for ClampWeights {
-    fn run_pass(&self, graph: &mut CompileGraph, _: &CompilerOptions, _: &CompilerInput<'_, W>) {
+    fn run_pass(
+        &self,
+        graph: &mut CompileGraph,
+        _: &CompilerOptions,
+        _: &CompilerInput<'_, W>,
+    ) -> Result<(), super::GraphError> {
         graph.retain_edges(|g, edge| g[edge].ss < 15);
+        Ok(())
     }
 
     fn should_run(&self, _: &CompilerOptions) -> bool {

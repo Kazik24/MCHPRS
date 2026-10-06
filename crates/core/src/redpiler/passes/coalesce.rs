@@ -9,7 +9,12 @@ use petgraph::Direction;
 pub struct Coalesce;
 
 impl<W: World> Pass<W> for Coalesce {
-    fn run_pass(&self, graph: &mut CompileGraph, _: &CompilerOptions, _: &CompilerInput<'_, W>) {
+    fn run_pass(
+        &self,
+        graph: &mut CompileGraph,
+        _: &CompilerOptions,
+        _: &CompilerInput<'_, W>,
+    ) -> Result<(), super::GraphError> {
         for i in 0..graph.node_bound() {
             let idx = NodeIdx::new(i);
             if !graph.contains_node(idx) {
@@ -38,6 +43,7 @@ impl<W: World> Pass<W> for Coalesce {
             }
             coalesce_outgoing(graph, source, idx);
         }
+        Ok(())
     }
 
     fn status_message(&self) -> &'static str {

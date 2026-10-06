@@ -4,8 +4,9 @@ mod compile;
 pub mod node;
 mod tick;
 mod update;
+mod instant;
 
-use super::{JITBackend, TickScheduler};
+use super::{BackendError, JITBackend, TickScheduler};
 use crate::redpiler::compile_graph::CompileGraph;
 use crate::redpiler::task_monitor::TaskMonitor;
 use crate::redpiler::{block_powered_mut, CompilerOptions};
@@ -35,9 +36,16 @@ pub struct DirectBackend {
     scheduler: TickScheduler<NodeId>,
     events: Vec<Event>,
     noteblock_info: Vec<(BlockPos, Instrument, u32)>,
+    instant: Option<instant::Runtime>,
 }
 
 impl DirectBackend {
+    pub(crate) fn compile_instant(
+        &mut self, graph: CompileGraph, program: crate::redpiler::instant::program::PreparedInstant,
+        ticks: Vec<TickEntry>, options: &CompilerOptions, monitor: Arc<TaskMonitor>,
+    ) -> Result<(), BackendError> {
+        compile::compile(self, graph, ticks, options, monitor, Some(program))
+    }
     #[inline]
     fn schedule_tick(&mut self, node_id: NodeId, delay: usize, priority: TickPriority) {
         self.scheduler.schedule_tick(node_id, delay, priority);
@@ -98,6 +106,9 @@ impl JITBackend for DirectBackend {
     }
 
     fn reset<W: World>(&mut self, world: &mut W, io_only: bool) {
+        if let Some(runtime) = self.instant.take() {
+            runtime.materialize(world, &self.nodes);
+        }
         self.scheduler.reset(world, &self.blocks);
 
         let nodes = std::mem::take(&mut self.nodes);
@@ -142,6 +153,9 @@ impl JITBackend for DirectBackend {
             }
             _ => warn!("Tried to use a {:?} redpiler node", node.ty),
         }
+        if let Some(runtime) = &mut self.instant {
+            runtime.observe_action(pos, self.nodes[node_id].output_power);
+        }
     }
 
     fn set_pressure_plate(&mut self, pos: BlockPos, powered: bool) {
@@ -163,6 +177,15 @@ impl JITBackend for DirectBackend {
         }
 
         self.scheduler.end_tick(queues);
+        if let Some(mut runtime) = self.instant.take() {
+            let changes = runtime.advance(&self.nodes);
+            for (id, strength) in changes {
+                if self.nodes[id].output_power != strength {
+                    self.set_node(id, strength != 0, strength);
+                }
+            }
+            self.instant = Some(runtime);
+        }
     }
 
     fn flush<W: World>(&mut self, world: &mut W, io_only: bool) {
@@ -210,8 +233,8 @@ impl JITBackend for DirectBackend {
         ticks: Vec<TickEntry>,
         options: &CompilerOptions,
         monitor: Arc<TaskMonitor>,
-    ) {
-        compile::compile(self, graph, ticks, options, monitor);
+    ) -> Result<(), BackendError> {
+        compile::compile(self, graph, ticks, options, monitor, None)
     }
 }
 

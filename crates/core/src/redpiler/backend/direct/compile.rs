@@ -13,6 +13,9 @@ use tracing::trace;
 
 use super::node::{ForwardLink, Node, NodeId, NodeInput, NodeType, Nodes, NonMaxU8};
 use super::DirectBackend;
+use crate::redpiler::backend::BackendError;
+
+const MAX_INPUTS: usize = u8::MAX as usize;
 
 #[derive(Debug, Default)]
 struct FinalGraphStats {
@@ -31,8 +34,6 @@ fn compile_node(
     stats: &mut FinalGraphStats,
 ) -> Node {
     let node = &graph[node_idx];
-
-    const MAX_INPUTS: usize = 255;
 
     let mut default_input_count = 0;
     let mut side_input_count = 0;
@@ -116,6 +117,10 @@ fn compile_node(
         CNodeType::Trapdoor => NodeType::Trapdoor,
         CNodeType::Wire => NodeType::Wire,
         CNodeType::Constant => NodeType::Constant,
+        CNodeType::MobileSource { .. } => NodeType::Lever,
+        CNodeType::InstantInput { .. } => {
+            unreachable!("boundary nodes rejected before lowering")
+        }
         CNodeType::NoteBlock { instrument, note } => {
             let noteblock_id = noteblock_info.len().try_into().unwrap();
             noteblock_info.push((node.block.unwrap().0, *instrument, *note));
@@ -143,7 +148,47 @@ pub fn compile(
     ticks: Vec<TickEntry>,
     options: &CompilerOptions,
     _monitor: Arc<TaskMonitor>,
-) {
+    instant: Option<crate::redpiler::instant::program::PreparedInstant>,
+) -> Result<(), BackendError> {
+    if graph.node_weights().any(|n| {
+        matches!(
+            n.ty,
+            crate::redpiler::compile_graph::NodeType::InstantInput { .. }
+                | crate::redpiler::compile_graph::NodeType::MobileSource { .. }
+        )
+    }) && instant.is_none() {
+        return Err(BackendError::InstantRuntimeUnavailable);
+    }
+    // Validate before filling packed input counters or creating unchecked
+    // runtime references. Failure must leave the staged backend untouched.
+    for id in graph.node_indices() {
+        let node = &graph[id];
+        let pos = node.block.map(|(pos, _)| pos);
+        let far_input = match node.ty {
+            crate::redpiler::compile_graph::NodeType::Comparator { far_input, .. } => far_input,
+            _ => None,
+        };
+        for strength in std::iter::once(node.state.output_strength).chain(far_input) {
+            if strength > 15 {
+                return Err(BackendError::InvalidStrength { pos, strength });
+            }
+        }
+        let mut default_inputs = 0;
+        let mut side_inputs = 0;
+        for edge in graph.edges_directed(id, Direction::Incoming) {
+            match edge.weight().ty {
+                LinkType::Default => default_inputs += 1,
+                LinkType::Side => side_inputs += 1,
+            }
+        }
+        if default_inputs > MAX_INPUTS || side_inputs > MAX_INPUTS {
+            return Err(BackendError::TooManyInputs {
+                pos,
+                default_inputs,
+                side_inputs,
+            });
+        }
+    }
     // Create a mapping from compile to backend node indices
     let mut nodes_map = FxHashMap::with_capacity_and_hasher(graph.node_count(), Default::default());
     for node in graph.node_indices() {
@@ -174,6 +219,13 @@ pub fn compile(
         .map(|node| node.block.map(|(pos, id)| (pos, Block::from_id(id))))
         .collect();
     backend.nodes = Nodes::new(nodes);
+    if let Some(program) = instant {
+        let bindings = graph.node_indices().filter_map(|idx| match graph[idx].ty {
+            crate::redpiler::compile_graph::NodeType::MobileSource { alias, .. } => Some((alias,backend.nodes.get(nodes_map[&idx]))),
+            _ => graph[idx].block.map(|(pos,_)| (pos,backend.nodes.get(nodes_map[&idx]))),
+        }).collect();
+        backend.instant = Some(super::instant::Runtime::bind(program, bindings, &backend.nodes)?);
+    }
 
     // Create a mapping from block pos to backend NodeId
     for i in 0..backend.blocks.len() {
@@ -197,5 +249,60 @@ pub fn compile(
     // Dot file output
     if options.export_dot_graph {
         std::fs::write("backend_graph.dot", format!("{}", backend)).unwrap();
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::redpiler::backend::JITBackend;
+    use crate::redpiler::compile_graph::{CompileLink, CompileNode, NodeState, NodeType};
+
+    fn node(ty: NodeType, strength: u8) -> CompileNode {
+        CompileNode {
+            ty,
+            block: None,
+            state: NodeState::ss(strength),
+            is_input: false,
+            is_output: false,
+        }
+    }
+
+    #[test]
+    fn invalid_strength_is_rejected_before_packed_input_initialization() {
+        for strength in [16, 255] {
+            let mut graph = CompileGraph::new();
+            graph.add_node(node(NodeType::Constant, strength));
+            let mut backend = DirectBackend::default();
+            assert_eq!(
+                backend.compile(graph, vec![], &Default::default(), Default::default()),
+                Err(BackendError::InvalidStrength {
+                    pos: None,
+                    strength
+                })
+            );
+            assert!(backend.nodes.inner().is_empty());
+        }
+    }
+
+    #[test]
+    fn excessive_fan_in_is_rejected_without_overflowing_counters() {
+        let mut graph = CompileGraph::new();
+        let target = graph.add_node(node(NodeType::Lamp, 0));
+        for _ in 0..256 {
+            let source = graph.add_node(node(NodeType::Constant, 15));
+            graph.add_edge(source, target, CompileLink::default(0));
+        }
+        let mut backend = DirectBackend::default();
+        assert_eq!(
+            backend.compile(graph, vec![], &Default::default(), Default::default()),
+            Err(BackendError::TooManyInputs {
+                pos: None,
+                default_inputs: 256,
+                side_inputs: 0
+            })
+        );
+        assert!(backend.nodes.inner().is_empty());
     }
 }

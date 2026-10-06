@@ -67,6 +67,9 @@ fn convert_node(
             CNodeType::Trapdoor => NodeType::Trapdoor,
             CNodeType::Wire => NodeType::Wire,
             CNodeType::Constant => NodeType::Constant,
+            CNodeType::InstantInput { .. } | CNodeType::MobileSource { .. } => {
+                unreachable!("instant graph export rejected before this pass")
+            }
             CNodeType::NoteBlock { .. } => NodeType::NoteBlock,
         },
         block: node.block.map(|(pos, id)| {
@@ -94,7 +97,20 @@ fn convert_node(
 pub struct ExportGraph;
 
 impl<W: World> Pass<W> for ExportGraph {
-    fn run_pass(&self, graph: &mut CompileGraph, _: &CompilerOptions, _: &CompilerInput<'_, W>) {
+    fn run_pass(
+        &self,
+        graph: &mut CompileGraph,
+        _: &CompilerOptions,
+        _: &CompilerInput<'_, W>,
+    ) -> Result<(), super::GraphError> {
+        if graph.node_weights().any(|n| {
+            matches!(
+                n.ty,
+                CNodeType::InstantInput { .. } | CNodeType::MobileSource { .. }
+            )
+        }) {
+            return Err(super::GraphError::UnsupportedInstantExport);
+        }
         let mut nodes_map =
             FxHashMap::with_capacity_and_hasher(graph.node_count(), Default::default());
         for node in graph.node_indices() {
@@ -106,7 +122,9 @@ impl<W: World> Pass<W> for ExportGraph {
             .map(|idx| convert_node(graph, idx, &nodes_map))
             .collect_vec();
 
-        fs::write("redpiler_graph.bc", serialize(nodes.as_slice()).unwrap()).unwrap();
+        fs::write("redpiler_graph.bc", serialize(nodes.as_slice()).unwrap())
+            .map_err(super::GraphError::Export)?;
+        Ok(())
     }
 
     fn should_run(&self, options: &CompilerOptions) -> bool {

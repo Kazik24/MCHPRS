@@ -13,7 +13,12 @@ use rustc_hash::FxHashSet;
 pub struct PruneOrphans;
 
 impl<W: World> Pass<W> for PruneOrphans {
-    fn run_pass(&self, graph: &mut CompileGraph, _: &CompilerOptions, _: &CompilerInput<'_, W>) {
+    fn run_pass(
+        &self,
+        graph: &mut CompileGraph,
+        _: &CompilerOptions,
+        _: &CompilerInput<'_, W>,
+    ) -> Result<(), super::GraphError> {
         let mut to_visit = graph
             .node_indices()
             .filter(|&idx| !graph[idx].is_removable())
@@ -27,6 +32,7 @@ impl<W: World> Pass<W> for PruneOrphans {
         }
 
         graph.retain_nodes(|_, idx| visited.contains(&idx));
+        Ok(())
     }
 
     fn should_run(&self, options: &CompilerOptions) -> bool {

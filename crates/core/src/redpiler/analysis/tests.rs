@@ -212,6 +212,7 @@ fn analysis_limits_and_cancellation_are_errors_not_partial_certificates() {
             AnalysisLimits {
                 max_cells: 1,
                 max_pistons: 10,
+                ..Default::default()
             },
             AnalysisError::CellLimit,
         ),
@@ -219,6 +220,7 @@ fn analysis_limits_and_cancellation_are_errors_not_partial_certificates() {
             AnalysisLimits {
                 max_cells: 16_777_216,
                 max_pistons: 0,
+                ..Default::default()
             },
             AnalysisError::PistonLimit,
         ),
@@ -372,6 +374,816 @@ fn shared_or_payloads_form_a_group_even_when_ownership_can_transfer() {
         !analyze_world(&world).can_compile(),
         "the excluded OR must never be admitted by a geometric seed"
     );
+}
+
+#[test]
+fn supplied_reset_families_have_return_paths_and_shared_payload_closure() {
+    use super::families::ResetFamily;
+    for (name, family) in [
+        ("instant_observer", ResetFamily::ObserverAbove),
+        ("instant_down", ResetFamily::ObserverAbove),
+        ("instant_torch", ResetFamily::Torch),
+        ("instant_down_torch_reset", ResetFamily::Torch),
+        ("instant_reset_redstone", ResetFamily::DustBelowHead),
+        ("instant_reset_redstone_2", ResetFamily::LateralDust),
+    ] {
+        let (world, _, _) = fixture(name);
+        let report = analyze_world(&world);
+        let r = &report.recognition[0];
+        assert!(r.is_matched(), "{name}: {r:?}");
+        assert!(
+            r.resets.iter().any(|reset| reset.family == family),
+            "{name}: {r:?}"
+        );
+        assert!(
+            report.group_recognition[0].has_reset_closure(),
+            "{name}: {:?}",
+            report.group_recognition
+        );
+        assert!(
+            !report.can_compile(),
+            "recognition alone must not activate a runtime"
+        );
+    }
+    let (world, _, _) = fixture("or_1");
+    let report = analyze_world(&world);
+    assert!(
+        report.recognition.iter().all(|p| p.is_matched()),
+        "{:?}",
+        report.recognition
+    );
+    assert!(
+        report
+            .group_recognition
+            .iter()
+            .all(|g| g.has_reset_closure()),
+        "{:?}",
+        report.group_recognition
+    );
+    let (world, _, _) = fixture("or_interpreter_illigal");
+    let report = analyze_world(&world);
+    let shared = report
+        .payload_groups
+        .iter()
+        .position(|g| g.members.len() == 2)
+        .unwrap();
+    assert!(
+        report.group_recognition[shared]
+            .failures
+            .iter()
+            .any(|f| matches!(f, families::GroupFailure::ResetSupplyLost { .. })),
+        "{:?}",
+        report.group_recognition
+    );
+}
+
+#[test]
+fn extracted_conditional_adder_logic_matches_arithmetic() {
+    use crate::redstone;
+    for name in ["adder_1bit", "adder_11bits"] {
+        let (mut world, _, manifest) = fixture(name);
+        let report = analyze_world(&world);
+        let logic = crate::redpiler::instant::logic::extract(&world, &report, &Default::default())
+            .unwrap_or_else(|error| panic!("{name}: {error}"));
+        eprintln!(
+            "{name}: {} decisions, {} source ports",
+            logic.arena.nodes.len(),
+            logic.sources.len()
+        );
+        eprintln!("ports {name}: {:?}", report.ports.outputs.iter().map(|o| (o.consumer-BASE,o.group)).collect::<Vec<_>>());
+        for case in manifest["cases"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|c| c["expectation"].is_object())
+        {
+            for action in case["actions"].as_array().into_iter().flatten() {
+                if action["op"] == "lever" {
+                    let local = &action["pos"];
+                    let pos = BASE
+                        + BlockPos::new(
+                            local[0].as_i64().unwrap() as i32,
+                            local[1].as_i64().unwrap() as i32,
+                            local[2].as_i64().unwrap() as i32,
+                        );
+                    let Block::Lever { mut lever } = world.get_block(pos) else {
+                        panic!("{action}")
+                    };
+                    lever.powered = action["powered"].as_bool().unwrap();
+                    world.set_block(pos, Block::Lever { lever });
+                }
+            }
+            let fired =
+                logic.evaluate(|pos| redstone::source_strength(world.get_block(pos), &world, pos));
+            let outputs = &manifest["ports"]["observations"]["sum_payload"];
+            let outputs: Vec<_> = if outputs[0].is_number() {
+                vec![outputs]
+            } else {
+                outputs.as_array().unwrap().iter().collect()
+            };
+            let mut result = 0;
+            for (bit, local) in outputs.iter().enumerate() {
+                let pos = BASE
+                    + BlockPos::new(
+                        local[0].as_i64().unwrap() as i32,
+                        local[1].as_i64().unwrap() as i32,
+                        local[2].as_i64().unwrap() as i32,
+                    );
+                let group = report
+                    .payload_groups
+                    .iter()
+                    .find(|g| g.positions.contains(&pos))
+                    .unwrap();
+                if group.members.iter().any(|&id| fired[id]) {
+                    result |= 1u16 << bit;
+                }
+            }
+            assert_eq!(
+                result as u64,
+                case["expectation"]["sum"].as_u64().unwrap(),
+                "{name} {}",
+                case["id"]
+            );
+        }
+    }
+}
+
+#[test]
+fn adders_report_wool_payload_support_limits_without_mutating_the_import() {
+    for pack in ["instant-pistons", "instant-pistons-io"] {
+        let (world, bounds, _) = load_fixture(
+            &root()
+                .join("test_data")
+                .join(pack)
+                .join("fixtures/adder_11bits.json"),
+        );
+        let before = snapshot(&world, bounds);
+        let report = analyze_world(&world);
+        assert_eq!(report.pistons.len(), 142, "{pack}");
+        assert_eq!(
+            report
+                .recognition
+                .iter()
+                .flat_map(|r| &r.failures)
+                .filter(|failure| matches!(
+                    failure,
+                    families::RecognitionFailure::UnsupportedPayload {
+                        block: "white_wool",
+                        ..
+                    }
+                ))
+                .count(),
+            44,
+            "{pack}: every wool mover should retain its actual payload diagnosis"
+        );
+        let error = graph::prepare_candidate_graph(
+            &world,
+            world.get_corners(),
+            &[],
+            &Default::default(),
+            Default::default(),
+        )
+        .unwrap_err();
+        let graph::GraphPreparationError::Piston { pos, failures } = &error else {
+            panic!("{pack}: expected the missing wool payload model, got {error}");
+        };
+        assert_eq!(*pos, BASE + BlockPos::new(11, 1, 2));
+        assert_eq!(
+            failures,
+            &[families::RecognitionFailure::UnsupportedPayload {
+                pos: BASE + BlockPos::new(13, 1, 2),
+                block: "white_wool",
+            }]
+        );
+        let message = error.to_string();
+        assert!(message.contains("minecraft:white_wool"), "{message}");
+        assert!(
+            message.contains("only redstone block payloads"),
+            "{message}"
+        );
+        assert!(!message.contains("Some("), "{message}");
+        assert_eq!(snapshot(&world, bounds), before, "{pack}");
+    }
+}
+
+#[test]
+fn reset_guards_reject_mutations_and_forced_power() {
+    use super::families::RecognitionFailure;
+    let (mut world, _, _) = fixture("instant_observer");
+    let base = BASE + BlockPos::new(0, 1, 5);
+    let cap = base + BlockPos::new(0, 2, 0);
+    world.set_block(cap, Block::Glass {});
+    assert!(analyze_world(&world).recognition[0]
+        .failures
+        .contains(&RecognitionFailure::NonconductingSupport { pos: cap }));
+    world.set_block(cap, Block::Stone {});
+    let writer = cap.offset(BlockFace::East);
+    world.set_block(
+        writer,
+        Block::Lever {
+            lever: mchprs_blocks::blocks::Lever::new(
+                mchprs_blocks::blocks::LeverFace::Wall,
+                mchprs_blocks::BlockDirection::East,
+                false,
+            ),
+        },
+    );
+    assert!(analyze_world(&world).recognition[0]
+        .failures
+        .contains(&RecognitionFailure::AdditionalResetWriter { pos: writer }));
+    world.set_block(writer, Block::Air);
+    world.schedule_tick(base.offset(BlockFace::Top), 2, TickPriority::Normal);
+    assert!(analyze_world(&world).recognition[0]
+        .failures
+        .iter()
+        .any(|f| matches!(f, RecognitionFailure::PendingReset { .. })));
+
+    let (world, _, _) = fixture("instant_blocked");
+    assert!(analyze_world(&world).recognition[0]
+        .failures
+        .iter()
+        .any(|f| matches!(f, RecognitionFailure::ForcedPower { .. })));
+    let (mut world, _, _) = fixture("instant_reset_redstone");
+    let under_head = BASE + BlockPos::new(0, 1, 6);
+    world.set_block(under_head.offset(BlockFace::Bottom), Block::Air);
+    assert!(analyze_world(&world).recognition[0]
+        .failures
+        .iter()
+        .any(|f| matches!(f, RecognitionFailure::NonconductingSupport { .. })));
+}
+
+#[test]
+fn ports_find_real_repeater_faces_and_separate_bud_sampling() {
+    use super::ports::{ConsumerKind, UpdateKind};
+    for name in [
+        "instant_observer",
+        "instant_torch",
+        "instant_down",
+        "instant_down_torch_reset",
+    ] {
+        let (world, _, manifest) = fixture(name);
+        let repeater = &manifest["ports"]["observations"]["repeater"];
+        let pos = BASE
+            + BlockPos::new(
+                repeater[0].as_i64().unwrap() as i32,
+                repeater[1].as_i64().unwrap() as i32,
+                repeater[2].as_i64().unwrap() as i32,
+            );
+        let report = analyze_world(&world);
+        let output = report
+            .ports
+            .outputs
+            .iter()
+            .find(|o| o.consumer == pos)
+            .unwrap();
+        assert_eq!(
+            output.kind,
+            ConsumerKind::Repeater {
+                delay: 2,
+                locked: false
+            }
+        );
+        assert!(output
+            .dependencies
+            .sources
+            .iter()
+            .any(|d| matches!(d.kind, topology::SourceKind::MobilePayload { .. })));
+    }
+    let (world, _, _) = fixture("bud_noninstantinputs");
+    let report = analyze_world(&world);
+    let memory = report
+        .pistons
+        .iter()
+        .position(|p| p.pos == BASE + BlockPos::new(0, 3, 3))
+        .unwrap();
+    let updates = &report.ports.pistons[memory].updates;
+    assert!(updates
+        .iter()
+        .any(|u| u.source == BASE + BlockPos::new(0, 3, 2)
+            && u.kind == UpdateKind::WireNotification
+            && u.independent_of_power));
+    assert!(report.recognition[memory]
+        .inputs
+        .wires
+        .contains(&(BASE + BlockPos::new(0, 6, 3))));
+    assert!(!updates
+        .iter()
+        .any(|u| u.source == BASE + BlockPos::new(0, 6, 3)));
+}
+
+#[test]
+fn dependency_budget_and_partial_context_do_not_produce_certificates() {
+    let (world, _, _) = fixture("instant_observer");
+    assert_eq!(
+        analyze(
+            &world,
+            world.get_corners(),
+            &[],
+            &Default::default(),
+            AnalysisLimits {
+                max_dependency_steps: 1,
+                ..Default::default()
+            }
+        )
+        .unwrap_err(),
+        AnalysisError::DependencyLimit
+    );
+    let base = BASE + BlockPos::new(0, 1, 5);
+    let report = analyze(
+        &world,
+        (base, base + BlockPos::new(0, 2, 2)),
+        &[],
+        &Default::default(),
+        Default::default(),
+    )
+    .unwrap();
+    assert!(!report.recognition[0].is_matched());
+    assert!(report.recognition[0]
+        .failures
+        .iter()
+        .any(|f| matches!(f, families::RecognitionFailure::OutsideBounds { .. })));
+}
+
+#[test]
+fn candidate_graphs_preserve_mobile_aliases_ports_and_world_state_under_optimization() {
+    use crate::redpiler::compile_graph::NodeType;
+    use petgraph::visit::EdgeRef;
+    use petgraph::Direction;
+    for name in [
+        "instant_observer",
+        "instant_torch",
+        "instant_down",
+        "instant_down_torch_reset",
+        "instant_reset_redstone",
+        "instant_reset_redstone_2",
+        "instant_chain",
+        "or_1",
+    ] {
+        let (world, bounds, _) = fixture(name);
+        let before = snapshot(&world, bounds);
+        for optimize in [false, true] {
+            for io_only in [false, true] {
+                let candidate = graph::prepare_candidate_graph(
+                    &world,
+                    world.get_corners(),
+                    &[],
+                    &CompilerOptions {
+                        optimize,
+                        io_only,
+                        ..Default::default()
+                    },
+                    Default::default(),
+                )
+                .unwrap_or_else(|e| panic!("{name} optimize={optimize} io={io_only}: {e}"));
+                let summary = candidate.summary();
+                assert_eq!(
+                    summary.instant_inputs,
+                    candidate.report.pistons.len(),
+                    "{name}"
+                );
+                assert_eq!(
+                    summary.mobile_sources,
+                    candidate
+                        .report
+                        .payload_groups
+                        .iter()
+                        .map(|g| g.positions.len())
+                        .sum::<usize>(),
+                    "{name}"
+                );
+                for node in candidate.graph.node_weights() {
+                    if let NodeType::MobileSource { alias, .. } = node.ty {
+                        assert!(node.block.is_none());
+                        assert!(!node.is_removable());
+                        assert_eq!(
+                            node.state.output_strength,
+                            if world.get_block(alias) == Block::RedstoneBlock {
+                                15
+                            } else {
+                                0
+                            }
+                        );
+                    }
+                    if let Some((pos, _)) = node.block {
+                        assert!(
+                            !candidate
+                                .report
+                                .payload_groups
+                                .iter()
+                                .any(|g| g.positions.contains(&pos)),
+                            "{name}: mobile block entered ordinary constant folding"
+                        );
+                    }
+                }
+                for id in candidate.graph.node_indices() {
+                    if matches!(candidate.graph[id].ty, NodeType::InstantInput { .. }) {
+                        let initial_power = candidate
+                            .graph
+                            .edges_directed(id, Direction::Incoming)
+                            .map(|edge| {
+                                candidate.graph[edge.source()]
+                                    .state
+                                    .output_strength
+                                    .saturating_sub(edge.weight().ss)
+                            })
+                            .max()
+                            .unwrap_or(0);
+                        assert_eq!(candidate.graph[id].state.output_strength, initial_power);
+                        assert!(initial_power > 0, "{name}: ready input was initialized low");
+                    }
+                }
+                for output in &candidate.report.ports.outputs {
+                    let node = candidate
+                        .graph
+                        .node_indices()
+                        .find(|&id| {
+                            candidate.graph[id]
+                                .block
+                                .is_some_and(|(pos, _)| pos == output.consumer)
+                        })
+                        .unwrap();
+                    assert!(candidate.graph[node].is_output);
+                    assert!(
+                        candidate
+                            .graph
+                            .neighbors_directed(node, Direction::Incoming)
+                            .any(|id| matches!(
+                                candidate.graph[id].ty,
+                                NodeType::MobileSource { .. }
+                            )),
+                        "{name}: no mobile supply reaches consumer"
+                    );
+                }
+                assert_eq!(
+                    snapshot(&world, bounds),
+                    before,
+                    "{name}: candidate preparation mutated the world"
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn candidate_graphs_reject_unowned_observers_and_illegal_reset_groups() {
+    let (world, _, _) = fixture("or_interpreter_illigal");
+    assert!(matches!(
+        graph::prepare_candidate_graph(
+            &world,
+            world.get_corners(),
+            &[],
+            &Default::default(),
+            Default::default()
+        ),
+        Err(graph::GraphPreparationError::PayloadGroup { .. })
+    ));
+    let (mut world, _, _) = fixture("instant_observer");
+    world.set_block(
+        BASE,
+        Block::Observer {
+            observer: RedstoneObserver {
+                facing: BlockFacing::North,
+                powered: false,
+            },
+        },
+    );
+    assert!(matches!(
+        graph::prepare_candidate_graph(
+            &world,
+            world.get_corners(),
+            &[],
+            &Default::default(),
+            Default::default()
+        ),
+        Err(graph::GraphPreparationError::Entry(
+            AdmissionIssue::ObserverRuntimeUnavailable { .. }
+        ))
+    ));
+}
+
+#[test]
+fn direct_backend_rejects_candidate_boundaries_before_mutating_its_state() {
+    use crate::redpiler::backend::{direct::DirectBackend, BackendError, JITBackend};
+    let (world, _, _) = fixture("instant_torch");
+    let candidate = graph::prepare_candidate_graph(
+        &world,
+        world.get_corners(),
+        &[],
+        &Default::default(),
+        Default::default(),
+    )
+    .unwrap();
+    let mut backend = DirectBackend::default();
+    assert_eq!(
+        backend.compile(
+            candidate.graph,
+            vec![],
+            &Default::default(),
+            Default::default()
+        ),
+        Err(BackendError::InstantRuntimeUnavailable)
+    );
+    // A rejected preparation cannot leave synthetic work or aliases that make
+    // a subsequent ordinary backend initialization unsafe.
+    let empty = crate::redpiler::compile_graph::CompileGraph::new();
+    backend
+        .compile(empty, vec![], &Default::default(), Default::default())
+        .unwrap();
+    backend.tick();
+}
+
+#[test]
+fn recognized_families_and_graph_ports_survive_horizontal_rotation() {
+    use mchprs_blocks::blocks::RotateAmt;
+    for name in [
+        "instant_observer",
+        "instant_torch",
+        "instant_down",
+        "instant_down_torch_reset",
+        "instant_reset_redstone",
+        "instant_reset_redstone_2",
+        "or_1",
+    ] {
+        let (original, bounds, _) = fixture(name);
+        let width = bounds.1.x - bounds.0.x + 1;
+        let length = bounds.1.z - bounds.0.z + 1;
+        for rotation in [
+            RotateAmt::Rotate90,
+            RotateAmt::Rotate180,
+            RotateAmt::Rotate270,
+        ] {
+            let mut world = empty();
+            for y in bounds.0.y..=bounds.1.y {
+                for z in bounds.0.z..=bounds.1.z {
+                    for x in bounds.0.x..=bounds.1.x {
+                        let pos = BlockPos::new(x, y, z);
+                        let local = pos - BASE;
+                        let (x, z) = match rotation {
+                            RotateAmt::Rotate90 => (length - 1 - local.z, local.x),
+                            RotateAmt::Rotate180 => (width - 1 - local.x, length - 1 - local.z),
+                            RotateAmt::Rotate270 => (local.z, width - 1 - local.x),
+                        };
+                        let target = BASE + BlockPos::new(x, local.y, z);
+                        let mut block = original.get_block(pos);
+                        block.rotate(rotation);
+                        world.set_block(target, block);
+                        if let Some(entity) = original.get_block_entity(pos) {
+                            world.set_block_entity(target, entity.clone());
+                        }
+                    }
+                }
+            }
+            let candidate = graph::prepare_candidate_graph(
+                &world,
+                world.get_corners(),
+                &[],
+                &CompilerOptions {
+                    optimize: true,
+                    io_only: true,
+                    ..Default::default()
+                },
+                Default::default(),
+            )
+            .unwrap_or_else(|e| panic!("{name} {rotation:?}: {e}"));
+            assert!(candidate.report.recognition.iter().all(|p| p.is_matched()));
+            assert!(!candidate.report.ports.outputs.is_empty());
+        }
+    }
+}
+
+#[test]
+fn exposed_reset_signals_and_missing_graph_sources_are_explicit_errors() {
+    let (mut world, _, _) = fixture("instant_observer");
+    let cap = BASE + BlockPos::new(0, 3, 5);
+    world.set_block(
+        cap.offset(BlockFace::East),
+        Block::RedstoneLamp { lit: false },
+    );
+    assert!(matches!(
+        graph::prepare_candidate_graph(
+            &world,
+            world.get_corners(),
+            &[],
+            &Default::default(),
+            Default::default()
+        ),
+        Err(graph::GraphPreparationError::ExposedReset { .. })
+    ));
+
+    let mut world = empty();
+    world.set_block(BASE, Block::RedstoneLamp { lit: false });
+    world.set_block(
+        BASE.offset(BlockFace::North),
+        Block::Lever {
+            lever: mchprs_blocks::blocks::Lever::new(
+                mchprs_blocks::blocks::LeverFace::Floor,
+                mchprs_blocks::BlockDirection::North,
+                true,
+            ),
+        },
+    );
+    let before = snapshot(&world, (BASE, BASE));
+    let mut compiler = Compiler::default();
+    assert!(matches!(
+        compiler.compile(
+            &world,
+            (BASE, BASE),
+            Default::default(),
+            vec![],
+            Default::default()
+        ),
+        Err(CompileError::Graph(
+            crate::redpiler::compile_graph::GraphError::MissingSource { .. }
+        ))
+    ));
+    assert!(!compiler.is_active());
+    assert_eq!(snapshot(&world, (BASE, BASE)), before);
+}
+
+#[test]
+fn comparator_side_ports_keep_mobile_supplies_on_the_electrical_side_channel() {
+    use crate::redpiler::compile_graph::{LinkType, NodeType};
+    use mchprs_blocks::blocks::{ComparatorMode, RedstoneComparator};
+    use petgraph::visit::EdgeRef;
+    use petgraph::Direction;
+    let (mut world, _, _) = fixture("instant_observer");
+    let head = BASE + BlockPos::new(0, 1, 6);
+    let pos = head.offset(BlockFace::East);
+    world.set_block(
+        pos,
+        Block::RedstoneComparator {
+            comparator: RedstoneComparator::new(
+                mchprs_blocks::BlockDirection::North,
+                ComparatorMode::Compare,
+                false,
+            ),
+        },
+    );
+    world.set_block(pos.offset(BlockFace::Bottom), Block::Stone {});
+    let candidate = graph::prepare_candidate_graph(
+        &world,
+        world.get_corners(),
+        &[],
+        &Default::default(),
+        Default::default(),
+    )
+    .unwrap();
+    assert!(candidate
+        .report
+        .ports
+        .outputs
+        .iter()
+        .any(|o| o.consumer == pos && o.input == ports::ConsumerInput::ComparatorSide));
+    let id = candidate
+        .graph
+        .node_indices()
+        .find(|&id| candidate.graph[id].block.is_some_and(|(p, _)| p == pos))
+        .unwrap();
+    assert!(candidate.graph.edges_directed(id, Direction::Incoming).any(|edge| edge.weight().ty == LinkType::Side && matches!(candidate.graph[edge.source()].ty, NodeType::MobileSource { alias, .. } if alias == head)));
+}
+
+#[test]
+fn reset_ownership_rejects_cross_group_feedback_and_shared_reset_sources() {
+    use mchprs_blocks::blocks::{Lever, LeverFace};
+    use mchprs_blocks::BlockDirection;
+    let mut world = empty();
+    observer_seed(&mut world);
+    let second = BASE + BlockPos::new(1, 1, 0);
+    for offset in [
+        BlockPos::new(0, 0, 0),
+        BlockPos::new(0, 0, 1),
+        BlockPos::new(0, 0, 2),
+        BlockPos::new(0, 1, 0),
+        BlockPos::new(0, 2, 0),
+    ] {
+        world.set_block(second + offset, world.get_block(BASE + offset));
+    }
+    for pos in [BASE.offset(BlockFace::West), second.offset(BlockFace::East)] {
+        world.set_block(
+            pos,
+            Block::Lever {
+                lever: Lever::new(LeverFace::Floor, BlockDirection::North, true),
+            },
+        );
+        world.set_block(pos.offset(BlockFace::Bottom), Block::Stone {});
+    }
+    let report = analyze_world(&world);
+    assert!(
+        report.recognition.iter().all(|r| r.is_matched()),
+        "{report:?}"
+    );
+    assert!(report
+        .ports
+        .reset_exposures
+        .contains(&ports::ResetExposure {
+            source: BASE.offset(BlockFace::Top),
+            consumer: second,
+        }));
+    assert!(matches!(
+        graph::prepare_candidate_graph(
+            &world,
+            world.get_corners(),
+            &[],
+            &Default::default(),
+            Default::default()
+        ),
+        Err(graph::GraphPreparationError::ExposedReset { .. })
+    ));
+
+    // One torch can physically reach both bases. It cannot be removed as
+    // independently owned reset circuitry for two separate payload protocols.
+    let piston = world.get_block(BASE);
+    let head = world.get_block(BASE.offset(BlockFace::South));
+    let mut world = empty();
+    world.set_block(BASE, Block::Stone {});
+    world.set_block(
+        BASE.offset(BlockFace::Top),
+        Block::RedstoneTorch { lit: false },
+    );
+    world.set_block(
+        BASE.offset(BlockFace::North),
+        Block::Lever {
+            lever: Lever::new(LeverFace::Wall, BlockDirection::North, true),
+        },
+    );
+    for side in [BlockFace::West, BlockFace::East] {
+        let pos = BASE.offset(side);
+        world.set_block(pos, piston);
+        world.set_block(pos.offset(BlockFace::South), head);
+        world.set_block(pos + BlockPos::new(0, 0, 2), Block::RedstoneBlock);
+    }
+    let report = analyze_world(&world);
+    assert!(
+        report.recognition.iter().all(|r| r.is_matched()),
+        "{report:?}"
+    );
+    assert_eq!(report.ports.reset_exposures.len(), 2);
+    assert!(matches!(
+        graph::prepare_candidate_graph(
+            &world,
+            world.get_corners(),
+            &[],
+            &Default::default(),
+            Default::default()
+        ),
+        Err(graph::GraphPreparationError::ExposedReset { .. })
+    ));
+}
+
+#[test]
+fn candidate_graph_requires_context_for_updates_that_do_not_provide_power() {
+    let mut world = empty();
+    observer_seed(&mut world);
+    let lever = BASE.offset(BlockFace::West);
+    world.set_block(
+        lever,
+        Block::Lever {
+            lever: mchprs_blocks::blocks::Lever::new(
+                mchprs_blocks::blocks::LeverFace::Floor,
+                mchprs_blocks::BlockDirection::North,
+                true,
+            ),
+        },
+    );
+    world.set_block(lever.offset(BlockFace::Bottom), Block::Stone {});
+    let bounds = (
+        BASE + BlockPos::new(-1, -3, -3),
+        BASE + BlockPos::new(1, 4, 3),
+    );
+    let report = analyze(&world, bounds, &[], &Default::default(), Default::default()).unwrap();
+    assert!(report.recognition[0].is_matched(), "{report:?}");
+    assert!(report.recognition[0].inputs.outside_bounds.is_empty());
+    assert!(!report.ports.pistons[0].outside_bounds.is_empty());
+    assert!(matches!(
+        graph::prepare_candidate_graph(
+            &world,
+            bounds,
+            &[],
+            &Default::default(),
+            Default::default()
+        ),
+        Err(graph::GraphPreparationError::Piston { failures, .. })
+            if failures.iter().any(|f| matches!(f, families::RecognitionFailure::OutsideBounds { .. }))
+    ));
+}
+
+#[test]
+fn retracted_bud_storage_is_unsupported_entry_without_a_false_head_mismatch() {
+    let (mut world, _, _) = fixture("bud_noninstantinputs");
+    let pos = BASE + BlockPos::new(0, 3, 3);
+    let Block::Piston { mut piston } = world.get_block(pos) else {
+        panic!("expected the fixture's downward BUD piston");
+    };
+    piston.extended = false;
+    world.set_block(pos, Block::Piston { piston });
+    world.set_block(pos.offset(BlockFace::Bottom), Block::RedstoneBlock);
+    world.set_block(pos + BlockPos::new(0, -2, 0), Block::Air);
+    let report = analyze_world(&world);
+    let index = report.pistons.iter().position(|p| p.pos == pos).unwrap();
+    let failures = &report.recognition[index].failures;
+    assert!(failures.contains(&families::RecognitionFailure::RetractedEntry));
+    assert!(failures.contains(&families::RecognitionFailure::UnsampledEntry));
+    assert!(!failures.contains(&families::RecognitionFailure::MismatchedHead));
 }
 
 #[test]

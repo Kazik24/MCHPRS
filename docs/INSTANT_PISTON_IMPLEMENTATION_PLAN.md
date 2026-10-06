@@ -1,6 +1,6 @@
 # Instant piston recognition and Redpiler implementation plan
 
-Implement instant circuits as recognized subassemblies with graph ports, a Boolean computation function, and the small amount of protocol or clock state needed at their boundaries. Ordinary Redpiler components supply inputs and receive outputs. Supported circuits are physically synchronized; the compiled evaluator does not reproduce internal nanoticks, callback traversal, piston event FIFO, or piston animation.
+Implement instant circuits as recognized subassemblies with graph ports, a Boolean computation function, and the small amount of protocol or clock state needed at their boundaries. Ordinary Redpiler components supply inputs and receive outputs. Compiled evaluation uses ideal internal synchronization and does not reproduce internal nanoticks, callback traversal, piston event FIFO, or piston animation. A recognized circuit may compute correctly when its physical Java/interpreter construction fails solely through nanotick misalignment.
 
 The first engineering deliverable is a read-only classifier and circuit report. The first runnable target is a small synchronized circuit with lever inputs and repeater outputs, followed by gates, chains and adders. Runtime activation requires validated input protocols, consumer behavior and restoration to the interpreter. BUD memory and counters are later stages with explicit stored state. PM1, ANPU, general piston mechanics and hybrid interpretation remain outside the first release.
 
@@ -15,7 +15,7 @@ The [supplied lever/repeater revision](INSTANT_PISTON_IO_SCHEMATICS.md) now has 
 | Recognition | Observer reset seeds, supplied torch and dust families, shared payload groups and inhibition diagnostics | Additional proven reset constructions |
 | Inputs | Existing lever, torch, repeater and wire nodes; prepared data and falling triggers | Buttons and other adapters after their pulse protocol is tested |
 | Outputs | Connections between instant subassemblies and certified repeater interfaces | Lamps, BUD updates, comparators, observers and other consumers |
-| Computation | Boolean functions for synchronized waves with strength-aware port decoding | Larger optimizations and additional certified families |
+| Computation | Boolean functions for declared logical waves with strength-aware port decoding and ideal internal synchronization | Larger optimizations and additional certified families |
 | State | Previous strengths, accepted wave identity, readiness and externally significant reset deadlines | BUD bits, sampling transactions and counter clock state |
 | Movement | Recognition and restoration of supported single-payload mechanisms and shared groups | Ordinary pistons, longer payload lines and complex mechanics |
 | Rendering | Ordinary visible inputs and useful outputs with infrequent updates | Optional additional display ports |
@@ -25,7 +25,7 @@ A logical one at an instant event port is `previous_strength > 0 && current_stre
 
 New external data or a new computation during reset is outside the initial supported protocol. Internal reset pulses remain part of the accepted response. Rearming requires a declared allowed sequence; returning a piston to extended does not by itself prove readiness. If the new fixtures need a deliberate rearm transition while an oscillator is active, specify it as part of their protocol rather than inferring it from old undefined cases.
 
-Negation is an inhibit guard, not a standalone physical NOT primitive. Algebraic inversion may appear in the expression representation. Admission rules establish that the physical construction and receiving consumer satisfy the synchronized contract. Runtime retains logical dependencies and required external timing without an internal operation-order graph.
+Negation is an inhibit guard, not a standalone physical NOT primitive. Algebraic inversion may appear in the expression representation. Admission rules establish the logical function, wave grouping and receiving consumer contract; physical synchronization is a separate compatibility property. Internal delayed-inhibit races are normalized rather than rejected for misalignment alone. Runtime retains logical dependencies and required ordinary-component timing without an internal operation-order graph. Both full-net and optimized compiled plans use this semantics.
 
 ## Existing evidence and implementation starting point
 
@@ -42,7 +42,7 @@ The current pack has 20 basic or diagnostic dossiers and two deferred CPU invent
 | AND_3 responds differently to AB and BA source operations | Preserve independent power/update sampling; do not lower unconditional AND |
 | NOT_1 has a raw-wire transient and a separately tested repeater probe | Admit consumer-specific behavior; final wire levels are insufficient |
 | XOR_Simple has reset pulses beyond its first-wave XOR projection | A pure XOR formula needs a certified boundary response |
-| NANOTICK_EXAMPLE accepts activation before delayed inhibition | Reject this construction and retain its diagnostic |
+| NANOTICK_EXAMPLE accepts activation before delayed inhibition | Retain its physical diagnostic; once logical ports/protocol are certified, test that compiled inhibition suppresses the activation rather than requiring physical equality |
 | Corrected ADDER_11BITS passes current arithmetic and Java projections | Use current hashes/coordinates; general reuse and adapters remain separate |
 | COUNTER_BASIC stores counts 1 through 16 after one generator release | Retain memory/clock state; clear, restart, high carry and wrap remain unverified |
 
@@ -170,11 +170,11 @@ A payload can emit power, conduct a primitive strong source, change dust shape/s
 
 For fixed eligible dust paths retain guarded `max(0, source_strength - attenuation)` contributions until threshold reduction is justified. Strength one is not equivalent to fifteen on a long wire. Unsupported analog consumers or changing external geometry remain unresolved boundaries.
 
-### 6 Assign functions and synchronization eligibility
+### 6 Assign functions and physical compatibility
 
-Use family interface recipes for prepared-bit, event and output decoders. Derive small expressions/tables and check them against fixture episodes. Compose validated functions for larger builds; avoid whole-build exponential tables.
+Use family interface recipes for prepared-bit, event and output decoders. Derive small expressions/tables and check them against logical expectations and physically compatible fixture episodes. Compose validated functions for larger builds; avoid whole-build exponential tables.
 
-Certification includes the supported synchronized construction and consumer protocol. Recognition may check composition/dependency depth to exclude known delayed-inhibit arrangements; it does not promise a general nanotick solver. Preserve AND_3's independent sampling/history dependency.
+Certification includes a known logical function, state/update ownership and consumer protocol. Physical composition/dependency depth may explain a mismatch but is not a delayed-inhibit admission guard. Classify known nanotick-only divergence separately from unsupported logic, reset or payload ownership; no general nanotick solver is required. Preserve AND_3's independent sampling/history dependency.
 
 ### 7 Produce complete classifications
 
@@ -233,7 +233,7 @@ Capture current-binary interpreter and independent Java episodes: single events,
 
 ### M1 Add the snapshot and diagnostic report
 
-**Implementation status (2026-10-06):** Rust live inventory, bounded/cancellable analysis, head/payload diagnostics, conservative reset seeds and possible shared-payload groups are implemented in [redpiler/analysis](../crates/core/src/redpiler/analysis/mod.rs). `/rp analyze` has help, completion and a read-only permission. Structured reports distinguish candidates from executable support. Both the original 20 small fixtures and the 22 lever/repeater fixtures are regression inputs; inventories are deterministic and preserve physical state and queued work. Full context/dependency closure and family certification belong to M2/M3 and remain pending.
+**Implementation status (2026-10-06):** Rust live inventory, bounded/cancellable analysis, head/payload diagnostics, conservative reset seeds and possible shared-payload groups are implemented in [redpiler/analysis](../crates/core/src/redpiler/analysis/mod.rs). `/rp analyze` has help, completion and a read-only permission. Structured reports distinguish candidates from executable support. Both the original 20 small fixtures and the 22 lever/repeater fixtures are regression inputs; inventories are deterministic and preserve physical state and queued work. Initial reset guards, dependency extraction and candidate graph preparation are described under M2/M3 below. Executable family certification remains pending.
 
 The typed boundary foundation is implemented in [instant/contract.rs](../crates/core/src/redpiler/instant/contract.rs): validated strengths, attenuation, prepared-data polarity, falling-trigger edges, electrical output aliases and an independent sampling channel. Requests require an explicit recheck; restoring power cancels acceptance, compiling a low input creates no edge, and requests during reset are discarded. These types do not yet connect a recognized physical region to the runtime or certify a family waveform.
 
@@ -251,6 +251,12 @@ Report all bases/observers, head consistency, pending work, seeds, unknowns and 
 
 ### M2 Implement matchers and payload groups
 
+**Rust status (2026-10-06):** [families.rs](../crates/core/src/redpiler/analysis/families.rs) implements structural matches for observer-above feedback, torch control, under-head dust and lateral dust, including the supplied downward constructions. Entry requires an extended sticky base, matching stationary head, one redstone payload and supported entity-free context. Guards check conducting fixed supports, source facing, existing or pending reset activity, permanent power, additional reset writers and return paths. Torch control also checks attenuation: removing base power must remove the support power that keeps its reset torch off. Conducting inhibition payloads and unrecognized reset families remain outside this initial subset.
+
+Payload groups retain all near/far positions and possible owners. The reset-supply check considers each permitted owner position; independent observer feedback passes, while dust supplied only at another owner's vacated position cannot establish closure. The legal shared OR and supplied illegal reset-starvation example receive different results. This is a structural reset-supply condition; logical consumer contracts, physical compatibility/reachability and restoration still require their later acceptance checks. Physical synchronization does not become an executable admission guard.
+
+[topology.rs](../crates/core/src/redpiler/analysis/topology.rs) bounds and cancels electrical searches and owner checks. The default dependency budget is 4,194,304 steps, separate from the live-cell budget. Exhaustion returns an error rather than a partial certificate. Power-emission geometry is shared with the interpreter and ordinary graph search in [redstone/power.rs](../crates/core/src/redstone/power.rs).
+
 Implement observer matching first, then supplied torch/dust and vertical definitions. Add cap/support/head checks, movement positions, group ownership and reset closure. Keep geometry separate from logical expressions.
 
 Test close mutations: reversed observers, changed caps, absent supports, blocked destinations, additional payloads and outside writers. Cover forced-powered/missing-reset cases, legal shared OR and illegal group rejection.
@@ -259,9 +265,27 @@ Test close mutations: reversed observers, changed caps, absent supports, blocked
 
 ### M3 Extract ports and dependency regions
 
+**Rust status (2026-10-06):** Analysis schema 2 includes weighted direct/QC source dependencies, retained wire aliases, independent wire/head notifications, mobile-group connections and ordinary consumer interfaces. [ports.rs](../crates/core/src/redpiler/analysis/ports.rs) queries actual receiving faces and distinguishes comparator side inputs from main inputs. A BUD's remote data wire and nearby sampling update remain separate channels. Exposed reset sources are reported even when they do not carry a mobile payload's electrical output. Prepared-data/trigger/inhibit role lowering, conducting payload effects, physical compatibility reporting and storage/clock region composition remain pending.
+
+[graph.rs](../crates/core/src/redpiler/analysis/graph.rs) prepares a candidate graph from a fresh live analysis. It requires the supported structural matches, reset-supply closure and ownership of every observer; it rejects pending piston work, exposed reset signals and missing power or update context. A reset that electrically feeds a different payload group, or is shared by distinct groups, needs a joint protocol and is rejected. The graph uses `InstantInput` sinks and `MobileSource` aliases. Input strengths are initialized from their actual incoming sources after attenuation. Every mobile position retains its group identity and initial strength; mobile redstone blocks never become ordinary constants. Reset internals are excluded from ordinary identification, and consumer ports remain retention roots under `--io-only`. Boundary nodes survive optimization without being mistaken for physical blocks.
+
+Graph passes now return structured errors. Missing sources, cancellation and unsupported instant export fail preparation. The Direct backend explicitly rejects boundary nodes until region execution exists; it also validates strengths and fan-in before initializing packed counters. Production `/rp compile` continues to reject piston worlds and preserve interpreter ownership. Candidate graph construction supplies the M3 interface/ownership checks; it does not complete M4 programs or M5 backend lowering.
+
+Manual review on an otherwise empty plot, after strict paste of `INSTANT_TORCH.schem` or `INSTANT_OBSERVER.schem`:
+
+```text
+/rp analyze
+/rp analyze --graph
+/rp analyze --graph --optimize --io-only
+```
+
+The single-instant graph has one instant input and two mobile source aliases, with one matched reset mechanism, one group with reset-supply closure and one ordinary consumer interface. Optimization can reduce ordinary nodes while retaining those boundaries. The plot remains interpreted throughout. The legal OR prepares a graph; the supplied illegal OR reports missing reset-supply closure. Help, completion and the existing read-only analysis permission cover the graph option. Full structured reports and graph details use DEBUG logging, which is available in debug builds; release builds retain the chat summaries and rejection reasons. Candidate export is disabled.
+
+Validation for this stage: 35 Redpiler tests, 96 redstone tests and six command/security tests pass, with two explicit capture/reference tests ignored. Deterministic read-only inventories cover 42 small fixtures. Candidate graphs cover eight supplied constructions across all four optimize/io-only combinations; seven constructions also pass all three additional horizontal rotations. Mutation checks cover support removal, reset writers/activity, forced power, bounds, illegal ownership outcomes and exposed reset signals. Additional cases cover reset feedback between groups, shared reset ownership, independent update context and valid retracted BUD storage without a false head mismatch. These tests establish graph preparation and unchanged interpreted/ordinary compiled behavior; they do not establish compiled instant timing, handoff equivalence or a runtime speedup.
+
 Implement directional power/QC, qualifying updates, shared resolver, reverse consumer searches and guarded payload effects. Separate data, trigger, inhibit and sampling channels. Compose compatible groups and stop at timed/stored-state boundaries.
 
-Detect unsupported overlap, ordinary pistons, exposed observers, bounds crossings and data cycles. Explain NOT's consumer requirement, AND_3 sampling and delayed-inhibit rejection in reports.
+Detect unsupported overlap, ordinary pistons, exposed observers, bounds crossings and data cycles. Explain NOT's consumer requirement, AND_3 sampling and any known delayed-inhibit physical incompatibility in reports; that incompatibility alone does not reject logical lowering.
 
 **Acceptance:** reviewed fixture maps match ports, faces, sources, groups and consumers. Interfaces agree with optimization enabled/disabled. Represent wires feeding both another instant and a repeater correctly.
 
@@ -289,7 +313,7 @@ Implement repeater response/reset/rearm recipes and one timing coordinator for r
 
 Test restore-before-launch, positive changes, permitted strength-one falling, held zero, allowed roots, depth and repeated ready computations. Compare repeater/downstream response at each boundary through reset. One probe does not certify other consumers.
 
-**Acceptance:** interpreted, independent Java and compiled observations agree for supported repeated lever/repeater episodes. Chain length adds no computation ticks. Unsupported histories have defined compiler recovery without becoming conformance cases.
+**Acceptance:** interpreted, independent Java and compiled observations agree for physically synchronized compatible repeated lever/repeater episodes. For established nanotick-only misalignment, compiled observations follow the separately declared logical expectation and may intentionally differ from physical execution. Reference and optimized compiled plans agree in both categories. Chain length adds no computation ticks. Unsupported histories have defined compiler recovery without becoming conformance cases.
 
 ### M7 Implement materialization and lifecycle integration
 
@@ -341,7 +365,7 @@ Integrate memory with functions/coordinator and preserve it through optimization
 
 Recognition and executable eligibility are separate. Initially every active component is owned by ordinary Redpiler, an accepted instant program, or the later memory/clock implementation. Unowned interpreter work prevents activation even when useful groups can be reported.
 
-Within supported protocols preserve consumers, consequential transitions and relevant timing through the episode. Internal animation/display may disappear. Logical invalid windows remain explicit; ordinary consumers receive their certified waveform rather than an artificial invalid electrical signal.
+Within supported protocols preserve the logical consumer contract, consequential transitions and relevant timing through the episode. Physical compatibility episodes additionally require interpreter/Java equality; known internal misalignment may be normalized. Internal animation/display may disappear. Logical invalid windows remain explicit; ordinary consumers receive their declared waveform rather than an artificial invalid electrical signal.
 
 Outside the supported input protocol, diagnose and materialize/reset before interpretation where reconstruction permits. Undefined circuit behavior does not permit corrupted queues or lost payloads. Families without a safe recovery route remain analysis-only.
 
@@ -361,7 +385,7 @@ Structural edits require materialization and reset/reanalysis. Mapped lever-stat
 | Failures | Rejection, cancellation and recovery preserve ownership |
 | Stateful extension | Independent data/update tests, read rules and clock preservation |
 
-Keep interpreter tests/frozen references. Compiled tests compare an explicit boundary projection; removing internal movements does not require equal pico traces. Fine traces diagnose recognition or boundary failures, rather than defining compiled operation counts.
+Keep interpreter tests/frozen references. Compiled tests compare an explicit logical boundary projection; removing internal movements does not require equal pico traces. Physically synchronized episodes retain their independent Java comparison. Misaligned episodes use a separately justified logical oracle and preserve the differing physical trace as intentional incompatibility. Fine traces diagnose recognition or boundary failures, rather than defining compiled operation counts. A mismatch with no established cause remains unresolved, including the current XOR reset discrepancy.
 
 Use focused checks appropriate to the code change. Existing commands include:
 
@@ -386,7 +410,7 @@ Backend propagation/scheduling changes require broader ordinary redstone checks.
 | Risk | Response |
 | --- | --- |
 | Every observer-equipped piston treated as instant | Match caps, updates, payloads, support, writers and protocol |
-| Synchronization assumed without admission rules | Validate construction/composition and retain rejection cases |
+| Internal synchronization normalization mistaken for physical conformance | Establish logical ports/protocol independently; report physical compatibility separately and retain intentional-divergence traces |
 | Falling events confused with held zero | Initialize strengths and emit only accepted wave events |
 | Unrelated roots combined | Specify trigger sampling and finalization |
 | Correct formula but different repeater behavior | Validate loaded fixtures through computation/reset |

@@ -11,7 +11,7 @@ mod unreachable_output;
 
 use crate::world::World;
 
-use super::compile_graph::CompileGraph;
+use super::compile_graph::{CompileGraph, GraphError};
 use super::task_monitor::TaskMonitor;
 use super::{CompilerInput, CompilerOptions};
 use std::sync::Arc;
@@ -47,7 +47,7 @@ impl<'p, W: World> PassManager<'p, W> {
         options: &CompilerOptions,
         input: &CompilerInput<'_, W>,
         monitor: Arc<TaskMonitor>,
-    ) -> CompileGraph {
+    ) -> Result<CompileGraph, GraphError> {
         let mut graph = CompileGraph::new();
 
         // Add one for the backend compile step
@@ -61,14 +61,14 @@ impl<'p, W: World> PassManager<'p, W> {
             }
 
             if monitor.cancelled() {
-                return graph;
+                return Err(GraphError::Cancelled);
             }
 
             trace!("Running pass: {}", pass.name());
             monitor.set_message(pass.status_message().to_string());
             let start = Instant::now();
 
-            pass.run_pass(&mut graph, options, input);
+            pass.run_pass(&mut graph, options, input)?;
 
             trace!("Completed pass in {:?}", start.elapsed());
             trace!("node_count: {}", graph.node_count());
@@ -76,7 +76,7 @@ impl<'p, W: World> PassManager<'p, W> {
             monitor.inc_progress();
         }
 
-        graph
+        Ok(graph)
     }
 }
 
@@ -86,7 +86,7 @@ pub trait Pass<W: World> {
         graph: &mut CompileGraph,
         options: &CompilerOptions,
         input: &CompilerInput<'_, W>,
-    );
+    ) -> Result<(), GraphError>;
 
     /// This name should only be use for debugging purposes,
     /// it is not a valid identifier of the pass.

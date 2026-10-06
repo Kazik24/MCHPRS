@@ -29,14 +29,14 @@ not apply. This reader is not the complete LuckPerms engine.
 
 ## Rank policy
 
-| Database group | Display          | Current MROWW access                                             |
-| -------------- | ---------------- | ----------------------------------------------------------------- |
-| `admin`        | Bold red `[A]`   | All permissions, including other/unowned plots and administration |
-| `moderator`    | Bold green `[M]` | All permissions, including other/unowned plots and administration |
-| `engineer`     | Cyan `[I]`       | Edit own plots and use ordinary commands                          |
-| `expert`       | Purple `[E]`     | Edit own plots and use ordinary commands                          |
-| `advanced`     | Orange `[Z]`     | Edit own plots and use ordinary commands                          |
-| `builder`      | Yellow `[B]`     | Own-plot building and ordinary features; history disabled         |
+| Database group | Display          | Current MROWW access                                                |
+| -------------- | ---------------- | ------------------------------------------------------------------- |
+| `admin`        | Bold red `[A]`   | All permissions, including other/unowned plots and administration   |
+| `moderator`    | Bold green `[M]` | All permissions, including other/unowned plots and administration   |
+| `engineer`     | Cyan `[I]`       | Edit own plots and use ordinary commands                            |
+| `expert`       | Purple `[E]`     | Edit own plots and use ordinary commands                            |
+| `advanced`     | Orange `[Z]`     | Edit own plots and use ordinary commands                            |
+| `builder`      | Yellow `[B]`     | Own-plot building and ordinary features; history disabled           |
 | `default`      | Gray `[G]`       | Join, chat and `/speed`; spectator mode, no edits or other commands |
 
 The existing database prefixes supply the exact tag and nickname colors. All
@@ -65,7 +65,7 @@ inheritance were retained. User overrides can deliberately change this policy.
 
 | Permission                            | Controls                                                                                               |
 | ------------------------------------- | ------------------------------------------------------------------------------------------------------ |
-| `mchprs.access.join`                  | Join MROWW after authentication                                                                       |
+| `mchprs.access.join`                  | Join MROWW after authentication                                                                        |
 | `mchprs.access.chat`                  | Send ordinary chat                                                                                     |
 | `mchprs.access.commands`              | Run any backend command; command-specific grants are also required                                     |
 | `mchprs.build`                        | Base permission to edit an owned plot                                                                  |
@@ -79,7 +79,7 @@ inheritance were retained. User overrides can deliberately change this policy.
 | `mchprs.build.commandblock`           | Open/update command blocks; also requires the command-block editing node below                         |
 | `mchprs.inventory.creative`           | Creative inventory changes and block picking                                                           |
 | `mchprs.plots.limit.<count>`          | Maximum owned plots; default is one                                                                    |
-| `mchprs.plots.limit.unlimited`        | Remove the ownership limit; granted only to Admin/Moderator                                             |
+| `mchprs.plots.limit.unlimited`        | Remove the ownership limit; granted only to Admin/Moderator                                            |
 
 Direct world actions require the base build permission, the action permission,
 and ownership, plot membership or the corresponding other/unowned permission. WorldEdit and
@@ -101,26 +101,26 @@ one. Paper's existing `plots.plot.*` nodes are not used in dedicated MCHPRS mode
 All commands also require `mchprs.access.commands`. Aliases use the same
 permission as their canonical command.
 
-| Command                        | Permission(s)                                                                                    |
-| ------------------------------ | ------------------------------------------------------------------------------------------------ |
-| `/help`, `/version`            | `mchprs.commands.help`, `mchprs.commands.version`                                                |
-| `/git` (all subcommands and sword diff inspection) | `mchprs.commands.git` |
-| `/tp`, `/teleport`             | `mchprs.commands.teleport`                                                                       |
-| `/speed`                       | `mchprs.commands.speed`                                                                          |
-| `/gamemode`, `/gmc`, `/gmsp`   | `mchprs.commands.gamemode`, plus `.creative` or `.spectator`                                     |
-| `/tps` (`/rtps`)               | `mchprs.commands.rtps.view` or `.set`; `timings` uses `.view`                                    |
-| `/wsr`, `/worldsendrate`       | `mchprs.commands.worldsendrate.view` or `.set`                                                   |
-| `/screenonly`                  | `mchprs.commands.screenonly`, plus `.view` or `.set`                                             |
-| `/piston_anim`, `/bisdon_anim` | `mchprs.commands.piston_anim`, plus `.view` or `.set`                                            |
-| `/rp`, `/redpiler`             | `mchprs.commands.redpiler.compile`, `.reset`, `.inspect` or `.help`                              |
-| `/adv` (`/radv`, `/radvance`)   | `mchprs.commands.radvance`                                                                       |
-| `/toggleautorp`                | `mchprs.commands.toggleautorp`                                                                   |
-| `/curse`, `/bless`             | `mchprs.commands.curse`, `mchprs.commands.bless`; granted only to Admin/Moderator                |
-| `/rhistory`                    | `mchprs.commands.rhistory`, plus `.status`, `.enable`, `.disable`, `.limit.view` or `.limit.set` |
-| `/back` (`/rback`)              | `mchprs.commands.rback`                                                                          |
-| `/say`, `/tellraw`             | `mchprs.commands.say`, `mchprs.commands.tellraw`                                                 |
-| `/stop`, `/whitelist`          | `mchprs.commands.stop`, `mchprs.commands.whitelist`                                              |
-| Command-block editor           | `mchprs.commands.commandblock.edit`                                                              |
+| Command                                            | Permission(s)                                                                                    |
+| -------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
+| `/help`, `/version`                                | `mchprs.commands.help`, `mchprs.commands.version`                                                |
+| `/git` (all subcommands and sword diff inspection) | `mchprs.commands.git`                                                                            |
+| `/tp`, `/teleport`                                 | `mchprs.commands.teleport`                                                                       |
+| `/speed`                                           | `mchprs.commands.speed`                                                                          |
+| `/gamemode`, `/gm`, `/gmc`, `/gmsp`                | `mchprs.commands.gamemode`, plus `.creative`, `.adventure`, or `.spectator`                       |
+| `/tps` (`/rtps`)                                   | `mchprs.commands.rtps.view` or `.set`; `timings` uses `.view`                                    |
+| `/wsr`, `/worldsendrate`                           | `mchprs.commands.worldsendrate.view` or `.set`                                                   |
+| `/screenonly`                                      | `mchprs.commands.screenonly`, plus `.view` or `.set`                                             |
+| `/piston_anim`, `/bisdon_anim`                     | `mchprs.commands.piston_anim`, plus `.view` or `.set`                                            |
+| `/rp`, `/redpiler`                                 | `mchprs.commands.redpiler.compile`, `.reset`, `.inspect` or `.help`                              |
+| `/adv` (`/radv`, `/radvance`)                      | `mchprs.commands.radvance`                                                                       |
+| `/toggleautorp`                                    | `mchprs.commands.toggleautorp`                                                                   |
+| `/curse`, `/bless`                                 | `mchprs.commands.curse`, `mchprs.commands.bless`; granted only to Admin/Moderator                |
+| `/rhistory`                                        | `mchprs.commands.rhistory`, plus `.status`, `.enable`, `.disable`, `.limit.view` or `.limit.set` |
+| `/back` (`/rback`)                                 | `mchprs.commands.rback`                                                                          |
+| `/say`, `/tellraw`                                 | `mchprs.commands.say`, `mchprs.commands.tellraw`                                                 |
+| `/stop`, `/whitelist`                              | `mchprs.commands.stop`, `mchprs.commands.whitelist`                                              |
+| Command-block editor                               | `mchprs.commands.commandblock.edit`                                                              |
 
 Changing plot timing, render settings, redpiler state, history or curse state
 also requires permission to edit the current plot. Viewing settings does not
@@ -190,15 +190,15 @@ For a custom cap, deny any larger inherited numeric nodes and grant the desired
 node in `server=mchprs`. To give a finite cap to staff, also deny their unlimited
 node. As with other permission changes, the cache refreshes within 30 seconds.
 
-| `/plot` subcommands            | Permission            |
-| ------------------------------ | --------------------- |
-| `info`, `i`                    | `mchprs.plots.info`   |
-| `claim`, `c`, `add`, `remove`  | `mchprs.plots.claim`  |
-| `auto`, `a`                    | `mchprs.plots.auto`   |
+| `/plot` subcommands                         | Permission            |
+| ------------------------------------------- | --------------------- |
+| `info`, `i`                                 | `mchprs.plots.info`   |
+| `claim`, `c`, `add`, `remove`               | `mchprs.plots.claim`  |
+| `auto`, `a`                                 | `mchprs.plots.auto`   |
 | `visit`, `v`, `teleport`, `tp`, `home`, `h` | `mchprs.plots.visit`  |
-| `middle`                       | `mchprs.plots.middle` |
-| `lock`, `unlock`               | `mchprs.plots.lock`   |
-| `select`, `sel`                | `mchprs.plots.select` |
+| `middle`                                    | `mchprs.plots.middle` |
+| `lock`, `unlock`                            | `mchprs.plots.lock`   |
+| `select`, `sel`                             | `mchprs.plots.select` |
 
 `/p home` (or `/p h`) visits your first claimed plot, ordered by claim ID.
 `/p add <nick>` and `/p remove <nick>` manage members of the current plot. They
