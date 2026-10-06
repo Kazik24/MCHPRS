@@ -4,6 +4,51 @@
 
 This characterization uses the Rust pipeline at revision `b2dd24a2ee80ae67b03e9501605e69f5735fda6f`, with test-only additions whose exact source hashes are recorded beside the captures. The author confirms that FPU uses IEEE input encoding and custom arithmetic behavior, and requests compilation analysis only. No mathematical FPU output is certified. RILAX observations are MCHPRS interpreter evidence; they are not independent Java conformance claims.
 
+## Compiler corrections and manual repairs (2026-10-06)
+
+The initial captures and diagnostic counts later in this report are preserved as historical evidence. This section describes the subsequent compiler corrections. Both original schematic binaries still reject compilation; their geometry and inventories have not been repaired or resaved.
+
+| Corrected compiler issue | Current behavior and measured effect |
+| --- | --- |
+| Quartz/smooth-quartz payload whitelist | Both use the existing conditional conductor implementation. FPU's 32 quartz and 21 smooth-quartz actors no longer fail material checks; its one moving target remains unsupported. |
+| Fixed furnace reset support | A conducting support with a matching furnace inventory is admitted only when it is outside all possible payload positions. Moving entities, mismatched entity types, extra reset writers and pending reset work remain rejected. FPU's 285 support-entity failures disappear. |
+| Comparator reading a fixed inventory | A direct stationary override owns the main input instead of electrical power through that block. Port discovery and response extraction leave that main channel in the ordinary graph; side inputs remain separate. This prevents false reset exposures and conditional override errors. Moving rear conductors and transported overrides remain unsupported. |
+| Divergent payload diagnostics | Inventory diagnostics now use the same material predicate as recognition/extraction. RILAX's 64 concrete read gates lose the false `UnsupportedPayload` diagnosis. The remaining 56 are empty ordinary update generators, which need a different execution protocol. |
+| Misleading ordinary-piston rejection | Ordinary actors are checked against the supported clock construction before the clock-count check. RILAX now reports the unsupported update-sampler boundary at a specific actor. |
+| Missing/incompatible head error | The compiler names both the extended base and required head cell, separately from moving-context entity errors. Geometry guards remain strict. |
+
+The compact [follow-up measurements](../test_data/piston-research/references/material-legalization.json) and [source hashes](../test_data/piston-research/references/material-legalization.source.json) record the unchanged fixture hashes and both 1×/8× diagnostic attempts. FPU now has 5,702 locally matched mechanisms, up from 5,553, and one unsupported material actor, down from 54. This does not certify those mechanisms' whole-region reset protocol.
+
+The first FPU compilation failure remains at local base `(123,8,41)`, but now identifies **another reset writer**, the observer at `(124,10,41)`, rather than rejecting the furnace at `(123,10,41)` for its inventory. The reset source above the base is `(123,9,41)`. Both budgets report `AdditionalResetWriter` and `NoResetPath`. Additional-writer observations increase from 256 to 402 because removing the earlier entity guard exposes previously unreachable checks. These counts are compiler proof failures, not a request to delete 402 sources.
+
+At 1×, isolated FPU extraction still exceeds its 1,024-actor budget. At 8× it now passes the former quartz group failure and stops at the author-confirmed broken retracted actor `(161,9,39)`, with `not a ready single-payload mechanism`. This probe deliberately bypasses executable entry/reset admission. It does not establish a compiled graph or arithmetic result.
+
+RILAX's first unsupported ordinary actor is `(1,9,11)`. Its independent head notifications, both-edge sampling and retained read-gate state still require a compiled protocol. Changing it to a Counter-style clock would change the circuit's behavior.
+
+### Locations that need schematic repair
+
+All positions below are **selection-local from the saved minimum**, not relative to a sign or the player's paste anchor. World positions are `minimum + local position`. Subtract the loader displacement from a paste anchor to obtain that minimum: FPU `(5,38,74)`, RILAX `(18,13,3)`.
+
+| Build | Broken location | Required repair |
+| --- | --- | --- |
+| RILAX | Missing cell `(13,11,2)`, support `(13,11,1)` | Restore the missing lit redstone wall torch facing **South**. The derived one-block regression proves that disabled address preparation then preserves word one and its `0xA5` write/read succeeds. Save this as a new revision. |
+| FPU | Downward bases `(155,28,19)`, `(158,28,19)` | Restore their complete extended assemblies; missing heads belong at `(155,27,19)`, `(158,27,19)`. |
+| FPU | Downward bases `(125,28,23)`, `(128,28,23)`, `(137,28,23)`, `(140,28,23)`, `(149,28,23)`, `(152,28,23)` | Missing heads have the same X/Z and **y=27**. |
+| FPU | Downward bases `(122,28,25)`, `(128,28,25)`, `(134,28,25)`, `(140,28,25)`, `(146,28,25)`, `(152,28,25)`, `(158,28,25)` | Missing heads have the same X/Z and **y=27**. |
+| FPU | North-facing base `(58,34,95)` | Restore the assembly with its stationary head at `(58,34,94)`. |
+| FPU | Retracted orange-wool bases `(161,9,39)`, `(161,9,51)` | Restore a valid ready extended state. The intended head cells are `(161,8,39)`, `(161,8,51)` and far payload cells `(161,7,39)`, `(161,7,51)`. The saved near cells contain wool. Do not insert a head without also restoring matching base/payload state. |
+
+The sixteen missing heads and two retracted entries are author-confirmed broken FPU mechanisms. The compiler must not silently manufacture those repairs. RILAX's three unsampled saved memory bits are valid storage history and must remain intact; they are not additional manual repairs.
+
+The following locations still need compiler research rather than automatic schematic edits:
+
+- FPU's extra observer writer `(124,10,41)`: obtain/derive the joint reset protocol around base `(123,8,41)`; the furnace inventory itself now requires no workaround.
+- FPU's moving target, base `(12,27,74)`, payload `(12,27,76)`: preserve its special dust connection/emission behavior until a material protocol supports it.
+- Other dust/horizontal-observer reset paths, shared ownership and FPU extraction scale: keep the current guards while implementing their missing proofs.
+- For later observable FPU acceptance, attach marked consumers or define retained observation ports for result dust `(170,5,32+4i)`, `i=0..15`, and the desired flag nets. This is separate from repairing geometry; FPU arithmetic remains outside this study.
+
+Validation adds six regressions and expands the existing conductor/comparator comparisons to quartz and smooth quartz. Furnace tests compare ordinary consumer waveforms with MCHPRS, retain strengths `0,1,4,6,12,15` and full inventories through a 24-tick computation plus 12 ticks after handoff, and exercise all optimize/I/O flag combinations. A separate test changes electrical power above a fixed inventory without changing its comparator main output. Negative mutations preserve transactional rejection of invalid entities, moving supports, additional writers, pending resets and broken heads. The complete core suite passed **399 tests, zero failures and nine ignored**, including all 77 active Redpiler tests. The server executable was not rebuilt.
+
 ## Download and evidence
 
 Both binaries were downloaded from `ssh urmom`, `/srv/mchprs/data/schems`, and verified against hashes computed on that host. The original binaries remain unchanged. The saved [download manifest](../test_data/piston-research/download-manifest.json) records their provenance.
@@ -82,7 +127,7 @@ Strict Rust import preserves the following furnace override histogram; an active
 
 These values cannot all become Boolean fifteen. A strength-one source can disappear after one dust step; comparison against side power depends on the actual magnitude. The inventory identifies 975 distinct ordinary power-source positions in the current topology report, although it does not prove that every source survives response extraction or optimization.
 
-## FPU compilation findings
+## Initial FPU compilation findings
 
 Read-only analysis succeeds at the default budget: 966,656 occupied-section cells inspected and 2,338,194 dependency steps, below its 4,194,304-step budget. It reports 5,553 locally matched reset mechanisms. Local matching is not an executable certificate, and the analysis issues reporting every piston/observer as needing a runtime owner are provisional ownership requirements.
 
@@ -93,9 +138,9 @@ piston at BlockPos { x: 163, y: 38, z: 81 } has an unverified observer return pa
 [BlockEntity { pos: BlockPos { x: 163, y: 40, z: 81 } }, NoResetPath]
 ```
 
-With the capture origin removed, this is piston `(123,8,41)`, observer `(123,9,41)` and furnace cap `(123,10,41)`. [families::support](../crates/core/src/redpiler/analysis/families.rs) rejects any block entity on reset support. The furnace is fixed and conducting, but its inventory entity triggers that blanket guard. This first failure is a compiler limitation, not evidence that a furnace was transported or that the schematic loader lost its inventory. The full report contains 285 distinct entity-support failures of this kind.
+With the capture origin removed, this is piston `(123,8,41)`, observer `(123,9,41)` and furnace cap `(123,10,41)`. At the captured baseline, [families::support](../crates/core/src/redpiler/analysis/families.rs) rejected any block entity on reset support. The furnace is fixed and conducting, but its inventory entity triggered that blanket guard. This first failure was a compiler limitation, not evidence that a furnace was transported or that the schematic loader lost its inventory. The initial report contains 285 distinct entity-support failures of this kind.
 
-Permitting a fixed furnace cap needs a specific preservation argument: its electrical properties, override value, observer route and other writers must remain correct, and its entity must survive reset. Removing all entity checks would also admit unsupported transported containers. The current [program preparation](../crates/core/src/redpiler/instant/program.rs) does not distinguish those cases adequately.
+Permitting a fixed furnace cap needs a specific preservation argument: its electrical properties, override value, observer route and other writers must remain correct, and its entity must survive reset. Removing all entity checks would also admit unsupported transported containers. The follow-up above supplies this narrow stationary-support distinction while retaining [program preparation](../crates/core/src/redpiler/instant/program.rs) checks on moving entities.
 
 ### Additional failures behind the first error
 
@@ -234,7 +279,7 @@ Selecting write address one while UPDATE EN is off extends its seven update pist
 
 A separate Rust test adds only that torch to a fresh in-memory world, preserving the downloaded file. This derived probe restores disabled address preparation, writes `0xA5` to word one and reads it correctly. It isolates the missing torch as a sufficient cause for the tested failure. It does not establish a hash or complete validation for a corrected author revision.
 
-## Why RILAX does not compile
+## Initial RILAX compilation failures
 
 Default and 8× optimized compile attempts both return:
 
@@ -248,11 +293,13 @@ After that guard, current preparation would also require each sticky mechanism t
 
 The current topology report has 184 groups, 64 note-block consumer interfaces and no reset exposures. Every local mechanism has `NoResetPath`; this matcher has not established the bank's enable-driven storage/read protocol. That classification does not mean memory must reset itself after writing.
 
-There is also a diagnostic inconsistency: the legacy `analysis::describe` whitelist still labels the 64 gray-concrete read payloads `UnsupportedPayload`, although the shared family/extractor whitelist supports concrete. Its 120 such diagnostics consist of those 64 conductors plus the 56 ordinary empty samplers. Executable/family recognition reports only the 56 unsupported ordinary payloads. Align the diagnostic whitelist before using these counts to guide users. The compiled output-conductor support is already useful infrastructure for the read bus; general stored occupancy and independent notification adapters are still missing.
+The initial report also exposed a diagnostic inconsistency: the legacy `analysis::describe` whitelist labeled the 64 gray-concrete read payloads `UnsupportedPayload`, although the shared family/extractor whitelist supported concrete. Its 120 such diagnostics consisted of those 64 conductors plus the 56 ordinary empty samplers. The follow-up aligns that diagnostic predicate with recognition/extraction, leaving only the 56 ordinary payloads. The compiled output-conductor support is useful infrastructure for the read bus; general stored occupancy and independent notification adapters are still missing.
 
 ## Implementation and research milestones
 
 The following sequence extends the actual [implemented pipeline](INSTANT_PISTON_RUNTIME.md). Each stage should admit its own concrete protocol rather than relax whole-plot guards indiscriminately.
+
+R1, R2 and R7 now have the narrow foundations described in the follow-up above. Their complete acceptance criteria, especially whole-FPU compile/reset and target behavior, remain pending.
 
 | Milestone | Required implementation | Acceptance evidence |
 | --- | --- | --- |

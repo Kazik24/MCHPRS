@@ -245,6 +245,18 @@ pub(super) fn discover<W: World>(
         };
         let roots = consumer_roots(block, pos);
         for (root, face, input) in roots {
+            // A direct, stationary inventory override replaces rear power.
+            // Observer power through that support is not a reset exposure;
+            // the ordinary graph owns the unchanged analog value.
+            if matches!(block, Block::RedstoneComparator { .. })
+                && input == ConsumerInput::Main
+                && topology.mobile_group(root).is_none()
+                && topology
+                    .read(root)?
+                    .is_some_and(crate::redstone::comparator::has_override)
+            {
+                continue;
+            }
             let dependencies = match input {
                 ConsumerInput::Main => topology.signal_inputs(root, face)?,
                 ConsumerInput::ComparatorSide => topology.comparator_side_inputs(root, face)?,

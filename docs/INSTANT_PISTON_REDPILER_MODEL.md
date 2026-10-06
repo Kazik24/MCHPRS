@@ -10,6 +10,8 @@ ANPU is the next [compiled acceptance target](ANPU_REDPILER.md). Its interpreter
 
 [RILAX bank characterization](FPU_RILAX_REDPILER_RESEARCH.md) now supplies a smaller precursor: distinct data power and head-notification channels, samples on both ordinary-piston movement edges, unchanged samples without writes, and read-gate state that retains an earlier read across a later write. A direct combinational read of stored bits would lose this sampled behavior. Its physical data/output levels use powered = one; that fixture decoder does not redefine the instant logical-one falling event. The same report separates FPU compiler limitations from author-confirmed broken saved geometry and leaves its custom arithmetic outside acceptance.
 
+The compiler now admits quartz/smooth-quartz conductors and matching stationary furnace reset-support inventories. A comparator's direct fixed rear override stays an ordinary analog input even when conditional geometry powers that support; comparator sides retain their separate electrical rules. This does not admit transported entities, dynamic rear override reads, unknown reset writers or broken geometry. The report lists the exact manual repairs and remaining FPU/RILAX protocol boundaries.
+
 ## 1. Circuit boundaries
 
 The parser identifies a region of interacting pistons, their payloads, reset circuits and internal connections. Its interface is derived from connections to the surrounding graph:

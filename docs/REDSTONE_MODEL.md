@@ -1677,6 +1677,8 @@ For the saved orientation and tested stable protocol, an enable rise reaches the
 
 Unchanged power samples do not create accepted storage movements, but remain present in the ordered test trace. The downloaded revision has a missing address-one decoder torch: changing that address can sample/erase its saved bits while update enable is off. Preserve this as the original negative fixture; the normal measured protocol applies to the healthy addresses and a separately identified one-block diagnostic probe. The same report records author-confirmed broken geometry in the FPU snapshot, without treating those imported blocks as legal ready transport states.
 
+The subsequent compiler corrections do not change these physical rules. Quartz and smooth quartz use the same conditional conductor path as the earlier fixed materials. A fixed furnace inventory does not stop its block from conducting observer reset power, but its direct comparator rear override replaces that electrical input. Main-input port discovery must therefore retain the inventory value rather than expose the observer pulse as the comparator input. The [repair table](FPU_RILAX_REDPILER_RESEARCH.md#locations-that-need-schematic-repair) gives the missing RILAX torch and all eighteen author-confirmed broken FPU entries; RILAX's unsampled saved memory is preserved.
+
 ## 20. Implementation and regression-test index
 
 | Subject | Source |

@@ -312,6 +312,114 @@ fn fpu_strict_import_preserves_the_947_analog_reference_values() {
 }
 
 #[test]
+fn fpu_material_legalization_preserves_the_author_confirmed_invalid_entries() {
+    use families::RecognitionFailure;
+    let (world, _) = load(&manifest("fpu_legal"));
+    let report = analyze_world(&world);
+    let base = BASE + BlockPos::new(123, 8, 41);
+    let actor = report.pistons.iter().position(|p| p.pos == base).unwrap();
+    println!(
+        "FPU fixed furnace actor: {:?}",
+        report.recognition[actor].failures
+    );
+    assert!(!report.recognition[actor]
+        .failures
+        .iter()
+        .any(|f| matches!(f, RecognitionFailure::BlockEntity { .. })));
+    assert!(report.recognition.iter().all(|r| !r
+        .failures
+        .iter()
+        .any(|f| matches!(f, RecognitionFailure::BlockEntity { .. }))));
+    let failures = |predicate: fn(&RecognitionFailure) -> bool| {
+        report
+            .recognition
+            .iter()
+            .flat_map(|r| &r.failures)
+            .filter(|f| predicate(f))
+            .count()
+    };
+    assert_eq!(
+        failures(|f| matches!(f, RecognitionFailure::UnsupportedPayload { .. })),
+        1,
+        "only the moving target still needs material behavior"
+    );
+    assert_eq!(
+        failures(|f| matches!(f, RecognitionFailure::MismatchedHead)),
+        16
+    );
+    assert_eq!(
+        failures(|f| matches!(f, RecognitionFailure::RetractedEntry)),
+        2
+    );
+    for p in &report.pistons {
+        if matches!(
+            world.get_block(p.payload),
+            Block::Quartz | Block::SmoothQuartz
+        ) {
+            assert!(!p
+                .diagnostics
+                .contains(&PistonDiagnostic::UnsupportedPayload));
+        }
+    }
+    for budget_multiplier in [1, 8] {
+        let mut compiler = Compiler::default();
+        let result = compiler.compile(
+            &world,
+            world.get_corners(),
+            CompilerOptions {
+                budget_multiplier,
+                optimize: true,
+                io_only: true,
+                ..Default::default()
+            },
+            vec![],
+            Default::default(),
+        );
+        let error = result.unwrap_err().to_string();
+        assert!(!error.contains("BlockEntity"), "{error}");
+        assert!(!compiler.is_active());
+        println!("FPU after material legalization, budget {budget_multiplier}: {error}");
+    }
+}
+
+#[test]
+fn rilax_material_diagnostics_and_sampler_rejection_describe_the_actual_boundary() {
+    let (world, bounds) = load(&manifest("rilax_memory_bank_bud"));
+    let report = analyze_world(&world);
+    let unsupported: Vec<_> = report
+        .pistons
+        .iter()
+        .filter(|p| {
+            p.diagnostics
+                .contains(&PistonDiagnostic::UnsupportedPayload)
+        })
+        .collect();
+    assert_eq!(unsupported.len(), 56);
+    assert!(unsupported
+        .iter()
+        .all(|p| !p.piston.sticky && world.get_block(p.payload) == Block::Air));
+    let before = snapshot(&world, bounds);
+    let mut compiler = Compiler::default();
+    let message = compiler
+        .compile(
+            &world,
+            world.get_corners(),
+            Default::default(),
+            vec![],
+            Default::default(),
+        )
+        .unwrap_err()
+        .to_string();
+    assert!(
+        message.contains("ordinary piston at")
+            && message.contains("update samplers are not implemented"),
+        "{message}"
+    );
+    assert!(!compiler.is_active());
+    assert_eq!(snapshot(&world, bounds), before);
+}
+
+#[test]
 fn rilax_memory_preserves_prepared_data_until_neighbor_movement_samples_it() {
     let fixture = manifest("rilax_memory_bank_bud");
     for selected in [0, 2, 3, 4, 5, 6, 7] {

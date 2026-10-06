@@ -77,12 +77,18 @@ pub(crate) fn prepare(
             return Err(format!("unsupported payload minecraft:{} at {:?}, owned by piston {:?}; expected a redstone block or supported fixed conductor",payload.get_name(),p.payload,p.pos));
         }
         if !matches!(world.get_block(p.head), Block::PistonHead { head } if head.sticky==p.piston.sticky && head.facing == p.piston.facing && !head.short)
-            || [p.pos, p.head, p.payload]
-                .iter()
-                .any(|&pos| world.get_block_entity(pos).is_some())
         {
             return Err(format!(
-                "piston at {:?} has an invalid head or payload entity",
+                "extended piston at {:?} needs a matching stationary head at {:?}; found minecraft:{}",
+                p.pos, p.head, world.get_block(p.head).get_name()
+            ));
+        }
+        if let Some(pos) = [p.pos, p.head, p.payload]
+            .into_iter()
+            .find(|&pos| world.get_block_entity(pos).is_some())
+        {
+            return Err(format!(
+                "piston at {:?} has an unsupported moving-context entity at {pos:?}",
                 p.pos
             ));
         }

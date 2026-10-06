@@ -52,5 +52,7 @@ pub(crate) fn supported_payload(block: mchprs_blocks::blocks::Block) -> bool {
             | Block::Concrete { .. }
             | Block::Stone {}
             | Block::Sandstone {}
+            | Block::Quartz
+            | Block::SmoothQuartz
     )
 }

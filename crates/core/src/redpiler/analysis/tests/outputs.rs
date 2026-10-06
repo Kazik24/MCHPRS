@@ -110,7 +110,12 @@ fn conductor_output(
 fn comparator_ports_preserve_strength_and_distinguish_side_conductors() {
     for side_input in [false, true] {
         for strength in [3, 8, 15] {
-            for payload in [Block::RedstoneBlock, Block::Stone {}] {
+            for payload in [
+                Block::RedstoneBlock,
+                Block::Stone {},
+                Block::Quartz,
+                Block::SmoothQuartz,
+            ] {
                 for optimize in [false, true] {
                     let make_world = || {
                         let (mut world, trigger, base, repeater) =
@@ -229,7 +234,7 @@ fn comparator_ports_preserve_strength_and_distinguish_side_conductors() {
                             }
                             assert_eq!(compiled.get_block(pos), interpreted.get_block(pos), "{payload:?}, side={side_input}, strength={strength}, tick {tick}, {pos:?}");
                         }
-                        if side_input && payload == (Block::Stone {}) {
+                        if side_input && payload != Block::RedstoneBlock {
                             assert!(
                                 matches!(interpreted.get_block_entity(output), Some(BlockEntity::Comparator { output_strength }) if *output_strength == strength.min(8)),
                                 "a conductor must never become a comparator side source"
@@ -242,7 +247,7 @@ fn comparator_ports_preserve_strength_and_distinguish_side_conductors() {
                         _ => panic!("missing comparator output entity"),
                     };
                     assert_eq!(output_strength(&compiled), output_strength(&interpreted));
-                    if side_input && payload == (Block::Stone {}) {
+                    if side_input && payload != Block::RedstoneBlock {
                         assert_eq!(output_strength(&compiled), strength.min(8));
                     }
                 }
@@ -431,6 +436,8 @@ fn moving_conductor_outputs_and_fixed_contributors_preserve_their_waveforms() {
         },
         Block::Stone {},
         Block::Sandstone {},
+        Block::Quartz,
+        Block::SmoothQuartz,
     ] {
         for (near, fixed_source) in [(false, false), (false, true), (true, false)] {
             for optimize in [false, true] {

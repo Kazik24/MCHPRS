@@ -67,25 +67,31 @@ pub(crate) fn recognize(
     if clocks.is_empty() {
         return Ok(None);
     }
+    // Ordinary notification pistons are not automatically clocks. Report an
+    // unsupported actor's actual role boundary before checking clock count.
+    for &actor in &clocks {
+        let p = &report.pistons[actor];
+        let above = p.pos.offset(BlockFace::Top);
+        if p.piston.facing != BlockFacing::Down
+            || !p.piston.extended
+            || !p.powered
+            || world.get_block(p.payload) != Block::Air
+            || !matches!(world.get_block(above),Block::Observer { observer }
+                if observer.facing==BlockFacing::Down && !observer.powered)
+            || !world.get_block(above.offset(BlockFace::Top)).is_solid()
+        {
+            return Err(format!(
+                "ordinary piston at {:?} is not a ready empty observer-clock generator; independent piston update samplers are not implemented",
+                p.pos
+            ));
+        }
+    }
     if clocks.len() != 1 {
         return Err("clocked instant execution needs one owned generator".into());
     }
     let clock = clocks[0];
     let p = &report.pistons[clock];
     let above = p.pos.offset(BlockFace::Top);
-    if p.piston.facing != BlockFacing::Down
-        || !p.piston.extended
-        || !p.powered
-        || world.get_block(p.payload) != Block::Air
-        || !matches!(world.get_block(above),Block::Observer { observer }
-            if observer.facing==BlockFacing::Down && !observer.powered)
-        || !world.get_block(above.offset(BlockFace::Top)).is_solid()
-    {
-        return Err(format!(
-            "ordinary piston at {:?} is not a ready empty observer-clock generator",
-            p.pos
-        ));
-    }
     let mut observers = FxHashSet::default();
     observers.insert(above);
     let mut observed_outputs = FxHashSet::default();

@@ -730,6 +730,18 @@ impl<W: World> Extractor<'_, W> {
         roots: &mut VecDeque<(BlockPos, u8, Expr)>,
     ) -> Result<(), String> {
         use crate::redpiler::analysis::ports::ConsumerInput;
+        // The ordinary comparator reads a fixed rear inventory directly.
+        // Its main channel must not become a conditional electrical port,
+        // even if moving geometry or an observer powers that same support.
+        if matches!(consumer, Block::RedstoneComparator { .. })
+            && input == ConsumerInput::Main
+            && !self.far.contains_key(&pos)
+            && !self.near.contains_key(&pos)
+            && !self.bases.contains_key(&pos)
+            && redstone::comparator::has_override(self.read(pos)?)
+        {
+            return Ok(());
+        }
         if input == ConsumerInput::ComparatorSide {
             for (block, guard) in self.variants(pos, usize::MAX)? {
                 if matches!(block, Block::RedstoneWire { .. }) {

@@ -441,10 +441,7 @@ fn describe(
     if piston.facing == BlockFacing::Up {
         p.diagnostics.push(PistonDiagnostic::UpwardFacing);
     }
-    if !matches!(
-        world.get_block(payload),
-        Block::RedstoneBlock | Block::Wool { .. }
-    ) {
+    if !crate::redpiler::instant::outputs::supported_payload(world.get_block(payload)) {
         p.diagnostics.push(PistonDiagnostic::UnsupportedPayload);
     }
     if world.get_block_entity(payload).is_some() {

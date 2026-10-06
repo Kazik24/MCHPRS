@@ -4,6 +4,7 @@ use super::topology::{PowerDependencies, SourceKind, Topology};
 use super::{AnalysisError, PayloadGroup, PistonDescriptor};
 use crate::redstone;
 use crate::world::World;
+use mchprs_blocks::block_entities::{BlockEntity, ContainerType};
 use mchprs_blocks::blocks::Block;
 use mchprs_blocks::{BlockFace, BlockFacing, BlockPos};
 use mchprs_world::TickEntry;
@@ -98,7 +99,7 @@ impl fmt::Display for RecognitionFailure {
             Self::RetractedEntry => f.write_str("the current matcher requires a ready, extended piston"),
             Self::UnsupportedDirection => f.write_str("upward-facing instant mechanisms are not supported yet"),
             Self::MismatchedHead => f.write_str("the extended piston has a missing or incompatible stationary head"),
-            Self::UnsupportedPayload { pos, block } => write!(f, "payload minecraft:{block} at {pos:?} is not supported; the response extractor supports redstone blocks, wool, concrete, stone and sandstone"),
+            Self::UnsupportedPayload { pos, block } => write!(f, "payload minecraft:{block} at {pos:?} is not a supported redstone emitter or fixed conductor"),
             Self::BlockEntity { pos } => write!(f, "moving or reset context at {pos:?} contains an unsupported block entity"),
             Self::UnsampledEntry => f.write_str("present power differs from the sampled piston state; this needs a storage protocol"),
             Self::OutsideBounds { pos } => write!(f, "required context at {pos:?} is outside the selection"),
@@ -353,7 +354,19 @@ fn support<W: World>(
         r.failures.push(RecognitionFailure::MovableSupport { pos });
         return Ok(false);
     }
-    if topology.world.get_block_entity(pos).is_some() {
+    // A stationary furnace inventory only supplies a comparator override.
+    // It does not change support conduction or the observer return path. The
+    // movement check above remains mandatory; payload entities still reject.
+    let entity = topology.world.get_block_entity(pos);
+    let fixed_furnace = matches!(block, Block::Furnace { .. })
+        && matches!(
+            entity,
+            Some(BlockEntity::Container {
+                ty: ContainerType::Furnace,
+                ..
+            })
+        );
+    if entity.is_some() && !fixed_furnace {
         r.failures.push(RecognitionFailure::BlockEntity { pos });
         return Ok(false);
     }

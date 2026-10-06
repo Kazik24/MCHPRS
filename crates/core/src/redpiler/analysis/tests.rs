@@ -1,4 +1,5 @@
 use super::*;
+mod legalization;
 mod outputs;
 mod research;
 use crate::plot::worldedit::{load_schematic, paste_clipboard};

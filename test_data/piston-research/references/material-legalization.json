@@ -1,0 +1,167 @@
+{
+  "schema_version": 1,
+  "scope": "Compiler diagnostics after narrow material/context legalization; no executable FPU or RILAX backend",
+  "source": "material-legalization.source.json",
+  "coordinates": "Inventory coordinates in fixture manifests are selection-local; compiler errors below use world coordinates at origin (40,30,40)",
+  "fixtures": {
+    "fpu": {
+      "fixture": "test_data/piston-research/FPU_LEGAL.schem",
+      "sha256": "2f8ceb38c0c2092592bd32e83aa3a3ae80fd090d73865f90c9123b8091fad2b3",
+      "analysis": [
+        {
+          "budget": 1,
+          "inspected_cells": 966656,
+          "dependency_steps": 2334676,
+          "actors": 8091,
+          "matched_reset_mechanisms": 5702,
+          "recognition_failure_counts": {
+            "ActiveReset": 222,
+            "AdditionalResetWriter": 402,
+            "ForcedPower": 106,
+            "MismatchedHead": 16,
+            "NoResetPath": 2182,
+            "NoReturnPath": 172,
+            "NonconductingSupport": 202,
+            "RetractedEntry": 2,
+            "UnsupportedPayload": 1
+          },
+          "diagnostic_counts": {
+            "MissingOrMismatchedHead": 16,
+            "NoResetSeed": 381,
+            "NonconductingObserverCap": 49,
+            "PoweredObserverCap": 48,
+            "RetractedEntry": 2,
+            "UnsupportedPayload": 1
+          },
+          "output_interfaces": 100,
+          "reset_exposures": 575
+        },
+        {
+          "budget": 8,
+          "inspected_cells": 966656,
+          "dependency_steps": 2334676,
+          "actors": 8091,
+          "matched_reset_mechanisms": 5702,
+          "recognition_failure_counts": {
+            "ActiveReset": 222,
+            "AdditionalResetWriter": 402,
+            "ForcedPower": 106,
+            "MismatchedHead": 16,
+            "NoResetPath": 2182,
+            "NoReturnPath": 172,
+            "NonconductingSupport": 202,
+            "RetractedEntry": 2,
+            "UnsupportedPayload": 1
+          },
+          "diagnostic_counts": {
+            "MissingOrMismatchedHead": 16,
+            "NoResetSeed": 381,
+            "NonconductingObserverCap": 49,
+            "PoweredObserverCap": 48,
+            "RetractedEntry": 2,
+            "UnsupportedPayload": 1
+          },
+          "output_interfaces": 100,
+          "reset_exposures": 575
+        }
+      ],
+      "compile": [
+        {
+          "active": false,
+          "budget": 1,
+          "elapsed_ms": 90,
+          "error": "piston at BlockPos { x: 163, y: 38, z: 81 } has an unverified observer return path: [AdditionalResetWriter { pos: BlockPos { x: 164, y: 40, z: 81 } }, NoResetPath]"
+        },
+        {
+          "active": false,
+          "budget": 8,
+          "elapsed_ms": 94,
+          "error": "piston at BlockPos { x: 163, y: 38, z: 81 } has an unverified observer return path: [AdditionalResetWriter { pos: BlockPos { x: 164, y: 40, z: 81 } }, NoResetPath]"
+        }
+      ]
+    },
+    "rilax": {
+      "fixture": "test_data/piston-research/RILAX_MEMORY_BANK_BUD.schem",
+      "sha256": "123ea6bc48de1ab159d0909ab91c286ad2aeef0758a9b3dae9ca3dbf2a025559",
+      "analysis": [
+        {
+          "budget": 1,
+          "inspected_cells": 40960,
+          "dependency_steps": 147293,
+          "actors": 184,
+          "matched_reset_mechanisms": 0,
+          "recognition_failure_counts": {
+            "NoResetPath": 184,
+            "NonSticky": 56,
+            "RetractedEntry": 59,
+            "UnsampledEntry": 3,
+            "UnsupportedPayload": 56
+          },
+          "diagnostic_counts": {
+            "EntryPowerMismatch": 3,
+            "NoResetSeed": 56,
+            "OrdinaryPiston": 56,
+            "RetractedEntry": 59,
+            "UnsupportedPayload": 56
+          },
+          "output_interfaces": 64,
+          "reset_exposures": 0
+        },
+        {
+          "budget": 8,
+          "inspected_cells": 40960,
+          "dependency_steps": 147293,
+          "actors": 184,
+          "matched_reset_mechanisms": 0,
+          "recognition_failure_counts": {
+            "NoResetPath": 184,
+            "NonSticky": 56,
+            "RetractedEntry": 59,
+            "UnsampledEntry": 3,
+            "UnsupportedPayload": 56
+          },
+          "diagnostic_counts": {
+            "EntryPowerMismatch": 3,
+            "NoResetSeed": 56,
+            "OrdinaryPiston": 56,
+            "RetractedEntry": 59,
+            "UnsupportedPayload": 56
+          },
+          "output_interfaces": 64,
+          "reset_exposures": 0
+        }
+      ],
+      "compile": [
+        {
+          "active": false,
+          "budget": 1,
+          "elapsed_ms": 3,
+          "error": "ordinary piston at BlockPos { x: 41, y: 39, z: 51 } is not a ready empty observer-clock generator; independent piston update samplers are not implemented"
+        },
+        {
+          "active": false,
+          "budget": 8,
+          "elapsed_ms": 3,
+          "error": "ordinary piston at BlockPos { x: 41, y: 39, z: 51 } is not a ready empty observer-clock generator; independent piston update samplers are not implemented"
+        }
+      ]
+    }
+  },
+  "fpu_extraction_only": {
+    "fixture_sha256": "2f8ceb38c0c2092592bd32e83aa3a3ae80fd090d73865f90c9123b8091fad2b3",
+    "probes": [
+      {
+        "budget": 1,
+        "elapsed_ms": 0,
+        "error": "instant actor budget exceeded (1024)"
+      },
+      {
+        "budget": 8,
+        "elapsed_ms": 0,
+        "error": "piston at BlockPos { x: 201, y: 39, z: 79 } is not a ready single-payload mechanism"
+      }
+    ],
+    "schema_version": 1,
+    "scope": "expression extraction only; entry, ownership and reset admission are bypassed, no backend is activated"
+  }
+}
