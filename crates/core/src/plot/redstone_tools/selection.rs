@@ -110,8 +110,11 @@ fn selection_lines(first: Option<BlockPos>, second: Option<BlockPos>) -> Vec<Str
         _ => "§c",
     };
     vec![
-        format!("§bSize: {width} × {height} × {depth}"),
-        format!("{color}Volume: {volume}"),
+        format!(
+            "§b{}",
+            messages::selection_sidebar_dimensions(width, height, depth)
+        ),
+        format!("{color}{}", messages::selection_sidebar_volume(volume)),
     ]
 }
 

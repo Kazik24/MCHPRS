@@ -478,6 +478,11 @@ fn diff_classifies_add_remove_state_and_data_and_inspects_removed_positions() {
     );
     let removed = diff.inspect(pos(2, 64, 3), None).unwrap().to_string();
     assert!(removed.contains("From: stone") && removed.contains("To: air"));
+    let inspected = diff.inspect(pos(4, 64, 3), None).unwrap();
+    let text = inspected["text"].as_str().unwrap();
+    assert!(text.contains("say before") && text.contains("say after"));
+    assert!(text.contains("From data:") && text.contains("To data:"));
+    assert!(inspected.get("extra").is_none());
     assert!(diff
         .inspect(pos(4, 64, 3), Some("from"))
         .unwrap()
@@ -717,4 +722,124 @@ fn display_metadata_matches_checked_in_protocol_and_ids_are_unique() {
         crate::player::allocate_entity_id(),
         crate::player::allocate_entity_id()
     );
+}
+
+#[test]
+fn commit_checkout_detaches_head_and_keeps_branch_tips_and_dirty_work() {
+    let root = TempRoot::new();
+    let mut repo = root.repo();
+    let base = empty();
+    repo.commit(&base, 1, "Alice", "base").unwrap();
+    let first = repo.resolve("HEAD").unwrap();
+    let mut latest = base.clone();
+    set(&mut latest, 2, 64, 2, Block::Stone {}, None);
+    repo.commit(&latest, 1, "Alice", "latest").unwrap();
+    let main = repo.resolve("main").unwrap();
+    let mut dirty = latest.clone();
+    set(&mut dirty, 3, 64, 3, Block::Stone {}, None);
+    let save = root.0.join("plot");
+
+    let (restored, message, reservation) = repo
+        .checkout(&first[..8].to_uppercase(), &dirty, 1, "Alice", &save)
+        .unwrap();
+    assert!(message.contains("detached HEAD") && message.contains("Recovery:"));
+    assert_eq!(restored.block(pos(2, 64, 2)), 0);
+    assert_eq!(repo.resolve("HEAD").unwrap(), first);
+    assert_eq!(repo.resolve("main").unwrap(), main);
+    assert!(repo.status(&restored).unwrap().contains("detached HEAD"));
+    assert!(repo.branches().unwrap().contains("detached HEAD"));
+    let recovery: String = root
+        .db()
+        .query_row("SELECT id FROM recoveries", [], |r| r.get(0))
+        .unwrap();
+    drop(reservation);
+    drop(repo);
+
+    let mut repo = root.repo();
+    assert_eq!(repo.resolve("HEAD").unwrap(), first);
+    let mut experiment = restored;
+    set(&mut experiment, 4, 64, 4, Block::Stone {}, None);
+    repo.commit(&experiment, 1, "Alice", "detached experiment")
+        .unwrap();
+    let detached = repo.resolve("HEAD").unwrap();
+    assert_ne!(detached, first);
+    assert_eq!(repo.resolve("main").unwrap(), main);
+    repo.branch("experiment", "HEAD").unwrap();
+    let (_, _, reservation) = repo
+        .checkout("experiment", &experiment, 1, "Alice", &save)
+        .unwrap();
+    assert_eq!(repo.head().unwrap().0, "experiment");
+    assert_eq!(repo.resolve("HEAD").unwrap(), detached);
+    drop(reservation);
+    repo.recover_branch(&recovery, "unfinished", 1, "Alice")
+        .unwrap();
+    assert_eq!(
+        repo.load(&repo.resolve("unfinished").unwrap())
+            .unwrap()
+            .fingerprints()
+            .unwrap()
+            .full,
+        dirty.fingerprints().unwrap().full
+    );
+}
+
+#[test]
+fn interrupted_commit_checkout_restores_detached_head_on_restart() {
+    let root = TempRoot::new();
+    let mut repo = root.repo();
+    let base = empty();
+    repo.commit(&base, 1, "Alice", "base").unwrap();
+    let first = repo.resolve("HEAD").unwrap();
+    let mut latest = base.clone();
+    set(&mut latest, 2, 64, 2, Block::Stone {}, None);
+    repo.commit(&latest, 1, "Alice", "latest").unwrap();
+    let main = repo.resolve("main").unwrap();
+    let save = root.0.join("plot");
+    latest.data.save_to_file(&save).unwrap();
+    root.db()
+        .execute(
+            "INSERT INTO checkout SELECT 1,?1,?2,snapshot FROM commits WHERE id=?3",
+            rusqlite::params![format!("@{first}"), first, main],
+        )
+        .unwrap();
+    drop(repo);
+
+    let mut repo = root.repo();
+    assert!(repo.has_pending().unwrap());
+    let restored = repo.finish_checkout(&save).unwrap();
+    assert_eq!(restored.block(pos(2, 64, 2)), 0);
+    assert_eq!(repo.resolve("HEAD").unwrap(), first);
+    assert_eq!(repo.resolve("main").unwrap(), main);
+    assert!(!repo.has_pending().unwrap());
+}
+
+#[test]
+fn lz4_snapshots_are_compact_bounded_and_round_trip() {
+    let snapshot = empty();
+    let raw = bincode::serialize(&snapshot).unwrap();
+    let compressed = snapshot.encode(raw.len()).unwrap();
+    assert_eq!(u32::from_le_bytes(compressed[..4].try_into().unwrap()) as usize, raw.len());
+    assert!(compressed.len() < raw.len() / 10);
+    let expected = snapshot.fingerprints().unwrap().full;
+    for bytes in [&compressed] {
+        assert_eq!(
+            Snapshot::decode(bytes, (-1, 2), raw.len())
+                .unwrap()
+                .fingerprints()
+                .unwrap()
+                .full,
+            expected
+        );
+        assert!(Snapshot::decode(bytes, (-1, 2), raw.len() - 1).is_err());
+    }
+    let mut short_header = compressed.clone();
+    short_header[..4].copy_from_slice(&((raw.len() - 1) as u32).to_le_bytes());
+    assert!(Snapshot::decode(&short_header, (-1, 2), raw.len()).is_err());
+    let mut corrupt = compressed.clone();
+    *corrupt.last_mut().unwrap() ^= 1;
+    assert!(Snapshot::decode(&corrupt, (-1, 2), raw.len()).is_err());
+    let mut trailing = compressed;
+    trailing.push(0);
+    assert!(Snapshot::decode(&trailing, (-1, 2), raw.len()).is_err());
+    assert!(Reservation::new(mib(MAX_WORK_MEMORY_MIB) + 1).is_err());
 }

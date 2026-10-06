@@ -135,8 +135,7 @@ impl Emission {
                 .checked_mul(8)
                 .and_then(|z| z.checked_add(4))
                 .is_some()
-            && sound_id >= 0
-            && sound_id < i32::MAX
+            && (0..i32::MAX).contains(&sound_id)
             && (0..=9).contains(&category)
             && volume.is_finite()
             && volume > 0.0

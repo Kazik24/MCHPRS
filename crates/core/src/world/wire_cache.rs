@@ -96,37 +96,6 @@ pub(crate) struct Facts {
     pub connections: u8,
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn every_cached_registry_fact_matches_original_block_behavior() {
-        for id in 0..mchprs_blocks::generated::STATE_PROPERTIES.len() as u32 {
-            let block = Block::from_id(id);
-            assert_eq!(facts(block), uncached_facts(block), "state {id}");
-        }
-        assert_eq!(
-            facts(Block::Unknown { id: u32::MAX }),
-            uncached_facts(Block::Unknown { id: u32::MAX })
-        );
-    }
-
-    #[test]
-    fn canonical_geometry_reuses_entries_and_clear_drops_old_namespace() {
-        let mut topology = Topology::default();
-        let pos = BlockPos::new(-1, 16, 255);
-        let a = topology.neighborhood(4095, pos, |_| None);
-        let b = topology.neighborhood(4095, pos, |_| None);
-        assert!(Arc::ptr_eq(&a, &b));
-        assert_eq!(a.map(|n| n.pos), positions(pos));
-        topology.clear();
-        let c = topology.neighborhood(4095, BlockPos::new(255, 0, -1), |_| None);
-        assert!(!Arc::ptr_eq(&a, &c));
-        assert_eq!(c.map(|n| n.pos), positions(BlockPos::new(255, 0, -1)));
-    }
-}
-
 fn uncached_facts(block: Block) -> Facts {
     let connections = [
         BlockDirection::North,
@@ -168,4 +137,35 @@ pub(crate) fn connects(block: Block, side: BlockDirection) -> bool {
         BlockDirection::West => 3,
     };
     facts(block).connections & (1 << bit) != 0
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn every_cached_registry_fact_matches_original_block_behavior() {
+        for id in 0..mchprs_blocks::generated::STATE_PROPERTIES.len() as u32 {
+            let block = Block::from_id(id);
+            assert_eq!(facts(block), uncached_facts(block), "state {id}");
+        }
+        assert_eq!(
+            facts(Block::Unknown { id: u32::MAX }),
+            uncached_facts(Block::Unknown { id: u32::MAX })
+        );
+    }
+
+    #[test]
+    fn canonical_geometry_reuses_entries_and_clear_drops_old_namespace() {
+        let mut topology = Topology::default();
+        let pos = BlockPos::new(-1, 16, 255);
+        let a = topology.neighborhood(4095, pos, |_| None);
+        let b = topology.neighborhood(4095, pos, |_| None);
+        assert!(Arc::ptr_eq(&a, &b));
+        assert_eq!(a.map(|n| n.pos), positions(pos));
+        topology.clear();
+        let c = topology.neighborhood(4095, BlockPos::new(255, 0, -1), |_| None);
+        assert!(!Arc::ptr_eq(&a, &c));
+        assert_eq!(c.map(|n| n.pos), positions(BlockPos::new(255, 0, -1)));
+    }
 }

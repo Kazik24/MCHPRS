@@ -1,4 +1,5 @@
 use super::super::{NUM_CHUNKS, PLOT_BLOCK_HEIGHT, PLOT_SECTIONS, PLOT_WIDTH};
+use crate::messages;
 use anyhow::{bail, ensure, Result};
 use bincode::Options;
 use mchprs_blocks::block_entities::BlockEntity;
@@ -101,11 +102,11 @@ impl Snapshot {
     pub fn validate(&self, plot: (i32, i32)) -> Result<()> {
         ensure!(
             self.version == 1 && self.data_version == MC_DATA_VERSION,
-            "Unsupported Git snapshot/data version"
+            messages::GIT_UNSUPPORTED_SNAPSHOT
         );
         ensure!(
             self.plot == plot && self.data.chunk_data.len() == NUM_CHUNKS,
-            "Git snapshot belongs to another plot or plot size"
+            messages::GIT_SNAPSHOT_PLOT_MISMATCH
         );
         self.data.validate()?;
         for chunk in &self.data.chunk_data {
@@ -114,7 +115,7 @@ impl Snapshot {
                     .block_entities
                     .keys()
                     .all(|p| (0..16).contains(&p.x) && (0..16).contains(&p.z)),
-                "Invalid Git block entity coordinates"
+                messages::GIT_INVALID_ENTITY_COORDINATES
             );
         }
         Ok(())
@@ -177,22 +178,18 @@ impl Snapshot {
 
     pub fn encode(&self, limit: usize) -> Result<Vec<u8>> {
         let size = bincode::serialized_size(self)? as usize;
-        ensure!(
-            size <= limit,
-            "Git snapshot exceeds the configured size limit"
-        );
+        ensure!(size <= limit, messages::GIT_CONFIGURED_SNAPSHOT_SIZE_LIMIT);
         Ok(lz4_flex::compress_prepend_size(&bincode::serialize(self)?))
     }
 
     pub fn decode(bytes: &[u8], plot: (i32, i32), limit: usize) -> Result<Self> {
         let size = bytes
             .get(..4)
-            .ok_or_else(|| anyhow::anyhow!("Truncated Git snapshot"))?;
-        ensure!(
-            u32::from_le_bytes(size.try_into()?) as usize <= limit,
-            "Git snapshot exceeds the decompression limit"
-        );
+            .ok_or_else(|| anyhow::anyhow!(messages::GIT_TRUNCATED_SNAPSHOT))?;
+        let size = u32::from_le_bytes(size.try_into()?) as usize;
+        ensure!(size <= limit, messages::GIT_DECOMPRESSION_LIMIT);
         let data = lz4_flex::decompress_size_prepended(bytes)?;
+        ensure!(data.len() == size, messages::GIT_INVALID_COMPRESSED_SIZE);
         let snapshot: Self = bincode::DefaultOptions::new()
             .with_fixint_encoding()
             .with_limit(limit as u64)
@@ -230,7 +227,7 @@ impl Snapshot {
 
     pub fn entity(&self, pos: BlockPos) -> Result<Option<Value>> {
         let Some((chunk, local)) = self.location(pos) else {
-            bail!("Position is outside this plot");
+            bail!(messages::GIT_POSITION_OUTSIDE_PLOT);
         };
         self.data.chunk_data[chunk]
             .block_entities

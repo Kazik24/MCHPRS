@@ -55,11 +55,8 @@ fn should_be_powered(rep: RedstoneRepeater, world: &impl World, pos: BlockPos) -
 
 pub fn on_neighbor_updated(mut rep: RedstoneRepeater, world: &mut impl World, pos: BlockPos) {
     let should_be_locked = should_be_locked(rep.facing, world, pos);
-    if !rep.locked && should_be_locked {
-        rep.locked = true;
-        world.set_block(pos, Block::RedstoneRepeater { repeater: rep });
-    } else if rep.locked && !should_be_locked {
-        rep.locked = false;
+    if rep.locked != should_be_locked {
+        rep.locked = should_be_locked;
         world.set_block(pos, Block::RedstoneRepeater { repeater: rep });
     }
 

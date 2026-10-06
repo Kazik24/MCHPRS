@@ -1,6 +1,7 @@
 use super::super::{PLOT_SECTIONS, PLOT_WIDTH};
 use super::repository::button;
 use super::snapshot::{state, Snapshot};
+use crate::messages;
 use crate::player::PlayerPos;
 use anyhow::{ensure, Result};
 use mchprs_blocks::blocks::Block;
@@ -42,7 +43,7 @@ impl Diff {
         to: Snapshot,
         reservation: super::Reservation,
     ) -> Result<Self> {
-        ensure!(from.plot == to.plot, "Cannot compare different plots");
+        ensure!(from.plot == to.plot, messages::GIT_DIFFERENT_PLOTS);
         let a = from.fingerprints()?;
         let b = to.fingerprints()?;
         let sections = a
@@ -55,8 +56,8 @@ impl Diff {
         let mut diff = Self {
             from_id,
             to_id,
-            from_label: "From".into(),
-            to_label: "To".into(),
+            from_label: messages::GIT_FROM_LABEL.into(),
+            to_label: messages::GIT_TO_LABEL.into(),
             from,
             to,
             sections,
@@ -109,11 +110,11 @@ impl Diff {
 
     pub fn summary(&self) -> Value {
         json!({"text":"","extra":[
-            button(&format!("{} [{}]",self.from_label,&self.from_id[..8]),&format!("/git show {}",self.from_id)),
+            button(&messages::git_diff_reference(&self.from_label, &self.from_id[..8]),&format!("/git show {}",self.from_id)),
             json!({"text":" -> "}),
-            button(&format!("{} [{}]",self.to_label,&self.to_id[..8]),&format!("/git show {}",self.to_id)),
-            json!({"text":format!("\n{} added, {} removed, {} changed{}\n",self.counts[0],self.counts[1],self.counts[2]+self.counts[3],if self.runtime_changed {"; execution changed"} else {""})}),
-            button("Show glow","/git diff show"), button("Hide glow","/git diff hide")
+            button(&messages::git_diff_reference(&self.to_label, &self.to_id[..8]),&format!("/git show {}",self.to_id)),
+            json!({"text":messages::git_diff_counts(self.counts[0], self.counts[1], self.counts[2]+self.counts[3], if self.runtime_changed {messages::GIT_EXECUTION_CHANGED_SUFFIX} else {""})}),
+            button(messages::GIT_SHOW_GLOW,"/git diff show"), button(messages::GIT_HIDE_GLOW,"/git diff hide")
         ]})
     }
 
@@ -193,10 +194,7 @@ impl Diff {
     }
 
     pub fn inspect(&self, pos: BlockPos, side: Option<&str>) -> Result<Value> {
-        ensure!(
-            self.kind(pos)?.is_some(),
-            "That position has no change in this comparison"
-        );
+        ensure!(self.kind(pos)?.is_some(), messages::GIT_POSITION_UNCHANGED);
         let a = Block::from_id(self.from.block(pos));
         let b = Block::from_id(self.to.block(pos));
         let description = |block: Block| {
@@ -216,36 +214,47 @@ impl Diff {
                 }
             )
         };
-        let mut text = format!(
-            "({}, {}, {})\nFrom: {}\nTo: {}",
-            pos.x,
-            pos.y,
-            pos.z,
-            description(a),
-            description(b)
-        );
+        let mut text =
+            messages::git_block_diff(pos.x, pos.y, pos.z, description(a), description(b));
         let ae = self.from.entity(pos)?;
         let be = self.to.entity(pos)?;
         if ae != be {
-            text.push_str("\nBlock data changed.");
+            text.push_str(messages::GIT_BLOCK_DATA_CHANGED);
         }
         if let Some(side) = side {
             ensure!(
                 matches!(side, "from" | "to"),
-                "Details side must be from or to"
+                messages::GIT_INVALID_DETAILS_SIDE
             );
-            let data = if side == "from" { ae } else { be };
-            let serialized = serde_json::to_string_pretty(&data)?;
-            let truncated = serialized.chars().count() > 3000;
-            text.push_str(&format!(
-                "\n{side} data:\n{}{}",
-                serialized.chars().take(3000).collect::<String>(),
-                if truncated { "\n[Data truncated]" } else { "" }
-            ));
         }
-        Ok(
-            json!({"text":text,"extra":[button("From details",&format!("/git diff inspect {} {} {} from",pos.x,pos.y,pos.z)),button("To details",&format!("/git diff inspect {} {} {} to",pos.x,pos.y,pos.z))]}),
-        )
+        // Sword inspection passes no side: include both saved versions on the
+        // first click. Keep explicit sides for existing coordinate commands.
+        if ae != be || side.is_some() {
+            for (label, value, selected) in [
+                (messages::GIT_FROM_LABEL, &ae, "from"),
+                (messages::GIT_TO_LABEL, &be, "to"),
+            ] {
+                if side.is_some_and(|side| side != selected) {
+                    continue;
+                }
+                let serialized = if value.is_some() {
+                    serde_json::to_string_pretty(value)?
+                } else {
+                    messages::GIT_NO_BLOCK_DATA.to_owned()
+                };
+                let truncated = serialized.chars().count() > 3000;
+                text.push_str(&messages::git_block_data_details(
+                    label,
+                    serialized.chars().take(3000).collect::<String>(),
+                    if truncated {
+                        messages::GIT_DATA_TRUNCATED
+                    } else {
+                        ""
+                    },
+                ));
+            }
+        }
+        Ok(json!({"text": text}))
     }
 }
 

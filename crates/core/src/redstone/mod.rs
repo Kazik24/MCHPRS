@@ -38,7 +38,7 @@ fn get_weak_power(
     match block {
         Block::RedstoneTorch { lit: true } if side != BlockFace::Top => 15,
         Block::RedstoneWallTorch { lit: true, facing } if facing.block_face() != side => 15,
-        Block::RedstoneBlock {} => 15,
+        Block::RedstoneBlock => 15,
         Block::StonePressurePlate { powered: true } => 15,
         block if block.pressure_plate_powered() == Some(true) => 15,
         Block::Lever { lever } if lever.powered => 15,
@@ -173,8 +173,12 @@ pub fn torch_should_be_off(world: &impl World, pos: BlockPos) -> bool {
 
 pub fn on_state_change(facing: BlockFacing, world: &mut impl World, pos: BlockPos) {
     let front_pos = pos.offset(facing.opposite().into());
+    update_output_neighbors(world, front_pos, facing.into());
+}
+
+fn update_output_neighbors(world: &mut impl World, front_pos: BlockPos, source_face: BlockFace) {
     let front_block = world.get_block(front_pos);
-    update(front_block, world, front_pos, Some(facing.into()));
+    update(front_block, world, front_pos, Some(source_face));
     for direction in BlockFace::values() {
         let neighbor_pos = front_pos.offset(direction);
         let block = world.get_block(neighbor_pos);
@@ -315,10 +319,8 @@ pub fn update(block: Block, world: &mut impl World, pos: BlockPos, dir: Option<B
         }
         Block::Observer { observer } => {
             if let Some(dir) = dir {
-                if observer.facing == dir.into() {
-                    if !world.pending_tick_at(pos) {
-                        world.schedule_tick(pos, 1, TickPriority::Normal);
-                    }
+                if observer.facing == dir.into() && !world.pending_tick_at(pos) {
+                    world.schedule_tick(pos, 1, TickPriority::Normal);
                 }
             } else if observer.powered && !world.pending_tick_at(pos) {
                 world.schedule_tick(pos, 1, TickPriority::Normal);

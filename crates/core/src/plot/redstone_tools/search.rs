@@ -56,8 +56,8 @@ enum SignSide {
 impl SignSide {
     fn label(self) -> &'static str {
         match self {
-            Self::Front => "front",
-            Self::Back => "back",
+            Self::Front => messages::SIGN_FRONT_LABEL,
+            Self::Back => messages::SIGN_BACK_LABEL,
         }
     }
 }

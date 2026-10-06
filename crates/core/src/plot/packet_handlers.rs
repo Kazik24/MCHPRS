@@ -12,7 +12,7 @@ use mchprs_blocks::items::{Item, ItemStack};
 use mchprs_blocks::{BlockFace, BlockPos};
 use mchprs_network::packets::clientbound::*;
 use mchprs_network::packets::serverbound::*;
-use mchprs_network::packets::SlotData;
+use mchprs_network::packets::{PacketEncoder, SlotData};
 use serde_json::json;
 use std::path::PathBuf;
 use std::time::Instant;
@@ -20,7 +20,85 @@ use tracing::{error, warn};
 
 pub(super) const ERROR_IO_ONLY: &str = messages::PLOT_CANNOT_INTERACTED_WHILE_REDPILER_ACTIVE;
 
+fn relative_movement(old: PlayerPos, new: PlayerPos) -> Option<[i16; 3]> {
+    let deltas = [
+        (new.x * 32.0 - old.x * 32.0) * 128.0,
+        (new.y * 32.0 - old.y * 32.0) * 128.0,
+        (new.z * 32.0 - old.z * 32.0) * 128.0,
+    ];
+    // The positive eight-block boundary exceeds i16::MAX; use a teleport there.
+    deltas
+        .iter()
+        .all(|delta| (-32768.0..32768.0).contains(delta))
+        .then(|| deltas.map(|delta| delta as i16))
+}
+
 impl Plot {
+    pub(super) fn broadcast_player_packets(&self, player: usize, packets: &[&PacketEncoder]) {
+        for (index, viewer) in self.players.iter().enumerate() {
+            if index != player {
+                for packet in packets {
+                    viewer.send_packet(packet);
+                }
+            }
+        }
+    }
+
+    fn update_player_position(
+        &mut self,
+        player: usize,
+        new: PlayerPos,
+        on_ground: bool,
+        rotation: Option<(f32, f32)>,
+    ) {
+        if !new.is_valid()
+            || rotation.is_some_and(|(yaw, pitch)| !yaw.is_finite() || !pitch.is_finite())
+        {
+            self.players[player].client.close_connection();
+            return;
+        }
+        let moving = &mut self.players[player];
+        let old = moving.pos;
+        moving.pos = new;
+        moving.on_ground = on_ground;
+        if let Some((yaw, pitch)) = rotation {
+            moving.yaw = yaw;
+            moving.pitch = pitch;
+        }
+        let packet = match relative_movement(old, new) {
+            None => moving.entity_teleport_packet(),
+            Some([delta_x, delta_y, delta_z]) if rotation.is_some() => CEntityPositionAndRotation {
+                delta_x,
+                delta_y,
+                delta_z,
+                yaw: moving.yaw,
+                pitch: moving.pitch,
+                entity_id: moving.entity_id as i32,
+                on_ground,
+            }
+            .encode(),
+            Some([delta_x, delta_y, delta_z]) => CEntityPosition {
+                delta_x,
+                delta_y,
+                delta_z,
+                entity_id: moving.entity_id as i32,
+                on_ground,
+            }
+            .encode(),
+        };
+        if rotation.is_some() {
+            let head = CEntityHeadLook {
+                entity_id: moving.entity_id as i32,
+                yaw: moving.yaw,
+            }
+            .encode();
+            self.broadcast_player_packets(player, &[&packet, &head]);
+        } else {
+            self.broadcast_player_packets(player, &[&packet]);
+        }
+        self.on_player_move(player, old, new);
+    }
+
     fn complete_plot_members(&self, player: usize, id: i32, text: &str) -> Option<CTabComplete> {
         let (command, tail) = text.split_once(' ')?;
         if !matches!(command, "/p" | "/plot") {
@@ -213,7 +291,7 @@ impl ServerBoundPacketHandler for Plot {
         let mut path = PathBuf::from("./schems");
         if CONFIG.schemati {
             let uuid = self.players[player_idx].uuid;
-            path.push(&HyphenatedUUID(uuid).to_string());
+            path.push(HyphenatedUUID(uuid).to_string());
         }
 
         let current = &packet.text[7..];
@@ -446,9 +524,7 @@ impl ServerBoundPacketHandler for Plot {
         if let Some(item) = &item_in_hand {
             let has_permission = self.players[player].has_permission("worldedit.selection.pos");
             if item.item_type == (Item::WEWand {}) && has_permission {
-                let same = self.players[player]
-                    .second_position
-                    .map_or(false, |p| p == block_pos);
+                let same = self.players[player].second_position == Some(block_pos);
                 if !same {
                     self.players[player].worldedit_set_second_position(block_pos);
                 }
@@ -602,48 +678,8 @@ impl ServerBoundPacketHandler for Plot {
     }
 
     fn handle_player_position(&mut self, player_position: SPlayerPosition, player: usize) {
-        let old = self.players[player].pos;
         let new = PlayerPos::new(player_position.x, player_position.y, player_position.z);
-        if !new.is_valid() {
-            self.players[player].client.close_connection();
-            return;
-        }
-        self.players[player].pos = new;
-        self.players[player].on_ground = player_position.on_ground;
-        let packet = if (new.x - old.x).abs() > 8.0
-            || (new.y - old.y).abs() > 8.0
-            || (new.z - old.z).abs() > 8.0
-        {
-            CEntityTeleport {
-                entity_id: self.players[player].entity_id as i32,
-                x: new.x,
-                y: new.y,
-                z: new.z,
-                yaw: self.players[player].yaw,
-                pitch: self.players[player].pitch,
-                on_ground: player_position.on_ground,
-            }
-            .encode()
-        } else {
-            let delta_x = ((player_position.x * 32.0 - old.x * 32.0) * 128.0) as i16;
-            let delta_y = ((player_position.y * 32.0 - old.y * 32.0) * 128.0) as i16;
-            let delta_z = ((player_position.z * 32.0 - old.z * 32.0) * 128.0) as i16;
-            CEntityPosition {
-                delta_x,
-                delta_y,
-                delta_z,
-                entity_id: self.players[player].entity_id as i32,
-                on_ground: player_position.on_ground,
-            }
-            .encode()
-        };
-        for other_player in 0..self.players.len() {
-            if player == other_player {
-                continue;
-            };
-            self.players[other_player].client.send_packet(&packet);
-        }
-        self.on_player_move(player, old, new);
+        self.update_player_position(player, new, player_position.on_ground, None);
     }
 
     fn handle_player_position_and_rotation(
@@ -651,67 +687,20 @@ impl ServerBoundPacketHandler for Plot {
         player_position_and_rotation: SPlayerPositionAndRotation,
         player: usize,
     ) {
-        let old = self.players[player].pos;
         let new = PlayerPos::new(
             player_position_and_rotation.x,
             player_position_and_rotation.y,
             player_position_and_rotation.z,
         );
-        if !new.is_valid()
-            || !player_position_and_rotation.yaw.is_finite()
-            || !player_position_and_rotation.pitch.is_finite()
-        {
-            self.players[player].client.close_connection();
-            return;
-        }
-        self.players[player].pos = new;
-        self.players[player].yaw = player_position_and_rotation.yaw;
-        self.players[player].pitch = player_position_and_rotation.pitch;
-        self.players[player].on_ground = player_position_and_rotation.on_ground;
-        let packet = if (new.x - old.x).abs() > 8.0
-            || (new.y - old.y).abs() > 8.0
-            || (new.z - old.z).abs() > 8.0
-        {
-            CEntityTeleport {
-                entity_id: self.players[player].entity_id as i32,
-                x: new.x,
-                y: new.y,
-                z: new.z,
-                yaw: self.players[player].yaw,
-                pitch: self.players[player].pitch,
-                on_ground: player_position_and_rotation.on_ground,
-            }
-            .encode()
-        } else {
-            let delta_x = ((player_position_and_rotation.x * 32.0 - old.x * 32.0) * 128.0) as i16;
-            let delta_y = ((player_position_and_rotation.y * 32.0 - old.y * 32.0) * 128.0) as i16;
-            let delta_z = ((player_position_and_rotation.z * 32.0 - old.z * 32.0) * 128.0) as i16;
-            CEntityPositionAndRotation {
-                delta_x,
-                delta_y,
-                delta_z,
-                pitch: player_position_and_rotation.pitch,
-                yaw: player_position_and_rotation.yaw,
-                entity_id: self.players[player].entity_id as i32,
-                on_ground: player_position_and_rotation.on_ground,
-            }
-            .encode()
-        };
-        let entity_head_look = CEntityHeadLook {
-            entity_id: self.players[player].entity_id as i32,
-            yaw: player_position_and_rotation.yaw,
-        }
-        .encode();
-        for other_player in 0..self.players.len() {
-            if player == other_player {
-                continue;
-            };
-            self.players[other_player].client.send_packet(&packet);
-            self.players[other_player]
-                .client
-                .send_packet(&entity_head_look);
-        }
-        self.on_player_move(player, old, new);
+        self.update_player_position(
+            player,
+            new,
+            player_position_and_rotation.on_ground,
+            Some((
+                player_position_and_rotation.yaw,
+                player_position_and_rotation.pitch,
+            )),
+        );
     }
 
     fn handle_player_rotation(&mut self, player_rotation: SPlayerRotation, player: usize) {
@@ -734,17 +723,7 @@ impl ServerBoundPacketHandler for Plot {
             yaw: player_rotation.yaw,
         }
         .encode();
-        for other_player in 0..self.players.len() {
-            if player == other_player {
-                continue;
-            };
-            self.players[other_player]
-                .client
-                .send_packet(&rotation_packet);
-            self.players[other_player]
-                .client
-                .send_packet(&entity_head_look);
-        }
+        self.broadcast_player_packets(player, &[&rotation_packet, &entity_head_look]);
     }
 
     fn handle_player_movement(&mut self, player_movement: SPlayerMovement, player: usize) {
@@ -823,7 +802,7 @@ impl ServerBoundPacketHandler for Plot {
             self.reset_redpiler();
 
             interaction::destroy(block, &mut self.world, block_pos);
-            if !matches!(block, Block::Air {}) {
+            if !matches!(block, Block::Air) {
                 self.mirror_auto_stack(player, block_pos);
             }
             self.world.flush_block_changes();
@@ -966,5 +945,36 @@ impl ServerBoundPacketHandler for Plot {
         }
         let block_entity = BlockEntity::Sign(Box::new(sign));
         self.world.set_block_entity(pos, block_entity);
+    }
+}
+
+#[cfg(test)]
+mod movement_tests {
+    use super::*;
+
+    #[test]
+    fn relative_movement_uses_the_signed_protocol_range_on_every_axis() {
+        let old = PlayerPos::new(16.0, 64.0, -16.0);
+        assert_eq!(relative_movement(old, old), Some([0, 0, 0]));
+        for axis in 0..3 {
+            for (distance, expected) in [
+                (8.0, None),
+                (-8.0, Some(i16::MIN)),
+                (32767.0 / 4096.0, Some(i16::MAX)),
+                (-8.0 - 1.0 / 4096.0, None),
+            ] {
+                let mut coordinates = [old.x, old.y, old.z];
+                coordinates[axis] += distance;
+                let new = PlayerPos::new(coordinates[0], coordinates[1], coordinates[2]);
+                let result = relative_movement(old, new);
+                assert_eq!(result.map(|deltas| deltas[axis]), expected);
+                if let Some(deltas) = result {
+                    assert!(deltas
+                        .iter()
+                        .enumerate()
+                        .all(|(i, &value)| i == axis || value == 0));
+                }
+            }
+        }
     }
 }

@@ -19,6 +19,12 @@ repository; no Git executable is required.
 
 The first commit creates `main`. Creating a branch does not switch branches.
 The active branch and working build are shared by everyone on the plot.
+To revisit a commit directly, use `/git checkout a12b34cd`. This enters detached
+HEAD and leaves every branch tip unchanged. Commits made there advance detached
+HEAD; `/git log --all` retains them. Name that history with `/git branch revisit`,
+then `/git checkout revisit` to continue on the named branch. Detached HEAD also
+survives restarts, interrupted checkout recovery, and automatic work recovery.
+
 Checkout pauses simulation; use `/tps 20` or the existing stepping commands to
 resume. Players whose standing body would intersect the restored build are
 moved above it. Checkout closes menus and clears tick history and WorldEdit undo.
@@ -35,10 +41,10 @@ moved above it. Checkout closes menus and clears tick history and WorldEdit undo
 | `/git show <ref>` | Commit ID, author, UTC date, message and parent. |
 | `/git branch` | List branches and their tips. |
 | `/git branch <name> [ref]` | Create a branch, defaulting to `HEAD`. |
-| `/git checkout <branch>` | Restore a branch tip, preserving unfinished work. |
+| `/git checkout <branch\|commit>` | Restore a branch tip or commit ID/prefix, preserving unfinished work. |
 | `/git diff <from> <to>` | Prepare a comparison and show its summary. |
 | `/git diff show`, `/git diff hide` | Enable/disable the prepared glow overlay. |
-| `/git diff inspect <x> <y> <z> [from\|to]` | Inspect a changed coordinate, optionally including saved block data. |
+| `/git diff inspect <x> <y> <z> [from\|to]` | Show a changed coordinate's states and data immediately; optionally restrict data to one side. |
 | `/git recoveries [page]` | List automatically saved unfinished work. |
 | `/git recover <id> <new-branch>` | Put a recovery on a new branch and check it out. |
 
@@ -55,8 +61,9 @@ buttons in chat. Execution changes are reported separately. It never lists all
 changed blocks in chat.
 
 Click **Show glow**, then **right-click a marker with any sword in either hand**
-to see that position's **From / To** block states. Optional detail buttons show
-saved block data. Green means added, red means removed, yellow means changed.
+to see that position's **From / To** block states and changed saved block data
+immediately. No additional detail clicks are needed. Green means added, red
+means removed, yellow means changed.
 Removed positions can be inspected even when the current world is air there.
 The nearest glowing marker along the aim line is selected, including through
 obstructions. A successful inspection consumes the interaction and its duplicate
@@ -94,7 +101,9 @@ servers retain the usual permissive command fallback and plot access checks.
 
 ## Storage and recovery
 
-Each plot has `world/plot-git/p<X>,<Z>/repository.sqlite`. Compressed snapshots,
+Each plot has `world/plot-git/p<X>,<Z>/repository.sqlite`. Snapshots use LZ4
+compression. Decompression validates the declared size and snapshot checksums.
+Compressed snapshots,
 commits, branches and recovery metadata share SQLite transactions with full
 synchronization. Snapshot hashes use canonical states/data rather than palette
 layout, inventory order or NBT compound ordering; identical snapshots share an
@@ -118,7 +127,7 @@ working changes. Checkout temporarily locks world mutations and ordinary saves.
 ```toml
 git_plot_storage_mib = 1024
 git_total_storage_mib = 16384
-git_work_memory_mib = 512
+git_work_memory_mib = 100
 git_snapshot_max_mib = 128
 git_marker_limit = 128
 git_marker_radius = 64
@@ -129,10 +138,14 @@ Quotas count compressed objects, recoveries and repository metadata; every write
 checks database growth even when it reuses a snapshot. Global admission accounts
 for repository file sizes and staging headroom. Work memory
 uses conservative reservations for captures, decoded comparisons and retained
-sessions. Quota rejection preserves existing history; history is never pruned
-automatically. Radius is capped at 128 blocks, marker count at 512, session
-duration at 10–3600 seconds. Larger builds can require raising work/snapshot limits.
+sessions. The server-wide Git workspace is capped at **100 MiB**, including
+retained comparisons; `git_work_memory_mib` can lower this cap, but values above
+100 are clamped even in older configurations. Quota rejection preserves existing
+history; history is never pruned automatically. Radius is capped at 128 blocks,
+marker count at 512, session duration at 10–3600 seconds. Operations whose
+conservative memory reservations do not fit are rejected before replacing the
+plot or history.
 
-Merges, remotes, detached checkout, branch deletion and partial restoration are
+Merges, remotes, branch deletion and partial restoration are
 outside this release. Glow metadata is checked against the bundled 1.21.5
 protocol; final appearance and client performance need an in-game client check.

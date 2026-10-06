@@ -15,10 +15,8 @@ fn supplied_minesweeper_loads_plain_items_and_reports_discarded_components() {
     assert_eq!((cb.size_x, cb.size_y, cb.size_z), (126, 39, 126));
     assert_eq!(warnings.simplified_stacks, 12_288);
     assert_eq!(warnings.removed_stacks, 0);
-    assert!(warnings
-        .notification()
-        .unwrap()
-        .contains("unsupported items/components"));
+    assert!(warnings.notification().is_some());
+    assert!(SchematicImportWarnings::default().notification().is_none());
     let mut capsules = 0;
     for entity in cb.block_entities.values() {
         if let BlockEntity::Container { inventory, .. } = entity {

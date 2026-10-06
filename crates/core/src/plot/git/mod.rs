@@ -11,13 +11,14 @@ use self::repository::{Limits, Repository};
 use self::snapshot::Snapshot;
 use super::{Plot, PLOT_SCALE, PLOT_WIDTH};
 use crate::config::CONFIG;
+use crate::messages;
 use crate::player::{PacketSender, PlayerPos};
 use crate::world::storage::Chunk;
 use crate::world::World;
 use anyhow::{bail, ensure, Context, Result};
 use mchprs_blocks::BlockPos;
 use mchprs_network::packets::clientbound::{
-    CDestroyEntities, CEntityTeleport, CTabComplete, CTabCompleteMatch, ClientBoundPacket,
+    CDestroyEntities, CTabComplete, CTabCompleteMatch, ClientBoundPacket,
 };
 use mchprs_save_data::plot_data::{PlotData, Tps};
 use mchprs_world::AdvancePhase;
@@ -33,15 +34,17 @@ use std::sync::{
 use std::time::{Duration, Instant};
 
 const ROOT: &str = "./world/plot-git";
-pub(super) const HELP: &str = "Plot Git: /git status; /git commit <message>; /git log [--all] [page]; /git search [--all] [--page n] <text>; /git branch [name [ref]]; /git checkout <branch>; /git diff <from> <to>; /git recoveries [page]; /git recover <id> <new-branch>.\nClick Show glow, then right-click a glowing change with any sword to inspect. Checkout preserves unfinished work and pauses simulation.";
+const MAX_WORK_MEMORY_MIB: u64 = 100;
 
 static USED: AtomicUsize = AtomicUsize::new(0);
 pub(super) struct Reservation(usize);
 impl Reservation {
     fn new(bytes: usize) -> Result<Self> {
-        let limit = mib(CONFIG.git_work_memory_mib);
-        USED.fetch_update(Ordering::SeqCst,Ordering::SeqCst,|used|used.checked_add(bytes).filter(|&n|n<=limit))
-            .map_err(|_|anyhow::anyhow!("Git work/session memory limit reached. Wait for comparisons to expire or leave the plot and retry."))?;
+        let limit = mib(CONFIG.git_work_memory_mib.min(MAX_WORK_MEMORY_MIB));
+        USED.fetch_update(Ordering::SeqCst, Ordering::SeqCst, |used| {
+            used.checked_add(bytes).filter(|&n| n <= limit)
+        })
+        .map_err(|_| anyhow::anyhow!(messages::GIT_MEMORY_LIMIT_REACHED))?;
         Ok(Self(bytes))
     }
 }
@@ -80,11 +83,7 @@ static WORKERS: Lazy<SyncSender<Job>> = Lazy::new(|| {
                     break;
                 };
                 let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(job.task))
-                    .unwrap_or_else(|_| {
-                        Err(anyhow::anyhow!(
-                            "Git worker failed; unfinished checkout may need startup recovery"
-                        ))
-                    });
+                    .unwrap_or_else(|_| Err(anyhow::anyhow!(messages::GIT_WORKER_FAILED)));
                 let _ = job.reply.send(result);
             })
             .expect("Cannot start plot Git worker");
@@ -167,9 +166,9 @@ impl Plot {
 
     pub(super) fn git_lock_message(&self) -> &'static str {
         if self.git.fatal {
-            "Git checkout needs startup recovery. This plot is paused and locked; contact the server administrator."
+            messages::GIT_STARTUP_RECOVERY_REQUIRED
         } else {
-            "Plot checkout is in progress. Please wait."
+            messages::GIT_CHECKOUT_IN_PROGRESS
         }
     }
 
@@ -202,7 +201,7 @@ impl Plot {
         let started = Instant::now();
         ensure!(
             self.world.piston_state.phase == AdvancePhase::BetweenTicks,
-            "Finish the partial tick before saving a Git snapshot"
+            messages::GIT_FINISH_PARTIAL_TICK
         );
         self.reset_redpiler(); // Exports compiled block state and its scheduled ticks.
         for chunk in &mut self.world.chunks {
@@ -223,12 +222,12 @@ impl Plot {
         )?;
         ensure!(
             estimate < limits().snapshot,
-            "Git snapshot exceeds the size limit"
+            messages::GIT_SNAPSHOT_SIZE_LIMIT
         );
         let reservation = Reservation::new(
             estimate
                 .checked_mul(6)
-                .context("Git capture size overflow")?
+                .context(messages::GIT_CAPTURE_SIZE_OVERFLOW)?
                 .saturating_add(4 * 1048576),
         )?;
         let snapshot = Snapshot {
@@ -255,14 +254,11 @@ impl Plot {
     }
 
     fn start_git(&mut self, actor: u128, checkout: Option<Tps>, task: Task) -> Result<()> {
-        ensure!(
-            self.git.pending.is_none(),
-            "A Git operation is already running on this plot"
-        );
+        ensure!(self.git.pending.is_none(), messages::GIT_OPERATION_RUNNING);
         let (reply, receiver) = mpsc::sync_channel(1);
         WORKERS
             .try_send(Job { task, reply })
-            .map_err(|_| anyhow::anyhow!("Git worker queue is full; try again"))?;
+            .map_err(|_| anyhow::anyhow!(messages::GIT_WORKER_QUEUE_FULL))?;
         self.git.pending = Some(Pending {
             receiver,
             actor,
@@ -273,7 +269,8 @@ impl Plot {
 
     pub(super) fn handle_git_command(&mut self, player: usize, args: &[&str]) {
         if let Err(error) = self.git_command(player, args) {
-            self.players[player].send_error_message(&format!("Git: {error:#}"));
+            self.players[player]
+                .send_error_message(&messages::git_error(format_args!("{error:#}")));
         }
     }
 
@@ -287,16 +284,16 @@ impl Plot {
         };
         ensure!(
             self.git_access(player, action),
-            "No permission to use Git on this plot"
+            messages::GIT_PERMISSION_DENIED
         );
         let actor = self.players[player].uuid;
         if args.is_empty() || args == ["help"] {
-            self.players[player].send_system_message(HELP);
+            self.players[player].send_system_message(messages::HELP_GIT);
             return Ok(());
         }
         if args == ["diff", "hide"] {
             self.hide_git(player, false);
-            self.players[player].send_system_message("Diff glow hidden.");
+            self.players[player].send_system_message(messages::GIT_DIFF_GLOW_HIDDEN);
             return Ok(());
         }
         if args == ["diff", "show"] {
@@ -304,28 +301,21 @@ impl Plot {
                 .git
                 .sessions
                 .get_mut(&actor)
-                .context("Prepare a comparison with /git diff <from> <to>")?;
+                .context(messages::GIT_PREPARE_COMPARISON)?;
             session.enabled = true;
             session.last_pos = None;
             session.next_update = Instant::now();
             session.expires =
                 Instant::now() + Duration::from_secs(CONFIG.git_session_seconds.clamp(10, 3600));
-            self.players[player]
-                .send_system_message("Right-click a glowing change with a sword to inspect it.");
+            self.players[player].send_system_message(messages::GIT_DIFF_INSPECT_HINT);
             return Ok(());
         }
-        ensure!(
-            !self.git.locked,
-            "Checkout is in progress or needs recovery; plot changes are locked"
-        );
-        ensure!(
-            self.git.pending.is_none(),
-            "A Git operation is already running on this plot"
-        );
+        ensure!(!self.git.locked, messages::GIT_CHECKOUT_LOCKED);
+        ensure!(self.git.pending.is_none(), messages::GIT_OPERATION_RUNNING);
         if args.first() == Some(&"diff") && args.get(1) == Some(&"inspect") {
             ensure!(
                 args.len() == 5 || args.len() == 6,
-                "Usage: /git diff inspect <x> <y> <z> [from|to]"
+                messages::USAGE_GIT_DIFF_INSPECT
             );
             let pos = BlockPos::new(args[2].parse()?, args[3].parse()?, args[4].parse()?);
             let side = args.get(5).map(|s| s.to_string());
@@ -333,7 +323,7 @@ impl Plot {
                 .git
                 .sessions
                 .get(&actor)
-                .context("No prepared comparison")?
+                .context(messages::GIT_NO_COMPARISON)?
                 .diff
                 .clone();
             return self.start_git(
@@ -392,7 +382,7 @@ impl Plot {
                     let size = repo.raw_size(&a)?.saturating_add(repo.raw_size(&b)?);
                     let reservation = Reservation::new(
                         size.checked_mul(6)
-                            .context("Diff size overflow")?
+                            .context(messages::GIT_DIFF_SIZE_OVERFLOW)?
                             .saturating_add(4 * 1048576),
                     )?;
                     let mut diff = Diff::new(
@@ -423,7 +413,7 @@ impl Plot {
                         &name,
                     )
                 }
-                _ => bail!("Unknown arguments. {HELP}"),
+                _ => bail!(messages::git_unknown_arguments(messages::HELP_GIT)),
             };
             // Completion caching must never discard an already durable checkout result.
             Ok(Reply {
@@ -437,7 +427,7 @@ impl Plot {
             self.close_all_containers();
             self.set_git_tps(Tps::Limited(0));
         }
-        self.players[player].send_system_message("Git operation started.");
+        self.players[player].send_system_message(messages::GIT_OPERATION_STARTED);
         Ok(())
     }
 
@@ -472,7 +462,7 @@ impl Plot {
                         }
                         if let Some(player) = actor {
                             self.players[player]
-                                .send_error_message(&format!("Git checkout failed: {error}"));
+                                .send_error_message(&messages::git_checkout_failed(error));
                         }
                     }
                     payload => {
@@ -508,10 +498,10 @@ impl Plot {
                                         },
                                     );
                                 }
-                                Payload::Markers(markers, center) => {
-                                    if self.git_access(player, "visual") {
-                                        self.replace_git_markers(player, markers, center);
-                                    }
+                                Payload::Markers(markers, center)
+                                    if self.git_access(player, "visual") =>
+                                {
+                                    self.replace_git_markers(player, markers, center);
                                 }
                                 _ => {}
                             }
@@ -541,7 +531,8 @@ impl Plot {
                     }
                 }
                 if let Some(player) = actor {
-                    self.players[player].send_error_message(&format!("Git: {error:#}"));
+                    self.players[player]
+                        .send_error_message(&messages::git_error(format_args!("{error:#}")));
                 }
             }
         }
@@ -552,9 +543,10 @@ impl Plot {
             match pending.receiver.try_recv() {
                 Ok(result) => self.accept_git(pending, result),
                 Err(TryRecvError::Empty) => self.git.pending = Some(pending),
-                Err(TryRecvError::Disconnected) => {
-                    self.accept_git(pending, Err(anyhow::anyhow!("Git worker disconnected")))
-                }
+                Err(TryRecvError::Disconnected) => self.accept_git(
+                    pending,
+                    Err(anyhow::anyhow!(messages::GIT_WORKER_DISCONNECTED)),
+                ),
             }
         }
         let now = Instant::now();
@@ -618,7 +610,7 @@ impl Plot {
     pub(super) fn finish_git(&mut self) {
         if let Some(pending) = self.git.pending.take() {
             let result = pending.receiver.recv().unwrap_or_else(|_| {
-                Err(anyhow::anyhow!("Git worker disconnected during shutdown"))
+                Err(anyhow::anyhow!(messages::GIT_WORKER_DISCONNECTED_SHUTDOWN))
             });
             self.accept_git(pending, result);
         }
@@ -659,22 +651,8 @@ impl Plot {
                 if let Some(safe) = self.git_safe_position(pos) {
                     self.players[player].teleport(safe);
                     self.players[player].on_ground = false;
-                    let moved = &self.players[player];
-                    let packet = CEntityTeleport {
-                        entity_id: moved.entity_id as i32,
-                        x: safe.x,
-                        y: safe.y,
-                        z: safe.z,
-                        yaw: moved.yaw,
-                        pitch: moved.pitch,
-                        on_ground: false,
-                    }
-                    .encode();
-                    for (index, viewer) in self.players.iter().enumerate() {
-                        if index != player {
-                            viewer.send_packet(&packet);
-                        }
-                    }
+                    let packet = self.players[player].entity_teleport_packet();
+                    self.broadcast_player_packets(player, &[&packet]);
                 }
             }
             self.update_view_pos_for_player(player, true);
@@ -763,8 +741,7 @@ impl Plot {
                 }),
             );
         } else {
-            self.players[player]
-                .send_system_message("Git is busy; try inspecting again in a moment.");
+            self.players[player].send_system_message(messages::GIT_INSPECTION_BUSY);
         }
         true
     }
@@ -859,7 +836,7 @@ fn parse_log(args: &[&str]) -> Result<(bool, usize)> {
         ["--all"] => Ok((true, 1)),
         [page] => Ok((false, page.parse()?)),
         ["--all", page] => Ok((true, page.parse()?)),
-        _ => bail!("Usage: /git log [--all] [page]"),
+        _ => bail!(messages::USAGE_GIT_LOG),
     }
 }
 fn parse_search(args: &[&str]) -> Result<(bool, usize, String)> {
@@ -873,7 +850,10 @@ fn parse_search(args: &[&str]) -> Result<(bool, usize, String)> {
                 index += 1;
             }
             "--page" => {
-                page = args.get(index + 1).context("Missing page")?.parse()?;
+                page = args
+                    .get(index + 1)
+                    .context(messages::GIT_MISSING_PAGE)?
+                    .parse()?;
                 index += 2;
             }
             _ => break,
@@ -882,7 +862,7 @@ fn parse_search(args: &[&str]) -> Result<(bool, usize, String)> {
     let text = args[index..].join(" ");
     ensure!(
         !text.is_empty() && text.chars().count() <= 128,
-        "Search text must contain 1..128 characters"
+        messages::GIT_SEARCH_TEXT_LIMIT
     );
     Ok((all, page, text))
 }

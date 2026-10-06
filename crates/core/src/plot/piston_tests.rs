@@ -188,11 +188,12 @@ fn snapshot_state(chunk: &CChunkData, pos: BlockPos) -> u32 {
     let container = &chunk.chunk_sections[pos.y as usize / 16].block_states;
     let bits = container.bits_per_entry as usize;
     let index = (((pos.y & 15) << 8) | ((pos.z & 15) << 4) | (pos.x & 15)) as usize;
-    let value = if bits == 0 {
-        0
-    } else {
-        (container.data_array[index / (64 / bits)] >> ((index % (64 / bits)) * bits))
-            & ((1 << bits) - 1)
+    let value = match 64usize.checked_div(bits) {
+        None => 0,
+        Some(entries_per_long) => {
+            (container.data_array[index / entries_per_long] >> ((index % entries_per_long) * bits))
+                & ((1 << bits) - 1)
+        }
     };
     container
         .palette

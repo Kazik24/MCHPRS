@@ -1,6 +1,7 @@
 //! Viewer-only block displays. They never enter the world's entity/block storage.
 use super::{Marker, Plot};
 use crate::config::CONFIG;
+use crate::messages;
 use crate::player::{allocate_entity_id, PacketSender, PlayerPos};
 use mchprs_blocks::blocks::Block;
 use mchprs_network::packets::clientbound::{
@@ -148,7 +149,7 @@ impl Plot {
             && session.markers.keys().all(|p| wanted.contains_key(p));
         if complete && session.last_pos.is_none() {
             let total: u64 = session.diff.counts.iter().sum();
-            viewer.send_system_message(&format!("Diff glow: {}/{} changes shown nearby. Green: added; red: removed; yellow: changed.",session.markers.len(),total));
+            viewer.send_system_message(&messages::git_glow_status(session.markers.len(), total));
         }
         session.last_pos = complete.then_some(center);
         session.next_update = Instant::now() + Duration::from_secs(1);

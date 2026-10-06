@@ -1,9 +1,9 @@
+use crate::messages;
 use crate::permissions::PermissionsConfig;
 use crate::velocity::VelocityConfig;
 use once_cell::sync::Lazy;
 use serde::{Deserialize, Serialize};
 use std::fs;
-use std::io::Write;
 use toml_edit::{value, Document};
 
 static CONFIG_PATH: Lazy<std::path::PathBuf> = Lazy::new(|| {
@@ -19,7 +19,7 @@ pub(crate) fn save_history_limit(mib: i64) -> Result<(), String> {
     let mut doc = text.parse::<Document>().map_err(|e| e.to_string())?;
     doc["rhistory_memory_limit_mib"] = value(mib);
     mchprs_save_data::atomic::write(&CONFIG_PATH, doc.to_string().as_bytes())
-        .map_err(|e| format!("Cannot save history limit: {e}"))
+        .map_err(messages::history_limit_save_failed)
 }
 
 trait ConfigSerializeDefault {
@@ -55,7 +55,7 @@ impl ConfigSerializeDefault for u64 {
 
 impl<T> ConfigSerializeDefault for Option<T> {
     fn fix_config(self, _: &str, _: &mut Document) {
-        assert!(matches!(self, None), "`Some` as default is unimplemented");
+        assert!(self.is_none(), "`Some` as default is unimplemented");
     }
 }
 
@@ -81,8 +81,8 @@ macro_rules! gen_config {
 
                 let patched = doc.to_string();
                 if str != patched {
-                    let mut file = fs::OpenOptions::new().create(true).truncate(true).write(true).open(config_file).unwrap();
-                    write!(file, "{}", patched).unwrap();
+                    mchprs_save_data::atomic::write(config_file, patched.as_bytes())
+                        .expect("Cannot save server config");
                 }
 
                 toml::from_str(&patched).unwrap()
@@ -113,7 +113,7 @@ gen_config! {
     rhistory_work_memory_limit_mib: i64 = 256,
     git_plot_storage_mib: u64 = 1024,
     git_total_storage_mib: u64 = 16384,
-    git_work_memory_mib: u64 = 512,
+    git_work_memory_mib: u64 = 100,
     git_snapshot_max_mib: u64 = 128,
     git_marker_limit: u32 = 128,
     git_marker_radius: u32 = 64,

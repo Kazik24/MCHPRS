@@ -1,7 +1,7 @@
 use crate::world::World;
 use mchprs_blocks::block_entities::{BlockEntity, ContainerType};
 use mchprs_blocks::blocks::{Block, ComparatorMode, RedstoneComparator};
-use mchprs_blocks::{BlockDirection, BlockFace, BlockPos};
+use mchprs_blocks::{BlockDirection, BlockPos};
 use mchprs_world::TickPriority;
 
 fn get_power_on_side(world: &impl World, pos: BlockPos, side: BlockDirection) -> u8 {
@@ -11,7 +11,7 @@ fn get_power_on_side(world: &impl World, pos: BlockPos, side: BlockDirection) ->
         super::get_weak_power(side_block, world, side_pos, side.block_face(), false)
     } else if let Block::RedstoneWire { wire } = side_block {
         wire.power
-    } else if let Block::RedstoneBlock {} = side_block {
+    } else if let Block::RedstoneBlock = side_block {
         15
     } else {
         0
@@ -28,12 +28,7 @@ fn get_power_on_sides(comp: RedstoneComparator, world: &impl World, pos: BlockPo
 pub fn has_override(block: Block) -> bool {
     matches!(
         block,
-        Block::Barrel { .. }
-            | Block::Furnace { .. }
-            | Block::Hopper { .. }
-            | Block::Cauldron { .. }
-            | Block::Composter { .. }
-            | Block::Cake { .. }
+        Block::Cauldron { .. } | Block::Composter { .. } | Block::Cake { .. }
     ) || ContainerType::from_block(block).is_some()
         || block.get_name() == "end_portal_frame"
         || block.is_command_block()
@@ -127,23 +122,9 @@ fn calculate_output_strength(
     }
 }
 
-// This is exactly the same as it is in the RedstoneRepeater struct.
-// Sometime in the future, this needs to be reused. LLVM might optimize
-// it way, but te human brane wil not!
 fn on_state_change(comp: RedstoneComparator, world: &mut impl World, pos: BlockPos) {
-    let front_pos = pos.offset(comp.facing.opposite().block_face());
-    let front_block = world.get_block(front_pos);
-    super::update(
-        front_block,
-        world,
-        front_pos,
-        Some(comp.facing.opposite().block_face()),
-    );
-    for direction in &BlockFace::values() {
-        let neighbor_pos = front_pos.offset(*direction);
-        let block = world.get_block(neighbor_pos);
-        super::update(block, world, neighbor_pos, Some(*direction));
-    }
+    let output_face = comp.facing.opposite().block_face();
+    super::update_output_neighbors(world, pos.offset(output_face), output_face);
 }
 
 pub fn update(comp: RedstoneComparator, world: &mut impl World, pos: BlockPos) {

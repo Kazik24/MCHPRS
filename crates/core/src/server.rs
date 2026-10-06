@@ -754,9 +754,12 @@ impl ServerBoundPacketHandler for MinecraftServer {
             }
             Err(error) => {
                 warn!("Rejected unauthenticated backend login: {error}");
-                client.send_packet(&CDisconnectLogin {
-                    reason: json!({"text":"Please connect through the authenticated Velocity proxy."}).to_string(),
-                }.encode());
+                client.send_packet(
+                    &CDisconnectLogin {
+                        reason: json!({"text":messages::AUTHENTICATED_PROXY_REQUIRED}).to_string(),
+                    }
+                    .encode(),
+                );
                 client.close_connection();
             }
         }

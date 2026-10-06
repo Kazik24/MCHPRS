@@ -40,11 +40,11 @@ impl RStackRequest {
                 numbers.push(number);
                 continue;
             }
-            if argument.starts_with('-') {
-                if argument == "-" {
+            if let Some(flags) = argument.strip_prefix('-') {
+                if flags.is_empty() {
                     bail!(messages::FLAG_NAME_MUST_FOLLOW);
                 }
-                for flag in argument[1..].chars() {
+                for flag in flags.chars() {
                     match flag {
                         'a' | 'w' if !live => air = AirPolicy::Copy,
                         'a' | 'w' => bail!(messages::AUTO_STACK_ALWAYS_COPIES_REMOVALS),
@@ -143,10 +143,10 @@ impl AutoStack {
         let entity = world.get_block_entity(pos).cloned();
         for destination in self.destinations(pos) {
             let old = world.get_block(destination);
-            if !matches!(old, Block::Air {}) {
+            if !matches!(old, Block::Air) {
                 crate::interaction::destroy(old, world, destination);
             }
-            if !matches!(block, Block::Air {}) {
+            if !matches!(block, Block::Air) {
                 world.delete_block_entity(destination);
                 world.set_block(destination, block);
                 if let Some(entity) = &entity {

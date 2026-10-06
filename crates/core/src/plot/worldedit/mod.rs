@@ -82,7 +82,7 @@ pub fn execute_command(
         if !(0..super::PLOT_BLOCK_HEIGHT).contains(&first_pos.y)
             || !(0..super::PLOT_BLOCK_HEIGHT).contains(&second_pos.y)
         {
-            player.send_error_message("Selection is outside the world height");
+            player.send_error_message(messages::SELECTION_OUTSIDE_WORLD_HEIGHT);
             return true;
         }
         if !Plot::in_plot_bounds(plot_x, plot_z, first_pos.x, first_pos.z) {
@@ -1048,7 +1048,7 @@ pub fn ray_trace_block(
     // Player view height
     pos.y += 1.65;
     let rot_x = (start_yaw + 90.0) % 360.0;
-    let rot_y = start_pitch * -1.0;
+    let rot_y = -start_pitch;
     let h = check_distance * rot_y.to_radians().cos();
 
     let offset_x = h * rot_x.to_radians().cos();
@@ -1061,7 +1061,7 @@ pub fn ray_trace_block(
         let block_pos = pos.block_pos();
         let block = world.get_block(block_pos);
 
-        if !matches!(block, Block::Air {}) {
+        if !matches!(block, Block::Air) {
             return Some(block_pos);
         }
 
@@ -1319,29 +1319,8 @@ fn update_selection(
     {
         return Err(messages::UPDATE_SELECTION_OUTSIDE_HEIGHT);
     }
-    let first = first_pos.min(second_pos);
-    let second = first_pos.max(second_pos);
-    // Align the section iteration before skipping empty sections. Unaligned
-    // selections can cross all three section boundaries in fewer than 16 blocks.
-    for chunk_x in first.x.div_euclid(16)..=second.x.div_euclid(16) {
-        for chunk_z in first.z.div_euclid(16)..=second.z.div_euclid(16) {
-            for section in first.y / 16..=second.y / 16 {
-                if plot.get_chunk(chunk_x, chunk_z).unwrap().sections[section as usize]
-                    .block_count()
-                    == 0
-                {
-                    continue;
-                }
-                for y in first.y.max(section * 16)..=second.y.min(section * 16 + 15) {
-                    for z in first.z.max(chunk_z * 16)..=second.z.min(chunk_z * 16 + 15) {
-                        for x in first.x.max(chunk_x * 16)..=second.x.min(chunk_x * 16 + 15) {
-                            let pos = BlockPos::new(x, y, z);
-                            redstone::update(plot.get_block(pos), plot, pos, None);
-                        }
-                    }
-                }
-            }
-        }
-    }
+    crate::world::for_each_block_mut_optimized(plot, first_pos, second_pos, |plot, pos| {
+        redstone::update(plot.get_block(pos), plot, pos, None);
+    });
     Ok(())
 }

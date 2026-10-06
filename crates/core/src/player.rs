@@ -135,27 +135,6 @@ impl std::fmt::Display for PlayerPos {
     }
 }
 
-#[cfg(test)]
-mod coordinate_security_tests {
-    use super::*;
-    #[test]
-    fn player_coordinates_reject_nonfinite_and_extreme_positions() {
-        for value in [
-            f64::NAN,
-            f64::INFINITY,
-            f64::NEG_INFINITY,
-            30_000_001.0,
-            -30_000_001.0,
-        ] {
-            assert!(!PlayerPos::new(value, 64.0, 0.0).is_valid());
-            assert!(!PlayerPos::new(0.0, 64.0, value).is_valid());
-        }
-        assert!(!PlayerPos::new(0.0, 2049.0, 0.0).is_valid());
-        assert!(!PlayerPos::new(0.0, f64::NAN, 0.0).is_valid());
-        assert!(PlayerPos::new(-128.0, 128.0, 128.0).is_valid());
-    }
-}
-
 pub struct Player {
     pub uuid: u128,
     pub username: String,
@@ -579,6 +558,19 @@ impl Player {
         self.client.send_packet(&cui_plugin_message);
     }
 
+    pub(crate) fn entity_teleport_packet(&self) -> PacketEncoder {
+        CEntityTeleport {
+            entity_id: self.entity_id as i32,
+            x: self.pos.x,
+            y: self.pos.y,
+            z: self.pos.z,
+            yaw: self.yaw,
+            pitch: self.pitch,
+            on_ground: self.on_ground,
+        }
+        .encode()
+    }
+
     /// Sends the player the disconnect packet, it is still up to the player to end the network stream.
     pub fn kick(&self, reason: String) {
         let disconnect = CDisconnect { reason }.encode();
@@ -873,5 +865,26 @@ impl PacketSender for PlayerPacketSender {
 impl PacketSender for Player {
     fn send_packet(&self, data: &PacketEncoder) {
         self.client.send_packet(data);
+    }
+}
+
+#[cfg(test)]
+mod coordinate_security_tests {
+    use super::*;
+    #[test]
+    fn player_coordinates_reject_nonfinite_and_extreme_positions() {
+        for value in [
+            f64::NAN,
+            f64::INFINITY,
+            f64::NEG_INFINITY,
+            30_000_001.0,
+            -30_000_001.0,
+        ] {
+            assert!(!PlayerPos::new(value, 64.0, 0.0).is_valid());
+            assert!(!PlayerPos::new(0.0, 64.0, value).is_valid());
+        }
+        assert!(!PlayerPos::new(0.0, 2049.0, 0.0).is_valid());
+        assert!(!PlayerPos::new(0.0, f64::NAN, 0.0).is_valid());
+        assert!(PlayerPos::new(-128.0, 128.0, 128.0).is_valid());
     }
 }

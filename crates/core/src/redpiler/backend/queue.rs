@@ -68,7 +68,6 @@ impl<T> Queues<T> {
     }
 }
 
-//todo use this tick scheduler also for interpreted backend
 #[derive(Debug, Clone)]
 pub struct TickScheduler<T> {
     queues_deque: [Queues<T>; NUM_QUEUES],
@@ -101,22 +100,6 @@ impl TickScheduler<NodeId> {
             };
             world.schedule_half_tick(pos, delay as u32, priority);
         }
-        // for (idx, queues) in self.queues_deque.iter().enumerate() {
-        //     let delay = if self.pos >= idx {
-        //         idx + NUM_QUEUES
-        //     } else {
-        //         idx
-        //     } - self.pos;
-        //     for (entries, priority) in queues.0.iter().zip(TickPriority::ALL) {
-        //         for node in entries {
-        //             let Some((pos, _)) = blocks[node.index()] else {
-        //                 warn!("Cannot schedule tick for node {node:?} because block information is missing");
-        //                 continue;
-        //             };
-        //             world.schedule_tick(pos, delay as u32, priority);
-        //         }
-        //     }
-        // }
         self.clear();
     }
 }
@@ -128,7 +111,7 @@ pub struct ScheduledBlockTick {
 }
 
 impl TickScheduler<ScheduledBlockTick> {
-    pub fn iter_entries(&self) -> impl Iterator<Item = TickEntry> + '_ where {
+    pub fn iter_entries(&self) -> impl Iterator<Item = TickEntry> + '_ {
         self.iter().map(|(node, d, p)| TickEntry {
             pos: node.pos,
             block_type: node.block_type,

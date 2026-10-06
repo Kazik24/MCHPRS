@@ -2,6 +2,7 @@
 //! https://github.com/SpongePowered/Schematic-Specification/blob/master/versions/schematic-2.md
 
 use super::WorldEditClipboard;
+use crate::messages;
 use crate::server::MC_DATA_VERSION;
 use crate::world::storage::PalettedBitBuffer;
 use anyhow::{bail, Context, Result};
@@ -77,19 +78,19 @@ pub(super) fn parse_block(input: &str) -> Option<Block> {
 fn integer(root: &Compound, key: &str) -> Result<i32> {
     match root.get(key) {
         Some(nbt::Value::Int(n)) => Ok(*n),
-        _ => bail!("{key}: expected Int"),
+        _ => bail!(messages::schematic_expected_integer(key)),
     }
 }
 fn compound<'a>(root: &'a Compound, key: &str) -> Result<&'a Compound> {
     match root.get(key) {
         Some(nbt::Value::Compound(c)) => Ok(c),
-        _ => bail!("{key}: expected Compound"),
+        _ => bail!(messages::schematic_expected_compound(key)),
     }
 }
 fn vector(root: &Compound, key: &str) -> Result<[i32; 3]> {
     match root.get(key) {
         Some(nbt::Value::IntArray(v)) if v.len() == 3 => Ok([v[0], v[1], v[2]]),
-        _ => bail!("{key}: expected IntArray of exactly three entries"),
+        _ => bail!(messages::schematic_expected_vector(key)),
     }
 }
 struct Schema<'a> {
@@ -112,26 +113,26 @@ impl<'a> Schema<'a> {
         };
         let version = integer(root, "Version")?;
         if version != 2 && version != 3 {
-            bail!("Version: unsupported schematic version {version}");
+            bail!(messages::schematic_unsupported_version(version));
         }
         if version == 3 && !wrapped {
-            bail!("Schematic: v3 requires a nested schema Compound");
+            bail!(messages::SCHEMATIC_V3_NESTED_SCHEMA_REQUIRED);
         }
         let data_version = integer(root, "DataVersion")?;
         let mut dimensions = [0; 3];
         for (i, key) in ["Width", "Height", "Length"].into_iter().enumerate() {
             dimensions[i] = match root.get(key) {
                 Some(Value::Short(n)) => *n as u16 as u32,
-                _ => bail!("{key}: expected unsigned NBT Short"),
+                _ => bail!(messages::schematic_expected_dimension(key)),
             };
             if dimensions[i] == 0 {
-                bail!("{key}: zero dimension");
+                bail!(messages::schematic_zero_dimension(key));
             }
         }
         let metadata = match root.get("Metadata") {
             None => None,
             Some(Value::Compound(m)) => Some(m),
-            _ => bail!("Metadata: expected Compound"),
+            _ => bail!(messages::SCHEMATIC_METADATA_COMPOUND_REQUIRED),
         };
         let keys = ["WEOffsetX", "WEOffsetY", "WEOffsetZ"];
         let legacy_present = metadata.is_some_and(|m| keys.iter().any(|k| m.contains_key(*k)));
@@ -151,11 +152,10 @@ impl<'a> Schema<'a> {
         for i in 0..3 {
             offset[i] = displacement[i]
                 .checked_neg()
-                .context("Offset: displacement overflows clipboard coordinates")?;
+                .context(messages::SCHEMATIC_OFFSET_DISPLACEMENT_OVERFLOW)?;
         }
         let container = if version == 3 {
-            compound(root, "Blocks")
-                .context("Schematic.Blocks: this importer requires block content")?
+            compound(root, "Blocks").context(messages::SCHEMATIC_BLOCK_CONTENT_REQUIRED)?
         } else {
             root
         };
@@ -163,12 +163,12 @@ impl<'a> Schema<'a> {
         let field = if version == 3 { "Data" } else { "BlockData" };
         let encoded = match container.get(field) {
             Some(Value::ByteArray(v)) => v.as_slice(),
-            _ => bail!("{field}: expected ByteArray"),
+            _ => bail!(messages::schematic_expected_bytes(field)),
         };
         let entities = match container.get("BlockEntities") {
             None => &[][..],
             Some(Value::List(v)) => v.as_slice(),
-            _ => bail!("BlockEntities: expected List"),
+            _ => bail!(messages::SCHEMATIC_ENTITY_LIST_REQUIRED),
         };
         for key in ["Biomes", "BiomeData", "Entities"] {
             if let Some(value) = root.get(key) {
@@ -203,10 +203,7 @@ pub struct SchematicImportWarnings {
 impl SchematicImportWarnings {
     pub fn notification(&self) -> Option<String> {
         (self.simplified_stacks > 0 || self.removed_stacks > 0).then(|| {
-            format!(
-                "Warning: schematic contains unsupported items/components. Simplified {} item stacks to plain items; removed {} unsupported item stacks. Custom data was discarded and vanilla stack limits applied.",
-                self.simplified_stacks, self.removed_stacks
-            )
+            messages::schematic_items_simplified(self.simplified_stacks, self.removed_stacks)
         })
     }
 }
@@ -269,8 +266,9 @@ pub fn load_schematic(file: impl Read) -> Result<WorldEditClipboard> {
 pub fn load_schematic_with_warnings(
     mut file: impl Read,
 ) -> Result<(WorldEditClipboard, SchematicImportWarnings)> {
-    let nbt = nbt::Blob::from_gzip_reader(&mut file).context("reading gzip schematic NBT")?;
-    let schema = Schema::read(&nbt).context("schematic schema")?;
+    let nbt =
+        nbt::Blob::from_gzip_reader(&mut file).context(messages::SCHEMATIC_GZIP_READ_FAILED)?;
+    let schema = Schema::read(&nbt).context(messages::SCHEMATIC_SCHEMA_INVALID)?;
     tracing::debug!(
         "Importing Sponge v{} with source Minecraft DataVersion {}",
         schema.version,
@@ -290,20 +288,20 @@ fn decode_schematic(schema: &Schema<'_>) -> Result<(WorldEditClipboard, Schemati
         .checked_mul(size_y)
         .and_then(|n| n.checked_mul(size_z))
         .filter(|n| *n <= MAX_BLOCKS)
-        .context("dimensions: schematic exceeds 16,777,216 block limit")?;
+        .context(messages::SCHEMATIC_BLOCK_LIMIT_EXCEEDED)?;
     if schema.encoded.len() < entries as usize {
-        bail!("block data: fewer bytes than required block entries");
+        bail!(messages::SCHEMATIC_TOO_FEW_BLOCK_BYTES);
     }
     let mut palette: FxHashMap<u32, u32> = FxHashMap::default();
     for (name, value) in schema.palette {
         let Value::Int(id) = value else {
-            bail!("Palette.{name}: expected Int")
+            bail!(messages::schematic_palette_integer(name))
         };
         if *id < 0 || palette.contains_key(&(*id as u32)) {
-            bail!("Palette.{name}: negative or duplicate index {id}");
+            bail!(messages::schematic_palette_invalid_index(name, id));
         }
-        let state = parse_block(name)
-            .with_context(|| format!("Palette: unsupported or invalid block state {name}"))?;
+        let state =
+            parse_block(name).with_context(|| messages::schematic_palette_unknown_state(name))?;
         palette.insert(*id as u32, state.get_id());
     }
     let mut data = PalettedBitBuffer::new(entries as usize, 9);
@@ -315,11 +313,11 @@ fn decode_schematic(schema: &Schema<'_>) -> Result<(WorldEditClipboard, Schemati
             let byte = *schema
                 .encoded
                 .get(at)
-                .with_context(|| format!("block data: truncated VarInt at entry {i}"))?
+                .with_context(|| messages::schematic_truncated_varint(i))?
                 as u8;
             at += 1;
             if shift == 4 && byte & 0xf8 != 0 {
-                bail!("block data: overflowing palette VarInt at entry {i}");
+                bail!(messages::schematic_overflowing_varint(i));
             }
             id |= ((byte & 127) as u32) << (shift * 7);
             if byte & 128 == 0 {
@@ -328,43 +326,43 @@ fn decode_schematic(schema: &Schema<'_>) -> Result<(WorldEditClipboard, Schemati
             }
         }
         if !complete {
-            bail!("block data: unterminated palette VarInt at entry {i}");
+            bail!(messages::schematic_unterminated_varint(i));
         }
         data.set_entry(
             i,
             *palette
                 .get(&id)
-                .with_context(|| format!("block data: missing palette index {id} at entry {i}"))?,
+                .with_context(|| messages::schematic_missing_palette_index(id, i))?,
         );
     }
     if at != schema.encoded.len() {
-        bail!("block data: trailing bytes after {entries} entries");
+        bail!(messages::schematic_trailing_block_bytes(entries));
     }
     let mut parsed_block_entities = FxHashMap::default();
     let mut warnings = SchematicImportWarnings::default();
     let mut unsupported = std::collections::BTreeMap::<String, usize>::new();
     for (index, entry) in schema.entities.iter().enumerate() {
         let Value::Compound(envelope) = entry else {
-            bail!("BlockEntities[{index}]: expected Compound")
+            bail!(messages::schematic_entity_expected_compound(index))
         };
-        let coords =
-            vector(envelope, "Pos").with_context(|| format!("BlockEntities[{index}].Pos"))?;
+        let coords = vector(envelope, "Pos")
+            .with_context(|| messages::schematic_entity_position_context(index))?;
         let pos = BlockPos::new(coords[0], coords[1], coords[2]);
         if !(0..size_x as i32).contains(&pos.x)
             || !(0..size_y as i32).contains(&pos.y)
             || !(0..size_z as i32).contains(&pos.z)
         {
-            bail!("BlockEntities[{index}].Pos: {pos} outside schematic");
+            bail!(messages::schematic_entity_outside_bounds(index, pos));
         }
         let id = match envelope.get("Id").or_else(|| envelope.get("id")) {
             Some(Value::String(n)) => n.clone(),
-            _ => bail!("BlockEntities[{index}].Id: expected String"),
+            _ => bail!(messages::schematic_entity_expected_id(index)),
         };
         let mut entity = if schema.version == 3 {
             match envelope.get("Data") {
                 None => Compound::new(),
                 Some(Value::Compound(c)) => c.clone(),
-                _ => bail!("BlockEntities[{index}].Data: expected Compound"),
+                _ => bail!(messages::schematic_entity_expected_data(index)),
             }
         } else {
             envelope.clone()
@@ -410,9 +408,9 @@ fn decode_schematic(schema: &Schema<'_>) -> Result<(WorldEditClipboard, Schemati
                 | "minecraft:moving_piston"
         ) {
             let parsed = BlockEntity::from_nbt(&entity)
-                .with_context(|| format!("BlockEntities[{index}] {id} at {pos}"))?;
+                .with_context(|| messages::schematic_entity_context(index, id, pos))?;
             if parsed_block_entities.insert(pos, parsed).is_some() {
-                bail!("BlockEntities[{index}]: duplicate position {pos}");
+                bail!(messages::schematic_duplicate_entity_position(index, pos));
             }
         } else {
             *unsupported.entry(id).or_default() += 1;
@@ -457,27 +455,27 @@ fn write_schematic(mut file: impl std::io::Write, clipboard: &WorldEditClipboard
     let offset_x = clipboard
         .offset_x
         .checked_neg()
-        .context("offset X overflow")?;
+        .context(messages::SCHEMATIC_OFFSET_X_OVERFLOW)?;
     let offset_y = clipboard
         .offset_y
         .checked_neg()
-        .context("offset Y overflow")?;
+        .context(messages::SCHEMATIC_OFFSET_Y_OVERFLOW)?;
     let offset_z = clipboard
         .offset_z
         .checked_neg()
-        .context("offset Z overflow")?;
+        .context(messages::SCHEMATIC_OFFSET_Z_OVERFLOW)?;
     let blocks = &clipboard.data;
     let volume = size_x
         .checked_mul(size_y)
         .and_then(|n| n.checked_mul(size_z))
-        .context("clipboard volume overflow")?;
+        .context(messages::SCHEMATIC_CLIPBOARD_VOLUME_OVERFLOW)?;
     if [size_x, size_y, size_z]
         .iter()
         .any(|n| *n == 0 || *n > u16::MAX as u32)
         || volume > MAX_BLOCKS
         || blocks.entries() != volume as usize
     {
-        bail!("invalid clipboard geometry");
+        bail!(messages::SCHEMATIC_INVALID_CLIPBOARD_GEOMETRY);
     }
 
     let mut data = Vec::new();
@@ -490,7 +488,7 @@ fn write_schematic(mut file: impl std::io::Write, clipboard: &WorldEditClipboard
         let name = format!("minecraft:{}", block.get_name());
         let props = mchprs_blocks::generated::STATE_PROPERTIES
             .get(entry as usize)
-            .context("invalid clipboard block state")?;
+            .context(messages::SCHEMATIC_INVALID_BLOCK_STATE)?;
         let full_name = if !props.is_empty() {
             let props_strs: Vec<String> = props
                 .iter()

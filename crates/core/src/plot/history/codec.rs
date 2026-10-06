@@ -1,5 +1,6 @@
 use super::budget::{Budget, Bytes};
 use super::{PlotWorld, PLOT_SECTIONS};
+use crate::messages;
 use crate::redpiler::backend::ScheduledBlockTick;
 use crate::redpiler::TickScheduler;
 use crate::world::storage::Chunk;
@@ -75,9 +76,9 @@ pub(super) fn capture_raw(world: &mut PlotWorld, work: &Arc<Budget>) -> Result<B
         piston_state: &world.piston_state,
     };
     let serialized_size = bincode::serialized_size(&view).map_err(|error| error.to_string())?;
-    let size = usize::try_from(serialized_size).map_err(|_| "Snapshot is too large.".to_owned())?;
-    let mut raw =
-        Bytes::zeroed(work, size).map_err(|e| format!("History capture workspace: {e}"))?;
+    let size = usize::try_from(serialized_size)
+        .map_err(|_| messages::HISTORY_SNAPSHOT_TOO_LARGE.to_owned())?;
+    let mut raw = Bytes::zeroed(work, size).map_err(messages::history_capture_workspace_failed)?;
     bincode::serialize_into(Cursor::new(&mut raw.data[..]), &view).map_err(|e| e.to_string())?;
     Ok(raw)
 }
@@ -97,9 +98,9 @@ impl Encoded {
             .checked_mul(110)
             .map(|n| n / 100)
             .and_then(|n| n.checked_add(20))
-            .ok_or_else(|| "Compression size overflow.".to_owned())?;
-        let mut output = Bytes::zeroed(work, bound)
-            .map_err(|e| format!("History compression workspace: {e}"))?;
+            .ok_or_else(|| messages::HISTORY_COMPRESSION_SIZE_OVERFLOW.to_owned())?;
+        let mut output =
+            Bytes::zeroed(work, bound).map_err(messages::history_compression_workspace_failed)?;
         let size = lz4_flex::block::compress_into_with_dict(&raw.data, &mut output.data, dict)
             .map_err(|e| e.to_string())?;
 
@@ -141,7 +142,7 @@ impl Stored {
         };
 
         if data.len() != self.raw_len || crc32fast::hash(data) != self.checksum {
-            return Err("Invalid history checksum or size.".into());
+            return Err(messages::HISTORY_CHECKSUM_INVALID.into());
         }
 
         bincode::DefaultOptions::new()
@@ -149,17 +150,17 @@ impl Stored {
             .reject_trailing_bytes()
             .with_limit(data.len() as u64)
             .deserialize(data)
-            .map_err(|e| format!("Invalid history snapshot: {e}"))
+            .map_err(messages::history_snapshot_invalid)
     }
 
     fn decompress(&self, dict: &[u8], work: &Arc<Budget>) -> Result<Bytes, String> {
-        let mut buffer = Bytes::zeroed(work, self.raw_len)
-            .map_err(|error| format!("History rewind workspace: {error}"))?;
+        let mut buffer =
+            Bytes::zeroed(work, self.raw_len).map_err(messages::history_rewind_workspace_failed)?;
         let count =
             lz4_flex::block::decompress_into_with_dict(&self.bytes.data, &mut buffer.data, dict)
-                .map_err(|error| format!("Invalid history compression: {error}"))?;
+                .map_err(messages::history_compression_invalid)?;
         if count != self.raw_len {
-            return Err("Invalid history size.".into());
+            return Err(messages::HISTORY_DECODE_SIZE_INVALID.into());
         }
 
         Ok(buffer)

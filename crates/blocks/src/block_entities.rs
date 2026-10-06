@@ -104,15 +104,14 @@ impl FromStr for ContainerType {
     }
 }
 
-impl ToString for ContainerType {
-    fn to_string(&self) -> String {
-        match self {
+impl std::fmt::Display for ContainerType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(match self {
             ContainerType::Furnace => "minecraft:furnace",
             ContainerType::Barrel => "minecraft:barrel",
             ContainerType::Hopper => "minecraft:hopper",
             ContainerType::Chest => "minecraft:chest",
-        }
-        .to_owned()
+        })
     }
 }
 
@@ -367,7 +366,7 @@ impl BlockEntity {
             let item_type = Item::from_name(
                 namespaced_name
                     .split(':')
-                    .last()
+                    .next_back()
                     .ok_or(anyhow::anyhow!("Item compound id missing namespace"))?,
             );
 

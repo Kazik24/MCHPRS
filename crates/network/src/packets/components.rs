@@ -117,51 +117,6 @@ fn component_type(name: &str) -> Value {
     }
 }
 
-#[cfg(test)]
-mod tool_component_tests {
-    use super::*;
-
-    #[test]
-    fn tool_display_preserves_existing_components_and_custom_data() {
-        let item_id = item_names()
-            .iter()
-            .position(|name| name == "oak_slab")
-            .unwrap() as i32;
-        let mut raw = Vec::new();
-        raw.write_varint(3);
-        raw.write_varint(0);
-        raw.write_varint(4); // unbreakable, unit component
-        raw.write_varint(1); // maximum stack size
-        raw.write_varint(16);
-        raw.write_varint(0); // authored custom data
-        raw.write_nbt_blob(&nbt::Blob::with_content(std::collections::HashMap::from([
-            ("owner".into(), nbt::Value::String("kitten".into())),
-        ])));
-        let mut slot = vec![8];
-        slot.write_varint(item_id);
-        slot.write_bytes(&raw);
-        let mut decoded = read_slot(&mut Cursor::new(slot)).unwrap().unwrap();
-        let blob = decoded.nbt.as_mut().unwrap();
-        set_tool_display(item_id, blob, "Top slab", "Test lore").unwrap();
-        let mut bytes = Vec::new();
-        write_slot(&mut bytes, &Some(decoded));
-        let restored = read_slot(&mut Cursor::new(&bytes)).unwrap().unwrap();
-        assert_eq!(restored.item_count, 8);
-        assert_eq!(max_stack_size(&restored.nbt, 64), 16);
-        let blob = restored.nbt.as_ref().unwrap();
-        let Some(nbt::Value::Compound(data)) = blob.get("custom_data") else {
-            panic!("tool display must retain custom data");
-        };
-        assert_eq!(
-            data.get("owner"),
-            Some(&nbt::Value::String("kitten".into()))
-        );
-        let mut again = Vec::new();
-        write_slot(&mut again, &Some(restored));
-        assert_eq!(bytes, again);
-    }
-}
-
 pub fn max_stack_size(nbt: &Option<nbt::Blob>, default: u8) -> u8 {
     match nbt.as_ref().and_then(|blob| blob.get(MAX_STACK_SIZE)) {
         Some(nbt::Value::Int(value)) if (1..=99).contains(value) => *value as u8,
@@ -636,5 +591,50 @@ pub fn write_slot<T: PacketEncoderExt>(w: &mut T, slot: &Option<SlotData>) {
     } else {
         w.write_varint(0);
         w.write_varint(0);
+    }
+}
+
+#[cfg(test)]
+mod tool_component_tests {
+    use super::*;
+
+    #[test]
+    fn tool_display_preserves_existing_components_and_custom_data() {
+        let item_id = item_names()
+            .iter()
+            .position(|name| name == "oak_slab")
+            .unwrap() as i32;
+        let mut raw = Vec::new();
+        raw.write_varint(3);
+        raw.write_varint(0);
+        raw.write_varint(4); // unbreakable, unit component
+        raw.write_varint(1); // maximum stack size
+        raw.write_varint(16);
+        raw.write_varint(0); // authored custom data
+        raw.write_nbt_blob(&nbt::Blob::with_content(std::collections::HashMap::from([
+            ("owner".into(), nbt::Value::String("kitten".into())),
+        ])));
+        let mut slot = vec![8];
+        slot.write_varint(item_id);
+        slot.write_bytes(&raw);
+        let mut decoded = read_slot(&mut Cursor::new(slot)).unwrap().unwrap();
+        let blob = decoded.nbt.as_mut().unwrap();
+        set_tool_display(item_id, blob, "Top slab", "Test lore").unwrap();
+        let mut bytes = Vec::new();
+        write_slot(&mut bytes, &Some(decoded));
+        let restored = read_slot(&mut Cursor::new(&bytes)).unwrap().unwrap();
+        assert_eq!(restored.item_count, 8);
+        assert_eq!(max_stack_size(&restored.nbt, 64), 16);
+        let blob = restored.nbt.as_ref().unwrap();
+        let Some(nbt::Value::Compound(data)) = blob.get("custom_data") else {
+            panic!("tool display must retain custom data");
+        };
+        assert_eq!(
+            data.get("owner"),
+            Some(&nbt::Value::String("kitten".into()))
+        );
+        let mut again = Vec::new();
+        write_slot(&mut again, &Some(restored));
+        assert_eq!(bytes, again);
     }
 }

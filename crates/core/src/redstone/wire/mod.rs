@@ -45,30 +45,30 @@ pub fn on_neighbor_changed(
     // Read the geometry once. The cross guard needs the raw side below, while
     // regulation needs the wire with that one stored side already updated.
     let raw = get_all_sides(wire, world, pos);
-    let new_side;
-    match side {
+
+    let new_side = match side {
         BlockFace::Top => unreachable!(),
         BlockFace::Bottom => {
             return regulate_sides(wire, raw);
         }
         BlockFace::North => {
             wire.south = raw.south;
-            new_side = wire.south;
+            wire.south
         }
         BlockFace::South => {
             wire.north = raw.north;
-            new_side = wire.north;
+            wire.north
         }
 
         BlockFace::East => {
             wire.west = raw.west;
-            new_side = wire.west;
+            wire.west
         }
         BlockFace::West => {
             wire.east = raw.east;
-            new_side = wire.east;
+            wire.east
         }
-    }
+    };
     wire = regulate_sides(wire, raw);
     if is_cross(old_state) && new_side.is_none() {
         // Don't mess up the cross
@@ -120,12 +120,12 @@ pub(crate) fn can_connect_to_uncached(block: Block, side: BlockDirection) -> boo
         Block::RedstoneWire { .. }
         | Block::RedstoneComparator { .. }
         | Block::RedstoneTorch { .. }
-        | Block::RedstoneBlock { .. }
+        | Block::RedstoneBlock
         | Block::RedstoneWallTorch { .. }
         | Block::StonePressurePlate { .. }
         | Block::TripwireHook { .. }
         | Block::StoneButton { .. }
-        | Block::Target { .. }
+        | Block::Target
         | Block::Lever { .. } => true,
         Block::RedstoneRepeater { repeater } => {
             repeater.facing == side || repeater.facing == side.opposite()

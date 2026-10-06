@@ -990,7 +990,7 @@ blocks! {
             sign_type: SignType,
             facing: BlockDirection
         },
-        get_id: 1 + (sign_type.to_item_type() << 3) as u32 + (facing.get_id() << 1) + match sign_type.0 {
+        get_id: 1 + (sign_type.to_item_type() << 3) + (facing.get_id() << 1) + match sign_type.0 {
             0..=5 => 3802,
             6..=7 => 15973 - (6 << 3),
             _ => unreachable!(),
@@ -1105,7 +1105,7 @@ blocks! {
             sign_type: SignType,
             rotation: u8
         },
-        get_id: 1 + ((sign_type.to_item_type() << 5) as u32) + (rotation << 1) as u32 + match sign_type.0 {
+        get_id: 1 + (sign_type.to_item_type() << 5) + (rotation << 1) as u32 + match sign_type.0 {
             0..=5 => 3438,
             6..=7 => 15909 - (6 << 5),
             _ => unreachable!(),
@@ -1536,16 +1536,6 @@ blocks! {
             "sandstone" => {}
         },
         get_name: "sandstone",
-        solid: true,
-        cube: true,
-    },
-    StoneBrick {
-        get_id: 4564,
-        from_id(_id): 4564 => {},
-        from_names(_name): {
-            "stone_bricks" => {}
-        },
-        get_name: "stone_bricks",
         solid: true,
         cube: true,
     },

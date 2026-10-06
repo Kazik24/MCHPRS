@@ -1,4 +1,5 @@
 //! Schematic paths stay within their library; the shared rf folder is read-only.
+use crate::messages;
 use anyhow::{bail, ensure, Context, Result};
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -7,7 +8,7 @@ fn relative_path(name: &str) -> Result<PathBuf> {
     let name = name.replace('\\', "/");
     ensure!(
         !name.starts_with('/') && !name.ends_with('/'),
-        "Use a relative schematic filename."
+        messages::SCHEMATIC_RELATIVE_FILENAME_REQUIRED
     );
     let mut path = PathBuf::new();
     for part in name
@@ -20,14 +21,14 @@ fn relative_path(name: &str) -> Result<PathBuf> {
                 && !part
                     .chars()
                     .any(|c| c.is_control() || ":*?\"<>|".contains(c)),
-            "Invalid schematic path."
+            messages::SCHEMATIC_INVALID_PATH
         );
         path.push(part);
     }
     let extension = path.extension().and_then(|ext| ext.to_str()).unwrap_or("");
     ensure!(
         extension.eq_ignore_ascii_case("schem") || extension.eq_ignore_ascii_case("schematic"),
-        "Include a .schem or .schematic extension."
+        messages::SCHEMATIC_EXTENSION_REQUIRED
     );
     Ok(path)
 }
@@ -44,7 +45,7 @@ fn within_root(root: &Path, path: &Path) -> Result<PathBuf> {
     let resolved = path.canonicalize()?;
     ensure!(
         resolved.starts_with(root),
-        "Schematic path leaves the schematic folder."
+        messages::SCHEMATIC_PATH_OUTSIDE_FOLDER
     );
     Ok(resolved)
 }
@@ -161,10 +162,10 @@ pub(super) fn load_path(root: &Path, name: &str) -> Result<PathBuf> {
     match matches.len() {
         0 => Err(std::io::Error::from(std::io::ErrorKind::NotFound).into()),
         1 => Ok(matches.pop().unwrap()),
-        _ => bail!(
-            "More than one schematic named {name}. Use a subfolder path, such as {}.",
+        _ => bail!(messages::schematic_ambiguous_filename(
+            name,
             matches[0].strip_prefix(&root)?.display()
-        ),
+        )),
     }
 }
 
@@ -172,7 +173,7 @@ pub(super) fn save_path(root: &Path, name: &str) -> Result<PathBuf> {
     let relative = relative_path(name)?;
     ensure!(
         !in_rf(&relative),
-        "The rf schematic folder is read-only. Save outside rf."
+        messages::SCHEMATIC_SHARED_LIBRARY_READ_ONLY
     );
     fs::create_dir_all(root)?;
     let root = root.canonicalize()?;
@@ -186,10 +187,10 @@ pub(super) fn save_path(root: &Path, name: &str) -> Result<PathBuf> {
                 suffix.push(
                     ancestor
                         .file_name()
-                        .context("Invalid schematic path")?
+                        .context(messages::SCHEMATIC_INVALID_ANCESTOR)?
                         .to_owned(),
                 );
-                ensure!(ancestor.pop(), "Invalid schematic path");
+                ensure!(ancestor.pop(), messages::SCHEMATIC_INVALID_ANCESTOR);
             }
             Err(error) => return Err(error.into()),
         }
@@ -200,13 +201,13 @@ pub(super) fn save_path(root: &Path, name: &str) -> Result<PathBuf> {
     }
     ensure!(
         !in_rf(resolved.strip_prefix(&root)?),
-        "The rf schematic folder is read-only. Save outside rf."
+        messages::SCHEMATIC_SHARED_LIBRARY_READ_ONLY
     );
     // A link named otherwise may still point into the shared library.
     if let Ok(shared) = root.join("rf").canonicalize() {
         ensure!(
             !resolved.starts_with(shared),
-            "The rf schematic folder is read-only. Save outside rf."
+            messages::SCHEMATIC_SHARED_LIBRARY_READ_ONLY
         );
     }
     Ok(resolved)

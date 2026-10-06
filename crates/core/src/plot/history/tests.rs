@@ -2,9 +2,7 @@ use super::*;
 use crate::redstone;
 use crate::world::storage::Chunk;
 use crate::world::World;
-use mchprs_blocks::block_entities::{
-    BlockEntity, CommandBlockEntity, ContainerType, SignBlockEntity,
-};
+use mchprs_blocks::block_entities::{BlockEntity, CommandBlockEntity, ContainerType};
 use mchprs_blocks::blocks::{Block, RedstonePiston};
 use mchprs_blocks::{BlockFace, BlockFacing, BlockPos};
 use mchprs_world::{TickEntry, TickPriority};
@@ -122,10 +120,7 @@ fn piston_motion_entities_and_typed_queue_round_trip() {
     );
     let sign_pos = base.offset(BlockFace::East);
     world.set_block(sign_pos, Block::from_name("oak_sign").unwrap());
-    world.set_block_entity(
-        sign_pos,
-        BlockEntity::Sign(Box::new(SignBlockEntity::default())),
-    );
+    world.set_block_entity(sign_pos, BlockEntity::Sign(Box::default()));
     let observer = BlockPos::new(10, 30, 4);
     world.set_block(observer, Block::from_name("observer").unwrap());
     world.schedule_half_tick(observer, 7, TickPriority::High);

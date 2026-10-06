@@ -4,7 +4,7 @@ The first useful implementation is a parser that identifies a piston together wi
 
 The recommended progression is **analysis and diagnostics, validated reset families, trigger-wave extraction, combinational lowering, runtime integration, and simple-build coverage**. Initial acceptance targets are gate examples, adders, counters, decoders and long wires. PM1 and ANPU are deferred. BUD memory and ordinary pistons remain explicit classifications and execution boundaries. An unrecognized piston must prevent activation of a backend that cannot execute it.
 
-This plan follows the intended scope in [INSTANT_REDPILLER.md](INSTANT_REDPILLER.md), the interpreter model in [REDSTONE_MODEL.md](REDSTONE_MODEL.md), and the current working-tree sources. The analysis baseline is 2026-10-06, with HEAD `4a2fb767821567ba62c5a63bb9af68fdc19d26e3` and existing local changes. Source behavior takes precedence where the model document differs from it. Proposed types, modules, flags, and fixture names below are implementation choices, not existing functionality.
+This plan follows the intended scope in [INSTANT_REDPILLER.md](INSTANT_REDPILLER.md), the circuit author's [clarifications](ANSWERS.md), the interpreter model in [REDSTONE_MODEL.md](REDSTONE_MODEL.md), and the current working-tree sources. The analysis baseline is 2026-10-06, with HEAD `4a2fb767821567ba62c5a63bb9af68fdc19d26e3` and existing local changes. Source behavior takes precedence where the model document differs from it. Proposed types, modules, flags, and fixture names below are implementation choices, not existing functionality.
 
 ## Intended scope and first deliverable
 
@@ -632,7 +632,7 @@ Each new fixture should contain the smallest complete circuit with its supports 
 
 - Selection-local input, output, update, reset and trigger coordinates and faces.
 - The expected classification of each piston and any shared payload group.
-- The physical zero and one encoding and when an output is valid.
+- The input and output event encoding, prepared power levels and the condition under which an output is valid.
 - Which non-instant consumers receive the output, including a BUD update path if present.
 - Initial states and whether import is strict, placement-notified or settled.
 - Ordered input operations with game tick, phase and stepping position where relevant.

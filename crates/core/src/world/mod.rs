@@ -2,6 +2,7 @@ pub mod storage;
 pub(crate) mod wire_cache;
 pub use wire_cache::Neighbor as WireNeighbor;
 
+use crate::messages;
 use mchprs_blocks::block_entities::{BlockEntity, ContainerType};
 use mchprs_blocks::blocks::{Block, RedstonePiston};
 use mchprs_blocks::BlockPos;
@@ -104,7 +105,7 @@ pub trait World {
 
     /// Runs the supported command-block subset. Test worlds may leave it disabled.
     fn execute_command_block(&mut self, _command: &str, _source: &str) -> Result<(), String> {
-        Err("Command block execution is unavailable in this world".into())
+        Err(messages::COMMAND_BLOCK_EXECUTION_UNAVAILABLE.into())
     }
 
     fn play_sound(
@@ -142,8 +143,6 @@ pub enum BlockAction {
     },
 }
 
-// TODO: I have no idea how to deduplicate this in a sane way
-
 /// Executes the given function for each block excluding most air blocks
 pub fn for_each_block_optimized<F, W: World>(
     world: &W,
@@ -153,40 +152,9 @@ pub fn for_each_block_optimized<F, W: World>(
 ) where
     F: FnMut(BlockPos),
 {
-    let start_x = i32::min(first_pos.x, second_pos.x);
-    let end_x = i32::max(first_pos.x, second_pos.x);
-
-    let start_y = i32::min(first_pos.y, second_pos.y);
-    let end_y = i32::max(first_pos.y, second_pos.y);
-
-    let start_z = i32::min(first_pos.z, second_pos.z);
-    let end_z = i32::max(first_pos.z, second_pos.z);
-
-    // Iterate over chunks
-    for chunk_start_x in (start_x..=end_x).step_by(16) {
-        for chunk_start_z in (start_z..=end_z).step_by(16) {
-            let chunk = world
-                .get_chunk(chunk_start_x.div_euclid(16), chunk_start_z.div_euclid(16))
-                .unwrap();
-            for chunk_start_y in (start_y..=end_y).step_by(16) {
-                // Check if the chunk even has non air blocks
-                if chunk.sections[chunk_start_y as usize / 16].block_count() > 0 {
-                    // Calculate the end position of the current chunk
-                    let chunk_end_x = i32::min(chunk_start_x + 16 - 1, end_x);
-                    let chunk_end_y = i32::min(chunk_start_y + 16 - 1, end_y);
-                    let chunk_end_z = i32::min(chunk_start_z + 16 - 1, end_z);
-
-                    // Iterate over each position within the current chunk
-                    for y in chunk_start_y..=chunk_end_y {
-                        for z in chunk_start_z..=chunk_end_z {
-                            for x in chunk_start_x..=chunk_end_x {
-                                let pos = BlockPos::new(x, y, z);
-                                f(pos);
-                            }
-                        }
-                    }
-                }
-            }
+    for (first, last) in section_bounds(first_pos, second_pos) {
+        if section_has_blocks(world, first) {
+            for_each_position(first, last, &mut f);
         }
     }
 }
@@ -200,43 +168,51 @@ pub fn for_each_block_mut_optimized<F, W: World>(
 ) where
     F: FnMut(&mut W, BlockPos),
 {
-    let start_x = i32::min(first_pos.x, second_pos.x);
-    let end_x = i32::max(first_pos.x, second_pos.x);
+    for (first, last) in section_bounds(first_pos, second_pos) {
+        if section_has_blocks(world, first) {
+            for_each_position(first, last, |pos| f(world, pos));
+        }
+    }
+}
 
-    let start_y = i32::min(first_pos.y, second_pos.y);
-    let end_y = i32::max(first_pos.y, second_pos.y);
+/// Intersect the selection with each aligned section, including partial sections.
+fn section_bounds(
+    first_pos: BlockPos,
+    second_pos: BlockPos,
+) -> impl Iterator<Item = (BlockPos, BlockPos)> {
+    let first = first_pos.min(second_pos);
+    let last = first_pos.max(second_pos);
+    (first.x.div_euclid(16)..=last.x.div_euclid(16)).flat_map(move |chunk_x| {
+        (first.z.div_euclid(16)..=last.z.div_euclid(16)).flat_map(move |chunk_z| {
+            (first.y.div_euclid(16)..=last.y.div_euclid(16)).map(move |section_y| {
+                let origin = BlockPos::new(chunk_x * 16, section_y * 16, chunk_z * 16);
+                (
+                    first.max(origin),
+                    last.min(origin + BlockPos::new(15, 15, 15)),
+                )
+            })
+        })
+    })
+}
 
-    let start_z = i32::min(first_pos.z, second_pos.z);
-    let end_z = i32::max(first_pos.z, second_pos.z);
+fn section_has_blocks(world: &impl World, first: BlockPos) -> bool {
+    world
+        .get_chunk(first.x.div_euclid(16), first.z.div_euclid(16))
+        .expect("block iteration requires loaded chunks")
+        .sections[first.y as usize / 16]
+        .block_count()
+        > 0
+}
 
-    // Iterate over chunks
-    for chunk_start_x in (start_x..=end_x).step_by(16) {
-        for chunk_start_z in (start_z..=end_z).step_by(16) {
-            for chunk_start_y in (start_y..=end_y).step_by(16) {
-                // Check if the chunk even has non air blocks
-                if world
-                    .get_chunk(chunk_start_x.div_euclid(16), chunk_start_z.div_euclid(16))
-                    .unwrap()
-                    .sections[chunk_start_y as usize / 16]
-                    .block_count()
-                    > 0
-                {
-                    // Calculate the end position of the current chunk
-                    let chunk_end_x = i32::min(chunk_start_x + 16 - 1, end_x);
-                    let chunk_end_y = i32::min(chunk_start_y + 16 - 1, end_y);
-                    let chunk_end_z = i32::min(chunk_start_z + 16 - 1, end_z);
-
-                    // Iterate over each position within the current chunk
-                    for y in chunk_start_y..=chunk_end_y {
-                        for z in chunk_start_z..=chunk_end_z {
-                            for x in chunk_start_x..=chunk_end_x {
-                                let pos = BlockPos::new(x, y, z);
-                                f(world, pos);
-                            }
-                        }
-                    }
-                }
+fn for_each_position(first: BlockPos, last: BlockPos, mut f: impl FnMut(BlockPos)) {
+    for y in first.y..=last.y {
+        for z in first.z..=last.z {
+            for x in first.x..=last.x {
+                f(BlockPos::new(x, y, z));
             }
         }
     }
 }
+
+#[cfg(test)]
+mod tests;

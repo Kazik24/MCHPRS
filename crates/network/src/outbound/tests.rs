@@ -39,12 +39,12 @@ fn backlog_keeps_latest_state_without_crossing_packet_barriers() {
     let Payload::Blocks(blocks) = &pending.items[1].payload else {
         panic!()
     };
-    assert_eq!(blocks[&(-3, 15, 7)][&0xfd_e], 9_999);
+    assert_eq!(blocks[&(-3, 15, 7)][&0x0fde], 9_999);
     assert_eq!(pending.items[1].bytes, 96);
     let Payload::Blocks(blocks) = &pending.items[3].payload else {
         panic!()
     };
-    assert_eq!(blocks[&(-3, 15, 7)][&0xfd_e], 20_000);
+    assert_eq!(blocks[&(-3, 15, 7)][&0x0fde], 20_000);
     assert_eq!(
         sender
             .handle

@@ -532,7 +532,7 @@ impl World for PlotWorld {
             || command.len() > 131_068
             || source.len() > 256
         {
-            return Err("Command-block output limit reached".into());
+            return Err(messages::COMMAND_BLOCK_OUTPUT_LIMIT.into());
         }
         let message = crate::chat_commands::parse(command, source, None)?;
         if self.command_output_limits_enabled
@@ -541,7 +541,7 @@ impl World for PlotWorld {
                 .saturating_add(message.message.len())
                 > 65_536
         {
-            return Err("Command-block output byte limit reached".into());
+            return Err(messages::COMMAND_BLOCK_OUTPUT_BYTE_LIMIT.into());
         }
         self.command_output_count += 1;
         self.command_output_bytes += message.message.len();
@@ -642,10 +642,7 @@ impl World for PlotWorld {
     }
 
     fn get_block_entity(&self, pos: BlockPos) -> Option<&BlockEntity> {
-        let chunk_index = match self.get_chunk_index_for_block(pos.x, pos.z) {
-            Some(idx) => idx,
-            None => return None,
-        };
+        let chunk_index = self.get_chunk_index_for_block(pos.x, pos.z)?;
         let chunk = &self.chunks[chunk_index];
         chunk.get_block_entity(BlockPos::new(pos.x & 0xF, pos.y, pos.z & 0xF))
     }
@@ -900,13 +897,28 @@ impl Plot {
             coalesced += s.coalesced_blocks;
             failures += s.failures;
         }
-        format!(
-            "Plot totals: {} ticks, simulation {:.3}s; {} visual flushes, {} sections, {} block records; collection {:.3}s, enqueue {:.3}s. Current visual rate: {} Hz; mode: {}.\nCurrent clients (connection totals): {} packets, {} bytes; visual encoding {:.3}s, framing/compression {:.3}s, socket writes {:.3}s; {} queued bytes, {} coalesced blocks, {} send failures.",
-            p.simulated_ticks, p.simulation.as_secs_f64(), p.flushes, p.sections, p.records,
-            p.collection.as_secs_f64(), p.enqueue.as_secs_f64(), self.effective_send_rate(),
-            if self.world.screen_only() { "screen" } else { "all" },
-            packets, bytes, encode_ns as f64 / 1e9, compress_ns as f64 / 1e9, write_ns as f64 / 1e9,
-            queued_bytes, coalesced, failures,
+        messages::plot_update_timings(
+            p.simulated_ticks,
+            p.simulation.as_secs_f64(),
+            p.flushes,
+            p.sections,
+            p.records,
+            p.collection.as_secs_f64(),
+            p.enqueue.as_secs_f64(),
+            self.effective_send_rate(),
+            if self.world.screen_only() {
+                "screen"
+            } else {
+                "all"
+            },
+            packets,
+            bytes,
+            encode_ns as f64 / 1e9,
+            compress_ns as f64 / 1e9,
+            write_ns as f64 / 1e9,
+            queued_bytes,
+            coalesced,
+            failures,
         )
     }
 
@@ -1013,7 +1025,7 @@ impl Plot {
     pub fn broadcast_chat_message(&mut self, message: String) {
         let broadcast_message = Message::ChatInfo(
             0,
-            format!("Plot {}-{}", self.world.x, self.world.z),
+            messages::plot_chat_source(self.world.x, self.world.z),
             message,
         );
         self.message_sender.send(broadcast_message).unwrap();
@@ -1060,16 +1072,16 @@ impl Plot {
         let old_block = old.block_pos();
         let new_block = new.block_pos();
 
-        if self.world.get_block(old_block).pressure_plate_powered() == Some(true) {
-            if !self.are_players_on_block(old_block) {
-                self.set_pressure_plate(old_block, false);
-            }
+        if self.world.get_block(old_block).pressure_plate_powered() == Some(true)
+            && !self.are_players_on_block(old_block)
+        {
+            self.set_pressure_plate(old_block, false);
         }
 
-        if self.world.get_block(new_block).pressure_plate_powered() == Some(false) {
-            if self.players[player_idx].on_ground {
-                self.set_pressure_plate(new_block, true);
-            }
+        if self.world.get_block(new_block).pressure_plate_powered() == Some(false)
+            && self.players[player_idx].on_ground
+        {
+            self.set_pressure_plate(new_block, true);
         }
     }
 
@@ -1338,10 +1350,10 @@ impl Plot {
 
         let mut players_need_updates = HashSet::new();
         thread::scope(|s| {
-            let handle = s.spawn(|| {
-                self.redpiler
-                    .compile(&mut self.world, bounds, options, ticks, monitor)
-            });
+            // Move an exclusive borrow: the world's RefCell caches are Send, not Sync.
+            let world = &mut self.world;
+            let compiler = &mut self.redpiler;
+            let handle = s.spawn(move || compiler.compile(world, bounds, options, ticks, monitor));
             while !handle.is_finished() {
                 // We'll update the players so that they don't time out.
                 for player_idx in 0..self.players.len() {
@@ -1471,7 +1483,7 @@ impl Plot {
                 return;
             }
             Err(error) => {
-                player.send_error_message(&format!("Could not claim plot: {error}"));
+                player.send_error_message(&messages::plot_claim_failed(error));
                 return;
             }
         }
@@ -1526,7 +1538,7 @@ impl Plot {
         let mut removal_offset = 0;
         for player_idx in 0..self.players.len() {
             let player_idx = player_idx - removal_offset;
-            let commands: Vec<String> = self.players[player_idx].command_queue.drain(..).collect();
+            let commands: Vec<String> = std::mem::take(&mut self.players[player_idx].command_queue);
             if commands::run_command_queue(commands, |command, args| {
                 self.handle_command(player_idx, command, args)
             }) {
@@ -1580,7 +1592,7 @@ impl Plot {
                 }
                 BroadcastMessage::Shutdown => {
                     self.close_all_containers();
-                    let mut players: Vec<Player> = self.players.drain(..).collect();
+                    let mut players: Vec<Player> = std::mem::take(&mut self.players);
                     self.disable_empty_plot_history();
                     for player in players.iter_mut() {
                         player.save();
@@ -1806,7 +1818,7 @@ impl Plot {
     }
 
     fn generate_chunk(layers: i32, x: i32, z: i32) -> Chunk {
-        let border: u32 = Block::StoneBrick {}.get_id();
+        let border: u32 = Block::StoneBricks {}.get_id();
         let fill: u32 = Block::Sandstone {}.get_id();
 
         let mut chunk = Chunk::empty(x, z);

@@ -1587,6 +1587,8 @@ This model does not assume Minecraft's general push reactions, twelve-block pist
 
 Redpiler's optimized graph can merge or remove nodes. Equality of ordinary lamp outputs alone does not establish equality of observer callbacks, transient dust states, analog overrides, piston motions, or pending-request traces. Compiled execution needs a separate equivalence argument for the selected observables.
 
+For instant-piston compilation, the circuit author's [protocol](INSTANT_REDPILLER.md#clarified-execution-scope) defines logical one as a nonzero-to-zero transition from a ready extended mechanism. It permits internal simplification subject to preservation of non-instant consumer behavior and leaves new external inputs during reset outside initial conformance. These are circuit-specific compiler conditions; the interpreter transition rules continue to determine physical execution for every input sequence. The [implementation plan](INSTANT_PISTON_IMPLEMENTATION_PLAN.md) describes recognition, boundary discovery and validation under that protocol.
+
 ## 19. Worked traces
 
 ### 19.1 Short repeater pulse

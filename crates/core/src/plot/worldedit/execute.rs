@@ -257,7 +257,7 @@ pub(super) fn execute_load(ctx: CommandExecuteContext<'_>) {
     let clipboard = super::schematic_paths::load_path(&library, file_name)
         .and_then(|path| File::open(path).map_err(anyhow::Error::from))
         .and_then(load_schematic_with_warnings)
-        .map_err(|e| e.context(format!("loading schematic ./schems/{file_name}")));
+        .map_err(|e| e.context(messages::schematic_loading_context(file_name)));
     match clipboard {
         Ok((cb, warnings)) => {
             ctx.player.worldedit_clipboard = Some(cb);
@@ -761,7 +761,7 @@ pub(super) fn execute_help(mut ctx: CommandExecuteContext<'_>) {
         };
         if let Some(default) = default {
             message.push(
-                ChatComponentBuilder::new(format!(" (defaults to {})", default))
+                ChatComponentBuilder::new(messages::worldedit_argument_default(default))
                     .color_code(ColorCode::Gray)
                     .finish(),
             );
@@ -805,7 +805,7 @@ pub(super) fn execute_up(ctx: CommandExecuteContext<'_>) {
     let block_pos = pos.block_pos();
 
     let platform_pos = block_pos.offset(BlockFace::Bottom);
-    if matches!(ctx.plot.get_block(platform_pos), Block::Air {}) {
+    if matches!(ctx.plot.get_block(platform_pos), Block::Air) {
         ctx.plot.set_block(platform_pos, Block::Glass {});
     }
 
@@ -813,75 +813,73 @@ pub(super) fn execute_up(ctx: CommandExecuteContext<'_>) {
 }
 
 pub(super) fn execute_ascend(ctx: CommandExecuteContext<'_>) {
-    let initial_levels = ctx.arguments[0].unwrap_uint();
-    let mut levels = initial_levels;
-
-    let player = ctx.player;
-    let player_pos = player.pos.block_pos();
-    let mut player_y = player_pos.y;
-
-    for (y, _) in (player_y..=PLOT_BLOCK_HEIGHT).enumerate() {
-        if levels == 0 {
-            break;
-        }
-        let y = y as i32 + 1;
-
-        let floor_pos = player_pos + BlockPos::new(0, y - 1, 0);
-        let pos = player_pos + BlockPos::new(0, y, 0);
-        let high_pos = player_pos + BlockPos::new(0, y + 1, 0);
-        if ctx.plot.get_block(floor_pos) != (Block::Air {})
-            && ctx.plot.get_block(pos) == (Block::Air {})
-            && ctx.plot.get_block(high_pos) == (Block::Air {})
-        {
-            player_y = pos.y;
-            levels -= 1;
-        }
-    }
-
-    if player_y == player_pos.y {
-        player.send_error_message(messages::NO_FREE_SPOT_ABOVE_YOU_FOUND);
-    } else {
-        let mut pos = player.pos;
-        pos.y = player_y as f64;
-        player.teleport(pos);
-        player.send_worldedit_message(&messages::ascended(initial_levels - levels));
-    }
+    execute_vertical_move(ctx, true);
 }
 
 pub(super) fn execute_descend(ctx: CommandExecuteContext<'_>) {
-    let initial_levels = ctx.arguments[0].unwrap_uint();
-    let mut levels = initial_levels;
+    execute_vertical_move(ctx, false);
+}
 
+fn execute_vertical_move(ctx: CommandExecuteContext<'_>, ascending: bool) {
+    let levels = ctx.arguments[0].unwrap_uint();
     let player = ctx.player;
     let player_pos = player.pos.block_pos();
-    let mut player_y = player_pos.y;
-
-    for (y, _) in (1..player_y).enumerate() {
-        if levels == 0 {
-            break;
-        }
-        let y = -(y as i32 + 1);
-
-        let floor_pos = player_pos + BlockPos::new(0, y - 1, 0);
-        let pos = player_pos + BlockPos::new(0, y, 0);
-        let high_pos = player_pos + BlockPos::new(0, y + 1, 0);
-        if ctx.plot.get_block(floor_pos) != (Block::Air {})
-            && ctx.plot.get_block(pos) == (Block::Air {})
-            && ctx.plot.get_block(high_pos) == (Block::Air {})
-        {
-            player_y = pos.y;
-            levels -= 1;
-        }
-    }
-
-    if player_y == player_pos.y {
-        player.send_error_message(messages::NO_FREE_SPOT_BELOW_YOU_FOUND);
+    let (player_y, moved) = if ascending {
+        vertical_destination(
+            ctx.plot,
+            player_pos,
+            levels,
+            (player_pos.y + 1).max(1)..PLOT_BLOCK_HEIGHT - 1,
+        )
+    } else {
+        vertical_destination(
+            ctx.plot,
+            player_pos,
+            levels,
+            (1..player_pos.y.min(PLOT_BLOCK_HEIGHT - 1)).rev(),
+        )
+    };
+    if moved == 0 {
+        player.send_error_message(if ascending {
+            messages::NO_FREE_SPOT_ABOVE_YOU_FOUND
+        } else {
+            messages::NO_FREE_SPOT_BELOW_YOU_FOUND
+        });
     } else {
         let mut pos = player.pos;
         pos.y = player_y as f64;
         player.teleport(pos);
-        player.send_worldedit_message(&messages::descended(initial_levels - levels));
+        let message = if ascending {
+            messages::ascended(moved)
+        } else {
+            messages::descended(moved)
+        };
+        player.send_worldedit_message(&message);
     }
+}
+
+fn vertical_destination(
+    world: &impl World,
+    player_pos: BlockPos,
+    levels: u32,
+    heights: impl Iterator<Item = i32>,
+) -> (i32, u32) {
+    let mut destination_y = player_pos.y;
+    let mut moved = 0;
+    for y in heights {
+        if moved == levels {
+            break;
+        }
+        let pos = BlockPos::new(player_pos.x, y, player_pos.z);
+        if world.get_block(pos.offset(BlockFace::Bottom)) != Block::Air
+            && world.get_block(pos) == Block::Air
+            && world.get_block(pos.offset(BlockFace::Top)) == Block::Air
+        {
+            destination_y = y;
+            moved += 1;
+        }
+    }
+    (destination_y, moved)
 }
 
 pub(super) fn execute_update(ctx: CommandExecuteContext<'_>) {
@@ -986,4 +984,37 @@ pub(super) fn execute_replace_container(ctx: CommandExecuteContext<'_>) {
 
 pub(super) fn execute_unimplemented(_ctx: CommandExecuteContext<'_>) {
     unimplemented!("Unimplimented worldedit command");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::plot::PLOT_WIDTH;
+    use crate::world::storage::Chunk;
+
+    #[test]
+    fn vertical_destinations_count_floors_and_require_headroom() {
+        let chunks = (0..PLOT_WIDTH)
+            .flat_map(|x| (0..PLOT_WIDTH).map(move |z| Chunk::empty(x, z)))
+            .collect();
+        let mut world = PlotWorld::from_chunks(0, 0, chunks, Default::default());
+        for y in [9, 19, 24, 25, 29] {
+            world.set_block(BlockPos::new(1, y, 1), Block::Glass);
+        }
+        // A block at y=25 leaves the y=24 floor without two blocks of headroom.
+        world.set_block(BlockPos::new(1, 26, 1), Block::Glass);
+        let start = BlockPos::new(1, 1, 1);
+        let ascend = |levels| vertical_destination(&world, start, levels, 2..PLOT_BLOCK_HEIGHT - 1);
+        assert_eq!(ascend(0), (1, 0));
+        assert_eq!(ascend(1), (10, 1));
+        assert_eq!(ascend(2), (20, 2));
+        assert_eq!(ascend(3), (27, 3));
+        assert_eq!(ascend(10), (30, 4));
+
+        let start = BlockPos::new(1, 31, 1);
+        let descend = |levels| vertical_destination(&world, start, levels, (1..31).rev());
+        assert_eq!(descend(1), (30, 1));
+        assert_eq!(descend(3), (20, 3));
+        assert_eq!(descend(10), (10, 4));
+    }
 }

@@ -1,5 +1,6 @@
 //! Shared byte reservations. Stored history and temporary work have separate limits.
 use crate::config::CONFIG;
+use crate::messages;
 use once_cell::sync::Lazy;
 use std::sync::{Arc, Mutex};
 
@@ -19,7 +20,7 @@ pub(super) fn mib_to_bytes(mib: i64) -> Result<usize, String> {
     usize::try_from(mib)
         .ok()
         .and_then(|n| n.checked_mul(1024 * 1024))
-        .ok_or_else(|| "Memory limit must be a nonnegative, representable number of MiB.".into())
+        .ok_or_else(|| messages::HISTORY_INVALID_MEMORY_LIMIT.into())
 }
 
 #[derive(Default)]
@@ -49,9 +50,9 @@ impl Budget {
         let total = usage
             .used
             .checked_add(bytes)
-            .ok_or_else(|| "Tick-history memory limit reached.".to_owned())?;
+            .ok_or_else(|| messages::HISTORY_MEMORY_LIMIT_REACHED.to_owned())?;
         if total > usage.limit {
-            return Err("Tick-history memory limit reached.".to_owned());
+            return Err(messages::HISTORY_MEMORY_LIMIT_REACHED.to_owned());
         }
 
         usage.used = total;
@@ -68,10 +69,9 @@ impl Budget {
     ) -> Result<(), String> {
         let mut usage = self.usage.lock().unwrap();
         if limit < usage.used {
-            return Err(format!(
-                "History uses {}. Free buffers with /rhistory off first.",
-                super::format_memory(usage.used)
-            ));
+            return Err(messages::history_free_buffers_first(super::format_memory(
+                usage.used,
+            )));
         }
 
         persist()?;
@@ -102,7 +102,7 @@ impl Bytes {
         let reservation = budget.reserve(size)?;
         let mut data = Vec::new();
         data.try_reserve_exact(size)
-            .map_err(|_| "Unable to allocate history bytes.".to_owned())?;
+            .map_err(|_| messages::HISTORY_ALLOCATION_FAILED.to_owned())?;
         debug_assert_eq!(data.capacity(), size);
         data.resize(size, 0);
 

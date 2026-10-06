@@ -226,9 +226,9 @@ fn write<const N: usize>(
     let mut ids = Vec::with_capacity(4096);
     for i in 0..4096 {
         let at = BlockPos::new(
-            pos.x.div_euclid(16) * 16 + (i % 16) as i32,
-            pos.y.div_euclid(16) * 16 + (i / 256) as i32,
-            pos.z.div_euclid(16) * 16 + (i / 16 % 16) as i32,
+            pos.x.div_euclid(16) * 16 + (i % 16),
+            pos.y.div_euclid(16) * 16 + (i / 256),
+            pos.z.div_euclid(16) * 16 + (i / 16 % 16),
         );
         ids.push(
             read(plot, width, at)

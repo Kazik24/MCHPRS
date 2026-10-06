@@ -57,12 +57,14 @@ fn parse_relative_coord<F: RelativeCoordinate>(
     if coord == "~" {
         Ok(ref_coord)
     } else if let Some(offset_str) = coord.strip_prefix('~') {
-        let offset = offset_str.parse::<F>().map_err(|_| "Invalid coordinate")?;
+        let offset = offset_str
+            .parse::<F>()
+            .map_err(|_| messages::INVALID_COORDINATE)?;
         ref_coord
             .checked_offset(offset)
-            .ok_or("Coordinate overflow")
+            .ok_or(messages::COORDINATE_OVERFLOW)
     } else {
-        coord.parse::<F>().map_err(|_| "Invalid coordinate")
+        coord.parse::<F>().map_err(|_| messages::INVALID_COORDINATE)
     }
 }
 
@@ -93,21 +95,21 @@ impl AdvanceUnit {
             [count] => (Self::Game, count),
             [unit, count] if unit.eq_ignore_ascii_case("nano") => (Self::Nano, count),
             [unit, count] if unit.eq_ignore_ascii_case("pico") => (Self::Pico, count),
-            _ => return Err("Usage: /adv [nano|pico] <ticks>".into()),
+            _ => return Err(messages::USAGE_ADV.into()),
         };
         let ticks = count
             .parse::<u32>()
             .ok()
             .filter(|&ticks| ticks <= limit)
-            .ok_or_else(|| format!("Tick count must be between 0 and {limit}"))?;
+            .ok_or_else(|| messages::advance_tick_count_limit(limit))?;
         Ok((unit, ticks))
     }
 
     fn label(self) -> &'static str {
         match self {
-            Self::Game => "ticks",
-            Self::Nano => "nano-ticks",
-            Self::Pico => "pico-ticks",
+            Self::Game => messages::ADV_GAME_TICKS_LABEL,
+            Self::Nano => messages::ADV_NANO_TICKS_LABEL,
+            Self::Pico => messages::ADV_PICO_TICKS_LABEL,
         }
     }
 }
@@ -139,7 +141,7 @@ impl Plot {
         match command {
             "home" | "h" => {
                 if !args.is_empty() {
-                    self.players[player].send_error_message("Usage: /p home");
+                    self.players[player].send_error_message(messages::USAGE_PLOT_HOME);
                     return;
                 }
                 match database::get_owned_plots_by_uuid(self.players[player].uuid) {
@@ -148,18 +150,17 @@ impl Plot {
                             let center = Plot::get_center(x, z);
                             self.players[player].teleport(PlayerPos::new(center.0, 64.0, center.1));
                         } else {
-                            self.players[player].send_error_message(
-                                "You do not own a plot. Use /p auto to claim one.",
-                            );
+                            self.players[player].send_error_message(messages::PLOT_HOME_UNCLAIMED);
                         }
                     }
-                    Err(error) => self.players[player]
-                        .send_error_message(&format!("Could not read plots: {error}")),
+                    Err(error) => {
+                        self.players[player].send_error_message(&messages::plot_read_failed(error))
+                    }
                 }
             }
             "add" | "remove" => {
                 let [name] = args else {
-                    self.players[player].send_error_message(&format!("Usage: /p {command} <nick>"));
+                    self.players[player].send_error_message(&messages::plot_member_usage(command));
                     return;
                 };
                 let add = command == "add";
@@ -175,40 +176,33 @@ impl Plot {
                 use database::MembershipResult;
                 match result {
                     Ok(MembershipResult::Changed { name, .. }) => self.players[player]
-                        .send_system_message(&format!(
-                            "{name} {} plot ({}, {}).",
-                            if add {
-                                "can now build on"
-                            } else {
-                                "was removed from"
-                            },
-                            self.world.x,
-                            self.world.z,
-                        )),
+                        .send_system_message(&if add {
+                            messages::plot_member_added(name, self.world.x, self.world.z)
+                        } else {
+                            messages::plot_member_removed(name, self.world.x, self.world.z)
+                        }),
                     Ok(MembershipResult::Unchanged) => {
                         self.players[player].send_system_message(if add {
-                            "That player is already a plot member."
+                            messages::PLOT_MEMBER_ALREADY_ADDED
                         } else {
-                            "That player is not a plot member."
+                            messages::PLOT_MEMBER_NOT_ADDED
                         })
                     }
-                    Ok(MembershipResult::UnknownPlayer) => self.players[player].send_error_message(
-                        "Unknown player. They must have joined this server at least once.",
-                    ),
-                    Ok(MembershipResult::AmbiguousPlayer) => self.players[player].send_error_message(
-                        "Multiple cached players have that nickname. They must rejoin with distinct current names before access can be changed.",
-                    ),
+                    Ok(MembershipResult::UnknownPlayer) => self.players[player]
+                        .send_error_message(messages::PLOT_MEMBER_UNKNOWN_PLAYER),
+                    Ok(MembershipResult::AmbiguousPlayer) => self.players[player]
+                        .send_error_message(messages::PLOT_MEMBER_AMBIGUOUS_PLAYER),
                     Ok(MembershipResult::PlotUnclaimed) => {
                         self.players[player].send_error_message(messages::PLOT_UNCLAIMED)
                     }
                     Ok(MembershipResult::NotOwner) => {
                         self.players[player].send_no_permission_message()
                     }
-                    Ok(MembershipResult::IsOwner) => self.players[player].send_error_message(
-                        "The plot owner cannot be added or removed as a member.",
-                    ),
+                    Ok(MembershipResult::IsOwner) => {
+                        self.players[player].send_error_message(messages::PLOT_MEMBER_IS_OWNER)
+                    }
                     Err(error) => self.players[player]
-                        .send_error_message(&format!("Could not update plot members: {error}")),
+                        .send_error_message(&messages::plot_members_update_failed(error)),
                 }
             }
             "info" | "i" => {
@@ -233,14 +227,13 @@ impl Plot {
                             return;
                         }
                         None => {
-                            self.players[player].send_error_message("Could not read plot claims");
+                            self.players[player]
+                                .send_error_message(messages::PLOT_CLAIMS_READ_FAILED);
                             return;
                         }
                     }
                 }
-                self.players[player].send_error_message(
-                    "No free plot in the automatic search area; choose a plot and use /plot claim",
-                );
+                self.players[player].send_error_message(messages::PLOT_AUTO_SEARCH_FULL);
             }
             "middle" => {
                 let center = Plot::get_center(plot_x, plot_z);
@@ -271,8 +264,7 @@ impl Plot {
                 let plots = match database::get_owned_plots(args[0]) {
                     Ok(plots) => plots,
                     Err(error) => {
-                        self.players[player]
-                            .send_error_message(&format!("Could not read plots: {error}"));
+                        self.players[player].send_error_message(&messages::plot_read_failed(error));
                         return;
                     }
                 };
@@ -395,16 +387,15 @@ impl Plot {
             self.players[player].send_no_permission_message();
             return false;
         }
-        if crate::permissions::dedicated_permissions() {
-            if native_command_permission(command, &args)
+        if crate::permissions::dedicated_permissions()
+            && (native_command_permission(command, &args)
                 .is_some_and(|node| !self.players[player].has_permission(&node))
                 || (changes_plot(command, &args)
                     && !self.players[player]
-                        .can_edit_plot(self.owner, (self.world.x, self.world.z)))
-            {
-                self.players[player].send_no_permission_message();
-                return false;
-            }
+                        .can_edit_plot(self.owner, (self.world.x, self.world.z))))
+        {
+            self.players[player].send_no_permission_message();
+            return false;
         }
         info!(
             "{} issued command: {} {}",
@@ -463,7 +454,7 @@ impl Plot {
                         database::set_screen_only(self.world.x, self.world.z, enabled)
                     {
                         self.players[player]
-                            .send_error_message(&format!("Could not save visual setting: {error}"));
+                            .send_error_message(&messages::visual_setting_save_failed(error));
                         return false;
                     }
                     self.world.set_screen_only(enabled);
@@ -652,7 +643,7 @@ impl Plot {
                     AdvanceUnit::Nano => advance_bounded(ticks, || self.world.nanotick_advance(1)),
                     AdvanceUnit::Pico => advance_bounded(ticks, || self.world.picotick_advance(1)),
                 };
-                let progress = format!("{advanced} of {ticks} {}", unit.label());
+                let progress = messages::advance_progress(advanced, ticks, unit.label());
                 self.players[player]
                     .send_system_message(&messages::plot_advanced(progress, start_time.elapsed()));
             }
@@ -882,123 +873,6 @@ fn changes_plot(command: &str, args: &[&str]) -> bool {
     }
 }
 
-#[cfg(test)]
-mod security_tests {
-    use super::*;
-    #[test]
-    fn command_declarations_preserve_original_wire_bytes() {
-        // Remove only the new Git root edge and node, then verify the original
-        // declarations still have identical flags, parsers, aliases and edges.
-        use mchprs_network::packets::{PacketDecoderExt, PacketEncoderExt};
-        use std::io::Cursor;
-        let mut cursor = Cursor::new(&DECLARE_COMMANDS.buffer);
-        assert_eq!(cursor.read_varint().unwrap(), 135);
-        assert_eq!(cursor.read_byte().unwrap(), 0);
-        let children = cursor.read_varint().unwrap();
-        let mut edges = Vec::new();
-        for _ in 0..children {
-            edges.push(cursor.read_varint().unwrap());
-        }
-        assert_eq!(edges.pop(), Some(134));
-        let rest = cursor.position() as usize;
-        let git_node = [5, 1, 110, 3, b'g', b'i', b't'];
-        let end = DECLARE_COMMANDS.buffer.len() - 1 - git_node.len();
-        assert_eq!(
-            &DECLARE_COMMANDS.buffer[end..end + git_node.len()],
-            &git_node
-        );
-        let mut original = Vec::new();
-        original.write_varint(134);
-        original.push(0);
-        original.write_varint(children - 1);
-        for edge in edges {
-            original.write_varint(edge);
-        }
-        original.extend_from_slice(&DECLARE_COMMANDS.buffer[rest..end]);
-        original.push(0);
-        assert_eq!(original.len(), 1553);
-        assert_eq!(
-            format!("{:x}", md5::compute(original)),
-            "f78c2d87c05142f9056cc44014e2a3ff"
-        );
-        for (packet, length, digest) in [(&*NO_COMMANDS, 4, "4352d88a78aa39750bf70cd6f27bcaa5")] {
-            assert_eq!(packet.packet_id, 0x10);
-            assert_eq!(packet.buffer.len(), length);
-            assert_eq!(format!("{:x}", md5::compute(&packet.buffer)), digest);
-        }
-    }
-
-    #[test]
-    fn advance_arguments_preserve_units_limits_and_error_messages() {
-        for (args, expected) in [
-            (vec!["0"], (AdvanceUnit::Game, 0)),
-            (vec!["+10"], (AdvanceUnit::Game, 10)),
-            (vec!["NaNo", "10"], (AdvanceUnit::Nano, 10)),
-            (vec!["PICO", "1"], (AdvanceUnit::Pico, 1)),
-        ] {
-            assert_eq!(AdvanceUnit::parse(&args, 10), Ok(expected));
-        }
-        for args in [vec![], vec!["game", "1"], vec!["nano", "1", "extra"]] {
-            assert_eq!(
-                AdvanceUnit::parse(&args, 10).unwrap_err(),
-                "Usage: /adv [nano|pico] <ticks>"
-            );
-        }
-        for args in [
-            vec!["nano"],
-            vec!["11"],
-            vec!["-1"],
-            vec!["pico", "invalid"],
-            vec!["nano", "4294967296"],
-        ] {
-            assert_eq!(
-                AdvanceUnit::parse(&args, 10).unwrap_err(),
-                "Tick count must be between 0 and 10"
-            );
-        }
-    }
-
-    #[test]
-    fn queued_commands_stop_when_the_actor_leaves() {
-        let mut calls = Vec::new();
-        assert!(run_command_queue(
-            vec!["/tp Admin".into(), "/stop".into()],
-            |command, _| {
-                calls.push(command.to_owned());
-                command == "/tp"
-            }
-        ));
-        assert_eq!(calls, ["/tp"]);
-        assert!(!run_command_queue(
-            vec!["  ".into(), "/help".into()],
-            |_, _| false
-        ));
-    }
-    #[test]
-    fn relative_plot_coordinates_cannot_overflow() {
-        assert!(parse_relative_coord("~2147483647", 1i32).is_err());
-        assert!(parse_relative_coord("~-2147483648", -1i32).is_err());
-        assert!(parse_relative_coord("~1e309", 0.0f64).is_err());
-        assert_eq!(parse_relative_coord("~-1", 2i32).unwrap(), 1);
-    }
-    #[test]
-    fn native_aliases_share_permissions_and_ownership_checks() {
-        for (alias, canonical, args) in [
-            ("/bisdon_anim", "/piston_anim", vec!["off"]),
-            ("/wsr", "/worldsendrate", vec!["100"]),
-            ("/radv", "/radvance", vec!["1"]),
-            ("/rp", "/redpiler", vec!["compile"]),
-            ("/tp", "/teleport", vec!["Admin"]),
-        ] {
-            assert_eq!(
-                native_command_permission(alias, &args),
-                native_command_permission(canonical, &args)
-            );
-            assert_eq!(changes_plot(alias, &args), changes_plot(canonical, &args));
-        }
-    }
-}
-
 pub static NO_COMMANDS: Lazy<PacketEncoder> = Lazy::new(|| {
     CDeclareCommands {
         nodes: &[Node::root(&[])],
@@ -1212,11 +1086,21 @@ pub static DECLARE_COMMANDS: Lazy<PacketEncoder> = Lazy::new(|| {
             // 101–107: tick history and whole-game-tick rewind
             Node::literal("rhistory", &[102, 104, 105, 108]).executable(),
             Node::literal("on", &[103]).executable(),
-            Node::argument("ticks", Parser::Integer(1, i32::MAX), &[]).executable(),
+            Node::argument(
+                messages::ADV_GAME_TICKS_LABEL,
+                Parser::Integer(1, i32::MAX),
+                &[],
+            )
+            .executable(),
             Node::literal("off", &[]).executable(),
             Node::literal("status", &[]).executable(),
             Node::literal("back", &[107]).executable(),
-            Node::argument("ticks", Parser::Integer(1, i32::MAX), &[]).executable(),
+            Node::argument(
+                messages::ADV_GAME_TICKS_LABEL,
+                Parser::Integer(1, i32::MAX),
+                &[],
+            )
+            .executable(),
             // 108–109: server history memory limit, in MiB
             Node::literal("limit", &[109]).executable(),
             Node::argument("MiB", Parser::Integer(0, i32::MAX), &[]).executable(),
@@ -1272,3 +1156,121 @@ pub static DECLARE_COMMANDS: Lazy<PacketEncoder> = Lazy::new(|| {
     }
     .encode()
 });
+
+#[cfg(test)]
+mod security_tests {
+    use super::*;
+    #[test]
+    fn command_declarations_preserve_original_wire_bytes() {
+        // Remove only the new Git root edge and node, then verify the original
+        // declarations still have identical flags, parsers, aliases and edges.
+        use mchprs_network::packets::{PacketDecoderExt, PacketEncoderExt};
+        use std::io::Cursor;
+        let mut cursor = Cursor::new(&DECLARE_COMMANDS.buffer);
+        assert_eq!(cursor.read_varint().unwrap(), 135);
+        assert_eq!(cursor.read_byte().unwrap(), 0);
+        let children = cursor.read_varint().unwrap();
+        let mut edges = Vec::new();
+        for _ in 0..children {
+            edges.push(cursor.read_varint().unwrap());
+        }
+        assert_eq!(edges.pop(), Some(134));
+        let rest = cursor.position() as usize;
+        let git_node = [5, 1, 110, 3, b'g', b'i', b't'];
+        let end = DECLARE_COMMANDS.buffer.len() - 1 - git_node.len();
+        assert_eq!(
+            &DECLARE_COMMANDS.buffer[end..end + git_node.len()],
+            &git_node
+        );
+        let mut original = Vec::new();
+        original.write_varint(134);
+        original.push(0);
+        original.write_varint(children - 1);
+        for edge in edges {
+            original.write_varint(edge);
+        }
+        original.extend_from_slice(&DECLARE_COMMANDS.buffer[rest..end]);
+        original.push(0);
+        assert_eq!(original.len(), 1553);
+        assert_eq!(
+            format!("{:x}", md5::compute(original)),
+            "f78c2d87c05142f9056cc44014e2a3ff"
+        );
+        {
+            let (packet, length, digest) = (&*NO_COMMANDS, 4, "4352d88a78aa39750bf70cd6f27bcaa5");
+            assert_eq!(packet.packet_id, 0x10);
+            assert_eq!(packet.buffer.len(), length);
+            assert_eq!(format!("{:x}", md5::compute(&packet.buffer)), digest);
+        }
+    }
+
+    #[test]
+    fn advance_arguments_preserve_units_limits_and_error_messages() {
+        for (args, expected) in [
+            (vec!["0"], (AdvanceUnit::Game, 0)),
+            (vec!["+10"], (AdvanceUnit::Game, 10)),
+            (vec!["NaNo", "10"], (AdvanceUnit::Nano, 10)),
+            (vec!["PICO", "1"], (AdvanceUnit::Pico, 1)),
+        ] {
+            assert_eq!(AdvanceUnit::parse(&args, 10), Ok(expected));
+        }
+        for args in [vec![], vec!["game", "1"], vec!["nano", "1", "extra"]] {
+            assert_eq!(
+                AdvanceUnit::parse(&args, 10).unwrap_err(),
+                messages::USAGE_ADV
+            );
+        }
+        for args in [
+            vec!["nano"],
+            vec!["11"],
+            vec!["-1"],
+            vec!["pico", "invalid"],
+            vec!["nano", "4294967296"],
+        ] {
+            assert_eq!(
+                AdvanceUnit::parse(&args, 10).unwrap_err(),
+                messages::advance_tick_count_limit(10)
+            );
+        }
+    }
+
+    #[test]
+    fn queued_commands_stop_when_the_actor_leaves() {
+        let mut calls = Vec::new();
+        assert!(run_command_queue(
+            vec!["/tp Admin".into(), "/stop".into()],
+            |command, _| {
+                calls.push(command.to_owned());
+                command == "/tp"
+            }
+        ));
+        assert_eq!(calls, ["/tp"]);
+        assert!(!run_command_queue(
+            vec!["  ".into(), "/help".into()],
+            |_, _| false
+        ));
+    }
+    #[test]
+    fn relative_plot_coordinates_cannot_overflow() {
+        assert!(parse_relative_coord("~2147483647", 1i32).is_err());
+        assert!(parse_relative_coord("~-2147483648", -1i32).is_err());
+        assert!(parse_relative_coord("~1e309", 0.0f64).is_err());
+        assert_eq!(parse_relative_coord("~-1", 2i32).unwrap(), 1);
+    }
+    #[test]
+    fn native_aliases_share_permissions_and_ownership_checks() {
+        for (alias, canonical, args) in [
+            ("/bisdon_anim", "/piston_anim", vec!["off"]),
+            ("/wsr", "/worldsendrate", vec!["100"]),
+            ("/radv", "/radvance", vec!["1"]),
+            ("/rp", "/redpiler", vec!["compile"]),
+            ("/tp", "/teleport", vec!["Admin"]),
+        ] {
+            assert_eq!(
+                native_command_permission(alias, &args),
+                native_command_permission(canonical, &args)
+            );
+            assert_eq!(changes_plot(alias, &args), changes_plot(canonical, &args));
+        }
+    }
+}

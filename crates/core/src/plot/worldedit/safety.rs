@@ -11,7 +11,7 @@ fn volume(first: BlockPos, second: BlockPos) -> Result<u64, String> {
     ]
     .into_iter()
     .try_fold(1u64, |size, axis| size.checked_mul(u64::from(axis) + 1))
-    .ok_or_else(|| "Selection volume overflows".into())
+    .ok_or_else(|| messages::WE_SELECTION_VOLUME_OVERFLOW.into())
 }
 
 fn region(world: &PlotWorld, first: BlockPos, second: BlockPos) -> Result<u64, String> {
@@ -19,15 +19,12 @@ fn region(world: &PlotWorld, first: BlockPos, second: BlockPos) -> Result<u64, S
         if !Plot::in_plot_bounds(world.x, world.z, pos.x, pos.z)
             || !(0..PLOT_BLOCK_HEIGHT).contains(&pos.y)
         {
-            return Err("Operation would leave the current plot or world height".into());
+            return Err(messages::WE_OPERATION_OUTSIDE_PLOT.into());
         }
     }
     let blocks = volume(first, second)?;
     if blocks > CONFIG.worldedit_max_blocks {
-        return Err(format!(
-            "WorldEdit work limit: {} blocks",
-            CONFIG.worldedit_max_blocks
-        ));
+        return Err(messages::worldedit_work_limit(CONFIG.worldedit_max_blocks));
     }
     Ok(blocks)
 }
@@ -36,7 +33,7 @@ fn clipboard_geometry(
     cb: &WorldEditClipboard,
     pos: BlockPos,
 ) -> Result<(BlockPos, BlockPos), String> {
-    let overflow = || "Clipboard coordinates overflow".to_owned();
+    let overflow = || messages::WE_CLIPBOARD_COORDINATES_OVERFLOW.to_owned();
     let mut first = [0; 3];
     let mut second = [0; 3];
     for (i, (coordinate, offset, size)) in [
@@ -48,7 +45,7 @@ fn clipboard_geometry(
     .enumerate()
     {
         if size == 0 {
-            return Err("Empty clipboard dimension".into());
+            return Err(messages::WE_EMPTY_CLIPBOARD_DIMENSION.into());
         }
         first[i] = coordinate.checked_sub(offset).ok_or_else(overflow)?;
         second[i] = first[i]
@@ -73,7 +70,7 @@ pub(super) fn validate_request(
         .iter()
         .any(|arg| matches!(arg, Argument::UnsignedInteger(n) if *n > 4096))
     {
-        return Err("WorldEdit numeric arguments cannot exceed 4096".into());
+        return Err(messages::WE_NUMERIC_ARGUMENT_LIMIT.into());
     }
     let mut source = 0;
     if command.requires_positions {
@@ -92,14 +89,12 @@ pub(super) fn validate_request(
             .iter()
             .any(|offset| offset.unsigned_abs() > 30_000_000)
         {
-            return Err("Clipboard offset is outside the supported coordinates".into());
+            return Err(messages::WE_CLIPBOARD_OFFSET_OUTSIDE_RANGE.into());
         }
         let (first, second) = clipboard_geometry(cb, BlockPos::zero())?;
         let blocks = volume(first, second)?;
         if blocks > CONFIG.worldedit_max_blocks || blocks != cb.data.entries() as u64 {
-            return Err(
-                "Clipboard exceeds the WorldEdit work limit or has invalid dimensions".into(),
-            );
+            return Err(messages::WE_INVALID_CLIPBOARD_WORK.into());
         }
         if name == "/paste" {
             let (first, second) = clipboard_geometry(cb, player.pos.block_pos())?;
@@ -116,14 +111,16 @@ pub(super) fn validate_request(
                 .checked_mul(u64::from(count) + 1)
                 .is_none_or(|work| work > CONFIG.worldedit_max_blocks)
             {
-                return Err("Stack exceeds the WorldEdit work limit".into());
+                return Err(messages::WE_STACK_WORK_LIMIT.into());
             }
             let size = match direction {
                 BlockFacing::East | BlockFacing::West => first.x.abs_diff(second.x) + 1,
                 BlockFacing::Up | BlockFacing::Down => first.y.abs_diff(second.y) + 1,
                 _ => first.z.abs_diff(second.z) + 1,
             };
-            count.checked_mul(size).ok_or("Stack distance overflows")?
+            count
+                .checked_mul(size)
+                .ok_or(messages::WE_STACK_DISTANCE_OVERFLOW)?
         } else {
             count
         };

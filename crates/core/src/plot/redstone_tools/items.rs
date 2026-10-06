@@ -20,14 +20,13 @@ pub(super) fn give_container(player: &mut Player, args: &[&str]) -> Result<()> {
     components::set_tool_display(
         item.item_type.get_id() as i32,
         &mut blob,
-        &format!(
-            "{} · power {}",
+        &messages::container_tool_name(
             kind.to_string().trim_start_matches("minecraft:"),
-            power.value()
+            power.value(),
         ),
-        &format!("Comparator signal: {} / 15", power.value()),
+        &messages::container_tool_lore(power.value()),
     )
-    .map_err(|error| anyhow::anyhow!("Cannot prepare container components: {error:?}"))?;
+    .map_err(|error| anyhow::anyhow!(messages::container_components_failed(error)))?;
     item.nbt = Some(blob);
     let slot = insertion_slot(player)?;
     player.set_inventory_slot(slot, Some(item));

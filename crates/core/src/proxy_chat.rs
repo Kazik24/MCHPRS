@@ -1,5 +1,6 @@
 //! Public chat transport over the player's authenticated Velocity connection.
 use crate::config::CONFIG;
+use crate::messages;
 use crate::player::{PacketSender, Player};
 use mchprs_network::packets::clientbound::{CPluginMessage, ClientBoundPacket};
 use mchprs_network::PlayerConn;
@@ -72,8 +73,6 @@ pub fn send(player: &mut Player, text: &str) {
         player.client.send_packet(&packet.encode());
     } else {
         // Never fall back to local broadcast: that silently splits the network chat.
-        player.send_system_message(
-            "Shared chat is unavailable or the message is invalid. Please try again.",
-        );
+        player.send_system_message(messages::SHARED_CHAT_UNAVAILABLE);
     }
 }

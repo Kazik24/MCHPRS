@@ -101,7 +101,7 @@ fn read_output(world: &PlotWorld, bank: &[BlockPos]) -> Option<u16> {
     for (i, &pos) in bank.iter().enumerate() {
         match world.get_block(pos) {
             Block::Air => value |= 1 << i,
-            Block::RedstoneBlock {} => {}
+            Block::RedstoneBlock => {}
             Block::MovingPiston { .. } => return None,
             block => panic!("invalid output {pos:?}: {block:?}"),
         }

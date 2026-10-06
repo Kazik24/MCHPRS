@@ -7,10 +7,6 @@ static URL_REGEX: Lazy<Regex> = Lazy::new(|| {
         .unwrap()
 });
 
-fn is_valid_hex(ch: char) -> bool {
-    ch.is_numeric() || ('a'..='f').contains(&ch) || ('A'..='F').contains(&ch)
-}
-
 #[derive(Serialize, Debug, Clone, Copy)]
 #[serde(rename_all = "snake_case")]
 pub enum ColorCode {
@@ -87,8 +83,6 @@ pub enum ChatColor {
 #[serde(rename_all = "snake_case")]
 enum ClickEventType {
     OpenUrl,
-    // RunCommand,
-    // SuggestCommand,
 }
 
 #[derive(Serialize, Debug, Clone)]
@@ -115,11 +109,6 @@ impl ChatComponentBuilder {
         };
         Self { component }
     }
-
-    /* pub fn color(mut self, color: ChatColor) -> Self {
-        self.component.color = Some(color);
-        self
-    } */
 
     pub fn color_code(mut self, color: ColorCode) -> Self {
         self.component.color = Some(ChatColor::ColorCode(color));
@@ -217,7 +206,7 @@ impl ChatComponent {
                 for _ in 0..6 {
                     if let Some(c) = chars.next() {
                         hex.push(c);
-                        if !is_valid_hex(c) {
+                        if !c.is_ascii_hexdigit() {
                             cur_component.text += &hex;
                             continue 'main_loop;
                         }
@@ -235,41 +224,76 @@ impl ChatComponent {
         }
         components.push(cur_component);
 
-        // This code is stinky
-        // Find urls and add click action
-        let mut new_componenets = Vec::with_capacity(components.len());
-        for component in components {
+        // Split URLs while cloning only the formatting, rather than the entire text.
+        let mut linked_components = Vec::with_capacity(components.len());
+        for mut component in components {
             let mut last = 0;
-            let text = &component.text;
+            let text = std::mem::take(&mut component.text);
 
-            for match_ in URL_REGEX.find_iter(text) {
+            for match_ in URL_REGEX.find_iter(&text) {
                 let index = match_.start();
                 let matched = match_.as_str();
                 if last != index {
-                    let mut new = component.clone();
-                    new.text = String::from(&text[last..index]);
-                    new_componenets.push(new);
+                    linked_components.push(Self {
+                        text: text[last..index].to_owned(),
+                        ..component.clone()
+                    });
                 }
-                let mut new = component.clone();
-                new.text = matched.to_string();
-                new.click_event = Some(ClickEvent {
-                    action: ClickEventType::OpenUrl,
-                    value: matched.to_string(),
+                linked_components.push(Self {
+                    text: matched.to_owned(),
+                    click_event: Some(ClickEvent {
+                        action: ClickEventType::OpenUrl,
+                        value: matched.to_owned(),
+                    }),
+                    ..component.clone()
                 });
-                new_componenets.push(new);
                 last = index + matched.len();
             }
             if last < text.len() {
-                let mut new = component.clone();
-                new.text = String::from(&text[last..]);
-                new_componenets.push(new);
+                component.text = text[last..].to_owned();
+                linked_components.push(component);
             }
         }
 
-        new_componenets
+        linked_components
     }
 
     pub fn encode_json(&self) -> String {
         serde_json::to_string(self).unwrap()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn non_ascii_digits_remain_literal_in_legacy_hex_colors() {
+        let text = "#١23abc";
+        let components = ChatComponent::from_legacy_text(text);
+        assert_eq!(components.len(), 1);
+        assert_eq!(components[0].text, text);
+        assert!(components[0].color.is_none());
+
+        let components = ChatComponent::from_legacy_text("#A1b2C3text");
+        assert_eq!(components.len(), 1);
+        assert_eq!(components[0].text, "text");
+        assert!(matches!(&components[0].color, Some(ChatColor::Hex(color)) if color == "#A1b2C3"));
+    }
+
+    #[test]
+    fn url_splits_preserve_text_and_formatting() {
+        let components = ChatComponent::from_legacy_text("&lbefore example.com after");
+        assert_eq!(components.len(), 3);
+        assert!(components.iter().all(|component| component.bold));
+        assert_eq!(components[0].text, "before ");
+        assert_eq!(components[1].text, "example.com");
+        assert_eq!(components[2].text, " after");
+        assert!(components[0].click_event.is_none());
+        assert_eq!(
+            components[1].click_event.as_ref().unwrap().value,
+            "example.com"
+        );
+        assert!(components[2].click_event.is_none());
     }
 }

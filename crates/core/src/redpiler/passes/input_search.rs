@@ -8,7 +8,7 @@ use crate::redpiler::compile_graph::{CompileGraph, CompileLink, LinkType, NodeId
 use crate::redpiler::{CompilerInput, CompilerOptions};
 use crate::redstone::{self, comparator, wire};
 use crate::world::World;
-use mchprs_blocks::blocks::{Block, ButtonFace, LeverFace};
+use mchprs_blocks::blocks::{Block, ButtonFace, LeverFace, RedstoneWire};
 use mchprs_blocks::{BlockDirection, BlockFace, BlockPos};
 use petgraph::visit::NodeIndexable;
 use rustc_hash::FxHashMap;
@@ -62,7 +62,7 @@ impl<'a, W: World> InputSearchState<'a, W> {
         match block {
             Block::RedstoneTorch { .. } if side != BlockFace::Top => true,
             Block::RedstoneWallTorch { facing, .. } if facing.block_face() != side => true,
-            Block::RedstoneBlock {} => true,
+            Block::RedstoneBlock => true,
             Block::Lever { .. } => true,
             Block::StoneButton { .. } => true,
             Block::StonePressurePlate { .. } => true,
@@ -97,7 +97,27 @@ impl<'a, W: World> InputSearchState<'a, W> {
         }
     }
 
-    // unfortunate
+    fn wire_reaches_side(
+        &self,
+        wire: RedstoneWire,
+        side: BlockFace,
+        pos: BlockPos,
+        search_wire: bool,
+    ) -> bool {
+        match side {
+            BlockFace::Top => true,
+            BlockFace::Bottom => false,
+            _ => {
+                search_wire
+                    && !wire::get_current_side(
+                        wire::get_regulated_sides(wire, self.world, pos),
+                        side.unwrap_direction().opposite(),
+                    )
+                    .is_none()
+            }
+        }
+    }
+
     #[allow(clippy::too_many_arguments)]
     fn get_redstone_links(
         &mut self,
@@ -122,26 +142,8 @@ impl<'a, W: World> InputSearchState<'a, W> {
                 }
 
                 if let Block::RedstoneWire { wire } = block {
-                    if !search_wire {
-                        continue;
-                    }
-                    match side {
-                        BlockFace::Top => {
-                            self.search_wire(start_node, pos, link_ty, distance);
-                        }
-                        BlockFace::Bottom => {}
-                        _ => {
-                            let direction = side.unwrap_direction();
-                            if search_wire
-                                && !wire::get_current_side(
-                                    wire::get_regulated_sides(wire, self.world, pos),
-                                    direction.opposite(),
-                                )
-                                .is_none()
-                            {
-                                self.search_wire(start_node, pos, link_ty, distance);
-                            }
-                        }
+                    if search_wire && self.wire_reaches_side(wire, *side, pos, search_wire) {
+                        self.search_wire(start_node, pos, link_ty, distance);
                     }
                 }
             }
@@ -152,21 +154,8 @@ impl<'a, W: World> InputSearchState<'a, W> {
                 CompileLink::new(link_ty, distance),
             );
         } else if let Block::RedstoneWire { wire } = block {
-            match side {
-                BlockFace::Top => self.search_wire(start_node, pos, link_ty, distance),
-                BlockFace::Bottom => {}
-                _ => {
-                    let direction = side.unwrap_direction();
-                    if search_wire
-                        && !wire::get_current_side(
-                            wire::get_regulated_sides(wire, self.world, pos),
-                            direction.opposite(),
-                        )
-                        .is_none()
-                    {
-                        self.search_wire(start_node, pos, link_ty, distance);
-                    }
-                }
+            if self.wire_reaches_side(wire, side, pos, search_wire) {
+                self.search_wire(start_node, pos, link_ty, distance);
             }
         }
     }
@@ -264,7 +253,7 @@ impl<'a, W: World> InputSearchState<'a, W> {
         let side_block = self.world.get_block(side_pos);
         if (redstone::is_diode(side_block)
             && self.provides_weak_power(side_block, side.block_face()))
-            || matches!(side_block, Block::RedstoneBlock { .. })
+            || matches!(side_block, Block::RedstoneBlock)
         {
             self.graph
                 .add_edge(self.pos_map[&side_pos], id, CompileLink::side(0));

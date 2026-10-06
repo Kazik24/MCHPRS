@@ -67,6 +67,132 @@ pub(super) struct PistonIndex {
     events_dirty: bool,
 }
 
+impl Default for PistonIndex {
+    fn default() -> Self {
+        Self {
+            motions: Default::default(),
+            duplicates: Default::default(),
+            events: Default::default(),
+            motions_dirty: true,
+            events_dirty: true,
+        }
+    }
+}
+
+impl PistonIndex {
+    pub fn invalidate(&mut self) {
+        self.motions_dirty = true;
+        self.events_dirty = true;
+    }
+
+    pub fn motion(
+        &mut self,
+        state: &PistonState,
+        pos: BlockPos,
+        identity: Option<u64>,
+    ) -> Option<usize> {
+        // Tiny banks are cheaper to scan than to hash. Keep the derived index
+        // dirty until a larger bank actually needs it.
+        if state.motions.len() <= 8 {
+            self.motions_dirty = true;
+            return state
+                .motions
+                .iter()
+                .position(|m| m.pos == pos && identity.is_none_or(|id| id == m.identity));
+        }
+        if self.motions_dirty {
+            self.motions.clear();
+            self.duplicates.clear();
+            for (i, m) in state.motions.iter().enumerate() {
+                if let std::collections::hash_map::Entry::Vacant(e) = self.motions.entry(m.pos) {
+                    e.insert(i);
+                } else {
+                    self.duplicates.insert(m.pos);
+                }
+            }
+            self.motions_dirty = false;
+        }
+        if self.duplicates.contains(&pos) {
+            return state
+                .motions
+                .iter()
+                .position(|m| m.pos == pos && identity.is_none_or(|id| id == m.identity));
+        }
+        if state.motions.front().is_some_and(|m| m.pos == pos) {
+            // Most completions consume the ordered front. Its old hash-map
+            // index may have shifted after earlier removals in this phase.
+            return identity
+                .is_none_or(|id| state.motions[0].identity == id)
+                .then_some(0);
+        }
+        let mut i = *self.motions.get(&pos)?;
+        // Ordered removal shifts logical indices. Repair only the queried entry;
+        // completing a phase in order usually finds its next motion at index 0.
+        if !state.motions.get(i).is_some_and(|m| m.pos == pos) {
+            i = state.motions.iter().position(|m| m.pos == pos)?;
+            self.motions.insert(pos, i);
+        }
+        identity
+            .is_none_or(|id| state.motions[i].identity == id)
+            .then_some(i)
+    }
+
+    pub fn inserted(&mut self, pos: BlockPos, i: usize) {
+        if !self.motions_dirty {
+            self.motions.insert(pos, i);
+        }
+    }
+
+    /// Call after motion lookup, which populates the index for larger banks.
+    pub fn has_duplicate_motions(&self, pos: BlockPos) -> bool {
+        self.duplicates.contains(&pos)
+    }
+
+    pub fn removed(&mut self, pos: BlockPos) {
+        if self.motions_dirty {
+            return;
+        }
+        self.motions.remove(&pos);
+        self.duplicates.remove(&pos);
+        if !self.duplicates.is_empty() {
+            self.motions_dirty = true;
+        }
+    }
+
+    pub fn has_event(&mut self, state: &PistonState, event: PistonEvent) -> bool {
+        if state.events.len() <= 8 {
+            self.events_dirty = true;
+            return state.events.contains(&event);
+        }
+        if self.events_dirty {
+            self.events.clear();
+            for &e in &state.events {
+                *self.events.entry(e).or_default() += 1;
+            }
+            self.events_dirty = false;
+        }
+        self.events.contains_key(&event)
+    }
+
+    pub fn pushed(&mut self, event: PistonEvent) {
+        if !self.events_dirty {
+            *self.events.entry(event).or_default() += 1;
+        }
+    }
+
+    pub fn popped(&mut self, event: PistonEvent) {
+        if self.events_dirty {
+            return;
+        }
+        if let Some(count) = self.events.get_mut(&event) {
+            *count -= 1;
+            if *count == 0 {
+                self.events.remove(&event);
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -102,7 +228,7 @@ mod tests {
         };
         for turn in 0..70 {
             for (node, delay, priority) in [
-                (a, 0, TickPriority::Normal),
+                (a, 0, TickPriority::NanoTick),
                 (a, 31, TickPriority::Highest),
                 (b, 2, TickPriority::Higher),
                 (legacy, 1, TickPriority::High),
@@ -121,18 +247,19 @@ mod tests {
                     );
                 }
             }
-            scheduler.end_last_tick_move_next();
             if turn == 35 {
                 // History/load can replace the scheduler independently of the index.
+                // Drain the current tick before saving, while future delays are positive.
                 scheduler = scheduler.iter_entries().collect();
                 index.invalidate();
             }
+            scheduler.end_last_tick_move_next();
         }
         scheduler.clear();
         index.invalidate();
         assert!(!index.contains(&scheduler, a));
         // A consumed request no longer prevents immediate rescheduling.
-        scheduler.schedule_half_tick(a, 0, TickPriority::Normal);
+        scheduler.schedule_half_tick(a, 0, TickPriority::NanoTick);
         index.pushed(a);
         assert!(index.contains(&scheduler, a));
         index.popped(scheduler.this_tick().pop_first().unwrap());
@@ -235,8 +362,10 @@ mod tests {
     #[test]
     fn duplicate_legacy_motions_and_events_keep_original_membership() {
         let pos = BlockPos::new(1, 2, 3);
-        let mut s = PistonState::default();
-        s.motions = vec![motion(pos, 1), motion(pos, 2)].into();
+        let mut s = PistonState {
+            motions: vec![motion(pos, 1), motion(pos, 2)].into(),
+            ..Default::default()
+        };
         s.motions
             .extend((0..9).map(|i| motion(BlockPos::new(i, 3, 4), i as u64 + 3)));
         let e = PistonEvent {
@@ -260,131 +389,5 @@ mod tests {
         s.events.pop_front();
         cache.popped(e);
         assert!(!cache.has_event(&s, e));
-    }
-}
-
-impl Default for PistonIndex {
-    fn default() -> Self {
-        Self {
-            motions: Default::default(),
-            duplicates: Default::default(),
-            events: Default::default(),
-            motions_dirty: true,
-            events_dirty: true,
-        }
-    }
-}
-
-impl PistonIndex {
-    pub fn invalidate(&mut self) {
-        self.motions_dirty = true;
-        self.events_dirty = true;
-    }
-
-    pub fn motion(
-        &mut self,
-        state: &PistonState,
-        pos: BlockPos,
-        identity: Option<u64>,
-    ) -> Option<usize> {
-        // Tiny banks are cheaper to scan than to hash. Keep the derived index
-        // dirty until a larger bank actually needs it.
-        if state.motions.len() <= 8 {
-            self.motions_dirty = true;
-            return state
-                .motions
-                .iter()
-                .position(|m| m.pos == pos && identity.is_none_or(|id| id == m.identity));
-        }
-        if self.motions_dirty {
-            self.motions.clear();
-            self.duplicates.clear();
-            for (i, m) in state.motions.iter().enumerate() {
-                if self.motions.contains_key(&m.pos) {
-                    self.duplicates.insert(m.pos);
-                } else {
-                    self.motions.insert(m.pos, i);
-                }
-            }
-            self.motions_dirty = false;
-        }
-        if self.duplicates.contains(&pos) {
-            return state
-                .motions
-                .iter()
-                .position(|m| m.pos == pos && identity.is_none_or(|id| id == m.identity));
-        }
-        if state.motions.front().is_some_and(|m| m.pos == pos) {
-            // Most completions consume the ordered front. Its old hash-map
-            // index may have shifted after earlier removals in this phase.
-            return identity
-                .is_none_or(|id| state.motions[0].identity == id)
-                .then_some(0);
-        }
-        let mut i = *self.motions.get(&pos)?;
-        // Ordered removal shifts logical indices. Repair only the queried entry;
-        // completing a phase in order usually finds its next motion at index 0.
-        if !state.motions.get(i).is_some_and(|m| m.pos == pos) {
-            i = state.motions.iter().position(|m| m.pos == pos)?;
-            self.motions.insert(pos, i);
-        }
-        identity
-            .is_none_or(|id| state.motions[i].identity == id)
-            .then_some(i)
-    }
-
-    pub fn inserted(&mut self, pos: BlockPos, i: usize) {
-        if !self.motions_dirty {
-            self.motions.insert(pos, i);
-        }
-    }
-
-    /// Call after motion lookup, which populates the index for larger banks.
-    pub fn has_duplicate_motions(&self, pos: BlockPos) -> bool {
-        self.duplicates.contains(&pos)
-    }
-
-    pub fn removed(&mut self, pos: BlockPos) {
-        if self.motions_dirty {
-            return;
-        }
-        self.motions.remove(&pos);
-        self.duplicates.remove(&pos);
-        if !self.duplicates.is_empty() {
-            self.motions_dirty = true;
-        }
-    }
-
-    pub fn has_event(&mut self, state: &PistonState, event: PistonEvent) -> bool {
-        if state.events.len() <= 8 {
-            self.events_dirty = true;
-            return state.events.contains(&event);
-        }
-        if self.events_dirty {
-            self.events.clear();
-            for &e in &state.events {
-                *self.events.entry(e).or_default() += 1;
-            }
-            self.events_dirty = false;
-        }
-        self.events.contains_key(&event)
-    }
-
-    pub fn pushed(&mut self, event: PistonEvent) {
-        if !self.events_dirty {
-            *self.events.entry(event).or_default() += 1;
-        }
-    }
-
-    pub fn popped(&mut self, event: PistonEvent) {
-        if self.events_dirty {
-            return;
-        }
-        if let Some(count) = self.events.get_mut(&event) {
-            *count -= 1;
-            if *count == 0 {
-                self.events.remove(&event);
-            }
-        }
     }
 }

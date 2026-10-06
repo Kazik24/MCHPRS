@@ -1,10 +1,10 @@
 use super::{Plot, PLOT_BLOCK_HEIGHT};
+use crate::messages;
 use crate::player::{PacketSender, PlayerPos};
 use crate::world::World;
 use mchprs_blocks::blocks::{Block, SlabType};
 use mchprs_blocks::items::Item;
 use mchprs_blocks::BlockPos;
-use mchprs_network::packets::clientbound::{CEntityTeleport, ClientBoundPacket};
 use std::time::{Duration, Instant};
 
 const RANGE: f64 = 1024.0;
@@ -56,29 +56,15 @@ impl Plot {
         };
         let destination = compass_destination(eye, yaw, pitch, &read);
         let Some(destination) = destination else {
-            self.players[player].send_error_message("No safe compass destination in sight.");
+            self.players[player].send_error_message(messages::COMPASS_NO_SAFE_DESTINATION);
             return true;
         };
         self.close_open_container(player);
         let old = self.players[player].pos;
         self.players[player].teleport(destination);
         self.players[player].on_ground = false;
-        let data = &self.players[player];
-        let packet = CEntityTeleport {
-            entity_id: data.entity_id as i32,
-            x: destination.x,
-            y: destination.y,
-            z: destination.z,
-            yaw: data.yaw,
-            pitch: data.pitch,
-            on_ground: false,
-        }
-        .encode();
-        for (index, other) in self.players.iter().enumerate() {
-            if index != player {
-                other.client.send_packet(&packet);
-            }
-        }
+        let packet = self.players[player].entity_teleport_packet();
+        self.broadcast_player_packets(player, &[&packet]);
         self.on_player_move(player, old, destination);
         self.update_view_pos_for_player(player, false);
         true
@@ -145,18 +131,18 @@ fn pointed_block(
             if let Some(hit_distance) =
                 bounds.and_then(|bounds| bounds.ray_intersection(target, origin, direction))
             {
-                if hit_distance >= entry - 1e-9 && hit_distance <= distance.min(RANGE) + 1e-9 {
-                    if closest
+                if hit_distance >= entry - 1e-9
+                    && hit_distance <= distance.min(RANGE) + 1e-9
+                    && closest
                         .as_ref()
                         .is_none_or(|previous| hit_distance < previous.distance)
-                    {
-                        closest = Some(RayHit {
-                            block: target,
-                            distance: hit_distance,
-                            origin,
-                            direction,
-                        });
-                    }
+                {
+                    closest = Some(RayHit {
+                        block: target,
+                        distance: hit_distance,
+                        origin,
+                        direction,
+                    });
                 }
             }
         }

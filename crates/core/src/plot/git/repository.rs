@@ -1,4 +1,5 @@
 use super::snapshot::{hex, Fingerprints, Snapshot};
+use crate::messages;
 use anyhow::{bail, ensure, Context, Result};
 use chrono::TimeZone;
 use rusqlite::{params, Connection, OptionalExtension};
@@ -58,7 +59,7 @@ impl Repository {
             })?;
         ensure!(
             identity == stored,
-            "Repository version or plot identity mismatch"
+            messages::GIT_REPOSITORY_IDENTITY_MISMATCH
         );
         conn.execute("INSERT OR IGNORE INTO meta VALUES('active','main')", [])?;
         Ok(Self {
@@ -75,21 +76,21 @@ impl Repository {
                 .query_row("SELECT value FROM meta WHERE key='active'", [], |r| {
                     r.get(0)
                 })?;
-        let tip = self
-            .conn
-            .query_row("SELECT tip FROM branches WHERE name=?1", [&active], |r| {
-                r.get(0)
-            })
-            .optional()?;
+        let tip = if let Some(id) = active.strip_prefix('@') {
+            Some(id.to_owned())
+        } else {
+            self.conn
+                .query_row("SELECT tip FROM branches WHERE name=?1", [&active], |r| {
+                    r.get(0)
+                })
+                .optional()?
+        };
         Ok((active, tip))
     }
 
     pub fn resolve(&self, reference: &str) -> Result<String> {
         if reference == "HEAD" {
-            return self
-                .head()?
-                .1
-                .context("No commits yet. Use /git commit <message>.");
+            return self.head()?.1.context(messages::GIT_NO_COMMITS_HINT);
         }
         if let Some(tip) = self
             .conn
@@ -102,7 +103,7 @@ impl Repository {
         }
         ensure!(
             (8..=64).contains(&reference.len()) && reference.bytes().all(|b| b.is_ascii_hexdigit()),
-            "Unknown branch or commit: {reference}"
+            messages::git_unknown_reference(reference)
         );
         let mut query = self
             .conn
@@ -114,8 +115,8 @@ impl Repository {
             .collect::<rusqlite::Result<Vec<_>>>()?;
         match matches.as_slice() {
             [id] => Ok(id.clone()),
-            [] => bail!("Unknown commit: {reference}"),
-            _ => bail!("Ambiguous commit prefix; use more characters"),
+            [] => bail!(messages::git_unknown_commit(reference)),
+            _ => bail!(messages::GIT_AMBIGUOUS_COMMIT),
         }
     }
 
@@ -145,11 +146,11 @@ impl Repository {
             prefix
                 .as_slice()
                 .try_into()
-                .context("Invalid Git size header")?,
+                .context(messages::GIT_INVALID_SIZE_HEADER)?,
         ) as usize;
         ensure!(
             size <= self.limits.snapshot,
-            "Git snapshot exceeds size limit"
+            messages::GIT_OBJECT_SNAPSHOT_SIZE_LIMIT
         );
         Ok(size)
     }
@@ -173,7 +174,7 @@ impl Repository {
                 })?;
         ensure!(
             size <= self.limits.snapshot + self.limits.snapshot / 100 + 1024,
-            "Oversized Git object"
+            messages::GIT_OVERSIZED_OBJECT
         );
         let bytes: Vec<u8> =
             self.conn
@@ -181,7 +182,7 @@ impl Repository {
         let snapshot = Snapshot::decode(&bytes, self.plot, self.limits.snapshot)?;
         ensure!(
             snapshot.fingerprints()?.full == id,
-            "Git object checksum mismatch"
+            messages::GIT_CHECKSUM_MISMATCH
         );
         Ok(snapshot)
     }
@@ -204,7 +205,7 @@ impl Repository {
         )?;
         ensure!(
             used.saturating_add(bytes.len() as u64) <= self.limits.plot_bytes,
-            "Plot Git storage quota is full; existing history was preserved"
+            messages::GIT_PLOT_STORAGE_FULL
         );
         let total: u64 = std::fs::read_dir(&self.root)?
             .filter_map(|e| e.ok())
@@ -213,7 +214,7 @@ impl Repository {
             .sum();
         ensure!(
             total.saturating_add(bytes.len() as u64 + 65536) <= self.limits.total_bytes,
-            "Global Git storage quota is full"
+            messages::GIT_GLOBAL_STORAGE_FULL
         );
         self.conn.execute(
             "INSERT INTO objects VALUES(?1,?2,?3,?4)",
@@ -225,7 +226,7 @@ impl Repository {
     fn transaction<T>(&mut self, f: impl FnOnce(&Self) -> Result<T>) -> Result<T> {
         let _lock = WRITES
             .lock()
-            .map_err(|_| anyhow::anyhow!("Git storage lock failed"))?;
+            .map_err(|_| anyhow::anyhow!(messages::GIT_STORAGE_LOCK_FAILED))?;
         let previous_bytes = self.database_bytes()?;
         self.conn.execute_batch("BEGIN IMMEDIATE")?;
         let result = f(self).and_then(|value| {
@@ -262,7 +263,7 @@ impl Repository {
         }
         ensure!(
             bytes <= self.limits.plot_bytes,
-            "Plot Git storage quota is full; existing history was preserved"
+            messages::GIT_PLOT_STORAGE_FULL
         );
         let own = self.root.join(format!("p{},{}", self.plot.0, self.plot.1));
         let mut total = bytes;
@@ -279,7 +280,7 @@ impl Repository {
         }
         ensure!(
             total <= self.limits.total_bytes,
-            "Global Git storage quota is full"
+            messages::GIT_GLOBAL_STORAGE_FULL
         );
         Ok(())
     }
@@ -293,39 +294,37 @@ impl Repository {
     ) -> Result<String> {
         ensure!(
             !message.trim().is_empty() && message.chars().count() <= 256,
-            "Commit message must contain 1..256 characters"
+            messages::GIT_COMMIT_MESSAGE_LIMIT
         );
         let fp = snapshot.fingerprints()?;
         self.transaction(|repo| {
             let (branch, parent) = repo.head()?;
-            if let Some(parent) = &parent { ensure!(repo.snapshot_id(parent)? != fp.full, "Nothing changed since the last commit"); }
+            if let Some(parent) = &parent { ensure!(repo.snapshot_id(parent)? != fp.full, messages::GIT_NOTHING_CHANGED); }
             repo.store(snapshot,&fp)?;
             let now = chrono::Utc::now().timestamp();
             let id = hex(Sha256::digest(serde_json::to_vec(&(1, &parent,&fp.full,author.to_string(),name,now,message))?));
             repo.conn.execute("INSERT INTO commits(id,parent,snapshot,author,name,date,message,message_fold) VALUES(?1,?2,?3,?4,?5,?6,?7,?8)", params![id,parent,fp.full,author.to_string(),name,now,message,message.to_lowercase()])?;
-            repo.conn.execute("INSERT INTO branches VALUES(?1,?2) ON CONFLICT(name) DO UPDATE SET tip=excluded.tip",params![branch,id])?;
-            Ok(format!("Committed {} on {branch}: {message}",&id[..8]))
+            if branch.starts_with('@') {
+                repo.conn.execute("UPDATE meta SET value=?1 WHERE key='active'", [format!("@{id}")])?;
+            } else {
+                repo.conn.execute("INSERT INTO branches VALUES(?1,?2) ON CONFLICT(name) DO UPDATE SET tip=excluded.tip",params![branch,id])?;
+            }
+            Ok(messages::git_committed(&id[..8], head_label(&branch), message))
         })
     }
 
     pub fn branch(&mut self, name: &str, reference: &str) -> Result<String> {
-        ensure!(
-            valid_branch(name),
-            "Branch name: 1..48 letters, digits, _ or -; no HEAD or commit-like names"
-        );
+        ensure!(valid_branch(name), messages::GIT_BRANCH_NAME_RULES);
         self.transaction(|repo| {
             let tip = repo.resolve(reference)?;
-            ensure!(repo.names()?.len() < 128, "Git branch limit reached (128)");
+            ensure!(repo.names()?.len() < 128, messages::GIT_BRANCH_LIMIT);
             ensure!(
                 !repo.names()?.iter().any(|n| n == name),
-                "Branch already exists"
+                messages::GIT_BRANCH_EXISTS
             );
             repo.conn
                 .execute("INSERT INTO branches VALUES(?1,?2)", params![name, tip])?;
-            Ok(format!(
-                "Created {name} at {}. Use /git checkout {name} to switch.",
-                &tip[..8]
-            ))
+            Ok(messages::git_branch_created(name, &tip[..8]))
         })
     }
 
@@ -344,27 +343,27 @@ impl Repository {
             .prepare("SELECT name,tip FROM branches ORDER BY name")?
             .query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)))?
             .collect::<rusqlite::Result<Vec<_>>>()?;
-        Ok(if rows.is_empty() {
-            "No branches yet. Use /git commit <message>.".into()
+        let mut text = if rows.is_empty() {
+            messages::GIT_NO_BRANCHES_HINT.into()
         } else {
             rows.into_iter()
                 .map(|(name, id)| {
-                    format!(
-                        "{} {name} [{}]",
-                        if name == active { "*" } else { " " },
-                        &id[..8]
-                    )
+                    messages::git_branch_row(if name == active { "*" } else { " " }, name, &id[..8])
                 })
                 .collect::<Vec<_>>()
                 .join("\n")
-        })
+        };
+        if let Some(id) = active.strip_prefix('@') {
+            text = format!("{}\n{text}", messages::git_detached_head(&id[..8]));
+        }
+        Ok(text)
     }
 
     pub fn status(&self, snapshot: &Snapshot) -> Result<String> {
         let (branch, tip) = self.head()?;
         let usage = self.database_bytes()?;
         let Some(tip) = tip else {
-            return Ok("No commits yet. Use /git commit <message> to create main.".into());
+            return Ok(messages::GIT_CREATE_MAIN_HINT.into());
         };
         let saved: (String, String) = self.conn.query_row(
             "SELECT content,execution FROM objects WHERE id=?1",
@@ -372,12 +371,19 @@ impl Repository {
             |r| Ok((r.get(0)?, r.get(1)?)),
         )?;
         let fp = snapshot.fingerprints()?;
-        Ok(format!("{branch} [{}]\nBuild changes: {}; execution changes: {}\nGit storage: {:.1} / {:.1} MiB",&tip[..8],fp.content != saved.0,fp.execution != saved.1,usage as f64 / 1048576.0,self.limits.plot_bytes as f64 /1048576.0))
+        Ok(messages::git_status(
+            head_label(&branch),
+            &tip[..8],
+            fp.content != saved.0,
+            fp.execution != saved.1,
+            usage as f64 / 1048576.0,
+            self.limits.plot_bytes as f64 / 1048576.0,
+        ))
     }
 
     pub fn log(&self, all: bool, query: Option<&str>, page: usize) -> Result<Value> {
-        ensure!((1..=100_000).contains(&page), "Page must be positive");
-        let tip = self.head()?.1.context("No commits yet")?;
+        ensure!((1..=100_000).contains(&page), messages::GIT_INVALID_PAGE);
+        let tip = self.head()?.1.context(messages::GIT_NO_COMMITS)?;
         let sql = if all {
             "SELECT id,date,name,message FROM commits WHERE instr(message_fold,?2)>0 ORDER BY seq DESC LIMIT 11 OFFSET ?3"
         } else {
@@ -409,7 +415,7 @@ impl Repository {
                 .single()
                 .map(|d| d.format("%Y-%m-%d %H:%M UTC").to_string())
                 .unwrap_or_default();
-            extra.push(serde_json::json!({"text":format!("\n[{}] {date} {name}: {message}",&id[..8]),"color":"aqua","click_event":{"action":"run_command","command":format!("/git show {id}")}}));
+            extra.push(serde_json::json!({"text":messages::git_history_row(&id[..8], date, name, message),"color":"aqua","click_event":{"action":"run_command","command":format!("/git show {id}")}}));
         }
         let command = if let Some(query) = query {
             format!(
@@ -421,17 +427,17 @@ impl Repository {
         };
         if page > 1 {
             extra.push(button(
-                "Previous",
+                messages::GIT_PREVIOUS_PAGE,
                 &command.replace("{page}", &(page - 1).to_string()),
             ));
         }
         if rows.len() > 10 {
             extra.push(button(
-                "Next",
+                messages::GIT_NEXT_PAGE,
                 &command.replace("{page}", &(page + 1).to_string()),
             ));
         }
-        Ok(serde_json::json!({"text":format!("Git history — page {page}"),"extra":extra}))
+        Ok(serde_json::json!({"text":messages::git_history_heading(page),"extra":extra}))
     }
 
     pub fn show(&self, reference: &str) -> Result<String> {
@@ -442,22 +448,23 @@ impl Repository {
                 [&id],
                 |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)),
             )?;
-        Ok(format!(
-            "{}\n{name}, {}\n{message}\nParent: {}",
+        Ok(messages::git_commit_details(
             &id[..8],
+            name,
             chrono::Utc
                 .timestamp_opt(date, 0)
                 .single()
                 .map(|d| d.to_rfc3339())
                 .unwrap_or_default(),
+            message,
             parent
                 .map(|p| p[..8].to_owned())
-                .unwrap_or_else(|| "root".into())
+                .unwrap_or_else(|| messages::GIT_ROOT_COMMIT.into()),
         ))
     }
 
     pub fn recoveries(&self, page: usize) -> Result<Value> {
-        ensure!((1..=100_000).contains(&page), "Page must be positive");
+        ensure!((1..=100_000).contains(&page), messages::GIT_INVALID_PAGE);
         let rows = self
             .conn
             .prepare(
@@ -481,18 +488,22 @@ impl Repository {
                     .single()
                     .map(|d| d.format("%Y-%m-%d %H:%M UTC").to_string())
                     .unwrap_or_default();
-                serde_json::json!({"text":format!("\n{} {date} {name} from {source}",&id[..8])})
+                serde_json::json!({"text":messages::git_recovery_row(&id[..8], date, name, source)})
             })
             .collect();
         if page > 1 {
-            extra.push(button("Previous", &format!("/git recoveries {}", page - 1)));
+            extra.push(button(
+                messages::GIT_PREVIOUS_PAGE,
+                &format!("/git recoveries {}", page - 1),
+            ));
         }
         if rows.len() > 10 {
-            extra.push(button("Next", &format!("/git recoveries {}", page + 1)));
+            extra.push(button(
+                messages::GIT_NEXT_PAGE,
+                &format!("/git recoveries {}", page + 1),
+            ));
         }
-        Ok(
-            serde_json::json!({"text":format!("Recoveries — page {page}. Use /git recover <id> <new-branch>."),"extra":extra}),
-        )
+        Ok(serde_json::json!({"text":messages::git_recoveries_heading(page),"extra":extra}))
     }
 
     pub fn recover_branch(
@@ -502,17 +513,17 @@ impl Repository {
         author: u128,
         name: &str,
     ) -> Result<()> {
-        ensure!(valid_branch(branch), "Invalid branch name");
+        ensure!(valid_branch(branch), messages::GIT_INVALID_BRANCH_NAME);
         ensure!(
             (8..=64).contains(&recovery.len()) && recovery.bytes().all(|c| c.is_ascii_hexdigit()),
-            "Invalid recovery ID"
+            messages::GIT_INVALID_RECOVERY_ID
         );
         self.transaction(|repo| {
-            ensure!(repo.names()?.len()<128,"Git branch limit reached (128)");
+            ensure!(repo.names()?.len()<128,messages::GIT_BRANCH_LIMIT);
             let rows=repo.conn.prepare("SELECT id,snapshot,parent FROM recoveries WHERE id LIKE ?1 LIMIT 2")?.query_map([format!("{recovery}%")],|r|Ok((r.get::<_,String>(0)?,r.get::<_,String>(1)?,r.get::<_,String>(2)?)))?.collect::<rusqlite::Result<Vec<_>>>()?;
-            ensure!(rows.len()==1,"Unknown or ambiguous recovery ID");
+            ensure!(rows.len()==1,messages::GIT_UNKNOWN_RECOVERY_ID);
             let (recovery,snapshot,parent)=&rows[0];
-            let now=chrono::Utc::now().timestamp(); let message=format!("Recovered {}",&recovery[..8]);
+            let now=chrono::Utc::now().timestamp(); let message=messages::git_recovered_commit(&recovery[..8]);
             let id=hex(Sha256::digest(serde_json::to_vec(&(parent,snapshot,author.to_string(),name,now,&message,branch))?));
             repo.conn.execute("INSERT INTO commits(id,parent,snapshot,author,name,date,message,message_fold) VALUES(?1,?2,?3,?4,?5,?6,?7,?8)",params![id,parent,snapshot,author.to_string(),name,now,message,message.to_lowercase()])?;
             repo.conn.execute("INSERT INTO branches VALUES(?1,?2)",params![branch,id])?; Ok(())
@@ -529,13 +540,22 @@ impl Repository {
 
     pub fn checkout(
         &mut self,
-        branch: &str,
+        reference: &str,
         before: &Snapshot,
         author: u128,
         name: &str,
         save: &Path,
     ) -> Result<(Snapshot, String, super::Reservation)> {
-        let target = self.resolve(branch)?;
+        let target = self.resolve(reference)?;
+        // '@' cannot occur in a branch name. Persist detached HEAD in the same
+        // journal field as branches so older repositories need no migration.
+        let destination = if reference == "HEAD" {
+            self.head()?.0
+        } else if self.names()?.iter().any(|name| name == reference) {
+            reference.to_owned()
+        } else {
+            format!("@{target}")
+        };
         let reservation = super::Reservation::new(
             self.raw_size(&target)?
                 .saturating_mul(6)
@@ -545,9 +565,8 @@ impl Repository {
         let mut recovery = None;
         self.transaction(|repo| {
             let (source,head)=repo.head()?;
-            ensure!(source!=branch,"Already on {branch}; unfinished work was kept");
-            let head=head.context("No commits yet")?;
-            let target:String=repo.conn.query_row("SELECT tip FROM branches WHERE name=?1",[branch],|r|r.get(0)).optional()?.context("Unknown branch")?;
+            ensure!(source!=destination,messages::git_already_on_branch(head_label(&destination)));
+            let head=head.context(messages::GIT_NO_COMMITS)?;
             repo.load(&target)?; // Validate before creating a recovery or a journal.
             repo.store(before,&fp)?;
             if repo.snapshot_id(&head)?!=fp.full {
@@ -556,16 +575,20 @@ impl Repository {
                 repo.conn.execute("INSERT INTO recoveries(id,snapshot,parent,author,name,date,source) VALUES(?1,?2,?3,?4,?5,?6,?7)",params![id,fp.full,head,author.to_string(),name,now,source])?;
                 recovery=Some(id);
             }
-            repo.conn.execute("INSERT INTO checkout VALUES(1,?1,?2,?3)",params![branch,target,fp.full])?; Ok(())
+            repo.conn.execute("INSERT INTO checkout VALUES(1,?1,?2,?3)",params![destination,target,fp.full])?; Ok(())
         })?;
         match self.finish_checkout(save) {
             Ok(snapshot) => Ok((
                 snapshot,
-                format!(
-                    "Checked out {branch}; simulation paused.{}",
+                messages::git_checked_out(
+                    if destination.starts_with('@') {
+                        messages::git_detached_head(&target[..8])
+                    } else {
+                        destination.clone()
+                    },
                     recovery
-                        .map(|id| format!(" Recovery: {} (see /git recoveries)", &id[..8]))
-                        .unwrap_or_default()
+                        .map(|id| messages::git_checkout_recovery_suffix(&id[..8]))
+                        .unwrap_or_default(),
                 ),
                 reservation,
             )),
@@ -574,7 +597,7 @@ impl Repository {
                 before
                     .data
                     .save_to_file(save)
-                    .context("Checkout failed and rollback needs startup recovery")?;
+                    .context(messages::GIT_ROLLBACK_NEEDS_RECOVERY)?;
                 self.transaction(|repo| {
                     repo.conn.execute("DELETE FROM checkout", [])?;
                     Ok(())
@@ -603,6 +626,14 @@ impl Repository {
             Ok(())
         })?;
         Ok(target)
+    }
+}
+
+fn head_label(active: &str) -> &str {
+    if active.starts_with('@') {
+        messages::GIT_DETACHED_LABEL
+    } else {
+        active
     }
 }
 

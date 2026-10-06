@@ -49,7 +49,6 @@ impl<W: World> Pass<W> for ConstantCoalesce {
                             state: NodeState::ss(ss),
                             is_input: false,
                             is_output: false,
-                            annotations: Default::default(),
                         });
                         replacements.insert(constant_idx);
                         *entry.insert(constant_idx)
@@ -81,7 +80,6 @@ mod tests {
             is_output,
             is_input: false,
             block: None,
-            annotations: Default::default(),
         };
         let constant = graph.add_node(node(NodeType::Constant, NodeState::ss(15), false));
         let hole = graph.add_node(node(NodeType::Lamp, NodeState::default(), false));

@@ -1,5 +1,6 @@
 use crate::chat::ColorCode;
 use crate::config::CONFIG;
+use crate::messages;
 use crate::player::PacketSender;
 use crate::player::Player;
 use crate::plot::PlotWorld;
@@ -35,7 +36,7 @@ pub fn on_use(
         //debug info about blocks
         player.send_color_message(
             ColorCode::DarkAqua,
-            format_args!("Block at ({}, {}, {}):\n    {block:?}", pos.x, pos.y, pos.z),
+            messages::block_debug(pos.x, pos.y, pos.z, block),
         );
 
         let power_desc = BlockFace::values()
@@ -45,18 +46,9 @@ pub fn on_use(
                 format!("{name}: {power:>2}")
             })
             .join(", ");
-        player.send_color_message(
-            ColorCode::Gold,
-            format_args!("  Redstone power: {power_desc}"),
-        );
-        match world.get_block_entity(pos) {
-            Some(entity) => {
-                player.send_color_message(
-                    ColorCode::Aqua,
-                    format_args!("  Block entity:\n    {entity:?}"),
-                );
-            }
-            None => {}
+        player.send_color_message(ColorCode::Gold, messages::block_debug_power(power_desc));
+        if let Some(entity) = world.get_block_entity(pos) {
+            player.send_color_message(ColorCode::Aqua, messages::block_debug_entity(entity));
         };
         return ActionResult::Pass;
     }
@@ -125,7 +117,7 @@ pub fn on_use(
         }
         Block::RedstoneWire { wire } => redstone::wire::on_use(wire, world, pos),
         Block::SeaPickle { pickles } => {
-            if let Some(Item::SeaPickle {}) = item_in_hand {
+            if let Some(Item::SeaPickle) = item_in_hand {
                 if pickles < 4 {
                     world.set_block(
                         pos,
@@ -212,17 +204,17 @@ pub fn get_state_for_placement(
     context: &UseOnBlockContext<'_>,
 ) -> Block {
     let block = match item {
-        Item::Stone {} => Block::Stone {},
-        Item::Glass {} => Block::Glass {},
-        Item::Sandstone {} => Block::Sandstone {},
-        Item::SeaPickle {} => Block::SeaPickle { pickles: 1 },
+        Item::Stone => Block::Stone {},
+        Item::Glass => Block::Glass {},
+        Item::Sandstone => Block::Sandstone {},
+        Item::SeaPickle => Block::SeaPickle { pickles: 1 },
         Item::Wool { color } => Block::Wool { color },
-        Item::Furnace {} => Block::Furnace {
+        Item::Furnace => Block::Furnace {
             facing: context.player.get_direction().opposite(),
             lit: false,
         },
-        Item::StonePressurePlate {} => Block::StonePressurePlate { powered: false },
-        Item::Lever {} => {
+        Item::StonePressurePlate => Block::StonePressurePlate { powered: false },
+        Item::Lever => {
             let lever_face = match context.block_face {
                 BlockFace::Top => LeverFace::Floor,
                 BlockFace::Bottom => LeverFace::Ceiling,
@@ -237,20 +229,20 @@ pub fn get_state_for_placement(
                 lever: Lever::new(lever_face, facing, false),
             }
         }
-        Item::RedstoneTorch {} => match context.block_face {
+        Item::RedstoneTorch => match context.block_face {
             BlockFace::Top | BlockFace::Bottom => Block::RedstoneTorch { lit: true },
             face => Block::RedstoneWallTorch {
                 lit: true,
                 facing: face.unwrap_direction(),
             },
         },
-        Item::TripwireHook {} => match context.block_face {
+        Item::TripwireHook => match context.block_face {
             BlockFace::Bottom | BlockFace::Top => Block::Air {},
             direction => Block::TripwireHook {
                 direction: direction.unwrap_direction(),
             },
         },
-        Item::StoneButton {} => {
+        Item::StoneButton => {
             let button_face = match context.block_face {
                 BlockFace::Top => ButtonFace::Floor,
                 BlockFace::Bottom => ButtonFace::Ceiling,
@@ -265,25 +257,25 @@ pub fn get_state_for_placement(
                 button: StoneButton::new(button_face, facing, false),
             }
         }
-        Item::RedstoneLamp {} => Block::RedstoneLamp {
+        Item::RedstoneLamp => Block::RedstoneLamp {
             lit: redstone::redstone_lamp_should_be_lit(world, pos),
         },
-        Item::RedstoneBlock {} => Block::RedstoneBlock {},
-        Item::Hopper {} => Block::Hopper {
+        Item::RedstoneBlock => Block::RedstoneBlock {},
+        Item::Hopper => Block::Hopper {
             facing: HopperFacing::for_placement(context.block_face),
             enabled: !redstone::redstone_lamp_should_be_lit(world, pos),
         },
-        Item::Terracotta {} => Block::Terracotta {},
+        Item::Terracotta => Block::Terracotta {},
         Item::ColoredTerracotta { color } => Block::ColoredTerracotta { color },
         Item::Concrete { color } => Block::Concrete { color },
-        Item::Repeater {} => Block::RedstoneRepeater {
+        Item::Repeater => Block::RedstoneRepeater {
             repeater: redstone::repeater::get_state_for_placement(
                 world,
                 pos,
                 context.player.get_direction().opposite(),
             ),
         },
-        Item::Comparator {} => Block::RedstoneComparator {
+        Item::Comparator => Block::RedstoneComparator {
             comparator: RedstoneComparator::new(
                 context.player.get_direction().opposite(),
                 ComparatorMode::Compare,
@@ -303,18 +295,18 @@ pub fn get_state_for_placement(
                 facing: context.block_face.unwrap_direction(),
             },
         },
-        Item::Redstone {} => Block::RedstoneWire {
+        Item::Redstone => Block::RedstoneWire {
             wire: redstone::wire::get_state_for_placement(world, pos),
         },
-        Item::Barrel {} => Block::Barrel {
+        Item::Barrel => Block::Barrel {
             facing: crate::container::barrel_facing(context.player.yaw, context.player.pitch),
             open: false,
         },
-        Item::Target {} => Block::Target {},
+        Item::Target => Block::Target {},
         Item::StainedGlass { color } => Block::StainedGlass { color },
-        Item::SmoothStoneSlab {} => Block::SmoothStoneSlab {},
-        Item::QuartzSlab {} => Block::QuartzSlab {},
-        Item::IronTrapdoor {} => match context.block_face {
+        Item::SmoothStoneSlab => Block::SmoothStoneSlab {},
+        Item::QuartzSlab => Block::QuartzSlab {},
+        Item::IronTrapdoor => match context.block_face {
             BlockFace::Bottom => Block::IronTrapdoor {
                 facing: context.player.get_direction().opposite(),
                 half: TrapdoorHalf::Top,
@@ -335,22 +327,22 @@ pub fn get_state_for_placement(
                 powered: false,
             },
         },
-        Item::NoteBlock {} => Block::NoteBlock {
+        Item::NoteBlock => Block::NoteBlock {
             instrument: Instrument::Harp,
             note: 0,
             powered: false,
         },
-        Item::Clay {} => Block::Clay {},
-        Item::GoldBlock {} => Block::GoldBlock {},
-        Item::PackedIce {} => Block::PackedIce {},
-        Item::BoneBlock {} => Block::BoneBlock {},
-        Item::IronBlock {} => Block::IronBlock {},
-        Item::SoulSand {} => Block::SoulSand {},
-        Item::Pumpkin {} => Block::Pumpkin {},
-        Item::EmeraldBlock {} => Block::EmeraldBlock {},
-        Item::HayBlock {} => Block::HayBlock {},
-        Item::Sand {} => Block::Sand {},
-        Item::Observer {} => Block::Observer {
+        Item::Clay => Block::Clay {},
+        Item::GoldBlock => Block::GoldBlock {},
+        Item::PackedIce => Block::PackedIce {},
+        Item::BoneBlock => Block::BoneBlock {},
+        Item::IronBlock => Block::IronBlock {},
+        Item::SoulSand => Block::SoulSand {},
+        Item::Pumpkin => Block::Pumpkin {},
+        Item::EmeraldBlock => Block::EmeraldBlock {},
+        Item::HayBlock => Block::HayBlock {},
+        Item::Sand => Block::Sand {},
+        Item::Observer => Block::Observer {
             observer: RedstoneObserver {
                 facing: context.player.get_block_facing(),
                 powered: false,
@@ -363,7 +355,7 @@ pub fn get_state_for_placement(
                 extended: false,
             },
         },
-        Item::Snowball {} => Block::PistonHead {
+        Item::Snowball => Block::PistonHead {
             head: RedstonePistonHead {
                 facing: context.player.get_block_facing().opposite(),
                 sticky: true,
@@ -682,18 +674,18 @@ pub fn use_item_on_block(
         let block = apply_item_properties(block, &item.nbt);
 
         match block {
-            block if block.is_sign() => {
-                if !item
-                    .nbt
-                    .as_ref()
-                    .is_some_and(|blob| blob.content.contains_key("BlockEntityTag"))
-                {
-                    let open_sign_editor = COpenSignEditor {
-                        pos: block_pos.packed(),
-                    }
-                    .encode();
-                    ctx.player.client.send_packet(&open_sign_editor);
+            block
+                if block.is_sign()
+                    && !item
+                        .nbt
+                        .as_ref()
+                        .is_some_and(|blob| blob.content.contains_key("BlockEntityTag")) =>
+            {
+                let open_sign_editor = COpenSignEditor {
+                    pos: block_pos.packed(),
                 }
+                .encode();
+                ctx.player.client.send_packet(&open_sign_editor);
             }
             _ => {}
         }

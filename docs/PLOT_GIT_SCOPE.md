@@ -22,8 +22,8 @@ or managing a conventional `.git` directory is not required.
 - Manual commits with an ID, parent, author, UTC date, and message.
 - Persistent history, pagination, and message searches.
 - Branch creation from the current commit or an older commit.
-- A single active branch shared by everyone on the plot.
-- Recoverable branch checkout with simulation paused after restoration.
+- A single active branch or detached commit shared by everyone on the plot.
+- Recoverable branch or commit checkout with simulation paused after restoration.
 - Comparison of any two commits or branch tips in the same plot.
 - Compact diff summaries, colored glowing markers, and optional sword-based inspection.
 - Storage, memory, work, and marker limits.
@@ -34,7 +34,7 @@ or managing a conventional `.git` directory is not required.
 - Merges, conflict resolution, rebases, cherry-picks, and partial commits.
 - Remotes, GitHub integration, and interoperability with ordinary Git repositories.
 - Personal working copies or simultaneous active branches on one plot.
-- Detached HEAD, history rewriting, branch deletion, and automatic commit pruning.
+- History rewriting, branch deletion, and automatic commit pruning.
 - Automatic periodic commits, selective restoration, and cross-plot comparisons.
 - Chunk deduplication and delta compression beyond whole-snapshot compression.
 - A schematic-style before/after preview of an entire alternate plot.
@@ -106,7 +106,7 @@ or search query is the remaining text after the command and its flags.
 | `/git search [--all] [--page <n>] <text>` | Search messages case-insensitively; default to active-branch history. |
 | `/git branch` | List branches, highlight the active branch, and show tip IDs. |
 | `/git branch <name> [ref]` | Create a branch at the current tip or a supplied reference; do not switch. |
-| `/git checkout <branch>` | Restore that branch tip after preserving unfinished work. |
+| `/git checkout <branch\|commit>` | Restore a branch tip or commit after preserving unfinished work; commit IDs enter detached HEAD. |
 | `/git diff <from> <to>` | Prepare a comparison and show a compact summary with clickable glow controls. |
 | `/git diff show` | Show glowing markers for the player's prepared comparison. Normally invoked by clicking Show glow. |
 | `/git diff inspect <x> <y> <z>` | Optional coordinate fallback for inspecting a position in the player's prepared comparison. Ordinary inspection uses a sword. |
@@ -145,14 +145,18 @@ ordering key so equal timestamps do not make pagination inconsistent.
 Pagination applies to commit history, search, and recovery lists. Diff results
 never enumerate changed blocks in chat and have no result pages.
 
-## 4. Branch checkout and recovery
+## 4. Branch/commit checkout and recovery
 
-Checkout replaces the shared working plot. Announce the branch change to players
+Checkout replaces the shared working plot. Announce the destination to players
 on that plot. A member committing work does not gain authority to replace it.
+
+A commit ID or unique prefix enters detached HEAD without moving branch tips.
+Detached commits advance HEAD and remain in `/git log --all`; `/git branch <name>`
+names that history. The shared detached position survives restarts and recovery.
 
 The required sequence is:
 
-1. Authorize the operation and resolve the destination branch tip.
+1. Authorize the operation and resolve the destination branch tip or commit.
 2. Load and validate the destination snapshot before changing the live world.
    Validate plot identity, dimensions, format/data version, checksums, and state.
 3. At a tick boundary, temporarily pause simulation and serialize plot-changing
@@ -169,7 +173,7 @@ The required sequence is:
    world updates are disabled. Move players intersecting restored blocks to a
    validated safe position; define a safe fallback or reject checkout if none
    can be established.
-8. Durably save the restored working plot and publish the new active branch.
+8. Durably save the restored working plot and publish the active branch or detached HEAD.
    Complete the operation record only after the save and repository state agree.
 9. Remove stale diff markers, announce completion and any recovery ID, and leave
    simulation paused. Players resume it with existing TPS/advance commands.
@@ -266,21 +270,19 @@ Use the position under the crosshair in the active glow overlay and compare its
 (122, 64, 80) Repeater
 From: delay 1
 To:   delay 4
-[From details] [To details]
 ```
 
-From details and To details show additional data for that one position, such as
-its properties, command, sign text, or container contents. These are inspection
-actions, not checkout commands: clicking them never replaces blocks or switches
-branches. Ordinary use does not require entering coordinates or memorizing extra
-commands. Coordinate inspection remains available as a fallback.
+Show changed saved data for both sides in this same result, including commands,
+sign text, or container contents. Inspection never replaces blocks or switches
+branches. Ordinary use does not require extra clicks, entering coordinates, or
+memorizing extra commands. Coordinate inspection remains available as a fallback.
 
 ### Sword inspection behavior
 
 - Enable sword inspection only while this player's glow overlay is active.
   Hide glow, expiry, or leaving the plot immediately disables the tool behavior.
-- Each successful sword right-click directly displays the pointed block's diff.
-  The optional From details/To details controls expand that result's saved data.
+- Each successful sword right-click directly displays the pointed block's states
+  and changed saved data from both snapshots. No detail buttons are required.
 - Trace the player's aim against their active changed-position markers, including
   removed positions now containing air. Select the nearest intersected marker
   within the configured overlay radius and loaded chunks. Display entities are
@@ -303,10 +305,10 @@ commands. Coordinate inspection remains available as a fallback.
   for this read-only operation, and recheck access before returning details.
 
 The explicit coordinate command remains a fallback, including while glow is
-hidden. The ordinary flow uses Show glow, a sword right-click, and optional
-From details/To details buttons; there is no chat Inspect button or toggle mode.
+hidden. The ordinary flow uses Show glow and a single sword right-click; there
+is no chat Inspect button, additional detail click, or toggle mode.
 
-Long commands, NBT, and item contents are abbreviated in optional detail output.
+Long commands, NBT, and item contents are abbreviated in the inspection output.
 Bound the output, escape user-controlled text, and explain truncation; do not
 introduce pagination of changed-block results. Execution details describe changed
 scheduled ticks or piston motion without implying they all have visible markers.
@@ -524,8 +526,8 @@ branch checkout or visual comparison yet.
 - Cover state-only, data-only, combined, and execution-only changes.
 - Produce no false differences for reordered map keys or equivalent palette layouts.
 - Keep unchanged sections cheap and dense diffs bounded in memory and output.
-- Show before/after details only for an explicitly inspected position. Make commit
-  metadata and From/To details clickable; never list changed blocks automatically.
+- Show before/after states and changed saved data immediately for an explicitly
+  inspected position. Make commit metadata clickable; never list changed blocks automatically.
 - Verify that chat output stays compact for millions of changes, with no block
   result pagination or coordinate-navigation workflow required.
 
@@ -536,8 +538,8 @@ branch checkout or visual comparison yet.
 - Clean up on hide, replacement, expiry, checkout, exit, and disconnect.
 - Verify marker privacy, unique entity IDs, unchanged world state, client FPS,
   and readable outlines in dense builds.
-- Verify Show/Hide controls, re-enabling a hidden comparison, and sword right-click
-  inspection of changed and removed positions with optional From/To details.
+- Verify Show/Hide controls, re-enabling a hidden comparison, and single-click
+  sword inspection of changed and removed positions with immediate From/To data.
 - Cover either hand, clicks in air, clicks through glow-visible obstructions,
   duplicate packets, repeated clicks, read-only viewers, and misses. Inspection
   must not interact with containers/redstone or reset Redpiler; hiding glow must

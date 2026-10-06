@@ -20,9 +20,9 @@ pub enum RedpilerState {
 impl RedpilerState {
     fn to_str(self) -> &'static str {
         match self {
-            RedpilerState::Stopped => "Engine: Interpreter",
-            RedpilerState::Compiling => "Engine: Compiling...",
-            RedpilerState::Running => "Engine: Redpiler ON",
+            RedpilerState::Stopped => messages::SCOREBOARD_ENGINE_INTERPRETER,
+            RedpilerState::Compiling => messages::SCOREBOARD_ENGINE_COMPILING,
+            RedpilerState::Running => messages::SCOREBOARD_ENGINE_REDPILER,
         }
     }
 }
@@ -123,11 +123,7 @@ impl Scoreboard {
             self.metrics.visual_updates.clone(),
         ];
         if self.redpiler_state == RedpilerState::Running && !self.compiler_flags.is_empty() {
-            lines.extend(
-                self.compiler_flags
-                    .iter()
-                    .map(|flag| format!("Flag: {flag}")),
-            );
+            lines.extend(self.compiler_flags.iter().map(messages::scoreboard_flag));
         }
         lines
     }
@@ -260,20 +256,20 @@ impl Scoreboard {
             Tps::Limited(rate) => compact_number(f64::from(rate)),
             Tps::Unlimited => "oo".to_owned(),
         };
-        self.metrics.tps = format!("TPS: {actual}/{target}");
+        self.metrics.tps = messages::scoreboard_tps(actual, target);
         self.metrics.history = if history_enabled {
-            format!(
-                "Hist: {}/{}",
+            messages::scoreboard_history(
                 compact_number(history_ticks as f64),
-                compact_number(history_capacity as f64)
+                compact_number(history_capacity as f64),
             )
         } else {
-            "Hist: Off".to_owned()
+            messages::SCOREBOARD_HISTORY_OFF.to_owned()
         };
-        self.metrics.history_memory = format!("Hist mem: {}", compact_memory(history_memory_bytes));
+        self.metrics.history_memory =
+            messages::scoreboard_history_memory(compact_memory(history_memory_bytes));
         self.metrics.visual_updates = match visual_update_rate {
-            Some(rate) => format!("Visual: {rate}hz"),
-            None => "Visual: OFF".to_owned(),
+            Some(rate) => messages::scoreboard_visual_rate(rate),
+            None => messages::SCOREBOARD_VISUAL_OFF.to_owned(),
         };
         self.refresh_lines(players);
     }

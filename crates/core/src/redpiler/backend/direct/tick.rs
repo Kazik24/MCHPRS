@@ -55,15 +55,13 @@ impl DirectBackend {
                     self.set_node(node_id, false, 0);
                 }
             }
-            NodeType::Button => {
-                if node.powered {
-                    if self.events.len() < 256 {
-                        if let Some((pos, _)) = self.blocks[node_id.index()] {
-                            self.events.push(Event::ButtonRelease { pos });
-                        }
+            NodeType::Button if node.powered => {
+                if self.events.len() < 256 {
+                    if let Some((pos, _)) = self.blocks[node_id.index()] {
+                        self.events.push(Event::ButtonRelease { pos });
                     }
-                    self.set_node(node_id, false, 0);
                 }
+                self.set_node(node_id, false, 0);
             }
             _ => {} //unreachable!("Node {:?} should not be ticked!", node.ty),
         }
