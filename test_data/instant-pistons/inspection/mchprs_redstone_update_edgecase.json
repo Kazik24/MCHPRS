@@ -1,0 +1,680 @@
+{
+  "schema_version": 1,
+  "path": "test_data/instant-pistons/MCHPRS_REDSTONE_UPDATE_EDGECASE.schem",
+  "sha256": "355634e77f9c75a07632ab7b72d938a2d42b04ca4366de23d049a058ac777d4c",
+  "bytes": 781,
+  "nbt_root_name": "",
+  "sponge_version": 2,
+  "data_version": 4325,
+  "dimensions": [
+    8,
+    8,
+    7
+  ],
+  "decoded_cells": 448,
+  "encoded_bytes": 448,
+  "coordinate_convention": "selection-local from saved minimum; x fastest, z next, y slowest",
+  "sponge_offset": null,
+  "legacy_we_offset": [
+    -6,
+    -7,
+    -6
+  ],
+  "loader_offset": [
+    6,
+    7,
+    6
+  ],
+  "palette": [
+    {
+      "id": 0,
+      "state": "minecraft:air",
+      "count": 388
+    },
+    {
+      "id": 1,
+      "state": "minecraft:stone",
+      "count": 26
+    },
+    {
+      "id": 2,
+      "state": "minecraft:redstone_block",
+      "count": 4
+    },
+    {
+      "id": 3,
+      "state": "minecraft:redstone_wire[east=side,north=side,power=0,south=side,west=side]",
+      "count": 2
+    },
+    {
+      "id": 4,
+      "state": "minecraft:piston_head[facing=down,short=false,type=sticky]",
+      "count": 2
+    },
+    {
+      "id": 5,
+      "state": "minecraft:sticky_piston[extended=true,facing=south]",
+      "count": 1
+    },
+    {
+      "id": 6,
+      "state": "minecraft:piston_head[facing=south,short=false,type=sticky]",
+      "count": 1
+    },
+    {
+      "id": 7,
+      "state": "minecraft:sticky_piston[extended=true,facing=down]",
+      "count": 2
+    },
+    {
+      "id": 8,
+      "state": "minecraft:observer[facing=west,powered=false]",
+      "count": 1
+    },
+    {
+      "id": 9,
+      "state": "minecraft:redstone_wire[east=side,north=side,power=1,south=side,west=side]",
+      "count": 1
+    },
+    {
+      "id": 10,
+      "state": "minecraft:piston_head[facing=west,short=false,type=sticky]",
+      "count": 1
+    },
+    {
+      "id": 11,
+      "state": "minecraft:sticky_piston[extended=true,facing=west]",
+      "count": 1
+    },
+    {
+      "id": 12,
+      "state": "minecraft:redstone_wire[east=side,north=none,power=10,south=none,west=side]",
+      "count": 1
+    },
+    {
+      "id": 13,
+      "state": "minecraft:redstone_wire[east=none,north=none,power=11,south=side,west=side]",
+      "count": 1
+    },
+    {
+      "id": 14,
+      "state": "minecraft:comparator[facing=south,mode=compare,powered=true]",
+      "count": 1
+    },
+    {
+      "id": 15,
+      "state": "minecraft:redstone_wire[east=none,north=side,power=12,south=side,west=none]",
+      "count": 1
+    },
+    {
+      "id": 16,
+      "state": "minecraft:furnace[facing=west,lit=false]",
+      "count": 1
+    },
+    {
+      "id": 17,
+      "state": "minecraft:redstone_wire[east=none,north=side,power=13,south=up,west=none]",
+      "count": 1
+    },
+    {
+      "id": 18,
+      "state": "minecraft:observer[facing=down,powered=false]",
+      "count": 3
+    },
+    {
+      "id": 19,
+      "state": "minecraft:redstone_wire[east=none,north=side,power=14,south=none,west=up]",
+      "count": 1
+    },
+    {
+      "id": 20,
+      "state": "minecraft:redstone_wire[east=none,north=side,power=14,south=side,west=none]",
+      "count": 1
+    },
+    {
+      "id": 21,
+      "state": "minecraft:redstone_wire[east=side,north=side,power=15,south=none,west=none]",
+      "count": 1
+    },
+    {
+      "id": 22,
+      "state": "minecraft:redstone_wire[east=side,north=none,power=15,south=none,west=side]",
+      "count": 2
+    },
+    {
+      "id": 23,
+      "state": "minecraft:piston_head[facing=north,short=false,type=sticky]",
+      "count": 1
+    },
+    {
+      "id": 24,
+      "state": "minecraft:sticky_piston[extended=true,facing=north]",
+      "count": 1
+    },
+    {
+      "id": 25,
+      "state": "minecraft:redstone_wire[east=side,north=none,power=14,south=none,west=side]",
+      "count": 1
+    },
+    {
+      "id": 26,
+      "state": "minecraft:lever[face=wall,facing=east,powered=true]",
+      "count": 1
+    }
+  ],
+  "block_entities": [
+    {
+      "Pos": [
+        1,
+        3,
+        3
+      ],
+      "Items": [
+        {
+          "Slot": 0,
+          "count": 13,
+          "id": "minecraft:redstone",
+          "tag": {
+            "__mchprs_components_770": [
+              0,
+              0
+            ]
+          }
+        }
+      ],
+      "Id": "minecraft:furnace"
+    },
+    {
+      "Id": "minecraft:comparator",
+      "OutputSignal": 1,
+      "Pos": [
+        1,
+        3,
+        2
+      ]
+    }
+  ],
+  "signs": [],
+  "nonair_cells": [
+    {
+      "pos": [
+        2,
+        0,
+        4
+      ],
+      "state": "minecraft:stone"
+    },
+    {
+      "pos": [
+        0,
+        1,
+        0
+      ],
+      "state": "minecraft:redstone_block"
+    },
+    {
+      "pos": [
+        2,
+        1,
+        3
+      ],
+      "state": "minecraft:stone"
+    },
+    {
+      "pos": [
+        2,
+        1,
+        4
+      ],
+      "state": "minecraft:redstone_wire[east=side,north=side,power=0,south=side,west=side]"
+    },
+    {
+      "pos": [
+        0,
+        2,
+        0
+      ],
+      "state": "minecraft:piston_head[facing=down,short=false,type=sticky]"
+    },
+    {
+      "pos": [
+        0,
+        2,
+        1
+      ],
+      "state": "minecraft:stone"
+    },
+    {
+      "pos": [
+        4,
+        2,
+        1
+      ],
+      "state": "minecraft:stone"
+    },
+    {
+      "pos": [
+        5,
+        2,
+        1
+      ],
+      "state": "minecraft:stone"
+    },
+    {
+      "pos": [
+        1,
+        2,
+        2
+      ],
+      "state": "minecraft:stone"
+    },
+    {
+      "pos": [
+        2,
+        2,
+        2
+      ],
+      "state": "minecraft:redstone_block"
+    },
+    {
+      "pos": [
+        5,
+        2,
+        2
+      ],
+      "state": "minecraft:stone"
+    },
+    {
+      "pos": [
+        2,
+        2,
+        3
+      ],
+      "state": "minecraft:sticky_piston[extended=true,facing=south]"
+    },
+    {
+      "pos": [
+        5,
+        2,
+        3
+      ],
+      "state": "minecraft:stone"
+    },
+    {
+      "pos": [
+        2,
+        2,
+        4
+      ],
+      "state": "minecraft:piston_head[facing=south,short=false,type=sticky]"
+    },
+    {
+      "pos": [
+        2,
+        2,
+        5
+      ],
+      "state": "minecraft:redstone_block"
+    },
+    {
+      "pos": [
+        0,
+        3,
+        0
+      ],
+      "state": "minecraft:sticky_piston[extended=true,facing=down]"
+    },
+    {
+      "pos": [
+        1,
+        3,
+        0
+      ],
+      "state": "minecraft:observer[facing=west,powered=false]"
+    },
+    {
+      "pos": [
+        2,
+        3,
+        0
+      ],
+      "state": "minecraft:stone"
+    },
+    {
+      "pos": [
+        0,
+        3,
+        1
+      ],
+      "state": "minecraft:redstone_wire[east=side,north=side,power=1,south=side,west=side]"
+    },
+    {
+      "pos": [
+        1,
+        3,
+        1
+      ],
+      "state": "minecraft:stone"
+    },
+    {
+      "pos": [
+        2,
+        3,
+        1
+      ],
+      "state": "minecraft:piston_head[facing=west,short=false,type=sticky]"
+    },
+    {
+      "pos": [
+        3,
+        3,
+        1
+      ],
+      "state": "minecraft:sticky_piston[extended=true,facing=west]"
+    },
+    {
+      "pos": [
+        4,
+        3,
+        1
+      ],
+      "state": "minecraft:redstone_wire[east=side,north=none,power=10,south=none,west=side]"
+    },
+    {
+      "pos": [
+        5,
+        3,
+        1
+      ],
+      "state": "minecraft:redstone_wire[east=none,north=none,power=11,south=side,west=side]"
+    },
+    {
+      "pos": [
+        1,
+        3,
+        2
+      ],
+      "state": "minecraft:comparator[facing=south,mode=compare,powered=true]"
+    },
+    {
+      "pos": [
+        2,
+        3,
+        2
+      ],
+      "state": "minecraft:piston_head[facing=down,short=false,type=sticky]"
+    },
+    {
+      "pos": [
+        5,
+        3,
+        2
+      ],
+      "state": "minecraft:redstone_wire[east=none,north=side,power=12,south=side,west=none]"
+    },
+    {
+      "pos": [
+        1,
+        3,
+        3
+      ],
+      "state": "minecraft:furnace[facing=west,lit=false]"
+    },
+    {
+      "pos": [
+        5,
+        3,
+        3
+      ],
+      "state": "minecraft:redstone_wire[east=none,north=side,power=13,south=up,west=none]"
+    },
+    {
+      "pos": [
+        5,
+        3,
+        4
+      ],
+      "state": "minecraft:stone"
+    },
+    {
+      "pos": [
+        1,
+        4,
+        0
+      ],
+      "state": "minecraft:stone"
+    },
+    {
+      "pos": [
+        2,
+        4,
+        0
+      ],
+      "state": "minecraft:redstone_wire[east=side,north=side,power=0,south=side,west=side]"
+    },
+    {
+      "pos": [
+        3,
+        4,
+        1
+      ],
+      "state": "minecraft:observer[facing=down,powered=false]"
+    },
+    {
+      "pos": [
+        2,
+        4,
+        2
+      ],
+      "state": "minecraft:sticky_piston[extended=true,facing=down]"
+    },
+    {
+      "pos": [
+        2,
+        4,
+        3
+      ],
+      "state": "minecraft:stone"
+    },
+    {
+      "pos": [
+        2,
+        4,
+        4
+      ],
+      "state": "minecraft:stone"
+    },
+    {
+      "pos": [
+        3,
+        4,
+        4
+      ],
+      "state": "minecraft:stone"
+    },
+    {
+      "pos": [
+        4,
+        4,
+        4
+      ],
+      "state": "minecraft:stone"
+    },
+    {
+      "pos": [
+        5,
+        4,
+        4
+      ],
+      "state": "minecraft:redstone_wire[east=none,north=side,power=14,south=none,west=up]"
+    },
+    {
+      "pos": [
+        3,
+        4,
+        5
+      ],
+      "state": "minecraft:stone"
+    },
+    {
+      "pos": [
+        3,
+        4,
+        6
+      ],
+      "state": "minecraft:stone"
+    },
+    {
+      "pos": [
+        4,
+        4,
+        6
+      ],
+      "state": "minecraft:stone"
+    },
+    {
+      "pos": [
+        5,
+        4,
+        6
+      ],
+      "state": "minecraft:stone"
+    },
+    {
+      "pos": [
+        6,
+        4,
+        6
+      ],
+      "state": "minecraft:stone"
+    },
+    {
+      "pos": [
+        3,
+        5,
+        1
+      ],
+      "state": "minecraft:stone"
+    },
+    {
+      "pos": [
+        2,
+        5,
+        2
+      ],
+      "state": "minecraft:observer[facing=down,powered=false]"
+    },
+    {
+      "pos": [
+        2,
+        5,
+        3
+      ],
+      "state": "minecraft:redstone_wire[east=none,north=side,power=14,south=side,west=none]"
+    },
+    {
+      "pos": [
+        2,
+        5,
+        4
+      ],
+      "state": "minecraft:redstone_wire[east=side,north=side,power=15,south=none,west=none]"
+    },
+    {
+      "pos": [
+        3,
+        5,
+        4
+      ],
+      "state": "minecraft:redstone_block"
+    },
+    {
+      "pos": [
+        4,
+        5,
+        4
+      ],
+      "state": "minecraft:redstone_wire[east=side,north=none,power=15,south=none,west=side]"
+    },
+    {
+      "pos": [
+        3,
+        5,
+        5
+      ],
+      "state": "minecraft:piston_head[facing=north,short=false,type=sticky]"
+    },
+    {
+      "pos": [
+        3,
+        5,
+        6
+      ],
+      "state": "minecraft:sticky_piston[extended=true,facing=north]"
+    },
+    {
+      "pos": [
+        4,
+        5,
+        6
+      ],
+      "state": "minecraft:redstone_wire[east=side,north=none,power=14,south=none,west=side]"
+    },
+    {
+      "pos": [
+        5,
+        5,
+        6
+      ],
+      "state": "minecraft:redstone_wire[east=side,north=none,power=15,south=none,west=side]"
+    },
+    {
+      "pos": [
+        6,
+        5,
+        6
+      ],
+      "state": "minecraft:stone"
+    },
+    {
+      "pos": [
+        7,
+        5,
+        6
+      ],
+      "state": "minecraft:lever[face=wall,facing=east,powered=true]"
+    },
+    {
+      "pos": [
+        2,
+        6,
+        2
+      ],
+      "state": "minecraft:stone"
+    },
+    {
+      "pos": [
+        3,
+        6,
+        6
+      ],
+      "state": "minecraft:observer[facing=down,powered=false]"
+    },
+    {
+      "pos": [
+        6,
+        6,
+        6
+      ],
+      "state": "minecraft:stone"
+    },
+    {
+      "pos": [
+        3,
+        7,
+        6
+      ],
+      "state": "minecraft:stone"
+    }
+  ]
+}

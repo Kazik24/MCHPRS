@@ -1,0 +1,218 @@
+{
+  "schema_version": 1,
+  "id": "or_interpreter_illigal",
+  "fixture": "test_data/instant-pistons/OR_Interpreter_illigal.schem",
+  "sha256": "e67f627905055b158533da5367aedc0ba3744f57070b5f8a69af68c4fac68431",
+  "dimensions": [
+    3,
+    4,
+    6
+  ],
+  "inspection": "test_data/instant-pistons/inspection/or_interpreter_illigal.json",
+  "classification": "observed diagnostics; function pending analysis",
+  "coordinates": {
+    "convention": "selection-local relative to saved minimum",
+    "origin": [
+      40,
+      30,
+      40
+    ],
+    "loader_offset": [
+      2,
+      3,
+      5
+    ],
+    "paste_anchor": [
+      42,
+      33,
+      45
+    ],
+    "orientation": "saved orientation; clockwise Y rotations transform geometry and states"
+  },
+  "ports": {
+    "inputs": {
+      "A": [
+        0,
+        2,
+        5
+      ],
+      "B": [
+        2,
+        2,
+        5
+      ]
+    },
+    "observations": {
+      "shared_payload": [
+        0,
+        2,
+        0
+      ],
+      "reset_A": [
+        0,
+        1,
+        1
+      ],
+      "reset_B": [
+        1,
+        1,
+        0
+      ]
+    },
+    "status": "geometry-derived candidates; see dossier for per-port evidence"
+  },
+  "setup": {
+    "mode": "paste_clipboard(ignore_air=false); raw storage then entities; no notifications",
+    "initial": "exact binary states and block entities; empty queues, tick 0 BetweenTicks",
+    "readiness": "saved-idle episode must remain unchanged with empty work; prepared cases wait for no queued work, bounded at 32 ticks"
+  },
+  "protocol": {
+    "logical_one": "nonzero-to-zero event",
+    "cases_independent": "fresh equivalent strict-import snapshots",
+    "input_during_reset": "undefined; only labeled diagnostics exercise it",
+    "held_zero": "no new external event; internal cycles retained",
+    "repeat_use": "pending measured rearm condition; use fresh imports until proven"
+  },
+  "observation_decoder": "raw state/property observations; moving states distinct; dust falling edge is event; air output payload means 1 only for verified arithmetic bank",
+  "ordering_constraints": [],
+  "unknowns": [],
+  "java_status": "not yet compared",
+  "rotations": [
+    0,
+    90,
+    180,
+    270
+  ],
+  "cases": [
+    {
+      "id": "saved-idle",
+      "inputs": null,
+      "actions": [],
+      "ticks": 24
+    },
+    {
+      "id": "events-00-ab",
+      "inputs": [
+        0,
+        0
+      ],
+      "actions": [],
+      "ticks": 24
+    },
+    {
+      "id": "events-10-ab",
+      "inputs": [
+        1,
+        0
+      ],
+      "actions": [
+        {
+          "op": "destroy",
+          "pos": [
+            0,
+            2,
+            5
+          ]
+        }
+      ],
+      "ticks": 24
+    },
+    {
+      "id": "events-01-ab",
+      "inputs": [
+        0,
+        1
+      ],
+      "actions": [
+        {
+          "op": "destroy",
+          "pos": [
+            2,
+            2,
+            5
+          ]
+        }
+      ],
+      "ticks": 24
+    },
+    {
+      "id": "events-11-ab",
+      "inputs": [
+        1,
+        1
+      ],
+      "actions": [
+        {
+          "op": "destroy",
+          "pos": [
+            0,
+            2,
+            5
+          ]
+        },
+        {
+          "op": "destroy",
+          "pos": [
+            2,
+            2,
+            5
+          ]
+        }
+      ],
+      "ticks": 24
+    },
+    {
+      "id": "events-11-ba",
+      "inputs": [
+        1,
+        1
+      ],
+      "actions": [
+        {
+          "op": "destroy",
+          "pos": [
+            2,
+            2,
+            5
+          ]
+        },
+        {
+          "op": "destroy",
+          "pos": [
+            0,
+            2,
+            5
+          ]
+        }
+      ],
+      "ticks": 24
+    },
+    {
+      "id": "reconstruct-from-retracted",
+      "inputs": null,
+      "actions": [
+        {
+          "op": "construct_retracted",
+          "bases": [
+            [
+              0,
+              2,
+              2
+            ],
+            [
+              2,
+              2,
+              0
+            ]
+          ]
+        },
+        {
+          "op": "wait_ready",
+          "ticks": 32
+        }
+      ],
+      "ticks": 24,
+      "diagnostic": "Derived construction: stationary saved geometry, retracted bases, no heads, ordinary self-rechecks; compare naturally extended result"
+    }
+  ]
+}

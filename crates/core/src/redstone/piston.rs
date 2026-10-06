@@ -100,6 +100,8 @@ pub fn piston_tick(world: &mut impl World, piston: RedstonePiston, pos: BlockPos
 }
 
 pub(crate) fn execute_event(world: &mut impl World, event: PistonEvent) {
+    #[cfg(test)]
+    super::instant_piston_tests::record_event(world, "event_execute", event);
     let Block::Piston { piston } = world.get_block(event.pos) else {
         return;
     };
@@ -128,6 +130,8 @@ pub(crate) fn execute_event(world: &mut impl World, event: PistonEvent) {
             },
         },
     );
+    #[cfg(test)]
+    super::instant_piston_tests::record_event(world, "event_applied", event);
 }
 
 fn moving(

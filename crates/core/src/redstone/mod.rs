@@ -4,6 +4,8 @@
 
 #[cfg(test)]
 mod adder_tests;
+#[cfg(test)]
+pub(crate) mod instant_piston_tests;
 pub(crate) mod command_block;
 pub mod comparator;
 #[cfg(test)]
@@ -248,6 +250,8 @@ pub(super) fn has_neighbor_update(block: Block) -> bool {
 }
 
 pub fn update(block: Block, world: &mut impl World, pos: BlockPos, dir: Option<BlockFace>) {
+    #[cfg(test)]
+    let _trace = instant_piston_tests::callback(world, block, pos, dir);
     if block.is_command_block() {
         command_block::update(world, pos);
         return;

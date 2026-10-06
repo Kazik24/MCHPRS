@@ -1,0 +1,621 @@
+{
+  "schema_version": 1,
+  "path": "test_data/instant-pistons/NOT_1.schem",
+  "sha256": "0e9ecb58307d8cb3d079c56d69317d77cf8fe480ffd813a80a42aa4ec520d180",
+  "bytes": 616,
+  "nbt_root_name": "",
+  "sponge_version": 2,
+  "data_version": 4325,
+  "dimensions": [
+    3,
+    5,
+    7
+  ],
+  "decoded_cells": 105,
+  "encoded_bytes": 105,
+  "coordinate_convention": "selection-local from saved minimum; x fastest, z next, y slowest",
+  "sponge_offset": null,
+  "legacy_we_offset": [
+    -2,
+    -3,
+    -6
+  ],
+  "loader_offset": [
+    2,
+    3,
+    6
+  ],
+  "palette": [
+    {
+      "id": 0,
+      "state": "minecraft:air",
+      "count": 77
+    },
+    {
+      "id": 1,
+      "state": "minecraft:sandstone",
+      "count": 10
+    },
+    {
+      "id": 2,
+      "state": "minecraft:oak_wall_sign[facing=north,waterlogged=false]",
+      "count": 1
+    },
+    {
+      "id": 3,
+      "state": "minecraft:redstone_wire[east=none,north=side,power=15,south=side,west=none]",
+      "count": 3
+    },
+    {
+      "id": 4,
+      "state": "minecraft:redstone_block",
+      "count": 4
+    },
+    {
+      "id": 5,
+      "state": "minecraft:redstone_wire[east=none,north=side,power=14,south=side,west=none]",
+      "count": 1
+    },
+    {
+      "id": 6,
+      "state": "minecraft:redstone_wire[east=none,north=side,power=15,south=none,west=side]",
+      "count": 1
+    },
+    {
+      "id": 7,
+      "state": "minecraft:piston_head[facing=north,short=false,type=sticky]",
+      "count": 2
+    },
+    {
+      "id": 8,
+      "state": "minecraft:sticky_piston[extended=true,facing=north]",
+      "count": 2
+    },
+    {
+      "id": 9,
+      "state": "minecraft:observer[facing=down,powered=false]",
+      "count": 2
+    },
+    {
+      "id": 10,
+      "state": "minecraft:oak_sign[rotation=0,waterlogged=false]",
+      "count": 2
+    }
+  ],
+  "block_entities": [
+    {
+      "front_text": {
+        "has_glowing_text": 0,
+        "messages": [
+          {
+            "text": "IN A"
+          },
+          {
+            "text": ""
+          },
+          {
+            "text": ""
+          },
+          {
+            "text": ""
+          }
+        ],
+        "color": "black"
+      },
+      "is_waxed": 0,
+      "back_text": {
+        "has_glowing_text": 0,
+        "color": "black",
+        "messages": [
+          {
+            "text": ""
+          },
+          {
+            "text": ""
+          },
+          {
+            "text": ""
+          },
+          {
+            "text": ""
+          }
+        ]
+      },
+      "Id": "minecraft:sign",
+      "Pos": [
+        0,
+        3,
+        6
+      ]
+    },
+    {
+      "Pos": [
+        2,
+        3,
+        6
+      ],
+      "back_text": {
+        "has_glowing_text": 0,
+        "messages": [
+          {
+            "text": ""
+          },
+          {
+            "text": ""
+          },
+          {
+            "text": ""
+          },
+          {
+            "text": ""
+          }
+        ],
+        "color": "black"
+      },
+      "Id": "minecraft:sign",
+      "is_waxed": 0,
+      "front_text": {
+        "color": "black",
+        "has_glowing_text": 0,
+        "messages": [
+          {
+            "text": "INB"
+          },
+          {
+            "text": ""
+          },
+          {
+            "text": ""
+          },
+          {
+            "text": ""
+          }
+        ]
+      }
+    },
+    {
+      "Pos": [
+        1,
+        1,
+        0
+      ],
+      "Id": "minecraft:sign",
+      "front_text": {
+        "messages": [
+          {
+            "text": "OUT"
+          },
+          {
+            "text": ""
+          },
+          {
+            "text": ""
+          },
+          {
+            "text": ""
+          }
+        ],
+        "has_glowing_text": 0,
+        "color": "black"
+      },
+      "is_waxed": 0,
+      "back_text": {
+        "messages": [
+          {
+            "text": ""
+          },
+          {
+            "text": ""
+          },
+          {
+            "text": ""
+          },
+          {
+            "text": ""
+          }
+        ],
+        "color": "black",
+        "has_glowing_text": 0
+      }
+    }
+  ],
+  "signs": [
+    {
+      "pos": [
+        0,
+        3,
+        6
+      ],
+      "text": {
+        "front_text": {
+          "original": [
+            {
+              "text": "IN A"
+            },
+            {
+              "text": ""
+            },
+            {
+              "text": ""
+            },
+            {
+              "text": ""
+            }
+          ],
+          "readable": [
+            "IN A",
+            "",
+            "",
+            ""
+          ]
+        },
+        "back_text": {
+          "original": [
+            {
+              "text": ""
+            },
+            {
+              "text": ""
+            },
+            {
+              "text": ""
+            },
+            {
+              "text": ""
+            }
+          ],
+          "readable": [
+            "",
+            "",
+            "",
+            ""
+          ]
+        },
+        "legacy": {
+          "original": [],
+          "readable": []
+        }
+      }
+    },
+    {
+      "pos": [
+        1,
+        1,
+        0
+      ],
+      "text": {
+        "front_text": {
+          "original": [
+            {
+              "text": "OUT"
+            },
+            {
+              "text": ""
+            },
+            {
+              "text": ""
+            },
+            {
+              "text": ""
+            }
+          ],
+          "readable": [
+            "OUT",
+            "",
+            "",
+            ""
+          ]
+        },
+        "back_text": {
+          "original": [
+            {
+              "text": ""
+            },
+            {
+              "text": ""
+            },
+            {
+              "text": ""
+            },
+            {
+              "text": ""
+            }
+          ],
+          "readable": [
+            "",
+            "",
+            "",
+            ""
+          ]
+        },
+        "legacy": {
+          "original": [],
+          "readable": []
+        }
+      }
+    },
+    {
+      "pos": [
+        2,
+        3,
+        6
+      ],
+      "text": {
+        "front_text": {
+          "original": [
+            {
+              "text": "INB"
+            },
+            {
+              "text": ""
+            },
+            {
+              "text": ""
+            },
+            {
+              "text": ""
+            }
+          ],
+          "readable": [
+            "INB",
+            "",
+            "",
+            ""
+          ]
+        },
+        "back_text": {
+          "original": [
+            {
+              "text": ""
+            },
+            {
+              "text": ""
+            },
+            {
+              "text": ""
+            },
+            {
+              "text": ""
+            }
+          ],
+          "readable": [
+            "",
+            "",
+            "",
+            ""
+          ]
+        },
+        "legacy": {
+          "original": [],
+          "readable": []
+        }
+      }
+    }
+  ],
+  "nonair_cells": [
+    {
+      "pos": [
+        2,
+        0,
+        2
+      ],
+      "state": "minecraft:sandstone"
+    },
+    {
+      "pos": [
+        1,
+        1,
+        0
+      ],
+      "state": "minecraft:oak_wall_sign[facing=north,waterlogged=false]"
+    },
+    {
+      "pos": [
+        1,
+        1,
+        1
+      ],
+      "state": "minecraft:sandstone"
+    },
+    {
+      "pos": [
+        1,
+        1,
+        2
+      ],
+      "state": "minecraft:sandstone"
+    },
+    {
+      "pos": [
+        2,
+        1,
+        2
+      ],
+      "state": "minecraft:redstone_wire[east=none,north=side,power=15,south=side,west=none]"
+    },
+    {
+      "pos": [
+        2,
+        1,
+        3
+      ],
+      "state": "minecraft:redstone_block"
+    },
+    {
+      "pos": [
+        0,
+        1,
+        5
+      ],
+      "state": "minecraft:sandstone"
+    },
+    {
+      "pos": [
+        2,
+        1,
+        5
+      ],
+      "state": "minecraft:sandstone"
+    },
+    {
+      "pos": [
+        0,
+        1,
+        6
+      ],
+      "state": "minecraft:sandstone"
+    },
+    {
+      "pos": [
+        2,
+        1,
+        6
+      ],
+      "state": "minecraft:sandstone"
+    },
+    {
+      "pos": [
+        1,
+        2,
+        1
+      ],
+      "state": "minecraft:redstone_wire[east=none,north=side,power=14,south=side,west=none]"
+    },
+    {
+      "pos": [
+        0,
+        2,
+        2
+      ],
+      "state": "minecraft:redstone_block"
+    },
+    {
+      "pos": [
+        1,
+        2,
+        2
+      ],
+      "state": "minecraft:redstone_wire[east=none,north=side,power=15,south=none,west=side]"
+    },
+    {
+      "pos": [
+        2,
+        2,
+        2
+      ],
+      "state": "minecraft:sandstone"
+    },
+    {
+      "pos": [
+        0,
+        2,
+        3
+      ],
+      "state": "minecraft:piston_head[facing=north,short=false,type=sticky]"
+    },
+    {
+      "pos": [
+        2,
+        2,
+        3
+      ],
+      "state": "minecraft:piston_head[facing=north,short=false,type=sticky]"
+    },
+    {
+      "pos": [
+        0,
+        2,
+        4
+      ],
+      "state": "minecraft:sticky_piston[extended=true,facing=north]"
+    },
+    {
+      "pos": [
+        2,
+        2,
+        4
+      ],
+      "state": "minecraft:sticky_piston[extended=true,facing=north]"
+    },
+    {
+      "pos": [
+        0,
+        2,
+        5
+      ],
+      "state": "minecraft:redstone_wire[east=none,north=side,power=15,south=side,west=none]"
+    },
+    {
+      "pos": [
+        2,
+        2,
+        5
+      ],
+      "state": "minecraft:redstone_wire[east=none,north=side,power=15,south=side,west=none]"
+    },
+    {
+      "pos": [
+        0,
+        2,
+        6
+      ],
+      "state": "minecraft:redstone_block"
+    },
+    {
+      "pos": [
+        2,
+        2,
+        6
+      ],
+      "state": "minecraft:redstone_block"
+    },
+    {
+      "pos": [
+        0,
+        3,
+        4
+      ],
+      "state": "minecraft:observer[facing=down,powered=false]"
+    },
+    {
+      "pos": [
+        2,
+        3,
+        4
+      ],
+      "state": "minecraft:observer[facing=down,powered=false]"
+    },
+    {
+      "pos": [
+        0,
+        3,
+        6
+      ],
+      "state": "minecraft:oak_sign[rotation=0,waterlogged=false]"
+    },
+    {
+      "pos": [
+        2,
+        3,
+        6
+      ],
+      "state": "minecraft:oak_sign[rotation=0,waterlogged=false]"
+    },
+    {
+      "pos": [
+        0,
+        4,
+        4
+      ],
+      "state": "minecraft:sandstone"
+    },
+    {
+      "pos": [
+        2,
+        4,
+        4
+      ],
+      "state": "minecraft:sandstone"
+    }
+  ]
+}

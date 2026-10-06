@@ -1,0 +1,693 @@
+{
+  "schema_version": 1,
+  "id": "adder_1bit",
+  "fixture": "test_data/instant-pistons/ADDER_1BIT.schem",
+  "sha256": "efe9f7f1703a2fdd1403735acb8f22f98ded0242bdfd63f096896235da300363",
+  "dimensions": [
+    19,
+    7,
+    6
+  ],
+  "inspection": "test_data/instant-pistons/inspection/adder_1bit.json",
+  "classification": "observed diagnostics; function pending analysis",
+  "coordinates": {
+    "convention": "selection-local relative to saved minimum",
+    "origin": [
+      40,
+      30,
+      40
+    ],
+    "loader_offset": [
+      0,
+      5,
+      5
+    ],
+    "paste_anchor": [
+      40,
+      35,
+      45
+    ],
+    "orientation": "saved orientation; clockwise Y rotations transform geometry and states"
+  },
+  "ports": {
+    "inputs": {
+      "A": [
+        1,
+        5,
+        3
+      ],
+      "B": [
+        1,
+        5,
+        1
+      ],
+      "Cin": [
+        9,
+        5,
+        5
+      ],
+      "trigger": [
+        0,
+        4,
+        5
+      ]
+    },
+    "observations": {
+      "sum": [
+        18,
+        2,
+        1
+      ],
+      "carry": [
+        11,
+        1,
+        0
+      ],
+      "carry_consumer": [
+        12,
+        1,
+        2
+      ]
+    },
+    "status": "geometry-derived candidates; see dossier for per-port evidence"
+  },
+  "setup": {
+    "mode": "paste_clipboard(ignore_air=false); raw storage then entities; no notifications",
+    "initial": "exact binary states and block entities; empty queues, tick 0 BetweenTicks",
+    "readiness": "saved-idle episode must remain unchanged with empty work; prepared cases wait for no queued work, bounded at 32 ticks"
+  },
+  "protocol": {
+    "logical_one": "nonzero-to-zero event",
+    "cases_independent": "fresh equivalent strict-import snapshots",
+    "input_during_reset": "undefined; only labeled diagnostics exercise it",
+    "held_zero": "no new external event; internal cycles retained",
+    "repeat_use": "pending measured rearm condition; use fresh imports until proven"
+  },
+  "observation_decoder": "raw state/property observations; moving states distinct; dust falling edge is event; air output payload means 1 only for verified arithmetic bank",
+  "ordering_constraints": [],
+  "unknowns": [],
+  "java_status": "not yet compared",
+  "rotations": [
+    0
+  ],
+  "cases": [
+    {
+      "id": "saved-idle",
+      "inputs": null,
+      "actions": [],
+      "ticks": 24
+    },
+    {
+      "id": "prepared-0-0-0",
+      "inputs": [
+        0,
+        0,
+        0
+      ],
+      "actions": [
+        {
+          "op": "raw",
+          "pos": [
+            1,
+            5,
+            3
+          ],
+          "state": "redstone_block"
+        },
+        {
+          "op": "raw",
+          "pos": [
+            1,
+            5,
+            1
+          ],
+          "state": "redstone_block"
+        },
+        {
+          "op": "raw",
+          "pos": [
+            9,
+            5,
+            5
+          ],
+          "state": "redstone_block"
+        },
+        {
+          "op": "notify",
+          "pos": [
+            1,
+            5,
+            3
+          ]
+        },
+        {
+          "op": "notify",
+          "pos": [
+            1,
+            5,
+            1
+          ]
+        },
+        {
+          "op": "notify",
+          "pos": [
+            9,
+            5,
+            5
+          ]
+        },
+        {
+          "op": "wait_ready",
+          "ticks": 32
+        },
+        {
+          "op": "destroy",
+          "pos": [
+            0,
+            4,
+            5
+          ]
+        }
+      ],
+      "ticks": 18
+    },
+    {
+      "id": "prepared-0-0-1",
+      "inputs": [
+        0,
+        0,
+        1
+      ],
+      "actions": [
+        {
+          "op": "raw",
+          "pos": [
+            1,
+            5,
+            3
+          ],
+          "state": "redstone_block"
+        },
+        {
+          "op": "raw",
+          "pos": [
+            1,
+            5,
+            1
+          ],
+          "state": "redstone_block"
+        },
+        {
+          "op": "raw",
+          "pos": [
+            9,
+            5,
+            5
+          ],
+          "state": "stone"
+        },
+        {
+          "op": "notify",
+          "pos": [
+            1,
+            5,
+            3
+          ]
+        },
+        {
+          "op": "notify",
+          "pos": [
+            1,
+            5,
+            1
+          ]
+        },
+        {
+          "op": "notify",
+          "pos": [
+            9,
+            5,
+            5
+          ]
+        },
+        {
+          "op": "wait_ready",
+          "ticks": 32
+        },
+        {
+          "op": "destroy",
+          "pos": [
+            0,
+            4,
+            5
+          ]
+        }
+      ],
+      "ticks": 18
+    },
+    {
+      "id": "prepared-0-1-0",
+      "inputs": [
+        0,
+        1,
+        0
+      ],
+      "actions": [
+        {
+          "op": "raw",
+          "pos": [
+            1,
+            5,
+            3
+          ],
+          "state": "redstone_block"
+        },
+        {
+          "op": "raw",
+          "pos": [
+            1,
+            5,
+            1
+          ],
+          "state": "stone"
+        },
+        {
+          "op": "raw",
+          "pos": [
+            9,
+            5,
+            5
+          ],
+          "state": "redstone_block"
+        },
+        {
+          "op": "notify",
+          "pos": [
+            1,
+            5,
+            3
+          ]
+        },
+        {
+          "op": "notify",
+          "pos": [
+            1,
+            5,
+            1
+          ]
+        },
+        {
+          "op": "notify",
+          "pos": [
+            9,
+            5,
+            5
+          ]
+        },
+        {
+          "op": "wait_ready",
+          "ticks": 32
+        },
+        {
+          "op": "destroy",
+          "pos": [
+            0,
+            4,
+            5
+          ]
+        }
+      ],
+      "ticks": 18
+    },
+    {
+      "id": "prepared-0-1-1",
+      "inputs": [
+        0,
+        1,
+        1
+      ],
+      "actions": [
+        {
+          "op": "raw",
+          "pos": [
+            1,
+            5,
+            3
+          ],
+          "state": "redstone_block"
+        },
+        {
+          "op": "raw",
+          "pos": [
+            1,
+            5,
+            1
+          ],
+          "state": "stone"
+        },
+        {
+          "op": "raw",
+          "pos": [
+            9,
+            5,
+            5
+          ],
+          "state": "stone"
+        },
+        {
+          "op": "notify",
+          "pos": [
+            1,
+            5,
+            3
+          ]
+        },
+        {
+          "op": "notify",
+          "pos": [
+            1,
+            5,
+            1
+          ]
+        },
+        {
+          "op": "notify",
+          "pos": [
+            9,
+            5,
+            5
+          ]
+        },
+        {
+          "op": "wait_ready",
+          "ticks": 32
+        },
+        {
+          "op": "destroy",
+          "pos": [
+            0,
+            4,
+            5
+          ]
+        }
+      ],
+      "ticks": 18
+    },
+    {
+      "id": "prepared-1-0-0",
+      "inputs": [
+        1,
+        0,
+        0
+      ],
+      "actions": [
+        {
+          "op": "raw",
+          "pos": [
+            1,
+            5,
+            3
+          ],
+          "state": "stone"
+        },
+        {
+          "op": "raw",
+          "pos": [
+            1,
+            5,
+            1
+          ],
+          "state": "redstone_block"
+        },
+        {
+          "op": "raw",
+          "pos": [
+            9,
+            5,
+            5
+          ],
+          "state": "redstone_block"
+        },
+        {
+          "op": "notify",
+          "pos": [
+            1,
+            5,
+            3
+          ]
+        },
+        {
+          "op": "notify",
+          "pos": [
+            1,
+            5,
+            1
+          ]
+        },
+        {
+          "op": "notify",
+          "pos": [
+            9,
+            5,
+            5
+          ]
+        },
+        {
+          "op": "wait_ready",
+          "ticks": 32
+        },
+        {
+          "op": "destroy",
+          "pos": [
+            0,
+            4,
+            5
+          ]
+        }
+      ],
+      "ticks": 18
+    },
+    {
+      "id": "prepared-1-0-1",
+      "inputs": [
+        1,
+        0,
+        1
+      ],
+      "actions": [
+        {
+          "op": "raw",
+          "pos": [
+            1,
+            5,
+            3
+          ],
+          "state": "stone"
+        },
+        {
+          "op": "raw",
+          "pos": [
+            1,
+            5,
+            1
+          ],
+          "state": "redstone_block"
+        },
+        {
+          "op": "raw",
+          "pos": [
+            9,
+            5,
+            5
+          ],
+          "state": "stone"
+        },
+        {
+          "op": "notify",
+          "pos": [
+            1,
+            5,
+            3
+          ]
+        },
+        {
+          "op": "notify",
+          "pos": [
+            1,
+            5,
+            1
+          ]
+        },
+        {
+          "op": "notify",
+          "pos": [
+            9,
+            5,
+            5
+          ]
+        },
+        {
+          "op": "wait_ready",
+          "ticks": 32
+        },
+        {
+          "op": "destroy",
+          "pos": [
+            0,
+            4,
+            5
+          ]
+        }
+      ],
+      "ticks": 18
+    },
+    {
+      "id": "prepared-1-1-0",
+      "inputs": [
+        1,
+        1,
+        0
+      ],
+      "actions": [
+        {
+          "op": "raw",
+          "pos": [
+            1,
+            5,
+            3
+          ],
+          "state": "stone"
+        },
+        {
+          "op": "raw",
+          "pos": [
+            1,
+            5,
+            1
+          ],
+          "state": "stone"
+        },
+        {
+          "op": "raw",
+          "pos": [
+            9,
+            5,
+            5
+          ],
+          "state": "redstone_block"
+        },
+        {
+          "op": "notify",
+          "pos": [
+            1,
+            5,
+            3
+          ]
+        },
+        {
+          "op": "notify",
+          "pos": [
+            1,
+            5,
+            1
+          ]
+        },
+        {
+          "op": "notify",
+          "pos": [
+            9,
+            5,
+            5
+          ]
+        },
+        {
+          "op": "wait_ready",
+          "ticks": 32
+        },
+        {
+          "op": "destroy",
+          "pos": [
+            0,
+            4,
+            5
+          ]
+        }
+      ],
+      "ticks": 18
+    },
+    {
+      "id": "prepared-1-1-1",
+      "inputs": [
+        1,
+        1,
+        1
+      ],
+      "actions": [
+        {
+          "op": "raw",
+          "pos": [
+            1,
+            5,
+            3
+          ],
+          "state": "stone"
+        },
+        {
+          "op": "raw",
+          "pos": [
+            1,
+            5,
+            1
+          ],
+          "state": "stone"
+        },
+        {
+          "op": "raw",
+          "pos": [
+            9,
+            5,
+            5
+          ],
+          "state": "stone"
+        },
+        {
+          "op": "notify",
+          "pos": [
+            1,
+            5,
+            3
+          ]
+        },
+        {
+          "op": "notify",
+          "pos": [
+            1,
+            5,
+            1
+          ]
+        },
+        {
+          "op": "notify",
+          "pos": [
+            9,
+            5,
+            5
+          ]
+        },
+        {
+          "op": "wait_ready",
+          "ticks": 32
+        },
+        {
+          "op": "destroy",
+          "pos": [
+            0,
+            4,
+            5
+          ]
+        }
+      ],
+      "ticks": 18
+    }
+  ]
+}

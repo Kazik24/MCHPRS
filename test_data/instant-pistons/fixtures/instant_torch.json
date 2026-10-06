@@ -1,0 +1,167 @@
+{
+  "schema_version": 1,
+  "id": "instant_torch",
+  "fixture": "test_data/instant-pistons/INSTANT_TORCH.schem",
+  "sha256": "6d5ed8343ad111f0b976200ac629b7c6030e1b46a5374d548f4e41537babe1ca",
+  "dimensions": [
+    1,
+    3,
+    8
+  ],
+  "inspection": "test_data/instant-pistons/inspection/instant_torch.json",
+  "classification": "observed diagnostics; function pending analysis",
+  "coordinates": {
+    "convention": "selection-local relative to saved minimum",
+    "origin": [
+      40,
+      30,
+      40
+    ],
+    "loader_offset": [
+      0,
+      1,
+      1
+    ],
+    "paste_anchor": [
+      40,
+      31,
+      41
+    ],
+    "orientation": "saved orientation; clockwise Y rotations transform geometry and states"
+  },
+  "ports": {
+    "inputs": {
+      "input": [
+        0,
+        1,
+        0
+      ]
+    },
+    "observations": {
+      "output": [
+        0,
+        1,
+        6
+      ]
+    },
+    "status": "geometry-derived candidates; see dossier for per-port evidence"
+  },
+  "setup": {
+    "mode": "paste_clipboard(ignore_air=false); raw storage then entities; no notifications",
+    "initial": "exact binary states and block entities; empty queues, tick 0 BetweenTicks",
+    "readiness": "saved-idle episode must remain unchanged with empty work; prepared cases wait for no queued work, bounded at 32 ticks"
+  },
+  "protocol": {
+    "logical_one": "nonzero-to-zero event",
+    "cases_independent": "fresh equivalent strict-import snapshots",
+    "input_during_reset": "undefined; only labeled diagnostics exercise it",
+    "held_zero": "no new external event; internal cycles retained",
+    "repeat_use": "pending measured rearm condition; use fresh imports until proven"
+  },
+  "observation_decoder": "raw state/property observations; moving states distinct; dust falling edge is event; air output payload means 1 only for verified arithmetic bank",
+  "ordering_constraints": [],
+  "unknowns": [],
+  "java_status": "not yet compared",
+  "rotations": [
+    0
+  ],
+  "cases": [
+    {
+      "id": "saved-idle",
+      "inputs": null,
+      "actions": [],
+      "ticks": 24
+    },
+    {
+      "id": "falling",
+      "inputs": [
+        1
+      ],
+      "actions": [
+        {
+          "op": "destroy",
+          "pos": [
+            0,
+            1,
+            0
+          ]
+        }
+      ],
+      "ticks": 24
+    },
+    {
+      "id": "held-zero",
+      "inputs": [
+        1
+      ],
+      "actions": [
+        {
+          "op": "destroy",
+          "pos": [
+            0,
+            1,
+            0
+          ]
+        },
+        {
+          "op": "wait",
+          "ticks": 12
+        },
+        {
+          "op": "notify",
+          "pos": [
+            0,
+            1,
+            0
+          ]
+        }
+      ],
+      "ticks": 24,
+      "diagnostic": "An additional notification of held zero; no new external falling event"
+    },
+    {
+      "id": "rearm-diagnostic",
+      "inputs": [
+        1,
+        1
+      ],
+      "actions": [
+        {
+          "op": "destroy",
+          "pos": [
+            0,
+            1,
+            0
+          ]
+        },
+        {
+          "op": "wait",
+          "ticks": 12
+        },
+        {
+          "op": "set_notified",
+          "pos": [
+            0,
+            1,
+            0
+          ],
+          "state": "redstone_block"
+        },
+        {
+          "op": "wait",
+          "ticks": 20
+        },
+        {
+          "op": "destroy",
+          "pos": [
+            0,
+            1,
+            0
+          ]
+        }
+      ],
+      "ticks": 24,
+      "diagnostic": "Reuse becomes supported only if rearm is demonstrated"
+    }
+  ]
+}

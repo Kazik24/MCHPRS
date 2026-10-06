@@ -4,13 +4,6 @@
   "verified_utc": "2026-10-06T09:12:24.676477+00:00",
   "files": [
     {
-      "name": "ADDER_11BIT.schem",
-      "bytes": 1298,
-      "sha256": "b15540895ca8b21f9765e5db2b8a9a58cf635855b8cc3b15696c5ae9dc9a6124",
-      "modified_utc": "2026-10-06T09:23:20.024127+00:00",
-      "verified_utc": "2026-10-06T09:25:43.730Z"
-    },
-    {
       "name": "ADDER_11BITS.schem",
       "bytes": 1294,
       "sha256": "41476594941f234f8759c2b4b12dab72641fbda9fb5f0412a2b0089ba964464e",
@@ -102,6 +95,13 @@
       "modified_utc": "2026-10-05T21:36:42.296164+00:00"
     },
     {
+      "name": "NANOTICK_EXAMPLE.schem",
+      "bytes": 635,
+      "sha256": "61196b78d25de653e0a5189b96be85ed8f98be954055cd9b69b23bc392206414",
+      "modified_utc": "2026-10-06T09:53:28.307195+00:00",
+      "verified_utc": "2026-10-06T09:54:54.707Z"
+    },
+    {
       "name": "NOT_1.schem",
       "bytes": 616,
       "sha256": "0e9ecb58307d8cb3d079c56d69317d77cf8fe480ffd813a80a42aa4ec520d180",
@@ -147,5 +147,17 @@
       "replaced_utc": "2026-10-06T09:25:43.730Z"
     }
   ],
-  "last_refresh_utc": "2026-10-06T09:25:43.730Z"
+  "last_refresh_utc": "2026-10-06T09:54:54.707Z",
+  "aliases": [
+    {
+      "name": "ADDER_11BIT.schem",
+      "bytes": 1298,
+      "sha256": "b15540895ca8b21f9765e5db2b8a9a58cf635855b8cc3b15696c5ae9dc9a6124",
+      "modified_utc": "2026-10-06T09:23:20.024127+00:00",
+      "verified_utc": "2026-10-06T09:25:43.730Z",
+      "canonical_name": "ADDER_11BITS.schem",
+      "local_file_present": false,
+      "equivalence": "Author confirmed same build; decoded block layouts matched when downloaded."
+    }
+  ]
 }

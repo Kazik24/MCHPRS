@@ -1,0 +1,186 @@
+{
+  "schema_version": 1,
+  "id": "or_1",
+  "fixture": "test_data/instant-pistons/OR_1.schem",
+  "sha256": "81c59e0b94bf90f5998d5b09054899b6447e2c808c1a1710d00022a34a75e52a",
+  "dimensions": [
+    3,
+    5,
+    10
+  ],
+  "inspection": "test_data/instant-pistons/inspection/or_1.json",
+  "classification": "observed diagnostics; function pending analysis",
+  "coordinates": {
+    "convention": "selection-local relative to saved minimum",
+    "origin": [
+      40,
+      30,
+      40
+    ],
+    "loader_offset": [
+      2,
+      3,
+      9
+    ],
+    "paste_anchor": [
+      42,
+      33,
+      49
+    ],
+    "orientation": "saved orientation; clockwise Y rotations transform geometry and states"
+  },
+  "ports": {
+    "inputs": {
+      "A": [
+        2,
+        2,
+        9
+      ],
+      "B": [
+        0,
+        2,
+        9
+      ]
+    },
+    "observations": {
+      "output": [
+        0,
+        2,
+        1
+      ],
+      "payload": [
+        0,
+        2,
+        4
+      ]
+    },
+    "status": "geometry-derived candidates; see dossier for per-port evidence"
+  },
+  "setup": {
+    "mode": "paste_clipboard(ignore_air=false); raw storage then entities; no notifications",
+    "initial": "exact binary states and block entities; empty queues, tick 0 BetweenTicks",
+    "readiness": "saved-idle episode must remain unchanged with empty work; prepared cases wait for no queued work, bounded at 32 ticks"
+  },
+  "protocol": {
+    "logical_one": "nonzero-to-zero event",
+    "cases_independent": "fresh equivalent strict-import snapshots",
+    "input_during_reset": "undefined; only labeled diagnostics exercise it",
+    "held_zero": "no new external event; internal cycles retained",
+    "repeat_use": "pending measured rearm condition; use fresh imports until proven"
+  },
+  "observation_decoder": "raw state/property observations; moving states distinct; dust falling edge is event; air output payload means 1 only for verified arithmetic bank",
+  "ordering_constraints": [],
+  "unknowns": [],
+  "java_status": "not yet compared",
+  "rotations": [
+    0,
+    90,
+    180,
+    270
+  ],
+  "cases": [
+    {
+      "id": "saved-idle",
+      "inputs": null,
+      "actions": [],
+      "ticks": 24
+    },
+    {
+      "id": "events-00-ab",
+      "inputs": [
+        0,
+        0
+      ],
+      "actions": [],
+      "ticks": 24
+    },
+    {
+      "id": "events-10-ab",
+      "inputs": [
+        1,
+        0
+      ],
+      "actions": [
+        {
+          "op": "destroy",
+          "pos": [
+            2,
+            2,
+            9
+          ]
+        }
+      ],
+      "ticks": 24
+    },
+    {
+      "id": "events-01-ab",
+      "inputs": [
+        0,
+        1
+      ],
+      "actions": [
+        {
+          "op": "destroy",
+          "pos": [
+            0,
+            2,
+            9
+          ]
+        }
+      ],
+      "ticks": 24
+    },
+    {
+      "id": "events-11-ab",
+      "inputs": [
+        1,
+        1
+      ],
+      "actions": [
+        {
+          "op": "destroy",
+          "pos": [
+            2,
+            2,
+            9
+          ]
+        },
+        {
+          "op": "destroy",
+          "pos": [
+            0,
+            2,
+            9
+          ]
+        }
+      ],
+      "ticks": 24
+    },
+    {
+      "id": "events-11-ba",
+      "inputs": [
+        1,
+        1
+      ],
+      "actions": [
+        {
+          "op": "destroy",
+          "pos": [
+            0,
+            2,
+            9
+          ]
+        },
+        {
+          "op": "destroy",
+          "pos": [
+            2,
+            2,
+            9
+          ]
+        }
+      ],
+      "ticks": 24
+    }
+  ]
+}
