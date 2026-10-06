@@ -9,7 +9,7 @@
     7
   ],
   "inspection": "test_data/instant-pistons/inspection/mchprs_redstone_update_edgecase.json",
-  "classification": "observed diagnostics; function pending analysis",
+  "classification": "Observed first-wave protocol; no generic compiler certificate",
   "coordinates": {
     "convention": "selection-local relative to saved minimum",
     "origin": [
@@ -59,12 +59,12 @@
         2
       ]
     },
-    "status": "geometry-derived candidates; see dossier for per-port evidence"
+    "status": "geometry and controlled episodes verified; absent sink and temporal limits described in dossier"
   },
   "setup": {
     "mode": "paste_clipboard(ignore_air=false); raw storage then entities; no notifications",
     "initial": "exact binary states and block entities; empty queues, tick 0 BetweenTicks",
-    "readiness": "saved-idle episode must remain unchanged with empty work; prepared cases wait for no queued work, bounded at 32 ticks"
+    "readiness": "saved-idle remains unchanged with empty work; prepared snapshots require two unchanged quiescent completed boundaries, bounded at 32 ticks"
   },
   "protocol": {
     "logical_one": "nonzero-to-zero event",
@@ -73,10 +73,25 @@
     "held_zero": "no new external event; internal cycles retained",
     "repeat_use": "pending measured rearm condition; use fresh imports until proven"
   },
-  "observation_decoder": "raw state/property observations; moving states distinct; dust falling edge is event; air output payload means 1 only for verified arithmetic bank",
+  "observation_decoder": {
+    "timing": "completed response boundary; tick 0 is immediately after ordered stimuli",
+    "held_zero": "not a new external event",
+    "moving": "distinct state, never silently treated as an output bit",
+    "function": "physical diagnostic; no Boolean function certified",
+    "decoded_fields": "payload occupancy/transport, reset dust and comparator state; see ports"
+  },
   "ordering_constraints": [],
-  "unknowns": [],
-  "java_status": "not yet compared",
+  "unknowns": [
+    "Arbitrary non-instant consumer/handoff equivalence not certified",
+    "External input or another computation during reset is undefined",
+    "Full-state period not demonstrated in 48 ticks; vertical payload repeats eight ticks",
+    "Java rotations for this downloaded binary not captured"
+  ],
+  "java_status": {
+    "compared_cases": 2,
+    "status": "all declared projections match",
+    "scope": "current binary; response boundaries, not internal callbacks; setup difference retained"
+  },
   "rotations": [
     0,
     90,
@@ -88,7 +103,26 @@
       "id": "saved-idle",
       "inputs": null,
       "actions": [],
-      "ticks": 24
+      "ticks": 24,
+      "evidence_status": "observed supported episode within dossier's protocol/window",
+      "artifacts": [
+        "test_data/instant-pistons/traces/java-mchprs_redstone_update_edgecase-saved-idle-r0.json.gz",
+        "test_data/instant-pistons/traces/mchprs-mchprs_redstone_update_edgecase-saved-idle-r0.json.gz",
+        "test_data/instant-pistons/traces/mchprs-mchprs_redstone_update_edgecase-saved-idle-r180.json.gz",
+        "test_data/instant-pistons/traces/mchprs-mchprs_redstone_update_edgecase-saved-idle-r270.json.gz",
+        "test_data/instant-pistons/traces/mchprs-mchprs_redstone_update_edgecase-saved-idle-r90.json.gz"
+      ],
+      "expected_status": "behavioral regression observation; arithmetic expectation independently checked where decoder validated",
+      "observations_reference": {
+        "mchprs": "test_data/instant-pistons/mchprs-projections.json",
+        "java": "test_data/instant-pistons/java-projections.json",
+        "key": {
+          "fixture_id": "mchprs_redstone_update_edgecase",
+          "fixture_sha256": "355634e77f9c75a07632ab7b72d938a2d42b04ca4366de23d049a058ac777d4c",
+          "case_id": "saved-idle",
+          "rotation": "artifact-specific"
+        }
+      }
     },
     {
       "id": "falling",
@@ -105,7 +139,166 @@
           ]
         }
       ],
-      "ticks": 48
+      "ticks": 48,
+      "evidence_status": "observed supported episode within dossier's protocol/window",
+      "artifacts": [
+        "test_data/instant-pistons/traces/java-mchprs_redstone_update_edgecase-falling-r0.json.gz",
+        "test_data/instant-pistons/traces/mchprs-mchprs_redstone_update_edgecase-falling-r0.json.gz",
+        "test_data/instant-pistons/traces/mchprs-mchprs_redstone_update_edgecase-falling-r180.json.gz",
+        "test_data/instant-pistons/traces/mchprs-mchprs_redstone_update_edgecase-falling-r270.json.gz",
+        "test_data/instant-pistons/traces/mchprs-mchprs_redstone_update_edgecase-falling-r90.json.gz"
+      ],
+      "expected_status": "behavioral regression observation; arithmetic expectation independently checked where decoder validated",
+      "observations_reference": {
+        "mchprs": "test_data/instant-pistons/mchprs-projections.json",
+        "java": "test_data/instant-pistons/java-projections.json",
+        "key": {
+          "fixture_id": "mchprs_redstone_update_edgecase",
+          "fixture_sha256": "355634e77f9c75a07632ab7b72d938a2d42b04ca4366de23d049a058ac777d4c",
+          "case_id": "falling",
+          "rotation": "artifact-specific"
+        }
+      }
     }
-  ]
+  ],
+  "dossier": "docs/INSTANT_PISTON_SCHEMATICS.md#mchprs-redstone-update-edgecase",
+  "purpose": "Downloaded 8 x 8 x 7 update/drop/recapture example, separate from the older root fixture.",
+  "mechanism": "Trigger source is (6,5,6); its attached powered lever (7,5,6) is also removed by normal support callbacks when the source is destroyed. That source feeds the North-facing instant at (3,5,6), payload (3,5,4), and the Down-facing mechanism at (2,4,2), head (2,3,2), payload (2,2,2). Other bases at (3,3,1), (2,2,3), (0,3,0), four observers, a comparator (1,3,2) and furnace (1,3,3) complete feedback. The saved furnace has 13 redstone items and comparator output strength 1; block entities must be imported, not replaced with arbitrary constants. There are no signs.",
+  "reset_and_next_use": "Vertical timeline: 1..2 pull payload into moving (2,3,2); 3 it is stationary there with retracted base; 4 extension begins; 5 early retraction finalizes and drops the in-flight payload at (2,2,2), leaving (2,3,2) air and the base moving; 7 base is retracted; 8 creates an empty extending head; 9 pulls the dropped payload again. The vertical payload projection repeats every eight ticks over multiple cycles. Other feedback phases are retained; no full-state period is proven within 48 ticks. The observation 'released' at (2,1,2) is a below-payload emptiness guard, not the actual drop cell.\n\nStrict import is quiet; ordinary source destruction launches the recorded response. Reset never reaches a certified quiescent next-use state in this capture. Four MCHPRS rotations preserve drop/recapture, and current-binary Java r0 matches the declared port waveform. Old Java rotations are references for a different binary, not this one.",
+  "recognition_guards": "Require inventory/comparator state, ordinary lever support destruction, in-flight early-retraction guards, payload finalization and actual callback paths. Reject one-payload-always-owned assumptions.",
+  "evidence": [
+    {
+      "artifact": "test_data/instant-pistons/traces/java-mchprs_redstone_update_edgecase-falling-r0.json.gz",
+      "artifact_sha256": "b7ad183f6aef9ea78a001ea51c41d27e952c46865840306d76e2face9a91e607",
+      "fixture_id": "mchprs_redstone_update_edgecase",
+      "fixture_sha256": "355634e77f9c75a07632ab7b72d938a2d42b04ca4366de23d049a058ac777d4c",
+      "case_id": "falling",
+      "rotation": 0,
+      "engine": "Java",
+      "termination": "completed bounded response; no claim of settled state",
+      "period_witness": null
+    },
+    {
+      "artifact": "test_data/instant-pistons/traces/java-mchprs_redstone_update_edgecase-saved-idle-r0.json.gz",
+      "artifact_sha256": "bed1d0b213a8d035ca034302449a36aeff1592bf6acaed17362dc1ca83af18da",
+      "fixture_id": "mchprs_redstone_update_edgecase",
+      "fixture_sha256": "355634e77f9c75a07632ab7b72d938a2d42b04ca4366de23d049a058ac777d4c",
+      "case_id": "saved-idle",
+      "rotation": 0,
+      "engine": "Java",
+      "termination": "completed bounded response; no claim of settled state",
+      "period_witness": null
+    },
+    {
+      "artifact": "test_data/instant-pistons/traces/mchprs-mchprs_redstone_update_edgecase-falling-r0.json.gz",
+      "artifact_sha256": "12eb48d6f468623e456d6aebd2ae7687663e58b427f3a8023e0f65123a5fea3e",
+      "fixture_id": "mchprs_redstone_update_edgecase",
+      "fixture_sha256": "355634e77f9c75a07632ab7b72d938a2d42b04ca4366de23d049a058ac777d4c",
+      "case_id": "falling",
+      "rotation": 0,
+      "engine": "MCHPRS interpreter",
+      "termination": "completed bounded response; quiescence and periodicity assessed separately",
+      "period_witness": null
+    },
+    {
+      "artifact": "test_data/instant-pistons/traces/mchprs-mchprs_redstone_update_edgecase-falling-r180.json.gz",
+      "artifact_sha256": "0749ddf3822b2c0132413b6362015fe7488d72f0446c177a2cae477272824a3b",
+      "fixture_id": "mchprs_redstone_update_edgecase",
+      "fixture_sha256": "355634e77f9c75a07632ab7b72d938a2d42b04ca4366de23d049a058ac777d4c",
+      "case_id": "falling",
+      "rotation": 180,
+      "engine": "MCHPRS interpreter",
+      "termination": "completed bounded response; quiescence and periodicity assessed separately",
+      "period_witness": null
+    },
+    {
+      "artifact": "test_data/instant-pistons/traces/mchprs-mchprs_redstone_update_edgecase-falling-r270.json.gz",
+      "artifact_sha256": "55f4d9092899e7b7ab1282bc34a59403534d9f8d6fc7dd42f468c821f2f710ca",
+      "fixture_id": "mchprs_redstone_update_edgecase",
+      "fixture_sha256": "355634e77f9c75a07632ab7b72d938a2d42b04ca4366de23d049a058ac777d4c",
+      "case_id": "falling",
+      "rotation": 270,
+      "engine": "MCHPRS interpreter",
+      "termination": "completed bounded response; quiescence and periodicity assessed separately",
+      "period_witness": null
+    },
+    {
+      "artifact": "test_data/instant-pistons/traces/mchprs-mchprs_redstone_update_edgecase-falling-r90.json.gz",
+      "artifact_sha256": "5664a84d0f92b96f82c84ba6ad6fd9abfdc61d85bec4e211c776bb8ee6987610",
+      "fixture_id": "mchprs_redstone_update_edgecase",
+      "fixture_sha256": "355634e77f9c75a07632ab7b72d938a2d42b04ca4366de23d049a058ac777d4c",
+      "case_id": "falling",
+      "rotation": 90,
+      "engine": "MCHPRS interpreter",
+      "termination": "completed bounded response; quiescence and periodicity assessed separately",
+      "period_witness": null
+    },
+    {
+      "artifact": "test_data/instant-pistons/traces/mchprs-mchprs_redstone_update_edgecase-saved-idle-r0.json.gz",
+      "artifact_sha256": "b68560d52c1098fa12b821b0ebae1d5ceb196edd014eba45cd4edd47ba3a03e5",
+      "fixture_id": "mchprs_redstone_update_edgecase",
+      "fixture_sha256": "355634e77f9c75a07632ab7b72d938a2d42b04ca4366de23d049a058ac777d4c",
+      "case_id": "saved-idle",
+      "rotation": 0,
+      "engine": "MCHPRS interpreter",
+      "termination": "completed bounded response; quiescence and periodicity assessed separately",
+      "period_witness": {
+        "first_tick": 1,
+        "period_ticks": 1,
+        "repeated_complete_cycles": 3,
+        "projection": "all watched blocks/entities/power predicates, scheduled queue, events, ordered motion progress; identities renamed, last_tick relative; BetweenTicks only"
+      }
+    },
+    {
+      "artifact": "test_data/instant-pistons/traces/mchprs-mchprs_redstone_update_edgecase-saved-idle-r180.json.gz",
+      "artifact_sha256": "6f29cb9543c975898e86adf2b7c2113247ac65c66e301474aabb225e21f3eff8",
+      "fixture_id": "mchprs_redstone_update_edgecase",
+      "fixture_sha256": "355634e77f9c75a07632ab7b72d938a2d42b04ca4366de23d049a058ac777d4c",
+      "case_id": "saved-idle",
+      "rotation": 180,
+      "engine": "MCHPRS interpreter",
+      "termination": "completed bounded response; quiescence and periodicity assessed separately",
+      "period_witness": {
+        "first_tick": 1,
+        "period_ticks": 1,
+        "repeated_complete_cycles": 3,
+        "projection": "all watched blocks/entities/power predicates, scheduled queue, events, ordered motion progress; identities renamed, last_tick relative; BetweenTicks only"
+      }
+    },
+    {
+      "artifact": "test_data/instant-pistons/traces/mchprs-mchprs_redstone_update_edgecase-saved-idle-r270.json.gz",
+      "artifact_sha256": "a8784934ac90e798aaf2444d4c5072dec68a9f7905ee4ff138d46d0e5be92d56",
+      "fixture_id": "mchprs_redstone_update_edgecase",
+      "fixture_sha256": "355634e77f9c75a07632ab7b72d938a2d42b04ca4366de23d049a058ac777d4c",
+      "case_id": "saved-idle",
+      "rotation": 270,
+      "engine": "MCHPRS interpreter",
+      "termination": "completed bounded response; quiescence and periodicity assessed separately",
+      "period_witness": {
+        "first_tick": 1,
+        "period_ticks": 1,
+        "repeated_complete_cycles": 3,
+        "projection": "all watched blocks/entities/power predicates, scheduled queue, events, ordered motion progress; identities renamed, last_tick relative; BetweenTicks only"
+      }
+    },
+    {
+      "artifact": "test_data/instant-pistons/traces/mchprs-mchprs_redstone_update_edgecase-saved-idle-r90.json.gz",
+      "artifact_sha256": "4321a2e5fa2e8cb796732e0e3ab867309ce177a825e663ce9590d661825b6d93",
+      "fixture_id": "mchprs_redstone_update_edgecase",
+      "fixture_sha256": "355634e77f9c75a07632ab7b72d938a2d42b04ca4366de23d049a058ac777d4c",
+      "case_id": "saved-idle",
+      "rotation": 90,
+      "engine": "MCHPRS interpreter",
+      "termination": "completed bounded response; quiescence and periodicity assessed separately",
+      "period_witness": {
+        "first_tick": 1,
+        "period_ticks": 1,
+        "repeated_complete_cycles": 3,
+        "projection": "all watched blocks/entities/power predicates, scheduled queue, events, ordered motion progress; identities renamed, last_tick relative; BetweenTicks only"
+      }
+    }
+  ],
+  "label_mappings": [],
+  "negation_paths": [],
+  "first_wave_orders": []
 }

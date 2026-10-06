@@ -130,6 +130,10 @@ requires `mchprs.plots.admin.rewind.unlimited`.
 
 ### Plot Git access
 
+Expert `[E]` and higher have Git access in `server=mchprs`. Expert has a
+100 MiB plot disk allowance; Engineer `[I]`, Moderator, and Admin have 1 GiB.
+Lower ranks retain no Git grant. The shared RAM budget remains separate.
+
 `mchprs.commands.git` is a single allow/deny permission for Git commands,
 completion, glow and sword inspection. Missing nodes deny access. An exact
 denial overrides inherited wildcards and is enforced even when the player has
@@ -302,3 +306,27 @@ The history-limit build deployed successfully as
 ## Latest rank and security changes
 
 See [the complete rank list](MCHPRS_RANKS.md) and [the security audit](SECURITY_AUDIT.md). Builder now has own-plot features with history disabled. Expert and Engineer have explicit history command grants to preserve their access despite parallel inheritance from Builder. Dedicated changes affect only server=mchprs nodes.
+
+## Git rank grants: 2026-10-06
+
+LuckPerms console commands added eight scoped nodes: `mchprs.commands.git`
+for `expert`, `engineer`, `moderator`, and `admin`; `mchprs.git.storage.100`
+for `expert`; and `mchprs.git.storage.1024` for the other three groups.
+Each node is permanent, `true`, and scoped to `server=mchprs`; existing
+inheritance, user overrides, and other permissions were preserved.
+
+The permission database was backed up and validated before the commands at
+`/srv/mchprs/deploy-backups/git-ranks-20261006T104938Z/rf.dump`. The saved rows
+were verified after each command. Permission refresh uses the existing cache.
+
+The backend was built from committed source `e5285c6` and deployed as
+`sha256:5217f37faf2b9336e80da43bdcff1e0a64bb69567556156f99b4b407ed7b96f4`
+so rank disk quotas are enforced. Active configuration sets shared Git RAM to
+1024 MiB, fallback plot disk storage to 100 MiB, and the plot ceiling to 1024 MiB.
+The same backup directory contains the saved world archive, previous config,
+and deployment record. Rollback image:
+`mchprs-mchprs:before-git-ranks-20261006T104938Z`.
+
+Only MCHPRS was restarted. Its 1.21.5 status response and plot database integrity
+passed, with no startup errors. The local rank-policy test verifies all seven
+groups against the live inheritance shape, including explicit user denials.

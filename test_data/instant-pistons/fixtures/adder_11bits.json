@@ -9,7 +9,7 @@
     46
   ],
   "inspection": "test_data/instant-pistons/inspection/adder_11bits.json",
-  "classification": "observed diagnostics; function pending analysis",
+  "classification": "Observed first-wave protocol; no generic compiler certificate",
   "coordinates": {
     "convention": "selection-local relative to saved minimum",
     "origin": [
@@ -210,24 +210,55 @@
         ]
       ]
     },
-    "status": "geometry-derived candidates; see dossier for per-port evidence"
+    "status": "geometry and controlled episodes verified; absent sink and temporal limits described in dossier"
   },
   "setup": {
     "mode": "paste_clipboard(ignore_air=false); raw storage then entities; no notifications",
     "initial": "exact binary states and block entities; empty queues, tick 0 BetweenTicks",
-    "readiness": "saved-idle episode must remain unchanged with empty work; prepared cases wait for no queued work, bounded at 32 ticks"
+    "readiness": "saved-idle remains unchanged with empty work; prepared snapshots require two unchanged quiescent completed boundaries, bounded at 32 ticks"
   },
   "protocol": {
     "logical_one": "nonzero-to-zero event",
     "cases_independent": "fresh equivalent strict-import snapshots",
     "input_during_reset": "undefined; only labeled diagnostics exercise it",
     "held_zero": "no new external event; internal cycles retained",
-    "repeat_use": "pending measured rearm condition; use fresh imports until proven"
+    "repeat_use": "fresh ready imports for independent computations; recurring internal work retained; external rearm during active reset only diagnostic"
   },
-  "observation_decoder": "raw state/property observations; moving states distinct; dust falling edge is event; air output payload means 1 only for verified arithmetic bank",
+  "observation_decoder": {
+    "timing": "completed response boundary; tick 0 is immediately after ordered stimuli",
+    "held_zero": "not a new external event",
+    "moving": "distinct state, never silently treated as an output bit",
+    "encoding": {
+      "air": 1,
+      "redstone_block": 0,
+      "moving_piston": null
+    },
+    "prepared_caps": {
+      "redstone_block": 0,
+      "conducting_non_source": 1
+    },
+    "sum_window_ticks": [
+      1,
+      3
+    ],
+    "carry_window_ticks": null,
+    "carry_encoding": null,
+    "width": 11,
+    "overflow": "discarded modulo 2048",
+    "carry_in_policy": "fixed zero; no mapped external carry-in",
+    "bank_order": "listed positions from LSB to MSB",
+    "consumer_boundary": "labeled sum/carry observations; upstream carry_driver is not a consumer"
+  },
   "ordering_constraints": [],
-  "unknowns": [],
-  "java_status": "not yet compared",
+  "unknowns": [
+    "Arbitrary non-instant consumer/handoff equivalence not certified",
+    "External input or another computation during reset is undefined"
+  ],
+  "java_status": {
+    "compared_cases": 7,
+    "status": "all declared projections match",
+    "scope": "current binary; response boundaries, not internal callbacks; setup difference retained"
+  },
   "rotations": [
     0
   ],
@@ -236,7 +267,23 @@
       "id": "saved-idle",
       "inputs": null,
       "actions": [],
-      "ticks": 24
+      "ticks": 24,
+      "evidence_status": "observed supported episode within dossier's protocol/window",
+      "artifacts": [
+        "test_data/instant-pistons/traces/java-adder_11bits-saved-idle-r0.json.gz",
+        "test_data/instant-pistons/traces/mchprs-adder_11bits-saved-idle-r0.json.gz"
+      ],
+      "expected_status": "behavioral regression observation; arithmetic expectation independently checked where decoder validated",
+      "observations_reference": {
+        "mchprs": "test_data/instant-pistons/mchprs-projections.json",
+        "java": "test_data/instant-pistons/java-projections.json",
+        "key": {
+          "fixture_id": "adder_11bits",
+          "fixture_sha256": "41476594941f234f8759c2b4b12dab72641fbda9fb5f0412a2b0089ba964464e",
+          "case_id": "saved-idle",
+          "rotation": "artifact-specific"
+        }
+      }
     },
     {
       "id": "prepared-0-0-0",
@@ -633,7 +680,23 @@
           ]
         }
       ],
-      "ticks": 18
+      "ticks": 18,
+      "evidence_status": "observed supported episode within dossier's protocol/window",
+      "artifacts": [
+        "test_data/instant-pistons/traces/java-adder_11bits-prepared-0-0-0-r0.json.gz",
+        "test_data/instant-pistons/traces/mchprs-adder_11bits-prepared-0-0-0-r0.json.gz"
+      ],
+      "expected_status": "behavioral regression observation; arithmetic expectation independently checked where decoder validated",
+      "observations_reference": {
+        "mchprs": "test_data/instant-pistons/mchprs-projections.json",
+        "java": "test_data/instant-pistons/java-projections.json",
+        "key": {
+          "fixture_id": "adder_11bits",
+          "fixture_sha256": "41476594941f234f8759c2b4b12dab72641fbda9fb5f0412a2b0089ba964464e",
+          "case_id": "prepared-0-0-0",
+          "rotation": "artifact-specific"
+        }
+      }
     },
     {
       "id": "prepared-1-0-0",
@@ -1030,7 +1093,22 @@
           ]
         }
       ],
-      "ticks": 18
+      "ticks": 18,
+      "evidence_status": "observed supported episode within dossier's protocol/window",
+      "artifacts": [
+        "test_data/instant-pistons/traces/mchprs-adder_11bits-prepared-1-0-0-r0.json.gz"
+      ],
+      "expected_status": "behavioral regression observation; arithmetic expectation independently checked where decoder validated",
+      "observations_reference": {
+        "mchprs": "test_data/instant-pistons/mchprs-projections.json",
+        "java": null,
+        "key": {
+          "fixture_id": "adder_11bits",
+          "fixture_sha256": "41476594941f234f8759c2b4b12dab72641fbda9fb5f0412a2b0089ba964464e",
+          "case_id": "prepared-1-0-0",
+          "rotation": "artifact-specific"
+        }
+      }
     },
     {
       "id": "prepared-0-1-0",
@@ -1427,7 +1505,22 @@
           ]
         }
       ],
-      "ticks": 18
+      "ticks": 18,
+      "evidence_status": "observed supported episode within dossier's protocol/window",
+      "artifacts": [
+        "test_data/instant-pistons/traces/mchprs-adder_11bits-prepared-0-1-0-r0.json.gz"
+      ],
+      "expected_status": "behavioral regression observation; arithmetic expectation independently checked where decoder validated",
+      "observations_reference": {
+        "mchprs": "test_data/instant-pistons/mchprs-projections.json",
+        "java": null,
+        "key": {
+          "fixture_id": "adder_11bits",
+          "fixture_sha256": "41476594941f234f8759c2b4b12dab72641fbda9fb5f0412a2b0089ba964464e",
+          "case_id": "prepared-0-1-0",
+          "rotation": "artifact-specific"
+        }
+      }
     },
     {
       "id": "prepared-31-1-0",
@@ -1824,7 +1917,22 @@
           ]
         }
       ],
-      "ticks": 18
+      "ticks": 18,
+      "evidence_status": "observed supported episode within dossier's protocol/window",
+      "artifacts": [
+        "test_data/instant-pistons/traces/mchprs-adder_11bits-prepared-31-1-0-r0.json.gz"
+      ],
+      "expected_status": "behavioral regression observation; arithmetic expectation independently checked where decoder validated",
+      "observations_reference": {
+        "mchprs": "test_data/instant-pistons/mchprs-projections.json",
+        "java": null,
+        "key": {
+          "fixture_id": "adder_11bits",
+          "fixture_sha256": "41476594941f234f8759c2b4b12dab72641fbda9fb5f0412a2b0089ba964464e",
+          "case_id": "prepared-31-1-0",
+          "rotation": "artifact-specific"
+        }
+      }
     },
     {
       "id": "prepared-1023-1-0",
@@ -2221,7 +2329,23 @@
           ]
         }
       ],
-      "ticks": 18
+      "ticks": 18,
+      "evidence_status": "observed supported episode within dossier's protocol/window",
+      "artifacts": [
+        "test_data/instant-pistons/traces/java-adder_11bits-prepared-1023-1-0-r0.json.gz",
+        "test_data/instant-pistons/traces/mchprs-adder_11bits-prepared-1023-1-0-r0.json.gz"
+      ],
+      "expected_status": "behavioral regression observation; arithmetic expectation independently checked where decoder validated",
+      "observations_reference": {
+        "mchprs": "test_data/instant-pistons/mchprs-projections.json",
+        "java": "test_data/instant-pistons/java-projections.json",
+        "key": {
+          "fixture_id": "adder_11bits",
+          "fixture_sha256": "41476594941f234f8759c2b4b12dab72641fbda9fb5f0412a2b0089ba964464e",
+          "case_id": "prepared-1023-1-0",
+          "rotation": "artifact-specific"
+        }
+      }
     },
     {
       "id": "prepared-1024-1024-0",
@@ -2618,7 +2742,23 @@
           ]
         }
       ],
-      "ticks": 18
+      "ticks": 18,
+      "evidence_status": "observed supported episode within dossier's protocol/window",
+      "artifacts": [
+        "test_data/instant-pistons/traces/java-adder_11bits-prepared-1024-1024-0-r0.json.gz",
+        "test_data/instant-pistons/traces/mchprs-adder_11bits-prepared-1024-1024-0-r0.json.gz"
+      ],
+      "expected_status": "behavioral regression observation; arithmetic expectation independently checked where decoder validated",
+      "observations_reference": {
+        "mchprs": "test_data/instant-pistons/mchprs-projections.json",
+        "java": "test_data/instant-pistons/java-projections.json",
+        "key": {
+          "fixture_id": "adder_11bits",
+          "fixture_sha256": "41476594941f234f8759c2b4b12dab72641fbda9fb5f0412a2b0089ba964464e",
+          "case_id": "prepared-1024-1024-0",
+          "rotation": "artifact-specific"
+        }
+      }
     },
     {
       "id": "prepared-2047-0-0",
@@ -3015,7 +3155,22 @@
           ]
         }
       ],
-      "ticks": 18
+      "ticks": 18,
+      "evidence_status": "observed supported episode within dossier's protocol/window",
+      "artifacts": [
+        "test_data/instant-pistons/traces/mchprs-adder_11bits-prepared-2047-0-0-r0.json.gz"
+      ],
+      "expected_status": "behavioral regression observation; arithmetic expectation independently checked where decoder validated",
+      "observations_reference": {
+        "mchprs": "test_data/instant-pistons/mchprs-projections.json",
+        "java": null,
+        "key": {
+          "fixture_id": "adder_11bits",
+          "fixture_sha256": "41476594941f234f8759c2b4b12dab72641fbda9fb5f0412a2b0089ba964464e",
+          "case_id": "prepared-2047-0-0",
+          "rotation": "artifact-specific"
+        }
+      }
     },
     {
       "id": "prepared-0-2047-0",
@@ -3412,7 +3567,22 @@
           ]
         }
       ],
-      "ticks": 18
+      "ticks": 18,
+      "evidence_status": "observed supported episode within dossier's protocol/window",
+      "artifacts": [
+        "test_data/instant-pistons/traces/mchprs-adder_11bits-prepared-0-2047-0-r0.json.gz"
+      ],
+      "expected_status": "behavioral regression observation; arithmetic expectation independently checked where decoder validated",
+      "observations_reference": {
+        "mchprs": "test_data/instant-pistons/mchprs-projections.json",
+        "java": null,
+        "key": {
+          "fixture_id": "adder_11bits",
+          "fixture_sha256": "41476594941f234f8759c2b4b12dab72641fbda9fb5f0412a2b0089ba964464e",
+          "case_id": "prepared-0-2047-0",
+          "rotation": "artifact-specific"
+        }
+      }
     },
     {
       "id": "prepared-2047-1-0",
@@ -3809,7 +3979,22 @@
           ]
         }
       ],
-      "ticks": 18
+      "ticks": 18,
+      "evidence_status": "observed supported episode within dossier's protocol/window",
+      "artifacts": [
+        "test_data/instant-pistons/traces/mchprs-adder_11bits-prepared-2047-1-0-r0.json.gz"
+      ],
+      "expected_status": "behavioral regression observation; arithmetic expectation independently checked where decoder validated",
+      "observations_reference": {
+        "mchprs": "test_data/instant-pistons/mchprs-projections.json",
+        "java": null,
+        "key": {
+          "fixture_id": "adder_11bits",
+          "fixture_sha256": "41476594941f234f8759c2b4b12dab72641fbda9fb5f0412a2b0089ba964464e",
+          "case_id": "prepared-2047-1-0",
+          "rotation": "artifact-specific"
+        }
+      }
     },
     {
       "id": "prepared-2047-2047-0",
@@ -4206,7 +4391,23 @@
           ]
         }
       ],
-      "ticks": 18
+      "ticks": 18,
+      "evidence_status": "observed supported episode within dossier's protocol/window",
+      "artifacts": [
+        "test_data/instant-pistons/traces/java-adder_11bits-prepared-2047-2047-0-r0.json.gz",
+        "test_data/instant-pistons/traces/mchprs-adder_11bits-prepared-2047-2047-0-r0.json.gz"
+      ],
+      "expected_status": "behavioral regression observation; arithmetic expectation independently checked where decoder validated",
+      "observations_reference": {
+        "mchprs": "test_data/instant-pistons/mchprs-projections.json",
+        "java": "test_data/instant-pistons/java-projections.json",
+        "key": {
+          "fixture_id": "adder_11bits",
+          "fixture_sha256": "41476594941f234f8759c2b4b12dab72641fbda9fb5f0412a2b0089ba964464e",
+          "case_id": "prepared-2047-2047-0",
+          "rotation": "artifact-specific"
+        }
+      }
     },
     {
       "id": "prepared-1365-682-0",
@@ -4603,7 +4804,23 @@
           ]
         }
       ],
-      "ticks": 18
+      "ticks": 18,
+      "evidence_status": "observed supported episode within dossier's protocol/window",
+      "artifacts": [
+        "test_data/instant-pistons/traces/java-adder_11bits-prepared-1365-682-0-r0.json.gz",
+        "test_data/instant-pistons/traces/mchprs-adder_11bits-prepared-1365-682-0-r0.json.gz"
+      ],
+      "expected_status": "behavioral regression observation; arithmetic expectation independently checked where decoder validated",
+      "observations_reference": {
+        "mchprs": "test_data/instant-pistons/mchprs-projections.json",
+        "java": "test_data/instant-pistons/java-projections.json",
+        "key": {
+          "fixture_id": "adder_11bits",
+          "fixture_sha256": "41476594941f234f8759c2b4b12dab72641fbda9fb5f0412a2b0089ba964464e",
+          "case_id": "prepared-1365-682-0",
+          "rotation": "artifact-specific"
+        }
+      }
     },
     {
       "id": "prepared-682-1365-0",
@@ -5000,7 +5217,23 @@
           ]
         }
       ],
-      "ticks": 18
+      "ticks": 18,
+      "evidence_status": "observed supported episode within dossier's protocol/window",
+      "artifacts": [
+        "test_data/instant-pistons/traces/java-adder_11bits-prepared-682-1365-0-r0.json.gz",
+        "test_data/instant-pistons/traces/mchprs-adder_11bits-prepared-682-1365-0-r0.json.gz"
+      ],
+      "expected_status": "behavioral regression observation; arithmetic expectation independently checked where decoder validated",
+      "observations_reference": {
+        "mchprs": "test_data/instant-pistons/mchprs-projections.json",
+        "java": "test_data/instant-pistons/java-projections.json",
+        "key": {
+          "fixture_id": "adder_11bits",
+          "fixture_sha256": "41476594941f234f8759c2b4b12dab72641fbda9fb5f0412a2b0089ba964464e",
+          "case_id": "prepared-682-1365-0",
+          "rotation": "artifact-specific"
+        }
+      }
     },
     {
       "id": "prepared-2-0-0",
@@ -5397,7 +5630,22 @@
           ]
         }
       ],
-      "ticks": 18
+      "ticks": 18,
+      "evidence_status": "observed supported episode within dossier's protocol/window",
+      "artifacts": [
+        "test_data/instant-pistons/traces/mchprs-adder_11bits-prepared-2-0-0-r0.json.gz"
+      ],
+      "expected_status": "behavioral regression observation; arithmetic expectation independently checked where decoder validated",
+      "observations_reference": {
+        "mchprs": "test_data/instant-pistons/mchprs-projections.json",
+        "java": null,
+        "key": {
+          "fixture_id": "adder_11bits",
+          "fixture_sha256": "41476594941f234f8759c2b4b12dab72641fbda9fb5f0412a2b0089ba964464e",
+          "case_id": "prepared-2-0-0",
+          "rotation": "artifact-specific"
+        }
+      }
     },
     {
       "id": "prepared-4-0-0",
@@ -5794,7 +6042,22 @@
           ]
         }
       ],
-      "ticks": 18
+      "ticks": 18,
+      "evidence_status": "observed supported episode within dossier's protocol/window",
+      "artifacts": [
+        "test_data/instant-pistons/traces/mchprs-adder_11bits-prepared-4-0-0-r0.json.gz"
+      ],
+      "expected_status": "behavioral regression observation; arithmetic expectation independently checked where decoder validated",
+      "observations_reference": {
+        "mchprs": "test_data/instant-pistons/mchprs-projections.json",
+        "java": null,
+        "key": {
+          "fixture_id": "adder_11bits",
+          "fixture_sha256": "41476594941f234f8759c2b4b12dab72641fbda9fb5f0412a2b0089ba964464e",
+          "case_id": "prepared-4-0-0",
+          "rotation": "artifact-specific"
+        }
+      }
     },
     {
       "id": "prepared-8-0-0",
@@ -6191,7 +6454,22 @@
           ]
         }
       ],
-      "ticks": 18
+      "ticks": 18,
+      "evidence_status": "observed supported episode within dossier's protocol/window",
+      "artifacts": [
+        "test_data/instant-pistons/traces/mchprs-adder_11bits-prepared-8-0-0-r0.json.gz"
+      ],
+      "expected_status": "behavioral regression observation; arithmetic expectation independently checked where decoder validated",
+      "observations_reference": {
+        "mchprs": "test_data/instant-pistons/mchprs-projections.json",
+        "java": null,
+        "key": {
+          "fixture_id": "adder_11bits",
+          "fixture_sha256": "41476594941f234f8759c2b4b12dab72641fbda9fb5f0412a2b0089ba964464e",
+          "case_id": "prepared-8-0-0",
+          "rotation": "artifact-specific"
+        }
+      }
     },
     {
       "id": "prepared-16-0-0",
@@ -6588,7 +6866,22 @@
           ]
         }
       ],
-      "ticks": 18
+      "ticks": 18,
+      "evidence_status": "observed supported episode within dossier's protocol/window",
+      "artifacts": [
+        "test_data/instant-pistons/traces/mchprs-adder_11bits-prepared-16-0-0-r0.json.gz"
+      ],
+      "expected_status": "behavioral regression observation; arithmetic expectation independently checked where decoder validated",
+      "observations_reference": {
+        "mchprs": "test_data/instant-pistons/mchprs-projections.json",
+        "java": null,
+        "key": {
+          "fixture_id": "adder_11bits",
+          "fixture_sha256": "41476594941f234f8759c2b4b12dab72641fbda9fb5f0412a2b0089ba964464e",
+          "case_id": "prepared-16-0-0",
+          "rotation": "artifact-specific"
+        }
+      }
     },
     {
       "id": "prepared-32-0-0",
@@ -6985,7 +7278,22 @@
           ]
         }
       ],
-      "ticks": 18
+      "ticks": 18,
+      "evidence_status": "observed supported episode within dossier's protocol/window",
+      "artifacts": [
+        "test_data/instant-pistons/traces/mchprs-adder_11bits-prepared-32-0-0-r0.json.gz"
+      ],
+      "expected_status": "behavioral regression observation; arithmetic expectation independently checked where decoder validated",
+      "observations_reference": {
+        "mchprs": "test_data/instant-pistons/mchprs-projections.json",
+        "java": null,
+        "key": {
+          "fixture_id": "adder_11bits",
+          "fixture_sha256": "41476594941f234f8759c2b4b12dab72641fbda9fb5f0412a2b0089ba964464e",
+          "case_id": "prepared-32-0-0",
+          "rotation": "artifact-specific"
+        }
+      }
     },
     {
       "id": "prepared-64-0-0",
@@ -7382,7 +7690,22 @@
           ]
         }
       ],
-      "ticks": 18
+      "ticks": 18,
+      "evidence_status": "observed supported episode within dossier's protocol/window",
+      "artifacts": [
+        "test_data/instant-pistons/traces/mchprs-adder_11bits-prepared-64-0-0-r0.json.gz"
+      ],
+      "expected_status": "behavioral regression observation; arithmetic expectation independently checked where decoder validated",
+      "observations_reference": {
+        "mchprs": "test_data/instant-pistons/mchprs-projections.json",
+        "java": null,
+        "key": {
+          "fixture_id": "adder_11bits",
+          "fixture_sha256": "41476594941f234f8759c2b4b12dab72641fbda9fb5f0412a2b0089ba964464e",
+          "case_id": "prepared-64-0-0",
+          "rotation": "artifact-specific"
+        }
+      }
     },
     {
       "id": "prepared-128-0-0",
@@ -7779,7 +8102,22 @@
           ]
         }
       ],
-      "ticks": 18
+      "ticks": 18,
+      "evidence_status": "observed supported episode within dossier's protocol/window",
+      "artifacts": [
+        "test_data/instant-pistons/traces/mchprs-adder_11bits-prepared-128-0-0-r0.json.gz"
+      ],
+      "expected_status": "behavioral regression observation; arithmetic expectation independently checked where decoder validated",
+      "observations_reference": {
+        "mchprs": "test_data/instant-pistons/mchprs-projections.json",
+        "java": null,
+        "key": {
+          "fixture_id": "adder_11bits",
+          "fixture_sha256": "41476594941f234f8759c2b4b12dab72641fbda9fb5f0412a2b0089ba964464e",
+          "case_id": "prepared-128-0-0",
+          "rotation": "artifact-specific"
+        }
+      }
     },
     {
       "id": "prepared-256-0-0",
@@ -8176,7 +8514,22 @@
           ]
         }
       ],
-      "ticks": 18
+      "ticks": 18,
+      "evidence_status": "observed supported episode within dossier's protocol/window",
+      "artifacts": [
+        "test_data/instant-pistons/traces/mchprs-adder_11bits-prepared-256-0-0-r0.json.gz"
+      ],
+      "expected_status": "behavioral regression observation; arithmetic expectation independently checked where decoder validated",
+      "observations_reference": {
+        "mchprs": "test_data/instant-pistons/mchprs-projections.json",
+        "java": null,
+        "key": {
+          "fixture_id": "adder_11bits",
+          "fixture_sha256": "41476594941f234f8759c2b4b12dab72641fbda9fb5f0412a2b0089ba964464e",
+          "case_id": "prepared-256-0-0",
+          "rotation": "artifact-specific"
+        }
+      }
     },
     {
       "id": "prepared-512-0-0",
@@ -8573,7 +8926,22 @@
           ]
         }
       ],
-      "ticks": 18
+      "ticks": 18,
+      "evidence_status": "observed supported episode within dossier's protocol/window",
+      "artifacts": [
+        "test_data/instant-pistons/traces/mchprs-adder_11bits-prepared-512-0-0-r0.json.gz"
+      ],
+      "expected_status": "behavioral regression observation; arithmetic expectation independently checked where decoder validated",
+      "observations_reference": {
+        "mchprs": "test_data/instant-pistons/mchprs-projections.json",
+        "java": null,
+        "key": {
+          "fixture_id": "adder_11bits",
+          "fixture_sha256": "41476594941f234f8759c2b4b12dab72641fbda9fb5f0412a2b0089ba964464e",
+          "case_id": "prepared-512-0-0",
+          "rotation": "artifact-specific"
+        }
+      }
     },
     {
       "id": "prepared-1024-0-0",
@@ -8970,7 +9338,22 @@
           ]
         }
       ],
-      "ticks": 18
+      "ticks": 18,
+      "evidence_status": "observed supported episode within dossier's protocol/window",
+      "artifacts": [
+        "test_data/instant-pistons/traces/mchprs-adder_11bits-prepared-1024-0-0-r0.json.gz"
+      ],
+      "expected_status": "behavioral regression observation; arithmetic expectation independently checked where decoder validated",
+      "observations_reference": {
+        "mchprs": "test_data/instant-pistons/mchprs-projections.json",
+        "java": null,
+        "key": {
+          "fixture_id": "adder_11bits",
+          "fixture_sha256": "41476594941f234f8759c2b4b12dab72641fbda9fb5f0412a2b0089ba964464e",
+          "case_id": "prepared-1024-0-0",
+          "rotation": "artifact-specific"
+        }
+      }
     },
     {
       "id": "prepared-0-2-0",
@@ -9367,7 +9750,22 @@
           ]
         }
       ],
-      "ticks": 18
+      "ticks": 18,
+      "evidence_status": "observed supported episode within dossier's protocol/window",
+      "artifacts": [
+        "test_data/instant-pistons/traces/mchprs-adder_11bits-prepared-0-2-0-r0.json.gz"
+      ],
+      "expected_status": "behavioral regression observation; arithmetic expectation independently checked where decoder validated",
+      "observations_reference": {
+        "mchprs": "test_data/instant-pistons/mchprs-projections.json",
+        "java": null,
+        "key": {
+          "fixture_id": "adder_11bits",
+          "fixture_sha256": "41476594941f234f8759c2b4b12dab72641fbda9fb5f0412a2b0089ba964464e",
+          "case_id": "prepared-0-2-0",
+          "rotation": "artifact-specific"
+        }
+      }
     },
     {
       "id": "prepared-0-4-0",
@@ -9764,7 +10162,22 @@
           ]
         }
       ],
-      "ticks": 18
+      "ticks": 18,
+      "evidence_status": "observed supported episode within dossier's protocol/window",
+      "artifacts": [
+        "test_data/instant-pistons/traces/mchprs-adder_11bits-prepared-0-4-0-r0.json.gz"
+      ],
+      "expected_status": "behavioral regression observation; arithmetic expectation independently checked where decoder validated",
+      "observations_reference": {
+        "mchprs": "test_data/instant-pistons/mchprs-projections.json",
+        "java": null,
+        "key": {
+          "fixture_id": "adder_11bits",
+          "fixture_sha256": "41476594941f234f8759c2b4b12dab72641fbda9fb5f0412a2b0089ba964464e",
+          "case_id": "prepared-0-4-0",
+          "rotation": "artifact-specific"
+        }
+      }
     },
     {
       "id": "prepared-0-8-0",
@@ -10161,7 +10574,22 @@
           ]
         }
       ],
-      "ticks": 18
+      "ticks": 18,
+      "evidence_status": "observed supported episode within dossier's protocol/window",
+      "artifacts": [
+        "test_data/instant-pistons/traces/mchprs-adder_11bits-prepared-0-8-0-r0.json.gz"
+      ],
+      "expected_status": "behavioral regression observation; arithmetic expectation independently checked where decoder validated",
+      "observations_reference": {
+        "mchprs": "test_data/instant-pistons/mchprs-projections.json",
+        "java": null,
+        "key": {
+          "fixture_id": "adder_11bits",
+          "fixture_sha256": "41476594941f234f8759c2b4b12dab72641fbda9fb5f0412a2b0089ba964464e",
+          "case_id": "prepared-0-8-0",
+          "rotation": "artifact-specific"
+        }
+      }
     },
     {
       "id": "prepared-0-16-0",
@@ -10558,7 +10986,22 @@
           ]
         }
       ],
-      "ticks": 18
+      "ticks": 18,
+      "evidence_status": "observed supported episode within dossier's protocol/window",
+      "artifacts": [
+        "test_data/instant-pistons/traces/mchprs-adder_11bits-prepared-0-16-0-r0.json.gz"
+      ],
+      "expected_status": "behavioral regression observation; arithmetic expectation independently checked where decoder validated",
+      "observations_reference": {
+        "mchprs": "test_data/instant-pistons/mchprs-projections.json",
+        "java": null,
+        "key": {
+          "fixture_id": "adder_11bits",
+          "fixture_sha256": "41476594941f234f8759c2b4b12dab72641fbda9fb5f0412a2b0089ba964464e",
+          "case_id": "prepared-0-16-0",
+          "rotation": "artifact-specific"
+        }
+      }
     },
     {
       "id": "prepared-0-32-0",
@@ -10955,7 +11398,22 @@
           ]
         }
       ],
-      "ticks": 18
+      "ticks": 18,
+      "evidence_status": "observed supported episode within dossier's protocol/window",
+      "artifacts": [
+        "test_data/instant-pistons/traces/mchprs-adder_11bits-prepared-0-32-0-r0.json.gz"
+      ],
+      "expected_status": "behavioral regression observation; arithmetic expectation independently checked where decoder validated",
+      "observations_reference": {
+        "mchprs": "test_data/instant-pistons/mchprs-projections.json",
+        "java": null,
+        "key": {
+          "fixture_id": "adder_11bits",
+          "fixture_sha256": "41476594941f234f8759c2b4b12dab72641fbda9fb5f0412a2b0089ba964464e",
+          "case_id": "prepared-0-32-0",
+          "rotation": "artifact-specific"
+        }
+      }
     },
     {
       "id": "prepared-0-64-0",
@@ -11352,7 +11810,22 @@
           ]
         }
       ],
-      "ticks": 18
+      "ticks": 18,
+      "evidence_status": "observed supported episode within dossier's protocol/window",
+      "artifacts": [
+        "test_data/instant-pistons/traces/mchprs-adder_11bits-prepared-0-64-0-r0.json.gz"
+      ],
+      "expected_status": "behavioral regression observation; arithmetic expectation independently checked where decoder validated",
+      "observations_reference": {
+        "mchprs": "test_data/instant-pistons/mchprs-projections.json",
+        "java": null,
+        "key": {
+          "fixture_id": "adder_11bits",
+          "fixture_sha256": "41476594941f234f8759c2b4b12dab72641fbda9fb5f0412a2b0089ba964464e",
+          "case_id": "prepared-0-64-0",
+          "rotation": "artifact-specific"
+        }
+      }
     },
     {
       "id": "prepared-0-128-0",
@@ -11749,7 +12222,22 @@
           ]
         }
       ],
-      "ticks": 18
+      "ticks": 18,
+      "evidence_status": "observed supported episode within dossier's protocol/window",
+      "artifacts": [
+        "test_data/instant-pistons/traces/mchprs-adder_11bits-prepared-0-128-0-r0.json.gz"
+      ],
+      "expected_status": "behavioral regression observation; arithmetic expectation independently checked where decoder validated",
+      "observations_reference": {
+        "mchprs": "test_data/instant-pistons/mchprs-projections.json",
+        "java": null,
+        "key": {
+          "fixture_id": "adder_11bits",
+          "fixture_sha256": "41476594941f234f8759c2b4b12dab72641fbda9fb5f0412a2b0089ba964464e",
+          "case_id": "prepared-0-128-0",
+          "rotation": "artifact-specific"
+        }
+      }
     },
     {
       "id": "prepared-0-256-0",
@@ -12146,7 +12634,22 @@
           ]
         }
       ],
-      "ticks": 18
+      "ticks": 18,
+      "evidence_status": "observed supported episode within dossier's protocol/window",
+      "artifacts": [
+        "test_data/instant-pistons/traces/mchprs-adder_11bits-prepared-0-256-0-r0.json.gz"
+      ],
+      "expected_status": "behavioral regression observation; arithmetic expectation independently checked where decoder validated",
+      "observations_reference": {
+        "mchprs": "test_data/instant-pistons/mchprs-projections.json",
+        "java": null,
+        "key": {
+          "fixture_id": "adder_11bits",
+          "fixture_sha256": "41476594941f234f8759c2b4b12dab72641fbda9fb5f0412a2b0089ba964464e",
+          "case_id": "prepared-0-256-0",
+          "rotation": "artifact-specific"
+        }
+      }
     },
     {
       "id": "prepared-0-512-0",
@@ -12543,7 +13046,22 @@
           ]
         }
       ],
-      "ticks": 18
+      "ticks": 18,
+      "evidence_status": "observed supported episode within dossier's protocol/window",
+      "artifacts": [
+        "test_data/instant-pistons/traces/mchprs-adder_11bits-prepared-0-512-0-r0.json.gz"
+      ],
+      "expected_status": "behavioral regression observation; arithmetic expectation independently checked where decoder validated",
+      "observations_reference": {
+        "mchprs": "test_data/instant-pistons/mchprs-projections.json",
+        "java": null,
+        "key": {
+          "fixture_id": "adder_11bits",
+          "fixture_sha256": "41476594941f234f8759c2b4b12dab72641fbda9fb5f0412a2b0089ba964464e",
+          "case_id": "prepared-0-512-0",
+          "rotation": "artifact-specific"
+        }
+      }
     },
     {
       "id": "prepared-0-1024-0",
@@ -12940,7 +13458,22 @@
           ]
         }
       ],
-      "ticks": 18
+      "ticks": 18,
+      "evidence_status": "observed supported episode within dossier's protocol/window",
+      "artifacts": [
+        "test_data/instant-pistons/traces/mchprs-adder_11bits-prepared-0-1024-0-r0.json.gz"
+      ],
+      "expected_status": "behavioral regression observation; arithmetic expectation independently checked where decoder validated",
+      "observations_reference": {
+        "mchprs": "test_data/instant-pistons/mchprs-projections.json",
+        "java": null,
+        "key": {
+          "fixture_id": "adder_11bits",
+          "fixture_sha256": "41476594941f234f8759c2b4b12dab72641fbda9fb5f0412a2b0089ba964464e",
+          "case_id": "prepared-0-1024-0",
+          "rotation": "artifact-specific"
+        }
+      }
     },
     {
       "id": "prepared-970-161-0",
@@ -13337,7 +13870,22 @@
           ]
         }
       ],
-      "ticks": 18
+      "ticks": 18,
+      "evidence_status": "observed supported episode within dossier's protocol/window",
+      "artifacts": [
+        "test_data/instant-pistons/traces/mchprs-adder_11bits-prepared-970-161-0-r0.json.gz"
+      ],
+      "expected_status": "behavioral regression observation; arithmetic expectation independently checked where decoder validated",
+      "observations_reference": {
+        "mchprs": "test_data/instant-pistons/mchprs-projections.json",
+        "java": null,
+        "key": {
+          "fixture_id": "adder_11bits",
+          "fixture_sha256": "41476594941f234f8759c2b4b12dab72641fbda9fb5f0412a2b0089ba964464e",
+          "case_id": "prepared-970-161-0",
+          "rotation": "artifact-specific"
+        }
+      }
     },
     {
       "id": "prepared-396-1915-0",
@@ -13734,7 +14282,22 @@
           ]
         }
       ],
-      "ticks": 18
+      "ticks": 18,
+      "evidence_status": "observed supported episode within dossier's protocol/window",
+      "artifacts": [
+        "test_data/instant-pistons/traces/mchprs-adder_11bits-prepared-396-1915-0-r0.json.gz"
+      ],
+      "expected_status": "behavioral regression observation; arithmetic expectation independently checked where decoder validated",
+      "observations_reference": {
+        "mchprs": "test_data/instant-pistons/mchprs-projections.json",
+        "java": null,
+        "key": {
+          "fixture_id": "adder_11bits",
+          "fixture_sha256": "41476594941f234f8759c2b4b12dab72641fbda9fb5f0412a2b0089ba964464e",
+          "case_id": "prepared-396-1915-0",
+          "rotation": "artifact-specific"
+        }
+      }
     },
     {
       "id": "prepared-1694-1381-0",
@@ -14131,7 +14694,22 @@
           ]
         }
       ],
-      "ticks": 18
+      "ticks": 18,
+      "evidence_status": "observed supported episode within dossier's protocol/window",
+      "artifacts": [
+        "test_data/instant-pistons/traces/mchprs-adder_11bits-prepared-1694-1381-0-r0.json.gz"
+      ],
+      "expected_status": "behavioral regression observation; arithmetic expectation independently checked where decoder validated",
+      "observations_reference": {
+        "mchprs": "test_data/instant-pistons/mchprs-projections.json",
+        "java": null,
+        "key": {
+          "fixture_id": "adder_11bits",
+          "fixture_sha256": "41476594941f234f8759c2b4b12dab72641fbda9fb5f0412a2b0089ba964464e",
+          "case_id": "prepared-1694-1381-0",
+          "rotation": "artifact-specific"
+        }
+      }
     },
     {
       "id": "prepared-1920-1247-0",
@@ -14528,7 +15106,22 @@
           ]
         }
       ],
-      "ticks": 18
+      "ticks": 18,
+      "evidence_status": "observed supported episode within dossier's protocol/window",
+      "artifacts": [
+        "test_data/instant-pistons/traces/mchprs-adder_11bits-prepared-1920-1247-0-r0.json.gz"
+      ],
+      "expected_status": "behavioral regression observation; arithmetic expectation independently checked where decoder validated",
+      "observations_reference": {
+        "mchprs": "test_data/instant-pistons/mchprs-projections.json",
+        "java": null,
+        "key": {
+          "fixture_id": "adder_11bits",
+          "fixture_sha256": "41476594941f234f8759c2b4b12dab72641fbda9fb5f0412a2b0089ba964464e",
+          "case_id": "prepared-1920-1247-0",
+          "rotation": "artifact-specific"
+        }
+      }
     },
     {
       "id": "prepared-1202-1129-0",
@@ -14925,7 +15518,22 @@
           ]
         }
       ],
-      "ticks": 18
+      "ticks": 18,
+      "evidence_status": "observed supported episode within dossier's protocol/window",
+      "artifacts": [
+        "test_data/instant-pistons/traces/mchprs-adder_11bits-prepared-1202-1129-0-r0.json.gz"
+      ],
+      "expected_status": "behavioral regression observation; arithmetic expectation independently checked where decoder validated",
+      "observations_reference": {
+        "mchprs": "test_data/instant-pistons/mchprs-projections.json",
+        "java": null,
+        "key": {
+          "fixture_id": "adder_11bits",
+          "fixture_sha256": "41476594941f234f8759c2b4b12dab72641fbda9fb5f0412a2b0089ba964464e",
+          "case_id": "prepared-1202-1129-0",
+          "rotation": "artifact-specific"
+        }
+      }
     },
     {
       "id": "prepared-692-1667-0",
@@ -15322,7 +15930,22 @@
           ]
         }
       ],
-      "ticks": 18
+      "ticks": 18,
+      "evidence_status": "observed supported episode within dossier's protocol/window",
+      "artifacts": [
+        "test_data/instant-pistons/traces/mchprs-adder_11bits-prepared-692-1667-0-r0.json.gz"
+      ],
+      "expected_status": "behavioral regression observation; arithmetic expectation independently checked where decoder validated",
+      "observations_reference": {
+        "mchprs": "test_data/instant-pistons/mchprs-projections.json",
+        "java": null,
+        "key": {
+          "fixture_id": "adder_11bits",
+          "fixture_sha256": "41476594941f234f8759c2b4b12dab72641fbda9fb5f0412a2b0089ba964464e",
+          "case_id": "prepared-692-1667-0",
+          "rotation": "artifact-specific"
+        }
+      }
     },
     {
       "id": "prepared-518-429-0",
@@ -15719,7 +16342,22 @@
           ]
         }
       ],
-      "ticks": 18
+      "ticks": 18,
+      "evidence_status": "observed supported episode within dossier's protocol/window",
+      "artifacts": [
+        "test_data/instant-pistons/traces/mchprs-adder_11bits-prepared-518-429-0-r0.json.gz"
+      ],
+      "expected_status": "behavioral regression observation; arithmetic expectation independently checked where decoder validated",
+      "observations_reference": {
+        "mchprs": "test_data/instant-pistons/mchprs-projections.json",
+        "java": null,
+        "key": {
+          "fixture_id": "adder_11bits",
+          "fixture_sha256": "41476594941f234f8759c2b4b12dab72641fbda9fb5f0412a2b0089ba964464e",
+          "case_id": "prepared-518-429-0",
+          "rotation": "artifact-specific"
+        }
+      }
     },
     {
       "id": "prepared-1832-103-0",
@@ -16116,7 +16754,2655 @@
           ]
         }
       ],
-      "ticks": 18
+      "ticks": 18,
+      "evidence_status": "observed supported episode within dossier's protocol/window",
+      "artifacts": [
+        "test_data/instant-pistons/traces/mchprs-adder_11bits-prepared-1832-103-0-r0.json.gz"
+      ],
+      "expected_status": "behavioral regression observation; arithmetic expectation independently checked where decoder validated",
+      "observations_reference": {
+        "mchprs": "test_data/instant-pistons/mchprs-projections.json",
+        "java": null,
+        "key": {
+          "fixture_id": "adder_11bits",
+          "fixture_sha256": "41476594941f234f8759c2b4b12dab72641fbda9fb5f0412a2b0089ba964464e",
+          "case_id": "prepared-1832-103-0",
+          "rotation": "artifact-specific"
+        }
+      }
     }
-  ]
+  ],
+  "dossier": "docs/INSTANT_PISTON_SCHEMATICS.md#adder-11bits",
+  "purpose": "Canonical corrected 11-bit adder; sum modulo 2048.",
+  "mechanism": "Exact refreshed binary is 21 x 7 x 46, SHA-256 41476594941f234f8759c2b4b12dab72641fbda9fb5f0412a2b0089ba964464e. Six signs A1/A2, B1/B2, O1/O2 identify the first two bit positions of each bank. Caps A_i=(3,5,43-4i), B_i=(3,5,41-4i); payload output O_i=(20,2,41-4i), i=0..10. Signs are one block above these particular caps/payloads, as verified by the geometry and single-bit experiments. Increasing bit index decreases Z. The actual trigger is (2,4,45), with no TICK sign; loader offset is (2,4,44). Each prepared cap is redstone for zero or a conducting non-source block for one.",
+  "reset_and_next_use": "Fresh snapshots verify zero, every single bit in both banks, carry chains, 1024+1024 overflow, maximum operands, maximum-plus-one, 0x555+0x2aa in both orders and eight deterministic LCG-seeded pairs (seed 0x1a57; parameters in manifests). The eleven output payloads decode at 1..3; moving outputs at 4..5 are invalid; tick 6 is physical reset, not the arithmetic result. No twelfth observed output exists: overflow is discarded in the declared 11-bit decoder. Existing Java references also match the current hash; new pack captures independently cover the listed representative arithmetic episodes.\n\nPrepared data use all raw writes before notifications, then two unchanged quiescent boundaries (normally two ticks); Java uses normal setblock and eight measured setup ticks. Those setup semantics are explicitly distinct. The input source is held high until trigger, so independent prepared cases do not launch computations. Repeated calculations require a separately proven rearm protocol; none is certified here.",
+  "recognition_guards": "Do not import the 21 x 7 x 45 signless predecessor's offsets or old changed-input discrepancy. Geometric observer seeds alone miss inhibitory, downward and state/update paths. Keep the whole trigger/reset/order interface until a boundary adapter is validated.",
+  "evidence": [
+    {
+      "artifact": "test_data/instant-pistons/traces/java-adder_11bits-prepared-0-0-0-r0.json.gz",
+      "artifact_sha256": "737cfb2b26db259add2c9371a2e0f780a7a46995fd1e1e96dd43952e7bd2d711",
+      "fixture_id": "adder_11bits",
+      "fixture_sha256": "41476594941f234f8759c2b4b12dab72641fbda9fb5f0412a2b0089ba964464e",
+      "case_id": "prepared-0-0-0",
+      "rotation": 0,
+      "engine": "Java",
+      "termination": "completed bounded response; no claim of settled state",
+      "period_witness": null
+    },
+    {
+      "artifact": "test_data/instant-pistons/traces/java-adder_11bits-prepared-1023-1-0-r0.json.gz",
+      "artifact_sha256": "6221eb89e97c47a0069f310d3a2c4161e92ddf1ac13bbffac2dfb166b9466c1e",
+      "fixture_id": "adder_11bits",
+      "fixture_sha256": "41476594941f234f8759c2b4b12dab72641fbda9fb5f0412a2b0089ba964464e",
+      "case_id": "prepared-1023-1-0",
+      "rotation": 0,
+      "engine": "Java",
+      "termination": "completed bounded response; no claim of settled state",
+      "period_witness": null
+    },
+    {
+      "artifact": "test_data/instant-pistons/traces/java-adder_11bits-prepared-1024-1024-0-r0.json.gz",
+      "artifact_sha256": "c687e6f555ff8f1169265f592ee6d090397580063da51656eefde5fedf5deaf7",
+      "fixture_id": "adder_11bits",
+      "fixture_sha256": "41476594941f234f8759c2b4b12dab72641fbda9fb5f0412a2b0089ba964464e",
+      "case_id": "prepared-1024-1024-0",
+      "rotation": 0,
+      "engine": "Java",
+      "termination": "completed bounded response; no claim of settled state",
+      "period_witness": null
+    },
+    {
+      "artifact": "test_data/instant-pistons/traces/java-adder_11bits-prepared-1365-682-0-r0.json.gz",
+      "artifact_sha256": "67d58343fe349db264f72f0becb2887d28f2e1603768c1c275c8db0d8abb8e49",
+      "fixture_id": "adder_11bits",
+      "fixture_sha256": "41476594941f234f8759c2b4b12dab72641fbda9fb5f0412a2b0089ba964464e",
+      "case_id": "prepared-1365-682-0",
+      "rotation": 0,
+      "engine": "Java",
+      "termination": "completed bounded response; no claim of settled state",
+      "period_witness": null
+    },
+    {
+      "artifact": "test_data/instant-pistons/traces/java-adder_11bits-prepared-2047-2047-0-r0.json.gz",
+      "artifact_sha256": "6f215ca42deedd1d14e78dc974559301d35bc2267290119a65900b1ddcb77775",
+      "fixture_id": "adder_11bits",
+      "fixture_sha256": "41476594941f234f8759c2b4b12dab72641fbda9fb5f0412a2b0089ba964464e",
+      "case_id": "prepared-2047-2047-0",
+      "rotation": 0,
+      "engine": "Java",
+      "termination": "completed bounded response; no claim of settled state",
+      "period_witness": null
+    },
+    {
+      "artifact": "test_data/instant-pistons/traces/java-adder_11bits-prepared-682-1365-0-r0.json.gz",
+      "artifact_sha256": "3af4ef8f3cf9a595df54375022a2276b80d7969b4f8bbf8f0e4ca67b49f18675",
+      "fixture_id": "adder_11bits",
+      "fixture_sha256": "41476594941f234f8759c2b4b12dab72641fbda9fb5f0412a2b0089ba964464e",
+      "case_id": "prepared-682-1365-0",
+      "rotation": 0,
+      "engine": "Java",
+      "termination": "completed bounded response; no claim of settled state",
+      "period_witness": null
+    },
+    {
+      "artifact": "test_data/instant-pistons/traces/java-adder_11bits-saved-idle-r0.json.gz",
+      "artifact_sha256": "0458eec72202383fdefea6cbd6c6345c5d39cb36fe6ad2694a4ac4dfc908ced2",
+      "fixture_id": "adder_11bits",
+      "fixture_sha256": "41476594941f234f8759c2b4b12dab72641fbda9fb5f0412a2b0089ba964464e",
+      "case_id": "saved-idle",
+      "rotation": 0,
+      "engine": "Java",
+      "termination": "completed bounded response; no claim of settled state",
+      "period_witness": null
+    },
+    {
+      "artifact": "test_data/instant-pistons/traces/mchprs-adder_11bits-prepared-0-0-0-r0.json.gz",
+      "artifact_sha256": "dd7815846f4df9aa9ac19b83bd4db1ab26cb1d0b113c9eeabe95280d1187224f",
+      "fixture_id": "adder_11bits",
+      "fixture_sha256": "41476594941f234f8759c2b4b12dab72641fbda9fb5f0412a2b0089ba964464e",
+      "case_id": "prepared-0-0-0",
+      "rotation": 0,
+      "engine": "MCHPRS interpreter",
+      "termination": "completed bounded response; quiescence and periodicity assessed separately",
+      "period_witness": {
+        "first_tick": 3,
+        "period_ticks": 6,
+        "repeated_complete_cycles": 3,
+        "projection": "all watched blocks/entities/power predicates, scheduled queue, events, ordered motion progress; identities renamed, last_tick relative; BetweenTicks only"
+      }
+    },
+    {
+      "artifact": "test_data/instant-pistons/traces/mchprs-adder_11bits-prepared-0-1-0-r0.json.gz",
+      "artifact_sha256": "00dce7932f09447cfeb674b8157298c37fb4be0252399a3910cfa79acf774cb8",
+      "fixture_id": "adder_11bits",
+      "fixture_sha256": "41476594941f234f8759c2b4b12dab72641fbda9fb5f0412a2b0089ba964464e",
+      "case_id": "prepared-0-1-0",
+      "rotation": 0,
+      "engine": "MCHPRS interpreter",
+      "termination": "completed bounded response; quiescence and periodicity assessed separately",
+      "period_witness": {
+        "first_tick": 3,
+        "period_ticks": 6,
+        "repeated_complete_cycles": 3,
+        "projection": "all watched blocks/entities/power predicates, scheduled queue, events, ordered motion progress; identities renamed, last_tick relative; BetweenTicks only"
+      }
+    },
+    {
+      "artifact": "test_data/instant-pistons/traces/mchprs-adder_11bits-prepared-0-1024-0-r0.json.gz",
+      "artifact_sha256": "328ac124bb76aae5a715b249cc37bd0d7ab3eb3aca4cebd4b7e5afb53d41b7d6",
+      "fixture_id": "adder_11bits",
+      "fixture_sha256": "41476594941f234f8759c2b4b12dab72641fbda9fb5f0412a2b0089ba964464e",
+      "case_id": "prepared-0-1024-0",
+      "rotation": 0,
+      "engine": "MCHPRS interpreter",
+      "termination": "completed bounded response; quiescence and periodicity assessed separately",
+      "period_witness": {
+        "first_tick": 3,
+        "period_ticks": 6,
+        "repeated_complete_cycles": 3,
+        "projection": "all watched blocks/entities/power predicates, scheduled queue, events, ordered motion progress; identities renamed, last_tick relative; BetweenTicks only"
+      }
+    },
+    {
+      "artifact": "test_data/instant-pistons/traces/mchprs-adder_11bits-prepared-0-128-0-r0.json.gz",
+      "artifact_sha256": "3a925890f7db597efc99557a9b124517ed501f1d5f4a22296baf27313a06d8f1",
+      "fixture_id": "adder_11bits",
+      "fixture_sha256": "41476594941f234f8759c2b4b12dab72641fbda9fb5f0412a2b0089ba964464e",
+      "case_id": "prepared-0-128-0",
+      "rotation": 0,
+      "engine": "MCHPRS interpreter",
+      "termination": "completed bounded response; quiescence and periodicity assessed separately",
+      "period_witness": {
+        "first_tick": 3,
+        "period_ticks": 6,
+        "repeated_complete_cycles": 3,
+        "projection": "all watched blocks/entities/power predicates, scheduled queue, events, ordered motion progress; identities renamed, last_tick relative; BetweenTicks only"
+      }
+    },
+    {
+      "artifact": "test_data/instant-pistons/traces/mchprs-adder_11bits-prepared-0-16-0-r0.json.gz",
+      "artifact_sha256": "ebaa71696b8861c32ae0aee94fefd51265775dc87ec7a6164ba60ec37f889e1d",
+      "fixture_id": "adder_11bits",
+      "fixture_sha256": "41476594941f234f8759c2b4b12dab72641fbda9fb5f0412a2b0089ba964464e",
+      "case_id": "prepared-0-16-0",
+      "rotation": 0,
+      "engine": "MCHPRS interpreter",
+      "termination": "completed bounded response; quiescence and periodicity assessed separately",
+      "period_witness": {
+        "first_tick": 3,
+        "period_ticks": 6,
+        "repeated_complete_cycles": 3,
+        "projection": "all watched blocks/entities/power predicates, scheduled queue, events, ordered motion progress; identities renamed, last_tick relative; BetweenTicks only"
+      }
+    },
+    {
+      "artifact": "test_data/instant-pistons/traces/mchprs-adder_11bits-prepared-0-2-0-r0.json.gz",
+      "artifact_sha256": "a282e44c1655edebe8f85cec113ed171fba87d77d6bcb7953d1102edc52a729b",
+      "fixture_id": "adder_11bits",
+      "fixture_sha256": "41476594941f234f8759c2b4b12dab72641fbda9fb5f0412a2b0089ba964464e",
+      "case_id": "prepared-0-2-0",
+      "rotation": 0,
+      "engine": "MCHPRS interpreter",
+      "termination": "completed bounded response; quiescence and periodicity assessed separately",
+      "period_witness": {
+        "first_tick": 3,
+        "period_ticks": 6,
+        "repeated_complete_cycles": 3,
+        "projection": "all watched blocks/entities/power predicates, scheduled queue, events, ordered motion progress; identities renamed, last_tick relative; BetweenTicks only"
+      }
+    },
+    {
+      "artifact": "test_data/instant-pistons/traces/mchprs-adder_11bits-prepared-0-2047-0-r0.json.gz",
+      "artifact_sha256": "049597d2626367b5d93d0bade091a8aad90bf1b8861dde2eed74786dee99b6e2",
+      "fixture_id": "adder_11bits",
+      "fixture_sha256": "41476594941f234f8759c2b4b12dab72641fbda9fb5f0412a2b0089ba964464e",
+      "case_id": "prepared-0-2047-0",
+      "rotation": 0,
+      "engine": "MCHPRS interpreter",
+      "termination": "completed bounded response; quiescence and periodicity assessed separately",
+      "period_witness": {
+        "first_tick": 3,
+        "period_ticks": 6,
+        "repeated_complete_cycles": 3,
+        "projection": "all watched blocks/entities/power predicates, scheduled queue, events, ordered motion progress; identities renamed, last_tick relative; BetweenTicks only"
+      }
+    },
+    {
+      "artifact": "test_data/instant-pistons/traces/mchprs-adder_11bits-prepared-0-256-0-r0.json.gz",
+      "artifact_sha256": "521a0d2337dd927f47e74dad20d24f0a43a28baaf4ae33787522efdeb7cdf639",
+      "fixture_id": "adder_11bits",
+      "fixture_sha256": "41476594941f234f8759c2b4b12dab72641fbda9fb5f0412a2b0089ba964464e",
+      "case_id": "prepared-0-256-0",
+      "rotation": 0,
+      "engine": "MCHPRS interpreter",
+      "termination": "completed bounded response; quiescence and periodicity assessed separately",
+      "period_witness": {
+        "first_tick": 3,
+        "period_ticks": 6,
+        "repeated_complete_cycles": 3,
+        "projection": "all watched blocks/entities/power predicates, scheduled queue, events, ordered motion progress; identities renamed, last_tick relative; BetweenTicks only"
+      }
+    },
+    {
+      "artifact": "test_data/instant-pistons/traces/mchprs-adder_11bits-prepared-0-32-0-r0.json.gz",
+      "artifact_sha256": "2922e2c9c8cb7925b8c9e003e20dc1203fd8092b82b524d43c1fbd74cdc3d25b",
+      "fixture_id": "adder_11bits",
+      "fixture_sha256": "41476594941f234f8759c2b4b12dab72641fbda9fb5f0412a2b0089ba964464e",
+      "case_id": "prepared-0-32-0",
+      "rotation": 0,
+      "engine": "MCHPRS interpreter",
+      "termination": "completed bounded response; quiescence and periodicity assessed separately",
+      "period_witness": {
+        "first_tick": 3,
+        "period_ticks": 6,
+        "repeated_complete_cycles": 3,
+        "projection": "all watched blocks/entities/power predicates, scheduled queue, events, ordered motion progress; identities renamed, last_tick relative; BetweenTicks only"
+      }
+    },
+    {
+      "artifact": "test_data/instant-pistons/traces/mchprs-adder_11bits-prepared-0-4-0-r0.json.gz",
+      "artifact_sha256": "118cadfff37224b84d3c961090828885e4d82a4820743d8d0b04770d2748610e",
+      "fixture_id": "adder_11bits",
+      "fixture_sha256": "41476594941f234f8759c2b4b12dab72641fbda9fb5f0412a2b0089ba964464e",
+      "case_id": "prepared-0-4-0",
+      "rotation": 0,
+      "engine": "MCHPRS interpreter",
+      "termination": "completed bounded response; quiescence and periodicity assessed separately",
+      "period_witness": {
+        "first_tick": 3,
+        "period_ticks": 6,
+        "repeated_complete_cycles": 3,
+        "projection": "all watched blocks/entities/power predicates, scheduled queue, events, ordered motion progress; identities renamed, last_tick relative; BetweenTicks only"
+      }
+    },
+    {
+      "artifact": "test_data/instant-pistons/traces/mchprs-adder_11bits-prepared-0-512-0-r0.json.gz",
+      "artifact_sha256": "a486dc12e455c8d27a1b82bedc8371513499b84d0d96bfc1915f08d52166fe98",
+      "fixture_id": "adder_11bits",
+      "fixture_sha256": "41476594941f234f8759c2b4b12dab72641fbda9fb5f0412a2b0089ba964464e",
+      "case_id": "prepared-0-512-0",
+      "rotation": 0,
+      "engine": "MCHPRS interpreter",
+      "termination": "completed bounded response; quiescence and periodicity assessed separately",
+      "period_witness": {
+        "first_tick": 3,
+        "period_ticks": 6,
+        "repeated_complete_cycles": 3,
+        "projection": "all watched blocks/entities/power predicates, scheduled queue, events, ordered motion progress; identities renamed, last_tick relative; BetweenTicks only"
+      }
+    },
+    {
+      "artifact": "test_data/instant-pistons/traces/mchprs-adder_11bits-prepared-0-64-0-r0.json.gz",
+      "artifact_sha256": "20e59166e3ef349c960f21fc4be3ccb0ab4a853cecef8bc790ba57de9e4c06a8",
+      "fixture_id": "adder_11bits",
+      "fixture_sha256": "41476594941f234f8759c2b4b12dab72641fbda9fb5f0412a2b0089ba964464e",
+      "case_id": "prepared-0-64-0",
+      "rotation": 0,
+      "engine": "MCHPRS interpreter",
+      "termination": "completed bounded response; quiescence and periodicity assessed separately",
+      "period_witness": {
+        "first_tick": 3,
+        "period_ticks": 6,
+        "repeated_complete_cycles": 3,
+        "projection": "all watched blocks/entities/power predicates, scheduled queue, events, ordered motion progress; identities renamed, last_tick relative; BetweenTicks only"
+      }
+    },
+    {
+      "artifact": "test_data/instant-pistons/traces/mchprs-adder_11bits-prepared-0-8-0-r0.json.gz",
+      "artifact_sha256": "53a0cf59fa246b0367160a8c22126026a68a68bd399d2942003fa3296a2919d7",
+      "fixture_id": "adder_11bits",
+      "fixture_sha256": "41476594941f234f8759c2b4b12dab72641fbda9fb5f0412a2b0089ba964464e",
+      "case_id": "prepared-0-8-0",
+      "rotation": 0,
+      "engine": "MCHPRS interpreter",
+      "termination": "completed bounded response; quiescence and periodicity assessed separately",
+      "period_witness": {
+        "first_tick": 3,
+        "period_ticks": 6,
+        "repeated_complete_cycles": 3,
+        "projection": "all watched blocks/entities/power predicates, scheduled queue, events, ordered motion progress; identities renamed, last_tick relative; BetweenTicks only"
+      }
+    },
+    {
+      "artifact": "test_data/instant-pistons/traces/mchprs-adder_11bits-prepared-1-0-0-r0.json.gz",
+      "artifact_sha256": "458aac9f153e8e7f6bb4e682347bb21b53062bee45e88bdeef5eeefa26794a78",
+      "fixture_id": "adder_11bits",
+      "fixture_sha256": "41476594941f234f8759c2b4b12dab72641fbda9fb5f0412a2b0089ba964464e",
+      "case_id": "prepared-1-0-0",
+      "rotation": 0,
+      "engine": "MCHPRS interpreter",
+      "termination": "completed bounded response; quiescence and periodicity assessed separately",
+      "period_witness": {
+        "first_tick": 3,
+        "period_ticks": 6,
+        "repeated_complete_cycles": 3,
+        "projection": "all watched blocks/entities/power predicates, scheduled queue, events, ordered motion progress; identities renamed, last_tick relative; BetweenTicks only"
+      }
+    },
+    {
+      "artifact": "test_data/instant-pistons/traces/mchprs-adder_11bits-prepared-1023-1-0-r0.json.gz",
+      "artifact_sha256": "93ba517c61b9a58e63b62cfd3d2b188bc58968c096adfde6d25be04cbf571d2f",
+      "fixture_id": "adder_11bits",
+      "fixture_sha256": "41476594941f234f8759c2b4b12dab72641fbda9fb5f0412a2b0089ba964464e",
+      "case_id": "prepared-1023-1-0",
+      "rotation": 0,
+      "engine": "MCHPRS interpreter",
+      "termination": "completed bounded response; quiescence and periodicity assessed separately",
+      "period_witness": {
+        "first_tick": 3,
+        "period_ticks": 6,
+        "repeated_complete_cycles": 3,
+        "projection": "all watched blocks/entities/power predicates, scheduled queue, events, ordered motion progress; identities renamed, last_tick relative; BetweenTicks only"
+      }
+    },
+    {
+      "artifact": "test_data/instant-pistons/traces/mchprs-adder_11bits-prepared-1024-0-0-r0.json.gz",
+      "artifact_sha256": "6b112bb6b4154993db70a83a1ae7f9ebdc9b9feac8d1454c5fa0a3019c5afd45",
+      "fixture_id": "adder_11bits",
+      "fixture_sha256": "41476594941f234f8759c2b4b12dab72641fbda9fb5f0412a2b0089ba964464e",
+      "case_id": "prepared-1024-0-0",
+      "rotation": 0,
+      "engine": "MCHPRS interpreter",
+      "termination": "completed bounded response; quiescence and periodicity assessed separately",
+      "period_witness": {
+        "first_tick": 3,
+        "period_ticks": 6,
+        "repeated_complete_cycles": 3,
+        "projection": "all watched blocks/entities/power predicates, scheduled queue, events, ordered motion progress; identities renamed, last_tick relative; BetweenTicks only"
+      }
+    },
+    {
+      "artifact": "test_data/instant-pistons/traces/mchprs-adder_11bits-prepared-1024-1024-0-r0.json.gz",
+      "artifact_sha256": "63c32570574ec6313a8c11cd7a4072ffb7620c186b9d5c1a7a36da50a8d7b336",
+      "fixture_id": "adder_11bits",
+      "fixture_sha256": "41476594941f234f8759c2b4b12dab72641fbda9fb5f0412a2b0089ba964464e",
+      "case_id": "prepared-1024-1024-0",
+      "rotation": 0,
+      "engine": "MCHPRS interpreter",
+      "termination": "completed bounded response; quiescence and periodicity assessed separately",
+      "period_witness": {
+        "first_tick": 3,
+        "period_ticks": 6,
+        "repeated_complete_cycles": 3,
+        "projection": "all watched blocks/entities/power predicates, scheduled queue, events, ordered motion progress; identities renamed, last_tick relative; BetweenTicks only"
+      }
+    },
+    {
+      "artifact": "test_data/instant-pistons/traces/mchprs-adder_11bits-prepared-1202-1129-0-r0.json.gz",
+      "artifact_sha256": "72c2201aa493ee4f56e2faf030a8b455ce8b8973abec118b11fe5ef58da89b20",
+      "fixture_id": "adder_11bits",
+      "fixture_sha256": "41476594941f234f8759c2b4b12dab72641fbda9fb5f0412a2b0089ba964464e",
+      "case_id": "prepared-1202-1129-0",
+      "rotation": 0,
+      "engine": "MCHPRS interpreter",
+      "termination": "completed bounded response; quiescence and periodicity assessed separately",
+      "period_witness": {
+        "first_tick": 3,
+        "period_ticks": 6,
+        "repeated_complete_cycles": 3,
+        "projection": "all watched blocks/entities/power predicates, scheduled queue, events, ordered motion progress; identities renamed, last_tick relative; BetweenTicks only"
+      }
+    },
+    {
+      "artifact": "test_data/instant-pistons/traces/mchprs-adder_11bits-prepared-128-0-0-r0.json.gz",
+      "artifact_sha256": "854312fde7f69a362f55c4adab579258d35146ac4f9baf6b0b14ea339294d352",
+      "fixture_id": "adder_11bits",
+      "fixture_sha256": "41476594941f234f8759c2b4b12dab72641fbda9fb5f0412a2b0089ba964464e",
+      "case_id": "prepared-128-0-0",
+      "rotation": 0,
+      "engine": "MCHPRS interpreter",
+      "termination": "completed bounded response; quiescence and periodicity assessed separately",
+      "period_witness": {
+        "first_tick": 3,
+        "period_ticks": 6,
+        "repeated_complete_cycles": 3,
+        "projection": "all watched blocks/entities/power predicates, scheduled queue, events, ordered motion progress; identities renamed, last_tick relative; BetweenTicks only"
+      }
+    },
+    {
+      "artifact": "test_data/instant-pistons/traces/mchprs-adder_11bits-prepared-1365-682-0-r0.json.gz",
+      "artifact_sha256": "039859d6d485498ea237df58945e96d323f29c339562847005a32a731510a8b5",
+      "fixture_id": "adder_11bits",
+      "fixture_sha256": "41476594941f234f8759c2b4b12dab72641fbda9fb5f0412a2b0089ba964464e",
+      "case_id": "prepared-1365-682-0",
+      "rotation": 0,
+      "engine": "MCHPRS interpreter",
+      "termination": "completed bounded response; quiescence and periodicity assessed separately",
+      "period_witness": {
+        "first_tick": 3,
+        "period_ticks": 6,
+        "repeated_complete_cycles": 3,
+        "projection": "all watched blocks/entities/power predicates, scheduled queue, events, ordered motion progress; identities renamed, last_tick relative; BetweenTicks only"
+      }
+    },
+    {
+      "artifact": "test_data/instant-pistons/traces/mchprs-adder_11bits-prepared-16-0-0-r0.json.gz",
+      "artifact_sha256": "92907f431654e289e2b11b33afaffd2c8d5179fff48e97f783718c9dab72dd4c",
+      "fixture_id": "adder_11bits",
+      "fixture_sha256": "41476594941f234f8759c2b4b12dab72641fbda9fb5f0412a2b0089ba964464e",
+      "case_id": "prepared-16-0-0",
+      "rotation": 0,
+      "engine": "MCHPRS interpreter",
+      "termination": "completed bounded response; quiescence and periodicity assessed separately",
+      "period_witness": {
+        "first_tick": 3,
+        "period_ticks": 6,
+        "repeated_complete_cycles": 3,
+        "projection": "all watched blocks/entities/power predicates, scheduled queue, events, ordered motion progress; identities renamed, last_tick relative; BetweenTicks only"
+      }
+    },
+    {
+      "artifact": "test_data/instant-pistons/traces/mchprs-adder_11bits-prepared-1694-1381-0-r0.json.gz",
+      "artifact_sha256": "e2d3c02be14ac53f17c2214f5bf706fad8d05057c4d4c011cf83391b6968e54e",
+      "fixture_id": "adder_11bits",
+      "fixture_sha256": "41476594941f234f8759c2b4b12dab72641fbda9fb5f0412a2b0089ba964464e",
+      "case_id": "prepared-1694-1381-0",
+      "rotation": 0,
+      "engine": "MCHPRS interpreter",
+      "termination": "completed bounded response; quiescence and periodicity assessed separately",
+      "period_witness": {
+        "first_tick": 3,
+        "period_ticks": 6,
+        "repeated_complete_cycles": 3,
+        "projection": "all watched blocks/entities/power predicates, scheduled queue, events, ordered motion progress; identities renamed, last_tick relative; BetweenTicks only"
+      }
+    },
+    {
+      "artifact": "test_data/instant-pistons/traces/mchprs-adder_11bits-prepared-1832-103-0-r0.json.gz",
+      "artifact_sha256": "6e3d249a7ab191f2d7fa66ed7fba4e4baf06d3667fa6c5e0cc6da6fd0fb9a79f",
+      "fixture_id": "adder_11bits",
+      "fixture_sha256": "41476594941f234f8759c2b4b12dab72641fbda9fb5f0412a2b0089ba964464e",
+      "case_id": "prepared-1832-103-0",
+      "rotation": 0,
+      "engine": "MCHPRS interpreter",
+      "termination": "completed bounded response; quiescence and periodicity assessed separately",
+      "period_witness": {
+        "first_tick": 3,
+        "period_ticks": 6,
+        "repeated_complete_cycles": 3,
+        "projection": "all watched blocks/entities/power predicates, scheduled queue, events, ordered motion progress; identities renamed, last_tick relative; BetweenTicks only"
+      }
+    },
+    {
+      "artifact": "test_data/instant-pistons/traces/mchprs-adder_11bits-prepared-1920-1247-0-r0.json.gz",
+      "artifact_sha256": "36ee8ba9750f4e8502c575dce72ce2873dd43a6143ecacb5790caf721ba4e66c",
+      "fixture_id": "adder_11bits",
+      "fixture_sha256": "41476594941f234f8759c2b4b12dab72641fbda9fb5f0412a2b0089ba964464e",
+      "case_id": "prepared-1920-1247-0",
+      "rotation": 0,
+      "engine": "MCHPRS interpreter",
+      "termination": "completed bounded response; quiescence and periodicity assessed separately",
+      "period_witness": {
+        "first_tick": 3,
+        "period_ticks": 6,
+        "repeated_complete_cycles": 3,
+        "projection": "all watched blocks/entities/power predicates, scheduled queue, events, ordered motion progress; identities renamed, last_tick relative; BetweenTicks only"
+      }
+    },
+    {
+      "artifact": "test_data/instant-pistons/traces/mchprs-adder_11bits-prepared-2-0-0-r0.json.gz",
+      "artifact_sha256": "8f46d749f46944a8a4400d273db5434b0848464f26d2c3a4dcf100a1632f8f51",
+      "fixture_id": "adder_11bits",
+      "fixture_sha256": "41476594941f234f8759c2b4b12dab72641fbda9fb5f0412a2b0089ba964464e",
+      "case_id": "prepared-2-0-0",
+      "rotation": 0,
+      "engine": "MCHPRS interpreter",
+      "termination": "completed bounded response; quiescence and periodicity assessed separately",
+      "period_witness": {
+        "first_tick": 3,
+        "period_ticks": 6,
+        "repeated_complete_cycles": 3,
+        "projection": "all watched blocks/entities/power predicates, scheduled queue, events, ordered motion progress; identities renamed, last_tick relative; BetweenTicks only"
+      }
+    },
+    {
+      "artifact": "test_data/instant-pistons/traces/mchprs-adder_11bits-prepared-2047-0-0-r0.json.gz",
+      "artifact_sha256": "e4014dd0e1d7efaa9ca7736d0a68dc0a311fa2c2e033c1338a135c2a7d1e1a4a",
+      "fixture_id": "adder_11bits",
+      "fixture_sha256": "41476594941f234f8759c2b4b12dab72641fbda9fb5f0412a2b0089ba964464e",
+      "case_id": "prepared-2047-0-0",
+      "rotation": 0,
+      "engine": "MCHPRS interpreter",
+      "termination": "completed bounded response; quiescence and periodicity assessed separately",
+      "period_witness": {
+        "first_tick": 3,
+        "period_ticks": 6,
+        "repeated_complete_cycles": 3,
+        "projection": "all watched blocks/entities/power predicates, scheduled queue, events, ordered motion progress; identities renamed, last_tick relative; BetweenTicks only"
+      }
+    },
+    {
+      "artifact": "test_data/instant-pistons/traces/mchprs-adder_11bits-prepared-2047-1-0-r0.json.gz",
+      "artifact_sha256": "79a70d0df1c210d85c0b2cc898d7413e801dabb2cea912680763f13cef2f613e",
+      "fixture_id": "adder_11bits",
+      "fixture_sha256": "41476594941f234f8759c2b4b12dab72641fbda9fb5f0412a2b0089ba964464e",
+      "case_id": "prepared-2047-1-0",
+      "rotation": 0,
+      "engine": "MCHPRS interpreter",
+      "termination": "completed bounded response; quiescence and periodicity assessed separately",
+      "period_witness": {
+        "first_tick": 3,
+        "period_ticks": 6,
+        "repeated_complete_cycles": 3,
+        "projection": "all watched blocks/entities/power predicates, scheduled queue, events, ordered motion progress; identities renamed, last_tick relative; BetweenTicks only"
+      }
+    },
+    {
+      "artifact": "test_data/instant-pistons/traces/mchprs-adder_11bits-prepared-2047-2047-0-r0.json.gz",
+      "artifact_sha256": "bdd0bc5675da9f773912073c8efe946eb73f21f0073548a39115e841eab14817",
+      "fixture_id": "adder_11bits",
+      "fixture_sha256": "41476594941f234f8759c2b4b12dab72641fbda9fb5f0412a2b0089ba964464e",
+      "case_id": "prepared-2047-2047-0",
+      "rotation": 0,
+      "engine": "MCHPRS interpreter",
+      "termination": "completed bounded response; quiescence and periodicity assessed separately",
+      "period_witness": {
+        "first_tick": 3,
+        "period_ticks": 6,
+        "repeated_complete_cycles": 3,
+        "projection": "all watched blocks/entities/power predicates, scheduled queue, events, ordered motion progress; identities renamed, last_tick relative; BetweenTicks only"
+      }
+    },
+    {
+      "artifact": "test_data/instant-pistons/traces/mchprs-adder_11bits-prepared-256-0-0-r0.json.gz",
+      "artifact_sha256": "372824a14868ee23e71f60be809129ab0bb3e34cd47b3a9886b64ad787c34f96",
+      "fixture_id": "adder_11bits",
+      "fixture_sha256": "41476594941f234f8759c2b4b12dab72641fbda9fb5f0412a2b0089ba964464e",
+      "case_id": "prepared-256-0-0",
+      "rotation": 0,
+      "engine": "MCHPRS interpreter",
+      "termination": "completed bounded response; quiescence and periodicity assessed separately",
+      "period_witness": {
+        "first_tick": 3,
+        "period_ticks": 6,
+        "repeated_complete_cycles": 3,
+        "projection": "all watched blocks/entities/power predicates, scheduled queue, events, ordered motion progress; identities renamed, last_tick relative; BetweenTicks only"
+      }
+    },
+    {
+      "artifact": "test_data/instant-pistons/traces/mchprs-adder_11bits-prepared-31-1-0-r0.json.gz",
+      "artifact_sha256": "cd9448fe00e0d3fc33f67ef506f24cb8dbb5c2c3c0b35b407aea91d2a7e2f1c1",
+      "fixture_id": "adder_11bits",
+      "fixture_sha256": "41476594941f234f8759c2b4b12dab72641fbda9fb5f0412a2b0089ba964464e",
+      "case_id": "prepared-31-1-0",
+      "rotation": 0,
+      "engine": "MCHPRS interpreter",
+      "termination": "completed bounded response; quiescence and periodicity assessed separately",
+      "period_witness": {
+        "first_tick": 3,
+        "period_ticks": 6,
+        "repeated_complete_cycles": 3,
+        "projection": "all watched blocks/entities/power predicates, scheduled queue, events, ordered motion progress; identities renamed, last_tick relative; BetweenTicks only"
+      }
+    },
+    {
+      "artifact": "test_data/instant-pistons/traces/mchprs-adder_11bits-prepared-32-0-0-r0.json.gz",
+      "artifact_sha256": "15028dac2b3b017b6b969121e170e600e965e6f3f997cf8b98ed8f5ba8a066c3",
+      "fixture_id": "adder_11bits",
+      "fixture_sha256": "41476594941f234f8759c2b4b12dab72641fbda9fb5f0412a2b0089ba964464e",
+      "case_id": "prepared-32-0-0",
+      "rotation": 0,
+      "engine": "MCHPRS interpreter",
+      "termination": "completed bounded response; quiescence and periodicity assessed separately",
+      "period_witness": {
+        "first_tick": 3,
+        "period_ticks": 6,
+        "repeated_complete_cycles": 3,
+        "projection": "all watched blocks/entities/power predicates, scheduled queue, events, ordered motion progress; identities renamed, last_tick relative; BetweenTicks only"
+      }
+    },
+    {
+      "artifact": "test_data/instant-pistons/traces/mchprs-adder_11bits-prepared-396-1915-0-r0.json.gz",
+      "artifact_sha256": "42d849f24a6af35e07793d108663783692ff6d335e192fa08947daa5a18f4f39",
+      "fixture_id": "adder_11bits",
+      "fixture_sha256": "41476594941f234f8759c2b4b12dab72641fbda9fb5f0412a2b0089ba964464e",
+      "case_id": "prepared-396-1915-0",
+      "rotation": 0,
+      "engine": "MCHPRS interpreter",
+      "termination": "completed bounded response; quiescence and periodicity assessed separately",
+      "period_witness": {
+        "first_tick": 3,
+        "period_ticks": 6,
+        "repeated_complete_cycles": 3,
+        "projection": "all watched blocks/entities/power predicates, scheduled queue, events, ordered motion progress; identities renamed, last_tick relative; BetweenTicks only"
+      }
+    },
+    {
+      "artifact": "test_data/instant-pistons/traces/mchprs-adder_11bits-prepared-4-0-0-r0.json.gz",
+      "artifact_sha256": "c0d326669f6b2329066dc60c9618e4c6781e446898954a0af1e43185a65ae366",
+      "fixture_id": "adder_11bits",
+      "fixture_sha256": "41476594941f234f8759c2b4b12dab72641fbda9fb5f0412a2b0089ba964464e",
+      "case_id": "prepared-4-0-0",
+      "rotation": 0,
+      "engine": "MCHPRS interpreter",
+      "termination": "completed bounded response; quiescence and periodicity assessed separately",
+      "period_witness": {
+        "first_tick": 3,
+        "period_ticks": 6,
+        "repeated_complete_cycles": 3,
+        "projection": "all watched blocks/entities/power predicates, scheduled queue, events, ordered motion progress; identities renamed, last_tick relative; BetweenTicks only"
+      }
+    },
+    {
+      "artifact": "test_data/instant-pistons/traces/mchprs-adder_11bits-prepared-512-0-0-r0.json.gz",
+      "artifact_sha256": "47efa95e6512016b3d8604152f6966e84ab9fd46c89166b52731414808aa81fe",
+      "fixture_id": "adder_11bits",
+      "fixture_sha256": "41476594941f234f8759c2b4b12dab72641fbda9fb5f0412a2b0089ba964464e",
+      "case_id": "prepared-512-0-0",
+      "rotation": 0,
+      "engine": "MCHPRS interpreter",
+      "termination": "completed bounded response; quiescence and periodicity assessed separately",
+      "period_witness": {
+        "first_tick": 3,
+        "period_ticks": 6,
+        "repeated_complete_cycles": 3,
+        "projection": "all watched blocks/entities/power predicates, scheduled queue, events, ordered motion progress; identities renamed, last_tick relative; BetweenTicks only"
+      }
+    },
+    {
+      "artifact": "test_data/instant-pistons/traces/mchprs-adder_11bits-prepared-518-429-0-r0.json.gz",
+      "artifact_sha256": "1d89c4761a88159380960e7cfa781f7e0969d77061abfd8104b474d47b3e3670",
+      "fixture_id": "adder_11bits",
+      "fixture_sha256": "41476594941f234f8759c2b4b12dab72641fbda9fb5f0412a2b0089ba964464e",
+      "case_id": "prepared-518-429-0",
+      "rotation": 0,
+      "engine": "MCHPRS interpreter",
+      "termination": "completed bounded response; quiescence and periodicity assessed separately",
+      "period_witness": {
+        "first_tick": 3,
+        "period_ticks": 6,
+        "repeated_complete_cycles": 3,
+        "projection": "all watched blocks/entities/power predicates, scheduled queue, events, ordered motion progress; identities renamed, last_tick relative; BetweenTicks only"
+      }
+    },
+    {
+      "artifact": "test_data/instant-pistons/traces/mchprs-adder_11bits-prepared-64-0-0-r0.json.gz",
+      "artifact_sha256": "4cd3479b1b6988c778f1903ea9575ace32a070027cf9081f5cd1302be488c424",
+      "fixture_id": "adder_11bits",
+      "fixture_sha256": "41476594941f234f8759c2b4b12dab72641fbda9fb5f0412a2b0089ba964464e",
+      "case_id": "prepared-64-0-0",
+      "rotation": 0,
+      "engine": "MCHPRS interpreter",
+      "termination": "completed bounded response; quiescence and periodicity assessed separately",
+      "period_witness": {
+        "first_tick": 3,
+        "period_ticks": 6,
+        "repeated_complete_cycles": 3,
+        "projection": "all watched blocks/entities/power predicates, scheduled queue, events, ordered motion progress; identities renamed, last_tick relative; BetweenTicks only"
+      }
+    },
+    {
+      "artifact": "test_data/instant-pistons/traces/mchprs-adder_11bits-prepared-682-1365-0-r0.json.gz",
+      "artifact_sha256": "4792734225dbae507470d1e84cc0b636c0499167542645f55206cf63a49de93e",
+      "fixture_id": "adder_11bits",
+      "fixture_sha256": "41476594941f234f8759c2b4b12dab72641fbda9fb5f0412a2b0089ba964464e",
+      "case_id": "prepared-682-1365-0",
+      "rotation": 0,
+      "engine": "MCHPRS interpreter",
+      "termination": "completed bounded response; quiescence and periodicity assessed separately",
+      "period_witness": {
+        "first_tick": 3,
+        "period_ticks": 6,
+        "repeated_complete_cycles": 3,
+        "projection": "all watched blocks/entities/power predicates, scheduled queue, events, ordered motion progress; identities renamed, last_tick relative; BetweenTicks only"
+      }
+    },
+    {
+      "artifact": "test_data/instant-pistons/traces/mchprs-adder_11bits-prepared-692-1667-0-r0.json.gz",
+      "artifact_sha256": "13d3d50bb0fb87578d6b6e66fc56d6b2ea7fbbc4524bd51847a6e5aca74047dd",
+      "fixture_id": "adder_11bits",
+      "fixture_sha256": "41476594941f234f8759c2b4b12dab72641fbda9fb5f0412a2b0089ba964464e",
+      "case_id": "prepared-692-1667-0",
+      "rotation": 0,
+      "engine": "MCHPRS interpreter",
+      "termination": "completed bounded response; quiescence and periodicity assessed separately",
+      "period_witness": {
+        "first_tick": 3,
+        "period_ticks": 6,
+        "repeated_complete_cycles": 3,
+        "projection": "all watched blocks/entities/power predicates, scheduled queue, events, ordered motion progress; identities renamed, last_tick relative; BetweenTicks only"
+      }
+    },
+    {
+      "artifact": "test_data/instant-pistons/traces/mchprs-adder_11bits-prepared-8-0-0-r0.json.gz",
+      "artifact_sha256": "3bd536e2b3928f654759bc3135a040f111cf51931a36852faa3fe09c003cb675",
+      "fixture_id": "adder_11bits",
+      "fixture_sha256": "41476594941f234f8759c2b4b12dab72641fbda9fb5f0412a2b0089ba964464e",
+      "case_id": "prepared-8-0-0",
+      "rotation": 0,
+      "engine": "MCHPRS interpreter",
+      "termination": "completed bounded response; quiescence and periodicity assessed separately",
+      "period_witness": {
+        "first_tick": 3,
+        "period_ticks": 6,
+        "repeated_complete_cycles": 3,
+        "projection": "all watched blocks/entities/power predicates, scheduled queue, events, ordered motion progress; identities renamed, last_tick relative; BetweenTicks only"
+      }
+    },
+    {
+      "artifact": "test_data/instant-pistons/traces/mchprs-adder_11bits-prepared-970-161-0-r0.json.gz",
+      "artifact_sha256": "686d521be6132e97be10859a6e0ad3a96c0383b8ac5c2758fe477fe75f97f6e9",
+      "fixture_id": "adder_11bits",
+      "fixture_sha256": "41476594941f234f8759c2b4b12dab72641fbda9fb5f0412a2b0089ba964464e",
+      "case_id": "prepared-970-161-0",
+      "rotation": 0,
+      "engine": "MCHPRS interpreter",
+      "termination": "completed bounded response; quiescence and periodicity assessed separately",
+      "period_witness": {
+        "first_tick": 3,
+        "period_ticks": 6,
+        "repeated_complete_cycles": 3,
+        "projection": "all watched blocks/entities/power predicates, scheduled queue, events, ordered motion progress; identities renamed, last_tick relative; BetweenTicks only"
+      }
+    },
+    {
+      "artifact": "test_data/instant-pistons/traces/mchprs-adder_11bits-saved-idle-r0.json.gz",
+      "artifact_sha256": "b3eace0e7725b6d154a7569e0c65f9da61c89a399840d0cd4eb113d35ac8a928",
+      "fixture_id": "adder_11bits",
+      "fixture_sha256": "41476594941f234f8759c2b4b12dab72641fbda9fb5f0412a2b0089ba964464e",
+      "case_id": "saved-idle",
+      "rotation": 0,
+      "engine": "MCHPRS interpreter",
+      "termination": "completed bounded response; quiescence and periodicity assessed separately",
+      "period_witness": {
+        "first_tick": 1,
+        "period_ticks": 1,
+        "repeated_complete_cycles": 3,
+        "projection": "all watched blocks/entities/power predicates, scheduled queue, events, ordered motion progress; identities renamed, last_tick relative; BetweenTicks only"
+      }
+    }
+  ],
+  "label_mappings": [
+    {
+      "sign_position": [
+        3,
+        6,
+        37
+      ],
+      "readable": "B2",
+      "candidate_positions": [
+        [
+          2,
+          4,
+          37
+        ],
+        [
+          3,
+          3,
+          37
+        ],
+        [
+          3,
+          4,
+          37
+        ],
+        [
+          3,
+          5,
+          37
+        ]
+      ],
+      "referenced_positions": [
+        3,
+        5,
+        37
+      ],
+      "role": "bank bit 0 or 1; geometry and single-bit cases",
+      "status": "mapped",
+      "evidence": "saved geometry and controlled current-binary episodes; causal path described in dossier",
+      "original_text": {
+        "front_text": {
+          "original": [
+            {
+              "text": "B2"
+            },
+            {
+              "text": ""
+            },
+            {
+              "text": ""
+            },
+            {
+              "text": ""
+            }
+          ],
+          "readable": [
+            "B2",
+            "",
+            "",
+            ""
+          ]
+        },
+        "back_text": {
+          "original": [
+            {
+              "text": ""
+            },
+            {
+              "text": ""
+            },
+            {
+              "text": ""
+            },
+            {
+              "text": ""
+            }
+          ],
+          "readable": [
+            "",
+            "",
+            "",
+            ""
+          ]
+        },
+        "legacy": {
+          "original": [],
+          "readable": []
+        }
+      }
+    },
+    {
+      "sign_position": [
+        3,
+        6,
+        39
+      ],
+      "readable": "A2",
+      "candidate_positions": [
+        [
+          2,
+          4,
+          39
+        ],
+        [
+          3,
+          3,
+          39
+        ],
+        [
+          3,
+          4,
+          39
+        ],
+        [
+          3,
+          5,
+          39
+        ]
+      ],
+      "referenced_positions": [
+        3,
+        5,
+        39
+      ],
+      "role": "bank bit 0 or 1; geometry and single-bit cases",
+      "status": "mapped",
+      "evidence": "saved geometry and controlled current-binary episodes; causal path described in dossier",
+      "original_text": {
+        "front_text": {
+          "original": [
+            {
+              "text": "A2"
+            },
+            {
+              "text": ""
+            },
+            {
+              "text": ""
+            },
+            {
+              "text": ""
+            }
+          ],
+          "readable": [
+            "A2",
+            "",
+            "",
+            ""
+          ]
+        },
+        "back_text": {
+          "original": [
+            {
+              "text": ""
+            },
+            {
+              "text": ""
+            },
+            {
+              "text": ""
+            },
+            {
+              "text": ""
+            }
+          ],
+          "readable": [
+            "",
+            "",
+            "",
+            ""
+          ]
+        },
+        "legacy": {
+          "original": [],
+          "readable": []
+        }
+      }
+    },
+    {
+      "sign_position": [
+        3,
+        6,
+        41
+      ],
+      "readable": "B1",
+      "candidate_positions": [
+        [
+          2,
+          4,
+          41
+        ],
+        [
+          3,
+          3,
+          41
+        ],
+        [
+          3,
+          4,
+          41
+        ],
+        [
+          3,
+          5,
+          41
+        ]
+      ],
+      "referenced_positions": [
+        3,
+        5,
+        41
+      ],
+      "role": "bank bit 0 or 1; geometry and single-bit cases",
+      "status": "mapped",
+      "evidence": "saved geometry and controlled current-binary episodes; causal path described in dossier",
+      "original_text": {
+        "front_text": {
+          "original": [
+            {
+              "text": "B1"
+            },
+            {
+              "text": ""
+            },
+            {
+              "text": ""
+            },
+            {
+              "text": ""
+            }
+          ],
+          "readable": [
+            "B1",
+            "",
+            "",
+            ""
+          ]
+        },
+        "back_text": {
+          "original": [
+            {
+              "text": ""
+            },
+            {
+              "text": ""
+            },
+            {
+              "text": ""
+            },
+            {
+              "text": ""
+            }
+          ],
+          "readable": [
+            "",
+            "",
+            "",
+            ""
+          ]
+        },
+        "legacy": {
+          "original": [],
+          "readable": []
+        }
+      }
+    },
+    {
+      "sign_position": [
+        3,
+        6,
+        43
+      ],
+      "readable": "A1",
+      "candidate_positions": [
+        [
+          2,
+          4,
+          43
+        ],
+        [
+          3,
+          3,
+          43
+        ],
+        [
+          3,
+          4,
+          43
+        ],
+        [
+          3,
+          5,
+          43
+        ]
+      ],
+      "referenced_positions": [
+        3,
+        5,
+        43
+      ],
+      "role": "bank bit 0 or 1; geometry and single-bit cases",
+      "status": "mapped",
+      "evidence": "saved geometry and controlled current-binary episodes; causal path described in dossier",
+      "original_text": {
+        "front_text": {
+          "original": [
+            {
+              "text": "A1"
+            },
+            {
+              "text": ""
+            },
+            {
+              "text": ""
+            },
+            {
+              "text": ""
+            }
+          ],
+          "readable": [
+            "A1",
+            "",
+            "",
+            ""
+          ]
+        },
+        "back_text": {
+          "original": [
+            {
+              "text": ""
+            },
+            {
+              "text": ""
+            },
+            {
+              "text": ""
+            },
+            {
+              "text": ""
+            }
+          ],
+          "readable": [
+            "",
+            "",
+            "",
+            ""
+          ]
+        },
+        "legacy": {
+          "original": [],
+          "readable": []
+        }
+      }
+    },
+    {
+      "sign_position": [
+        20,
+        3,
+        37
+      ],
+      "readable": "O2",
+      "candidate_positions": [
+        [
+          18,
+          2,
+          37
+        ],
+        [
+          18,
+          3,
+          37
+        ],
+        [
+          19,
+          2,
+          37
+        ],
+        [
+          20,
+          2,
+          37
+        ]
+      ],
+      "referenced_positions": [
+        20,
+        2,
+        37
+      ],
+      "role": "bank bit 0 or 1; geometry and single-bit cases",
+      "status": "mapped",
+      "evidence": "saved geometry and controlled current-binary episodes; causal path described in dossier",
+      "original_text": {
+        "front_text": {
+          "original": [
+            {
+              "text": "O2"
+            },
+            {
+              "text": ""
+            },
+            {
+              "text": ""
+            },
+            {
+              "text": ""
+            }
+          ],
+          "readable": [
+            "O2",
+            "",
+            "",
+            ""
+          ]
+        },
+        "back_text": {
+          "original": [
+            {
+              "text": ""
+            },
+            {
+              "text": ""
+            },
+            {
+              "text": ""
+            },
+            {
+              "text": ""
+            }
+          ],
+          "readable": [
+            "",
+            "",
+            "",
+            ""
+          ]
+        },
+        "legacy": {
+          "original": [],
+          "readable": []
+        }
+      }
+    },
+    {
+      "sign_position": [
+        20,
+        3,
+        41
+      ],
+      "readable": "O1",
+      "candidate_positions": [
+        [
+          18,
+          2,
+          41
+        ],
+        [
+          18,
+          3,
+          41
+        ],
+        [
+          19,
+          2,
+          41
+        ],
+        [
+          20,
+          2,
+          41
+        ]
+      ],
+      "referenced_positions": [
+        20,
+        2,
+        41
+      ],
+      "role": "bank bit 0 or 1; geometry and single-bit cases",
+      "status": "mapped",
+      "evidence": "saved geometry and controlled current-binary episodes; causal path described in dossier",
+      "original_text": {
+        "front_text": {
+          "original": [
+            {
+              "text": "O1"
+            },
+            {
+              "text": ""
+            },
+            {
+              "text": ""
+            },
+            {
+              "text": ""
+            }
+          ],
+          "readable": [
+            "O1",
+            "",
+            "",
+            ""
+          ]
+        },
+        "back_text": {
+          "original": [
+            {
+              "text": ""
+            },
+            {
+              "text": ""
+            },
+            {
+              "text": ""
+            },
+            {
+              "text": ""
+            }
+          ],
+          "readable": [
+            "",
+            "",
+            "",
+            ""
+          ]
+        },
+        "legacy": {
+          "original": [],
+          "readable": []
+        }
+      }
+    }
+  ],
+  "negation_paths": [
+    {
+      "actor": [
+        8,
+        3,
+        41
+      ],
+      "payload": [
+        10,
+        3,
+        41
+      ],
+      "controlled_wire": [
+        10,
+        2,
+        41
+      ],
+      "supply": [
+        10,
+        4,
+        40
+      ],
+      "consumer": [
+        13,
+        2,
+        41
+      ],
+      "stage": "bit 0 first XOR inhibition",
+      "measured_validations": [
+        {
+          "case_id": "prepared-1023-1-0",
+          "artifact": "test_data/instant-pistons/traces/mchprs-adder_11bits-prepared-1023-1-0-r0.json.gz",
+          "tick": 3,
+          "inhibit_applied_operation": 9,
+          "target_validation_operation": 12,
+          "target_retraction_applied": false,
+          "evidence": "measured callback/event recorder; execute denotes attempt, applied denotes successful movement"
+        },
+        {
+          "case_id": "prepared-2047-1-0",
+          "artifact": "test_data/instant-pistons/traces/mchprs-adder_11bits-prepared-2047-1-0-r0.json.gz",
+          "tick": 3,
+          "inhibit_applied_operation": 9,
+          "target_validation_operation": 12,
+          "target_retraction_applied": false,
+          "evidence": "measured callback/event recorder; execute denotes attempt, applied denotes successful movement"
+        },
+        {
+          "case_id": "prepared-2047-2047-0",
+          "artifact": "test_data/instant-pistons/traces/mchprs-adder_11bits-prepared-2047-2047-0-r0.json.gz",
+          "tick": 3,
+          "inhibit_applied_operation": 10,
+          "target_validation_operation": 13,
+          "target_retraction_applied": false,
+          "evidence": "measured callback/event recorder; execute denotes attempt, applied denotes successful movement"
+        },
+        {
+          "case_id": "prepared-31-1-0",
+          "artifact": "test_data/instant-pistons/traces/mchprs-adder_11bits-prepared-31-1-0-r0.json.gz",
+          "tick": 3,
+          "inhibit_applied_operation": 9,
+          "target_validation_operation": 12,
+          "target_retraction_applied": false,
+          "evidence": "measured callback/event recorder; execute denotes attempt, applied denotes successful movement"
+        }
+      ],
+      "required": "inhibit's dust connection/power update effective before pending target Retract validation; geometry, immediate Wire Turbo callbacks and event FIFO fix tested order",
+      "status": "geometry plus recorded prepared episode(s); compiler recognition certificate still required"
+    },
+    {
+      "actor": [
+        14,
+        3,
+        41
+      ],
+      "payload": [
+        16,
+        3,
+        41
+      ],
+      "controlled_wire": [
+        16,
+        2,
+        41
+      ],
+      "supply": [
+        16,
+        4,
+        42
+      ],
+      "consumer": [
+        18,
+        2,
+        41
+      ],
+      "stage": "bit 0 sum XOR inhibition",
+      "measured_validations": [],
+      "required": "inhibit's dust connection/power update effective before pending target Retract validation; geometry, immediate Wire Turbo callbacks and event FIFO fix tested order",
+      "status": "geometry only; no active inhibit/target witness under declared fixed-zero carry-in protocol"
+    },
+    {
+      "actor": [
+        8,
+        3,
+        37
+      ],
+      "payload": [
+        10,
+        3,
+        37
+      ],
+      "controlled_wire": [
+        10,
+        2,
+        37
+      ],
+      "supply": [
+        10,
+        4,
+        36
+      ],
+      "consumer": [
+        13,
+        2,
+        37
+      ],
+      "stage": "bit 1 first XOR inhibition",
+      "measured_validations": [
+        {
+          "case_id": "prepared-2047-2047-0",
+          "artifact": "test_data/instant-pistons/traces/mchprs-adder_11bits-prepared-2047-2047-0-r0.json.gz",
+          "tick": 3,
+          "inhibit_applied_operation": 18,
+          "target_validation_operation": 22,
+          "target_retraction_applied": false,
+          "evidence": "measured callback/event recorder; execute denotes attempt, applied denotes successful movement"
+        }
+      ],
+      "required": "inhibit's dust connection/power update effective before pending target Retract validation; geometry, immediate Wire Turbo callbacks and event FIFO fix tested order",
+      "status": "geometry plus recorded prepared episode(s); compiler recognition certificate still required"
+    },
+    {
+      "actor": [
+        14,
+        3,
+        37
+      ],
+      "payload": [
+        16,
+        3,
+        37
+      ],
+      "controlled_wire": [
+        16,
+        2,
+        37
+      ],
+      "supply": [
+        16,
+        4,
+        38
+      ],
+      "consumer": [
+        18,
+        2,
+        37
+      ],
+      "stage": "bit 1 sum XOR inhibition",
+      "measured_validations": [
+        {
+          "case_id": "prepared-1023-1-0",
+          "artifact": "test_data/instant-pistons/traces/mchprs-adder_11bits-prepared-1023-1-0-r0.json.gz",
+          "tick": 3,
+          "inhibit_applied_operation": 21,
+          "target_validation_operation": 28,
+          "target_retraction_applied": false,
+          "evidence": "measured callback/event recorder; execute denotes attempt, applied denotes successful movement"
+        },
+        {
+          "case_id": "prepared-2047-1-0",
+          "artifact": "test_data/instant-pistons/traces/mchprs-adder_11bits-prepared-2047-1-0-r0.json.gz",
+          "tick": 3,
+          "inhibit_applied_operation": 21,
+          "target_validation_operation": 28,
+          "target_retraction_applied": false,
+          "evidence": "measured callback/event recorder; execute denotes attempt, applied denotes successful movement"
+        },
+        {
+          "case_id": "prepared-31-1-0",
+          "artifact": "test_data/instant-pistons/traces/mchprs-adder_11bits-prepared-31-1-0-r0.json.gz",
+          "tick": 3,
+          "inhibit_applied_operation": 21,
+          "target_validation_operation": 28,
+          "target_retraction_applied": false,
+          "evidence": "measured callback/event recorder; execute denotes attempt, applied denotes successful movement"
+        }
+      ],
+      "required": "inhibit's dust connection/power update effective before pending target Retract validation; geometry, immediate Wire Turbo callbacks and event FIFO fix tested order",
+      "status": "geometry plus recorded prepared episode(s); compiler recognition certificate still required"
+    },
+    {
+      "actor": [
+        8,
+        3,
+        33
+      ],
+      "payload": [
+        10,
+        3,
+        33
+      ],
+      "controlled_wire": [
+        10,
+        2,
+        33
+      ],
+      "supply": [
+        10,
+        4,
+        32
+      ],
+      "consumer": [
+        13,
+        2,
+        33
+      ],
+      "stage": "bit 2 first XOR inhibition",
+      "measured_validations": [
+        {
+          "case_id": "prepared-1694-1381-0",
+          "artifact": "test_data/instant-pistons/traces/mchprs-adder_11bits-prepared-1694-1381-0-r0.json.gz",
+          "tick": 3,
+          "inhibit_applied_operation": 17,
+          "target_validation_operation": 21,
+          "target_retraction_applied": false,
+          "evidence": "measured callback/event recorder; execute denotes attempt, applied denotes successful movement"
+        },
+        {
+          "case_id": "prepared-2047-2047-0",
+          "artifact": "test_data/instant-pistons/traces/mchprs-adder_11bits-prepared-2047-2047-0-r0.json.gz",
+          "tick": 3,
+          "inhibit_applied_operation": 27,
+          "target_validation_operation": 32,
+          "target_retraction_applied": false,
+          "evidence": "measured callback/event recorder; execute denotes attempt, applied denotes successful movement"
+        },
+        {
+          "case_id": "prepared-518-429-0",
+          "artifact": "test_data/instant-pistons/traces/mchprs-adder_11bits-prepared-518-429-0-r0.json.gz",
+          "tick": 3,
+          "inhibit_applied_operation": 17,
+          "target_validation_operation": 21,
+          "target_retraction_applied": false,
+          "evidence": "measured callback/event recorder; execute denotes attempt, applied denotes successful movement"
+        }
+      ],
+      "required": "inhibit's dust connection/power update effective before pending target Retract validation; geometry, immediate Wire Turbo callbacks and event FIFO fix tested order",
+      "status": "geometry plus recorded prepared episode(s); compiler recognition certificate still required"
+    },
+    {
+      "actor": [
+        14,
+        3,
+        33
+      ],
+      "payload": [
+        16,
+        3,
+        33
+      ],
+      "controlled_wire": [
+        16,
+        2,
+        33
+      ],
+      "supply": [
+        16,
+        4,
+        34
+      ],
+      "consumer": [
+        18,
+        2,
+        33
+      ],
+      "stage": "bit 2 sum XOR inhibition",
+      "measured_validations": [
+        {
+          "case_id": "prepared-1023-1-0",
+          "artifact": "test_data/instant-pistons/traces/mchprs-adder_11bits-prepared-1023-1-0-r0.json.gz",
+          "tick": 3,
+          "inhibit_applied_operation": 29,
+          "target_validation_operation": 36,
+          "target_retraction_applied": false,
+          "evidence": "measured callback/event recorder; execute denotes attempt, applied denotes successful movement"
+        },
+        {
+          "case_id": "prepared-2047-1-0",
+          "artifact": "test_data/instant-pistons/traces/mchprs-adder_11bits-prepared-2047-1-0-r0.json.gz",
+          "tick": 3,
+          "inhibit_applied_operation": 29,
+          "target_validation_operation": 36,
+          "target_retraction_applied": false,
+          "evidence": "measured callback/event recorder; execute denotes attempt, applied denotes successful movement"
+        },
+        {
+          "case_id": "prepared-31-1-0",
+          "artifact": "test_data/instant-pistons/traces/mchprs-adder_11bits-prepared-31-1-0-r0.json.gz",
+          "tick": 3,
+          "inhibit_applied_operation": 29,
+          "target_validation_operation": 35,
+          "target_retraction_applied": false,
+          "evidence": "measured callback/event recorder; execute denotes attempt, applied denotes successful movement"
+        }
+      ],
+      "required": "inhibit's dust connection/power update effective before pending target Retract validation; geometry, immediate Wire Turbo callbacks and event FIFO fix tested order",
+      "status": "geometry plus recorded prepared episode(s); compiler recognition certificate still required"
+    },
+    {
+      "actor": [
+        8,
+        3,
+        29
+      ],
+      "payload": [
+        10,
+        3,
+        29
+      ],
+      "controlled_wire": [
+        10,
+        2,
+        29
+      ],
+      "supply": [
+        10,
+        4,
+        28
+      ],
+      "consumer": [
+        13,
+        2,
+        29
+      ],
+      "stage": "bit 3 first XOR inhibition",
+      "measured_validations": [
+        {
+          "case_id": "prepared-2047-2047-0",
+          "artifact": "test_data/instant-pistons/traces/mchprs-adder_11bits-prepared-2047-2047-0-r0.json.gz",
+          "tick": 3,
+          "inhibit_applied_operation": 37,
+          "target_validation_operation": 43,
+          "target_retraction_applied": false,
+          "evidence": "measured callback/event recorder; execute denotes attempt, applied denotes successful movement"
+        },
+        {
+          "case_id": "prepared-396-1915-0",
+          "artifact": "test_data/instant-pistons/traces/mchprs-adder_11bits-prepared-396-1915-0-r0.json.gz",
+          "tick": 3,
+          "inhibit_applied_operation": 22,
+          "target_validation_operation": 26,
+          "target_retraction_applied": false,
+          "evidence": "measured callback/event recorder; execute denotes attempt, applied denotes successful movement"
+        }
+      ],
+      "required": "inhibit's dust connection/power update effective before pending target Retract validation; geometry, immediate Wire Turbo callbacks and event FIFO fix tested order",
+      "status": "geometry plus recorded prepared episode(s); compiler recognition certificate still required"
+    },
+    {
+      "actor": [
+        14,
+        3,
+        29
+      ],
+      "payload": [
+        16,
+        3,
+        29
+      ],
+      "controlled_wire": [
+        16,
+        2,
+        29
+      ],
+      "supply": [
+        16,
+        4,
+        30
+      ],
+      "consumer": [
+        18,
+        2,
+        29
+      ],
+      "stage": "bit 3 sum XOR inhibition",
+      "measured_validations": [
+        {
+          "case_id": "prepared-1023-1-0",
+          "artifact": "test_data/instant-pistons/traces/mchprs-adder_11bits-prepared-1023-1-0-r0.json.gz",
+          "tick": 3,
+          "inhibit_applied_operation": 37,
+          "target_validation_operation": 44,
+          "target_retraction_applied": false,
+          "evidence": "measured callback/event recorder; execute denotes attempt, applied denotes successful movement"
+        },
+        {
+          "case_id": "prepared-1694-1381-0",
+          "artifact": "test_data/instant-pistons/traces/mchprs-adder_11bits-prepared-1694-1381-0-r0.json.gz",
+          "tick": 3,
+          "inhibit_applied_operation": 31,
+          "target_validation_operation": 38,
+          "target_retraction_applied": false,
+          "evidence": "measured callback/event recorder; execute denotes attempt, applied denotes successful movement"
+        },
+        {
+          "case_id": "prepared-2047-1-0",
+          "artifact": "test_data/instant-pistons/traces/mchprs-adder_11bits-prepared-2047-1-0-r0.json.gz",
+          "tick": 3,
+          "inhibit_applied_operation": 37,
+          "target_validation_operation": 44,
+          "target_retraction_applied": false,
+          "evidence": "measured callback/event recorder; execute denotes attempt, applied denotes successful movement"
+        },
+        {
+          "case_id": "prepared-31-1-0",
+          "artifact": "test_data/instant-pistons/traces/mchprs-adder_11bits-prepared-31-1-0-r0.json.gz",
+          "tick": 3,
+          "inhibit_applied_operation": 36,
+          "target_validation_operation": 41,
+          "target_retraction_applied": false,
+          "evidence": "measured callback/event recorder; execute denotes attempt, applied denotes successful movement"
+        },
+        {
+          "case_id": "prepared-518-429-0",
+          "artifact": "test_data/instant-pistons/traces/mchprs-adder_11bits-prepared-518-429-0-r0.json.gz",
+          "tick": 3,
+          "inhibit_applied_operation": 29,
+          "target_validation_operation": 32,
+          "target_retraction_applied": false,
+          "evidence": "measured callback/event recorder; execute denotes attempt, applied denotes successful movement"
+        }
+      ],
+      "required": "inhibit's dust connection/power update effective before pending target Retract validation; geometry, immediate Wire Turbo callbacks and event FIFO fix tested order",
+      "status": "geometry plus recorded prepared episode(s); compiler recognition certificate still required"
+    },
+    {
+      "actor": [
+        8,
+        3,
+        25
+      ],
+      "payload": [
+        10,
+        3,
+        25
+      ],
+      "controlled_wire": [
+        10,
+        2,
+        25
+      ],
+      "supply": [
+        10,
+        4,
+        24
+      ],
+      "consumer": [
+        13,
+        2,
+        25
+      ],
+      "stage": "bit 4 first XOR inhibition",
+      "measured_validations": [
+        {
+          "case_id": "prepared-2047-2047-0",
+          "artifact": "test_data/instant-pistons/traces/mchprs-adder_11bits-prepared-2047-2047-0-r0.json.gz",
+          "tick": 3,
+          "inhibit_applied_operation": 48,
+          "target_validation_operation": 54,
+          "target_retraction_applied": false,
+          "evidence": "measured callback/event recorder; execute denotes attempt, applied denotes successful movement"
+        }
+      ],
+      "required": "inhibit's dust connection/power update effective before pending target Retract validation; geometry, immediate Wire Turbo callbacks and event FIFO fix tested order",
+      "status": "geometry plus recorded prepared episode(s); compiler recognition certificate still required"
+    },
+    {
+      "actor": [
+        14,
+        3,
+        25
+      ],
+      "payload": [
+        16,
+        3,
+        25
+      ],
+      "controlled_wire": [
+        16,
+        2,
+        25
+      ],
+      "supply": [
+        16,
+        4,
+        26
+      ],
+      "consumer": [
+        18,
+        2,
+        25
+      ],
+      "stage": "bit 4 sum XOR inhibition",
+      "measured_validations": [
+        {
+          "case_id": "prepared-1023-1-0",
+          "artifact": "test_data/instant-pistons/traces/mchprs-adder_11bits-prepared-1023-1-0-r0.json.gz",
+          "tick": 3,
+          "inhibit_applied_operation": 45,
+          "target_validation_operation": 52,
+          "target_retraction_applied": false,
+          "evidence": "measured callback/event recorder; execute denotes attempt, applied denotes successful movement"
+        },
+        {
+          "case_id": "prepared-1694-1381-0",
+          "artifact": "test_data/instant-pistons/traces/mchprs-adder_11bits-prepared-1694-1381-0-r0.json.gz",
+          "tick": 3,
+          "inhibit_applied_operation": 39,
+          "target_validation_operation": 46,
+          "target_retraction_applied": false,
+          "evidence": "measured callback/event recorder; execute denotes attempt, applied denotes successful movement"
+        },
+        {
+          "case_id": "prepared-2047-1-0",
+          "artifact": "test_data/instant-pistons/traces/mchprs-adder_11bits-prepared-2047-1-0-r0.json.gz",
+          "tick": 3,
+          "inhibit_applied_operation": 45,
+          "target_validation_operation": 52,
+          "target_retraction_applied": false,
+          "evidence": "measured callback/event recorder; execute denotes attempt, applied denotes successful movement"
+        },
+        {
+          "case_id": "prepared-31-1-0",
+          "artifact": "test_data/instant-pistons/traces/mchprs-adder_11bits-prepared-31-1-0-r0.json.gz",
+          "tick": 3,
+          "inhibit_applied_operation": 42,
+          "target_validation_operation": 46,
+          "target_retraction_applied": false,
+          "evidence": "measured callback/event recorder; execute denotes attempt, applied denotes successful movement"
+        },
+        {
+          "case_id": "prepared-396-1915-0",
+          "artifact": "test_data/instant-pistons/traces/mchprs-adder_11bits-prepared-396-1915-0-r0.json.gz",
+          "tick": 3,
+          "inhibit_applied_operation": 36,
+          "target_validation_operation": 39,
+          "target_retraction_applied": false,
+          "evidence": "measured callback/event recorder; execute denotes attempt, applied denotes successful movement"
+        }
+      ],
+      "required": "inhibit's dust connection/power update effective before pending target Retract validation; geometry, immediate Wire Turbo callbacks and event FIFO fix tested order",
+      "status": "geometry plus recorded prepared episode(s); compiler recognition certificate still required"
+    },
+    {
+      "actor": [
+        8,
+        3,
+        21
+      ],
+      "payload": [
+        10,
+        3,
+        21
+      ],
+      "controlled_wire": [
+        10,
+        2,
+        21
+      ],
+      "supply": [
+        10,
+        4,
+        20
+      ],
+      "consumer": [
+        13,
+        2,
+        21
+      ],
+      "stage": "bit 5 first XOR inhibition",
+      "measured_validations": [
+        {
+          "case_id": "prepared-1202-1129-0",
+          "artifact": "test_data/instant-pistons/traces/mchprs-adder_11bits-prepared-1202-1129-0-r0.json.gz",
+          "tick": 3,
+          "inhibit_applied_operation": 28,
+          "target_validation_operation": 32,
+          "target_retraction_applied": false,
+          "evidence": "measured callback/event recorder; execute denotes attempt, applied denotes successful movement"
+        },
+        {
+          "case_id": "prepared-1832-103-0",
+          "artifact": "test_data/instant-pistons/traces/mchprs-adder_11bits-prepared-1832-103-0-r0.json.gz",
+          "tick": 3,
+          "inhibit_applied_operation": 29,
+          "target_validation_operation": 33,
+          "target_retraction_applied": false,
+          "evidence": "measured callback/event recorder; execute denotes attempt, applied denotes successful movement"
+        },
+        {
+          "case_id": "prepared-2047-2047-0",
+          "artifact": "test_data/instant-pistons/traces/mchprs-adder_11bits-prepared-2047-2047-0-r0.json.gz",
+          "tick": 3,
+          "inhibit_applied_operation": 59,
+          "target_validation_operation": 65,
+          "target_retraction_applied": false,
+          "evidence": "measured callback/event recorder; execute denotes attempt, applied denotes successful movement"
+        }
+      ],
+      "required": "inhibit's dust connection/power update effective before pending target Retract validation; geometry, immediate Wire Turbo callbacks and event FIFO fix tested order",
+      "status": "geometry plus recorded prepared episode(s); compiler recognition certificate still required"
+    },
+    {
+      "actor": [
+        14,
+        3,
+        21
+      ],
+      "payload": [
+        16,
+        3,
+        21
+      ],
+      "controlled_wire": [
+        16,
+        2,
+        21
+      ],
+      "supply": [
+        16,
+        4,
+        22
+      ],
+      "consumer": [
+        18,
+        2,
+        21
+      ],
+      "stage": "bit 5 sum XOR inhibition",
+      "measured_validations": [
+        {
+          "case_id": "prepared-1023-1-0",
+          "artifact": "test_data/instant-pistons/traces/mchprs-adder_11bits-prepared-1023-1-0-r0.json.gz",
+          "tick": 3,
+          "inhibit_applied_operation": 53,
+          "target_validation_operation": 60,
+          "target_retraction_applied": false,
+          "evidence": "measured callback/event recorder; execute denotes attempt, applied denotes successful movement"
+        },
+        {
+          "case_id": "prepared-1694-1381-0",
+          "artifact": "test_data/instant-pistons/traces/mchprs-adder_11bits-prepared-1694-1381-0-r0.json.gz",
+          "tick": 3,
+          "inhibit_applied_operation": 47,
+          "target_validation_operation": 50,
+          "target_retraction_applied": false,
+          "evidence": "measured callback/event recorder; execute denotes attempt, applied denotes successful movement"
+        },
+        {
+          "case_id": "prepared-2047-1-0",
+          "artifact": "test_data/instant-pistons/traces/mchprs-adder_11bits-prepared-2047-1-0-r0.json.gz",
+          "tick": 3,
+          "inhibit_applied_operation": 53,
+          "target_validation_operation": 60,
+          "target_retraction_applied": false,
+          "evidence": "measured callback/event recorder; execute denotes attempt, applied denotes successful movement"
+        },
+        {
+          "case_id": "prepared-396-1915-0",
+          "artifact": "test_data/instant-pistons/traces/mchprs-adder_11bits-prepared-396-1915-0-r0.json.gz",
+          "tick": 3,
+          "inhibit_applied_operation": 44,
+          "target_validation_operation": 47,
+          "target_retraction_applied": false,
+          "evidence": "measured callback/event recorder; execute denotes attempt, applied denotes successful movement"
+        }
+      ],
+      "required": "inhibit's dust connection/power update effective before pending target Retract validation; geometry, immediate Wire Turbo callbacks and event FIFO fix tested order",
+      "status": "geometry plus recorded prepared episode(s); compiler recognition certificate still required"
+    },
+    {
+      "actor": [
+        8,
+        3,
+        17
+      ],
+      "payload": [
+        10,
+        3,
+        17
+      ],
+      "controlled_wire": [
+        10,
+        2,
+        17
+      ],
+      "supply": [
+        10,
+        4,
+        16
+      ],
+      "consumer": [
+        13,
+        2,
+        17
+      ],
+      "stage": "bit 6 first XOR inhibition",
+      "measured_validations": [
+        {
+          "case_id": "prepared-2047-2047-0",
+          "artifact": "test_data/instant-pistons/traces/mchprs-adder_11bits-prepared-2047-2047-0-r0.json.gz",
+          "tick": 3,
+          "inhibit_applied_operation": 70,
+          "target_validation_operation": 76,
+          "target_retraction_applied": false,
+          "evidence": "measured callback/event recorder; execute denotes attempt, applied denotes successful movement"
+        }
+      ],
+      "required": "inhibit's dust connection/power update effective before pending target Retract validation; geometry, immediate Wire Turbo callbacks and event FIFO fix tested order",
+      "status": "geometry plus recorded prepared episode(s); compiler recognition certificate still required"
+    },
+    {
+      "actor": [
+        14,
+        3,
+        17
+      ],
+      "payload": [
+        16,
+        3,
+        17
+      ],
+      "controlled_wire": [
+        16,
+        2,
+        17
+      ],
+      "supply": [
+        16,
+        4,
+        18
+      ],
+      "consumer": [
+        18,
+        2,
+        17
+      ],
+      "stage": "bit 6 sum XOR inhibition",
+      "measured_validations": [
+        {
+          "case_id": "prepared-1023-1-0",
+          "artifact": "test_data/instant-pistons/traces/mchprs-adder_11bits-prepared-1023-1-0-r0.json.gz",
+          "tick": 3,
+          "inhibit_applied_operation": 61,
+          "target_validation_operation": 68,
+          "target_retraction_applied": false,
+          "evidence": "measured callback/event recorder; execute denotes attempt, applied denotes successful movement"
+        },
+        {
+          "case_id": "prepared-1202-1129-0",
+          "artifact": "test_data/instant-pistons/traces/mchprs-adder_11bits-prepared-1202-1129-0-r0.json.gz",
+          "tick": 3,
+          "inhibit_applied_operation": 41,
+          "target_validation_operation": 44,
+          "target_retraction_applied": false,
+          "evidence": "measured callback/event recorder; execute denotes attempt, applied denotes successful movement"
+        },
+        {
+          "case_id": "prepared-1694-1381-0",
+          "artifact": "test_data/instant-pistons/traces/mchprs-adder_11bits-prepared-1694-1381-0-r0.json.gz",
+          "tick": 3,
+          "inhibit_applied_operation": 55,
+          "target_validation_operation": 58,
+          "target_retraction_applied": false,
+          "evidence": "measured callback/event recorder; execute denotes attempt, applied denotes successful movement"
+        },
+        {
+          "case_id": "prepared-1832-103-0",
+          "artifact": "test_data/instant-pistons/traces/mchprs-adder_11bits-prepared-1832-103-0-r0.json.gz",
+          "tick": 3,
+          "inhibit_applied_operation": 40,
+          "target_validation_operation": 43,
+          "target_retraction_applied": false,
+          "evidence": "measured callback/event recorder; execute denotes attempt, applied denotes successful movement"
+        },
+        {
+          "case_id": "prepared-2047-1-0",
+          "artifact": "test_data/instant-pistons/traces/mchprs-adder_11bits-prepared-2047-1-0-r0.json.gz",
+          "tick": 3,
+          "inhibit_applied_operation": 61,
+          "target_validation_operation": 68,
+          "target_retraction_applied": false,
+          "evidence": "measured callback/event recorder; execute denotes attempt, applied denotes successful movement"
+        },
+        {
+          "case_id": "prepared-396-1915-0",
+          "artifact": "test_data/instant-pistons/traces/mchprs-adder_11bits-prepared-396-1915-0-r0.json.gz",
+          "tick": 3,
+          "inhibit_applied_operation": 53,
+          "target_validation_operation": 56,
+          "target_retraction_applied": false,
+          "evidence": "measured callback/event recorder; execute denotes attempt, applied denotes successful movement"
+        }
+      ],
+      "required": "inhibit's dust connection/power update effective before pending target Retract validation; geometry, immediate Wire Turbo callbacks and event FIFO fix tested order",
+      "status": "geometry plus recorded prepared episode(s); compiler recognition certificate still required"
+    },
+    {
+      "actor": [
+        8,
+        3,
+        13
+      ],
+      "payload": [
+        10,
+        3,
+        13
+      ],
+      "controlled_wire": [
+        10,
+        2,
+        13
+      ],
+      "supply": [
+        10,
+        4,
+        12
+      ],
+      "consumer": [
+        13,
+        2,
+        13
+      ],
+      "stage": "bit 7 first XOR inhibition",
+      "measured_validations": [
+        {
+          "case_id": "prepared-1920-1247-0",
+          "artifact": "test_data/instant-pistons/traces/mchprs-adder_11bits-prepared-1920-1247-0-r0.json.gz",
+          "tick": 3,
+          "inhibit_applied_operation": 39,
+          "target_validation_operation": 43,
+          "target_retraction_applied": false,
+          "evidence": "measured callback/event recorder; execute denotes attempt, applied denotes successful movement"
+        },
+        {
+          "case_id": "prepared-2047-2047-0",
+          "artifact": "test_data/instant-pistons/traces/mchprs-adder_11bits-prepared-2047-2047-0-r0.json.gz",
+          "tick": 3,
+          "inhibit_applied_operation": 81,
+          "target_validation_operation": 87,
+          "target_retraction_applied": false,
+          "evidence": "measured callback/event recorder; execute denotes attempt, applied denotes successful movement"
+        },
+        {
+          "case_id": "prepared-692-1667-0",
+          "artifact": "test_data/instant-pistons/traces/mchprs-adder_11bits-prepared-692-1667-0-r0.json.gz",
+          "tick": 3,
+          "inhibit_applied_operation": 34,
+          "target_validation_operation": 38,
+          "target_retraction_applied": false,
+          "evidence": "measured callback/event recorder; execute denotes attempt, applied denotes successful movement"
+        },
+        {
+          "case_id": "prepared-970-161-0",
+          "artifact": "test_data/instant-pistons/traces/mchprs-adder_11bits-prepared-970-161-0-r0.json.gz",
+          "tick": 3,
+          "inhibit_applied_operation": 34,
+          "target_validation_operation": 38,
+          "target_retraction_applied": false,
+          "evidence": "measured callback/event recorder; execute denotes attempt, applied denotes successful movement"
+        }
+      ],
+      "required": "inhibit's dust connection/power update effective before pending target Retract validation; geometry, immediate Wire Turbo callbacks and event FIFO fix tested order",
+      "status": "geometry plus recorded prepared episode(s); compiler recognition certificate still required"
+    },
+    {
+      "actor": [
+        14,
+        3,
+        13
+      ],
+      "payload": [
+        16,
+        3,
+        13
+      ],
+      "controlled_wire": [
+        16,
+        2,
+        13
+      ],
+      "supply": [
+        16,
+        4,
+        14
+      ],
+      "consumer": [
+        18,
+        2,
+        13
+      ],
+      "stage": "bit 7 sum XOR inhibition",
+      "measured_validations": [
+        {
+          "case_id": "prepared-1023-1-0",
+          "artifact": "test_data/instant-pistons/traces/mchprs-adder_11bits-prepared-1023-1-0-r0.json.gz",
+          "tick": 3,
+          "inhibit_applied_operation": 69,
+          "target_validation_operation": 74,
+          "target_retraction_applied": false,
+          "evidence": "measured callback/event recorder; execute denotes attempt, applied denotes successful movement"
+        },
+        {
+          "case_id": "prepared-1202-1129-0",
+          "artifact": "test_data/instant-pistons/traces/mchprs-adder_11bits-prepared-1202-1129-0-r0.json.gz",
+          "tick": 3,
+          "inhibit_applied_operation": 47,
+          "target_validation_operation": 52,
+          "target_retraction_applied": false,
+          "evidence": "measured callback/event recorder; execute denotes attempt, applied denotes successful movement"
+        },
+        {
+          "case_id": "prepared-1694-1381-0",
+          "artifact": "test_data/instant-pistons/traces/mchprs-adder_11bits-prepared-1694-1381-0-r0.json.gz",
+          "tick": 3,
+          "inhibit_applied_operation": 63,
+          "target_validation_operation": 70,
+          "target_retraction_applied": false,
+          "evidence": "measured callback/event recorder; execute denotes attempt, applied denotes successful movement"
+        },
+        {
+          "case_id": "prepared-2047-1-0",
+          "artifact": "test_data/instant-pistons/traces/mchprs-adder_11bits-prepared-2047-1-0-r0.json.gz",
+          "tick": 3,
+          "inhibit_applied_operation": 69,
+          "target_validation_operation": 75,
+          "target_retraction_applied": false,
+          "evidence": "measured callback/event recorder; execute denotes attempt, applied denotes successful movement"
+        },
+        {
+          "case_id": "prepared-396-1915-0",
+          "artifact": "test_data/instant-pistons/traces/mchprs-adder_11bits-prepared-396-1915-0-r0.json.gz",
+          "tick": 3,
+          "inhibit_applied_operation": 64,
+          "target_validation_operation": 71,
+          "target_retraction_applied": false,
+          "evidence": "measured callback/event recorder; execute denotes attempt, applied denotes successful movement"
+        }
+      ],
+      "required": "inhibit's dust connection/power update effective before pending target Retract validation; geometry, immediate Wire Turbo callbacks and event FIFO fix tested order",
+      "status": "geometry plus recorded prepared episode(s); compiler recognition certificate still required"
+    },
+    {
+      "actor": [
+        8,
+        3,
+        9
+      ],
+      "payload": [
+        10,
+        3,
+        9
+      ],
+      "controlled_wire": [
+        10,
+        2,
+        9
+      ],
+      "supply": [
+        10,
+        4,
+        8
+      ],
+      "consumer": [
+        13,
+        2,
+        9
+      ],
+      "stage": "bit 8 first XOR inhibition",
+      "measured_validations": [
+        {
+          "case_id": "prepared-2047-2047-0",
+          "artifact": "test_data/instant-pistons/traces/mchprs-adder_11bits-prepared-2047-2047-0-r0.json.gz",
+          "tick": 3,
+          "inhibit_applied_operation": 92,
+          "target_validation_operation": 98,
+          "target_retraction_applied": false,
+          "evidence": "measured callback/event recorder; execute denotes attempt, applied denotes successful movement"
+        },
+        {
+          "case_id": "prepared-396-1915-0",
+          "artifact": "test_data/instant-pistons/traces/mchprs-adder_11bits-prepared-396-1915-0-r0.json.gz",
+          "tick": 3,
+          "inhibit_applied_operation": 60,
+          "target_validation_operation": 67,
+          "target_retraction_applied": false,
+          "evidence": "measured callback/event recorder; execute denotes attempt, applied denotes successful movement"
+        }
+      ],
+      "required": "inhibit's dust connection/power update effective before pending target Retract validation; geometry, immediate Wire Turbo callbacks and event FIFO fix tested order",
+      "status": "geometry plus recorded prepared episode(s); compiler recognition certificate still required"
+    },
+    {
+      "actor": [
+        14,
+        3,
+        9
+      ],
+      "payload": [
+        16,
+        3,
+        9
+      ],
+      "controlled_wire": [
+        16,
+        2,
+        9
+      ],
+      "supply": [
+        16,
+        4,
+        10
+      ],
+      "consumer": [
+        18,
+        2,
+        9
+      ],
+      "stage": "bit 8 sum XOR inhibition",
+      "measured_validations": [
+        {
+          "case_id": "prepared-1023-1-0",
+          "artifact": "test_data/instant-pistons/traces/mchprs-adder_11bits-prepared-1023-1-0-r0.json.gz",
+          "tick": 3,
+          "inhibit_applied_operation": 75,
+          "target_validation_operation": 79,
+          "target_retraction_applied": false,
+          "evidence": "measured callback/event recorder; execute denotes attempt, applied denotes successful movement"
+        },
+        {
+          "case_id": "prepared-1694-1381-0",
+          "artifact": "test_data/instant-pistons/traces/mchprs-adder_11bits-prepared-1694-1381-0-r0.json.gz",
+          "tick": 3,
+          "inhibit_applied_operation": 71,
+          "target_validation_operation": 74,
+          "target_retraction_applied": false,
+          "evidence": "measured callback/event recorder; execute denotes attempt, applied denotes successful movement"
+        },
+        {
+          "case_id": "prepared-1920-1247-0",
+          "artifact": "test_data/instant-pistons/traces/mchprs-adder_11bits-prepared-1920-1247-0-r0.json.gz",
+          "tick": 3,
+          "inhibit_applied_operation": 52,
+          "target_validation_operation": 60,
+          "target_retraction_applied": false,
+          "evidence": "measured callback/event recorder; execute denotes attempt, applied denotes successful movement"
+        },
+        {
+          "case_id": "prepared-2047-1-0",
+          "artifact": "test_data/instant-pistons/traces/mchprs-adder_11bits-prepared-2047-1-0-r0.json.gz",
+          "tick": 3,
+          "inhibit_applied_operation": 76,
+          "target_validation_operation": 81,
+          "target_retraction_applied": false,
+          "evidence": "measured callback/event recorder; execute denotes attempt, applied denotes successful movement"
+        },
+        {
+          "case_id": "prepared-970-161-0",
+          "artifact": "test_data/instant-pistons/traces/mchprs-adder_11bits-prepared-970-161-0-r0.json.gz",
+          "tick": 3,
+          "inhibit_applied_operation": 46,
+          "target_validation_operation": 50,
+          "target_retraction_applied": false,
+          "evidence": "measured callback/event recorder; execute denotes attempt, applied denotes successful movement"
+        }
+      ],
+      "required": "inhibit's dust connection/power update effective before pending target Retract validation; geometry, immediate Wire Turbo callbacks and event FIFO fix tested order",
+      "status": "geometry plus recorded prepared episode(s); compiler recognition certificate still required"
+    },
+    {
+      "actor": [
+        8,
+        3,
+        5
+      ],
+      "payload": [
+        10,
+        3,
+        5
+      ],
+      "controlled_wire": [
+        10,
+        2,
+        5
+      ],
+      "supply": [
+        10,
+        4,
+        4
+      ],
+      "consumer": [
+        13,
+        2,
+        5
+      ],
+      "stage": "bit 9 first XOR inhibition",
+      "measured_validations": [
+        {
+          "case_id": "prepared-2047-2047-0",
+          "artifact": "test_data/instant-pistons/traces/mchprs-adder_11bits-prepared-2047-2047-0-r0.json.gz",
+          "tick": 3,
+          "inhibit_applied_operation": 102,
+          "target_validation_operation": 108,
+          "target_retraction_applied": false,
+          "evidence": "measured callback/event recorder; execute denotes attempt, applied denotes successful movement"
+        },
+        {
+          "case_id": "prepared-692-1667-0",
+          "artifact": "test_data/instant-pistons/traces/mchprs-adder_11bits-prepared-692-1667-0-r0.json.gz",
+          "tick": 3,
+          "inhibit_applied_operation": 45,
+          "target_validation_operation": 49,
+          "target_retraction_applied": false,
+          "evidence": "measured callback/event recorder; execute denotes attempt, applied denotes successful movement"
+        }
+      ],
+      "required": "inhibit's dust connection/power update effective before pending target Retract validation; geometry, immediate Wire Turbo callbacks and event FIFO fix tested order",
+      "status": "geometry plus recorded prepared episode(s); compiler recognition certificate still required"
+    },
+    {
+      "actor": [
+        14,
+        3,
+        5
+      ],
+      "payload": [
+        16,
+        3,
+        5
+      ],
+      "controlled_wire": [
+        16,
+        2,
+        5
+      ],
+      "supply": [
+        16,
+        4,
+        6
+      ],
+      "consumer": [
+        18,
+        2,
+        5
+      ],
+      "stage": "bit 9 sum XOR inhibition",
+      "measured_validations": [
+        {
+          "case_id": "prepared-1023-1-0",
+          "artifact": "test_data/instant-pistons/traces/mchprs-adder_11bits-prepared-1023-1-0-r0.json.gz",
+          "tick": 3,
+          "inhibit_applied_operation": 80,
+          "target_validation_operation": 83,
+          "target_retraction_applied": false,
+          "evidence": "measured callback/event recorder; execute denotes attempt, applied denotes successful movement"
+        },
+        {
+          "case_id": "prepared-1694-1381-0",
+          "artifact": "test_data/instant-pistons/traces/mchprs-adder_11bits-prepared-1694-1381-0-r0.json.gz",
+          "tick": 3,
+          "inhibit_applied_operation": 80,
+          "target_validation_operation": 85,
+          "target_retraction_applied": false,
+          "evidence": "measured callback/event recorder; execute denotes attempt, applied denotes successful movement"
+        },
+        {
+          "case_id": "prepared-1920-1247-0",
+          "artifact": "test_data/instant-pistons/traces/mchprs-adder_11bits-prepared-1920-1247-0-r0.json.gz",
+          "tick": 3,
+          "inhibit_applied_operation": 61,
+          "target_validation_operation": 66,
+          "target_retraction_applied": false,
+          "evidence": "measured callback/event recorder; execute denotes attempt, applied denotes successful movement"
+        },
+        {
+          "case_id": "prepared-2047-1-0",
+          "artifact": "test_data/instant-pistons/traces/mchprs-adder_11bits-prepared-2047-1-0-r0.json.gz",
+          "tick": 3,
+          "inhibit_applied_operation": 82,
+          "target_validation_operation": 86,
+          "target_retraction_applied": false,
+          "evidence": "measured callback/event recorder; execute denotes attempt, applied denotes successful movement"
+        },
+        {
+          "case_id": "prepared-396-1915-0",
+          "artifact": "test_data/instant-pistons/traces/mchprs-adder_11bits-prepared-396-1915-0-r0.json.gz",
+          "tick": 3,
+          "inhibit_applied_operation": 75,
+          "target_validation_operation": 79,
+          "target_retraction_applied": false,
+          "evidence": "measured callback/event recorder; execute denotes attempt, applied denotes successful movement"
+        },
+        {
+          "case_id": "prepared-970-161-0",
+          "artifact": "test_data/instant-pistons/traces/mchprs-adder_11bits-prepared-970-161-0-r0.json.gz",
+          "tick": 3,
+          "inhibit_applied_operation": 51,
+          "target_validation_operation": 54,
+          "target_retraction_applied": false,
+          "evidence": "measured callback/event recorder; execute denotes attempt, applied denotes successful movement"
+        }
+      ],
+      "required": "inhibit's dust connection/power update effective before pending target Retract validation; geometry, immediate Wire Turbo callbacks and event FIFO fix tested order",
+      "status": "geometry plus recorded prepared episode(s); compiler recognition certificate still required"
+    },
+    {
+      "actor": [
+        8,
+        3,
+        1
+      ],
+      "payload": [
+        10,
+        3,
+        1
+      ],
+      "controlled_wire": [
+        10,
+        2,
+        1
+      ],
+      "supply": [
+        10,
+        4,
+        0
+      ],
+      "consumer": [
+        13,
+        2,
+        1
+      ],
+      "stage": "bit 10 first XOR inhibition",
+      "measured_validations": [
+        {
+          "case_id": "prepared-1024-1024-0",
+          "artifact": "test_data/instant-pistons/traces/mchprs-adder_11bits-prepared-1024-1024-0-r0.json.gz",
+          "tick": 3,
+          "inhibit_applied_operation": 16,
+          "target_validation_operation": 19,
+          "target_retraction_applied": false,
+          "evidence": "measured callback/event recorder; execute denotes attempt, applied denotes successful movement"
+        },
+        {
+          "case_id": "prepared-1202-1129-0",
+          "artifact": "test_data/instant-pistons/traces/mchprs-adder_11bits-prepared-1202-1129-0-r0.json.gz",
+          "tick": 3,
+          "inhibit_applied_operation": 55,
+          "target_validation_operation": 59,
+          "target_retraction_applied": false,
+          "evidence": "measured callback/event recorder; execute denotes attempt, applied denotes successful movement"
+        },
+        {
+          "case_id": "prepared-1694-1381-0",
+          "artifact": "test_data/instant-pistons/traces/mchprs-adder_11bits-prepared-1694-1381-0-r0.json.gz",
+          "tick": 3,
+          "inhibit_applied_operation": 76,
+          "target_validation_operation": 83,
+          "target_retraction_applied": false,
+          "evidence": "measured callback/event recorder; execute denotes attempt, applied denotes successful movement"
+        },
+        {
+          "case_id": "prepared-1920-1247-0",
+          "artifact": "test_data/instant-pistons/traces/mchprs-adder_11bits-prepared-1920-1247-0-r0.json.gz",
+          "tick": 3,
+          "inhibit_applied_operation": 56,
+          "target_validation_operation": 64,
+          "target_retraction_applied": false,
+          "evidence": "measured callback/event recorder; execute denotes attempt, applied denotes successful movement"
+        },
+        {
+          "case_id": "prepared-2047-2047-0",
+          "artifact": "test_data/instant-pistons/traces/mchprs-adder_11bits-prepared-2047-2047-0-r0.json.gz",
+          "tick": 3,
+          "inhibit_applied_operation": 110,
+          "target_validation_operation": 116,
+          "target_retraction_applied": false,
+          "evidence": "measured callback/event recorder; execute denotes attempt, applied denotes successful movement"
+        }
+      ],
+      "required": "inhibit's dust connection/power update effective before pending target Retract validation; geometry, immediate Wire Turbo callbacks and event FIFO fix tested order",
+      "status": "geometry plus recorded prepared episode(s); compiler recognition certificate still required"
+    },
+    {
+      "actor": [
+        14,
+        3,
+        1
+      ],
+      "payload": [
+        16,
+        3,
+        1
+      ],
+      "controlled_wire": [
+        16,
+        2,
+        1
+      ],
+      "supply": [
+        16,
+        4,
+        2
+      ],
+      "consumer": [
+        18,
+        2,
+        1
+      ],
+      "stage": "bit 10 sum XOR inhibition",
+      "measured_validations": [
+        {
+          "case_id": "prepared-2047-1-0",
+          "artifact": "test_data/instant-pistons/traces/mchprs-adder_11bits-prepared-2047-1-0-r0.json.gz",
+          "tick": 3,
+          "inhibit_applied_operation": 87,
+          "target_validation_operation": 90,
+          "target_retraction_applied": false,
+          "evidence": "measured callback/event recorder; execute denotes attempt, applied denotes successful movement"
+        },
+        {
+          "case_id": "prepared-396-1915-0",
+          "artifact": "test_data/instant-pistons/traces/mchprs-adder_11bits-prepared-396-1915-0-r0.json.gz",
+          "tick": 3,
+          "inhibit_applied_operation": 81,
+          "target_validation_operation": 84,
+          "target_retraction_applied": false,
+          "evidence": "measured callback/event recorder; execute denotes attempt, applied denotes successful movement"
+        },
+        {
+          "case_id": "prepared-692-1667-0",
+          "artifact": "test_data/instant-pistons/traces/mchprs-adder_11bits-prepared-692-1667-0-r0.json.gz",
+          "tick": 3,
+          "inhibit_applied_operation": 54,
+          "target_validation_operation": 57,
+          "target_retraction_applied": false,
+          "evidence": "measured callback/event recorder; execute denotes attempt, applied denotes successful movement"
+        }
+      ],
+      "required": "inhibit's dust connection/power update effective before pending target Retract validation; geometry, immediate Wire Turbo callbacks and event FIFO fix tested order",
+      "status": "geometry plus recorded prepared episode(s); compiler recognition certificate still required"
+    }
+  ],
+  "first_wave_orders": []
 }

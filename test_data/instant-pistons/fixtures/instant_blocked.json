@@ -9,7 +9,7 @@
     8
   ],
   "inspection": "test_data/instant-pistons/inspection/instant_blocked.json",
-  "classification": "observed diagnostics; function pending analysis",
+  "classification": "Observed first-wave protocol; no generic compiler certificate",
   "coordinates": {
     "convention": "selection-local relative to saved minimum",
     "origin": [
@@ -49,12 +49,12 @@
         6
       ]
     },
-    "status": "geometry-derived candidates; see dossier for per-port evidence"
+    "status": "geometry and controlled episodes verified; absent sink and temporal limits described in dossier"
   },
   "setup": {
     "mode": "paste_clipboard(ignore_air=false); raw storage then entities; no notifications",
     "initial": "exact binary states and block entities; empty queues, tick 0 BetweenTicks",
-    "readiness": "saved-idle episode must remain unchanged with empty work; prepared cases wait for no queued work, bounded at 32 ticks"
+    "readiness": "saved-idle remains unchanged with empty work; prepared snapshots require two unchanged quiescent completed boundaries, bounded at 32 ticks"
   },
   "protocol": {
     "logical_one": "nonzero-to-zero event",
@@ -63,10 +63,30 @@
     "held_zero": "no new external event; internal cycles retained",
     "repeat_use": "pending measured rearm condition; use fresh imports until proven"
   },
-  "observation_decoder": "raw state/property observations; moving states distinct; dust falling edge is event; air output payload means 1 only for verified arithmetic bank",
+  "observation_decoder": {
+    "timing": "completed response boundary; tick 0 is immediately after ordered stimuli",
+    "held_zero": "not a new external event",
+    "moving": "distinct state, never silently treated as an output bit",
+    "encoding": "new dust nonzero-to-zero transition = one; unchanged nonzero means no event",
+    "first_valid_boundary": 1,
+    "first_wave_window_ticks": [
+      1,
+      3
+    ],
+    "function": "no response under constant QC power",
+    "consumer_boundary": "labeled/derived wire observation; attached non-instant consumer absent unless case declares a probe",
+    "later_observations": "reset pulses and moving state remain physical observations; full episode is retained"
+  },
   "ordering_constraints": [],
-  "unknowns": [],
-  "java_status": "not yet compared",
+  "unknowns": [
+    "Arbitrary non-instant consumer/handoff equivalence not certified",
+    "External input or another computation during reset is undefined"
+  ],
+  "java_status": {
+    "compared_cases": 3,
+    "status": "all declared projections match",
+    "scope": "current binary; response boundaries, not internal callbacks; setup difference retained"
+  },
   "rotations": [
     0
   ],
@@ -75,7 +95,23 @@
       "id": "saved-idle",
       "inputs": null,
       "actions": [],
-      "ticks": 24
+      "ticks": 24,
+      "evidence_status": "observed supported episode within dossier's protocol/window",
+      "artifacts": [
+        "test_data/instant-pistons/traces/java-instant_blocked-saved-idle-r0.json.gz",
+        "test_data/instant-pistons/traces/mchprs-instant_blocked-saved-idle-r0.json.gz"
+      ],
+      "expected_status": "behavioral regression observation; arithmetic expectation independently checked where decoder validated",
+      "observations_reference": {
+        "mchprs": "test_data/instant-pistons/mchprs-projections.json",
+        "java": "test_data/instant-pistons/java-projections.json",
+        "key": {
+          "fixture_id": "instant_blocked",
+          "fixture_sha256": "c752ed6a8b93e4e6abc365a3c09e0a89fb178ecd2bb2b44014314ba335491b7d",
+          "case_id": "saved-idle",
+          "rotation": "artifact-specific"
+        }
+      }
     },
     {
       "id": "falling",
@@ -92,7 +128,23 @@
           ]
         }
       ],
-      "ticks": 24
+      "ticks": 24,
+      "evidence_status": "observed supported episode within dossier's protocol/window",
+      "artifacts": [
+        "test_data/instant-pistons/traces/java-instant_blocked-falling-r0.json.gz",
+        "test_data/instant-pistons/traces/mchprs-instant_blocked-falling-r0.json.gz"
+      ],
+      "expected_status": "behavioral regression observation; arithmetic expectation independently checked where decoder validated",
+      "observations_reference": {
+        "mchprs": "test_data/instant-pistons/mchprs-projections.json",
+        "java": "test_data/instant-pistons/java-projections.json",
+        "key": {
+          "fixture_id": "instant_blocked",
+          "fixture_sha256": "c752ed6a8b93e4e6abc365a3c09e0a89fb178ecd2bb2b44014314ba335491b7d",
+          "case_id": "falling",
+          "rotation": "artifact-specific"
+        }
+      }
     },
     {
       "id": "held-zero",
@@ -122,7 +174,22 @@
         }
       ],
       "ticks": 24,
-      "diagnostic": "An additional notification of held zero; no new external falling event"
+      "diagnostic": "An additional notification of held zero; no new external falling event",
+      "evidence_status": "observed diagnostic; no reusable truth-table acceptance",
+      "artifacts": [
+        "test_data/instant-pistons/traces/mchprs-instant_blocked-held-zero-r0.json.gz"
+      ],
+      "expected_status": "behavioral regression observation; arithmetic expectation independently checked where decoder validated",
+      "observations_reference": {
+        "mchprs": "test_data/instant-pistons/mchprs-projections.json",
+        "java": null,
+        "key": {
+          "fixture_id": "instant_blocked",
+          "fixture_sha256": "c752ed6a8b93e4e6abc365a3c09e0a89fb178ecd2bb2b44014314ba335491b7d",
+          "case_id": "held-zero",
+          "rotation": "artifact-specific"
+        }
+      }
     },
     {
       "id": "rearm-diagnostic",
@@ -166,7 +233,22 @@
         }
       ],
       "ticks": 24,
-      "diagnostic": "Reuse becomes supported only if rearm is demonstrated"
+      "diagnostic": "Reuse becomes supported only if rearm is demonstrated",
+      "evidence_status": "observed diagnostic; no reusable truth-table acceptance",
+      "artifacts": [
+        "test_data/instant-pistons/traces/mchprs-instant_blocked-rearm-diagnostic-r0.json.gz"
+      ],
+      "expected_status": "behavioral regression observation; arithmetic expectation independently checked where decoder validated",
+      "observations_reference": {
+        "mchprs": "test_data/instant-pistons/mchprs-projections.json",
+        "java": null,
+        "key": {
+          "fixture_id": "instant_blocked",
+          "fixture_sha256": "c752ed6a8b93e4e6abc365a3c09e0a89fb178ecd2bb2b44014314ba335491b7d",
+          "case_id": "rearm-diagnostic",
+          "rotation": "artifact-specific"
+        }
+      }
     },
     {
       "id": "unblocked",
@@ -196,7 +278,23 @@
         }
       ],
       "ticks": 24,
-      "diagnostic": "Remove constant QC source before root stimulus"
+      "diagnostic": "Remove constant QC source before root stimulus",
+      "evidence_status": "observed diagnostic; no reusable truth-table acceptance",
+      "artifacts": [
+        "test_data/instant-pistons/traces/java-instant_blocked-unblocked-r0.json.gz",
+        "test_data/instant-pistons/traces/mchprs-instant_blocked-unblocked-r0.json.gz"
+      ],
+      "expected_status": "behavioral regression observation; arithmetic expectation independently checked where decoder validated",
+      "observations_reference": {
+        "mchprs": "test_data/instant-pistons/mchprs-projections.json",
+        "java": "test_data/instant-pistons/java-projections.json",
+        "key": {
+          "fixture_id": "instant_blocked",
+          "fixture_sha256": "c752ed6a8b93e4e6abc365a3c09e0a89fb178ecd2bb2b44014314ba335491b7d",
+          "case_id": "unblocked",
+          "rotation": "artifact-specific"
+        }
+      }
     },
     {
       "id": "unblocked-conducting-cap",
@@ -227,7 +325,416 @@
         }
       ],
       "ticks": 24,
-      "diagnostic": "Derived reset variant replaces constant source with conducting cap"
+      "diagnostic": "Derived reset variant replaces constant source with conducting cap",
+      "evidence_status": "observed diagnostic; no reusable truth-table acceptance",
+      "artifacts": [
+        "test_data/instant-pistons/traces/mchprs-instant_blocked-unblocked-conducting-cap-r0.json.gz"
+      ],
+      "expected_status": "behavioral regression observation; arithmetic expectation independently checked where decoder validated",
+      "observations_reference": {
+        "mchprs": "test_data/instant-pistons/mchprs-projections.json",
+        "java": null,
+        "key": {
+          "fixture_id": "instant_blocked",
+          "fixture_sha256": "c752ed6a8b93e4e6abc365a3c09e0a89fb178ecd2bb2b44014314ba335491b7d",
+          "case_id": "unblocked-conducting-cap",
+          "rotation": "artifact-specific"
+        }
+      }
     }
-  ]
+  ],
+  "dossier": "docs/INSTANT_PISTON_SCHEMATICS.md#instant-blocked",
+  "purpose": "An instant held powered by a constant quasi-connectivity source.",
+  "mechanism": "Base (0,1,3), observer (0,2,3), head/payload (0,1,4..5), and output dust (0,1,6). The explanatory sign at (0,4,3) refers to redstone block (0,3,3): that cap directly satisfies QC and keeps the base extended when the external input (0,1,0) is removed. The output remains strength 15, with no retraction event. The sign's 'const 1' describes the author's physical convention; it is not a newly generated falling-event one.",
+  "reset_and_next_use": "Removing the cap first allows retraction but also removes the observer's conducting reset path: the recorded 'unblocked' case ends retracted. The separate derived conducting-cap case replaces the redstone cap with stone, waits for measured readiness, and restores observer-reset behavior. Original and derived geometry remain separate cases.",
+  "recognition_guards": "Classify original as ForcedPowered. Do not accept a reset because an observer is present; constant cap power changes its role.",
+  "evidence": [
+    {
+      "artifact": "test_data/instant-pistons/traces/java-instant_blocked-falling-r0.json.gz",
+      "artifact_sha256": "be8fd95c3d11cadd75e7c1d43ecb6faf4d48b649bd14d6c47ee00b346b287dca",
+      "fixture_id": "instant_blocked",
+      "fixture_sha256": "c752ed6a8b93e4e6abc365a3c09e0a89fb178ecd2bb2b44014314ba335491b7d",
+      "case_id": "falling",
+      "rotation": 0,
+      "engine": "Java",
+      "termination": "completed bounded response; no claim of settled state",
+      "period_witness": null
+    },
+    {
+      "artifact": "test_data/instant-pistons/traces/java-instant_blocked-saved-idle-r0.json.gz",
+      "artifact_sha256": "dc620d9e729049b44b0846c904f736d31602fdf9ad20599dd1aa85c24d711439",
+      "fixture_id": "instant_blocked",
+      "fixture_sha256": "c752ed6a8b93e4e6abc365a3c09e0a89fb178ecd2bb2b44014314ba335491b7d",
+      "case_id": "saved-idle",
+      "rotation": 0,
+      "engine": "Java",
+      "termination": "completed bounded response; no claim of settled state",
+      "period_witness": null
+    },
+    {
+      "artifact": "test_data/instant-pistons/traces/java-instant_blocked-unblocked-r0.json.gz",
+      "artifact_sha256": "9912fe1ea63fdf2277735e0a9f6d9325a31d600d98cf126f75588774c6b6da18",
+      "fixture_id": "instant_blocked",
+      "fixture_sha256": "c752ed6a8b93e4e6abc365a3c09e0a89fb178ecd2bb2b44014314ba335491b7d",
+      "case_id": "unblocked",
+      "rotation": 0,
+      "engine": "Java",
+      "termination": "completed bounded response; no claim of settled state",
+      "period_witness": null
+    },
+    {
+      "artifact": "test_data/instant-pistons/traces/mchprs-instant_blocked-falling-r0.json.gz",
+      "artifact_sha256": "2d9035ff2359322dcc255732df122a20fae751504cd19dbe37ff18b0a989ae38",
+      "fixture_id": "instant_blocked",
+      "fixture_sha256": "c752ed6a8b93e4e6abc365a3c09e0a89fb178ecd2bb2b44014314ba335491b7d",
+      "case_id": "falling",
+      "rotation": 0,
+      "engine": "MCHPRS interpreter",
+      "termination": "completed bounded response; quiescence and periodicity assessed separately",
+      "period_witness": {
+        "first_tick": 1,
+        "period_ticks": 1,
+        "repeated_complete_cycles": 3,
+        "projection": "all watched blocks/entities/power predicates, scheduled queue, events, ordered motion progress; identities renamed, last_tick relative; BetweenTicks only"
+      }
+    },
+    {
+      "artifact": "test_data/instant-pistons/traces/mchprs-instant_blocked-held-zero-r0.json.gz",
+      "artifact_sha256": "a7d4be179dc2a275f91d3636be9f432fe25be4f0aa36c87e9c9a19a5ec770a06",
+      "fixture_id": "instant_blocked",
+      "fixture_sha256": "c752ed6a8b93e4e6abc365a3c09e0a89fb178ecd2bb2b44014314ba335491b7d",
+      "case_id": "held-zero",
+      "rotation": 0,
+      "engine": "MCHPRS interpreter",
+      "termination": "completed bounded response; quiescence and periodicity assessed separately",
+      "period_witness": {
+        "first_tick": 13,
+        "period_ticks": 1,
+        "repeated_complete_cycles": 3,
+        "projection": "all watched blocks/entities/power predicates, scheduled queue, events, ordered motion progress; identities renamed, last_tick relative; BetweenTicks only"
+      }
+    },
+    {
+      "artifact": "test_data/instant-pistons/traces/mchprs-instant_blocked-rearm-diagnostic-r0.json.gz",
+      "artifact_sha256": "9f359476fcef5bdd16076fbcb3e4d8e2eded7fcd95acc13eeba7b818e6aa2063",
+      "fixture_id": "instant_blocked",
+      "fixture_sha256": "c752ed6a8b93e4e6abc365a3c09e0a89fb178ecd2bb2b44014314ba335491b7d",
+      "case_id": "rearm-diagnostic",
+      "rotation": 0,
+      "engine": "MCHPRS interpreter",
+      "termination": "completed bounded response; quiescence and periodicity assessed separately",
+      "period_witness": {
+        "first_tick": 33,
+        "period_ticks": 1,
+        "repeated_complete_cycles": 3,
+        "projection": "all watched blocks/entities/power predicates, scheduled queue, events, ordered motion progress; identities renamed, last_tick relative; BetweenTicks only"
+      }
+    },
+    {
+      "artifact": "test_data/instant-pistons/traces/mchprs-instant_blocked-saved-idle-r0.json.gz",
+      "artifact_sha256": "df0e09ef09756d7ebfcd0d954c7718a445f1d3757bae90f1bc0c9e3956d8af63",
+      "fixture_id": "instant_blocked",
+      "fixture_sha256": "c752ed6a8b93e4e6abc365a3c09e0a89fb178ecd2bb2b44014314ba335491b7d",
+      "case_id": "saved-idle",
+      "rotation": 0,
+      "engine": "MCHPRS interpreter",
+      "termination": "completed bounded response; quiescence and periodicity assessed separately",
+      "period_witness": {
+        "first_tick": 1,
+        "period_ticks": 1,
+        "repeated_complete_cycles": 3,
+        "projection": "all watched blocks/entities/power predicates, scheduled queue, events, ordered motion progress; identities renamed, last_tick relative; BetweenTicks only"
+      }
+    },
+    {
+      "artifact": "test_data/instant-pistons/traces/mchprs-instant_blocked-unblocked-conducting-cap-r0.json.gz",
+      "artifact_sha256": "cbe38db3d0c0e3cbc1302e73fb27822304d40b55d9aeea82259d9d4d45fb83e5",
+      "fixture_id": "instant_blocked",
+      "fixture_sha256": "c752ed6a8b93e4e6abc365a3c09e0a89fb178ecd2bb2b44014314ba335491b7d",
+      "case_id": "unblocked-conducting-cap",
+      "rotation": 0,
+      "engine": "MCHPRS interpreter",
+      "termination": "completed bounded response; quiescence and periodicity assessed separately",
+      "period_witness": {
+        "first_tick": 3,
+        "period_ticks": 6,
+        "repeated_complete_cycles": 3,
+        "projection": "all watched blocks/entities/power predicates, scheduled queue, events, ordered motion progress; identities renamed, last_tick relative; BetweenTicks only"
+      }
+    },
+    {
+      "artifact": "test_data/instant-pistons/traces/mchprs-instant_blocked-unblocked-r0.json.gz",
+      "artifact_sha256": "6f6f0db9968cc3c1098af71814f61cc6962c2cc9da59cc629f801e17051d7f5c",
+      "fixture_id": "instant_blocked",
+      "fixture_sha256": "c752ed6a8b93e4e6abc365a3c09e0a89fb178ecd2bb2b44014314ba335491b7d",
+      "case_id": "unblocked",
+      "rotation": 0,
+      "engine": "MCHPRS interpreter",
+      "termination": "completed bounded response; quiescence and periodicity assessed separately",
+      "period_witness": {
+        "first_tick": 17,
+        "period_ticks": 1,
+        "repeated_complete_cycles": 3,
+        "projection": "all watched blocks/entities/power predicates, scheduled queue, events, ordered motion progress; identities renamed, last_tick relative; BetweenTicks only"
+      }
+    }
+  ],
+  "label_mappings": [
+    {
+      "sign_position": [
+        0,
+        0,
+        7
+      ],
+      "readable": "OUTPUT",
+      "candidate_positions": [
+        [
+          0,
+          1,
+          5
+        ],
+        [
+          0,
+          1,
+          6
+        ]
+      ],
+      "referenced_positions": [
+        0,
+        1,
+        6
+      ],
+      "role": "labeled physical output; no sink implied",
+      "status": "mapped",
+      "evidence": "saved geometry and controlled current-binary episodes; causal path described in dossier",
+      "original_text": {
+        "front_text": {
+          "original": [
+            {
+              "text": "OUTPUT"
+            },
+            {
+              "text": ""
+            },
+            {
+              "text": ""
+            },
+            {
+              "text": ""
+            }
+          ],
+          "readable": [
+            "OUTPUT",
+            "",
+            "",
+            ""
+          ]
+        },
+        "back_text": {
+          "original": [
+            {
+              "text": ""
+            },
+            {
+              "text": ""
+            },
+            {
+              "text": ""
+            },
+            {
+              "text": ""
+            }
+          ],
+          "readable": [
+            "",
+            "",
+            "",
+            ""
+          ]
+        },
+        "legacy": {
+          "original": [],
+          "readable": []
+        }
+      }
+    },
+    {
+      "sign_position": [
+        0,
+        2,
+        0
+      ],
+      "readable": "INPUT",
+      "candidate_positions": [
+        [
+          0,
+          1,
+          0
+        ],
+        [
+          0,
+          1,
+          1
+        ],
+        [
+          0,
+          2,
+          2
+        ],
+        [
+          0,
+          2,
+          3
+        ]
+      ],
+      "referenced_positions": [
+        0,
+        1,
+        0
+      ],
+      "role": "external source/update trigger",
+      "status": "mapped",
+      "evidence": "saved geometry and controlled current-binary episodes; causal path described in dossier",
+      "original_text": {
+        "front_text": {
+          "original": [
+            {
+              "text": "INPUT"
+            },
+            {
+              "text": ""
+            },
+            {
+              "text": ""
+            },
+            {
+              "text": ""
+            }
+          ],
+          "readable": [
+            "INPUT",
+            "",
+            "",
+            ""
+          ]
+        },
+        "back_text": {
+          "original": [
+            {
+              "text": ""
+            },
+            {
+              "text": ""
+            },
+            {
+              "text": ""
+            },
+            {
+              "text": ""
+            }
+          ],
+          "readable": [
+            "",
+            "",
+            "",
+            ""
+          ]
+        },
+        "legacy": {
+          "original": [],
+          "readable": []
+        }
+      }
+    },
+    {
+      "sign_position": [
+        0,
+        4,
+        3
+      ],
+      "readable": "This makes / pistion / bahave as / const 1",
+      "candidate_positions": [
+        [
+          0,
+          1,
+          3
+        ],
+        [
+          0,
+          2,
+          2
+        ],
+        [
+          0,
+          2,
+          3
+        ],
+        [
+          0,
+          3,
+          3
+        ]
+      ],
+      "referenced_positions": [
+        0,
+        3,
+        3
+      ],
+      "role": "constant QC source; not a falling-event one",
+      "status": "mapped",
+      "evidence": "saved geometry and controlled current-binary episodes; causal path described in dossier",
+      "original_text": {
+        "front_text": {
+          "original": [
+            {
+              "text": "This makes"
+            },
+            {
+              "text": "pistion"
+            },
+            {
+              "text": "bahave as"
+            },
+            {
+              "text": "const 1"
+            }
+          ],
+          "readable": [
+            "This makes",
+            "pistion",
+            "bahave as",
+            "const 1"
+          ]
+        },
+        "back_text": {
+          "original": [
+            {
+              "text": ""
+            },
+            {
+              "text": ""
+            },
+            {
+              "text": ""
+            },
+            {
+              "text": ""
+            }
+          ],
+          "readable": [
+            "",
+            "",
+            "",
+            ""
+          ]
+        },
+        "legacy": {
+          "original": [],
+          "readable": []
+        }
+      }
+    }
+  ],
+  "negation_paths": [],
+  "first_wave_orders": []
 }

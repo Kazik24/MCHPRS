@@ -11,7 +11,6 @@ import hashlib
 import json
 from pathlib import Path
 import struct
-import subprocess
 
 ROOT = Path(__file__).resolve().parents[1]
 PACK = ROOT / "test_data/instant-pistons"
@@ -120,9 +119,21 @@ def inspect(path, include_cells=True):
         raise ValueError("extra block bytes")
     meta = s.get("Metadata", {})
     legacy = [meta.get(k, 0) for k in ("WEOffsetX", "WEOffsetY", "WEOffsetZ")]
-    # Schema::read prefers complete WEOffset metadata, otherwise Sponge Offset.
-    offset = legacy if version == 2 and any(k in meta for k in ("WEOffsetX", "WEOffsetY", "WEOffsetZ")) else s.get("Offset", [0, 0, 0])
+    keys=("WEOffsetX", "WEOffsetY", "WEOffsetZ")
+    # Schema::read rejects partial legacy metadata instead of filling defaults.
+    if version==2 and any(k in meta for k in keys):
+        offset=[meta[k] for k in keys]
+    else:
+        offset=s.get("Offset", [0,0,0])
+    if len(offset)!=3 or any(not -(1<<31)<v<(1<<31) for v in offset):
+        raise ValueError("invalid/overflowing displacement")
     entities = blocks.get("BlockEntities", [])
+    seen=set()
+    for e in entities:
+        position=tuple(e["Pos"])
+        if len(position)!=3 or any(not 0<=v<dim for v,dim in zip(position,dims)) or position in seen:
+            raise ValueError("invalid/duplicate block entity position")
+        seen.add(position)
     signs = []
     for e in entities:
         if "sign" not in e.get("Id", e.get("id", "")):

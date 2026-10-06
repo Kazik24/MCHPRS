@@ -48,7 +48,9 @@
   },
   "observation_decoder": "raw state/property observations; moving states distinct; dust falling edge is event; air output payload means 1 only for verified arithmetic bank",
   "ordering_constraints": [],
-  "unknowns": [],
+  "unknowns": [
+    "Full CPU behavior/port decoder/valid protocol deferred by scope"
+  ],
   "java_status": "not yet compared",
   "rotations": [
     0

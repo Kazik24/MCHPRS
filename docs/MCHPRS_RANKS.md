@@ -9,6 +9,12 @@ These are effective group permissions, including inheritance. Individual user ov
 
 See [the permission catalog](MCHPRS_PERMISSIONS.md) for individual command/action nodes and configuration.
 
+Git policy added on 2026-10-06: Expert `[E]` and higher can use `/git`. Expert
+has 100 MiB of disk history per plot; Engineer `[I]`, Moderator, and Admin have
+1 GiB. These allowances follow the plot owner and do not change shared RAM.
+The grants use `mchprs.commands.git` and `mchprs.git.storage.<MiB>` in the
+`server=mchprs` scope. Individual user overrides still apply.
+
 ## Admin — [A]
 
 - Database group: `admin`; bold red tag.

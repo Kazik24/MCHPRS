@@ -1523,6 +1523,8 @@ History snapshots capture chunks/entities, scheduled entries, and `PistonState`.
 
 Identical block maps with different requests, piston events, motion identities, or phases can have different futures. A simulation snapshot must preserve those fields.
 
+Schematic import is a different initialization operation from notified placement. `load_schematic` decodes v2/v3 block states/entities and negates the saved displacement; v2 WEOffset metadata takes precedence when present and must contain all three coordinates. The actual [paste routine](../crates/core/src/plot/worldedit/mod.rs) sets minimum = anchor − clipboard offset, writes x-fastest/z-next/y-last block cells through storage, then installs entities. It does not replay placement, shape or redstone notifications. Strict saved states can therefore remain quiescent although a notified reconstruction has different work or behavior. The [instant pack protocols](INSTANT_PISTON_SCHEMATICS.md#reproduction-and-coordinate-contract) record minimum, offset, anchor and each later notification separately.
+
 ### 17.2 Pico and nano stepping
 
 `picotick_advance(n)` calls `advance_operation` $n$ times. Each call can execute one scheduled request, piston event, or motion item, with nested immediate callbacks completed. A call that administratively finishes an exhausted tick consumes an iteration without executing another component operation.
@@ -1532,6 +1534,8 @@ Identical block maps with different requests, piston events, motion identities, 
 The snapshot is a **count**, not a selected operation list. Newly inserted immediately executable work is still selected by normal queue order; newly inserted higher-priority work can precede older work. Additional entries can remain after the snapshotted count is exhausted.
 
 Nano stepping does not denote one priority, one dust-walk layer, or a fixed fraction of a game tick. Both fine-stepping APIs return without advancing when history recording is enabled.
+
+The circuit author's use of “nanoticks” also describes relative update synchronization. In the supplied [NANOTICK_EXAMPLE](INSTANT_PISTON_SCHEMATICS.md#nanotick-example), downstream event validation precedes a delayed inhibit even though both execute in the same logical game tick. This physical ordering failure is preserved by game, nano and pico execution at aligned boundaries. Pico snapshots return after nested callbacks; the pack's cfg(test) recorder measures callback entry/enqueue/execution order inside those operations. It compiles out of normal server execution.
 
 ### 17.3 Rendering
 

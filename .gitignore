@@ -9,7 +9,14 @@ Config.toml
 logs/
 schems/
 tools/node_modules/
-tools/__pycache__/
-/test_data/**/traces/*
+__pycache__/
+*.pyc
+*.pyo
+
+# Generated analysis outputs; retain schematics, fixture protocols and frozen baselines.
+/test_data/**/traces/
+/test_data/**/inspection/
+/test_data/**/*-projections.json
+/test_data/**/trace-index.json
 
 

@@ -8,7 +8,7 @@ This plan follows the intended scope in [INSTANT_REDPILLER.md](INSTANT_REDPILLER
 
 ## Intended scope and first deliverable
 
-The engineering target is an **instant piston parser**, with enough information to explain whether a circuit can safely be compiled. The immediate next task is documentation and testing of the supplied schematic pack, following the [analysis-agent prompt](INSTANT_PISTON_ANALYSIS_AGENT_PROMPT.md). Establish sign-to-port mappings, valid protocols, causal traces and reset/ordering requirements before implementing recognition. Start recognition with the horizontal observer reset family and incorporate the supplied torch and dust reset examples as separately validated families.
+The engineering target is an **instant piston parser**, with enough information to explain whether a circuit can safely be compiled. The [schematic catalog](INSTANT_PISTON_SCHEMATICS.md) now supplies current-binary port maps, bounded episodes, operation traces and behavioral tests for the basic pack. Its fixture-specific observation windows are evidence for recognition requirements; they do not enable Redpiler piston execution. Start recognition with the horizontal observer reset family and incorporate the supplied torch and dust reset examples as separately validated families.
 
 The agreed execution contract is:
 
@@ -18,10 +18,32 @@ The agreed execution contract is:
 - Simplification is allowed when it preserves the behavior of those external consumers under valid inputs.
 - External input changes or another computation during reset have undefined circuit behavior and are outside initial conformance requirements. Internal propagation and reset events caused by the accepted trigger remain part of valid execution.
 - Shared-output OR groups may drop a payload and transfer it between pistons. Correctness concerns the group response and reusable mechanism, not permanent ownership by one base.
-- Negation is inhibition of another piston's activation by an active input. It requires a validated update-order protocol, not an assumed standalone NOT gate. Dedicated BUD and nanotick-misalignment examples remain future evidence.
+- Negation is inhibition of another piston's activation by an active input. It requires a validated update-order protocol, not an assumed standalone NOT gate. The author permits equal-wave firing and identifies extra actuator depth on the negating path as a failure mode. NANOTICK_EXAMPLE now supplies that diagnostic. A dedicated standalone BUD acceptance example remains missing.
 - Compiled rendering should be infrequent and should not animate internal pistons or track every internal wire state. Original geometry and compile provenance remain available for interpreter restoration.
 
-The exact reset-ready condition and the behavior of each gate or boundary adapter still require the supplied circuits. No fixed reset interval is implied by these decisions.
+The catalog establishes fixture-specific reset and observation conditions. General boundary adapters and materialization still require independent validation. No universal reset interval is implied by these decisions.
+
+### Current pack evidence and recognition guards
+
+The [validation report](INSTANT_PISTON_VALIDATION.md) records the revision/source hashes, exact commands and remaining comparisons. Twenty basic/diagnostic fixtures have dossiers and traces; two downloaded CPU files are inventoried with behavior deferred. Java comparisons use the SHA-pinned 1.21.5 binary and retain setup differences. Captured MCHPRS states are regression observations, not independent conformance oracles.
+
+| Evidence | Required guard or boundary |
+| --- | --- |
+| Observer, downward observer and REDSTONE_2 responses recur every six ticks under held zero | Own the entire triggered episode, including internal reset work and exposed pulses; static low is not another root computation |
+| Torch variants become quiescent and extended; source restoration establishes another ready condition | Check full base/head/payload/reset state and empty work before reuse; do not copy an eight-tick wait |
+| INSTANT_RESET_REDSTONE lacks a closed autonomous reset in its exact binary | Reject the autonomous-reset family; external rearm is a separate protocol |
+| INSTANT_BLOCKED's constant cap supplies QC even with the source removed | Classify as forced powered; observer presence alone is insufficient |
+| OR_1 transfers one payload between independently reset actuators | Group all allowed head/payload locations and owners; do not assume permanent ownership |
+| OR_Interpreter_illigal can lose the powered payload required by a member's dust reset | Author excludes this undefined construction from compiler scope; reject it, without normalization or interpreter changes |
+| AND_3 BA works while AB retains a powered-history state | Preserve remote QC power propagation before the local update callback; Boolean data alone omits the BUD dependency |
+| NOT AB briefly exposes zero; the derived repeater filters that wave | Validate the actual consumer; equal completed-boundary bits do not establish update/pulse equivalence |
+| XOR first-wave results agree, but AB reset exposes later falling transitions | Preserve reset effects; a first-wave truth table is insufficient for a reusable constant-output abstraction |
+| NANOTICK_EXAMPLE accepts downstream retraction before delayed inhibition arrives | Synchronization counterexample, outside initial accepted gate scope; detect/reject the unsupported order |
+| Corrected adder payloads decode at response boundaries 1..3, moving at 4..5, reset at 6 | Keep width 11, decreasing-Z bit order, separate prepared caps and unlabeled trigger; do not use old binary coordinates or reset as the arithmetic result |
+| COUNTER_BASIC releases a free-running generator and stores counts in BUD bases | Keep clock and memory state explicit; candidate wire pulses are not a persistent count bank; wrap/clear remain unverified |
+| Downloaded edge case drops an in-flight redstone payload and later recaptures it | Version by exact hash, retain furnace/comparator entities and support callbacks; older root fixture traces do not apply |
+
+Most labeled outputs have no attached non-instant consumer. Recognition can report a physical output candidate, but compilation requires a certified boundary adapter or an expanded region. Arbitrary consumer insertion can load dust or add callbacks. The derived NOT repeater is a separately specified probe, not a certificate for BUDs, lamps or observers.
 
 | Circuit category | Parser responsibility | Initial execution policy |
 | --- | --- | --- |
@@ -147,7 +169,7 @@ The existing observer feedback and oscillator tests cover premature pulses cause
 
 ## Evidence from the existing schematics
 
-The new basic pack is in [test_data/instant-pistons](../test_data/instant-pistons), with exact versions recorded in [download-manifest.json](../test_data/instant-pistons/download-manifest.json). It supplies gates, inhibition, reset variants, a chain, adders, a counter and an intentional OR counterexample. Their detailed behavior and recognition guards are the next analysis task, not yet certified results. `ADDER_11BITS.schem` is the canonical corrected adder; `ADDER_11BIT.schem` is the same build under an alternate name.
+The basic pack is in [test_data/instant-pistons](../test_data/instant-pistons), with exact versions in [download-manifest.json](../test_data/instant-pistons/download-manifest.json) and observation evidence in the [catalog](INSTANT_PISTON_SCHEMATICS.md) and fixture manifests. The [validation report](INSTANT_PISTON_VALIDATION.md) also identifies pinned Git provenance. The pack supplies gates, inhibition, reset variants, a chain, adders, a counter and intentional counterexamples. Fixture-specific behavior is measured; general parser recognition certificates and consumer adapters remain future work. `ADDER_11BITS.schem` is the canonical corrected adder; `ADDER_11BIT.schem` is a remote alias with a separate binary hash, absent locally.
 
 The inventory below is the preceding analysis snapshot. The adder row describes its earlier signless 21 x 7 x 45 revision; the latest revision is 21 x 7 x 46 with six signs and needs renewed analysis. The downloaded edge-case schematic also differs from the older root-level fixture and needs independent port and trace validation.
 
@@ -412,7 +434,7 @@ For BUD candidates, record the quasi-connectivity data path and a separate updat
 
 Collapse validated internal reset feedback before analyzing combinational data cycles. Keep reset dependencies in region metadata. Analyze data strongly connected components separately from reset cycles.
 
-Retain a separate graph of required callback and activation ordering, especially for negation. The author's "negated piston must fire first, update-wise" requirement must be resolved to concrete actors and operations by tracing. A data DAG alone does not capture a blocking effect that must become effective before a particular recheck or movement request. Compose regions only when both data and operation-order constraints remain valid.
+Retain a separate graph of required callback and activation ordering, especially for negation. The author's clarified requirement permits equal-wave firing; the relevant relation is **effective inhibition before the downstream validation/evaluation that would accept a falling trigger**. In NOT_1, base `(2,2,4)` uncovers the alternate supply, while base `(0,2,4)` removes the ordinary source. AB briefly exposes zero; BA does not. A repeater probe's scheduled live-input recheck filters the AB transient. This does not impose movement-completion order or silently assign the author's ambiguous noun to one base. The catalog's measured partial-order table names callbacks, enqueue, execution and consumer evaluation separately. Keep these constraints across compiled-region boundaries; a data DAG omits them.
 
 Acyclic data regions can be evaluated topologically. Cycles involving BUD state or ordinary timed elements become explicit boundaries. Other data cycles remain unsupported unless a separate convergence and uniqueness argument is available. Starting a cyclic solver at zero is not a valid substitute for such an argument.
 
@@ -462,7 +484,7 @@ Use the following normalized truth tables as labels only after decoding is fixed
 | 1 | 0 | 1 | 0 |
 | 1 | 1 | 1 | 1 |
 
-There is no assumed standalone instant NOT primitive. `NOT_1.schem` demonstrates a negation/inhibition circuit: an active input can block another piston's activation. Identify the triggering actor, blocking path, inhibited actor and exact required callback/event order. Compare a working synchronized episode with a deliberately reversed-order diagnostic where meaningful. Dedicated nanotick-misalignment examples are not yet available, so their family cannot be declared covered.
+There is no assumed standalone instant NOT primitive. `NOT_1.schem` demonstrates a negation/inhibition circuit with a consumer-specific observation context. Its same-wave AB/BA cases and derived repeater are traced. The supplied `NANOTICK_EXAMPLE.schem` has extra negating actuators: ordinary base `(0,2,5)` queues downstream `(1,2,9)` before delay base `(2,2,2)` queues inhibitor `(2,2,5)`. Event FIFO therefore validates downstream zero before alternate power becomes effective, producing the unwanted output. All events occur in one game tick. This is actual circuit misalignment, distinct from the inspection API's nano stepping. Preserve it as a synchronization counterexample; do not admit it under the synchronized gate contract or claim arbitrary position/direction behavior.
 
 The scope's OR description involves coordinated pistons and a shared output block. Validate all ownership and input-order cases at group level. The AND description involves separate output blocks coupled to one output net; a simple maximum of two source contributions implements electrical OR, so the claimed AND must be established through its physical decoding and connectivity. Negation may eventually become a guarded activation expression, but only after proving its physical inhibition and ordering protocol.
 

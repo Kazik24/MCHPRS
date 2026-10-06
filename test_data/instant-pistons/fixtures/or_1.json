@@ -9,7 +9,7 @@
     10
   ],
   "inspection": "test_data/instant-pistons/inspection/or_1.json",
-  "classification": "observed diagnostics; function pending analysis",
+  "classification": "Observed first-wave protocol; no generic compiler certificate",
   "coordinates": {
     "convention": "selection-local relative to saved minimum",
     "origin": [
@@ -54,24 +54,44 @@
         4
       ]
     },
-    "status": "geometry-derived candidates; see dossier for per-port evidence"
+    "status": "geometry and controlled episodes verified; absent sink and temporal limits described in dossier"
   },
   "setup": {
     "mode": "paste_clipboard(ignore_air=false); raw storage then entities; no notifications",
     "initial": "exact binary states and block entities; empty queues, tick 0 BetweenTicks",
-    "readiness": "saved-idle episode must remain unchanged with empty work; prepared cases wait for no queued work, bounded at 32 ticks"
+    "readiness": "saved-idle remains unchanged with empty work; prepared snapshots require two unchanged quiescent completed boundaries, bounded at 32 ticks"
   },
   "protocol": {
     "logical_one": "nonzero-to-zero event",
     "cases_independent": "fresh equivalent strict-import snapshots",
     "input_during_reset": "undefined; only labeled diagnostics exercise it",
     "held_zero": "no new external event; internal cycles retained",
-    "repeat_use": "pending measured rearm condition; use fresh imports until proven"
+    "repeat_use": "fresh ready imports for independent computations; recurring internal work retained; external rearm during active reset only diagnostic"
   },
-  "observation_decoder": "raw state/property observations; moving states distinct; dust falling edge is event; air output payload means 1 only for verified arithmetic bank",
+  "observation_decoder": {
+    "timing": "completed response boundary; tick 0 is immediately after ordered stimuli",
+    "held_zero": "not a new external event",
+    "moving": "distinct state, never silently treated as an output bit",
+    "encoding": "new dust nonzero-to-zero transition = one; unchanged nonzero means no event",
+    "first_valid_boundary": 1,
+    "first_wave_window_ticks": [
+      1,
+      3
+    ],
+    "function": "A or B",
+    "consumer_boundary": "labeled/derived wire observation; attached non-instant consumer absent unless case declares a probe",
+    "later_observations": "reset pulses and moving state remain physical observations; full episode is retained"
+  },
   "ordering_constraints": [],
-  "unknowns": [],
-  "java_status": "not yet compared",
+  "unknowns": [
+    "Arbitrary non-instant consumer/handoff equivalence not certified",
+    "External input or another computation during reset is undefined"
+  ],
+  "java_status": {
+    "compared_cases": 6,
+    "status": "all declared projections match",
+    "scope": "current binary; response boundaries, not internal callbacks; setup difference retained"
+  },
   "rotations": [
     0,
     90,
@@ -83,7 +103,26 @@
       "id": "saved-idle",
       "inputs": null,
       "actions": [],
-      "ticks": 24
+      "ticks": 24,
+      "evidence_status": "observed supported episode within dossier's protocol/window",
+      "artifacts": [
+        "test_data/instant-pistons/traces/java-or_1-saved-idle-r0.json.gz",
+        "test_data/instant-pistons/traces/mchprs-or_1-saved-idle-r0.json.gz",
+        "test_data/instant-pistons/traces/mchprs-or_1-saved-idle-r180.json.gz",
+        "test_data/instant-pistons/traces/mchprs-or_1-saved-idle-r270.json.gz",
+        "test_data/instant-pistons/traces/mchprs-or_1-saved-idle-r90.json.gz"
+      ],
+      "expected_status": "behavioral regression observation; arithmetic expectation independently checked where decoder validated",
+      "observations_reference": {
+        "mchprs": "test_data/instant-pistons/mchprs-projections.json",
+        "java": "test_data/instant-pistons/java-projections.json",
+        "key": {
+          "fixture_id": "or_1",
+          "fixture_sha256": "81c59e0b94bf90f5998d5b09054899b6447e2c808c1a1710d00022a34a75e52a",
+          "case_id": "saved-idle",
+          "rotation": "artifact-specific"
+        }
+      }
     },
     {
       "id": "events-00-ab",
@@ -92,7 +131,26 @@
         0
       ],
       "actions": [],
-      "ticks": 24
+      "ticks": 24,
+      "evidence_status": "observed supported episode within dossier's protocol/window",
+      "artifacts": [
+        "test_data/instant-pistons/traces/java-or_1-events-00-ab-r0.json.gz",
+        "test_data/instant-pistons/traces/mchprs-or_1-events-00-ab-r0.json.gz",
+        "test_data/instant-pistons/traces/mchprs-or_1-events-00-ab-r180.json.gz",
+        "test_data/instant-pistons/traces/mchprs-or_1-events-00-ab-r270.json.gz",
+        "test_data/instant-pistons/traces/mchprs-or_1-events-00-ab-r90.json.gz"
+      ],
+      "expected_status": "behavioral regression observation; arithmetic expectation independently checked where decoder validated",
+      "observations_reference": {
+        "mchprs": "test_data/instant-pistons/mchprs-projections.json",
+        "java": "test_data/instant-pistons/java-projections.json",
+        "key": {
+          "fixture_id": "or_1",
+          "fixture_sha256": "81c59e0b94bf90f5998d5b09054899b6447e2c808c1a1710d00022a34a75e52a",
+          "case_id": "events-00-ab",
+          "rotation": "artifact-specific"
+        }
+      }
     },
     {
       "id": "events-10-ab",
@@ -110,7 +168,26 @@
           ]
         }
       ],
-      "ticks": 24
+      "ticks": 24,
+      "evidence_status": "observed supported episode within dossier's protocol/window",
+      "artifacts": [
+        "test_data/instant-pistons/traces/java-or_1-events-10-ab-r0.json.gz",
+        "test_data/instant-pistons/traces/mchprs-or_1-events-10-ab-r0.json.gz",
+        "test_data/instant-pistons/traces/mchprs-or_1-events-10-ab-r180.json.gz",
+        "test_data/instant-pistons/traces/mchprs-or_1-events-10-ab-r270.json.gz",
+        "test_data/instant-pistons/traces/mchprs-or_1-events-10-ab-r90.json.gz"
+      ],
+      "expected_status": "behavioral regression observation; arithmetic expectation independently checked where decoder validated",
+      "observations_reference": {
+        "mchprs": "test_data/instant-pistons/mchprs-projections.json",
+        "java": "test_data/instant-pistons/java-projections.json",
+        "key": {
+          "fixture_id": "or_1",
+          "fixture_sha256": "81c59e0b94bf90f5998d5b09054899b6447e2c808c1a1710d00022a34a75e52a",
+          "case_id": "events-10-ab",
+          "rotation": "artifact-specific"
+        }
+      }
     },
     {
       "id": "events-01-ab",
@@ -128,7 +205,26 @@
           ]
         }
       ],
-      "ticks": 24
+      "ticks": 24,
+      "evidence_status": "observed supported episode within dossier's protocol/window",
+      "artifacts": [
+        "test_data/instant-pistons/traces/java-or_1-events-01-ab-r0.json.gz",
+        "test_data/instant-pistons/traces/mchprs-or_1-events-01-ab-r0.json.gz",
+        "test_data/instant-pistons/traces/mchprs-or_1-events-01-ab-r180.json.gz",
+        "test_data/instant-pistons/traces/mchprs-or_1-events-01-ab-r270.json.gz",
+        "test_data/instant-pistons/traces/mchprs-or_1-events-01-ab-r90.json.gz"
+      ],
+      "expected_status": "behavioral regression observation; arithmetic expectation independently checked where decoder validated",
+      "observations_reference": {
+        "mchprs": "test_data/instant-pistons/mchprs-projections.json",
+        "java": "test_data/instant-pistons/java-projections.json",
+        "key": {
+          "fixture_id": "or_1",
+          "fixture_sha256": "81c59e0b94bf90f5998d5b09054899b6447e2c808c1a1710d00022a34a75e52a",
+          "case_id": "events-01-ab",
+          "rotation": "artifact-specific"
+        }
+      }
     },
     {
       "id": "events-11-ab",
@@ -154,7 +250,26 @@
           ]
         }
       ],
-      "ticks": 24
+      "ticks": 24,
+      "evidence_status": "observed supported episode within dossier's protocol/window",
+      "artifacts": [
+        "test_data/instant-pistons/traces/java-or_1-events-11-ab-r0.json.gz",
+        "test_data/instant-pistons/traces/mchprs-or_1-events-11-ab-r0.json.gz",
+        "test_data/instant-pistons/traces/mchprs-or_1-events-11-ab-r180.json.gz",
+        "test_data/instant-pistons/traces/mchprs-or_1-events-11-ab-r270.json.gz",
+        "test_data/instant-pistons/traces/mchprs-or_1-events-11-ab-r90.json.gz"
+      ],
+      "expected_status": "behavioral regression observation; arithmetic expectation independently checked where decoder validated",
+      "observations_reference": {
+        "mchprs": "test_data/instant-pistons/mchprs-projections.json",
+        "java": "test_data/instant-pistons/java-projections.json",
+        "key": {
+          "fixture_id": "or_1",
+          "fixture_sha256": "81c59e0b94bf90f5998d5b09054899b6447e2c808c1a1710d00022a34a75e52a",
+          "case_id": "events-11-ab",
+          "rotation": "artifact-specific"
+        }
+      }
     },
     {
       "id": "events-11-ba",
@@ -180,7 +295,746 @@
           ]
         }
       ],
-      "ticks": 24
+      "ticks": 24,
+      "evidence_status": "observed supported episode within dossier's protocol/window",
+      "artifacts": [
+        "test_data/instant-pistons/traces/java-or_1-events-11-ba-r0.json.gz",
+        "test_data/instant-pistons/traces/mchprs-or_1-events-11-ba-r0.json.gz",
+        "test_data/instant-pistons/traces/mchprs-or_1-events-11-ba-r180.json.gz",
+        "test_data/instant-pistons/traces/mchprs-or_1-events-11-ba-r270.json.gz",
+        "test_data/instant-pistons/traces/mchprs-or_1-events-11-ba-r90.json.gz"
+      ],
+      "expected_status": "behavioral regression observation; arithmetic expectation independently checked where decoder validated",
+      "observations_reference": {
+        "mchprs": "test_data/instant-pistons/mchprs-projections.json",
+        "java": "test_data/instant-pistons/java-projections.json",
+        "key": {
+          "fixture_id": "or_1",
+          "fixture_sha256": "81c59e0b94bf90f5998d5b09054899b6447e2c808c1a1710d00022a34a75e52a",
+          "case_id": "events-11-ba",
+          "rotation": "artifact-specific"
+        }
+      }
     }
-  ]
+  ],
+  "dossier": "docs/INSTANT_PISTON_SCHEMATICS.md#or-1",
+  "purpose": "Legal shared-output OR at the first-wave observation window.",
+  "mechanism": "A source (2,2,9) feeds West-facing base (2,2,4); B source (0,2,9) feeds North-facing base (0,2,6). Heads (1,2,4) and (0,2,5) share payload (0,2,4); output dust (0,2,1) begins at strength 13. No events leaves 13 unchanged. A-only, B-only and both input orders remove the shared source from its extended position, making output zero in tick 1. Motion/entity traces conserve one payload across the shared position and either head position. Ownership is a group property; the first event can capture while another retracts without that block.",
+  "reset_and_next_use": "Output is zero at boundaries 1..5 and 13 at 6; nonzero cases repeat every six ticks. Each base has its own observer and solid cap, so reset power does not require possession of the payload. All cases use fresh snapshots; no held-zero observation is counted as another external computation.",
+  "recognition_guards": "Recognize both actuators, independent resets and all three allowed payload positions/owners. Do not impose permanent single-base ownership or accept the illegal dust-dependent group by analogy.",
+  "evidence": [
+    {
+      "artifact": "test_data/instant-pistons/traces/java-or_1-events-00-ab-r0.json.gz",
+      "artifact_sha256": "caac6742a1a3b6cc5d37fc22d4ae08ad138a82c39d2b6567722348ba0db2884a",
+      "fixture_id": "or_1",
+      "fixture_sha256": "81c59e0b94bf90f5998d5b09054899b6447e2c808c1a1710d00022a34a75e52a",
+      "case_id": "events-00-ab",
+      "rotation": 0,
+      "engine": "Java",
+      "termination": "completed bounded response; no claim of settled state",
+      "period_witness": null
+    },
+    {
+      "artifact": "test_data/instant-pistons/traces/java-or_1-events-01-ab-r0.json.gz",
+      "artifact_sha256": "86cd8634e03f2f10ee8cfac3409d4322c7a61030a7a5c8d63a10ab8fafac3f73",
+      "fixture_id": "or_1",
+      "fixture_sha256": "81c59e0b94bf90f5998d5b09054899b6447e2c808c1a1710d00022a34a75e52a",
+      "case_id": "events-01-ab",
+      "rotation": 0,
+      "engine": "Java",
+      "termination": "completed bounded response; no claim of settled state",
+      "period_witness": null
+    },
+    {
+      "artifact": "test_data/instant-pistons/traces/java-or_1-events-10-ab-r0.json.gz",
+      "artifact_sha256": "3f1f0eb531a12b60ff662bbf2f772ed95643ca11d254976a840bb90200377d72",
+      "fixture_id": "or_1",
+      "fixture_sha256": "81c59e0b94bf90f5998d5b09054899b6447e2c808c1a1710d00022a34a75e52a",
+      "case_id": "events-10-ab",
+      "rotation": 0,
+      "engine": "Java",
+      "termination": "completed bounded response; no claim of settled state",
+      "period_witness": null
+    },
+    {
+      "artifact": "test_data/instant-pistons/traces/java-or_1-events-11-ab-r0.json.gz",
+      "artifact_sha256": "95b7fcecbe2fa54bda38d700b585c0860dc4687d11438447c3542caa7ad6a35c",
+      "fixture_id": "or_1",
+      "fixture_sha256": "81c59e0b94bf90f5998d5b09054899b6447e2c808c1a1710d00022a34a75e52a",
+      "case_id": "events-11-ab",
+      "rotation": 0,
+      "engine": "Java",
+      "termination": "completed bounded response; no claim of settled state",
+      "period_witness": null
+    },
+    {
+      "artifact": "test_data/instant-pistons/traces/java-or_1-events-11-ba-r0.json.gz",
+      "artifact_sha256": "83df2cffae27e6bde360c3805525959c19442ff291996f616f94bd2f2f84db5b",
+      "fixture_id": "or_1",
+      "fixture_sha256": "81c59e0b94bf90f5998d5b09054899b6447e2c808c1a1710d00022a34a75e52a",
+      "case_id": "events-11-ba",
+      "rotation": 0,
+      "engine": "Java",
+      "termination": "completed bounded response; no claim of settled state",
+      "period_witness": null
+    },
+    {
+      "artifact": "test_data/instant-pistons/traces/java-or_1-saved-idle-r0.json.gz",
+      "artifact_sha256": "6113a78945eb31430cdf9d22072c8cbe6f927228fe62167f15ef28ba3f78f69c",
+      "fixture_id": "or_1",
+      "fixture_sha256": "81c59e0b94bf90f5998d5b09054899b6447e2c808c1a1710d00022a34a75e52a",
+      "case_id": "saved-idle",
+      "rotation": 0,
+      "engine": "Java",
+      "termination": "completed bounded response; no claim of settled state",
+      "period_witness": null
+    },
+    {
+      "artifact": "test_data/instant-pistons/traces/mchprs-or_1-events-00-ab-r0.json.gz",
+      "artifact_sha256": "8e9be8b441c3942635ca8262099151e691041faa1e2c06eb234cb7d55d1bbe95",
+      "fixture_id": "or_1",
+      "fixture_sha256": "81c59e0b94bf90f5998d5b09054899b6447e2c808c1a1710d00022a34a75e52a",
+      "case_id": "events-00-ab",
+      "rotation": 0,
+      "engine": "MCHPRS interpreter",
+      "termination": "completed bounded response; quiescence and periodicity assessed separately",
+      "period_witness": {
+        "first_tick": 1,
+        "period_ticks": 1,
+        "repeated_complete_cycles": 3,
+        "projection": "all watched blocks/entities/power predicates, scheduled queue, events, ordered motion progress; identities renamed, last_tick relative; BetweenTicks only"
+      }
+    },
+    {
+      "artifact": "test_data/instant-pistons/traces/mchprs-or_1-events-00-ab-r180.json.gz",
+      "artifact_sha256": "d55e463afac444907ff83d8c7b9f293f23fe997b2c1b14fe344f97f3286c0573",
+      "fixture_id": "or_1",
+      "fixture_sha256": "81c59e0b94bf90f5998d5b09054899b6447e2c808c1a1710d00022a34a75e52a",
+      "case_id": "events-00-ab",
+      "rotation": 180,
+      "engine": "MCHPRS interpreter",
+      "termination": "completed bounded response; quiescence and periodicity assessed separately",
+      "period_witness": {
+        "first_tick": 1,
+        "period_ticks": 1,
+        "repeated_complete_cycles": 3,
+        "projection": "all watched blocks/entities/power predicates, scheduled queue, events, ordered motion progress; identities renamed, last_tick relative; BetweenTicks only"
+      }
+    },
+    {
+      "artifact": "test_data/instant-pistons/traces/mchprs-or_1-events-00-ab-r270.json.gz",
+      "artifact_sha256": "8b54ec9d85db0921c25d45143fcab21e4784b3ac4b832ae71430fdaa29b69805",
+      "fixture_id": "or_1",
+      "fixture_sha256": "81c59e0b94bf90f5998d5b09054899b6447e2c808c1a1710d00022a34a75e52a",
+      "case_id": "events-00-ab",
+      "rotation": 270,
+      "engine": "MCHPRS interpreter",
+      "termination": "completed bounded response; quiescence and periodicity assessed separately",
+      "period_witness": {
+        "first_tick": 1,
+        "period_ticks": 1,
+        "repeated_complete_cycles": 3,
+        "projection": "all watched blocks/entities/power predicates, scheduled queue, events, ordered motion progress; identities renamed, last_tick relative; BetweenTicks only"
+      }
+    },
+    {
+      "artifact": "test_data/instant-pistons/traces/mchprs-or_1-events-00-ab-r90.json.gz",
+      "artifact_sha256": "799bd2b373a3ce374456d342d00b8ad8f083782c02fa1e4059b87d780b20f483",
+      "fixture_id": "or_1",
+      "fixture_sha256": "81c59e0b94bf90f5998d5b09054899b6447e2c808c1a1710d00022a34a75e52a",
+      "case_id": "events-00-ab",
+      "rotation": 90,
+      "engine": "MCHPRS interpreter",
+      "termination": "completed bounded response; quiescence and periodicity assessed separately",
+      "period_witness": {
+        "first_tick": 1,
+        "period_ticks": 1,
+        "repeated_complete_cycles": 3,
+        "projection": "all watched blocks/entities/power predicates, scheduled queue, events, ordered motion progress; identities renamed, last_tick relative; BetweenTicks only"
+      }
+    },
+    {
+      "artifact": "test_data/instant-pistons/traces/mchprs-or_1-events-01-ab-r0.json.gz",
+      "artifact_sha256": "dc990285d0c167a0ae29b9db8542b072a8d5b63086f2a1f9df687e19f85d7d8a",
+      "fixture_id": "or_1",
+      "fixture_sha256": "81c59e0b94bf90f5998d5b09054899b6447e2c808c1a1710d00022a34a75e52a",
+      "case_id": "events-01-ab",
+      "rotation": 0,
+      "engine": "MCHPRS interpreter",
+      "termination": "completed bounded response; quiescence and periodicity assessed separately",
+      "period_witness": {
+        "first_tick": 1,
+        "period_ticks": 6,
+        "repeated_complete_cycles": 3,
+        "projection": "all watched blocks/entities/power predicates, scheduled queue, events, ordered motion progress; identities renamed, last_tick relative; BetweenTicks only"
+      }
+    },
+    {
+      "artifact": "test_data/instant-pistons/traces/mchprs-or_1-events-01-ab-r180.json.gz",
+      "artifact_sha256": "155bc91a6989bce1c392a4f04d73b78abf60123ca957576bd7697d68a4743d7e",
+      "fixture_id": "or_1",
+      "fixture_sha256": "81c59e0b94bf90f5998d5b09054899b6447e2c808c1a1710d00022a34a75e52a",
+      "case_id": "events-01-ab",
+      "rotation": 180,
+      "engine": "MCHPRS interpreter",
+      "termination": "completed bounded response; quiescence and periodicity assessed separately",
+      "period_witness": {
+        "first_tick": 1,
+        "period_ticks": 6,
+        "repeated_complete_cycles": 3,
+        "projection": "all watched blocks/entities/power predicates, scheduled queue, events, ordered motion progress; identities renamed, last_tick relative; BetweenTicks only"
+      }
+    },
+    {
+      "artifact": "test_data/instant-pistons/traces/mchprs-or_1-events-01-ab-r270.json.gz",
+      "artifact_sha256": "e66fca4ba090e56e66ff34a90818dde00893b3833bfad7b6610fe75ef70aed77",
+      "fixture_id": "or_1",
+      "fixture_sha256": "81c59e0b94bf90f5998d5b09054899b6447e2c808c1a1710d00022a34a75e52a",
+      "case_id": "events-01-ab",
+      "rotation": 270,
+      "engine": "MCHPRS interpreter",
+      "termination": "completed bounded response; quiescence and periodicity assessed separately",
+      "period_witness": {
+        "first_tick": 1,
+        "period_ticks": 6,
+        "repeated_complete_cycles": 3,
+        "projection": "all watched blocks/entities/power predicates, scheduled queue, events, ordered motion progress; identities renamed, last_tick relative; BetweenTicks only"
+      }
+    },
+    {
+      "artifact": "test_data/instant-pistons/traces/mchprs-or_1-events-01-ab-r90.json.gz",
+      "artifact_sha256": "7bbfc024e304b47ed90fb5ab97dd2789ae81bff0397529106f5884db578a0567",
+      "fixture_id": "or_1",
+      "fixture_sha256": "81c59e0b94bf90f5998d5b09054899b6447e2c808c1a1710d00022a34a75e52a",
+      "case_id": "events-01-ab",
+      "rotation": 90,
+      "engine": "MCHPRS interpreter",
+      "termination": "completed bounded response; quiescence and periodicity assessed separately",
+      "period_witness": {
+        "first_tick": 1,
+        "period_ticks": 6,
+        "repeated_complete_cycles": 3,
+        "projection": "all watched blocks/entities/power predicates, scheduled queue, events, ordered motion progress; identities renamed, last_tick relative; BetweenTicks only"
+      }
+    },
+    {
+      "artifact": "test_data/instant-pistons/traces/mchprs-or_1-events-10-ab-r0.json.gz",
+      "artifact_sha256": "fdd889409e7a023da78b063fb02f5d40c64d09a16d6b07494988203e76a174e6",
+      "fixture_id": "or_1",
+      "fixture_sha256": "81c59e0b94bf90f5998d5b09054899b6447e2c808c1a1710d00022a34a75e52a",
+      "case_id": "events-10-ab",
+      "rotation": 0,
+      "engine": "MCHPRS interpreter",
+      "termination": "completed bounded response; quiescence and periodicity assessed separately",
+      "period_witness": {
+        "first_tick": 1,
+        "period_ticks": 6,
+        "repeated_complete_cycles": 3,
+        "projection": "all watched blocks/entities/power predicates, scheduled queue, events, ordered motion progress; identities renamed, last_tick relative; BetweenTicks only"
+      }
+    },
+    {
+      "artifact": "test_data/instant-pistons/traces/mchprs-or_1-events-10-ab-r180.json.gz",
+      "artifact_sha256": "0978a5d690edd07499fd626fa9121d03906dab874799a2afa4b64a6144f29c48",
+      "fixture_id": "or_1",
+      "fixture_sha256": "81c59e0b94bf90f5998d5b09054899b6447e2c808c1a1710d00022a34a75e52a",
+      "case_id": "events-10-ab",
+      "rotation": 180,
+      "engine": "MCHPRS interpreter",
+      "termination": "completed bounded response; quiescence and periodicity assessed separately",
+      "period_witness": {
+        "first_tick": 1,
+        "period_ticks": 6,
+        "repeated_complete_cycles": 3,
+        "projection": "all watched blocks/entities/power predicates, scheduled queue, events, ordered motion progress; identities renamed, last_tick relative; BetweenTicks only"
+      }
+    },
+    {
+      "artifact": "test_data/instant-pistons/traces/mchprs-or_1-events-10-ab-r270.json.gz",
+      "artifact_sha256": "65f11b811b5a54af79927911f9f8aec49b88e22fc676ae644d78e7f12c0559fc",
+      "fixture_id": "or_1",
+      "fixture_sha256": "81c59e0b94bf90f5998d5b09054899b6447e2c808c1a1710d00022a34a75e52a",
+      "case_id": "events-10-ab",
+      "rotation": 270,
+      "engine": "MCHPRS interpreter",
+      "termination": "completed bounded response; quiescence and periodicity assessed separately",
+      "period_witness": {
+        "first_tick": 1,
+        "period_ticks": 6,
+        "repeated_complete_cycles": 3,
+        "projection": "all watched blocks/entities/power predicates, scheduled queue, events, ordered motion progress; identities renamed, last_tick relative; BetweenTicks only"
+      }
+    },
+    {
+      "artifact": "test_data/instant-pistons/traces/mchprs-or_1-events-10-ab-r90.json.gz",
+      "artifact_sha256": "23197f2e7611efcfb6c70e118d6a960968272c0a44efa5be912babfa355684b6",
+      "fixture_id": "or_1",
+      "fixture_sha256": "81c59e0b94bf90f5998d5b09054899b6447e2c808c1a1710d00022a34a75e52a",
+      "case_id": "events-10-ab",
+      "rotation": 90,
+      "engine": "MCHPRS interpreter",
+      "termination": "completed bounded response; quiescence and periodicity assessed separately",
+      "period_witness": {
+        "first_tick": 1,
+        "period_ticks": 6,
+        "repeated_complete_cycles": 3,
+        "projection": "all watched blocks/entities/power predicates, scheduled queue, events, ordered motion progress; identities renamed, last_tick relative; BetweenTicks only"
+      }
+    },
+    {
+      "artifact": "test_data/instant-pistons/traces/mchprs-or_1-events-11-ab-r0.json.gz",
+      "artifact_sha256": "152ded3d30ed344050ce8cc14b23afc03657776b9efb8a80186b5a9882965409",
+      "fixture_id": "or_1",
+      "fixture_sha256": "81c59e0b94bf90f5998d5b09054899b6447e2c808c1a1710d00022a34a75e52a",
+      "case_id": "events-11-ab",
+      "rotation": 0,
+      "engine": "MCHPRS interpreter",
+      "termination": "completed bounded response; quiescence and periodicity assessed separately",
+      "period_witness": {
+        "first_tick": 1,
+        "period_ticks": 6,
+        "repeated_complete_cycles": 3,
+        "projection": "all watched blocks/entities/power predicates, scheduled queue, events, ordered motion progress; identities renamed, last_tick relative; BetweenTicks only"
+      }
+    },
+    {
+      "artifact": "test_data/instant-pistons/traces/mchprs-or_1-events-11-ab-r180.json.gz",
+      "artifact_sha256": "5a4b5a1f11e2f361fd8b7cf50c665d652dcbf0c0080209410db293acbfe2894b",
+      "fixture_id": "or_1",
+      "fixture_sha256": "81c59e0b94bf90f5998d5b09054899b6447e2c808c1a1710d00022a34a75e52a",
+      "case_id": "events-11-ab",
+      "rotation": 180,
+      "engine": "MCHPRS interpreter",
+      "termination": "completed bounded response; quiescence and periodicity assessed separately",
+      "period_witness": {
+        "first_tick": 1,
+        "period_ticks": 6,
+        "repeated_complete_cycles": 3,
+        "projection": "all watched blocks/entities/power predicates, scheduled queue, events, ordered motion progress; identities renamed, last_tick relative; BetweenTicks only"
+      }
+    },
+    {
+      "artifact": "test_data/instant-pistons/traces/mchprs-or_1-events-11-ab-r270.json.gz",
+      "artifact_sha256": "675a3775c23f441d492978cc3936f028d59254eb604ea11d5ce6c5b6fcc4cffd",
+      "fixture_id": "or_1",
+      "fixture_sha256": "81c59e0b94bf90f5998d5b09054899b6447e2c808c1a1710d00022a34a75e52a",
+      "case_id": "events-11-ab",
+      "rotation": 270,
+      "engine": "MCHPRS interpreter",
+      "termination": "completed bounded response; quiescence and periodicity assessed separately",
+      "period_witness": {
+        "first_tick": 1,
+        "period_ticks": 6,
+        "repeated_complete_cycles": 3,
+        "projection": "all watched blocks/entities/power predicates, scheduled queue, events, ordered motion progress; identities renamed, last_tick relative; BetweenTicks only"
+      }
+    },
+    {
+      "artifact": "test_data/instant-pistons/traces/mchprs-or_1-events-11-ab-r90.json.gz",
+      "artifact_sha256": "aa6d4ec29e24ee23009c9516f3f2e115d0961f3e13342881d66c4c193b3a9761",
+      "fixture_id": "or_1",
+      "fixture_sha256": "81c59e0b94bf90f5998d5b09054899b6447e2c808c1a1710d00022a34a75e52a",
+      "case_id": "events-11-ab",
+      "rotation": 90,
+      "engine": "MCHPRS interpreter",
+      "termination": "completed bounded response; quiescence and periodicity assessed separately",
+      "period_witness": {
+        "first_tick": 1,
+        "period_ticks": 6,
+        "repeated_complete_cycles": 3,
+        "projection": "all watched blocks/entities/power predicates, scheduled queue, events, ordered motion progress; identities renamed, last_tick relative; BetweenTicks only"
+      }
+    },
+    {
+      "artifact": "test_data/instant-pistons/traces/mchprs-or_1-events-11-ba-r0.json.gz",
+      "artifact_sha256": "cd811cebd7de0867b49d190796fed93546d356c37e488b6e284bf7cda98de76b",
+      "fixture_id": "or_1",
+      "fixture_sha256": "81c59e0b94bf90f5998d5b09054899b6447e2c808c1a1710d00022a34a75e52a",
+      "case_id": "events-11-ba",
+      "rotation": 0,
+      "engine": "MCHPRS interpreter",
+      "termination": "completed bounded response; quiescence and periodicity assessed separately",
+      "period_witness": {
+        "first_tick": 1,
+        "period_ticks": 6,
+        "repeated_complete_cycles": 3,
+        "projection": "all watched blocks/entities/power predicates, scheduled queue, events, ordered motion progress; identities renamed, last_tick relative; BetweenTicks only"
+      }
+    },
+    {
+      "artifact": "test_data/instant-pistons/traces/mchprs-or_1-events-11-ba-r180.json.gz",
+      "artifact_sha256": "eb24b7d01adf9e03dad991aa36182b996c0cbe892850f9dd93c44f3f77a960fb",
+      "fixture_id": "or_1",
+      "fixture_sha256": "81c59e0b94bf90f5998d5b09054899b6447e2c808c1a1710d00022a34a75e52a",
+      "case_id": "events-11-ba",
+      "rotation": 180,
+      "engine": "MCHPRS interpreter",
+      "termination": "completed bounded response; quiescence and periodicity assessed separately",
+      "period_witness": {
+        "first_tick": 1,
+        "period_ticks": 6,
+        "repeated_complete_cycles": 3,
+        "projection": "all watched blocks/entities/power predicates, scheduled queue, events, ordered motion progress; identities renamed, last_tick relative; BetweenTicks only"
+      }
+    },
+    {
+      "artifact": "test_data/instant-pistons/traces/mchprs-or_1-events-11-ba-r270.json.gz",
+      "artifact_sha256": "f13191d173107d324e3a47b6da556db8bc53892ce08a07905bf0715b6c28c43d",
+      "fixture_id": "or_1",
+      "fixture_sha256": "81c59e0b94bf90f5998d5b09054899b6447e2c808c1a1710d00022a34a75e52a",
+      "case_id": "events-11-ba",
+      "rotation": 270,
+      "engine": "MCHPRS interpreter",
+      "termination": "completed bounded response; quiescence and periodicity assessed separately",
+      "period_witness": {
+        "first_tick": 1,
+        "period_ticks": 6,
+        "repeated_complete_cycles": 3,
+        "projection": "all watched blocks/entities/power predicates, scheduled queue, events, ordered motion progress; identities renamed, last_tick relative; BetweenTicks only"
+      }
+    },
+    {
+      "artifact": "test_data/instant-pistons/traces/mchprs-or_1-events-11-ba-r90.json.gz",
+      "artifact_sha256": "0aa7d8ee30749cf33579d891f8be2ec3fe7c7ab4793f5c18cdd98e43073b1243",
+      "fixture_id": "or_1",
+      "fixture_sha256": "81c59e0b94bf90f5998d5b09054899b6447e2c808c1a1710d00022a34a75e52a",
+      "case_id": "events-11-ba",
+      "rotation": 90,
+      "engine": "MCHPRS interpreter",
+      "termination": "completed bounded response; quiescence and periodicity assessed separately",
+      "period_witness": {
+        "first_tick": 1,
+        "period_ticks": 6,
+        "repeated_complete_cycles": 3,
+        "projection": "all watched blocks/entities/power predicates, scheduled queue, events, ordered motion progress; identities renamed, last_tick relative; BetweenTicks only"
+      }
+    },
+    {
+      "artifact": "test_data/instant-pistons/traces/mchprs-or_1-saved-idle-r0.json.gz",
+      "artifact_sha256": "758e77b9c2ef55b0c31cbb3d86fb84d81c7c61f41b78ba1c6d4954600e121a42",
+      "fixture_id": "or_1",
+      "fixture_sha256": "81c59e0b94bf90f5998d5b09054899b6447e2c808c1a1710d00022a34a75e52a",
+      "case_id": "saved-idle",
+      "rotation": 0,
+      "engine": "MCHPRS interpreter",
+      "termination": "completed bounded response; quiescence and periodicity assessed separately",
+      "period_witness": {
+        "first_tick": 1,
+        "period_ticks": 1,
+        "repeated_complete_cycles": 3,
+        "projection": "all watched blocks/entities/power predicates, scheduled queue, events, ordered motion progress; identities renamed, last_tick relative; BetweenTicks only"
+      }
+    },
+    {
+      "artifact": "test_data/instant-pistons/traces/mchprs-or_1-saved-idle-r180.json.gz",
+      "artifact_sha256": "914d4cadf110075697fac5be1fb004928ef75e7de97d2cae6a13d8a043171531",
+      "fixture_id": "or_1",
+      "fixture_sha256": "81c59e0b94bf90f5998d5b09054899b6447e2c808c1a1710d00022a34a75e52a",
+      "case_id": "saved-idle",
+      "rotation": 180,
+      "engine": "MCHPRS interpreter",
+      "termination": "completed bounded response; quiescence and periodicity assessed separately",
+      "period_witness": {
+        "first_tick": 1,
+        "period_ticks": 1,
+        "repeated_complete_cycles": 3,
+        "projection": "all watched blocks/entities/power predicates, scheduled queue, events, ordered motion progress; identities renamed, last_tick relative; BetweenTicks only"
+      }
+    },
+    {
+      "artifact": "test_data/instant-pistons/traces/mchprs-or_1-saved-idle-r270.json.gz",
+      "artifact_sha256": "cf53e8ebe66a5891f4fe9a84418e9bebb1d442650465275c774e88aa5013d752",
+      "fixture_id": "or_1",
+      "fixture_sha256": "81c59e0b94bf90f5998d5b09054899b6447e2c808c1a1710d00022a34a75e52a",
+      "case_id": "saved-idle",
+      "rotation": 270,
+      "engine": "MCHPRS interpreter",
+      "termination": "completed bounded response; quiescence and periodicity assessed separately",
+      "period_witness": {
+        "first_tick": 1,
+        "period_ticks": 1,
+        "repeated_complete_cycles": 3,
+        "projection": "all watched blocks/entities/power predicates, scheduled queue, events, ordered motion progress; identities renamed, last_tick relative; BetweenTicks only"
+      }
+    },
+    {
+      "artifact": "test_data/instant-pistons/traces/mchprs-or_1-saved-idle-r90.json.gz",
+      "artifact_sha256": "d23c21d414489fc1fc2a0b4de60a15540e549905468993d87f1a6499b92c1332",
+      "fixture_id": "or_1",
+      "fixture_sha256": "81c59e0b94bf90f5998d5b09054899b6447e2c808c1a1710d00022a34a75e52a",
+      "case_id": "saved-idle",
+      "rotation": 90,
+      "engine": "MCHPRS interpreter",
+      "termination": "completed bounded response; quiescence and periodicity assessed separately",
+      "period_witness": {
+        "first_tick": 1,
+        "period_ticks": 1,
+        "repeated_complete_cycles": 3,
+        "projection": "all watched blocks/entities/power predicates, scheduled queue, events, ordered motion progress; identities renamed, last_tick relative; BetweenTicks only"
+      }
+    }
+  ],
+  "label_mappings": [
+    {
+      "sign_position": [
+        0,
+        1,
+        0
+      ],
+      "readable": "OUTPUT",
+      "candidate_positions": [
+        [
+          0,
+          2,
+          1
+        ],
+        [
+          0,
+          2,
+          2
+        ]
+      ],
+      "referenced_positions": [
+        0,
+        2,
+        1
+      ],
+      "role": "labeled physical output; no sink implied",
+      "status": "mapped",
+      "evidence": "saved geometry and controlled current-binary episodes; causal path described in dossier",
+      "original_text": {
+        "front_text": {
+          "original": [
+            {
+              "text": "OUTPUT"
+            },
+            {
+              "text": ""
+            },
+            {
+              "text": ""
+            },
+            {
+              "text": ""
+            }
+          ],
+          "readable": [
+            "OUTPUT",
+            "",
+            "",
+            ""
+          ]
+        },
+        "back_text": {
+          "original": [
+            {
+              "text": ""
+            },
+            {
+              "text": ""
+            },
+            {
+              "text": ""
+            },
+            {
+              "text": ""
+            }
+          ],
+          "readable": [
+            "",
+            "",
+            "",
+            ""
+          ]
+        },
+        "legacy": {
+          "original": [],
+          "readable": []
+        }
+      }
+    },
+    {
+      "sign_position": [
+        0,
+        3,
+        9
+      ],
+      "readable": "INB",
+      "candidate_positions": [
+        [
+          0,
+          2,
+          7
+        ],
+        [
+          0,
+          2,
+          8
+        ],
+        [
+          0,
+          2,
+          9
+        ],
+        [
+          0,
+          3,
+          6
+        ],
+        [
+          2,
+          2,
+          9
+        ]
+      ],
+      "referenced_positions": [
+        0,
+        2,
+        9
+      ],
+      "role": "input source; falling event supplies logical one",
+      "status": "mapped",
+      "evidence": "saved geometry and controlled current-binary episodes; causal path described in dossier",
+      "original_text": {
+        "front_text": {
+          "original": [
+            {
+              "text": "INB"
+            },
+            {
+              "text": ""
+            },
+            {
+              "text": ""
+            },
+            {
+              "text": ""
+            }
+          ],
+          "readable": [
+            "INB",
+            "",
+            "",
+            ""
+          ]
+        },
+        "back_text": {
+          "original": [
+            {
+              "text": ""
+            },
+            {
+              "text": ""
+            },
+            {
+              "text": ""
+            },
+            {
+              "text": ""
+            }
+          ],
+          "readable": [
+            "",
+            "",
+            "",
+            ""
+          ]
+        },
+        "legacy": {
+          "original": [],
+          "readable": []
+        }
+      }
+    },
+    {
+      "sign_position": [
+        2,
+        3,
+        9
+      ],
+      "readable": "IN A",
+      "candidate_positions": [
+        [
+          0,
+          2,
+          9
+        ],
+        [
+          2,
+          2,
+          7
+        ],
+        [
+          2,
+          2,
+          8
+        ],
+        [
+          2,
+          2,
+          9
+        ]
+      ],
+      "referenced_positions": [
+        2,
+        2,
+        9
+      ],
+      "role": "input source; falling event supplies logical one",
+      "status": "mapped",
+      "evidence": "saved geometry and controlled current-binary episodes; causal path described in dossier",
+      "original_text": {
+        "front_text": {
+          "original": [
+            {
+              "text": "IN A"
+            },
+            {
+              "text": ""
+            },
+            {
+              "text": ""
+            },
+            {
+              "text": ""
+            }
+          ],
+          "readable": [
+            "IN A",
+            "",
+            "",
+            ""
+          ]
+        },
+        "back_text": {
+          "original": [
+            {
+              "text": ""
+            },
+            {
+              "text": ""
+            },
+            {
+              "text": ""
+            },
+            {
+              "text": ""
+            }
+          ],
+          "readable": [
+            "",
+            "",
+            "",
+            ""
+          ]
+        },
+        "legacy": {
+          "original": [],
+          "readable": []
+        }
+      }
+    }
+  ],
+  "negation_paths": [],
+  "first_wave_orders": []
 }

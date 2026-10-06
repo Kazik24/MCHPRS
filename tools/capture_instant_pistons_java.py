@@ -1,6 +1,7 @@
 """Independent Java 1.21.5 pack captures in a fresh frozen void world.
 
 py tools/capture_instant_pistons_java.py --server-jar <pinned.jar> --output-dir <new-dir>
+Add --reference <frozen-java-trace.json.gz> to reproduce that case at its exact origin.
 Each case is placed in a new chunk region; stale work cannot hit the next case.
 Java preparation uses normal setblock, explicitly distinct from MCHPRS raw+notify.
 No normal placement is substituted for strict-import counterexamples.
@@ -39,6 +40,7 @@ def main():
     parser.add_argument("--server-jar", type=Path, required=True)
     parser.add_argument("--output-dir", type=Path, required=True)
     parser.add_argument("--fixture")
+    parser.add_argument("--reference",type=Path,help="replay one frozen Java episode at its recorded origin")
     parser.add_argument("--java", default="java")
     args = parser.parse_args()
     if args.output_dir.exists():
@@ -47,6 +49,10 @@ def main():
     if hashlib.sha1(jar.read_bytes()).hexdigest() != SERVER_SHA1:
         parser.error("Java server SHA1 mismatch")
     server_sha256 = hashlib.sha256(jar.read_bytes()).hexdigest()
+    reference=json.loads(gzip.decompress(args.reference.read_bytes())) if args.reference else None
+    if reference:
+        if reference["engine"]!="Java" or reference["server_sha256"]!=server_sha256 or reference["rotation"]!=0:
+            parser.error("reference engine/binary/orientation mismatch")
     manifests = [json.loads(p.read_text()) for p in sorted((PACK/"fixtures").glob("*.json"))]
     episodes = []
     for m in manifests:
@@ -55,11 +61,18 @@ def main():
         if m["id"] in ("pm1_sort", "q2ck_lycore5_for_sorting"):
             continue
         for c in m["cases"]:
-            if c["id"] in ("held-zero", "rearm-diagnostic", "misaligned-ab"):
+            if reference and (m["fixture"]!=reference["fixture"] or c["id"]!=reference["case_id"]):
+                continue
+            if c["id"] in ("held-zero", "rearm-diagnostic", "misaligned-ab", "reconstruct-from-retracted", "unblocked-conducting-cap") or c["id"].startswith("probe-"):
                 continue  # Full fine traces remain MCHPRS evidence for these diagnostics.
             if m["id"] == "adder_11bits" and c["id"] not in ("saved-idle", "prepared-0-0-0", "prepared-1023-1-0", "prepared-1024-1024-0", "prepared-2047-2047-0", "prepared-1365-682-0", "prepared-682-1365-0"):
                 continue
             episodes.append((m, c))
+    if reference:
+        if len(episodes)!=1:parser.error("reference case not available under selected capture protocol")
+        m,c=episodes[0]
+        if m["sha256"]!=reference["fixture_sha256"] or c["actions"]!=reference["ordered_stimuli"]:
+            parser.error("reference fixture hash/stimulus mismatch")
     with tempfile.TemporaryDirectory(prefix="mchprs-instant-pack-") as directory:
         run = Path(directory)
         (run/"eula.txt").write_text("eula=true\n")
@@ -78,7 +91,7 @@ def main():
             if info["sha256"] != m["sha256"]:
                 raise ValueError("stale manifest")
             # New, never previously occupied chunk region per independent snapshot.
-            origin = [128 + index*64, 40, 128]
+            origin = reference["origin"] if reference else [128 + index*64, 40, 128]
             def absolute(p):
                 return " ".join(str(a+b) for a, b in zip(origin, p))
             commands = [f"setblock {absolute(b['pos'])} {b['state']} strict" for b in info["nonair_cells"]]
@@ -104,6 +117,8 @@ def main():
                     for n in (1,2):
                         relevant.add(tuple(a+n*v for a,v in zip(b["pos"],delta[facing])))
             positions = sorted(relevant)
+            if reference and [list(p) for p in positions]!=reference["positions_local"]:
+                raise ValueError("reference observed geometry differs; do not substitute a new projection")
             commands = ["data modify storage piston_reference:trace sample set value {}"]
             for i, p in enumerate(positions):
                 coord = absolute(p)
@@ -190,7 +205,8 @@ def main():
                                 protocol=m["protocol"],ordered_stimuli=c["actions"],commands=commands,samples=samples,start_tick=start,
                                 observation_projection="named ports and listed piston/head/payload/observer/dust/torch/consumer cells; dust strength; queued work and internal callback order unavailable in command-only Java capture",
                                 limits={"ticks":c["ticks"],"startup_seconds":120},termination="completed bounded response; no claim of settled state",
-                                capture_command=subprocess.list2cmdline(["py","tools/capture_instant_pistons_java.py","--server-jar",str(jar),"--output-dir",str(args.output_dir)]+(["--fixture",args.fixture]if args.fixture else [])))
+                                capture_command=subprocess.list2cmdline(["py","tools/capture_instant_pistons_java.py","--server-jar",str(jar),"--output-dir",str(args.output_dir)]+(["--fixture",args.fixture]if args.fixture else [])+(["--reference",str(args.reference)]if args.reference else [])))
+                    if reference:result["reproduced_reference"]=dict(path=str(args.reference),sha256=hashlib.sha256(args.reference.read_bytes()).hexdigest())
                     p=args.output_dir/f"java-{m['id']}-{c['id']}-r0.json.gz"
                     p.write_bytes(gzip.compress((json.dumps(result,sort_keys=True,separators=(",",":"))+"\n").encode(),mtime=0))
                     print("captured",p.name,flush=True)

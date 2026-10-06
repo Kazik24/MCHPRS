@@ -24,3 +24,12 @@
    I will invesigate.
 
    Refreshed replacement fixture verification (2026-10-06): [ADDER_11BITS.schem](../test_data/instant-pistons/ADDER_11BITS.schem) produces the correct `2047` for `0x555 + 0x2aa` in both Java and MCHPRS. It also fixes the preceding replacement's high-bit cases: saved `2047 + 2047` inputs produce `2046`, and prepared `1024 + 1024` inputs produce `0`, both modulo 2048. The replacement Java traces and arithmetic tests use the refreshed binary.
+
+Latest author clarifications during pack characterization (2026-10-06), summarized separately from observed results:
+
+- Negation actors may fire in the same wave. “First, update-wise” matters when the negating input has extra piston delays: two delays on that side versus one on the ordinary side can make inhibition fail. Correct instant circuits are synchronized for Java/interpreter behavior; this is not a movement-completion ordering rule.
+- COUNTER_BASIC's marked trigger releases a free-running counter, which counts into the marked BUD memory. The [catalog](INSTANT_PISTON_SCHEMATICS.md#counter-basic) independently derives its bank and measured bit order.
+- NANOTICK_EXAMPLE is now supplied. It resembles NOT with additional pistons on one side, causing output activation that the Boolean expression would suppress. It is a synchronization counterexample, not evidence produced merely by changing inspection APIs.
+- OR_Interpreter_illigal has a dust reset that assumes its attached output remains a powered block. Another piston can take that block, breaking the first member's instant reset. The author excludes this potentially position/direction-dependent undefined construction from scope. Exact imported-state diagnostics remain preserved; no compiler acceptance or fixture repair is authorized.
+
+The earlier numbered answers record the conversation at that time; fixture availability and behavior now follow the [versioned catalog](INSTANT_PISTON_SCHEMATICS.md).

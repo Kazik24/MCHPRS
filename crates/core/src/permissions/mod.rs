@@ -553,6 +553,88 @@ mod tests {
     }
 
     #[test]
+    fn deployed_git_rank_policy_starts_at_expert_with_owner_storage_tiers() {
+        let mut config = config();
+        config.server_context = "mchprs".into();
+        config.mchprs_permissions = true;
+        config.redstonefun_ranks = true;
+        let mut groups = vec![
+            node("default", "mchprs.*", false),
+            node("builder", "group.default", true),
+            node("advanced", "group.default", true),
+            node("advanced", "group.builder", true),
+            node("expert", "group.advanced", true),
+            node("expert", "group.builder", true),
+            node("expert", "group.default", true),
+            node("engineer", "group.advanced", true),
+            node("engineer", "group.builder", true),
+            node("engineer", "group.default", true),
+            node("engineer", "group.expert", true),
+            node("moderator", "mchprs.*", true),
+            node("admin", "mchprs.*", true),
+        ];
+        for (group, allowance) in [
+            ("expert", 100),
+            ("engineer", 1024),
+            ("moderator", 1024),
+            ("admin", 1024),
+        ] {
+            groups.push(node(group, "mchprs.commands.git", true));
+            groups.push(node(
+                group,
+                &format!("mchprs.git.storage.{allowance}"),
+                true,
+            ));
+        }
+        for node in &mut groups {
+            if node.permission.starts_with("mchprs.") {
+                node.server = "mchprs".into();
+            }
+        }
+        for rank in [
+            Rank::Player,
+            Rank::Builder,
+            Rank::Advanced,
+            Rank::Expert,
+            Rank::Engineer,
+            Rank::Moderator,
+            Rank::Admin,
+        ] {
+            let cache = PlayerPermissionsCache::resolve(
+                vec![node("", &format!("group.{}", rank.group()), true)],
+                groups.clone(),
+                &config,
+                now(),
+            );
+            assert_eq!(
+                cache.get_node_val("commands.git"),
+                Some(i32::from(rank >= Rank::Expert)),
+                "{rank:?}"
+            );
+            assert_eq!(
+                cache.numeric_limit("mchprs.git.storage."),
+                match rank {
+                    Rank::Expert => Some(100),
+                    Rank::Engineer | Rank::Moderator | Rank::Admin => Some(1024),
+                    _ => None,
+                },
+                "{rank:?}"
+            );
+            assert_eq!(cache.rank_profile.unwrap().rank, rank);
+        }
+        let overridden = PlayerPermissionsCache::resolve(
+            vec![
+                node("", "group.engineer", true),
+                node("", "mchprs.commands.git", false),
+            ],
+            groups,
+            &config,
+            now(),
+        );
+        assert_eq!(overridden.get_node_val("commands.git"), Some(0));
+    }
+
+    #[test]
     fn git_storage_ranks_respect_inheritance_denials_expiry_and_namespace() {
         for dedicated in [false, true] {
             let mut config = config();

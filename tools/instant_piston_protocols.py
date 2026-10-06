@@ -34,7 +34,7 @@ MAPS = {
     "XOR_Simple": ({"A": [2, 2, 7], "B": [0, 2, 7]}, {"output": [0, 2, 0], "inhibit_payload": [1, 2, 1]}),
     "OR_Interpreter_illigal": ({"A": [0, 2, 5], "B": [2, 2, 5]}, {"shared_payload": [0, 2, 0], "reset_A": [0, 1, 1], "reset_B": [1, 1, 0]}),
     "MCHPRS_REDSTONE_UPDATE_EDGECASE": ({"source": [6, 5, 6], "lever": [7, 5, 6]}, {"payload": [2, 2, 2], "released": [2, 1, 2], "comparator": [1, 3, 2]}),
-    "ADDER_1BIT": ({"A": [1, 5, 3], "B": [1, 5, 1], "Cin": [9, 5, 5], "trigger": [0, 4, 5]}, {"sum": [18, 2, 1], "carry": [11, 1, 0], "carry_consumer": [12, 1, 2]}),
+    "ADDER_1BIT": ({"A": [1, 5, 3], "B": [1, 5, 1], "Cin": [9, 5, 5], "trigger": [0, 4, 5]}, {"sum": [18, 2, 1], "carry": [11, 1, 0], "carry_driver": [12, 1, 2]}),
     "ADDER_11BITS": ({"A": [[3, 5, 43 - 4*i] for i in range(11)], "B": [[3, 5, 41 - 4*i] for i in range(11)], "trigger": [2, 4, 45]}, {"sum": [[20, 2, 41 - 4*i] for i in range(11)]}),
     "COUNTER_BASIC": ({"trigger": [7, 8, 0]}, {"memory": [[5, 11, 3 + 2*i] for i in range(16)], "candidate_output": [[20, 6, 3 + 2*i] for i in range(16)], "generator": [2, 11, 18]}),
 }

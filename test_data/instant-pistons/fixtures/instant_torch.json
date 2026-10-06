@@ -9,7 +9,7 @@
     8
   ],
   "inspection": "test_data/instant-pistons/inspection/instant_torch.json",
-  "classification": "observed diagnostics; function pending analysis",
+  "classification": "Observed first-wave protocol; no generic compiler certificate",
   "coordinates": {
     "convention": "selection-local relative to saved minimum",
     "origin": [
@@ -44,24 +44,44 @@
         6
       ]
     },
-    "status": "geometry-derived candidates; see dossier for per-port evidence"
+    "status": "geometry and controlled episodes verified; absent sink and temporal limits described in dossier"
   },
   "setup": {
     "mode": "paste_clipboard(ignore_air=false); raw storage then entities; no notifications",
     "initial": "exact binary states and block entities; empty queues, tick 0 BetweenTicks",
-    "readiness": "saved-idle episode must remain unchanged with empty work; prepared cases wait for no queued work, bounded at 32 ticks"
+    "readiness": "saved-idle remains unchanged with empty work; prepared snapshots require two unchanged quiescent completed boundaries, bounded at 32 ticks"
   },
   "protocol": {
     "logical_one": "nonzero-to-zero event",
     "cases_independent": "fresh equivalent strict-import snapshots",
     "input_during_reset": "undefined; only labeled diagnostics exercise it",
     "held_zero": "no new external event; internal cycles retained",
-    "repeat_use": "pending measured rearm condition; use fresh imports until proven"
+    "repeat_use": "By tick 6 the response is quiescent and extended, with payload restored. The recorded reuse diagnostic waits to tick 12, restores the source, waits 20 ticks (with 18 unchanged quiet boundaries), then destroys it; it reproduces the pulse. Acceptance can use the measured quiescent extended/head/payload/torch condition, not the literal wait lengths."
   },
-  "observation_decoder": "raw state/property observations; moving states distinct; dust falling edge is event; air output payload means 1 only for verified arithmetic bank",
+  "observation_decoder": {
+    "timing": "completed response boundary; tick 0 is immediately after ordered stimuli",
+    "held_zero": "not a new external event",
+    "moving": "distinct state, never silently treated as an output bit",
+    "encoding": "new dust nonzero-to-zero transition = one; unchanged nonzero means no event",
+    "first_valid_boundary": 1,
+    "first_wave_window_ticks": [
+      1,
+      3
+    ],
+    "function": "falling external trigger causes first retraction/output fall",
+    "consumer_boundary": "labeled/derived wire observation; attached non-instant consumer absent unless case declares a probe",
+    "later_observations": "reset pulses and moving state remain physical observations; full episode is retained"
+  },
   "ordering_constraints": [],
-  "unknowns": [],
-  "java_status": "not yet compared",
+  "unknowns": [
+    "Arbitrary non-instant consumer/handoff equivalence not certified",
+    "External input or another computation during reset is undefined"
+  ],
+  "java_status": {
+    "compared_cases": 2,
+    "status": "all declared projections match",
+    "scope": "current binary; response boundaries, not internal callbacks; setup difference retained"
+  },
   "rotations": [
     0
   ],
@@ -70,7 +90,23 @@
       "id": "saved-idle",
       "inputs": null,
       "actions": [],
-      "ticks": 24
+      "ticks": 24,
+      "evidence_status": "observed supported episode within dossier's protocol/window",
+      "artifacts": [
+        "test_data/instant-pistons/traces/java-instant_torch-saved-idle-r0.json.gz",
+        "test_data/instant-pistons/traces/mchprs-instant_torch-saved-idle-r0.json.gz"
+      ],
+      "expected_status": "behavioral regression observation; arithmetic expectation independently checked where decoder validated",
+      "observations_reference": {
+        "mchprs": "test_data/instant-pistons/mchprs-projections.json",
+        "java": "test_data/instant-pistons/java-projections.json",
+        "key": {
+          "fixture_id": "instant_torch",
+          "fixture_sha256": "6d5ed8343ad111f0b976200ac629b7c6030e1b46a5374d548f4e41537babe1ca",
+          "case_id": "saved-idle",
+          "rotation": "artifact-specific"
+        }
+      }
     },
     {
       "id": "falling",
@@ -87,7 +123,23 @@
           ]
         }
       ],
-      "ticks": 24
+      "ticks": 24,
+      "evidence_status": "observed supported episode within dossier's protocol/window",
+      "artifacts": [
+        "test_data/instant-pistons/traces/java-instant_torch-falling-r0.json.gz",
+        "test_data/instant-pistons/traces/mchprs-instant_torch-falling-r0.json.gz"
+      ],
+      "expected_status": "behavioral regression observation; arithmetic expectation independently checked where decoder validated",
+      "observations_reference": {
+        "mchprs": "test_data/instant-pistons/mchprs-projections.json",
+        "java": "test_data/instant-pistons/java-projections.json",
+        "key": {
+          "fixture_id": "instant_torch",
+          "fixture_sha256": "6d5ed8343ad111f0b976200ac629b7c6030e1b46a5374d548f4e41537babe1ca",
+          "case_id": "falling",
+          "rotation": "artifact-specific"
+        }
+      }
     },
     {
       "id": "held-zero",
@@ -117,7 +169,22 @@
         }
       ],
       "ticks": 24,
-      "diagnostic": "An additional notification of held zero; no new external falling event"
+      "diagnostic": "An additional notification of held zero; no new external falling event",
+      "evidence_status": "observed diagnostic; no reusable truth-table acceptance",
+      "artifacts": [
+        "test_data/instant-pistons/traces/mchprs-instant_torch-held-zero-r0.json.gz"
+      ],
+      "expected_status": "behavioral regression observation; arithmetic expectation independently checked where decoder validated",
+      "observations_reference": {
+        "mchprs": "test_data/instant-pistons/mchprs-projections.json",
+        "java": null,
+        "key": {
+          "fixture_id": "instant_torch",
+          "fixture_sha256": "6d5ed8343ad111f0b976200ac629b7c6030e1b46a5374d548f4e41537babe1ca",
+          "case_id": "held-zero",
+          "rotation": "artifact-specific"
+        }
+      }
     },
     {
       "id": "rearm-diagnostic",
@@ -161,7 +228,280 @@
         }
       ],
       "ticks": 24,
-      "diagnostic": "Reuse becomes supported only if rearm is demonstrated"
+      "diagnostic": "Reuse becomes supported only if rearm is demonstrated",
+      "evidence_status": "observed diagnostic; no reusable truth-table acceptance",
+      "artifacts": [
+        "test_data/instant-pistons/traces/mchprs-instant_torch-rearm-diagnostic-r0.json.gz"
+      ],
+      "expected_status": "behavioral regression observation; arithmetic expectation independently checked where decoder validated",
+      "observations_reference": {
+        "mchprs": "test_data/instant-pistons/mchprs-projections.json",
+        "java": null,
+        "key": {
+          "fixture_id": "instant_torch",
+          "fixture_sha256": "6d5ed8343ad111f0b976200ac629b7c6030e1b46a5374d548f4e41537babe1ca",
+          "case_id": "rearm-diagnostic",
+          "rotation": "artifact-specific"
+        }
+      }
     }
-  ]
+  ],
+  "dossier": "docs/INSTANT_PISTON_SCHEMATICS.md#instant-torch",
+  "purpose": "Horizontal torch reset with a single output pulse and a stable powered reset.",
+  "mechanism": "Base/head/payload and input/output positions match INSTANT_OBSERVER. The observer/cap are absent; an initially unlit floor torch is at (0,2,2) on the input conduction block. Falling input turns that torch on through a two-game-tick scheduled transition. Its power and notifications reset the base. Output is low at boundaries 1 through 5 and high again at 6; the torch then holds the extended mechanism powered with no continuing oscillator.",
+  "reset_and_next_use": "By tick 6 the response is quiescent and extended, with payload restored. The recorded reuse diagnostic waits to tick 12, restores the source, waits 20 ticks (with 18 unchanged quiet boundaries), then destroys it; it reproduces the pulse. Acceptance can use the measured quiescent extended/head/payload/torch condition, not the literal wait lengths.",
+  "recognition_guards": "Torch timing, attachment support and its own power condition are guards. This reset cannot share the observer family's persistent-low oscillator contract.",
+  "evidence": [
+    {
+      "artifact": "test_data/instant-pistons/traces/java-instant_torch-falling-r0.json.gz",
+      "artifact_sha256": "ac30e97fbc74b28df8fc7593ea3afd94313b62e61890e6d6d4a9dc84b409e349",
+      "fixture_id": "instant_torch",
+      "fixture_sha256": "6d5ed8343ad111f0b976200ac629b7c6030e1b46a5374d548f4e41537babe1ca",
+      "case_id": "falling",
+      "rotation": 0,
+      "engine": "Java",
+      "termination": "completed bounded response; no claim of settled state",
+      "period_witness": null
+    },
+    {
+      "artifact": "test_data/instant-pistons/traces/java-instant_torch-saved-idle-r0.json.gz",
+      "artifact_sha256": "8402c6443bf17f56f67e96a55b73dd778e1e915aef04930839e7dd786c54d9ec",
+      "fixture_id": "instant_torch",
+      "fixture_sha256": "6d5ed8343ad111f0b976200ac629b7c6030e1b46a5374d548f4e41537babe1ca",
+      "case_id": "saved-idle",
+      "rotation": 0,
+      "engine": "Java",
+      "termination": "completed bounded response; no claim of settled state",
+      "period_witness": null
+    },
+    {
+      "artifact": "test_data/instant-pistons/traces/mchprs-instant_torch-falling-r0.json.gz",
+      "artifact_sha256": "4ae44bcdf177b8e20390ee23ae70bf23d1a2043aff12618d19255f928539750a",
+      "fixture_id": "instant_torch",
+      "fixture_sha256": "6d5ed8343ad111f0b976200ac629b7c6030e1b46a5374d548f4e41537babe1ca",
+      "case_id": "falling",
+      "rotation": 0,
+      "engine": "MCHPRS interpreter",
+      "termination": "completed bounded response; quiescence and periodicity assessed separately",
+      "period_witness": {
+        "first_tick": 6,
+        "period_ticks": 1,
+        "repeated_complete_cycles": 3,
+        "projection": "all watched blocks/entities/power predicates, scheduled queue, events, ordered motion progress; identities renamed, last_tick relative; BetweenTicks only"
+      }
+    },
+    {
+      "artifact": "test_data/instant-pistons/traces/mchprs-instant_torch-held-zero-r0.json.gz",
+      "artifact_sha256": "5ecbde0957adc191c8cf23522c4aaa06c4ddd38b47c40f05c48fe072f3a7e3c7",
+      "fixture_id": "instant_torch",
+      "fixture_sha256": "6d5ed8343ad111f0b976200ac629b7c6030e1b46a5374d548f4e41537babe1ca",
+      "case_id": "held-zero",
+      "rotation": 0,
+      "engine": "MCHPRS interpreter",
+      "termination": "completed bounded response; quiescence and periodicity assessed separately",
+      "period_witness": {
+        "first_tick": 13,
+        "period_ticks": 1,
+        "repeated_complete_cycles": 3,
+        "projection": "all watched blocks/entities/power predicates, scheduled queue, events, ordered motion progress; identities renamed, last_tick relative; BetweenTicks only"
+      }
+    },
+    {
+      "artifact": "test_data/instant-pistons/traces/mchprs-instant_torch-rearm-diagnostic-r0.json.gz",
+      "artifact_sha256": "a7c892a47a813a3fec6cd8104ae57c0cb3a9234f9c989c268f766cc2d3062121",
+      "fixture_id": "instant_torch",
+      "fixture_sha256": "6d5ed8343ad111f0b976200ac629b7c6030e1b46a5374d548f4e41537babe1ca",
+      "case_id": "rearm-diagnostic",
+      "rotation": 0,
+      "engine": "MCHPRS interpreter",
+      "termination": "completed bounded response; quiescence and periodicity assessed separately",
+      "period_witness": {
+        "first_tick": 38,
+        "period_ticks": 1,
+        "repeated_complete_cycles": 3,
+        "projection": "all watched blocks/entities/power predicates, scheduled queue, events, ordered motion progress; identities renamed, last_tick relative; BetweenTicks only"
+      }
+    },
+    {
+      "artifact": "test_data/instant-pistons/traces/mchprs-instant_torch-saved-idle-r0.json.gz",
+      "artifact_sha256": "3f2c0d47a250b6430295b32f3eb0d928520e2b0b7d4311cb4b39fe9319808524",
+      "fixture_id": "instant_torch",
+      "fixture_sha256": "6d5ed8343ad111f0b976200ac629b7c6030e1b46a5374d548f4e41537babe1ca",
+      "case_id": "saved-idle",
+      "rotation": 0,
+      "engine": "MCHPRS interpreter",
+      "termination": "completed bounded response; quiescence and periodicity assessed separately",
+      "period_witness": {
+        "first_tick": 1,
+        "period_ticks": 1,
+        "repeated_complete_cycles": 3,
+        "projection": "all watched blocks/entities/power predicates, scheduled queue, events, ordered motion progress; identities renamed, last_tick relative; BetweenTicks only"
+      }
+    }
+  ],
+  "label_mappings": [
+    {
+      "sign_position": [
+        0,
+        0,
+        7
+      ],
+      "readable": "OUTPUT",
+      "candidate_positions": [
+        [
+          0,
+          1,
+          5
+        ],
+        [
+          0,
+          1,
+          6
+        ]
+      ],
+      "referenced_positions": [
+        0,
+        1,
+        6
+      ],
+      "role": "labeled physical output; no sink implied",
+      "status": "mapped",
+      "evidence": "saved geometry and controlled current-binary episodes; causal path described in dossier",
+      "original_text": {
+        "front_text": {
+          "original": [
+            {
+              "text": "OUTPUT"
+            },
+            {
+              "text": ""
+            },
+            {
+              "text": ""
+            },
+            {
+              "text": ""
+            }
+          ],
+          "readable": [
+            "OUTPUT",
+            "",
+            "",
+            ""
+          ]
+        },
+        "back_text": {
+          "original": [
+            {
+              "text": ""
+            },
+            {
+              "text": ""
+            },
+            {
+              "text": ""
+            },
+            {
+              "text": ""
+            }
+          ],
+          "readable": [
+            "",
+            "",
+            "",
+            ""
+          ]
+        },
+        "legacy": {
+          "original": [],
+          "readable": []
+        }
+      }
+    },
+    {
+      "sign_position": [
+        0,
+        2,
+        0
+      ],
+      "readable": "INPUT",
+      "candidate_positions": [
+        [
+          0,
+          1,
+          0
+        ],
+        [
+          0,
+          1,
+          1
+        ],
+        [
+          0,
+          2,
+          2
+        ]
+      ],
+      "referenced_positions": [
+        0,
+        1,
+        0
+      ],
+      "role": "external source/update trigger",
+      "status": "mapped",
+      "evidence": "saved geometry and controlled current-binary episodes; causal path described in dossier",
+      "original_text": {
+        "front_text": {
+          "original": [
+            {
+              "text": "INPUT"
+            },
+            {
+              "text": ""
+            },
+            {
+              "text": ""
+            },
+            {
+              "text": ""
+            }
+          ],
+          "readable": [
+            "INPUT",
+            "",
+            "",
+            ""
+          ]
+        },
+        "back_text": {
+          "original": [
+            {
+              "text": ""
+            },
+            {
+              "text": ""
+            },
+            {
+              "text": ""
+            },
+            {
+              "text": ""
+            }
+          ],
+          "readable": [
+            "",
+            "",
+            "",
+            ""
+          ]
+        },
+        "legacy": {
+          "original": [],
+          "readable": []
+        }
+      }
+    }
+  ],
+  "negation_paths": [],
+  "first_wave_orders": []
 }

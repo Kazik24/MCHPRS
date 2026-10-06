@@ -9,7 +9,7 @@
     14
   ],
   "inspection": "test_data/instant-pistons/inspection/nanotick_example.json",
-  "classification": "observed diagnostics; function pending analysis",
+  "classification": "Synchronization counterexample; forbidden initial compiler scope",
   "coordinates": {
     "convention": "selection-local relative to saved minimum",
     "origin": [
@@ -49,24 +49,50 @@
         8
       ]
     },
-    "status": "geometry-derived candidates; see dossier for per-port evidence"
+    "status": "geometry and controlled episodes verified; absent sink and temporal limits described in dossier"
   },
   "setup": {
     "mode": "paste_clipboard(ignore_air=false); raw storage then entities; no notifications",
     "initial": "exact binary states and block entities; empty queues, tick 0 BetweenTicks",
-    "readiness": "saved-idle episode must remain unchanged with empty work; prepared cases wait for no queued work, bounded at 32 ticks"
+    "readiness": "saved-idle remains unchanged with empty work; prepared snapshots require two unchanged quiescent completed boundaries, bounded at 32 ticks"
   },
   "protocol": {
     "logical_one": "nonzero-to-zero event",
     "cases_independent": "fresh equivalent strict-import snapshots",
     "input_during_reset": "undefined; only labeled diagnostics exercise it",
     "held_zero": "no new external event; internal cycles retained",
-    "repeat_use": "pending measured rearm condition; use fresh imports until proven"
+    "repeat_use": "fresh ready imports for independent computations; recurring internal work retained; external rearm during active reset only diagnostic"
   },
-  "observation_decoder": "raw state/property observations; moving states distinct; dust falling edge is event; air output payload means 1 only for verified arithmetic bank",
-  "ordering_constraints": [],
-  "unknowns": [],
-  "java_status": "not yet compared",
+  "observation_decoder": {
+    "timing": "completed response boundary; tick 0 is immediately after ordered stimuli",
+    "held_zero": "not a new external event",
+    "moving": "distinct state, never silently treated as an output bit",
+    "encoding": "new dust nonzero-to-zero transition = one; unchanged nonzero means no event",
+    "first_valid_boundary": 1,
+    "first_wave_window_ticks": [
+      1,
+      3
+    ],
+    "function": "unwanted output falling event, inhibitor arrives too late",
+    "consumer_boundary": "labeled/derived wire observation; attached non-instant consumer absent unless case declares a probe",
+    "later_observations": "reset pulses and moving state remain physical observations; full episode is retained"
+  },
+  "ordering_constraints": [
+    {
+      "relation": "effective inhibit precedes downstream validation; preserve recorded transients at exposed ports",
+      "evidence": "measured callback/event order; NOT probe and supplied depth counterexample",
+      "scope": "consumer-specific; equality of completed boundary bits is insufficient"
+    }
+  ],
+  "unknowns": [
+    "Arbitrary non-instant consumer/handoff equivalence not certified",
+    "External input or another computation during reset is undefined"
+  ],
+  "java_status": {
+    "compared_cases": 2,
+    "status": "all declared projections match",
+    "scope": "current binary; response boundaries, not internal callbacks; setup difference retained"
+  },
   "rotations": [
     0,
     90,
@@ -78,7 +104,26 @@
       "id": "saved-idle",
       "inputs": null,
       "actions": [],
-      "ticks": 24
+      "ticks": 24,
+      "evidence_status": "observed diagnostic; no reusable truth-table acceptance",
+      "artifacts": [
+        "test_data/instant-pistons/traces/java-nanotick_example-saved-idle-r0.json.gz",
+        "test_data/instant-pistons/traces/mchprs-nanotick_example-saved-idle-r0.json.gz",
+        "test_data/instant-pistons/traces/mchprs-nanotick_example-saved-idle-r180.json.gz",
+        "test_data/instant-pistons/traces/mchprs-nanotick_example-saved-idle-r270.json.gz",
+        "test_data/instant-pistons/traces/mchprs-nanotick_example-saved-idle-r90.json.gz"
+      ],
+      "expected_status": "behavioral regression observation; arithmetic expectation independently checked where decoder validated",
+      "observations_reference": {
+        "mchprs": "test_data/instant-pistons/mchprs-projections.json",
+        "java": "test_data/instant-pistons/java-projections.json",
+        "key": {
+          "fixture_id": "nanotick_example",
+          "fixture_sha256": "61196b78d25de653e0a5189b96be85ed8f98be954055cd9b69b23bc392206414",
+          "case_id": "saved-idle",
+          "rotation": "artifact-specific"
+        }
+      }
     },
     {
       "id": "falling",
@@ -95,7 +140,1147 @@
           ]
         }
       ],
-      "ticks": 24
+      "ticks": 24,
+      "evidence_status": "observed diagnostic; no reusable truth-table acceptance",
+      "artifacts": [
+        "test_data/instant-pistons/traces/java-nanotick_example-falling-r0.json.gz",
+        "test_data/instant-pistons/traces/mchprs-nanotick_example-falling-r0.json.gz",
+        "test_data/instant-pistons/traces/mchprs-nanotick_example-falling-r180.json.gz",
+        "test_data/instant-pistons/traces/mchprs-nanotick_example-falling-r270.json.gz",
+        "test_data/instant-pistons/traces/mchprs-nanotick_example-falling-r90.json.gz"
+      ],
+      "expected_status": "behavioral regression observation; arithmetic expectation independently checked where decoder validated",
+      "observations_reference": {
+        "mchprs": "test_data/instant-pistons/mchprs-projections.json",
+        "java": "test_data/instant-pistons/java-projections.json",
+        "key": {
+          "fixture_id": "nanotick_example",
+          "fixture_sha256": "61196b78d25de653e0a5189b96be85ed8f98be954055cd9b69b23bc392206414",
+          "case_id": "falling",
+          "rotation": "artifact-specific"
+        }
+      }
+    }
+  ],
+  "dossier": "docs/INSTANT_PISTON_SCHEMATICS.md#nanotick-example",
+  "purpose": "Author-supplied propagation-depth counterexample: inhibition arrives after a downstream instant has accepted a trigger.",
+  "mechanism": "Trigger (0,2,0) splits into ordinary base (0,2,5) and delayed negating path (3,2,0) -> (2,2,2) -> (2,2,5). The ordinary redstone payload (0,2,7) drives inhibited dust (1,2,7..8); the final inhibitor's sandstone payload (2,2,7) covers the powered lower dust (2,1,7), supplied by (2,1,6). The downstream South-facing base (1,2,9), payload (1,2,11), drives labeled output (1,2,12). The output sign (1,1,13) is beside this net, not its coordinate.",
+  "reset_and_next_use": "Measured tick-1 event execution order in saved orientation: delay-1 (3,2,0), ordinary (0,2,5), delay-2 (2,2,2), downstream (1,2,9), inhibit (2,2,5). The ordinary event's nested callbacks queue downstream before delay-2 queues inhibit. At downstream validation, its net is zero. Later inhibit restores that net to 13, but the downstream retraction has already happened and final output is zero. This is the author's unwanted activation even though the Boolean guard would predict inhibition. All four MCHPRS rotations and an independent Java capture reproduce the episode.\n\nAll bases have observer/cap resets. The output repeats with a six-tick full-state period modulo motion identity renaming. This is an actual supplied nanotick synchronization example; changing stepping APIs does not create it. No new external input is introduced during reset.",
+  "recognition_guards": "Reject the delayed-inhibit construction under the initial synchronized gate contract. Retain the physical diagnostic and the violated inhibit-before-validation relation; no parser or compiled execution acceptance is assigned. A Boolean topological DAG that erases actuator depth cannot certify this circuit.",
+  "evidence": [
+    {
+      "artifact": "test_data/instant-pistons/traces/java-nanotick_example-falling-r0.json.gz",
+      "artifact_sha256": "9e9736870bdf69841b7681c6dc3a8c6941303dfc61a2f4a16971bfdf41e7d924",
+      "fixture_id": "nanotick_example",
+      "fixture_sha256": "61196b78d25de653e0a5189b96be85ed8f98be954055cd9b69b23bc392206414",
+      "case_id": "falling",
+      "rotation": 0,
+      "engine": "Java",
+      "termination": "completed bounded response; no claim of settled state",
+      "period_witness": null
+    },
+    {
+      "artifact": "test_data/instant-pistons/traces/java-nanotick_example-saved-idle-r0.json.gz",
+      "artifact_sha256": "83ae7b4c57b03b34f11d22bf87bfd462245ae1355341796f09164bf38ed7e4dc",
+      "fixture_id": "nanotick_example",
+      "fixture_sha256": "61196b78d25de653e0a5189b96be85ed8f98be954055cd9b69b23bc392206414",
+      "case_id": "saved-idle",
+      "rotation": 0,
+      "engine": "Java",
+      "termination": "completed bounded response; no claim of settled state",
+      "period_witness": null
+    },
+    {
+      "artifact": "test_data/instant-pistons/traces/mchprs-nanotick_example-falling-r0.json.gz",
+      "artifact_sha256": "6f909b190b21b5fb7261d76a5ce175d52e8cbb5a56d216bbac80db80fb234c1b",
+      "fixture_id": "nanotick_example",
+      "fixture_sha256": "61196b78d25de653e0a5189b96be85ed8f98be954055cd9b69b23bc392206414",
+      "case_id": "falling",
+      "rotation": 0,
+      "engine": "MCHPRS interpreter",
+      "termination": "completed bounded response; quiescence and periodicity assessed separately",
+      "period_witness": {
+        "first_tick": 1,
+        "period_ticks": 6,
+        "repeated_complete_cycles": 3,
+        "projection": "all watched blocks/entities/power predicates, scheduled queue, events, ordered motion progress; identities renamed, last_tick relative; BetweenTicks only"
+      }
+    },
+    {
+      "artifact": "test_data/instant-pistons/traces/mchprs-nanotick_example-falling-r180.json.gz",
+      "artifact_sha256": "56a8121daea9d42325c1b77105261490e1d909537fc30225542d1e160b32aa2c",
+      "fixture_id": "nanotick_example",
+      "fixture_sha256": "61196b78d25de653e0a5189b96be85ed8f98be954055cd9b69b23bc392206414",
+      "case_id": "falling",
+      "rotation": 180,
+      "engine": "MCHPRS interpreter",
+      "termination": "completed bounded response; quiescence and periodicity assessed separately",
+      "period_witness": {
+        "first_tick": 1,
+        "period_ticks": 6,
+        "repeated_complete_cycles": 3,
+        "projection": "all watched blocks/entities/power predicates, scheduled queue, events, ordered motion progress; identities renamed, last_tick relative; BetweenTicks only"
+      }
+    },
+    {
+      "artifact": "test_data/instant-pistons/traces/mchprs-nanotick_example-falling-r270.json.gz",
+      "artifact_sha256": "faf3064d9ed47841549c99c443951c5b16e34840352290e8eb15b56d1c1939bd",
+      "fixture_id": "nanotick_example",
+      "fixture_sha256": "61196b78d25de653e0a5189b96be85ed8f98be954055cd9b69b23bc392206414",
+      "case_id": "falling",
+      "rotation": 270,
+      "engine": "MCHPRS interpreter",
+      "termination": "completed bounded response; quiescence and periodicity assessed separately",
+      "period_witness": {
+        "first_tick": 1,
+        "period_ticks": 6,
+        "repeated_complete_cycles": 3,
+        "projection": "all watched blocks/entities/power predicates, scheduled queue, events, ordered motion progress; identities renamed, last_tick relative; BetweenTicks only"
+      }
+    },
+    {
+      "artifact": "test_data/instant-pistons/traces/mchprs-nanotick_example-falling-r90.json.gz",
+      "artifact_sha256": "21eb6f15c771557adac389abe68156a17a213ba723b3d99f8c7fba761d6f34af",
+      "fixture_id": "nanotick_example",
+      "fixture_sha256": "61196b78d25de653e0a5189b96be85ed8f98be954055cd9b69b23bc392206414",
+      "case_id": "falling",
+      "rotation": 90,
+      "engine": "MCHPRS interpreter",
+      "termination": "completed bounded response; quiescence and periodicity assessed separately",
+      "period_witness": {
+        "first_tick": 1,
+        "period_ticks": 6,
+        "repeated_complete_cycles": 3,
+        "projection": "all watched blocks/entities/power predicates, scheduled queue, events, ordered motion progress; identities renamed, last_tick relative; BetweenTicks only"
+      }
+    },
+    {
+      "artifact": "test_data/instant-pistons/traces/mchprs-nanotick_example-saved-idle-r0.json.gz",
+      "artifact_sha256": "894880d79c994875f7de1e4d27270fd7066538f3c0f0bca1d61f4f12ff4ffc16",
+      "fixture_id": "nanotick_example",
+      "fixture_sha256": "61196b78d25de653e0a5189b96be85ed8f98be954055cd9b69b23bc392206414",
+      "case_id": "saved-idle",
+      "rotation": 0,
+      "engine": "MCHPRS interpreter",
+      "termination": "completed bounded response; quiescence and periodicity assessed separately",
+      "period_witness": {
+        "first_tick": 1,
+        "period_ticks": 1,
+        "repeated_complete_cycles": 3,
+        "projection": "all watched blocks/entities/power predicates, scheduled queue, events, ordered motion progress; identities renamed, last_tick relative; BetweenTicks only"
+      }
+    },
+    {
+      "artifact": "test_data/instant-pistons/traces/mchprs-nanotick_example-saved-idle-r180.json.gz",
+      "artifact_sha256": "3731a0f8f6cd2ee9fff85f5334a770ffc88675e1a0df6c8beba5658a916ebc76",
+      "fixture_id": "nanotick_example",
+      "fixture_sha256": "61196b78d25de653e0a5189b96be85ed8f98be954055cd9b69b23bc392206414",
+      "case_id": "saved-idle",
+      "rotation": 180,
+      "engine": "MCHPRS interpreter",
+      "termination": "completed bounded response; quiescence and periodicity assessed separately",
+      "period_witness": {
+        "first_tick": 1,
+        "period_ticks": 1,
+        "repeated_complete_cycles": 3,
+        "projection": "all watched blocks/entities/power predicates, scheduled queue, events, ordered motion progress; identities renamed, last_tick relative; BetweenTicks only"
+      }
+    },
+    {
+      "artifact": "test_data/instant-pistons/traces/mchprs-nanotick_example-saved-idle-r270.json.gz",
+      "artifact_sha256": "9d5c54b9abe1e99a1e57ef6fb4f7d5d0ccd752da8661778485e45acc5a82454b",
+      "fixture_id": "nanotick_example",
+      "fixture_sha256": "61196b78d25de653e0a5189b96be85ed8f98be954055cd9b69b23bc392206414",
+      "case_id": "saved-idle",
+      "rotation": 270,
+      "engine": "MCHPRS interpreter",
+      "termination": "completed bounded response; quiescence and periodicity assessed separately",
+      "period_witness": {
+        "first_tick": 1,
+        "period_ticks": 1,
+        "repeated_complete_cycles": 3,
+        "projection": "all watched blocks/entities/power predicates, scheduled queue, events, ordered motion progress; identities renamed, last_tick relative; BetweenTicks only"
+      }
+    },
+    {
+      "artifact": "test_data/instant-pistons/traces/mchprs-nanotick_example-saved-idle-r90.json.gz",
+      "artifact_sha256": "195081bd6c573b23efb1142d05f4aab044e2833c426d97121fa02a204918d138",
+      "fixture_id": "nanotick_example",
+      "fixture_sha256": "61196b78d25de653e0a5189b96be85ed8f98be954055cd9b69b23bc392206414",
+      "case_id": "saved-idle",
+      "rotation": 90,
+      "engine": "MCHPRS interpreter",
+      "termination": "completed bounded response; quiescence and periodicity assessed separately",
+      "period_witness": {
+        "first_tick": 1,
+        "period_ticks": 1,
+        "repeated_complete_cycles": 3,
+        "projection": "all watched blocks/entities/power predicates, scheduled queue, events, ordered motion progress; identities renamed, last_tick relative; BetweenTicks only"
+      }
+    }
+  ],
+  "label_mappings": [
+    {
+      "sign_position": [
+        0,
+        3,
+        0
+      ],
+      "readable": "Trigger",
+      "candidate_positions": [
+        [
+          0,
+          2,
+          0
+        ],
+        [
+          0,
+          2,
+          1
+        ],
+        [
+          0,
+          2,
+          2
+        ],
+        [
+          1,
+          2,
+          0
+        ],
+        [
+          3,
+          3,
+          0
+        ]
+      ],
+      "referenced_positions": [
+        0,
+        2,
+        0
+      ],
+      "role": "external source/update trigger",
+      "status": "mapped",
+      "evidence": "saved geometry and controlled current-binary episodes; causal path described in dossier",
+      "original_text": {
+        "front_text": {
+          "original": [
+            {
+              "text": "Trigger"
+            },
+            {
+              "text": ""
+            },
+            {
+              "text": ""
+            },
+            {
+              "text": ""
+            }
+          ],
+          "readable": [
+            "Trigger",
+            "",
+            "",
+            ""
+          ]
+        },
+        "back_text": {
+          "original": [
+            {
+              "text": ""
+            },
+            {
+              "text": ""
+            },
+            {
+              "text": ""
+            },
+            {
+              "text": ""
+            }
+          ],
+          "readable": [
+            "",
+            "",
+            "",
+            ""
+          ]
+        },
+        "legacy": {
+          "original": [],
+          "readable": []
+        }
+      }
+    },
+    {
+      "sign_position": [
+        1,
+        1,
+        13
+      ],
+      "readable": "Output",
+      "candidate_positions": [
+        [
+          1,
+          2,
+          11
+        ],
+        [
+          1,
+          2,
+          12
+        ]
+      ],
+      "referenced_positions": [
+        1,
+        2,
+        12
+      ],
+      "role": "labeled physical output; no sink implied",
+      "status": "mapped",
+      "evidence": "saved geometry and controlled current-binary episodes; causal path described in dossier",
+      "original_text": {
+        "front_text": {
+          "original": [
+            {
+              "text": "Output"
+            },
+            {
+              "text": ""
+            },
+            {
+              "text": ""
+            },
+            {
+              "text": ""
+            }
+          ],
+          "readable": [
+            "Output",
+            "",
+            "",
+            ""
+          ]
+        },
+        "back_text": {
+          "original": [
+            {
+              "text": ""
+            },
+            {
+              "text": ""
+            },
+            {
+              "text": ""
+            },
+            {
+              "text": ""
+            }
+          ],
+          "readable": [
+            "",
+            "",
+            "",
+            ""
+          ]
+        },
+        "legacy": {
+          "original": [],
+          "readable": []
+        }
+      }
+    }
+  ],
+  "negation_paths": [
+    {
+      "actor": [
+        2,
+        2,
+        5
+      ],
+      "payload": [
+        2,
+        2,
+        7
+      ],
+      "controlled_wire": [
+        2,
+        1,
+        7
+      ],
+      "supply": [
+        2,
+        1,
+        6
+      ],
+      "ordinary_actor": [
+        0,
+        2,
+        5
+      ],
+      "consumer": [
+        1,
+        2,
+        9
+      ],
+      "delays": [
+        [
+          3,
+          2,
+          0
+        ],
+        [
+          2,
+          2,
+          2
+        ]
+      ],
+      "required": "inhibit effective before downstream Retract event validation",
+      "status": "violated; diagnostic outside accepted scope",
+      "measured_validations": []
+    }
+  ],
+  "first_wave_orders": [
+    {
+      "case_id": "falling",
+      "rotation": 0,
+      "artifact": "test_data/instant-pistons/traces/mchprs-nanotick_example-falling-r0.json.gz",
+      "tick": 1,
+      "events": [
+        {
+          "operation": 1,
+          "kind": "event_execute",
+          "actor": [
+            3,
+            2,
+            0
+          ],
+          "action": "Retract",
+          "phase": "PistonEvents"
+        },
+        {
+          "operation": 1,
+          "kind": "event_applied",
+          "actor": [
+            3,
+            2,
+            0
+          ],
+          "action": "Retract",
+          "phase": "PistonEvents"
+        },
+        {
+          "operation": 2,
+          "kind": "event_execute",
+          "actor": [
+            0,
+            2,
+            5
+          ],
+          "action": "Retract",
+          "phase": "PistonEvents"
+        },
+        {
+          "operation": 2,
+          "kind": "event_applied",
+          "actor": [
+            0,
+            2,
+            5
+          ],
+          "action": "Retract",
+          "phase": "PistonEvents"
+        },
+        {
+          "operation": 3,
+          "kind": "event_execute",
+          "actor": [
+            2,
+            2,
+            2
+          ],
+          "action": "Retract",
+          "phase": "PistonEvents"
+        },
+        {
+          "operation": 3,
+          "kind": "event_applied",
+          "actor": [
+            2,
+            2,
+            2
+          ],
+          "action": "Retract",
+          "phase": "PistonEvents"
+        },
+        {
+          "operation": 4,
+          "kind": "event_execute",
+          "actor": [
+            1,
+            2,
+            9
+          ],
+          "action": "Retract",
+          "phase": "PistonEvents"
+        },
+        {
+          "operation": 4,
+          "kind": "event_applied",
+          "actor": [
+            1,
+            2,
+            9
+          ],
+          "action": "Retract",
+          "phase": "PistonEvents"
+        },
+        {
+          "operation": 5,
+          "kind": "event_execute",
+          "actor": [
+            2,
+            2,
+            5
+          ],
+          "action": "Retract",
+          "phase": "PistonEvents"
+        },
+        {
+          "operation": 5,
+          "kind": "event_applied",
+          "actor": [
+            2,
+            2,
+            5
+          ],
+          "action": "Retract",
+          "phase": "PistonEvents"
+        }
+      ],
+      "output_at_operation": [
+        {
+          "operation": 1,
+          "power": 15
+        },
+        {
+          "operation": 2,
+          "power": 15
+        },
+        {
+          "operation": 3,
+          "power": 15
+        },
+        {
+          "operation": 4,
+          "power": 0
+        },
+        {
+          "operation": 5,
+          "power": 0
+        },
+        {
+          "operation": 6,
+          "power": 0
+        },
+        {
+          "operation": 7,
+          "power": 0
+        },
+        {
+          "operation": 8,
+          "power": 0
+        },
+        {
+          "operation": 9,
+          "power": 0
+        },
+        {
+          "operation": 10,
+          "power": 0
+        },
+        {
+          "operation": 11,
+          "power": 0
+        },
+        {
+          "operation": 12,
+          "power": 0
+        },
+        {
+          "operation": 13,
+          "power": 0
+        },
+        {
+          "operation": 14,
+          "power": 0
+        },
+        {
+          "operation": 15,
+          "power": 0
+        },
+        {
+          "operation": 16,
+          "power": 0
+        }
+      ],
+      "evidence": "measured MCHPRS event order; source callbacks remain in linked fine trace"
+    },
+    {
+      "case_id": "falling",
+      "rotation": 180,
+      "artifact": "test_data/instant-pistons/traces/mchprs-nanotick_example-falling-r180.json.gz",
+      "tick": 1,
+      "events": [
+        {
+          "operation": 1,
+          "kind": "event_execute",
+          "actor": [
+            3,
+            2,
+            0
+          ],
+          "action": "Retract",
+          "phase": "PistonEvents"
+        },
+        {
+          "operation": 1,
+          "kind": "event_applied",
+          "actor": [
+            3,
+            2,
+            0
+          ],
+          "action": "Retract",
+          "phase": "PistonEvents"
+        },
+        {
+          "operation": 2,
+          "kind": "event_execute",
+          "actor": [
+            0,
+            2,
+            5
+          ],
+          "action": "Retract",
+          "phase": "PistonEvents"
+        },
+        {
+          "operation": 2,
+          "kind": "event_applied",
+          "actor": [
+            0,
+            2,
+            5
+          ],
+          "action": "Retract",
+          "phase": "PistonEvents"
+        },
+        {
+          "operation": 3,
+          "kind": "event_execute",
+          "actor": [
+            2,
+            2,
+            2
+          ],
+          "action": "Retract",
+          "phase": "PistonEvents"
+        },
+        {
+          "operation": 3,
+          "kind": "event_applied",
+          "actor": [
+            2,
+            2,
+            2
+          ],
+          "action": "Retract",
+          "phase": "PistonEvents"
+        },
+        {
+          "operation": 4,
+          "kind": "event_execute",
+          "actor": [
+            1,
+            2,
+            9
+          ],
+          "action": "Retract",
+          "phase": "PistonEvents"
+        },
+        {
+          "operation": 4,
+          "kind": "event_applied",
+          "actor": [
+            1,
+            2,
+            9
+          ],
+          "action": "Retract",
+          "phase": "PistonEvents"
+        },
+        {
+          "operation": 5,
+          "kind": "event_execute",
+          "actor": [
+            2,
+            2,
+            5
+          ],
+          "action": "Retract",
+          "phase": "PistonEvents"
+        },
+        {
+          "operation": 5,
+          "kind": "event_applied",
+          "actor": [
+            2,
+            2,
+            5
+          ],
+          "action": "Retract",
+          "phase": "PistonEvents"
+        }
+      ],
+      "output_at_operation": [
+        {
+          "operation": 1,
+          "power": 15
+        },
+        {
+          "operation": 2,
+          "power": 15
+        },
+        {
+          "operation": 3,
+          "power": 15
+        },
+        {
+          "operation": 4,
+          "power": 0
+        },
+        {
+          "operation": 5,
+          "power": 0
+        },
+        {
+          "operation": 6,
+          "power": 0
+        },
+        {
+          "operation": 7,
+          "power": 0
+        },
+        {
+          "operation": 8,
+          "power": 0
+        },
+        {
+          "operation": 9,
+          "power": 0
+        },
+        {
+          "operation": 10,
+          "power": 0
+        },
+        {
+          "operation": 11,
+          "power": 0
+        },
+        {
+          "operation": 12,
+          "power": 0
+        },
+        {
+          "operation": 13,
+          "power": 0
+        },
+        {
+          "operation": 14,
+          "power": 0
+        },
+        {
+          "operation": 15,
+          "power": 0
+        },
+        {
+          "operation": 16,
+          "power": 0
+        }
+      ],
+      "evidence": "measured MCHPRS event order; source callbacks remain in linked fine trace"
+    },
+    {
+      "case_id": "falling",
+      "rotation": 270,
+      "artifact": "test_data/instant-pistons/traces/mchprs-nanotick_example-falling-r270.json.gz",
+      "tick": 1,
+      "events": [
+        {
+          "operation": 1,
+          "kind": "event_execute",
+          "actor": [
+            3,
+            2,
+            0
+          ],
+          "action": "Retract",
+          "phase": "PistonEvents"
+        },
+        {
+          "operation": 1,
+          "kind": "event_applied",
+          "actor": [
+            3,
+            2,
+            0
+          ],
+          "action": "Retract",
+          "phase": "PistonEvents"
+        },
+        {
+          "operation": 2,
+          "kind": "event_execute",
+          "actor": [
+            0,
+            2,
+            5
+          ],
+          "action": "Retract",
+          "phase": "PistonEvents"
+        },
+        {
+          "operation": 2,
+          "kind": "event_applied",
+          "actor": [
+            0,
+            2,
+            5
+          ],
+          "action": "Retract",
+          "phase": "PistonEvents"
+        },
+        {
+          "operation": 3,
+          "kind": "event_execute",
+          "actor": [
+            2,
+            2,
+            2
+          ],
+          "action": "Retract",
+          "phase": "PistonEvents"
+        },
+        {
+          "operation": 3,
+          "kind": "event_applied",
+          "actor": [
+            2,
+            2,
+            2
+          ],
+          "action": "Retract",
+          "phase": "PistonEvents"
+        },
+        {
+          "operation": 4,
+          "kind": "event_execute",
+          "actor": [
+            1,
+            2,
+            9
+          ],
+          "action": "Retract",
+          "phase": "PistonEvents"
+        },
+        {
+          "operation": 4,
+          "kind": "event_applied",
+          "actor": [
+            1,
+            2,
+            9
+          ],
+          "action": "Retract",
+          "phase": "PistonEvents"
+        },
+        {
+          "operation": 5,
+          "kind": "event_execute",
+          "actor": [
+            2,
+            2,
+            5
+          ],
+          "action": "Retract",
+          "phase": "PistonEvents"
+        },
+        {
+          "operation": 5,
+          "kind": "event_applied",
+          "actor": [
+            2,
+            2,
+            5
+          ],
+          "action": "Retract",
+          "phase": "PistonEvents"
+        }
+      ],
+      "output_at_operation": [
+        {
+          "operation": 1,
+          "power": 15
+        },
+        {
+          "operation": 2,
+          "power": 15
+        },
+        {
+          "operation": 3,
+          "power": 15
+        },
+        {
+          "operation": 4,
+          "power": 0
+        },
+        {
+          "operation": 5,
+          "power": 0
+        },
+        {
+          "operation": 6,
+          "power": 0
+        },
+        {
+          "operation": 7,
+          "power": 0
+        },
+        {
+          "operation": 8,
+          "power": 0
+        },
+        {
+          "operation": 9,
+          "power": 0
+        },
+        {
+          "operation": 10,
+          "power": 0
+        },
+        {
+          "operation": 11,
+          "power": 0
+        },
+        {
+          "operation": 12,
+          "power": 0
+        },
+        {
+          "operation": 13,
+          "power": 0
+        },
+        {
+          "operation": 14,
+          "power": 0
+        },
+        {
+          "operation": 15,
+          "power": 0
+        },
+        {
+          "operation": 16,
+          "power": 0
+        }
+      ],
+      "evidence": "measured MCHPRS event order; source callbacks remain in linked fine trace"
+    },
+    {
+      "case_id": "falling",
+      "rotation": 90,
+      "artifact": "test_data/instant-pistons/traces/mchprs-nanotick_example-falling-r90.json.gz",
+      "tick": 1,
+      "events": [
+        {
+          "operation": 1,
+          "kind": "event_execute",
+          "actor": [
+            3,
+            2,
+            0
+          ],
+          "action": "Retract",
+          "phase": "PistonEvents"
+        },
+        {
+          "operation": 1,
+          "kind": "event_applied",
+          "actor": [
+            3,
+            2,
+            0
+          ],
+          "action": "Retract",
+          "phase": "PistonEvents"
+        },
+        {
+          "operation": 2,
+          "kind": "event_execute",
+          "actor": [
+            0,
+            2,
+            5
+          ],
+          "action": "Retract",
+          "phase": "PistonEvents"
+        },
+        {
+          "operation": 2,
+          "kind": "event_applied",
+          "actor": [
+            0,
+            2,
+            5
+          ],
+          "action": "Retract",
+          "phase": "PistonEvents"
+        },
+        {
+          "operation": 3,
+          "kind": "event_execute",
+          "actor": [
+            2,
+            2,
+            2
+          ],
+          "action": "Retract",
+          "phase": "PistonEvents"
+        },
+        {
+          "operation": 3,
+          "kind": "event_applied",
+          "actor": [
+            2,
+            2,
+            2
+          ],
+          "action": "Retract",
+          "phase": "PistonEvents"
+        },
+        {
+          "operation": 4,
+          "kind": "event_execute",
+          "actor": [
+            1,
+            2,
+            9
+          ],
+          "action": "Retract",
+          "phase": "PistonEvents"
+        },
+        {
+          "operation": 4,
+          "kind": "event_applied",
+          "actor": [
+            1,
+            2,
+            9
+          ],
+          "action": "Retract",
+          "phase": "PistonEvents"
+        },
+        {
+          "operation": 5,
+          "kind": "event_execute",
+          "actor": [
+            2,
+            2,
+            5
+          ],
+          "action": "Retract",
+          "phase": "PistonEvents"
+        },
+        {
+          "operation": 5,
+          "kind": "event_applied",
+          "actor": [
+            2,
+            2,
+            5
+          ],
+          "action": "Retract",
+          "phase": "PistonEvents"
+        }
+      ],
+      "output_at_operation": [
+        {
+          "operation": 1,
+          "power": 15
+        },
+        {
+          "operation": 2,
+          "power": 15
+        },
+        {
+          "operation": 3,
+          "power": 15
+        },
+        {
+          "operation": 4,
+          "power": 0
+        },
+        {
+          "operation": 5,
+          "power": 0
+        },
+        {
+          "operation": 6,
+          "power": 0
+        },
+        {
+          "operation": 7,
+          "power": 0
+        },
+        {
+          "operation": 8,
+          "power": 0
+        },
+        {
+          "operation": 9,
+          "power": 0
+        },
+        {
+          "operation": 10,
+          "power": 0
+        },
+        {
+          "operation": 11,
+          "power": 0
+        },
+        {
+          "operation": 12,
+          "power": 0
+        },
+        {
+          "operation": 13,
+          "power": 0
+        },
+        {
+          "operation": 14,
+          "power": 0
+        },
+        {
+          "operation": 15,
+          "power": 0
+        },
+        {
+          "operation": 16,
+          "power": 0
+        }
+      ],
+      "evidence": "measured MCHPRS event order; source callbacks remain in linked fine trace"
     }
   ]
 }
