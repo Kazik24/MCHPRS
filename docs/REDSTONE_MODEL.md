@@ -1593,6 +1593,8 @@ Redpiler's optimized graph can merge or remove nodes. Equality of ordinary lamp 
 
 For instant-piston compilation, the circuit author's [protocol](INSTANT_REDPILLER.md#clarified-execution-scope) defines logical one as a nonzero-to-zero transition from a ready extended mechanism. It permits internal simplification subject to preservation of non-instant consumer behavior and leaves new external inputs during reset outside initial conformance. These are circuit-specific compiler conditions; the interpreter transition rules continue to determine physical execution for every input sequence. The [implementation plan](INSTANT_PISTON_IMPLEMENTATION_PLAN.md) describes recognition, boundary discovery and validation under that protocol.
 
+The [implemented instant pipeline](INSTANT_PISTON_RUNTIME.md) now accepts the lever/repeater 11-bit adder. Extraction shares the interpreter's power and wire-side rules, models conditional far occupancy and treats the moving near payload as nonconducting during the first wave. A bounded Boolean decision program replaces internal updates; a six-phase observer adapter supplies ordinary graph consumers, whose repeater scheduling remains authoritative. Reset reconstructs owned geometry and work through bounded private interpreter replay. Tests compare arithmetic, repeater waveforms and continuation after handoff; they do not establish equality of historical callbacks or piston-motion traces. This compiler abstraction does not change the physical rules specified here.
+
 ## 19. Worked traces
 
 ### 19.1 Short repeater pulse

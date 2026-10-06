@@ -4,7 +4,7 @@ This is a compact mathematical contract for recognizing and simplifying instant 
 
 The intended interface uses ordinary Redpiler nodes: levers, buttons, torches and wires supply stable signals. An instant circuit becomes a subassembly or node in the larger graph, with its own input and output ports. Source destruction in the characterization fixtures is an experimental stimulus. A compiled circuit should accept signal changes through its existing input nodes.
 
-**Status:** proposed compiler contract, grounded in the [author's clarifications](ANSWERS.md) and fixture evidence. Current Redpiler has no executable instant or BUD node. Source inspection used revision `8b661d8987375f9b5cf23a8445a8c4f79d1321b6` on 2026-10-06.
+**Status (2026-10-06):** this contract is partially implemented. Redpiler executes acyclic observer-reset and passive-follower networks, including the lever/repeater 11-bit adder, through a Boolean program paired with ordinary graph nodes. BUD storage, counters and general reset/consumer protocols remain proposed. The [implemented pipeline](INSTANT_PISTON_RUNTIME.md) defines current admission, output timing, handoff and validation; the wider mathematical model below does not imply that every described family can compile.
 
 ## 1. Circuit boundaries
 

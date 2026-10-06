@@ -2,6 +2,8 @@
 
 This file describes the scope of adding the pistons to the Redpiler redstone compilator. The acual implementaion will depend and is free to chose.
 
+**Implemented scope (2026-10-06):** normal `/rp compile` now accepts supported ready instant networks, including the lever/repeater `ADDER_11BITS.schem`. Conditional redstone-block/wool geometry becomes a bounded Boolean program; ordinary repeaters retain their delays and reset pulses. Internal pistons and dust remain visually frozen while compiled. Unsupported owners or interfaces reject the whole compilation and preserve interpreter ownership. BUD storage, counters, additional reset adapters and general multi-clock execution remain future work. See the [actual pipeline and manual tests](INSTANT_PISTON_RUNTIME.md) and [milestone roadmap](INSTANT_PISTON_IMPLEMENTATION_PLAN.md).
+
 Pistons are very complicated and have very complext behavior in game, they can be used in varity of scenarios, but basic usage for redpiler will be for computation.
 
 Let piston be an entity that performs an task in circut. Possible tasks are:

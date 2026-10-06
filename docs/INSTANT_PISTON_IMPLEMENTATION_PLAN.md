@@ -2,9 +2,9 @@
 
 Implement instant circuits as recognized subassemblies with graph ports, a Boolean computation function, and the small amount of protocol or clock state needed at their boundaries. Ordinary Redpiler components supply inputs and receive outputs. Compiled evaluation uses ideal internal synchronization and does not reproduce internal nanoticks, callback traversal, piston event FIFO, or piston animation. A recognized circuit may compute correctly when its physical Java/interpreter construction fails solely through nanotick misalignment.
 
-The first engineering deliverable is a read-only classifier and circuit report. The first runnable target is a small synchronized circuit with lever inputs and repeater outputs, followed by gates, chains and adders. Runtime activation requires validated input protocols, consumer behavior and restoration to the interpreter. BUD memory and counters are later stages with explicit stored state. PM1, ANPU, general piston mechanics and hybrid interpretation remain outside the first release.
+The read-only classifier, candidate graphs and first executable adder target are implemented. Normal `/rp compile` accepts the supported lever/repeater 11-bit adder without a new feature flag. Admission remains conditional on complete ownership, a ready entry state, a supported output protocol and interpreter handoff. BUD memory and counters are later stages with explicit stored state. PM1, ANPU, general piston mechanics and hybrid interpretation remain outside the first release.
 
-This roadmap implements the [instant and BUD mathematical model](INSTANT_PISTON_REDPILER_MODEL.md), the [feature scope](INSTANT_REDPILLER.md), and the [author's clarifications](ANSWERS.md). Physical recognition follows [REDSTONE_MODEL.md](REDSTONE_MODEL.md); current fixture behavior is recorded in the [schematic catalog](INSTANT_PISTON_SCHEMATICS.md) and [validation report](INSTANT_PISTON_VALIDATION.md). This revision is dated 2026-10-06 and uses source inspection at HEAD `50ab2f2f0433368f0981622462c220e64162997e` with existing shared-checkout changes. Names for new modules, types, commands and options below are proposed implementation choices.
+This roadmap implements the [instant and BUD mathematical model](INSTANT_PISTON_REDPILER_MODEL.md), the [feature scope](INSTANT_REDPILLER.md), and the [author's clarifications](ANSWERS.md). Physical recognition follows [REDSTONE_MODEL.md](REDSTONE_MODEL.md); fixture behavior is recorded in the [schematic catalog](INSTANT_PISTON_SCHEMATICS.md) and [validation report](INSTANT_PISTON_VALIDATION.md). The [implemented pipeline](INSTANT_PISTON_RUNTIME.md) records the actual working-tree modules, limits, waveform, tests and commands as of 2026-10-06. Broader types and protocols below remain design proposals where the milestone explicitly says they are pending.
 
 ## Scope and assumptions
 
@@ -52,20 +52,20 @@ The canonical [ADDER_11BITS.schem](../test_data/instant-pistons/ADDER_11BITS.sch
 
 The old-pack table above retains its original binary context. The I/O revision changes `INSTANT_RESET_REDSTONE` to an under-head dust autoreset and adds output stages to gates. New NOT_1 demonstrates effective inhibition before downstream event acceptance even when the ordinary target retracts first. Its supported compiled abstraction needs no internal nanotick schedule. AND_3 still requires separate live power and sampling updates. XOR's first-wave function is validated, but later reset output depends on the recorded spatial/order context; do not admit a complete constant-XOR boundary contract.
 
-Standalone `BUD_NonInstantInputs` and `BUD_PistonUpdate` now verify independent data/update ports, retained state after data restoration and a quiet resampling protocol in four horizontal rotations. `BUD_InstantMemoryCellObserverUpdate` verifies instant-produced data before delayed sampling and a recurring generator; `BUD_InstantPistonUpdate` remains a derived-control diagnostic because its saved lever is absent. Counter storage and its repeater bank publish different waves: count n is stored at 6n, then visible at the consumer in [6n+5,6n+8]. Keep BUD transactions, wave identity and generator/consumer timing explicit while omitting synchronized internal nanoticks. None of this enables piston compilation or proves general interpreter handoff.
+Standalone `BUD_NonInstantInputs` and `BUD_PistonUpdate` now verify independent data/update ports, retained state after data restoration and a quiet resampling protocol in four horizontal rotations. `BUD_InstantMemoryCellObserverUpdate` verifies instant-produced data before delayed sampling and a recurring generator; `BUD_InstantPistonUpdate` remains a derived-control diagnostic because its saved lever is absent. Counter storage and its repeater bank publish different waves: count n is stored at 6n, then visible at the consumer in [6n+5,6n+8]. Keep BUD transactions, wave identity and generator/consumer timing explicit while omitting synchronized internal nanoticks. This characterization does not itself certify executable storage. The separately implemented adder runtime has phase-specific continuation tests, while general interpreter handoff remains future work.
 
-| Location | Current constraint | Required extension |
+| Location | Current implementation | Remaining extension |
 | --- | --- | --- |
-| [redpiler/mod.rs](../crates/core/src/redpiler/mod.rs) | CompilerInput has world, bounds and ticks; compile returns no semantic result | Analysis context, complete artifact and explicit success/rejection/cancellation |
-| [compile_graph.rs](../crates/core/src/redpiler/compile_graph.rs) | Ordinary nodes, one optional block position and electrical Default/Side links | Region ports, stable identities and separate ownership metadata |
-| [passes](../crates/core/src/redpiler/passes/mod.rs) | Ordinary identification/search precede optimizations | Recognition before identification and a region-aware pipeline |
-| [identify_nodes.rs](../crates/core/src/redpiler/passes/identify_nodes.rs) | Optimized discovery omits wires; stationary sources become constants | Skip owned mobile sources/reset internals and preserve interface aliases |
-| [input_search.rs](../crates/core/src/redpiler/passes/input_search.rs) | Static world snapshot, block unwraps and unchecked source lookups | Position resolver, guarded dependencies and explicit boundary errors |
-| [Direct backend](../crates/core/src/redpiler/backend/direct/mod.rs) | Fixed ordinary nodes and packed strength links | Region side tables, port hooks, logical worklist and restoration |
-| [scheduler](../crates/core/src/redpiler/backend/queue.rs) | Ordinary requests and detached current bucket during tick processing | Typed region deadlines and one compiled timing coordinator |
-| [plot/mod.rs](../crates/core/src/plot/mod.rs) | Blanket interpreter guard; scheduler cleared before compilation | Complete support report and transactional activation |
-| [backend interface](../crates/core/src/redpiler/backend/mod.rs) | CompileGraph/ticks input and ordinary reset | CompileArtifact input and validated state restoration |
-| [graph serialization](../crates/redpiler_graph/src/lib.rs) | Piston is a TODO export variant, not executable support | Versioned region export or clear unsupported-export result |
+| [redpiler/mod.rs](../crates/core/src/redpiler/mod.rs) | Live analysis, explicit result, paired instant preparation and staged activation | Additional admitted stateful protocols |
+| [compile_graph.rs](../crates/core/src/redpiler/compile_graph.rs) | Ordinary electrical links plus retained instant boundaries | Stored-state and independent sampling identities |
+| [passes](../crates/core/src/redpiler/passes/mod.rs) | Ownership preparation precedes ordinary passes | Audit future state/update channels |
+| [identify_nodes.rs](../crates/core/src/redpiler/passes/identify_nodes.rs) | Owned internal nodes excluded; source/consumer aliases retained | Additional display and consumer adapters |
+| [input_search.rs](../crates/core/src/redpiler/passes/input_search.rs) | Structured failures and mutable mobile aliases | More consumer contexts and stateful boundaries |
+| [Direct backend](../crates/core/src/redpiler/backend/direct/mod.rs) | Bound Boolean decisions, InstantSource nodes and phase-aware handoff | Multiple clocks, storage and additional adapters |
+| [scheduler](../crates/core/src/redpiler/backend/queue.rs) | Ordinary deadlines plus one synchronous wave coordinator; owned replay filtering | General clock/reset ownership |
+| [plot/mod.rs](../crates/core/src/plot/mod.rs) | Interpreter work retained until compilation succeeds | Broader edit/persistence lifecycle proof |
+| [backend interface](../crates/core/src/redpiler/backend/mod.rs) | Ordinary compile path and typed prepared-instant path | General region artifact interfaces |
+| [graph serialization](../crates/redpiler_graph/src/lib.rs) | Instant binary export rejected explicitly | Versioned executable program export |
 
 The pipeline currently runs IdentifyNodes, InputSearch, ClampWeights, DedupLinks, ConstantFold, UnreachableOutput, ConstantCoalesce, Coalesce, PruneOrphans and ExportGraph, followed by Direct lowering. Most optimizations require `--optimize`; PruneOrphans also requires `--io-only`. Recognition correctness must be independent of those flags.
 
@@ -208,18 +208,18 @@ A fixture-terminal repeater needs an explicit observation root or a real downstr
 
 | Milestone | Deliverable | Dependencies | Activation |
 | --- | --- | --- | --- |
-| M0 | Ordinary-input/repeater fixtures and interface contracts | Current characterization and new schematic set | Disabled |
-| M1 | Read-only inventory and classification report | Current world/model APIs | Disabled |
-| M2 | Reset matchers, guards and payload groups | M1 | Disabled |
-| M3 | Port discovery and dependency extraction | M2 | Disabled |
-| M4 | Region representation and offline Boolean evaluator | M3 and protocol schema | Disabled |
-| M5 | Ordinary graph integration and Direct lowering | M4 | Tests only |
-| M6 | Trigger waves, repeater adapters and logical timing | M0 and M5 | Tests only |
-| M7 | Materialization and lifecycle support | Family state contracts and M5/M6 integration | Tests only |
-| M8 | Transactional activation of first supported circuits | M6, M7 and complete support report | Experimental option |
-| M9 | Audited optimization and performance | M8 baseline; pure expression work can start at M4 | Validated families |
-| M10 | Adders, decoders, longer chains and wires | Required families/adapters and M8 | Per-build expansion |
-| M11 | BUD storage and a supported counter | Standalone BUD contract, M10 interfaces and clock integration | Separate acceptance |
+| M0 | Ordinary-input/repeater fixtures and interface contracts | Captured I/O pack | Adder prepared episode established; general rearm pending |
+| M1 | Read-only inventory and classification report | Current world/model APIs | Implemented |
+| M2 | Reset matchers, guards and payload groups | M1 | Structural families implemented; runtime subset narrower |
+| M3 | Port discovery and dependency extraction | M2 | Implemented for admitted acyclic network |
+| M4 | Region representation and offline Boolean evaluator | M3 and protocol schema | Implemented bounded Boolean program |
+| M5 | Ordinary graph integration and Direct lowering | M4 | Implemented paired-program lowering |
+| M6 | Trigger waves, repeater adapters and logical timing | M0 and M5 | Observer/follower adder episode implemented |
+| M7 | Materialization and lifecycle support | Family state contracts and M5/M6 integration | Adder reset continuation implemented; broader lifecycle pending |
+| M8 | Transactional activation of first supported circuits | M6, M7 and complete support report | Normal compile accepts supported scope |
+| M9 | Audited optimization and performance | M8 baseline | Decision simplification and flag comparisons implemented; benchmarks pending |
+| M10 | Adders, decoders, longer chains and wires | Required families/adapters and M8 | 11-bit adder accepted; 1-bit carry and other builds pending |
+| M11 | BUD storage and a supported counter | Standalone BUD contract, M10 interfaces and clock integration | Characterized fixtures; executable storage pending |
 
 M1 through M5 can progress while new schematics are prepared. M0 does not block the classifier. Ordinary-input/repeater fixtures become an execution requirement at M6. Design restoration early so a family that cannot be restored is not promised as runnable.
 
@@ -233,15 +233,15 @@ Capture current-binary interpreter and independent Java episodes: single events,
 
 ### M1 Add the snapshot and diagnostic report
 
-**Implementation status (2026-10-06):** Rust live inventory, bounded/cancellable analysis, head/payload diagnostics, conservative reset seeds and possible shared-payload groups are implemented in [redpiler/analysis](../crates/core/src/redpiler/analysis/mod.rs). `/rp analyze` has help, completion and a read-only permission. Structured reports distinguish candidates from executable support. Both the original 20 small fixtures and the 22 lever/repeater fixtures are regression inputs; inventories are deterministic and preserve physical state and queued work. Initial reset guards, dependency extraction and candidate graph preparation are described under M2/M3 below. Executable family certification remains pending.
+**Implementation status (2026-10-06):** Rust live inventory, bounded/cancellable analysis, head/payload diagnostics, conservative reset seeds and possible shared-payload groups are implemented in [redpiler/analysis](../crates/core/src/redpiler/analysis/mod.rs). `/rp analyze` has help, completion and a read-only permission. Structured reports distinguish candidates from executable support. Both the original 20 small fixtures and the 22 lever/repeater fixtures are regression inputs; inventories are deterministic and preserve physical state and queued work. Initial reset guards, dependency extraction and candidate graph preparation are described under M2/M3 below. Execution evidence currently covers the narrower adder protocol described under M4–M8.
 
-The typed boundary foundation is implemented in [instant/contract.rs](../crates/core/src/redpiler/instant/contract.rs): validated strengths, attenuation, prepared-data polarity, falling-trigger edges, electrical output aliases and an independent sampling channel. Requests require an explicit recheck; restoring power cancels acceptance, compiling a low input creates no edge, and requests during reset are discarded. These types do not yet connect a recognized physical region to the runtime or certify a family waveform.
+The typed boundary foundation is implemented in [instant/contract.rs](../crates/core/src/redpiler/instant/contract.rs): validated strengths, attenuation, prepared-data polarity, falling-trigger edges, electrical output aliases and an independent sampling channel. Requests require an explicit recheck; restoring power cancels acceptance, compiling a low input creates no edge, and requests during reset are discarded. These standalone contract types are not the executable adder's runtime representation: that path uses `PreparedInstant`, source-threshold decisions and a phase coordinator. Independent sampling/storage integration remains pending.
 
-The transaction foundation from M8 was necessary for safe compiler admission and is implemented alongside M1: `Compiler::compile` returns a result, stages a fresh backend and checks cancellation before activation. The plot retains interpreter ticks and history until success, joins the worker explicitly and reports actual failure. Live unsupported pistons/observers remain interpreted. Unused palette states no longer prevent ordinary compilation or automatic compilation. Runnable instant compilation is still pending M2 through M7; this milestone must not be described as executable piston support.
+The transaction foundation from M8 was necessary for safe compiler admission and is implemented alongside M1: `Compiler::compile` returns a result, stages a fresh backend and checks cancellation before activation. The plot retains interpreter ticks and history until success, joins the worker explicitly and reports actual failure. Live unsupported pistons/observers remain interpreted. Unused palette states no longer prevent ordinary compilation or automatic compilation. These M1 foundations did not alone enable execution; the adder-specific M4–M8 implementation described below now supplies that path.
 
 Validation for this foundation: 20 Redpiler tests, 93 redstone tests and six command/permission tests pass; the two opt-in physical capture tests remain separate. The contract integration test follows a real lever/torch falling edge at completed game boundary 2 and the supplied delay-2 repeater's first falling response at boundary 6. `cargo check -p mchprs_core --lib --locked` and the scoped formatting/diff checks pass. These checks establish parser/contract safety and existing behavior; they do not establish compiled instant equivalence or a performance improvement.
 
-The new [lever/repeater catalog](INSTANT_PISTON_IO_SCHEMATICS.md) is arriving separately from this implementation. Its current XOR dossier records a Java/MCHPRS reset-response discrepancy. Preserve that diagnostic and keep XOR admission disabled until the discrepancy is resolved; a first-wave Boolean table does not resolve it.
+The [lever/repeater catalog](INSTANT_PISTON_IO_SCHEMATICS.md) is complete as a separate characterization pack. Its XOR dossier records a Java/MCHPRS reset-response discrepancy. Preserve that diagnostic and leave a general XOR reset contract uncertified until the discrepancy is resolved; structural compilation or a first-wave Boolean table does not resolve it.
 
 Implement the entry point, live inventory, indexes, report types and bounded traversal. Add an analysis-only command, for example `/rp analyze`, with permission/help/completion handling. It remains available when the compile guard rejects pistons. Produce a player summary and detailed structured report.
 
@@ -251,7 +251,7 @@ Report all bases/observers, head consistency, pending work, seeds, unknowns and 
 
 ### M2 Implement matchers and payload groups
 
-**Rust status (2026-10-06):** [families.rs](../crates/core/src/redpiler/analysis/families.rs) implements structural matches for observer-above feedback, torch control, under-head dust and lateral dust, including the supplied downward constructions. Entry requires an extended sticky base, matching stationary head, one redstone payload and supported entity-free context. Guards check conducting fixed supports, source facing, existing or pending reset activity, permanent power, additional reset writers and return paths. Torch control also checks attenuation: removing base power must remove the support power that keeps its reset torch off. Conducting inhibition payloads and unrecognized reset families remain outside this initial subset.
+**Rust status (2026-10-06):** [families.rs](../crates/core/src/redpiler/analysis/families.rs) implements structural matches for observer-above feedback, torch control, under-head dust and lateral dust, including the supplied downward constructions. Payload diagnostics accept one redstone block or wool, with a matching stationary head and entity-free context. Guards check conducting fixed supports, source facing, existing or pending reset activity, permanent power, additional reset writers and return paths. Torch control also checks attenuation: removing base power must remove the support power that keeps its reset torch off. Conducting inhibition and shared occupancy are validated by the joint-wave extractor rather than inferred from a local reset match; runtime currently admits verified observer reset and passive followers, not every structurally matched family.
 
 Payload groups retain all near/far positions and possible owners. The reset-supply check considers each permitted owner position; independent observer feedback passes, while dust supplied only at another owner's vacated position cannot establish closure. The legal shared OR and supplied illegal reset-starvation example receive different results. This is a structural reset-supply condition; logical consumer contracts, physical compatibility/reachability and restoration still require their later acceptance checks. Physical synchronization does not become an executable admission guard.
 
@@ -265,11 +265,11 @@ Test close mutations: reversed observers, changed caps, absent supports, blocked
 
 ### M3 Extract ports and dependency regions
 
-**Rust status (2026-10-06):** Analysis schema 2 includes weighted direct/QC source dependencies, retained wire aliases, independent wire/head notifications, mobile-group connections and ordinary consumer interfaces. [ports.rs](../crates/core/src/redpiler/analysis/ports.rs) queries actual receiving faces and distinguishes comparator side inputs from main inputs. A BUD's remote data wire and nearby sampling update remain separate channels. Exposed reset sources are reported even when they do not carry a mobile payload's electrical output. Prepared-data/trigger/inhibit role lowering, conducting payload effects, physical compatibility reporting and storage/clock region composition remain pending.
+**Rust status (2026-10-06):** Analysis schema 3 includes weighted direct/QC source dependencies, retained wire aliases, independent wire/head notifications, mobile-group connections and ordinary consumer interfaces. [ports.rs](../crates/core/src/redpiler/analysis/ports.rs) queries actual receiving faces and distinguishes comparator side inputs from main inputs. A BUD's remote data wire and nearby sampling update remain separate channels. Exposed reset sources are reported even when they do not carry a mobile payload's electrical output. Conditional conducting-payload effects and inhibition are now extracted into the admitted Boolean wave; independent sampling, general role-specific protocols and storage/clock composition remain pending.
 
-[graph.rs](../crates/core/src/redpiler/analysis/graph.rs) prepares a candidate graph from a fresh live analysis. It requires the supported structural matches, reset-supply closure and ownership of every observer; it rejects pending piston work, exposed reset signals and missing power or update context. A reset that electrically feeds a different payload group, or is shared by distinct groups, needs a joint protocol and is rejected. The graph uses `InstantInput` sinks and `MobileSource` aliases. Input strengths are initialized from their actual incoming sources after attenuation. Every mobile position retains its group identity and initial strength; mobile redstone blocks never become ordinary constants. Reset internals are excluded from ordinary identification, and consumer ports remain retention roots under `--io-only`. Boundary nodes survive optimization without being mistaken for physical blocks.
+[graph.rs](../crates/core/src/redpiler/analysis/graph.rs) prepares a candidate graph from a fresh live analysis. Redstone-only reset fixtures retain the structural candidate path with `InstantInput` sinks and `MobileSource` aliases. Wool networks use the same [program preparation](../crates/core/src/redpiler/instant/program.rs) as compilation, without activating the artifact. The executable joint-wave path admits internal cross-piston reset dependencies and supported shared groups, but rejects reset directly exposed to ordinary consumers. Every mobile position retains its group identity and initial strength; mobile redstone blocks never become ordinary constants. Reset internals are excluded from ordinary identification, and program sources and consumer interfaces remain retention roots under `--io-only`. Boundary nodes survive optimization without being mistaken for physical blocks.
 
-Graph passes now return structured errors. Missing sources, cancellation and unsupported instant export fail preparation. The Direct backend explicitly rejects boundary nodes until region execution exists; it also validates strengths and fan-in before initializing packed counters. Production `/rp compile` continues to reject piston worlds and preserve interpreter ownership. Candidate graph construction supplies the M3 interface/ownership checks; it does not complete M4 programs or M5 backend lowering.
+Graph passes return structured errors. Missing sources, cancellation and unsupported instant export fail preparation. The ordinary Direct compile entry rejects unpaired boundary nodes; the typed prepared-instant path binds the Boolean program and mutable supplies after validating strengths and fan-in. Production `/rp compile` accepts the supported adder scope through that path and preserves interpreter ownership on rejection. A read-only candidate graph alone is not executable certification.
 
 Manual review on an otherwise empty plot, after strict paste of `INSTANT_TORCH.schem` or `INSTANT_OBSERVER.schem`:
 
@@ -281,7 +281,7 @@ Manual review on an otherwise empty plot, after strict paste of `INSTANT_TORCH.s
 
 The single-instant graph has one instant input and two mobile source aliases, with one matched reset mechanism, one group with reset-supply closure and one ordinary consumer interface. Optimization can reduce ordinary nodes while retaining those boundaries. The plot remains interpreted throughout. The legal OR prepares a graph; the supplied illegal OR reports missing reset-supply closure. Help, completion and the existing read-only analysis permission cover the graph option. Full structured reports and graph details use DEBUG logging, which is available in debug builds; release builds retain the chat summaries and rejection reasons. Candidate export is disabled.
 
-Validation for this stage: 35 Redpiler tests, 96 redstone tests and six command/security tests pass, with two explicit capture/reference tests ignored. Deterministic read-only inventories cover 42 small fixtures. Candidate graphs cover eight supplied constructions across all four optimize/io-only combinations; seven constructions also pass all three additional horizontal rotations. Mutation checks cover support removal, reset writers/activity, forced power, bounds, illegal ownership outcomes and exposed reset signals. Additional cases cover reset feedback between groups, shared reset ownership, independent update context and valid retracted BUD storage without a false head mismatch. These tests establish graph preparation and unchanged interpreted/ordinary compiled behavior; they do not establish compiled instant timing, handoff equivalence or a runtime speedup.
+Pre-runtime validation for this stage passed 35 Redpiler tests, 96 redstone tests and six command/security tests, with two explicit capture/reference tests ignored. Deterministic read-only inventories cover 42 small fixtures. Candidate graphs cover eight supplied constructions across all four optimize/io-only combinations; seven constructions also pass all three additional horizontal rotations. Mutation checks cover support removal, reset writers/activity, forced power, bounds, illegal ownership outcomes and exposed reset signals. Additional cases cover reset feedback between groups, shared reset ownership, independent update context and valid retracted BUD storage without a false head mismatch. These historical checks established graph preparation. The [current runtime evidence](INSTANT_PISTON_RUNTIME.md#regression-evidence) adds compiled arithmetic, waveform and phase-specific handoff tests; it still does not claim a measured speedup.
 
 Implement directional power/QC, qualifying updates, shared resolver, reverse consumer searches and guarded payload effects. Separate data, trigger, inhibit and sampling channels. Compose compatible groups and stop at timed/stored-state boundaries.
 
@@ -291,6 +291,8 @@ Detect unsupported overlap, ordinary pistons, exposed observers, bounds crossing
 
 ### M4 Build programs and evaluate offline
 
+**Implemented adder scope:** bounded canonical Boolean decisions represent source-strength thresholds and conditional payload occupancy. Simplification removes false dependency cycles; genuine actor cycles reject. Topological substitution and compaction produce source-only runtime functions. All eight 1-bit first-wave cases and 40 11-bit arithmetic cases pass; the 1-bit carry consumer still needs another adapter.
+
 Implement stable RegionId/PortId/ExprId references, expression arena, local tables, protocols/state descriptors and multiple outputs. The pure evaluator accepts finalized waves/prepared inputs without world mutations or physical scheduling.
 
 Verify OR, combinational AND families, contextual inhibition and qualified XOR projections. Preserve AND_3/counter state boundaries. Compose chains and reconvergence; verify full-adder/arithmetic functions where recognition coverage permits.
@@ -299,13 +301,17 @@ Verify OR, combinational AND families, contextual inhibition and qualified XOR p
 
 ### M5 Integrate the graph and Direct backend
 
+**Implemented adder scope:** `PreparedInstant` pairs the program, ownership and restoration metadata with the graph. Direct lowering retains sources/consumers, binds decisions to node IDs and supplies mutable `InstantSource` nodes. Ordinary backend scheduling continues to drive the repeaters. Supported shared redstone/wool payloads are admitted; unsupported owners reject the complete plot.
+
 Extend CompileArtifact/backend preparation, identification, InputSearch and final reference checks. Implement region input sinks/electrical output sources, aliases and initialization. Keep expressions/state in side arenas.
 
-Add worklist propagation and typed internal links. Audit packed links, fan-in counters, graph removals and scheduler mapping. Retain ordinary behavior and the production piston guard.
+Expand propagation and typed links for future protocols. Audit packed links, fan-in counters, graph removals and scheduler mapping. Retain ordinary behavior and whole-plot rejection when any required owner is unsupported.
 
 **Acceptance:** ordinary sources reach region inputs and outputs reach repeaters through electrical links. Consecutive instants propagate in one wave. No synthetic block unwrap, missing source panic, overflow or duplicate mobile constant.
 
 ### M6 Implement waves and repeater adapters
+
+**Implemented adder scope:** one coordinator evaluates the ready network after ordinary scheduled input work, then supplies the observer response in six phases. Far redstone supply is absent in phases 1–5 and restored in phase 6; held-low inhibition permits internal recurrence. Compilation does not create a launch, and restoring power before the first tick cancels it. Tests compare the actual repeater waveform through 24 ticks. Independent roots, general rearm and additional reset protocols remain pending.
 
 Implement initial previous strengths, prepared caching, provisional requests, finalization, launch revalidation and dirty-region evaluation. Hook ordinary interactions and scheduled source changes without manufacturing initialization events.
 
@@ -317,6 +323,8 @@ Test restore-before-launch, positive changes, permitted strength-one falling, he
 
 ### M7 Implement materialization and lifecycle integration
 
+**Implemented adder scope:** reset flushes ordinary nodes and reconstructs owned geometry/work through bounded private interpreter replay. Live backend deadlines remain authoritative for ordinary consumers. Tests hand off at phases 0–12, including a trigger changed before any compiled tick, and compare 18 continuation ticks. General persistence/edit lifecycle proof and identical historical callback/motion logs are not claimed.
+
 Retain original geometry/entities, aliases and necessary reconstruction information. Select a family recipe: validated physical state templates or bounded interpreter replay during handoff. Keep reconstruction off the ordinary computation path and preserve boundary-significant phase/work.
 
 Restore every reachable compiled state at supported user-visible operation checkpoints, including an active response. A guessed extended piston is insufficient. Keep families analysis-only if they lack a reconstruction rule. Map pending synthetic work before returning it to the world scheduler.
@@ -327,17 +335,21 @@ Render useful outputs infrequently without animating internal pistons or trackin
 
 **Acceptance:** continuation matches supported future observations after reset, persistence and edits at each supported checkpoint. Payloads/work remain valid and restoration introduces no extra computation or changed bit.
 
-### M8 Enable transactional experimental activation
+### M8 Enable transactional activation
+
+**Implemented adder scope:** normal `/rp compile` stages a fresh backend with the paired program and activates only after complete success. No `--instant` flag is required. Unsupported payloads, destructive wire support, storage, output context or queued owned work reject without activating a partial program.
 
 Return explicit success, rejection, cancellation or failure from preparation. Build while the interpreter retains authoritative queues; transfer state once after complete success. Stage the replacement backend rather than modifying the active artifact during preparation. Defer destructive scheduler/history changes until success and return the scoreboard to the actual prior/stopped state on failure. Failure preserves prior world/ownership.
 
-Replace the blanket guard only for an explicit experimental option, for example `--instant`, using the complete support report. Update compile feedback/scoreboard from the actual result. Unimplemented BUDs, ordinary pistons, external observers, commands or motions keep the plot interpreted.
+Expand admission through the existing prepared-program path using the complete support report. Update compile feedback/scoreboard from the actual result. Unimplemented BUDs, ordinary pistons, external observers, commands or motions keep the plot interpreted.
 
 Test queued work, stale scheduled block types, backend failure, cancellation and recompilation. Do not build hybrid fallback by running compiled and interpreted ticks sequentially.
 
 **Acceptance:** certified small plots run; unsupported plots report exact reasons and remain interpreted. Failures preserve blocks, entities, requests and piston state. Reset passes M7 continuation checks.
 
 ### M9 Minimize functions and measure performance
+
+**Partial implementation:** canonical decisions, constant reduction, duplicate sharing and compaction are implemented. All four optimize/I/O flag combinations preserve the adder arithmetic and waveform. Compilation/runtime/memory benchmarks remain pending.
 
 Add expression identities, propagation of constants, duplicate removal and common-subexpression sharing. Audit ordinary passes against channels/ownership and compare optimized/unoptimized consumers and state.
 
@@ -346,6 +358,8 @@ Measure analysis time/memory, coverage, expression size, dirty evaluations and w
 **Acceptance:** minimization preserves observations/restoration and reduces measured work. Resource exhaustion reports unverified status. CPU performance is not an acceptance requirement.
 
 ### M10 Expand simple combinational builds
+
+**Current acceptance:** the lever/repeater 11-bit adder passes 40 prepared cases, overflow/carry checks, three additional rotations and translation. Its saved orientation also passes waveform and handoff comparisons. Next work includes the 1-bit conducting carry interface, broader family adapters, decoders and long wires; repeated computations with a general rearm protocol are not yet certified.
 
 Complete required family coverage for ADDER_1BIT/ADDER_11BITS: conducting payloads, inhibition and downward mechanisms. Add lever/repeater versions, a decoder and long-wire examples. Cover trigger/data separation, carries, high bits, modulo-2048 overflow, fan-out and reconvergence.
 
@@ -443,9 +457,9 @@ Save consumer variants separately and mark actual connections. Basic geometry is
 
 No fixture needs to match a proposed result for new external inputs during undefined reset intervals. Keep these diagnostic. Materialization cases can initially be generated from supported fixtures/histories rather than requesting a schematic for every phase.
 
-## First implementation batch
+## Foundation batch and next implementation work
 
-Start with five reviewable changes while piston activation stays disabled:
+The original five foundation steps below have been delivered for the admitted combinational scope:
 
 1. Add analysis types, live inventory, read-only entry point and structured diagnostics. Test preservation of blocks/entities/queues.
 2. Add observer matching, cap/support/head guards and forced-powered/missing-reset classifications. Add mutations and rotations.
@@ -453,4 +467,4 @@ Start with five reviewable changes while piston activation stays disabled:
 4. Add port resolution, source/consumer discovery and typed boundaries. Report BUD-like/delayed-inhibit cases without guessing executable semantics.
 5. Add region representation and pure evaluation, then graph integration behind tests. Validate tables/arithmetic independently of activation.
 
-Proceed to the runnable lever-to-repeater slice once M0 is captured. Implement its graph bridges, timing adapter and reconstruction, then enable that certified scope. Expand through milestone gates rather than removing the guard for all piston plots at once.
+The runnable 11-bit lever-to-repeater slice, graph bridges, observer adapter, reconstruction and transactional activation are now delivered. Continue with the 1-bit moving-wool carry consumer, additional reset/rearm protocols and benchmark evidence, then independent BUD storage and counter clocks. Each expansion needs its own boundary and continuation tests; whole-plot admission remains conservative.

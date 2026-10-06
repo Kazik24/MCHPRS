@@ -52,7 +52,7 @@ This is handoff work, not a runtime simulation fallback. It reconstructs support
 
 ## Admission limits and next work
 
-- Ready, powered, extended sticky mechanisms only; redstone-block and wool payloads; no carried entities, upward mechanisms or active movement.
+- Ready, powered, extended sticky mechanisms only; redstone-block and wool payloads; no carried entities, upward mechanisms or active movement. Dust cannot use a moving payload as its support: destructive wire updates require another protocol.
 - A selected network must remain within one plot and include required electrical and qualifying-update context.
 - Observable moving context must be a far redstone supply whose owners have verified observer resets. Exposed near payloads, moving-wool conduction and unverified reset context require another adapter. Reset sources visible directly to ordinary consumers are rejected.
 - The 1-bit adder's Boolean sum passes all eight arithmetic cases, but its separate carry repeater sees conducting-payload context and is not yet an executable acceptance target.
@@ -86,6 +86,8 @@ Use `/rp reset` at a response or reset phase, then `/radvance 12` to observe int
 - 40 fresh prepared 11-bit cases × four optimize/I/O flag combinations: arithmetic at ticks 3–7, exact repeater states through tick 24, then 12 interpreted continuation ticks.
 - Handoff at ticks 0–12 for six prepared cases, followed by 18 ticks of output comparison each.
 - The 40 arithmetic cases after 90°, 180° and 270° rotation plus translation, with optimization and I/O pruning enabled. These prove compiled geometry independence; the full physical waveform comparison is for the saved orientation.
-- First-wave arithmetic for all eight 1-bit cases, unchanged imports, unsupported-payload diagnostics, rejection of unsupported storage/consumer contexts, ordinary circuits in piston plots, Boolean composition and retained graph bindings.
+- First-wave arithmetic for all eight 1-bit cases, unchanged imports, unsupported-payload diagnostics, rejection of dust supported by mobile payloads and unsupported storage/consumer contexts, ordinary circuits in piston plots, Boolean composition and retained graph bindings.
+
+The final focused Redpiler run passed 46 tests. The broader core run passed 348 tests with three opt-in tests ignored; the final admission/replay refinements were subsequently covered by the focused run. Workspace checking and release compilation are separate build checks, not additional Java evidence.
 
 The independent Java evidence remains the separately versioned [I/O validation](INSTANT_PISTON_IO_VALIDATION.md). Compiled execution is compared directly with MCHPRS here; this implementation did not produce a new Java capture set. No measured runtime speedup is claimed yet.

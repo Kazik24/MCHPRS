@@ -1,5 +1,7 @@
 # Lever/repeater and standalone BUD validation
 
+**Subsequent compiler acceptance:** the 11-bit adder from this exact I/O pack now compiles through the [implemented instant pipeline](INSTANT_PISTON_RUNTIME.md). Rust checks cover all 40 arithmetic cases under four optimize/I/O flag combinations, 24-tick repeater waveforms and interpreted continuation after handoff. This is additional compiled-versus-MCHPRS evidence; it does not replace the Java captures or resolve the XOR reset discrepancy recorded below. Standalone BUD execution remains a later milestone.
+
 The [I/O revision catalog](INSTANT_PISTON_IO_SCHEMATICS.md) covers 22 exact schematic binaries and 140 declared cases, producing 203 MCHPRS episodes including selected horizontal rotations. There are 106 primary Java comparisons: **104 agree and two differ**, both XOR both-input reset responses. Three additional versioned Java diagnostics include one matching and one differing exact-origin comparison, plus a successful original-origin Java replay. A successful artifact validator checks this classification; it does not declare the differing episodes Minecraft-conformant.
 
 ## Source and import provenance
