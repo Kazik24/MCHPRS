@@ -15,12 +15,12 @@ PACK = ROOT / "test_data/instant-pistons-io"
 MECHANISMS = {
     "instant_observer": (
         "Observer-reset horizontal instant",
-        "The south-facing sticky base (0,1,5), head (0,1,6) and redstone payload (0,1,7) start extended. The observer above the base watches its state; its pulse supplies reset through the block above it. A falling input withdraws the payload and removes the raw output's power. Observer reset re-extends it, then loss of reset power permits another internal cycle while the root input remains low.",
+        "The south-facing sticky base (0,1,5), head (0,1,6) and redstone payload (0,1,7) start extended. Down-facing observer (0,2,5), initially unpowered, watches the base; its pulse supplies reset through cap (0,3,5). A falling input withdraws the payload and removes the raw output's power. Observer reset re-extends it, then loss of reset power permits another internal cycle while the root input remains low.",
         "Recurring response, not a quiescent ready state under held activation. Base cycles recur six ticks apart; no complete-state period is certified unless the trace index gives a three-cycle witness. Fresh snapshots define independent cases. The four horizontal rotations preserve the measured named-port response.",
         "Recognize the observer/cap feedback and retain exposed repeater timing. Do not collapse its complete response into one permanent Boolean output."),
     "instant_torch": (
         "Torch-reset horizontal instant",
-        "The base/head/payload are at (0,1,5/6/7). The reset torch supplies a finite re-extension response, unlike the repeated observer clock. The input lever powers its support, and the input torch at (0,1,2) turns off after its normal delay. The payload is pulled toward the base, then restored to the output location.",
+        "The base/head/payload are at (0,1,5/6/7). Ground reset torch (0,2,4), initially unlit, supplies a finite re-extension response, unlike the repeated observer clock. The input lever powers its support, and the input torch at (0,1,2) turns off after its normal delay. The payload is pulled toward the base, then restored to the output location.",
         "The reuse episode waits for an empty scheduled/event/motion queue and two equal completed boundaries, switches the trigger off, proves the same readiness condition, then switches it on again. Two actual retractions establish reuse; an arbitrary fixed wait is not its proof.",
         "Retain torch reset, input delay and the repeater pulse adapter. This is a reusable synchronized episode under the tested rearm rule."),
     "instant_reset_redstone": (
@@ -35,12 +35,12 @@ MECHANISMS = {
         "The climb connection and conducting support are reset guards. Removing them would create a distinct diagnostic construction."),
     "instant_down": (
         "Observer-reset downward instant",
-        "The down-facing base (0,3,5), head (0,2,5) and redstone payload (0,1,5) move vertically. The raw output at (0,1,7) feeds a delay-two repeater (0,1,8). An observer/cap above the base resets it; the source lever is (0,3,0).",
+        "The down-facing base (0,3,5), head (0,2,5) and redstone payload (0,1,5) move vertically. The raw output at (0,1,7) feeds a delay-two repeater (0,1,8). Down-facing observer (0,4,5), initially unpowered, and cap (0,5,5) reset the base; the source lever is (0,3,0).",
         "A held falling input releases recurring reset work. Fresh snapshots are the validated next-use rule. This vertical construction is measured separately from horizontal rotation.",
         "Recognize vertical payload/support effects and the explicit output path; a horizontal-family rotation is insufficient."),
     "instant_down_torch_reset": (
         "Torch-reset downward instant",
-        "The vertical base/head/payload are (0,3,5), (0,2,5), (0,1,5). Its torch reset restores the payload after the first withdrawal. The output dust and repeater remain horizontal at y=1, distinct from the actuator direction.",
+        "The vertical base/head/payload are (0,3,5), (0,2,5), (0,1,5). South-facing wall reset torch (0,4,6), initially unlit, restores the payload after the first withdrawal. The output dust and repeater remain horizontal at y=1, distinct from the actuator direction.",
         "The measured reuse episode proves quiescence after activation and after trigger rearm, then produces another retraction. The payload is retained and returned; no free-running clock is assumed.",
         "Preserve the separate vertical motion and horizontal consumer adapter, with the tested torch/rearm protocol."),
     "instant_blocked": (
@@ -50,7 +50,7 @@ MECHANISMS = {
         "This negative construction guards against recognizing a base from only its apparent input wire. Include every effective power/inhibit path."),
     "instant_chain": (
         "Two-stage instant propagation",
-        "Bases (0,1,5) and (0,1,8) face south. The first payload vacates its supplying position, and its nested neighbor callback reaches the second base. In response tick 2, operation 3 executes the first retraction and enqueues the second; operation 4 executes the second. Propagation depth is two bases in one completed game tick, with ordered operations rather than simultaneous movement.",
+        "Bases (0,1,5) and (0,1,8) face south, with down-facing reset observers (0,2,5)/(0,2,8) and caps (0,3,5)/(0,3,8). Payloads initially occupy (0,1,7)/(0,1,10). The first payload vacates its supplying position, and its nested neighbor callback reaches the second base. In response tick 2, operation 3 executes the first retraction and enqueues the second; operation 4 executes the second. Propagation depth is two bases in one completed game tick, with ordered operations rather than simultaneous movement.",
         "Both stages reset through the supplied geometry and continue internal work under held activation. Independent cases use fresh snapshots. The first repeater fall is delayed to tick 6.",
         "The physical relation execute_event(0,1,5) → callback(0,1,8) → enqueue(0,1,8) → execute_event(0,1,8) is measured, not inferred from a pico snapshot. A compiled synchronized wave may compose these stages while preserving the consumer response."),
     "or_1": (

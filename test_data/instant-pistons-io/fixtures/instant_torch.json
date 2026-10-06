@@ -192,7 +192,7 @@
       "imported_state": "test_data/instant-pistons-io/inspection/instant_torch.json",
       "observed_mchprs": "frozen traces, not independent Minecraft oracles",
       "observed_java": "SHA-pinned vanilla 1.21.5 captures with real lever interactions",
-      "inferred_mechanism": "The base/head/payload are at (0,1,5/6/7). The reset torch supplies a finite re-extension response, unlike the repeated observer clock. The input lever powers its support, and the input torch at (0,1,2) turns off after its normal delay. The payload is pulled toward the base, then restored to the output location.",
+      "inferred_mechanism": "The base/head/payload are at (0,1,5/6/7). Ground reset torch (0,2,4), initially unlit, supplies a finite re-extension response, unlike the repeated observer clock. The input lever powers its support, and the input torch at (0,1,2) turns off after its normal delay. The payload is pulled toward the base, then restored to the output location.",
       "proposed_compiler_guard": "Retain torch reset, input delay and the repeater pulse adapter. This is a reusable synchronized episode under the tested rearm rule."
     },
     "label_mappings": [

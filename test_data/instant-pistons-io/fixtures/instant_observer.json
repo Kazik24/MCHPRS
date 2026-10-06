@@ -150,7 +150,7 @@
       "imported_state": "test_data/instant-pistons-io/inspection/instant_observer.json",
       "observed_mchprs": "frozen traces, not independent Minecraft oracles",
       "observed_java": "SHA-pinned vanilla 1.21.5 captures with real lever interactions",
-      "inferred_mechanism": "The south-facing sticky base (0,1,5), head (0,1,6) and redstone payload (0,1,7) start extended. The observer above the base watches its state; its pulse supplies reset through the block above it. A falling input withdraws the payload and removes the raw output's power. Observer reset re-extends it, then loss of reset power permits another internal cycle while the root input remains low.",
+      "inferred_mechanism": "The south-facing sticky base (0,1,5), head (0,1,6) and redstone payload (0,1,7) start extended. Down-facing observer (0,2,5), initially unpowered, watches the base; its pulse supplies reset through cap (0,3,5). A falling input withdraws the payload and removes the raw output's power. Observer reset re-extends it, then loss of reset power permits another internal cycle while the root input remains low.",
       "proposed_compiler_guard": "Recognize the observer/cap feedback and retain exposed repeater timing. Do not collapse its complete response into one permanent Boolean output."
     },
     "label_mappings": [

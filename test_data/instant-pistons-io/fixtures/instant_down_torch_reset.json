@@ -192,7 +192,7 @@
       "imported_state": "test_data/instant-pistons-io/inspection/instant_down_torch_reset.json",
       "observed_mchprs": "frozen traces, not independent Minecraft oracles",
       "observed_java": "SHA-pinned vanilla 1.21.5 captures with real lever interactions",
-      "inferred_mechanism": "The vertical base/head/payload are (0,3,5), (0,2,5), (0,1,5). Its torch reset restores the payload after the first withdrawal. The output dust and repeater remain horizontal at y=1, distinct from the actuator direction.",
+      "inferred_mechanism": "The vertical base/head/payload are (0,3,5), (0,2,5), (0,1,5). South-facing wall reset torch (0,4,6), initially unlit, restores the payload after the first withdrawal. The output dust and repeater remain horizontal at y=1, distinct from the actuator direction.",
       "proposed_compiler_guard": "Preserve the separate vertical motion and horizontal consumer adapter, with the tested torch/rearm protocol."
     },
     "label_mappings": [

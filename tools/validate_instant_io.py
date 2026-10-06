@@ -1,7 +1,7 @@
 """Verify the separately versioned I/O pack, including classified differences.
 
 py tools/validate_instant_io.py [--recapture-dir <new capture directory>]
-    Known XOR projection differences are retained, not converted to passing oracles.
+Known XOR projection differences are retained, not converted to passing oracles.
 """
 import argparse
 from pathlib import Path
@@ -80,6 +80,13 @@ def main():
         assert a["ordered_stimuli"]==b["ordered_stimuli"]
         status="match" if matches(projection(a,manifests["xor_simple"]),projection(b,manifests["xor_simple"])) else "mismatch"
         assert status==c["status"]==("match" if c["case_id"].endswith("12") else "mismatch")
+    r=diagnostics["reproduced_java_episode"]
+    a,b=load(ROOT/r["original"]),load(ROOT/r["replay"])
+    assert sha(ROOT/r["replay"])==r["replay_sha256"]
+    assert a["origin"]==b["origin"] and a["ordered_stimuli"]==b["ordered_stimuli"]
+    assert matches(projection(a,manifests["xor_simple"]),projection(b,manifests["xor_simple"]))
+    for previous in downloads["previous_revisions"]:
+        assert sha(ROOT/previous["path"])==previous["sha256"]
     for name in ("INSTANT_PISTON_IO_SCHEMATICS.md","INSTANT_PISTON_IO_VALIDATION.md",
                  "INSTANT_PISTON_REDPILER_MODEL.md","INSTANT_PISTON_IMPLEMENTATION_PLAN.md"):
         check_links(ROOT/"docs"/name)

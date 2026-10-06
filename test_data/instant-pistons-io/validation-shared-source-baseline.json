@@ -1,0 +1,40 @@
+{
+  "schema_version": 1,
+  "engine": "MCHPRS interpreter 0.1.0",
+  "revision": "e22b57ce44c3ae41375b3f3c39bf3e7b2f4ce5e2",
+  "working_tree": [
+    " M crates/core/src/redstone/instant_piston_tests/io.rs",
+    " M test_data/instant-pistons-io/diagnostics/xor-origin-comparisons.json",
+    " M tools/record_instant_io_origin_diagnostics.py",
+    " M tools/validate_instant_io.py",
+    "?? docs/INSTANT_PISTON_IO_VALIDATION.md",
+    "?? test_data/instant-pistons-io/diagnostics/java-xor_simple-events-11-12-origin-6784-40-128-replay-v2.json.gz",
+    "?? test_data/instant-pistons-io/validation-shared-source-baseline.json"
+  ],
+  "sha256": {
+    "Cargo.lock": "e6d835abb6a834874d4082c838a5ce85bcf03defb8dac7b2cbc02dda45abe324",
+    "crates/core/src/redstone/mod.rs": "85a5aac72fb0e64aa3810793b21ca39ccc574a87aac0bf4a3031ddf1b390180e",
+    "crates/core/src/redstone/piston.rs": "beefc5972ca6744e25ca217b9c68d5eefbcfcf76f9cc0aaf5bb023b622f2b7d4",
+    "crates/core/src/redstone/wire/mod.rs": "1e4575295e4549a7c366cd7a35c0d7840217c9bbdb96a8468d470adb69a5fa37",
+    "crates/core/src/redstone/wire/turbo.rs": "01397dbabb2e31b33aef8effd8ec04ca3ebf7e0358d22edf4e7ef9fcbaa688a4",
+    "crates/core/src/redstone/wire/turbo_cache.rs": "c1ec62262fc6ef3ef99763fa6ed0a96d7572bf045c4972a2e9d5111bbacf6e61",
+    "crates/core/src/plot/mod.rs": "95b44861eb19ad15fc9556c99b2716445478a26dc576e6f127b9b05d48542230",
+    "crates/core/src/plot/worldedit/mod.rs": "96a0fc2a3161f0ea19686ce1aeb2d50ffda61481da5b4237807dae68f6510dd0",
+    "crates/core/src/plot/worldedit/schematic.rs": "54416adf5b6f694535baa09676a1c2f1ce5b051e8179ad55f16770e3982b6eca",
+    "crates/core/src/interaction.rs": "af9ce5b15acd0a94c9227c760a2dc121686672707afb94bed8e55e7de9a4ffa6",
+    "crates/core/src/redpiler/backend/queue.rs": "39d919bc0e70fd00569a05f619966fefd8f0a14a32a482bdd7cd6641027de7c5",
+    "crates/core/src/world/mod.rs": "338173730870cb6d3e70ea9e49f1688b84d798e0dd82955cd2e4f48b2acb5a55",
+    "crates/core/src/world/wire_cache.rs": "8e8b8e46f4a525b2b7bfb5ea4fbae8781662e0fa13fa2b6018c0609796d0a5be",
+    "crates/world/src/lib.rs": "7e4326ba43f4ffd4d1b638486f982e6efe78c6a2f9dcc76c00c3a199c24f067f",
+    "crates/blocks/src/block_entities.rs": "c4af674d6c6c3029b2058f461b139aef5fd0a723e6f476666749aaae7b13b28d",
+    "crates/blocks/src/blocks/mod.rs": "76329409106b4a40865559bdd40755d18a44df63c5434c15b9c5b67e0466934b",
+    "crates/core/src/redstone/instant_piston_tests.rs": "fe223aae11072006dfa7ec64e5fd875066948f8ad8937d67058c9e4cda2bd8b7",
+    "tools/inspect_instant_pistons.py": "c10f18cd022ea9d568bc53e40818c26acdf52fe9e87677fad5759ce0a6cd506f",
+    "tools/capture_instant_pistons.py": "5207415dbfd98205665b47f07abba339dd094a79938244aba59ae46ef7ff34d7",
+    "tools/instant_piston_protocols.py": "65a52a81cd4a29026b63dffa6a09f78d432587e64099c7ae8ab314df699618f3",
+    "crates/core/src/redstone/instant_piston_tests/io.rs": "d6bcbf7a2d470738d1435458a85c31086cfd75b39132df2a2d35b615eabec13e",
+    "tools/instant_piston_io_protocols.py": "af12af7b0a7e93ce7be322b169801bd9ab3bbd7c1722d52269c69e13bb8448ad"
+  },
+  "runtime_changes": "Recorder and fixture actions are test-only; no interpreter rule changes by characterization. Shared working-tree changes are listed separately.",
+  "independent_reference": "MCHPRS traces are regression evidence, not independent Minecraft oracles"
+}

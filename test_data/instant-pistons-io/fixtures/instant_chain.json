@@ -152,7 +152,7 @@
       "imported_state": "test_data/instant-pistons-io/inspection/instant_chain.json",
       "observed_mchprs": "frozen traces, not independent Minecraft oracles",
       "observed_java": "SHA-pinned vanilla 1.21.5 captures with real lever interactions",
-      "inferred_mechanism": "Bases (0,1,5) and (0,1,8) face south. The first payload vacates its supplying position, and its nested neighbor callback reaches the second base. In response tick 2, operation 3 executes the first retraction and enqueues the second; operation 4 executes the second. Propagation depth is two bases in one completed game tick, with ordered operations rather than simultaneous movement.",
+      "inferred_mechanism": "Bases (0,1,5) and (0,1,8) face south, with down-facing reset observers (0,2,5)/(0,2,8) and caps (0,3,5)/(0,3,8). Payloads initially occupy (0,1,7)/(0,1,10). The first payload vacates its supplying position, and its nested neighbor callback reaches the second base. In response tick 2, operation 3 executes the first retraction and enqueues the second; operation 4 executes the second. Propagation depth is two bases in one completed game tick, with ordered operations rather than simultaneous movement.",
       "proposed_compiler_guard": "The physical relation execute_event(0,1,5) \u2192 callback(0,1,8) \u2192 enqueue(0,1,8) \u2192 execute_event(0,1,8) is measured, not inferred from a pico snapshot. A compiled synchronized wave may compose these stages while preserving the consumer response."
     },
     "label_mappings": [

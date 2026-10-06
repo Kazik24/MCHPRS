@@ -212,6 +212,68 @@ fn output_stage_rejects_pending_retraction_after_inhibition_becomes_effective() 
 }
 
 #[test]
+fn new_or_output_stage_preserves_shared_payload_and_illegal_reset_starvation() {
+    for id in ["or_1", "or_interpreter_illigal"] {
+        let m = io_fixture(id);
+        let y = if id == "or_1" { 1 } else { 2 };
+        for name in [
+            "events-10-12",
+            "events-01-12",
+            "events-11-12",
+            "events-11-21",
+        ] {
+            let t = run(id, name, 0, true);
+            let indices: Vec<_> = [[0, y, 7], [1, y, 7], [0, y, 8]]
+                .into_iter()
+                .map(|p| {
+                    t["watch_absolute"]
+                        .as_array()
+                        .unwrap()
+                        .iter()
+                        .position(|v| *v == json!(BlockPos::new(40 + p[0], 30 + p[1], 40 + p[2])))
+                        .unwrap()
+                })
+                .collect();
+            let mut cells = std::collections::BTreeMap::new();
+            for s in t["samples"].as_array().unwrap() {
+                for c in s["changes"].as_array().unwrap() {
+                    cells.insert(c[0].as_u64().unwrap() as usize, c[1].clone());
+                }
+                let payloads = indices
+                    .iter()
+                    .filter(|i| {
+                        cells[i]["name"] == "redstone_block"
+                            || cells[i]["entity"]["MovingPiston"]["block_state"]
+                                == Block::RedstoneBlock {}.get_id()
+                    })
+                    .count();
+                assert_eq!(
+                    payloads, 1,
+                    "{id} {name} tick{} operation{}",
+                    s["tick"], s["operation"]
+                );
+            }
+            assert_eq!(repeater_bits(&t["projections"][4]["repeater"]), 1);
+            if id == "or_interpreter_illigal" && name.starts_with("events-11") {
+                let (mut w, _, d) = load(&m, 0);
+                for op in named_case(&m, name)["actions"].as_array().unwrap() {
+                    mutate(&mut w, op, d, 0);
+                }
+                for _ in 0..6 {
+                    w.tick_interpreted();
+                }
+                let restored = [[0,2,9],[2,2,7]].into_iter().filter(|p|
+                    matches!(w.get_block(BlockPos::new(40+p[0],30+p[1],40+p[2])),Block::Piston{piston} if piston.extended)).count();
+                assert_eq!(
+                    restored, 1,
+                    "one owner takes the reset supply from the other participant"
+                );
+            }
+        }
+    }
+}
+
+#[test]
 fn gate_consumers_have_a_delayed_projection_and_preserve_history_and_reset_effects() {
     for id in ["or_1", "and_1", "and_2", "not_1", "xor_simple"] {
         let m = io_fixture(id);

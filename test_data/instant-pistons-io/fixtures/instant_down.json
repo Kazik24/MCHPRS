@@ -147,7 +147,7 @@
       "imported_state": "test_data/instant-pistons-io/inspection/instant_down.json",
       "observed_mchprs": "frozen traces, not independent Minecraft oracles",
       "observed_java": "SHA-pinned vanilla 1.21.5 captures with real lever interactions",
-      "inferred_mechanism": "The down-facing base (0,3,5), head (0,2,5) and redstone payload (0,1,5) move vertically. The raw output at (0,1,7) feeds a delay-two repeater (0,1,8). An observer/cap above the base resets it; the source lever is (0,3,0).",
+      "inferred_mechanism": "The down-facing base (0,3,5), head (0,2,5) and redstone payload (0,1,5) move vertically. The raw output at (0,1,7) feeds a delay-two repeater (0,1,8). Down-facing observer (0,4,5), initially unpowered, and cap (0,5,5) reset the base; the source lever is (0,3,0).",
       "proposed_compiler_guard": "Recognize vertical payload/support effects and the explicit output path; a horizontal-family rotation is insufficient."
     },
     "label_mappings": [

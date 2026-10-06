@@ -35,5 +35,17 @@
       "limits": "First-wave XOR works. A location-independent complete reset contract and general runtime admission remain unverified."
     }
   ],
+  "reproduced_java_episode": {
+    "original": "test_data/instant-pistons-io/traces/java-xor_simple-events-11-12-r0.json.gz",
+    "replay": "test_data/instant-pistons-io/diagnostics/java-xor_simple-events-11-12-origin-6784-40-128-replay-v2.json.gz",
+    "replay_sha256": "ab19f81cd36a5bd6312709255280a3ee14f817dccd681c705d10bf9059d87950",
+    "origin": [
+      6784,
+      40,
+      128
+    ],
+    "status": "same projected no-pulse response",
+    "scope": "Java named-port response replayed at the original origin with the corrected login handshake; command ids and setup elapsed game time differ"
+  },
   "evidence": "Additional vanilla Java versions; original different-origin frozen captures remain unchanged."
 }
