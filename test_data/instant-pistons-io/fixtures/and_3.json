@@ -1,0 +1,204 @@
+{
+  "schema_version": 1,
+  "id": "and_3",
+  "fixture": "test_data/instant-pistons-io/AND_3.schem",
+  "sha256": "18c720cb9a050e125062a07d1669a5d32d6b93ee6efbafd4936af1e804bc3bcb",
+  "dimensions": [
+    1,
+    7,
+    15
+  ],
+  "inspection": "test_data/instant-pistons-io/inspection/and_3.json",
+  "classification": "instant with ordinary-node input and consumer boundary",
+  "purpose": "Measure the full new output instant, repeater and lamp, including internal reset effects.",
+  "coordinates": {
+    "convention": "selection-local relative to saved minimum",
+    "origin": [
+      40,
+      30,
+      40
+    ],
+    "loader_offset": [
+      0,
+      3,
+      13
+    ],
+    "paste_anchor": [
+      40,
+      33,
+      53
+    ],
+    "orientation": "saved; declared horizontal rotations transform geometry, states and lever attachments"
+  },
+  "ports": {
+    "inputs": {
+      "IN1": [
+        0,
+        2,
+        14
+      ],
+      "IN2": [
+        0,
+        5,
+        14
+      ]
+    },
+    "observations": {
+      "IN1": [
+        0,
+        2,
+        14
+      ],
+      "IN2": [
+        0,
+        5,
+        14
+      ],
+      "lamp": [
+        0,
+        2,
+        0
+      ],
+      "repeater": [
+        0,
+        2,
+        1
+      ],
+      "consumer_input": [
+        0,
+        2,
+        2
+      ],
+      "output_stage": [
+        0,
+        2,
+        5
+      ]
+    },
+    "roles": {
+      "IN1": "local power plus base update",
+      "IN2": "remote QC power"
+    }
+  },
+  "setup": "Strict paste preserves all saved states/entities, empty interpreter work. Lever actions follow both interaction::on_use notification paths. Derived additions are explicitly listed in cases.",
+  "protocol": "Fresh imported snapshots for independent cases. Prepared data remains stable through the response. External changes during instant reset are undefined; internal reset/clock work is retained. BUD store-hold-resample uses measured quiescent endpoints.",
+  "cases": [
+    {
+      "id": "saved-idle",
+      "actions": [],
+      "inputs": null,
+      "ticks": 24
+    },
+    {
+      "id": "events-00-12",
+      "actions": [],
+      "inputs": [
+        0,
+        0
+      ],
+      "ticks": 24
+    },
+    {
+      "id": "events-10-12",
+      "actions": [
+        {
+          "op": "lever",
+          "pos": [
+            0,
+            2,
+            14
+          ],
+          "powered": true
+        }
+      ],
+      "inputs": [
+        1,
+        0
+      ],
+      "ticks": 24
+    },
+    {
+      "id": "events-01-12",
+      "actions": [
+        {
+          "op": "lever",
+          "pos": [
+            0,
+            5,
+            14
+          ],
+          "powered": true
+        }
+      ],
+      "inputs": [
+        0,
+        1
+      ],
+      "ticks": 24
+    },
+    {
+      "id": "events-11-12",
+      "actions": [
+        {
+          "op": "lever",
+          "pos": [
+            0,
+            2,
+            14
+          ],
+          "powered": true
+        },
+        {
+          "op": "lever",
+          "pos": [
+            0,
+            5,
+            14
+          ],
+          "powered": true
+        }
+      ],
+      "inputs": [
+        1,
+        1
+      ],
+      "ticks": 24
+    },
+    {
+      "id": "events-11-21",
+      "actions": [
+        {
+          "op": "lever",
+          "pos": [
+            0,
+            5,
+            14
+          ],
+          "powered": true
+        },
+        {
+          "op": "lever",
+          "pos": [
+            0,
+            2,
+            14
+          ],
+          "powered": true
+        }
+      ],
+      "inputs": [
+        1,
+        1
+      ],
+      "ticks": 24
+    }
+  ],
+  "rotations": [
+    0
+  ],
+  "mapping_status": "Reviewed sign/geometry candidates; controlled episode evidence is recorded separately.",
+  "expected_status": "Arithmetic expectations require the declared polarity/width decoder; other functional claims remain measured projections.",
+  "unknowns": [
+    "First-wave logical projection and complete consumer waveform must be measured separately."
+  ]
+}

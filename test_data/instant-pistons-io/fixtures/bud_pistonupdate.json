@@ -1,0 +1,268 @@
+{
+  "schema_version": 1,
+  "id": "bud_pistonupdate",
+  "fixture": "test_data/instant-pistons-io/BUD_PistonUpdate.schem",
+  "sha256": "856b0d57fa349aaf151e3d03f67d7bd0cd75ae2f8b645a896d2c3c48c2451023",
+  "dimensions": [
+    2,
+    9,
+    7
+  ],
+  "inspection": "test_data/instant-pistons-io/inspection/bud_pistonupdate.json",
+  "classification": "BUD memory with independent data/update paths",
+  "purpose": "Demonstrate sampling, retained state and the actual output consumer, not a combinational truth table.",
+  "coordinates": {
+    "convention": "selection-local relative to saved minimum",
+    "origin": [
+      40,
+      30,
+      40
+    ],
+    "loader_offset": [
+      1,
+      4,
+      1
+    ],
+    "paste_anchor": [
+      41,
+      34,
+      41
+    ],
+    "orientation": "saved; declared horizontal rotations transform geometry, states and lever attachments"
+  },
+  "ports": {
+    "inputs": {
+      "data": [
+        0,
+        7,
+        1
+      ],
+      "update": [
+        1,
+        3,
+        0
+      ]
+    },
+    "observations": {
+      "memory": [
+        0,
+        3,
+        4
+      ],
+      "repeater": [
+        0,
+        1,
+        5
+      ],
+      "QC_data_wire": [
+        0,
+        6,
+        4
+      ],
+      "update_piston": [
+        1,
+        3,
+        3
+      ]
+    },
+    "roles": {
+      "data": "logical stored one uses lever true",
+      "update": "sampling activation uses lever true",
+      "memory": "stationary retracted=one, extended=zero; moving invalid"
+    }
+  },
+  "setup": "Strict paste preserves all saved states/entities, empty interpreter work. Lever actions follow both interaction::on_use notification paths. Derived additions are explicitly listed in cases.",
+  "protocol": "Fresh imported snapshots for independent cases. Prepared data remains stable through the response. External changes during instant reset are undefined; internal reset/clock work is retained. BUD store-hold-resample uses measured quiescent endpoints.",
+  "cases": [
+    {
+      "id": "saved-idle",
+      "actions": [],
+      "inputs": null,
+      "ticks": 24
+    },
+    {
+      "id": "data-only",
+      "actions": [
+        {
+          "op": "lever",
+          "pos": [
+            0,
+            7,
+            1
+          ],
+          "powered": true
+        }
+      ],
+      "inputs": [
+        1,
+        0
+      ],
+      "ticks": 24
+    },
+    {
+      "id": "sample-0",
+      "actions": [
+        {
+          "op": "lever",
+          "pos": [
+            0,
+            7,
+            1
+          ],
+          "powered": false
+        },
+        {
+          "op": "wait_ready",
+          "ticks": 32
+        },
+        {
+          "op": "lever",
+          "pos": [
+            1,
+            3,
+            0
+          ],
+          "powered": true
+        }
+      ],
+      "inputs": [
+        0,
+        1
+      ],
+      "ticks": 36
+    },
+    {
+      "id": "sample-1",
+      "actions": [
+        {
+          "op": "lever",
+          "pos": [
+            0,
+            7,
+            1
+          ],
+          "powered": true
+        },
+        {
+          "op": "wait_ready",
+          "ticks": 32
+        },
+        {
+          "op": "lever",
+          "pos": [
+            1,
+            3,
+            0
+          ],
+          "powered": true
+        }
+      ],
+      "inputs": [
+        1,
+        1
+      ],
+      "ticks": 36
+    },
+    {
+      "id": "store-hold-resample",
+      "actions": [
+        {
+          "op": "lever",
+          "pos": [
+            0,
+            7,
+            1
+          ],
+          "powered": true
+        },
+        {
+          "op": "wait_ready",
+          "ticks": 32
+        },
+        {
+          "op": "lever",
+          "pos": [
+            1,
+            3,
+            0
+          ],
+          "powered": true
+        },
+        {
+          "op": "wait_ready",
+          "ticks": 32
+        },
+        {
+          "op": "lever",
+          "pos": [
+            0,
+            7,
+            1
+          ],
+          "powered": false
+        },
+        {
+          "op": "wait_ready",
+          "ticks": 32
+        },
+        {
+          "op": "lever",
+          "pos": [
+            1,
+            3,
+            0
+          ],
+          "powered": false
+        }
+      ],
+      "inputs": [
+        1,
+        0
+      ],
+      "ticks": 24
+    },
+    {
+      "id": "update-before-data",
+      "actions": [
+        {
+          "op": "lever",
+          "pos": [
+            1,
+            3,
+            0
+          ],
+          "powered": true
+        },
+        {
+          "op": "wait_ready",
+          "ticks": 32
+        },
+        {
+          "op": "lever",
+          "pos": [
+            0,
+            7,
+            1
+          ],
+          "powered": true
+        }
+      ],
+      "inputs": [
+        1,
+        0
+      ],
+      "ticks": 24
+    }
+  ],
+  "rotations": [
+    0,
+    90,
+    180,
+    270
+  ],
+  "mapping_status": "Reviewed sign/geometry candidates; controlled episode evidence is recorded separately.",
+  "expected_status": "Arithmetic expectations require the declared polarity/width decoder; other functional claims remain measured projections.",
+  "unknowns": [
+    "Instant-update generators require their own recurring-response protocol; unrestricted data changes during reset are not assumed."
+  ]
+}

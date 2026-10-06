@@ -19,6 +19,11 @@ repository; no Git executable is required.
 
 The first commit creates `main`. Creating a branch does not switch branches.
 The active branch and working build are shared by everyone on the plot.
+
+The sidebar footer shows piston animation mode/effective state, screen-only
+on/off, and your current Git branch or `@<commit>` when detached. Long names
+are shortened; Git details follow the same permissions as `/git`.
+
 To revisit a commit directly, use `/git checkout a12b34cd`. This enters detached
 HEAD and leaves every branch tip unchanged. Commits made there advance detached
 HEAD; `/git log --all` retains them. Name that history with `/git branch revisit`,
@@ -68,7 +73,7 @@ Rebase uses the same restoration behavior and leaves simulation paused.
 
 References are branch names, `HEAD`, full commit IDs or unique prefixes of at
 least eight characters. Messages are limited to 256 characters, searches to 128,
-and branch names to 48 ASCII letters/digits/underscores/hyphens, beginning with
+and branch names to 20 ASCII letters/digits/underscores/hyphens, beginning with
 a letter or digit. `HEAD` and names resembling commit IDs are reserved. Each
 repository supports up to 128 branches.
 

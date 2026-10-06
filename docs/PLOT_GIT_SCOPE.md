@@ -123,7 +123,7 @@ branch tips to immutable commit IDs when the operation starts. Reject ambiguous
 prefixes, unknown references, and references from another plot.
 
 Suggested input limits are 256 characters for messages, 128 for search text,
-and 48 for branch names. Branch names use `[A-Za-z0-9][A-Za-z0-9_-]*`, are
+and 20 for branch names. Branch names use `[A-Za-z0-9][A-Za-z0-9_-]*`, are
 case-sensitive, and cannot be `HEAD` or look like a commit-ID prefix. Repository
 paths are derived exclusively from validated plot coordinates and generated IDs.
 

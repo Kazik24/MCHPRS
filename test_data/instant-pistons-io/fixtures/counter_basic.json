@@ -1,0 +1,340 @@
+{
+  "schema_version": 1,
+  "id": "counter_basic",
+  "fixture": "test_data/instant-pistons-io/COUNTER_BASIC.schem",
+  "sha256": "ae325e9238942ad0ebbe49671b39cda1a563ab45e7bd55c32ee5800298cf3ff4",
+  "dimensions": [
+    24,
+    17,
+    35
+  ],
+  "inspection": "test_data/instant-pistons-io/inspection/counter_basic.json",
+  "classification": "stateful free-running counter with explicit consumer bank",
+  "purpose": "Compare stored count with the newly attached output-memory/repeater bank.",
+  "coordinates": {
+    "convention": "selection-local relative to saved minimum",
+    "origin": [
+      40,
+      30,
+      40
+    ],
+    "loader_offset": [
+      0,
+      1,
+      0
+    ],
+    "paste_anchor": [
+      40,
+      31,
+      40
+    ],
+    "orientation": "saved; declared horizontal rotations transform geometry, states and lever attachments"
+  },
+  "ports": {
+    "inputs": {
+      "trigger": [
+        7,
+        8,
+        0
+      ]
+    },
+    "observations": {
+      "control": [
+        7,
+        8,
+        0
+      ],
+      "memory": [
+        [
+          5,
+          11,
+          4
+        ],
+        [
+          5,
+          11,
+          6
+        ],
+        [
+          5,
+          11,
+          8
+        ],
+        [
+          5,
+          11,
+          10
+        ],
+        [
+          5,
+          11,
+          12
+        ],
+        [
+          5,
+          11,
+          14
+        ],
+        [
+          5,
+          11,
+          16
+        ],
+        [
+          5,
+          11,
+          18
+        ],
+        [
+          5,
+          11,
+          20
+        ],
+        [
+          5,
+          11,
+          22
+        ],
+        [
+          5,
+          11,
+          24
+        ],
+        [
+          5,
+          11,
+          26
+        ],
+        [
+          5,
+          11,
+          28
+        ],
+        [
+          5,
+          11,
+          30
+        ],
+        [
+          5,
+          11,
+          32
+        ],
+        [
+          5,
+          11,
+          34
+        ]
+      ],
+      "output_memory": [
+        [
+          17,
+          3,
+          4
+        ],
+        [
+          17,
+          3,
+          6
+        ],
+        [
+          17,
+          3,
+          8
+        ],
+        [
+          17,
+          3,
+          10
+        ],
+        [
+          17,
+          3,
+          12
+        ],
+        [
+          17,
+          3,
+          14
+        ],
+        [
+          17,
+          3,
+          16
+        ],
+        [
+          17,
+          3,
+          18
+        ],
+        [
+          17,
+          3,
+          20
+        ],
+        [
+          17,
+          3,
+          22
+        ],
+        [
+          17,
+          3,
+          24
+        ],
+        [
+          17,
+          3,
+          26
+        ],
+        [
+          17,
+          3,
+          28
+        ],
+        [
+          17,
+          3,
+          30
+        ],
+        [
+          17,
+          3,
+          32
+        ],
+        [
+          17,
+          3,
+          34
+        ]
+      ],
+      "repeater": [
+        [
+          18,
+          1,
+          4
+        ],
+        [
+          18,
+          1,
+          6
+        ],
+        [
+          18,
+          1,
+          8
+        ],
+        [
+          18,
+          1,
+          10
+        ],
+        [
+          18,
+          1,
+          12
+        ],
+        [
+          18,
+          1,
+          14
+        ],
+        [
+          18,
+          1,
+          16
+        ],
+        [
+          18,
+          1,
+          18
+        ],
+        [
+          18,
+          1,
+          20
+        ],
+        [
+          18,
+          1,
+          22
+        ],
+        [
+          18,
+          1,
+          24
+        ],
+        [
+          18,
+          1,
+          26
+        ],
+        [
+          18,
+          1,
+          28
+        ],
+        [
+          18,
+          1,
+          30
+        ],
+        [
+          18,
+          1,
+          32
+        ],
+        [
+          18,
+          1,
+          34
+        ]
+      ],
+      "generator": [
+        2,
+        11,
+        19
+      ]
+    },
+    "roles": {
+      "trigger": "off-to-on lever, torch negation",
+      "memory": "retracted=one, extended=zero; LSB increasing Z"
+    }
+  },
+  "setup": "Strict paste preserves all saved states/entities, empty interpreter work. Lever actions follow both interaction::on_use notification paths. Derived additions are explicitly listed in cases.",
+  "protocol": "Fresh imported snapshots for independent cases. Prepared data remains stable through the response. External changes during instant reset are undefined; internal reset/clock work is retained. BUD store-hold-resample uses measured quiescent endpoints.",
+  "cases": [
+    {
+      "id": "saved-idle",
+      "actions": [],
+      "inputs": null,
+      "ticks": 24
+    },
+    {
+      "id": "release",
+      "actions": [
+        {
+          "op": "lever",
+          "pos": [
+            7,
+            8,
+            0
+          ],
+          "powered": true
+        }
+      ],
+      "inputs": [
+        1
+      ],
+      "ticks": 96
+    }
+  ],
+  "rotations": [
+    0
+  ],
+  "mapping_status": "Reviewed sign/geometry candidates; controlled episode evidence is recorded separately.",
+  "expected_status": "Arithmetic expectations require the declared polarity/width decoder; other functional claims remain measured projections.",
+  "unknowns": [
+    "Clear, restart, high carry and full wrap are outside this bounded protocol."
+  ]
+}

@@ -14,6 +14,8 @@ use std::cell::RefCell;
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 
+mod io;
+
 thread_local! {
     static RECORDER: RefCell<Option<Recorder>> = const { RefCell::new(None) };
 }
@@ -92,7 +94,10 @@ fn read(path: &Path) -> Value {
     serde_json::from_slice(&std::fs::read(path).unwrap()).unwrap()
 }
 fn manifests() -> Vec<Value> {
-    let mut paths: Vec<_> = std::fs::read_dir(pack().join("fixtures"))
+    manifests_at(&pack())
+}
+fn manifests_at(directory: &Path) -> Vec<Value> {
+    let mut paths: Vec<_> = std::fs::read_dir(directory.join("fixtures"))
         .unwrap()
         .map(|p| p.unwrap().path())
         .collect();
@@ -320,6 +325,25 @@ fn mutate(w: &mut PlotWorld, op: &Value, d: (u32, u32, u32), r: u32) {
     }
     let p = transform(triple(&op["pos"]), d, r);
     match op["op"].as_str().unwrap() {
+        "lever" => {
+            let Block::Lever { mut lever } = w.get_block(p) else {
+                panic!("lever missing at {p:?}");
+            };
+            let powered = op["powered"].as_bool().unwrap();
+            if lever.powered != powered {
+                // Playerless equivalent of interaction::on_use's lever branch.
+                // Preserve both notification paths; permission/sound handling is irrelevant here.
+                lever.powered = powered;
+                w.set_block(p, Block::Lever { lever });
+                super::update_surrounding_blocks(w, p);
+                let attachment = match lever.face {
+                    mchprs_blocks::blocks::LeverFace::Ceiling => BlockFace::Top,
+                    mchprs_blocks::blocks::LeverFace::Floor => BlockFace::Bottom,
+                    mchprs_blocks::blocks::LeverFace::Wall => lever.facing.opposite().block_face(),
+                };
+                super::update_surrounding_blocks(w, p.offset(attachment));
+            }
+        }
         "destroy" => {
             let b = w.get_block(p);
             assert_ne!(b, Block::Air, "destroy source absent: {p:?}");
@@ -1168,7 +1192,10 @@ fn capture_pack() {
         .expect("set INSTANT_CAPTURE_DIR to a new directory");
     std::fs::create_dir_all(&directory).unwrap();
     let filter = std::env::var("INSTANT_FIXTURE").unwrap_or_default();
-    for m in manifests()
+    let source = std::env::var_os("INSTANT_PACK_DIR")
+        .map(PathBuf::from)
+        .unwrap_or_else(pack);
+    for m in manifests_at(&source)
         .into_iter()
         .filter(|m| filter.is_empty() || m["id"].as_str().unwrap() == filter)
     {
@@ -1187,7 +1214,7 @@ fn capture_pack() {
                 let path = directory.join(name);
                 assert!(!path.exists(), "refusing overwrite {}", path.display());
                 let mut trace = episode(&m, c, r, "pico", true);
-                trace["engine_identity"] = read(&pack().join("source-baseline.json"));
+                trace["engine_identity"] = read(&source.join("source-baseline.json"));
                 trace["capture_command"]=json!("INSTANT_CAPTURE_DIR=<new-dir> cargo test -p mchprs_core --lib redstone::instant_piston_tests::capture_pack -- --ignored --exact --test-threads=1");
                 std::fs::write(&path, serde_json::to_vec(&trace).unwrap()).unwrap();
                 println!("captured {}", path.display());

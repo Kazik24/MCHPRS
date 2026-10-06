@@ -79,8 +79,10 @@ def main():
     parser.add_argument("--exclude",help="fixture id to omit when ingesting a superseded capture directory")
     parser.add_argument("--write",action="store_true")
     parser.add_argument("--check",action="store_true")
+    parser.add_argument("--pack-dir",type=Path,default=PACK)
     args=parser.parse_args()
-    traces=PACK/"traces"
+    source=args.pack_dir.resolve()
+    traces=source/"traces"
     traces.mkdir(exist_ok=True)
     if args.ingest:
         for p in sorted(args.ingest.glob("*.json.gz")):
@@ -96,7 +98,7 @@ def main():
                 continue
             shutil.copyfile(p,dest)
         return
-    manifests={p.stem:load(p) for p in (PACK/"fixtures").glob("*.json")}
+    manifests={p.stem:load(p) for p in (source/"fixtures").glob("*.json")}
     index=[]; observed=[]; independent=[]; by_case={}
     for p in sorted(traces.glob("*.json.gz")):
         t=load(p)
@@ -135,9 +137,9 @@ def main():
     for name,data in products.items():
         content=json.dumps(data,indent=2)+"\n"
         if args.check:
-            assert (PACK/name).read_text()==content,name
+            assert (source/name).read_text()==content,name
         if args.write:
-            (PACK/name).write_text(content,newline="\n")
+            (source/name).write_text(content,newline="\n")
     print("comparisons",len(comparisons),"mismatches",[x for x in comparisons if x["status"]!="match"])
 
 

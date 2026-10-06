@@ -1,0 +1,174 @@
+{
+  "schema_version": 1,
+  "source_host": "urmom",
+  "source_directory": "/srv/mchprs/data/schems",
+  "verified_utc": "2026-10-06T12:12:43.949353+00:00",
+  "files": [
+    {
+      "name": "ADDER_11BITS.schem",
+      "bytes": 1467,
+      "sha256": "335ab94a3ba7f89cd0a497a2ac606372ff2743cfcd549f4863ead310af4138b9",
+      "modified_utc": "2026-10-06T11:51:29.388689+00:00"
+    },
+    {
+      "name": "ADDER_1BIT.schem",
+      "bytes": 1225,
+      "sha256": "e80092c97fc4637c313a735d38d0241b69b876f41dd2db7de571a6458369e526",
+      "modified_utc": "2026-10-06T11:50:59.052422+00:00"
+    },
+    {
+      "name": "AND_1.schem",
+      "bytes": 719,
+      "sha256": "242a10d53cd90abd293f6bf4218bbe5d4cb333e5eb619e478f74fffe4ee52df1",
+      "modified_utc": "2026-10-06T11:48:36.716311+00:00"
+    },
+    {
+      "name": "AND_2.schem",
+      "bytes": 720,
+      "sha256": "7aa7e7356f0e35e552d701b9269f866f404ed83e833d97e9e8beb18ac51381e2",
+      "modified_utc": "2026-10-06T11:49:05.401512+00:00"
+    },
+    {
+      "name": "AND_3.schem",
+      "bytes": 750,
+      "sha256": "18c720cb9a050e125062a07d1669a5d32d6b93ee6efbafd4936af1e804bc3bcb",
+      "modified_utc": "2026-10-06T11:49:26.327659+00:00"
+    },
+    {
+      "name": "BUD_InstantMemoryCellObserverUpdate.schem",
+      "bytes": 761,
+      "sha256": "20a66dc320b129b9290cf363171b02cfaf6f465604e36b1b952e665e9da3f99e",
+      "modified_utc": "2026-10-06T12:10:19.500612+00:00"
+    },
+    {
+      "name": "BUD_InstantPistonUpdate.schem",
+      "bytes": 629,
+      "sha256": "8dd37209093cd6ca4da9323e369ee4aaaa7cc406a81e8a06c00b51cef8f66d44",
+      "modified_utc": "2026-10-06T12:00:27.494418+00:00"
+    },
+    {
+      "name": "BUD_NonInstantInputs.schem",
+      "bytes": 621,
+      "sha256": "5c587c07b74f4be7616d7d6fcbfa78098ac1de9174855944d4292d987339423c",
+      "modified_utc": "2026-10-06T12:09:46.558323+00:00"
+    },
+    {
+      "name": "BUD_PistonUpdate.schem",
+      "bytes": 627,
+      "sha256": "856b0d57fa349aaf151e3d03f67d7bd0cd75ae2f8b645a896d2c3c48c2451023",
+      "modified_utc": "2026-10-06T12:00:03.006203+00:00"
+    },
+    {
+      "name": "COUNTER_BASIC.schem",
+      "bytes": 1864,
+      "sha256": "ae325e9238942ad0ebbe49671b39cda1a563ab45e7bd55c32ee5800298cf3ff4",
+      "modified_utc": "2026-10-06T12:11:09.678053+00:00"
+    },
+    {
+      "name": "INSTANT_BLOCKED.schem",
+      "bytes": 573,
+      "sha256": "dc13beec290a8a6cfc9dda1fbb7619373d9acf3954a427fd6fff56fb324096c2",
+      "modified_utc": "2026-10-06T11:46:52.434429+00:00"
+    },
+    {
+      "name": "INSTANT_CHAIN.schem",
+      "bytes": 581,
+      "sha256": "b8d126e46602a629b811818cbf1d70732dfa650b881992496f68c7b3da64b3df",
+      "modified_utc": "2026-10-06T11:47:17.165647+00:00"
+    },
+    {
+      "name": "INSTANT_DOWN.schem",
+      "bytes": 592,
+      "sha256": "2b1d4ac7d15e5438798c2d7a294c9099ab9152d47aafb9904849b6fa5e3a773c",
+      "modified_utc": "2026-10-06T11:46:12.884082+00:00"
+    },
+    {
+      "name": "INSTANT_DOWN_TORCH_RESET.schem",
+      "bytes": 588,
+      "sha256": "1c44384289b346a329eae018ba003f7b929cf3cd67e6a093f5aafe4c496c32b5",
+      "modified_utc": "2026-10-06T11:46:32.908258+00:00"
+    },
+    {
+      "name": "INSTANT_OBSERVER.schem",
+      "bytes": 555,
+      "sha256": "d82b9c14029d337c71f2dcee6ef3d6ebdea4304b4ab0b9976dd5e8360dcef163",
+      "modified_utc": "2026-10-06T11:43:40.594744+00:00"
+    },
+    {
+      "name": "INSTANT_RESET_REDSTONE.schem",
+      "bytes": 554,
+      "sha256": "7a37d25c102a314e279545021bf63884eb2971ba860baffeac7e619d41879a13",
+      "modified_utc": "2026-10-06T11:44:57.437419+00:00"
+    },
+    {
+      "name": "INSTANT_RESET_REDSTONE_2.schem",
+      "bytes": 626,
+      "sha256": "29675731fac64502f60ab79d7875f23d8ace528eff281dcab01219dc8e0d0cad",
+      "modified_utc": "2026-10-06T11:45:15.609579+00:00"
+    },
+    {
+      "name": "INSTANT_TORCH.schem",
+      "bytes": 547,
+      "sha256": "8bd165200f0353cd0e79c62e3ad047c1326f1eb6c9428fbeac961b812f5b2968",
+      "modified_utc": "2026-10-06T11:44:40.616271+00:00"
+    },
+    {
+      "name": "NOT_1.schem",
+      "bytes": 702,
+      "sha256": "373b8064efd05ae03f0d9af1bb7fb884399ee94c2ac8e8f2a22985445f766139",
+      "modified_utc": "2026-10-06T11:49:54.914859+00:00"
+    },
+    {
+      "name": "OR_1.schem",
+      "bytes": 718,
+      "sha256": "499674375bc611b8d6b94daa37efc39c19f493bcd12c6314d65452083115dbc1",
+      "modified_utc": "2026-10-06T11:47:59.622020+00:00"
+    },
+    {
+      "name": "OR_Interpreter_illigal.schem",
+      "bytes": 750,
+      "sha256": "c25c1d2c7e6f6dd97e457142273067b7d6ae55438e5af59883d52c36a0541f20",
+      "modified_utc": "2026-10-06T11:52:37.170285+00:00"
+    },
+    {
+      "name": "XOR_Simple.schem",
+      "bytes": 874,
+      "sha256": "e98f986b32d38c511690b2f781089c870cf44bb7b9c5d10f9bfd04478ba104a5",
+      "modified_utc": "2026-10-06T11:50:25.602128+00:00"
+    }
+  ],
+  "skipped": [
+    "MCHPRS_REDSTONE_UPDATE_EDGECASE.schem",
+    "NANOTICK_EXAMPLE.schem",
+    "PM1_SORT.schem",
+    "Q2CK_LyCore5_for_sorting.schem"
+  ],
+  "historical_fixtures": "test_data/instant-pistons; unchanged",
+  "previous_revisions": [
+    {
+      "name": "BUD_InstantMemoryCellObserverUpdate.schem",
+      "bytes": 597,
+      "sha256": "25e37c0b9cd8c9b500ae3276f649bd1f4231e6c727c926469b9ef0530e308739",
+      "modified_utc": "2026-10-06T12:00:55.125660+00:00",
+      "path": "test_data/instant-pistons-io/rejected-imports/BUD_InstantMemoryCellObserverUpdate-25e37c0b9cd8.schem",
+      "status": "superseded import before protocol freeze; author corrected selection"
+    },
+    {
+      "name": "BUD_NonInstantInputs.schem",
+      "bytes": 240,
+      "sha256": "ef0f9b70c66746a497545b0b3a9a1cce8ee7d35554b6fe76d2364ecc8bf5d497",
+      "modified_utc": "2026-10-06T11:59:33.063940+00:00",
+      "path": "test_data/instant-pistons-io/rejected-imports/BUD_NonInstantInputs-ef0f9b70c667.schem",
+      "status": "superseded import before protocol freeze; author corrected selection"
+    },
+    {
+      "name": "COUNTER_BASIC.schem",
+      "bytes": 1842,
+      "sha256": "b58a6fdf7a8cc2baab397ce5941e69d49230aaa2819ec34784e6e2655a343ecf",
+      "modified_utc": "2026-10-06T11:51:58.624946+00:00",
+      "path": "test_data/instant-pistons-io/rejected-imports/COUNTER_BASIC-b58a6fdf7a8c.schem",
+      "status": "superseded import before protocol freeze; author corrected selection"
+    }
+  ],
+  "capture_command": "py tools/download_instant_io.py --refresh"
+}

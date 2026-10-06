@@ -159,10 +159,12 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--write", action="store_true")
     parser.add_argument("--check", action="store_true")
+    parser.add_argument("--pack-dir", type=Path, default=PACK)
     args = parser.parse_args()
-    target = PACK / "inspection"
+    source = args.pack_dir.resolve()
+    target = source / "inspection"
     target.mkdir(exist_ok=True)
-    for path in sorted(PACK.glob("*.schem")):
+    for path in sorted(source.glob("*.schem")):
         info = inspect(path, include_cells=path.stem not in ("PM1_SORT", "Q2CK_LyCore5_for_sorting"))
         output = target / (path.stem.lower() + ".json")
         content = json.dumps(info, indent=2, ensure_ascii=False) + "\n"

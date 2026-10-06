@@ -1,0 +1,537 @@
+{
+  "schema_version": 1,
+  "id": "adder_1bit",
+  "fixture": "test_data/instant-pistons-io/ADDER_1BIT.schem",
+  "sha256": "e80092c97fc4637c313a735d38d0241b69b876f41dd2db7de571a6458369e526",
+  "dimensions": [
+    21,
+    7,
+    7
+  ],
+  "inspection": "test_data/instant-pistons-io/inspection/adder_1bit.json",
+  "classification": "instant with ordinary-node input and consumer boundary",
+  "purpose": "Prepared 1-bit arithmetic with real lever inputs and distinct repeater outputs.",
+  "coordinates": {
+    "convention": "selection-local relative to saved minimum",
+    "origin": [
+      40,
+      30,
+      40
+    ],
+    "loader_offset": [
+      0,
+      5,
+      5
+    ],
+    "paste_anchor": [
+      40,
+      35,
+      45
+    ],
+    "orientation": "saved; declared horizontal rotations transform geometry, states and lever attachments"
+  },
+  "ports": {
+    "inputs": {
+      "A": [
+        1,
+        6,
+        3
+      ],
+      "B": [
+        1,
+        6,
+        1
+      ],
+      "Cin": [
+        8,
+        3,
+        6
+      ],
+      "trigger": [
+        0,
+        5,
+        5
+      ]
+    },
+    "observations": {
+      "sum_payload": [
+        18,
+        2,
+        1
+      ],
+      "sum_repeater": [
+        19,
+        2,
+        1
+      ],
+      "carry_repeater": [
+        11,
+        1,
+        0
+      ]
+    },
+    "roles": {
+      "data": "lever powered means zero; unpowered means one",
+      "trigger": "saved powered; falling lever power launches wave",
+      "bit_order": "LSB largest Z, spacing -4"
+    }
+  },
+  "setup": "Strict paste preserves all saved states/entities, empty interpreter work. Lever actions follow both interaction::on_use notification paths. Derived additions are explicitly listed in cases.",
+  "protocol": "Fresh imported snapshots for independent cases. Prepared data remains stable through the response. External changes during instant reset are undefined; internal reset/clock work is retained. BUD store-hold-resample uses measured quiescent endpoints.",
+  "cases": [
+    {
+      "id": "saved-idle",
+      "actions": [],
+      "inputs": null,
+      "ticks": 24
+    },
+    {
+      "id": "prepared-0-0-0",
+      "actions": [
+        {
+          "op": "lever",
+          "pos": [
+            1,
+            6,
+            3
+          ],
+          "powered": true
+        },
+        {
+          "op": "lever",
+          "pos": [
+            1,
+            6,
+            1
+          ],
+          "powered": true
+        },
+        {
+          "op": "lever",
+          "pos": [
+            8,
+            3,
+            6
+          ],
+          "powered": true
+        },
+        {
+          "op": "wait_ready",
+          "ticks": 32
+        },
+        {
+          "op": "lever",
+          "pos": [
+            0,
+            5,
+            5
+          ],
+          "powered": false
+        }
+      ],
+      "inputs": [
+        0,
+        0,
+        0
+      ],
+      "ticks": 24,
+      "expectation": {
+        "sum": 0,
+        "carry": 0
+      }
+    },
+    {
+      "id": "prepared-0-0-1",
+      "actions": [
+        {
+          "op": "lever",
+          "pos": [
+            1,
+            6,
+            3
+          ],
+          "powered": true
+        },
+        {
+          "op": "lever",
+          "pos": [
+            1,
+            6,
+            1
+          ],
+          "powered": true
+        },
+        {
+          "op": "lever",
+          "pos": [
+            8,
+            3,
+            6
+          ],
+          "powered": false
+        },
+        {
+          "op": "wait_ready",
+          "ticks": 32
+        },
+        {
+          "op": "lever",
+          "pos": [
+            0,
+            5,
+            5
+          ],
+          "powered": false
+        }
+      ],
+      "inputs": [
+        0,
+        0,
+        1
+      ],
+      "ticks": 24,
+      "expectation": {
+        "sum": 1,
+        "carry": 0
+      }
+    },
+    {
+      "id": "prepared-0-1-0",
+      "actions": [
+        {
+          "op": "lever",
+          "pos": [
+            1,
+            6,
+            3
+          ],
+          "powered": true
+        },
+        {
+          "op": "lever",
+          "pos": [
+            1,
+            6,
+            1
+          ],
+          "powered": false
+        },
+        {
+          "op": "lever",
+          "pos": [
+            8,
+            3,
+            6
+          ],
+          "powered": true
+        },
+        {
+          "op": "wait_ready",
+          "ticks": 32
+        },
+        {
+          "op": "lever",
+          "pos": [
+            0,
+            5,
+            5
+          ],
+          "powered": false
+        }
+      ],
+      "inputs": [
+        0,
+        1,
+        0
+      ],
+      "ticks": 24,
+      "expectation": {
+        "sum": 1,
+        "carry": 0
+      }
+    },
+    {
+      "id": "prepared-0-1-1",
+      "actions": [
+        {
+          "op": "lever",
+          "pos": [
+            1,
+            6,
+            3
+          ],
+          "powered": true
+        },
+        {
+          "op": "lever",
+          "pos": [
+            1,
+            6,
+            1
+          ],
+          "powered": false
+        },
+        {
+          "op": "lever",
+          "pos": [
+            8,
+            3,
+            6
+          ],
+          "powered": false
+        },
+        {
+          "op": "wait_ready",
+          "ticks": 32
+        },
+        {
+          "op": "lever",
+          "pos": [
+            0,
+            5,
+            5
+          ],
+          "powered": false
+        }
+      ],
+      "inputs": [
+        0,
+        1,
+        1
+      ],
+      "ticks": 24,
+      "expectation": {
+        "sum": 0,
+        "carry": 1
+      }
+    },
+    {
+      "id": "prepared-1-0-0",
+      "actions": [
+        {
+          "op": "lever",
+          "pos": [
+            1,
+            6,
+            3
+          ],
+          "powered": false
+        },
+        {
+          "op": "lever",
+          "pos": [
+            1,
+            6,
+            1
+          ],
+          "powered": true
+        },
+        {
+          "op": "lever",
+          "pos": [
+            8,
+            3,
+            6
+          ],
+          "powered": true
+        },
+        {
+          "op": "wait_ready",
+          "ticks": 32
+        },
+        {
+          "op": "lever",
+          "pos": [
+            0,
+            5,
+            5
+          ],
+          "powered": false
+        }
+      ],
+      "inputs": [
+        1,
+        0,
+        0
+      ],
+      "ticks": 24,
+      "expectation": {
+        "sum": 1,
+        "carry": 0
+      }
+    },
+    {
+      "id": "prepared-1-0-1",
+      "actions": [
+        {
+          "op": "lever",
+          "pos": [
+            1,
+            6,
+            3
+          ],
+          "powered": false
+        },
+        {
+          "op": "lever",
+          "pos": [
+            1,
+            6,
+            1
+          ],
+          "powered": true
+        },
+        {
+          "op": "lever",
+          "pos": [
+            8,
+            3,
+            6
+          ],
+          "powered": false
+        },
+        {
+          "op": "wait_ready",
+          "ticks": 32
+        },
+        {
+          "op": "lever",
+          "pos": [
+            0,
+            5,
+            5
+          ],
+          "powered": false
+        }
+      ],
+      "inputs": [
+        1,
+        0,
+        1
+      ],
+      "ticks": 24,
+      "expectation": {
+        "sum": 0,
+        "carry": 1
+      }
+    },
+    {
+      "id": "prepared-1-1-0",
+      "actions": [
+        {
+          "op": "lever",
+          "pos": [
+            1,
+            6,
+            3
+          ],
+          "powered": false
+        },
+        {
+          "op": "lever",
+          "pos": [
+            1,
+            6,
+            1
+          ],
+          "powered": false
+        },
+        {
+          "op": "lever",
+          "pos": [
+            8,
+            3,
+            6
+          ],
+          "powered": true
+        },
+        {
+          "op": "wait_ready",
+          "ticks": 32
+        },
+        {
+          "op": "lever",
+          "pos": [
+            0,
+            5,
+            5
+          ],
+          "powered": false
+        }
+      ],
+      "inputs": [
+        1,
+        1,
+        0
+      ],
+      "ticks": 24,
+      "expectation": {
+        "sum": 0,
+        "carry": 1
+      }
+    },
+    {
+      "id": "prepared-1-1-1",
+      "actions": [
+        {
+          "op": "lever",
+          "pos": [
+            1,
+            6,
+            3
+          ],
+          "powered": false
+        },
+        {
+          "op": "lever",
+          "pos": [
+            1,
+            6,
+            1
+          ],
+          "powered": false
+        },
+        {
+          "op": "lever",
+          "pos": [
+            8,
+            3,
+            6
+          ],
+          "powered": false
+        },
+        {
+          "op": "wait_ready",
+          "ticks": 32
+        },
+        {
+          "op": "lever",
+          "pos": [
+            0,
+            5,
+            5
+          ],
+          "powered": false
+        }
+      ],
+      "inputs": [
+        1,
+        1,
+        1
+      ],
+      "ticks": 24,
+      "expectation": {
+        "sum": 1,
+        "carry": 1
+      }
+    }
+  ],
+  "rotations": [
+    0
+  ],
+  "mapping_status": "Reviewed sign/geometry candidates; controlled episode evidence is recorded separately.",
+  "expected_status": "Arithmetic expectations require the declared polarity/width decoder; other functional claims remain measured projections.",
+  "unknowns": [
+    "External repeated-calculation protocol not established by fresh cases."
+  ]
+}

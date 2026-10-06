@@ -1,0 +1,235 @@
+{
+  "schema_version": 1,
+  "id": "bud_instantpistonupdate",
+  "fixture": "test_data/instant-pistons-io/BUD_InstantPistonUpdate.schem",
+  "sha256": "8dd37209093cd6ca4da9323e369ee4aaaa7cc406a81e8a06c00b51cef8f66d44",
+  "dimensions": [
+    2,
+    9,
+    5
+  ],
+  "inspection": "test_data/instant-pistons-io/inspection/bud_instantpistonupdate.json",
+  "classification": "BUD memory with independent data/update paths",
+  "purpose": "Demonstrate sampling, retained state and the actual output consumer, not a combinational truth table.",
+  "coordinates": {
+    "convention": "selection-local relative to saved minimum",
+    "origin": [
+      40,
+      30,
+      40
+    ],
+    "loader_offset": [
+      1,
+      4,
+      0
+    ],
+    "paste_anchor": [
+      41,
+      34,
+      40
+    ],
+    "orientation": "saved; declared horizontal rotations transform geometry, states and lever attachments"
+  },
+  "ports": {
+    "inputs": {
+      "data": [
+        0,
+        7,
+        0
+      ],
+      "update": [
+        1,
+        3,
+        -1
+      ]
+    },
+    "observations": {
+      "memory": [
+        0,
+        3,
+        3
+      ],
+      "repeater": [
+        0,
+        1,
+        4
+      ],
+      "QC_data_wire": [
+        0,
+        6,
+        3
+      ],
+      "update_piston": [
+        1,
+        3,
+        2
+      ],
+      "derived_update_control": [
+        1,
+        3,
+        -1
+      ]
+    },
+    "roles": {
+      "data": "logical stored one uses lever true",
+      "update": "sampling activation uses lever true",
+      "memory": "stationary retracted=one, extended=zero; moving invalid"
+    }
+  },
+  "setup": "Strict paste preserves all saved states/entities, empty interpreter work. Lever actions follow both interaction::on_use notification paths. Derived additions are explicitly listed in cases.",
+  "protocol": "Fresh imported snapshots for independent cases. Prepared data remains stable through the response. External changes during instant reset are undefined; internal reset/clock work is retained. BUD store-hold-resample uses measured quiescent endpoints.",
+  "cases": [
+    {
+      "id": "saved-idle",
+      "actions": [],
+      "inputs": null,
+      "ticks": 24
+    },
+    {
+      "id": "data-only",
+      "actions": [
+        {
+          "op": "set_notified",
+          "pos": [
+            1,
+            3,
+            -1
+          ],
+          "state": "lever",
+          "properties": {
+            "face": "wall",
+            "facing": "north",
+            "powered": "false"
+          }
+        },
+        {
+          "op": "wait_ready",
+          "ticks": 32
+        },
+        {
+          "op": "lever",
+          "pos": [
+            0,
+            7,
+            0
+          ],
+          "powered": true
+        }
+      ],
+      "inputs": [
+        1,
+        0
+      ],
+      "ticks": 24
+    },
+    {
+      "id": "sample-0",
+      "actions": [
+        {
+          "op": "set_notified",
+          "pos": [
+            1,
+            3,
+            -1
+          ],
+          "state": "lever",
+          "properties": {
+            "face": "wall",
+            "facing": "north",
+            "powered": "false"
+          }
+        },
+        {
+          "op": "wait_ready",
+          "ticks": 32
+        },
+        {
+          "op": "lever",
+          "pos": [
+            0,
+            7,
+            0
+          ],
+          "powered": false
+        },
+        {
+          "op": "wait_ready",
+          "ticks": 32
+        },
+        {
+          "op": "lever",
+          "pos": [
+            1,
+            3,
+            -1
+          ],
+          "powered": true
+        }
+      ],
+      "inputs": [
+        0,
+        1
+      ],
+      "ticks": 36
+    },
+    {
+      "id": "sample-1",
+      "actions": [
+        {
+          "op": "set_notified",
+          "pos": [
+            1,
+            3,
+            -1
+          ],
+          "state": "lever",
+          "properties": {
+            "face": "wall",
+            "facing": "north",
+            "powered": "false"
+          }
+        },
+        {
+          "op": "wait_ready",
+          "ticks": 32
+        },
+        {
+          "op": "lever",
+          "pos": [
+            0,
+            7,
+            0
+          ],
+          "powered": true
+        },
+        {
+          "op": "wait_ready",
+          "ticks": 32
+        },
+        {
+          "op": "lever",
+          "pos": [
+            1,
+            3,
+            -1
+          ],
+          "powered": true
+        }
+      ],
+      "inputs": [
+        1,
+        1
+      ],
+      "ticks": 36
+    }
+  ],
+  "rotations": [
+    0
+  ],
+  "mapping_status": "Reviewed sign/geometry candidates; controlled episode evidence is recorded separately.",
+  "expected_status": "Arithmetic expectations require the declared polarity/width decoder; other functional claims remain measured projections.",
+  "unknowns": [
+    "Update lever is absent in this downloaded selection; source adapter is a derived diagnostic, not original acceptance.",
+    "Instant-update generators require their own recurring-response protocol; unrestricted data changes during reset are not assumed."
+  ]
+}

@@ -1,0 +1,142 @@
+{
+  "schema_version": 1,
+  "id": "instant_reset_redstone",
+  "fixture": "test_data/instant-pistons-io/INSTANT_RESET_REDSTONE.schem",
+  "sha256": "7a37d25c102a314e279545021bf63884eb2971ba860baffeac7e619d41879a13",
+  "dimensions": [
+    1,
+    4,
+    11
+  ],
+  "inspection": "test_data/instant-pistons-io/inspection/instant_reset_redstone.json",
+  "classification": "instant with ordinary-node input and consumer boundary",
+  "purpose": "Versioned lever/repeater circuit; measure the actual consumer response.",
+  "coordinates": {
+    "convention": "selection-local relative to saved minimum",
+    "origin": [
+      40,
+      30,
+      40
+    ],
+    "loader_offset": [
+      0,
+      3,
+      1
+    ],
+    "paste_anchor": [
+      40,
+      33,
+      41
+    ],
+    "orientation": "saved; declared horizontal rotations transform geometry, states and lever attachments"
+  },
+  "ports": {
+    "inputs": {
+      "trigger": [
+        0,
+        2,
+        0
+      ]
+    },
+    "observations": {
+      "control": [
+        0,
+        2,
+        0
+      ],
+      "input_torch": [
+        0,
+        2,
+        2
+      ],
+      "base": [
+        0,
+        2,
+        5
+      ],
+      "repeater": [
+        0,
+        2,
+        9
+      ],
+      "raw_output": [
+        0,
+        2,
+        8
+      ],
+      "output_wire": [
+        0,
+        2,
+        10
+      ]
+    },
+    "roles": {}
+  },
+  "setup": "Strict paste preserves all saved states/entities, empty interpreter work. Lever actions follow both interaction::on_use notification paths. Derived additions are explicitly listed in cases.",
+  "protocol": "Fresh imported snapshots for independent cases. Prepared data remains stable through the response. External changes during instant reset are undefined; internal reset/clock work is retained. BUD store-hold-resample uses measured quiescent endpoints.",
+  "cases": [
+    {
+      "id": "saved-idle",
+      "actions": [],
+      "inputs": null,
+      "ticks": 24
+    },
+    {
+      "id": "activate",
+      "actions": [
+        {
+          "op": "lever",
+          "pos": [
+            0,
+            2,
+            0
+          ],
+          "powered": true
+        }
+      ],
+      "inputs": [
+        1
+      ],
+      "ticks": 24
+    },
+    {
+      "id": "held-active",
+      "actions": [
+        {
+          "op": "lever",
+          "pos": [
+            0,
+            2,
+            0
+          ],
+          "powered": true
+        },
+        {
+          "op": "wait",
+          "ticks": 12
+        },
+        {
+          "op": "lever",
+          "pos": [
+            0,
+            2,
+            0
+          ],
+          "powered": true
+        }
+      ],
+      "inputs": [
+        1
+      ],
+      "ticks": 24
+    }
+  ],
+  "rotations": [
+    0
+  ],
+  "mapping_status": "Reviewed sign/geometry candidates; controlled episode evidence is recorded separately.",
+  "expected_status": "Arithmetic expectations require the declared polarity/width decoder; other functional claims remain measured projections.",
+  "unknowns": [
+    "Quiet/periodic readiness is assessed from physical work; no universal reuse interval."
+  ]
+}

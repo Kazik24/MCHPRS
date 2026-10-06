@@ -1,0 +1,201 @@
+{
+  "schema_version": 1,
+  "id": "and_2",
+  "fixture": "test_data/instant-pistons-io/AND_2.schem",
+  "sha256": "7aa7e7356f0e35e552d701b9269f866f404ed83e833d97e9e8beb18ac51381e2",
+  "dimensions": [
+    3,
+    4,
+    15
+  ],
+  "inspection": "test_data/instant-pistons-io/inspection/and_2.json",
+  "classification": "instant with ordinary-node input and consumer boundary",
+  "purpose": "Measure the full new output instant, repeater and lamp, including internal reset effects.",
+  "coordinates": {
+    "convention": "selection-local relative to saved minimum",
+    "origin": [
+      40,
+      30,
+      40
+    ],
+    "loader_offset": [
+      0,
+      2,
+      13
+    ],
+    "paste_anchor": [
+      40,
+      32,
+      53
+    ],
+    "orientation": "saved; declared horizontal rotations transform geometry, states and lever attachments"
+  },
+  "ports": {
+    "inputs": {
+      "IN1": [
+        0,
+        1,
+        14
+      ],
+      "IN2": [
+        2,
+        1,
+        14
+      ]
+    },
+    "observations": {
+      "IN1": [
+        0,
+        1,
+        14
+      ],
+      "IN2": [
+        2,
+        1,
+        14
+      ],
+      "lamp": [
+        0,
+        1,
+        0
+      ],
+      "repeater": [
+        0,
+        1,
+        1
+      ],
+      "consumer_input": [
+        0,
+        1,
+        2
+      ],
+      "output_stage": [
+        0,
+        1,
+        5
+      ]
+    },
+    "roles": {}
+  },
+  "setup": "Strict paste preserves all saved states/entities, empty interpreter work. Lever actions follow both interaction::on_use notification paths. Derived additions are explicitly listed in cases.",
+  "protocol": "Fresh imported snapshots for independent cases. Prepared data remains stable through the response. External changes during instant reset are undefined; internal reset/clock work is retained. BUD store-hold-resample uses measured quiescent endpoints.",
+  "cases": [
+    {
+      "id": "saved-idle",
+      "actions": [],
+      "inputs": null,
+      "ticks": 24
+    },
+    {
+      "id": "events-00-12",
+      "actions": [],
+      "inputs": [
+        0,
+        0
+      ],
+      "ticks": 24
+    },
+    {
+      "id": "events-10-12",
+      "actions": [
+        {
+          "op": "lever",
+          "pos": [
+            0,
+            1,
+            14
+          ],
+          "powered": true
+        }
+      ],
+      "inputs": [
+        1,
+        0
+      ],
+      "ticks": 24
+    },
+    {
+      "id": "events-01-12",
+      "actions": [
+        {
+          "op": "lever",
+          "pos": [
+            2,
+            1,
+            14
+          ],
+          "powered": true
+        }
+      ],
+      "inputs": [
+        0,
+        1
+      ],
+      "ticks": 24
+    },
+    {
+      "id": "events-11-12",
+      "actions": [
+        {
+          "op": "lever",
+          "pos": [
+            0,
+            1,
+            14
+          ],
+          "powered": true
+        },
+        {
+          "op": "lever",
+          "pos": [
+            2,
+            1,
+            14
+          ],
+          "powered": true
+        }
+      ],
+      "inputs": [
+        1,
+        1
+      ],
+      "ticks": 24
+    },
+    {
+      "id": "events-11-21",
+      "actions": [
+        {
+          "op": "lever",
+          "pos": [
+            2,
+            1,
+            14
+          ],
+          "powered": true
+        },
+        {
+          "op": "lever",
+          "pos": [
+            0,
+            1,
+            14
+          ],
+          "powered": true
+        }
+      ],
+      "inputs": [
+        1,
+        1
+      ],
+      "ticks": 24
+    }
+  ],
+  "rotations": [
+    0
+  ],
+  "mapping_status": "Reviewed sign/geometry candidates; controlled episode evidence is recorded separately.",
+  "expected_status": "Arithmetic expectations require the declared polarity/width decoder; other functional claims remain measured projections.",
+  "unknowns": [
+    "First-wave logical projection and complete consumer waveform must be measured separately."
+  ]
+}
