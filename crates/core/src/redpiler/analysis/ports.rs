@@ -39,6 +39,7 @@ pub enum ConsumerKind {
     Lamp,
     Trapdoor,
     NoteBlock,
+    CommandBlock,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -80,16 +81,17 @@ pub struct PortReport {
 }
 
 pub(crate) fn is_consumer(block: Block) -> bool {
-    matches!(
-        block,
-        Block::RedstoneRepeater { .. }
-            | Block::RedstoneComparator { .. }
-            | Block::RedstoneTorch { .. }
-            | Block::RedstoneWallTorch { .. }
-            | Block::RedstoneLamp { .. }
-            | Block::IronTrapdoor { .. }
-            | Block::NoteBlock { .. }
-    )
+    block.is_command_block()
+        || matches!(
+            block,
+            Block::RedstoneRepeater { .. }
+                | Block::RedstoneComparator { .. }
+                | Block::RedstoneTorch { .. }
+                | Block::RedstoneWallTorch { .. }
+                | Block::RedstoneLamp { .. }
+                | Block::IronTrapdoor { .. }
+                | Block::NoteBlock { .. }
+        )
 }
 
 /// Receiving cells and faces, shared by static and conditional admission.
@@ -238,6 +240,7 @@ pub(super) fn discover<W: World>(
             Block::RedstoneLamp { .. } => ConsumerKind::Lamp,
             Block::IronTrapdoor { .. } => ConsumerKind::Trapdoor,
             Block::NoteBlock { .. } => ConsumerKind::NoteBlock,
+            block if block.is_command_block() => ConsumerKind::CommandBlock,
             _ => continue,
         };
         let roots = consumer_roots(block, pos);

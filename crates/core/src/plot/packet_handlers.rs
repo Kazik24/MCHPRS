@@ -110,17 +110,16 @@ impl Plot {
         } else {
             self.world.get_block_raw(pos)
         };
-        self.players[player].client.send_packet(&CBlockChange {
-            pos: pos.packed(),
-            block_id: state as i32,
-        }.encode());
+        self.players[player].client.send_packet(
+            &CBlockChange {
+                pos: pos.packed(),
+                block_id: state as i32,
+            }
+            .encode(),
+        );
     }
 
-    fn place_block(
-        &mut self,
-        player_block_placement: SPlayerBlockPlacemnt,
-        player: usize,
-    ) {
+    fn place_block(&mut self, player_block_placement: SPlayerBlockPlacemnt, player: usize) {
         if self.players[player].awaiting_teleport() {
             return;
         }

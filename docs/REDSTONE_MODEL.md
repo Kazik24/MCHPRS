@@ -4,7 +4,7 @@ This document defines the redstone simulation implemented by the **world interpr
 
 The specification was reconciled with the working-tree sources on **2026-10-06**. The base revision was `4a2fb767821567ba62c5a63bb9af68fdc19d26e3`; the working tree also contained local changes. Source links below refer to this repository, and the code is authoritative if it subsequently changes.
 
-The scope is `PlotWorld::tick_interpreted` and the functions it calls. Redpiler's compiled graph executor is a separate model; its graph optimizations are not assumptions of this specification. Network rendering, permissions, and wall-clock pacing are included only where they affect inputs or observable execution results.
+The scope is `PlotWorld::tick_interpreted` and the functions it calls. Redpiler's compiled graph executor is a separate model; its graph optimizations are not assumptions of this specification. Network rendering, permissions, and wall-clock pacing are included only where they affect inputs or observable execution results. The current [compiled instant pipeline](INSTANT_PISTON_RUNTIME.md) documents conditional electrical output ports, admission limits and differential tests separately; its phase decisions do not replace the physical transition rules below.
 
 ## Contents
 

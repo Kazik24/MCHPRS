@@ -57,11 +57,119 @@ fn backlog_keeps_latest_state_without_crossing_packet_barriers() {
 }
 
 #[test]
+fn chunk_snapshots_and_prediction_acks_preserve_their_place_in_the_wire_stream() {
+    use crate::packets::clientbound::{CChunkData, CUnloadChunk};
+    use crate::packets::{PacketDecoderExt, PacketEncoderExt};
+    use std::io::Cursor;
+
+    for compressed in [false, true] {
+        let sender = queued(); // Populate a backlog before starting the writer.
+        let unload = CUnloadChunk {
+            chunk_x: -3,
+            chunk_z: 7,
+        }
+        .encode();
+        let load = CChunkData {
+            chunk_x: -3,
+            chunk_z: 7,
+            heightmaps: nbt::Blob::new(),
+            chunk_sections: Vec::new(),
+            block_entities: Vec::new(),
+        }
+        .encode();
+        let mut ack_data = Vec::new();
+        ack_data.write_varint(42);
+        let ack = PacketEncoder::new(ack_data, 0x04);
+        sender.packet(&unload, compressed);
+        sender.packet(&load, compressed);
+        for id in 1..=100 {
+            sender.blocks(&block(id), compressed);
+        }
+        sender.packet(&ack, compressed);
+        for id in 101..=200 {
+            sender.blocks(&block(id), compressed);
+        }
+        sender.close();
+        let mut actual = Vec::new();
+        Outbound::run(&sender.handle.shared, &mut actual);
+
+        let mut expected = Vec::new();
+        for packet in [unload, load, block(100).encode(), ack, block(200).encode()] {
+            if compressed {
+                packet.write_compressed(&mut expected).unwrap();
+            } else {
+                packet.write_uncompressed(&mut expected).unwrap();
+            }
+        }
+        assert_eq!(actual, expected);
+        let mut reader = Cursor::new(actual);
+        let mut ids = Vec::new();
+        while reader.position() < reader.get_ref().len() as u64 {
+            let length = reader.read_varint().unwrap();
+            let mut frame = Cursor::new(reader.read_bytes(length as usize).unwrap());
+            if compressed {
+                let size = frame.read_varint().unwrap();
+                if size != 0 {
+                    let mut data = Vec::new();
+                    flate2::read::ZlibDecoder::new(frame)
+                        .read_to_end(&mut data)
+                        .unwrap();
+                    assert_eq!(data.len(), size as usize);
+                    frame = Cursor::new(data);
+                }
+            }
+            ids.push(frame.read_varint().unwrap());
+        }
+        assert_eq!(ids, [0x21, 0x27, 0x4d, 0x04, 0x4d]);
+        assert_eq!(sender.stats().coalesced_blocks, 198);
+        assert_eq!(sender.stats().failures, 0);
+    }
+}
+
+#[test]
 fn compression_transition_is_an_ordering_boundary() {
     let sender = queued();
     sender.blocks(&block(1), false);
     sender.blocks(&block(2), true);
     assert_eq!(sender.handle.shared.pending.lock().unwrap().items.len(), 2);
+}
+
+#[test]
+fn failed_writes_close_the_connection_instead_of_skipping_reliable_packets() {
+    struct FailingSink;
+    impl Write for FailingSink {
+        fn write(&mut self, _: &[u8]) -> std::io::Result<usize> {
+            Err(std::io::ErrorKind::BrokenPipe.into())
+        }
+        fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
+        }
+    }
+    let sender = queued();
+    sender.packet(&PacketEncoder::new(vec![0; 400], 0x27), true);
+    sender.blocks(&block(1), true);
+    sender.packet(&PacketEncoder::new(vec![42], 0x04), true);
+    Outbound::run(&sender.handle.shared, FailingSink);
+    let stats = sender.stats();
+    assert_eq!(
+        (
+            stats.packets,
+            stats.bytes,
+            stats.failures,
+            stats.queued_bytes
+        ),
+        (0, 0, 1, 0)
+    );
+    assert!(sender.handle.shared.pending.lock().unwrap().closed);
+    sender.packet(&PacketEncoder::new(vec![43], 0x04), true);
+    assert!(sender
+        .handle
+        .shared
+        .pending
+        .lock()
+        .unwrap()
+        .items
+        .is_empty());
 }
 
 #[test]

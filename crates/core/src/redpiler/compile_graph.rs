@@ -23,6 +23,12 @@ pub enum NodeType {
     Trapdoor,
     Wire,
     Constant,
+    CommandBlock {
+        repeating: bool,
+        chain: bool,
+        automatic: bool,
+        initial_tick: bool,
+    },
     /// Aggregate electrical input to a recognized actuator. Qualifying updates
     /// remain in the boundary side table, never diode Side links.
     InstantInput {
@@ -33,6 +39,10 @@ pub enum NodeType {
     MobileSource {
         group: usize,
         alias: BlockPos,
+    },
+    /// Electrical strength at one ordinary consumer input, evaluated by the region.
+    InstantOutput {
+        port: usize,
     },
     NoteBlock {
         instrument: Instrument,
@@ -101,7 +111,9 @@ impl CompileNode {
             && !self.state.pending_tick
             && !matches!(
                 self.ty,
-                NodeType::InstantInput { .. } | NodeType::MobileSource { .. }
+                NodeType::InstantInput { .. }
+                    | NodeType::MobileSource { .. }
+                    | NodeType::InstantOutput { .. }
             )
     }
 }
@@ -139,6 +151,7 @@ pub enum GraphError {
     Cancelled,
     MissingSource { pos: BlockPos },
     UnsupportedInstantExport,
+    UnsupportedCommandBlockExport,
     Export(std::io::Error),
 }
 
@@ -151,6 +164,9 @@ impl std::fmt::Display for GraphError {
             }
             Self::UnsupportedInstantExport => {
                 f.write_str("instant graph export is not implemented")
+            }
+            Self::UnsupportedCommandBlockExport => {
+                f.write_str("command-block output export is not implemented")
             }
             Self::Export(error) => write!(f, "graph export failed: {error}"),
         }

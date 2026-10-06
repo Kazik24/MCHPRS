@@ -23,6 +23,9 @@ use std::time::{Instant, SystemTime};
 use tracing::error;
 
 mod client_sync;
+#[cfg(test)]
+mod client_sync_tests;
+mod error_messages;
 
 pub type EntityId = u32;
 static ENTITY_ID_COUNTER: AtomicU32 = AtomicU32::new(0);
@@ -204,6 +207,11 @@ impl fmt::Debug for Player {
 }
 
 impl Player {
+    #[cfg(test)]
+    pub(crate) fn test_player(client: PlayerConn) -> Self {
+        Self::from_data(Default::default(), 1, "SyncTest".into(), client)
+    }
+
     pub fn generate_offline_uuid(username: &str) -> u128 {
         Cursor::new(md5::compute(format!("OfflinePlayer:{}", username)).0)
             .read_u128::<BigEndian>()
@@ -895,7 +903,7 @@ pub trait PacketSender {
 
     /// Sends the player a red system message (`message` is not in json format)
     fn send_error_message(&self, message: &str) {
-        self.send_color_message(ColorCode::Red, message)
+        self.send_raw_system_message(error_messages::component(message).to_string())
     }
 
     /// Sends the player a yellow system message (`message` is not in json format)

@@ -7,4 +7,5 @@ pub(crate) mod boundary;
 pub(crate) mod clocked;
 pub mod contract;
 pub(crate) mod logic;
+pub(crate) mod outputs;
 pub(crate) mod program;

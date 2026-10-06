@@ -24,8 +24,20 @@ use std::sync::Arc;
 use tracing::{debug, warn};
 
 enum Event {
-    NoteBlockPlay { noteblock_id: u16 },
-    ButtonRelease { pos: BlockPos },
+    CommandBlockPower {
+        node_id: NodeId,
+        powered: bool,
+        capture_condition: bool,
+    },
+    CommandBlockExecute {
+        node_id: NodeId,
+    },
+    NoteBlockPlay {
+        noteblock_id: u16,
+    },
+    ButtonRelease {
+        pos: BlockPos,
+    },
 }
 
 #[derive(Default)]
@@ -36,10 +48,83 @@ pub struct DirectBackend {
     scheduler: TickScheduler<NodeId>,
     events: Vec<Event>,
     noteblock_info: Vec<(BlockPos, Instrument, u32)>,
+    command_far_comparators: FxHashMap<NodeId, Vec<NodeId>>,
     instant: Option<instant::Runtime>,
 }
 
 impl DirectBackend {
+    fn process_command_outputs(&mut self, world: &mut impl World) {
+        if !self.events.iter().any(|event| {
+            matches!(
+                event,
+                Event::CommandBlockPower { .. } | Event::CommandBlockExecute { .. }
+            )
+        }) {
+            return;
+        }
+        let mut remaining = Vec::new();
+        let mut events = std::mem::take(&mut self.events);
+        while !events.is_empty() {
+            for event in events.drain(..) {
+                match event {
+                    Event::CommandBlockPower {
+                        node_id,
+                        powered,
+                        capture_condition,
+                    } => {
+                        if let Some((pos, _)) = self.blocks[node_id.index()] {
+                            crate::redstone::command_block::set_output_power(
+                                world,
+                                pos,
+                                powered,
+                                capture_condition,
+                            );
+                        }
+                    }
+                    Event::CommandBlockExecute { node_id } => {
+                        let Some((pos, _)) = self.blocks[node_id.index()] else {
+                            continue;
+                        };
+                        let executed = crate::redstone::command_block::tick_output(world, pos);
+                        for pos in executed {
+                            if let Some(&id) = self.pos_map.get(&pos) {
+                                let strength = crate::redstone::comparator::get_override(
+                                    world.get_block(pos),
+                                    world,
+                                    pos,
+                                );
+                                self.set_node(id, self.nodes[id].powered, strength);
+                            }
+                        }
+                        if let NodeType::CommandBlock {
+                            repeating: true,
+                            automatic,
+                            ..
+                        } = self.nodes[node_id].ty
+                        {
+                            if (self.nodes[node_id].powered || automatic)
+                                && !self.nodes[node_id].pending_tick
+                            {
+                                self.nodes[node_id].pending_tick = true;
+                                self.scheduler
+                                    .schedule_half_tick(node_id, 1, TickPriority::Normal);
+                                crate::redstone::command_block::set_output_power(
+                                    world,
+                                    pos,
+                                    self.nodes[node_id].powered,
+                                    true,
+                                );
+                            }
+                        }
+                    }
+                    other => remaining.push(other),
+                }
+            }
+            events = std::mem::take(&mut self.events);
+        }
+        self.events = remaining;
+    }
+
     pub(crate) fn compile_instant(
         &mut self,
         graph: CompileGraph,
@@ -53,6 +138,22 @@ impl DirectBackend {
     #[inline]
     fn schedule_tick(&mut self, node_id: NodeId, delay: usize, priority: TickPriority) {
         self.scheduler.schedule_tick(node_id, delay, priority);
+    }
+
+    fn refresh_outputs(&mut self, source: NodeId) {
+        if !self
+            .instant
+            .as_ref()
+            .is_some_and(|runtime| runtime.output_depends_on(source))
+        {
+            return;
+        }
+        if let Some(runtime) = self.instant.take() {
+            for (node, strength) in runtime.output_changes(&self.nodes) {
+                self.set_node(node, strength != 0, strength);
+            }
+            self.instant = Some(runtime);
+        }
     }
 
     fn set_node(&mut self, node_id: NodeId, powered: bool, new_power: u8) {
@@ -96,10 +197,36 @@ impl DirectBackend {
                 update,
             );
         }
+        if old_power != new_power {
+            for &comparator in self
+                .command_far_comparators
+                .get(&node_id)
+                .into_iter()
+                .flatten()
+            {
+                if let NodeType::Comparator { far_input, .. } = &mut self.nodes[comparator].ty {
+                    *far_input = node::NonMaxU8::new(new_power);
+                }
+                update::update_node(
+                    &mut self.scheduler,
+                    &mut self.events,
+                    &mut self.nodes,
+                    comparator,
+                );
+            }
+            self.refresh_outputs(node_id);
+        }
     }
 }
 
 impl JITBackend for DirectBackend {
+    fn tick_with_world<W: World>(&mut self, world: &mut W) {
+        self.process_command_outputs(world);
+        world.piston_state_mut().logical_tick += 1;
+        self.tick();
+        self.process_command_outputs(world);
+    }
+
     fn inspect(&mut self, pos: BlockPos) {
         let Some(node_id) = self.pos_map.get(&pos) else {
             debug!("could not find node at pos {}", pos);
@@ -147,6 +274,7 @@ impl JITBackend for DirectBackend {
 
         self.pos_map.clear();
         self.noteblock_info.clear();
+        self.command_far_comparators.clear();
         self.events.clear();
     }
 
@@ -202,6 +330,7 @@ impl JITBackend for DirectBackend {
     }
 
     fn flush<W: World>(&mut self, world: &mut W, io_only: bool) {
+        self.process_command_outputs(world);
         for event in self.events.drain(..) {
             match event {
                 Event::NoteBlockPlay { noteblock_id } => {
@@ -215,6 +344,9 @@ impl JITBackend for DirectBackend {
                     1.0,
                     1.0,
                 ),
+                Event::CommandBlockPower { .. } | Event::CommandBlockExecute { .. } => {
+                    unreachable!("command events processed before display flush")
+                }
             }
         }
         for (i, node) in self.nodes.inner_mut().iter_mut().enumerate() {
@@ -344,6 +476,7 @@ impl fmt::Display for DirectBackend {
                 NodeType::Constant => format!("Constant({})", node.output_power),
                 NodeType::InstantSource => format!("InstantSource({})", node.output_power),
                 NodeType::NoteBlock { .. } => "NoteBlock".to_string(),
+                NodeType::CommandBlock { .. } => "CommandBlock".to_string(),
             };
             let pos = if let Some((pos, _)) = self.blocks[id] {
                 format!("{}, {}, {}", pos.x, pos.y, pos.z)

@@ -87,6 +87,7 @@ pub struct GraphSummary {
     pub ordinary_nodes: usize,
     pub instant_inputs: usize,
     pub mobile_sources: usize,
+    pub compiled_outputs: usize,
     pub electrical_links: usize,
 }
 
@@ -102,12 +103,14 @@ impl CandidateGraph {
             ordinary_nodes: 0,
             instant_inputs: 0,
             mobile_sources: 0,
+            compiled_outputs: 0,
             electrical_links: self.graph.edge_count(),
         };
         for node in self.graph.node_weights() {
             match node.ty {
                 NodeType::InstantInput { .. } => result.instant_inputs += 1,
                 NodeType::MobileSource { .. } => result.mobile_sources += 1,
+                NodeType::InstantOutput { .. } => result.compiled_outputs += 1,
                 _ => result.ordinary_nodes += 1,
             }
         }
@@ -139,10 +142,9 @@ pub fn prepare_candidate_graph(
     // Conducting movers need conditional geometry, which the older electrical
     // candidate graph does not encode. Use the same staged program as compile.
     if report.pistons.iter().any(|p| {
-        matches!(
-            world.get_block(p.payload),
-            mchprs_blocks::blocks::Block::Wool { .. }
-        )
+        let payload = world.get_block(p.payload);
+        payload != mchprs_blocks::blocks::Block::RedstoneBlock
+            && crate::redpiler::instant::outputs::supported_payload(payload)
     }) {
         let (graph, _) = crate::redpiler::instant::program::prepare(
             world,

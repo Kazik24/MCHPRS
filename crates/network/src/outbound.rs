@@ -60,6 +60,7 @@ struct Pending {
 
 #[derive(Debug, Default)]
 struct Shared {
+    peer: Option<std::net::SocketAddr>,
     pending: Mutex<Pending>,
     ready: Condvar,
     counters: Counters,
@@ -86,7 +87,10 @@ pub(crate) struct Outbound {
 
 impl Outbound {
     pub(crate) fn new(stream: TcpStream) -> Self {
-        let shared = Arc::new(Shared::default());
+        let shared = Arc::new(Shared {
+            peer: stream.peer_addr().ok(),
+            ..Default::default()
+        });
         let worker = shared.clone();
         std::thread::spawn(move || {
             let _ = stream.set_write_timeout(Some(Duration::from_secs(5)));
@@ -162,6 +166,12 @@ impl Outbound {
         if pending.bytes > MAX_QUEUED_BYTES || pending.items.len() > MAX_QUEUED_ITEMS {
             // Never block the simulator or silently leave a connected client
             // stale. Terminate a connection whose reliable queue cannot keep up.
+            tracing::warn!(
+                peer = ?self.handle.shared.peer,
+                queued_bytes = pending.bytes,
+                queued_items = pending.items.len(),
+                "Closing client: outbound queue exceeded its limit"
+            );
             pending.closed = true;
             pending.items.clear();
             pending.bytes = 0;
@@ -170,7 +180,6 @@ impl Outbound {
                 .counters
                 .failures
                 .fetch_add(1, Ordering::Relaxed);
-            tracing::warn!("Closing client: outbound queue exceeded its limit");
         }
         self.handle.shared.ready.notify_one();
     }
@@ -256,7 +265,13 @@ impl Outbound {
                     .counters
                     .write_ns
                     .fetch_add(now.elapsed().as_nanos() as u64, Ordering::Relaxed);
-                if result.is_err() {
+                if let Err(error) = result {
+                    tracing::warn!(
+                        peer = ?shared.peer,
+                        packet_id = packet.packet_id,
+                        %error,
+                        "Client packet write failed; disconnecting"
+                    );
                     shared.counters.failures.fetch_add(1, Ordering::Relaxed);
                     let mut pending = shared.pending.lock().unwrap();
                     pending.closed = true;

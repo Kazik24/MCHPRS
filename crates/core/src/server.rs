@@ -11,8 +11,8 @@ use backtrace::Backtrace;
 use bus::Bus;
 use mchprs_network::packets::clientbound::{
     CDisconnectLogin, CHeldItemChange, CJoinGame, CLoginPluginRequest, CLoginSuccess, CPlayerInfo,
-    CPlayerInfoAddPlayer, CPlayerInfoAddPlayerProperty, CPlayerPositionAndLook, CPluginMessage,
-    CPong, CResponse, CSetCompression, CTimeUpdate, CWindowItems, ClientBoundPacket,
+    CPlayerInfoAddPlayer, CPlayerInfoAddPlayerProperty, CPluginMessage, CPong, CResponse,
+    CSetCompression, CTimeUpdate, CWindowItems, ClientBoundPacket,
 };
 use mchprs_network::packets::serverbound::{
     SHandshake, SLoginPluginResponse, SLoginStart, SPing, SRequest, ServerBoundPacketHandler,

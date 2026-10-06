@@ -67,10 +67,15 @@ fn convert_node(
             CNodeType::Trapdoor => NodeType::Trapdoor,
             CNodeType::Wire => NodeType::Wire,
             CNodeType::Constant => NodeType::Constant,
-            CNodeType::InstantInput { .. } | CNodeType::MobileSource { .. } => {
+            CNodeType::InstantInput { .. }
+            | CNodeType::MobileSource { .. }
+            | CNodeType::InstantOutput { .. } => {
                 unreachable!("instant graph export rejected before this pass")
             }
             CNodeType::NoteBlock { .. } => NodeType::NoteBlock,
+            CNodeType::CommandBlock { .. } => {
+                unreachable!("command block export rejected before lowering")
+            }
         },
         block: node.block.map(|(pos, id)| {
             (
@@ -103,10 +108,18 @@ impl<W: World> Pass<W> for ExportGraph {
         _: &CompilerOptions,
         _: &CompilerInput<'_, W>,
     ) -> Result<(), super::GraphError> {
+        if graph
+            .node_weights()
+            .any(|node| matches!(node.ty, CNodeType::CommandBlock { .. }))
+        {
+            return Err(super::GraphError::UnsupportedCommandBlockExport);
+        }
         if graph.node_weights().any(|n| {
             matches!(
                 n.ty,
-                CNodeType::InstantInput { .. } | CNodeType::MobileSource { .. }
+                CNodeType::InstantInput { .. }
+                    | CNodeType::MobileSource { .. }
+                    | CNodeType::InstantOutput { .. }
             )
         }) {
             return Err(super::GraphError::UnsupportedInstantExport);

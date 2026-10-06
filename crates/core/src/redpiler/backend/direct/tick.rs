@@ -7,6 +7,9 @@ impl DirectBackend {
         node.pending_tick = false;
 
         match node.ty {
+            NodeType::CommandBlock { chain: false, .. } => {
+                self.events.push(Event::CommandBlockExecute { node_id });
+            }
             NodeType::Repeater { delay, .. } => {
                 if node.locked {
                     return;

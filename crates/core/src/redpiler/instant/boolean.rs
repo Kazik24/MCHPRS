@@ -9,6 +9,15 @@ pub(crate) type Expr = u32;
 pub(crate) const FALSE: Expr = 0;
 pub(crate) const TRUE: Expr = 1;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub(crate) enum GeometryPart {
+    FarPayload,
+    NearPayload,
+    Head,
+    RetractedBase,
+    MovingBase,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub(crate) enum Variable {
     Signal {
@@ -18,11 +27,20 @@ pub(crate) enum Variable {
     },
     Actuator(usize),
     Memory(usize),
+    Geometry {
+        actor: usize,
+        part: GeometryPart,
+    },
 }
 
 impl Ord for Variable {
     fn cmp(&self, other: &Self) -> Ordering {
         match (*self, *other) {
+            (Self::Geometry { actor: a, part: ap }, Self::Geometry { actor: b, part: bp }) => {
+                (a, ap).cmp(&(b, bp))
+            }
+            (Self::Geometry { .. }, _) => Ordering::Greater,
+            (_, Self::Geometry { .. }) => Ordering::Less,
             (
                 Self::Signal {
                     pos: a,

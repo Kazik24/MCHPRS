@@ -1,6 +1,6 @@
 //! Executable admission for a synchronous, acyclic response network.
 //! A conditional conductor can participate internally; an ordinary consumer
-//! currently needs a far redstone supply with a private observer reset.
+//! receives a compiled electrical port derived from conditional geometry.
 use super::boundary::Boundaries;
 use super::logic::{self, WaveLogic};
 use crate::redpiler::analysis::{AdmissionIssue, AnalysisReport};
@@ -73,8 +73,8 @@ pub(crate) fn prepare(
             ));
         }
         let payload = world.get_block(p.payload);
-        if !matches!(payload, Block::RedstoneBlock | Block::Wool { .. }) && !is_clock(id) {
-            return Err(format!("unsupported payload minecraft:{} at {:?}, owned by piston {:?}; expected a redstone block or wool",payload.get_name(),p.payload,p.pos));
+        if !super::outputs::supported_payload(payload) && !is_clock(id) {
+            return Err(format!("unsupported payload minecraft:{} at {:?}, owned by piston {:?}; expected a redstone block or supported fixed conductor",payload.get_name(),p.payload,p.pos));
         }
         if !matches!(world.get_block(p.head), Block::PistonHead { head } if head.sticky==p.piston.sticky && head.facing == p.piston.facing && !head.short)
             || [p.pos, p.head, p.payload]
@@ -88,9 +88,24 @@ pub(crate) fn prepare(
         }
         owned.extend([p.pos, p.head, p.payload]);
         for alias in [p.head, p.payload] {
-            let dust = alias.offset(BlockFace::Top);
-            if matches!(world.get_block(dust), Block::RedstoneWire { .. }) {
-                return Err(format!("dust at {dust:?} uses moving payload support at {alias:?}; destructive wire updates need another protocol"));
+            for face in BlockFace::values() {
+                let pos = alias.offset(face);
+                let block = world.get_block(pos);
+                let electrical = crate::redpiler::analysis::ports::is_consumer(block)
+                    || matches!(
+                        block,
+                        Block::RedstoneWire { .. }
+                            | Block::Lever { .. }
+                            | Block::StoneButton { .. }
+                    )
+                    || block.pressure_plate_powered().is_some();
+                if !world.is_cursed()
+                    && electrical
+                    && crate::interaction::attachment_support(block, pos)
+                        .is_some_and(|(support, _)| support == alias)
+                {
+                    return Err(format!("attachment at {pos:?} uses moving payload support at {alias:?}; destructive support updates need another protocol"));
+                }
             }
         }
         let ports = &report.ports.pistons[id];
@@ -214,25 +229,33 @@ pub(crate) fn prepare(
             ));
         }
     }
-    for (consumer, positions) in &logic.consumers {
-        for &pos in positions {
-            let owners: Vec<_> = report
-                .pistons
-                .iter()
-                .enumerate()
-                .filter(|(_, p)| p.payload == pos)
-                .map(|(id, _)| id)
-                .collect();
-            if world.get_block(pos) != Block::RedstoneBlock
-                || owners.is_empty()
-                || owners.iter().any(|id| {
-                    !observer_pistons.contains(id)
-                        && !clocked
-                            .as_ref()
-                            .is_some_and(|c| c.observed_outputs.contains(id))
-                })
-            {
-                return Err(format!("ordinary consumer at {consumer:?} sees moving conductor, near payload or unverified reset context at {pos:?}"));
+    let mut shared = vec![false; report.pistons.len()];
+    for group in &report.payload_groups {
+        for &actor in &group.members {
+            shared[actor] = group.members.len() > 1;
+        }
+    }
+    for output in &logic.outputs {
+        let mut pending: Vec<_> = output.terms.iter().map(|term| term.guard).collect();
+        let mut seen = FxHashSet::default();
+        while let Some(root) = pending.pop() {
+            if monitor.cancelled() {
+                return Err("instant compilation cancelled".into());
+            }
+            if !seen.insert(root) {
+                continue;
+            }
+            if let Some(decision) = logic.arena.decision(root) {
+                if let super::boolean::Variable::Geometry {
+                    actor,
+                    part: super::boolean::GeometryPart::NearPayload,
+                } = decision.variable
+                {
+                    if shared[actor] {
+                        return Err(format!("consumer at {:?} observes near ownership of a shared payload; only shared far occupancy has a compiled protocol", output.consumer));
+                    }
+                }
+                pending.extend([decision.low, decision.high]);
             }
         }
     }
@@ -241,7 +264,7 @@ pub(crate) fn prepare(
     owned.extend(crate::redpiler::analysis::families::reset_internals(
         &report.recognition,
     ));
-    let boundaries = Boundaries::executable(report, &logic.wires, &logic.sources);
+    let boundaries = Boundaries::executable(report, &logic.wires, &logic.sources, &logic.outputs);
     let input = CompilerInput {
         world,
         bounds: report.bounds,

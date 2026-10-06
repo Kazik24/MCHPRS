@@ -149,7 +149,6 @@ pub enum AdmissionIssue {
     ObserverRuntimeUnavailable { pos: BlockPos },
     UnownedPistonHead { pos: BlockPos },
     MovingPiston { pos: BlockPos },
-    CommandBlock { pos: BlockPos },
     EntryPhase { phase: AdvancePhase },
     PendingPistonEvents { count: usize },
     PendingPistonMotions { count: usize },
@@ -170,9 +169,6 @@ impl fmt::Display for AdmissionIssue {
             }
             Self::MovingPiston { pos } => {
                 write!(f, "moving piston at {pos:?} requires the interpreter")
-            }
-            Self::CommandBlock { pos } => {
-                write!(f, "command block at {pos:?} requires the interpreter")
             }
             Self::EntryPhase { phase } => write!(f, "entry phase {phase:?} is not between ticks"),
             Self::PendingPistonEvents { count } => write!(f, "{count} pending piston events"),
@@ -327,9 +323,6 @@ pub fn analyze(
                                     report
                                         .issues
                                         .push(AdmissionIssue::ObserverRuntimeUnavailable { pos });
-                                }
-                                b if b.is_command_block() => {
-                                    report.issues.push(AdmissionIssue::CommandBlock { pos })
                                 }
                                 _ => {}
                             }

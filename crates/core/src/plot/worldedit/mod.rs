@@ -727,6 +727,9 @@ static COMMANDS: Lazy<HashMap<&'static str, WorldeditCommand>> = Lazy::new(|| {
 
 static ALIASES: Lazy<HashMap<&'static str, &'static str>> = Lazy::new(|| {
     map! {
+        "/desel" => "/sel",
+        "desel" => "/sel",
+        "set" => "/set",
         "u" => "up",
         "desc" => "descend",
         "asc" => "ascend",
@@ -882,20 +885,19 @@ impl FromStr for WorldEditPattern {
                 .captures(part)
                 .ok_or_else(|| PatternParseError::InvalidPattern(part.to_owned()))?;
 
-            let mut block = if pattern_match.get(4).is_some() {
-                Block::from_id(
-                    pattern_match
-                        .get(5)
-                        .map_or("0", |m| m.as_str())
-                        .parse::<u32>()
-                        .map_err(|_| PatternParseError::InvalidPattern(part.to_owned()))?,
-                )
+            let block_name = pattern_match.get(5).unwrap().as_str();
+            let mut block = if pattern_match.get(4).is_some()
+                || block_name.bytes().all(|byte| byte.is_ascii_digit())
+            {
+                let id = block_name
+                    .parse::<u32>()
+                    .map_err(|_| PatternParseError::InvalidPattern(part.to_owned()))?;
+                if id as usize >= mchprs_blocks::generated::STATE_PROPERTIES.len() {
+                    return Err(PatternParseError::UnknownBlock(part.to_owned()));
+                }
+                Block::from_id(id)
             } else {
-                let block_name = pattern_match
-                    .get(5)
-                    .unwrap()
-                    .as_str()
-                    .trim_start_matches("minecraft:");
+                let block_name = block_name.trim_start_matches("minecraft:");
                 Block::from_name(block_name)
                     .ok_or_else(|| PatternParseError::UnknownBlock(part.to_owned()))?
             };
@@ -981,6 +983,34 @@ fn container_patterns_apply_properties_and_split_only_between_blocks() {
     assert_eq!(pattern.parts[1].weight, 0.75);
     for invalid in ["hopper[facing=up]", "furnace[lit=maybe]", "cake[bites=7]"] {
         assert!(WorldEditPattern::from_str(invalid).is_err());
+    }
+}
+
+#[test]
+fn numeric_patterns_match_names_and_explicit_state_ids() {
+    for name in ["air", "stone", "glass", "redstone_block"] {
+        let named: WorldEditPattern = name.parse().unwrap();
+        let id = named.parts[0].block_id;
+        for input in [id.to_string(), format!("={id}")] {
+            let numeric: WorldEditPattern = input.parse().unwrap();
+            assert_eq!(numeric.parts[0].block_id, id);
+            assert_eq!(numeric.pick(), named.pick());
+        }
+    }
+    assert_eq!(
+        "0".parse::<WorldEditPattern>().unwrap().pick(),
+        Block::Air {}
+    );
+    let mixed: WorldEditPattern = "25%0,75%stone".parse().unwrap();
+    assert_eq!(mixed.parts[0].block_id, 0);
+    assert_eq!(mixed.parts[0].weight, 0.25);
+    for input in [
+        "4294967296".to_owned(),
+        "4294967295".to_owned(),
+        "-1".to_owned(),
+        mchprs_blocks::generated::STATE_PROPERTIES.len().to_string(),
+    ] {
+        assert!(input.parse::<WorldEditPattern>().is_err(), "{input}");
     }
 }
 

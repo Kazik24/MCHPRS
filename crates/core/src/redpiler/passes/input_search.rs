@@ -80,7 +80,12 @@ impl<'a, W: World> InputSearchState<'a, W> {
     }
 
     fn link_source(&mut self, source: BlockPos, target: NodeIdx, ty: LinkType, distance: u8) {
-        if self.boundaries.is_some_and(|b| b.is_internal(source)) {
+        if self.boundaries.is_some_and(|b| {
+            b.is_internal(source)
+                || self.graph[target]
+                    .block
+                    .is_some_and(|(pos, _)| b.projects(pos, ty))
+        }) {
             return;
         }
         if let Some(&node) = self.pos_map.get(&source) {
@@ -322,7 +327,14 @@ impl<'a, W: World> InputSearchState<'a, W> {
             Block::RedstoneWire { .. } => {
                 self.search_wire(id, pos, LinkType::Default, 0);
             }
-            Block::RedstoneLamp { .. } | Block::IronTrapdoor { .. } | Block::NoteBlock { .. } => {
+            block
+                if matches!(
+                    block,
+                    Block::RedstoneLamp { .. }
+                        | Block::IronTrapdoor { .. }
+                        | Block::NoteBlock { .. }
+                ) || block.is_command_block() =>
+            {
                 for face in &BlockFace::values() {
                     let neighbor_pos = pos.offset(*face);
                     let neighbor_block = self.world.get_block(neighbor_pos);
@@ -358,6 +370,14 @@ impl<'a, W: World> InputSearchState<'a, W> {
                                 LinkType::Default,
                                 dependency.attenuation,
                             );
+                        }
+                    }
+                }
+            } else if let NodeType::InstantOutput { port } = node.ty {
+                if let Some(boundaries) = self.boundaries {
+                    for term in &boundaries.outputs[port].terms {
+                        if let Some(source) = term.source {
+                            self.link_source(source, idx, LinkType::Default, 0);
                         }
                     }
                 }

@@ -1,7 +1,8 @@
 //! Extract the first response of an acyclic instant network from conditional
 //! electrical geometry. Compilation inspects possible occupancy; execution
 //! evaluates Boolean functions and never walks blocks or runs piston events.
-use super::boolean::{BooleanArena, Expr, Variable, FALSE, TRUE};
+use super::boolean::{BooleanArena, Expr, GeometryPart, Variable, FALSE, TRUE};
+use super::outputs::{supported_payload, OutputPort, PowerTerm};
 use crate::redpiler::analysis::{AnalysisReport, PistonDescriptor};
 use crate::redpiler::TaskMonitor;
 use crate::redstone::{self, power};
@@ -17,9 +18,10 @@ pub(crate) struct WaveLogic {
     pub arena: BooleanArena,
     pub responses: Vec<Expr>,
     pub sources: Vec<BlockPos>,
+    pub response_sources: Vec<BlockPos>,
     pub wires: FxHashSet<BlockPos>,
     pub consumer_wires: FxHashSet<BlockPos>,
-    pub consumers: Vec<(BlockPos, Vec<BlockPos>)>,
+    pub outputs: Vec<OutputPort>,
     pub follows_payload: Vec<bool>,
     pub context: FxHashSet<BlockPos>,
 }
@@ -39,7 +41,7 @@ impl WaveLogic {
             .map(|&root| {
                 self.arena.evaluate(root, |variable| match variable {
                     Variable::Signal { pos, threshold, .. } => read(pos) > threshold,
-                    Variable::Actuator(_) => {
+                    Variable::Actuator(_) | Variable::Geometry { .. } => {
                         unreachable!("final program has no provisional actuator variables")
                     }
                     Variable::Memory(actor) => memory(actor),
@@ -63,9 +65,9 @@ struct Extractor<'a, W: World> {
     wires: FxHashSet<BlockPos>,
     sources: FxHashSet<BlockPos>,
     steps: usize,
-    touched: FxHashSet<BlockPos>,
     signal_order: FxHashMap<BlockPos, usize>,
-    context_only: bool,
+    output_mode: bool,
+    terms: Vec<PowerTerm>,
     context: FxHashSet<BlockPos>,
     memory: FxHashSet<usize>,
 }
@@ -103,9 +105,9 @@ pub(crate) fn extract_with_state(
         wires: Default::default(),
         sources: Default::default(),
         steps: 0,
-        touched: Default::default(),
         signal_order: Default::default(),
-        context_only: false,
+        output_mode: false,
+        terms: Vec::new(),
         context: Default::default(),
         memory,
     };
@@ -115,7 +117,7 @@ pub(crate) fn extract_with_state(
             .iter()
             .filter_map(|&pos| {
                 let block = world.get_block(pos);
-                matches!(block, Block::RedstoneBlock | Block::Wool { .. }).then_some(block)
+                supported_payload(block).then_some(block)
             })
             .collect();
         let empty_clock = descriptor.members.len() == 1
@@ -193,58 +195,128 @@ pub(crate) fn extract_with_state(
             "instant power dependencies contain a cycle at {unresolved:?}"
         ));
     }
-    let mut consumers = Vec::new();
     let mut blocks = Vec::new();
+    let output_neighborhoods: Vec<_> = report
+        .pistons
+        .iter()
+        .map(|p| {
+            let margin = BlockPos::new(17, 17, 17);
+            (p.pos.min(p.payload) - margin, p.pos.max(p.payload) + margin)
+        })
+        .collect();
     crate::world::for_each_block_optimized(world, report.bounds.0, report.bounds.1, |pos| {
         let block = world.get_block(pos);
-        if !super::super::analysis::ports::is_consumer(block) {
-            return;
-        }
-        let near_region = report.pistons.iter().any(|p| {
-            let d = pos - p.payload;
-            d.x.abs() <= 17 && d.y.abs() <= 17 && d.z.abs() <= 17
-        });
-        if near_region {
+        if super::super::analysis::ports::is_consumer(block)
+            && output_neighborhoods.iter().any(|&(lo, hi)| {
+                pos.x >= lo.x
+                    && pos.y >= lo.y
+                    && pos.z >= lo.z
+                    && pos.x <= hi.x
+                    && pos.y <= hi.y
+                    && pos.z <= hi.z
+            })
+        {
             blocks.push((pos, block));
         }
     });
     let wires = extractor.wires.clone();
-    let sources = extractor.sources.clone();
-    let context = extractor.context.clone();
+    let mut response_sources: Vec<_> = extractor.sources.iter().copied().collect();
+    response_sources.sort_by_key(|pos| (pos.y, pos.z, pos.x));
     let mut consumer_wires = FxHashSet::default();
-    extractor.context_only = true;
+    let mut outputs = Vec::new();
+    extractor.output_mode = true;
     for (pos, block) in blocks {
-        extractor.touched.clear();
-        extractor.wires.clear();
-        let mut power = FALSE;
-        let mut queue = VecDeque::new();
-        for (root, face, _) in crate::redpiler::analysis::ports::consumer_roots(block, pos) {
-            extractor.signal(usize::MAX, root, face, &mut power, &mut queue)?;
+        if let Block::RedstoneComparator { comparator } = block {
+            let rear = pos.offset(comparator.facing.block_face());
+            let far = rear.offset(comparator.facing.block_face());
+            if (extractor.far.contains_key(&rear)
+                || extractor.near.contains_key(&rear)
+                || extractor.bases.contains_key(&rear))
+                && redstone::comparator::has_override(world.get_block(far))
+            {
+                return Err(format!("comparator at {pos:?} reads an analog override through changing geometry; dynamic override reads are not implemented"));
+            }
         }
-        extractor.walk_wires(usize::MAX, power, queue)?;
-        if !extractor.touched.is_empty() {
+        for input in [
+            crate::redpiler::analysis::ports::ConsumerInput::Main,
+            crate::redpiler::analysis::ports::ConsumerInput::ComparatorSide,
+        ] {
+            extractor.wires.clear();
+            extractor.terms.clear();
+            let mut power = FALSE;
+            let mut queue = VecDeque::new();
+            for (root, face, channel) in
+                crate::redpiler::analysis::ports::consumer_roots(block, pos)
+            {
+                if channel == input {
+                    extractor.consumer_signal(block, input, root, face, &mut power, &mut queue)?;
+                }
+            }
+            extractor.walk_wires(usize::MAX, power, queue)?;
+            if !extractor.terms.iter().any(|term| term.guard > TRUE) {
+                continue;
+            }
+            // Comparator overrides need their own occupancy-dependent read
+            // protocol. Do not silently replace an inventory read with power.
+            if input == crate::redpiler::analysis::ports::ConsumerInput::Main
+                && matches!(block, Block::RedstoneComparator { .. })
+            {
+                let Block::RedstoneComparator { comparator } = block else {
+                    unreachable!()
+                };
+                let rear = pos.offset(comparator.facing.block_face());
+                if crate::redstone::comparator::has_override(world.get_block(rear))
+                    || crate::redstone::comparator::get_far_input(world, pos, comparator.facing)
+                        .is_some()
+                {
+                    return Err(format!("comparator at {pos:?} reads an analog override through changing geometry; dynamic override reads are not implemented"));
+                }
+            }
             consumer_wires.extend(extractor.wires.iter().copied());
-            let mut aliases: Vec<_> = extractor.touched.iter().copied().collect();
-            aliases.sort_by_key(|p| (p.y, p.z, p.x));
-            consumers.push((pos, aliases));
+            let mut output = OutputPort {
+                consumer: pos,
+                input,
+                terms: std::mem::take(&mut extractor.terms),
+                initial_strength: 0,
+            };
+            output.initial_strength = output.entry_strength(&extractor.arena, |source| {
+                redstone::source_strength(world.get_block(source), world, source)
+            });
+            extractor
+                .sources
+                .extend(output.terms.iter().filter_map(|term| term.source));
+            outputs.push(output);
         }
     }
     extractor.wires = wires;
-    extractor.sources = sources;
     extractor.check()?;
     let mut sources: Vec<_> = extractor.sources.into_iter().collect();
     sources.sort_by_key(|pos| (pos.y, pos.z, pos.x));
     let mut responses: Vec<_> = resolved.into_iter().map(Option::unwrap).collect();
+    let response_count = responses.len();
+    responses.extend(
+        outputs
+            .iter()
+            .flat_map(|output| output.terms.iter().map(|term| term.guard)),
+    );
     let arena = extractor.arena.compact(&mut responses);
+    let mut guards = responses[response_count..].iter().copied();
+    for output in &mut outputs {
+        for term in &mut output.terms {
+            term.guard = guards.next().unwrap();
+        }
+    }
+    responses.truncate(response_count);
     Ok(WaveLogic {
         arena,
         responses,
         sources,
+        response_sources,
         wires: extractor.wires,
         consumer_wires,
-        consumers,
+        outputs,
         follows_payload,
-        context,
+        context: extractor.context,
     })
 }
 
@@ -362,11 +434,8 @@ impl<W: World> Extractor<'_, W> {
 
     fn variants(&mut self, pos: BlockPos, actor: usize) -> Result<Vec<(Block, Expr)>, String> {
         self.read(pos)?;
-        if self.far.contains_key(&pos)
-            || self.near.contains_key(&pos)
-            || self.bases.contains_key(&pos)
-        {
-            self.touched.insert(pos);
+        if self.output_mode {
+            return Ok(self.output_variants(pos));
         }
         let actors = self.actors_at(pos, actor);
         if actors.len() > 8 {
@@ -385,6 +454,100 @@ impl<W: World> Extractor<'_, W> {
             }
         }
         Ok(variants)
+    }
+
+    fn geometry(&mut self, actor: usize, part: GeometryPart) -> Expr {
+        self.arena.variable(Variable::Geometry { actor, part })
+    }
+
+    fn output_variants(&mut self, pos: BlockPos) -> Vec<(Block, Expr)> {
+        if let Some(&group) = self.far.get(&pos) {
+            let owner = self.report.payload_groups[group].members[0];
+            let present = self.geometry(owner, GeometryPart::FarPayload);
+            let absent = self.arena.not(present);
+            return vec![(self.payloads[group], present), (Block::Air, absent)];
+        }
+        if let Some(&owner) = self.near.get(&pos) {
+            let near = self.geometry(owner, GeometryPart::NearPayload);
+            let head = self.geometry(owner, GeometryPart::Head);
+            let occupied = self.arena.or(near, head);
+            let empty = self.arena.not(occupied);
+            return vec![
+                (self.payloads[self.group_of[owner]], near),
+                (self.world.get_block(pos), head),
+                (Block::Air, empty),
+            ];
+        }
+        if let Some(&owner) = self.bases.get(&pos) {
+            let retracted = self.geometry(owner, GeometryPart::RetractedBase);
+            let moving = self.geometry(owner, GeometryPart::MovingBase);
+            let changing = self.arena.or(retracted, moving);
+            let extended = self.arena.not(changing);
+            let mut piston = self.report.pistons[owner].piston;
+            piston.extended = false;
+            return vec![
+                (Block::Piston { piston }, retracted),
+                (
+                    Block::MovingPiston {
+                        moving: piston.into(),
+                    },
+                    moving,
+                ),
+                (self.world.get_block(pos), extended),
+            ];
+        }
+        vec![(self.world.get_block(pos), TRUE)]
+    }
+
+    fn output_wire_shapes(
+        &mut self,
+        pos: BlockPos,
+        wire: RedstoneWire,
+        positions: &[BlockPos],
+    ) -> Result<Vec<(Expr, RedstoneWire)>, String> {
+        let mut assignments = vec![(FxHashMap::default(), TRUE)];
+        for &position in positions {
+            let variants = self.variants(position, usize::MAX)?;
+            // Fixed neighbors are read by the shared shape calculator. Only
+            // conditional cells need to be copied into each configuration.
+            if variants.len() == 1 && variants[0].1 == TRUE {
+                continue;
+            }
+            let mut next = Vec::new();
+            for (blocks, guard) in assignments {
+                for &(block, variant) in &variants {
+                    let guard = self.arena.and(guard, variant);
+                    if guard == FALSE {
+                        continue;
+                    }
+                    let mut blocks = blocks.clone();
+                    blocks.insert(position, block);
+                    next.push((blocks, guard));
+                    if next.len() > 4096 {
+                        return Err(format!(
+                            "output wire at {pos:?} needs too many occupancy configurations"
+                        ));
+                    }
+                }
+                self.check()?;
+            }
+            assignments = next;
+        }
+        let mut shapes: Vec<(Expr, RedstoneWire)> = Vec::new();
+        for (blocks, guard) in assignments {
+            let shape = redstone::wire::get_regulated_sides_from(wire, pos, |position| {
+                blocks
+                    .get(&position)
+                    .copied()
+                    .unwrap_or_else(|| self.world.get_block(position))
+            });
+            if let Some((known, _)) = shapes.iter_mut().find(|(_, existing)| *existing == shape) {
+                *known = self.arena.or(*known, guard);
+            } else {
+                shapes.push((guard, shape));
+            }
+        }
+        Ok(shapes)
     }
 
     fn wire_shapes(
@@ -407,6 +570,11 @@ impl<W: World> Extractor<'_, W> {
                 neighbor.offset(BlockFace::Top),
                 neighbor.offset(BlockFace::Bottom),
             ]);
+        }
+        if self.output_mode {
+            let shapes = self.output_wire_shapes(pos, wire, &positions)?;
+            self.shapes.insert((actor, pos), shapes.clone());
+            return Ok(shapes);
         }
         let mut actors: Vec<_> = positions
             .iter()
@@ -448,10 +616,24 @@ impl<W: World> Extractor<'_, W> {
         guard: Expr,
         result: &mut Expr,
     ) {
-        if self.context_only {
+        if guard == FALSE || distance >= 15 || matches!(block, Block::Observer { .. }) {
             return;
         }
-        if guard == FALSE || distance >= 15 || matches!(block, Block::Observer { .. }) {
+        if self.output_mode {
+            let source = (block != Block::RedstoneBlock).then_some(pos);
+            if let Some(term) = self
+                .terms
+                .iter_mut()
+                .find(|term| term.source == source && term.attenuation == distance)
+            {
+                term.guard = self.arena.or(term.guard, guard);
+            } else {
+                self.terms.push(PowerTerm {
+                    guard,
+                    source,
+                    attenuation: distance,
+                });
+            }
             return;
         }
         if self
@@ -531,6 +713,40 @@ impl<W: World> Extractor<'_, W> {
             } else if power::emits_weak_power(block, self.world, pos, side, false) {
                 self.source(actor, pos, block, 0, guard, result);
             }
+        }
+        Ok(())
+    }
+
+    /// Diodes read the strength of adjacent dust irrespective of its side
+    /// shape. Comparator side inputs accept dust, diodes and redstone blocks;
+    /// a strongly powered ordinary conductor is not a side input.
+    fn consumer_signal(
+        &mut self,
+        consumer: Block,
+        input: crate::redpiler::analysis::ports::ConsumerInput,
+        pos: BlockPos,
+        side: BlockFace,
+        result: &mut Expr,
+        roots: &mut VecDeque<(BlockPos, u8, Expr)>,
+    ) -> Result<(), String> {
+        use crate::redpiler::analysis::ports::ConsumerInput;
+        if input == ConsumerInput::ComparatorSide {
+            for (block, guard) in self.variants(pos, usize::MAX)? {
+                if matches!(block, Block::RedstoneWire { .. }) {
+                    roots.push_back((pos, 0, guard));
+                } else if block == Block::RedstoneBlock
+                    || (redstone::is_diode(block)
+                        && power::emits_weak_power(block, self.world, pos, side, false))
+                {
+                    self.source(usize::MAX, pos, block, 0, guard, result);
+                }
+            }
+        } else if redstone::is_diode(consumer)
+            && matches!(self.read(pos)?, Block::RedstoneWire { .. })
+        {
+            roots.push_back((pos, 0, TRUE));
+        } else {
+            self.signal(usize::MAX, pos, side, result, roots)?;
         }
         Ok(())
     }

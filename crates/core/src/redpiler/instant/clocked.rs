@@ -20,14 +20,13 @@ pub(crate) struct ClockedProgram {
     pub clock: usize,
     pub memory: Vec<MemoryCell>,
     pub observers: FxHashSet<BlockPos>,
-    pub observed_outputs: FxHashSet<usize>,
 }
 
 impl ClockedProgram {
     pub fn validate(&self, world: &impl World, logic: &WaveLogic) -> Result<(), String> {
-        if logic.sources.len() != 1
+        if logic.response_sources.len() != 1
             || !matches!(
-                world.get_block(logic.sources[0]),
+                world.get_block(logic.response_sources[0]),
                 Block::RedstoneTorch { .. } | Block::RedstoneWallTorch { .. }
             )
         {
@@ -239,6 +238,5 @@ pub(crate) fn recognize(
         clock,
         memory,
         observers,
-        observed_outputs,
     }))
 }

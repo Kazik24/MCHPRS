@@ -55,6 +55,7 @@ pub trait JITBackend {
         monitor: Arc<TaskMonitor>,
     ) -> Result<(), BackendError>;
     fn tick(&mut self);
+    fn tick_with_world<W: World>(&mut self, world: &mut W);
     fn on_use_block(&mut self, pos: BlockPos);
     fn set_pressure_plate(&mut self, pos: BlockPos, powered: bool);
     fn flush<W: World>(&mut self, world: &mut W, io_only: bool);

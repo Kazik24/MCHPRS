@@ -220,7 +220,7 @@ catalog! {
         AUTO_STACK_NEEDS_NONZERO_COPIES_AND_SPACING = "Auto stack needs at least one copy and nonzero spacing.";
         HELP_SCHEMATICS = "Schematics\n//load <file>.schem loads a schematic; //paste places it.\nTo save: select the build, //copy, then //save <file>.schem.\nRedstoneFun schematics are in the rf/ folder.";
         HELP_TICKS = "Tick control\n/tps shows or sets speed: 20 is normal, 0 pauses, unlimited runs as fast as possible.\n/adv [count] steps game ticks. Pause first.\n/adv nano 1 steps a nanotick; /adv pico 1 steps a picotick.";
-        HELP_WORLD_EDIT = "WorldEdit\nThis server supports a subset of WorldEdit. Type // and use tab completion to see available commands.";
+        HELP_WORLD_EDIT = "WorldEdit\nThis server supports a subset of WorldEdit. Type // and use tab completion to see available commands.\n//desel or /desel clears your selection.";
         WE_HELP_INVALIDATE_CACHES = "Clears interpreter caches for the current plot";
         INTERPRETER_CACHES_INVALIDATED = "Interpreter caches cleared for this plot.";
         UPDATE_SELECTION_OUTSIDE_HEIGHT = "Selection Y coordinates must be between 0 and 255.";
@@ -251,7 +251,7 @@ catalog! {
         WE_HELP_ROTATE_THE_CONTENTS_OF_THE_CLIPBOARD = "Rotate the contents of the clipboard";
         WE_HELP_SAVE_A_SCHEMATIC_FILE_FROM_THE = "Save a schematic file from the clipboard";
         WE_HELP_SELECT_THE_PASTED_REGION = "Select the pasted region";
-        WE_HELP_SETS_ALL_THE_BLOCKS_IN_THE = "Sets all the blocks in the region";
+        WE_HELP_SETS_ALL_THE_BLOCKS_IN_THE = "Sets all the blocks in the region; accepts block names or state IDs (0 = air)";
         WE_HELP_SET_POSITION_1 = "Set position 1";
         WE_HELP_SET_POSITION_1_TO_TARGETED_BLOCK = "Set position 1 to targeted block";
         WE_HELP_SET_POSITION_2 = "Set position 2";
@@ -646,5 +646,35 @@ mod tests {
             );
             assert_eq!(&reader.get_ref()[reader.position() as usize..], &[0]);
         }
+    }
+
+    #[test]
+    fn error_coordinate_teleport_links_survive_network_nbt_encoding() {
+        let capture = Capture::default();
+        capture.send_error_message(
+            "Redpiler: source at BlockPos { x: -20, y: 30, z: 40 } is unsupported.",
+        );
+        let packets = capture.0.borrow();
+        let packet = &packets[0];
+        let mut named = vec![packet.buffer[0], 0, 0];
+        named.extend_from_slice(&packet.buffer[1..]);
+        let component = nbt::Blob::from_reader(&mut std::io::Cursor::new(named)).unwrap();
+        let Some(nbt::Value::List(parts)) = component.get("extra") else {
+            panic!("missing components")
+        };
+        let nbt::Value::Compound(coordinates) = &parts[1] else {
+            panic!("missing coordinates")
+        };
+        let Some(nbt::Value::Compound(click)) = coordinates.get("click_event") else {
+            panic!("missing click event")
+        };
+        assert_eq!(
+            click.get("action"),
+            Some(&nbt::Value::String("run_command".into()))
+        );
+        assert_eq!(
+            click.get("command"),
+            Some(&nbt::Value::String("/tp -19.5 31 40.5".into()))
+        );
     }
 }

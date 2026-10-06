@@ -13,6 +13,28 @@ pub(super) fn update_node(
     let node = &mut nodes[node_id];
 
     match node.ty {
+        NodeType::CommandBlock {
+            repeating,
+            chain,
+            automatic,
+        } => {
+            let powered = get_bool_input(node);
+            let rising = powered && !node.powered;
+            let schedule =
+                !chain && !node.pending_tick && (rising || (repeating && (powered || automatic)));
+            if powered != node.powered || schedule {
+                set_node(node, powered);
+                events.push(Event::CommandBlockPower {
+                    node_id,
+                    powered,
+                    capture_condition: schedule,
+                });
+            }
+            if schedule {
+                node.pending_tick = true;
+                scheduler.schedule_half_tick(node_id, 1, TickPriority::Normal);
+            }
+        }
         NodeType::Repeater {
             delay,
             facing_diode,

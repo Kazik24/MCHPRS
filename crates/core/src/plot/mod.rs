@@ -1,5 +1,9 @@
 use crate::messages;
 #[cfg(test)]
+mod client_sync_tests;
+#[cfg(test)]
+mod client_test_utils;
+#[cfg(test)]
 mod command_block_tests;
 pub mod commands;
 mod compass;
@@ -74,6 +78,8 @@ pub const PLOT_SECTIONS: usize = 16;
 pub const PLOT_BLOCK_HEIGHT: i32 = PLOT_SECTIONS as i32 * 16;
 
 pub struct Plot {
+    #[cfg(test)]
+    transient_test_fixture: bool,
     //todo plots are worlds on its own, when player enters the plot, all network packets are dispatched by that plot
     pub world: PlotWorld,
     pub players: Vec<Player>,
@@ -633,7 +639,12 @@ impl World for PlotWorld {
             // Keep an existing sign's text when only its block state changes.
             chunk.set_block_entity(local_pos, BlockEntity::Sign(Default::default()));
         }
-        if changed || self.screen_updates.as_ref().is_some_and(|updates| updates.authoritative) {
+        if changed
+            || self
+                .screen_updates
+                .as_ref()
+                .is_some_and(|updates| updates.authoritative)
+        {
             if let Some(previous) = previous_screen {
                 self.track_screen_change(pos, previous);
             }
@@ -1033,7 +1044,7 @@ impl Plot {
     fn tick(&mut self) {
         self.timings.tick();
         if self.redpiler.is_active() {
-            self.redpiler.tick();
+            self.redpiler.tick_with_world(&mut self.world);
         } else {
             self.world.tick_interpreted();
         }
@@ -1944,6 +1955,8 @@ impl Plot {
         let world_send_rate = plot_data.world_send_rate;
         world.set_screen_only(database::get_screen_only(x, z));
         Plot {
+            #[cfg(test)]
+            transient_test_fixture: false,
             last_player_time: Instant::now(),
             last_update_time: Instant::now(),
             last_world_send_time: Instant::now(),
@@ -2069,6 +2082,12 @@ impl Plot {
 
 impl Drop for Plot {
     fn drop(&mut self) {
+        // Packet-handler tests own an in-memory world, with no persistent saves
+        // or server thread to receive crash-recovery messages.
+        #[cfg(test)]
+        if self.transient_test_fixture {
+            return;
+        }
         self.finish_git();
         self.close_all_containers();
         if !self.players.is_empty() {

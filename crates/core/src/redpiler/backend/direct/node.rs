@@ -125,6 +125,11 @@ pub enum NodeType {
     Trapdoor,
     Wire,
     Constant,
+    CommandBlock {
+        repeating: bool,
+        chain: bool,
+        automatic: bool,
+    },
     InstantSource,
     NoteBlock {
         noteblock_id: u16,
@@ -141,6 +146,7 @@ impl NodeType {
                 | NodeType::Trapdoor
                 | NodeType::PressurePlate
                 | NodeType::NoteBlock { .. }
+                | NodeType::CommandBlock { .. }
         )
     }
 }

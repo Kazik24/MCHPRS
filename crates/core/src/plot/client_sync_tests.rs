@@ -1,0 +1,234 @@
+use super::*;
+use crate::plot::client_test_utils::{decode_blocks, read_ack, read_blocks};
+use mchprs_blocks::items::{Item, ItemStack};
+use mchprs_network::packets::serverbound::*;
+use mchprs_network::packets::PacketDecoderExt;
+use mchprs_network::test_support::{connection, read_frame};
+use std::net::TcpStream;
+
+fn fixture(compressed: bool) -> (Plot, TcpStream) {
+    let conn = connection(compressed).unwrap();
+    let mut player = Player::test_player(conn.player);
+    player.pos = PlayerPos::new(32.5, 21.0, 35.5);
+    player.last_chunk_x = 2;
+    player.last_chunk_z = 2;
+    player.inventory[36] = Some(ItemStack {
+        item_type: Item::Sandstone {},
+        count: 64,
+        nbt: None,
+    });
+    let mut world = PlotWorld::from_chunks(
+        0,
+        0,
+        (0..PLOT_WIDTH)
+            .flat_map(|x| (0..PLOT_WIDTH).map(move |z| Chunk::empty(x, z)))
+            .collect(),
+        Default::default(),
+    );
+    world.set_block(BlockPos::new(32, 20, 32), Block::Sandstone {});
+    world.set_screen_only(true);
+    world
+        .packet_senders
+        .push(PlayerPacketSender::new(&player.client));
+    let (message_sender, _) = std::sync::mpsc::channel();
+    let (_, priv_message_receiver) = std::sync::mpsc::channel();
+    let plot = Plot {
+        transient_test_fixture: true,
+        world,
+        players: vec![player],
+        redpiler: Default::default(),
+        message_receiver: bus::Bus::new(4).add_rx(),
+        message_sender,
+        priv_message_receiver,
+        locked_players: Default::default(),
+        tps: Tps::Limited(0),
+        world_send_rate: WorldSendRate(20),
+        piston_animation: Default::default(),
+        last_update_time: Instant::now(),
+        lag_time: Duration::ZERO,
+        last_nspt: None,
+        timings: TimingsMonitor::new(Tps::Limited(0)),
+        last_player_time: Instant::now(),
+        last_world_send_time: Instant::now(),
+        sleep_time: Duration::ZERO,
+        running: false,
+        always_running: false,
+        auto_redpiler: false,
+        owner: Some(1),
+        async_rt: Plot::create_async_rt(),
+        scoreboard: Default::default(),
+        last_sidebar_update: Instant::now(),
+        neighbor_views: Default::default(),
+        neighbor_source: None,
+        git: Default::default(),
+    };
+    (plot, conn.peer)
+}
+
+fn placement(pos: BlockPos, sequence: i32) -> SPlayerBlockPlacemnt {
+    SPlayerBlockPlacemnt {
+        hand: 0,
+        pos: pos.packed(),
+        face: BlockFace::Top.get_id() as i32,
+        cursor_x: 0.5,
+        cursor_y: 1.0,
+        cursor_z: 0.5,
+        inside_block: false,
+        sequence,
+    }
+}
+
+fn digging(pos: BlockPos, status: i32, sequence: i32) -> SPlayerDigging {
+    SPlayerDigging {
+        status,
+        pos: pos.packed(),
+        face: 1,
+        sequence,
+    }
+}
+
+/// Read through the ACK, retaining all authoritative block updates and packet
+/// order. A missing correction/ACK fails within the socket's bounded timeout.
+fn episode(
+    peer: &mut TcpStream,
+    compressed: bool,
+    sequence: i32,
+) -> (Vec<i32>, Vec<(BlockPos, u32)>) {
+    let mut ids = Vec::new();
+    let mut blocks = Vec::new();
+    for _ in 0..128 {
+        let (id, mut frame) = read_frame(peer, compressed).unwrap();
+        ids.push(id);
+        match id {
+            0x04 => {
+                assert_eq!(frame.read_varint().unwrap(), sequence);
+                return (ids, blocks);
+            }
+            0x08 | 0x4d => blocks.extend(decode_blocks(id, &mut frame)),
+            _ => {}
+        }
+    }
+    panic!("action acknowledgement did not arrive within 128 packets");
+}
+
+#[test]
+fn actual_placement_and_break_handlers_publish_edits_in_screen_mode() {
+    for compressed in [false, true] {
+        let (mut plot, mut peer) = fixture(compressed);
+        let viewer = connection(compressed).unwrap();
+        let mut viewer_peer = viewer.peer;
+        let mut viewer_player = Player::test_player(viewer.player);
+        viewer_player.uuid = 2;
+        plot.world
+            .packet_senders
+            .push(PlayerPacketSender::new(&viewer_player.client));
+        plot.players.push(viewer_player);
+        let support = BlockPos::new(32, 20, 32);
+        let placed = support.offset(BlockFace::Top);
+        plot.handle_player_block_placement(placement(support, 1), 0);
+        assert_eq!(plot.world.get_block(placed), Block::Sandstone {});
+        let (ids, blocks) = episode(&mut peer, compressed, 1);
+        assert!(
+            ids.contains(&0x4d),
+            "other viewers also need the placement delta"
+        );
+        assert!(blocks.contains(&(placed, Block::Sandstone {}.get_id())));
+        assert_eq!(ids.last(), Some(&0x04));
+        assert_eq!(
+            read_blocks(&mut viewer_peer, compressed),
+            [(placed, Block::Sandstone {}.get_id())]
+        );
+
+        plot.handle_player_digging(digging(placed, 0, 2), 0);
+        assert_eq!(plot.world.get_block(placed), Block::Air);
+        let (ids, blocks) = episode(&mut peer, compressed, 2);
+        assert!(ids.contains(&0x4d));
+        assert!(blocks.contains(&(placed, Block::Air.get_id())));
+        assert_eq!(
+            read_blocks(&mut viewer_peer, compressed),
+            [(placed, Block::Air.get_id())]
+        );
+        assert!(plot.world.screen_only());
+    }
+}
+
+#[test]
+fn rejected_placement_and_dig_abort_finish_correct_prediction_before_ack() {
+    for compressed in [false, true] {
+        let (mut plot, mut peer) = fixture(compressed);
+        let support = BlockPos::new(32, 20, 32);
+        let mut invalid = placement(support, 1);
+        invalid.cursor_x = f32::NAN;
+        plot.handle_player_block_placement(invalid, 0);
+        let (ids, blocks) = episode(&mut peer, compressed, 1);
+        assert_eq!(ids, [0x08, 0x08, 0x04]);
+        assert_eq!(
+            blocks,
+            [
+                (support, Block::Sandstone {}.get_id()),
+                (support.offset(BlockFace::Top), Block::Air.get_id()),
+            ]
+        );
+        for status in [1, 2] {
+            plot.handle_player_digging(digging(support, status, status + 1), 0);
+            let (ids, blocks) = episode(&mut peer, compressed, status + 1);
+            assert_eq!(ids, [0x08, 0x04]);
+            assert_eq!(blocks, [(support, Block::Sandstone {}.get_id())]);
+            assert_eq!(plot.world.get_block(support), Block::Sandstone {});
+        }
+    }
+}
+
+#[test]
+fn teleport_fences_movement_and_edits_until_destination_view_is_queued() {
+    let compressed = true;
+    let (mut plot, mut peer) = fixture(compressed);
+    let original = plot.players[0].pos;
+    let destination = PlayerPos::new(48.5, 21.0, 35.5);
+    plot.players[0].teleport(destination);
+    let (id, mut frame) = read_frame(&mut peer, compressed).unwrap();
+    assert_eq!(id, 0x41);
+    let teleport_id = frame.read_varint().unwrap();
+    plot.handle_player_position(
+        SPlayerPosition {
+            x: original.x,
+            y: original.y,
+            z: original.z,
+            on_ground: true,
+        },
+        0,
+    );
+    assert_eq!(plot.players[0].pos.x, destination.x);
+    let support = BlockPos::new(32, 20, 32);
+    plot.handle_player_digging(digging(support, 0, 1), 0);
+    assert_eq!(plot.world.get_block(support), Block::Sandstone {});
+    let (ids, _) = episode(&mut peer, compressed, 1);
+    assert_eq!(ids, [0x08, 0x04]);
+
+    plot.handle_teleport_confirm(
+        STeleportConfirm {
+            id: teleport_id - 1,
+        },
+        0,
+    );
+    assert!(plot.players[0].awaiting_teleport());
+    drop(mchprs_network::BlockActionAcknowledgement::new(
+        &plot.players[0].client,
+        2,
+    ));
+    read_ack(&mut peer, compressed, 2); // Wrong confirmation sends no view/chunk work.
+    plot.handle_teleport_confirm(STeleportConfirm { id: teleport_id }, 0);
+    assert!(!plot.players[0].awaiting_teleport());
+    assert_eq!(
+        (plot.players[0].last_chunk_x, plot.players[0].last_chunk_z),
+        (3, 2)
+    );
+    // The next edit in the SAME drained packet batch must follow the chunk loads.
+    let target = BlockPos::new(48, 20, 32);
+    plot.handle_player_digging(digging(target, 2, 3), 0);
+    let (ids, blocks) = episode(&mut peer, compressed, 3);
+    assert_eq!(ids[0], 0x57); // Set Center Chunk in protocol 770.
+    assert!(ids.contains(&0x27));
+    assert_eq!(ids[ids.len() - 2..], [0x08, 0x04]);
+    assert_eq!(blocks, [(target, Block::Air.get_id())]);
+}

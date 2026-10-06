@@ -491,14 +491,13 @@ impl Chunk {
     pub fn requires_interpreter(&self) -> bool {
         let requires_interpreter = |id| {
             let block = Block::from_id(id);
-            block.is_command_block()
-                || matches!(
-                    block,
-                    Block::Piston { .. }
-                        | Block::PistonHead { .. }
-                        | Block::MovingPiston { .. }
-                        | Block::Observer { .. }
-                )
+            matches!(
+                block,
+                Block::Piston { .. }
+                    | Block::PistonHead { .. }
+                    | Block::MovingPiston { .. }
+                    | Block::Observer { .. }
+            )
         };
         self.sections.iter().any(|s| {
             if s.block_count() == 0 {

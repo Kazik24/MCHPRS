@@ -98,7 +98,7 @@ impl fmt::Display for RecognitionFailure {
             Self::RetractedEntry => f.write_str("the current matcher requires a ready, extended piston"),
             Self::UnsupportedDirection => f.write_str("upward-facing instant mechanisms are not supported yet"),
             Self::MismatchedHead => f.write_str("the extended piston has a missing or incompatible stationary head"),
-            Self::UnsupportedPayload { pos, block } => write!(f, "payload minecraft:{block} at {pos:?} is not supported; the response extractor supports redstone blocks and wool"),
+            Self::UnsupportedPayload { pos, block } => write!(f, "payload minecraft:{block} at {pos:?} is not supported; the response extractor supports redstone blocks, wool, concrete, stone and sandstone"),
             Self::BlockEntity { pos } => write!(f, "moving or reset context at {pos:?} contains an unsupported block entity"),
             Self::UnsampledEntry => f.write_str("present power differs from the sampled piston state; this needs a storage protocol"),
             Self::OutsideBounds { pos } => write!(f, "required context at {pos:?} is outside the selection"),
@@ -239,7 +239,7 @@ pub(super) fn recognize<W: World>(
             None => result
                 .failures
                 .push(RecognitionFailure::OutsideBounds { pos: p.payload }),
-            Some(Block::RedstoneBlock | Block::Wool { .. }) => {}
+            Some(block) if crate::redpiler::instant::outputs::supported_payload(block) => {}
             Some(block) => result
                 .failures
                 .push(RecognitionFailure::UnsupportedPayload {
@@ -290,7 +290,7 @@ pub(super) fn recognize<W: World>(
         for &pos in &group.positions {
             if matches!(
                 topology.read(pos)?,
-                Some(Block::RedstoneBlock | Block::Wool { .. })
+                Some(block) if crate::redpiler::instant::outputs::supported_payload(block)
             ) {
                 result.payloads.push(pos);
             }
@@ -404,7 +404,17 @@ fn observer<W: World>(
     for pos in supply.outside_bounds {
         r.failures.push(RecognitionFailure::OutsideBounds { pos });
     }
-    if let Some(writer) = supply.sources.iter().find(|d| d.source != source) {
+    if let Some(writer) = supply.sources.iter().find(|d| {
+        if d.source == source { return false; }
+        // A stable lever on the cap is a prepared inhibit input, not an
+        // independent reset writer: firing already requires its power to fall.
+        // Keep delayed, mobile and indirect writers outside this certificate.
+        let prepared_inhibit = d.kind == SourceKind::Ordinary
+            && d.source == cap.offset(BlockFace::Top)
+            && matches!(topology.world.get_block(d.source), Block::Lever { lever } if lever.face == mchprs_blocks::blocks::LeverFace::Floor)
+            && r.inputs.sources.iter().any(|input| input.source == d.source && input.attenuation <= d.attenuation);
+        !prepared_inhibit
+    }) {
         r.failures
             .push(RecognitionFailure::AdditionalResetWriter { pos: writer.source });
         return Ok(());

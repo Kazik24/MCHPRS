@@ -154,6 +154,8 @@ pub enum NetworkState {
 #[doc(hidden)]
 pub mod test_support {
     use super::*;
+    use packets::{DecodeResult, PacketDecoderExt};
+    use std::io::{self, Cursor, Read};
 
     pub struct Connection {
         pub player: PlayerConn,
@@ -180,6 +182,35 @@ pub mod test_support {
             peer,
             incoming,
         })
+    }
+
+    pub fn read_frame(
+        peer: &mut TcpStream,
+        compressed: bool,
+    ) -> DecodeResult<(i32, Cursor<Vec<u8>>)> {
+        let length = peer.read_varint()?;
+        if !(1..=2_097_152).contains(&length) {
+            return Err(io::Error::from(io::ErrorKind::InvalidData).into());
+        }
+        let mut frame = Cursor::new(peer.read_bytes(length as usize)?);
+        if compressed {
+            let size = frame.read_varint()?;
+            if size != 0 {
+                if !(256..=2_097_152).contains(&size) {
+                    return Err(io::Error::from(io::ErrorKind::InvalidData).into());
+                }
+                let mut data = Vec::new();
+                flate2::read::ZlibDecoder::new(frame)
+                    .take(size as u64 + 1)
+                    .read_to_end(&mut data)?;
+                if data.len() != size as usize {
+                    return Err(io::Error::from(io::ErrorKind::InvalidData).into());
+                }
+                frame = Cursor::new(data);
+            }
+        }
+        let id = frame.read_varint()?;
+        Ok((id, frame))
     }
 }
 

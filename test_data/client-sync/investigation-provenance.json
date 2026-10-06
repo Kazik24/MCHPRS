@@ -1,0 +1,126 @@
+{
+  "schema_version": 1,
+  "date": "2026-10-06",
+  "protocol": 770,
+  "investigation_start": {
+    "revision": "7ce722aa786fb6be3d7544472d3b436e9587295f",
+    "source_sha256": {
+      "crates/core/src/player.rs": "542385fdb06a824196a243af110aa9c67232908c4f935b2a1c28925c566d0522",
+      "crates/core/src/plot/packet_handlers.rs": "9fb15d093de6856f69a37ec6ef9d2f0b9f5af6faf6898a9519f6b07bc8bb40e4",
+      "crates/core/src/plot/mod.rs": "f6f96c8b6f3c59695e7c9a85bd31918882570fa2125983967e6121bf664117a9",
+      "crates/core/src/plot/screen_updates.rs": "5970db2c52bb55ef3342c1589200b2a0ea2d24549a01ffb7d47ad93463a4eb03",
+      "crates/core/src/plot/worldedit/mod.rs": "96a0fc2a3161f0ea19686ce1aeb2d50ffda61481da5b4237807dae68f6510dd0",
+      "crates/core/src/world/storage.rs": "3bdf47b351d2b2a859a42698410e750469952ac4d100f7733580524fc8dd6d6d",
+      "crates/network/src/lib.rs": "c0762da0be201403fad2395fbe5ae474ee5972a221cc90973938628948564590",
+      "crates/network/src/outbound.rs": "d99162dd942c9d7026ba5931848be67a75c3140b7e5e842999a83151bd4b58be",
+      "crates/network/src/packets/mod.rs": "384bced6c7ebc174e4817fe11cb2713a29506f7553cc4179be24a2f6fd6e5e7e",
+      "crates/network/src/packets/serverbound.rs": "6263d081950596d9bd60448f055598c6b8fa87ee21eb91100a3e458734b7f738",
+      "crates/network/src/packets/clientbound.rs": "3887ed549a5d3cc2bb0a5913cb1b0411e5076ae530c913f845b2c603ab8e1036"
+    }
+  },
+  "validation_revision": "d86ae5ff0c00861707b3d5bcdf2ef53d523c9d79",
+  "validation_source_sha256": {
+    "crates/core/Cargo.toml": "117b8426b7e417b4d14747c18de1081fb922a444b3ec9e481b7899968aa53e2f",
+    "crates/network/Cargo.toml": "706a4756b6cf76df0243c343f0cea1e3157ec7d38e7b5a377cf24054a6cfc033",
+    "crates/core/src/player.rs": "ee04cfb456a71df4a14c30b49110f1ae3893093f688cfe668c89dada8dacbbfa",
+    "crates/core/src/player/client_sync.rs": "803280879a4a91e10dee73c1158d6685abb2a91ea548a870032381e556bd9fb9",
+    "crates/core/src/player/client_sync_tests.rs": "9e42499816c648aa95311568e7637d426e073929bfef171275fb3a30497058fd",
+    "crates/core/src/server.rs": "9f991962dbece5ab87e4a65cfe048974cb4cdb42f65b2ae72c9d9ee33eb3cf01",
+    "crates/core/src/plot/mod.rs": "973fa8b2ec08d1256d0c5ea7459474f751b438dfc7fb9661c067dc5c5503698d",
+    "crates/core/src/plot/packet_handlers.rs": "f04768ada2d39f9aa4859e36af943090808b3c59536327768d75d7ca8ec919b5",
+    "crates/core/src/plot/screen_updates.rs": "603606ccf0b2cd3a39a3982b1c5ab3c21113ea29704e850d48b70e013eecf140",
+    "crates/core/src/plot/client_test_utils.rs": "fb4256fd0908c578d56fa7e21e579625b2755b50b651066a4d9d8cad0221bbb9",
+    "crates/core/src/plot/client_sync_tests.rs": "24136a36a8619650ebc23e909068d661c467322510cd72540cf4f0af14135bb3",
+    "crates/core/src/plot/worldedit/mod.rs": "51f3e4cf10424bf49060c921945943f5bf10e7390b1d8ccb1e2ddae965c83386",
+    "crates/core/src/plot/worldedit/update_tests.rs": "a35466d82295b1aa1d7b70aca4e1095ed58362687b6e66f5ed6e66396fd15517",
+    "crates/network/src/lib.rs": "32ee5f3a5a3af9ee58c2fdcfd5989eba7c60adc23de60e59b20ecafc092b6ecb",
+    "crates/network/src/packets/mod.rs": "8d4fd2b86e22244b1677bd9a7d5d026b629f59e84d1dafe2c14866c451eb7da7",
+    "crates/network/src/packets/serverbound.rs": "96c272fee3e74ad2e5f6b5f43087bbd9e9867dcb6e02ef884daaf07bf0246eae",
+    "crates/network/src/packets/tests.rs": "d99e4944d92b363a7d220f4890dc4d86f981b186bc0bea41033da9e89605b496",
+    "crates/network/src/outbound.rs": "ec14f3e01b8cb8241f0280ad520930cdd79850179c087cf4fc3940f90854b249",
+    "crates/network/src/outbound/tests.rs": "2210323f15d727cfcdd9805de6e5107a2b0a5ecedb49a8a217a99aca9a6013e9",
+    "crates/network/src/packets/clientbound.rs": "962f0583956177c1464cc9b4f0945e4573a1e32499edc473b4521237a253faa8",
+    "crates/core/src/world/storage.rs": "bf092b188513ddc289452a005aed3b40e2b6d64e6b8135d6c9af6818380509e6",
+    "crates/core/src/plot/neighbors.rs": "74cbd5f901b475f4fc70da81ffd69b85b1d95124149497f9505136633334169f",
+    "mc_data/1.21.5/protocol.json": "4da46e7d46a9c50d7eec3d7d1cf39b1f54fcc4efae9ab33e0d16c7bc29a798b4"
+  },
+  "validation_environment": {
+    "cwd": "F:\\rustrepos\\MCHPRS",
+    "CARGO_INCREMENTAL": "0",
+    "worktree": "E:\\mchprs-client-sync-audit\\validation",
+    "rustc": "rustc 1.98.1 (48a229cea 2026-09-01)"
+  },
+  "java_reference": {
+    "version": "1.21.5",
+    "version_manifest_url": "https://piston-meta.mojang.com/mc/game/version_manifest_v2.json",
+    "version_metadata_url": "https://piston-meta.mojang.com/v1/packages/5617971be600cbdf93c60fc218b5073987f6507b/1.21.5.json",
+    "downloads": {
+      "server": {
+        "sha1": "e6ec2f64e6080b9b5d9b471b291c33cc7f509733",
+        "size": 57269758,
+        "url": "https://piston-data.mojang.com/v1/objects/e6ec2f64e6080b9b5d9b471b291c33cc7f509733/server.jar"
+      },
+      "server_mappings": {
+        "sha1": "f4812c1d66d0098a94616b19c21829e591d0af3a",
+        "size": 8027211,
+        "url": "https://piston-data.mojang.com/v1/objects/f4812c1d66d0098a94616b19c21829e591d0af3a/server.txt"
+      }
+    },
+    "local_server_sha1": "e6ec2f64e6080b9b5d9b471b291c33cc7f509733",
+    "local_server_sha256": "ae7681dadce21b6b4017d28e7eb567d86b6c100a6969994f540b9e54f812dc29",
+    "inspection": "static bytecode inspection, not live client conformance capture",
+    "local_mappings_sha1": "f4812c1d66d0098a94616b19c21829e591d0af3a"
+  },
+  "paper_reference": {
+    "branch": "ver/1.21.5",
+    "revision": "159cf454f0fa1e189a3420b6880405ad8d7b6bc1",
+    "inspection": "source patches"
+  },
+  "checks": [
+    {
+      "command": "cargo test -p mchprs_core --lib client_sync --manifest-path E:/mchprs-client-sync-audit/validation/Cargo.toml --target-dir E:/mchprs-client-sync-audit/target --config profile.test.debug=0 -- --test-threads=1",
+      "passed": 7,
+      "failed": 0,
+      "ignored": 0
+    },
+    {
+      "command": "cargo test -p mchprs_core --lib plot:: --manifest-path E:/mchprs-client-sync-audit/validation/Cargo.toml --target-dir E:/mchprs-client-sync-audit/target --config profile.test.debug=0 -- --test-threads=1",
+      "passed": 157,
+      "failed": 0,
+      "ignored": 0
+    },
+    {
+      "command": "cargo test -p mchprs_network --lib --manifest-path E:/mchprs-client-sync-audit/validation/Cargo.toml --target-dir E:/mchprs-client-sync-audit/target --config profile.test.debug=0 -- --test-threads=1",
+      "passed": 32,
+      "failed": 0,
+      "ignored": 1
+    },
+    {
+      "command": "cargo test -p mchprs_core --lib redstone:: --manifest-path E:/mchprs-client-sync-audit/validation/Cargo.toml --target-dir E:/mchprs-client-sync-audit/target --config profile.test.debug=0 -- --test-threads=1",
+      "passed": 97,
+      "failed": 0,
+      "ignored": 4
+    },
+    {
+      "command": "cargo check -p mchprs_core -p mchprs_network --manifest-path E:/mchprs-client-sync-audit/validation/Cargo.toml --target-dir E:/mchprs-client-sync-audit/target --config profile.dev.debug=0",
+      "exit_code": 0
+    },
+    {
+      "command": "cargo test -p mchprs_core --lib screen_only_paste --manifest-path E:/mchprs-client-sync-audit/validation/Cargo.toml --target-dir E:/mchprs-client-sync-audit/target --config profile.test.debug=0 -- --test-threads=1",
+      "passed": 1,
+      "failed": 0,
+      "ignored": 0
+    }
+  ],
+  "unperformed": [
+    "Minecraft GUI client smoke test",
+    "live Java client/network comparison capture"
+  ],
+  "validation_notes": [
+    "Shared-checkout core compile was interrupted by unrelated Redpiler API changes; no interpreter/compiler fixes were made for this task.",
+    "F: ran out of space during initial isolated compilation. The owned validation checkout was moved to E: with Move-Item and git worktree repair, using a separate target directory.",
+    "Shared WorldEdit selection aliases added during validation were preserved and are absent from the frozen validation source.",
+    "An initial outbound regression decoder incorrectly assumed the chunk frame was below the compression threshold; the test now handles compressed chunk frames.",
+    "Extended sign packet assertion initially used the file-NBT reader on anonymous network NBT; only the test reader was corrected. The focused paste check and complete 157-test plot suite then passed."
+  ]
+}

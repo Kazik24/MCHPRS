@@ -78,7 +78,7 @@ pub(crate) fn update(world: &mut impl World, pos: BlockPos) {
     }
 }
 
-fn execute(world: &mut impl World, pos: BlockPos) -> bool {
+fn execute(world: &mut impl World, pos: BlockPos, notify: bool) -> bool {
     let Some(BlockEntity::CommandBlock(stored)) = world.get_block_entity(pos) else {
         return false;
     };
@@ -118,28 +118,66 @@ fn execute(world: &mut impl World, pos: BlockPos) -> bool {
     if let Some(BlockEntity::CommandBlock(stored)) = world.get_block_entity_mut(pos) {
         **stored = entity;
     }
-    super::update_surrounding_blocks(world, pos);
+    if notify {
+        super::update_surrounding_blocks(world, pos);
+    }
     true
 }
 
 pub(crate) fn tick(world: &mut impl World, pos: BlockPos) {
-    let name = world.get_block(pos).get_name();
-    if name == "chain_command_block" {
+    let executed = tick_inner(world, pos, true);
+    if !executed.is_empty() && world.get_block(pos).get_name() == "repeating_command_block" {
+        update(world, pos);
+    }
+}
+
+/// Compiled output activation uses the existing command allowlist, chain limits,
+/// conditions and entity lifecycle, without restarting physical redstone.
+pub(crate) fn tick_output(world: &mut impl World, pos: BlockPos) -> Vec<BlockPos> {
+    tick_inner(world, pos, false)
+}
+
+pub(crate) fn set_output_power(
+    world: &mut impl World,
+    pos: BlockPos,
+    powered: bool,
+    capture_condition: bool,
+) {
+    if !world.get_block(pos).is_command_block() {
         return;
     }
-    let Some(BlockEntity::CommandBlock(_)) = world.get_block_entity(pos) else {
+    if !matches!(
+        world.get_block_entity(pos),
+        Some(BlockEntity::CommandBlock(_))
+    ) {
+        world.set_block_entity(pos, BlockEntity::CommandBlock(Box::default()));
+    }
+    let met = condition_met(world, pos);
+    let Some(BlockEntity::CommandBlock(entity)) = world.get_block_entity_mut(pos) else {
         return;
     };
-    // A queued activation still executes if power disappears before its callback.
-    if !execute(world, pos) {
-        return;
+    entity.powered = powered;
+    if capture_condition {
+        entity.condition_met = met;
     }
+}
+
+fn tick_inner(world: &mut impl World, pos: BlockPos, notify: bool) -> Vec<BlockPos> {
+    let name = world.get_block(pos).get_name();
+    if name == "chain_command_block" {
+        return Vec::new();
+    }
+    let Some(BlockEntity::CommandBlock(_)) = world.get_block_entity(pos) else {
+        return Vec::new();
+    };
+    // A queued activation still executes if power disappears before its callback.
+    if !execute(world, pos, notify) {
+        return Vec::new();
+    }
+    let mut executed = vec![pos];
     if !matches!(world.get_block_entity(pos), Some(BlockEntity::CommandBlock(entity)) if entity.condition_met)
     {
-        if name == "repeating_command_block" {
-            update(world, pos);
-        }
-        return;
+        return executed;
     }
     let mut current = pos;
     // Bound chains even when UpdateLastExecution is disabled or an imported chain loops.
@@ -151,12 +189,13 @@ pub(crate) fn tick(world: &mut impl World, pos: BlockPos) {
         let Some(BlockEntity::CommandBlock(entity)) = world.get_block_entity(next) else {
             break;
         };
-        if (entity.powered || entity.automatic) && !execute(world, next) {
-            break;
+        if entity.powered || entity.automatic {
+            if !execute(world, next, notify) {
+                break;
+            }
+            executed.push(next);
         }
         current = next;
     }
-    if name == "repeating_command_block" {
-        update(world, pos);
-    }
+    executed
 }

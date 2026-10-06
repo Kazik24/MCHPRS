@@ -8,7 +8,9 @@
 //! There are no requirements for this pass.
 
 use super::Pass;
-use crate::redpiler::compile_graph::{CompileGraph, CompileNode, NodeIdx, NodeState, NodeType};
+use crate::redpiler::compile_graph::{
+    CompileGraph, CompileLink, CompileNode, LinkType, NodeIdx, NodeState, NodeType,
+};
 use crate::redpiler::{CompilerInput, CompilerOptions};
 use crate::redstone::{self, comparator, noteblock};
 use crate::world::{for_each_block_optimized, World};
@@ -99,6 +101,30 @@ impl<W: World> Pass<W> for IdentifyNodes {
             }
         }
 
+        if let Some(boundaries) = input.boundaries {
+            for (port, output) in boundaries.outputs.iter().enumerate() {
+                let target = *nodes_by_position.get(&output.consumer).ok_or(
+                    super::GraphError::MissingSource {
+                        pos: output.consumer,
+                    },
+                )?;
+                let source = graph.add_node(CompileNode {
+                    ty: NodeType::InstantOutput { port },
+                    block: None,
+                    state: NodeState::ss(output.initial_strength),
+                    is_input: false,
+                    is_output: false,
+                });
+                let channel = match output.input {
+                    crate::redpiler::analysis::ports::ConsumerInput::Main => LinkType::Default,
+                    crate::redpiler::analysis::ports::ConsumerInput::ComparatorSide => {
+                        LinkType::Side
+                    }
+                };
+                graph.add_edge(source, target, CompileLink::new(channel, 0));
+            }
+        }
+
         for entry in input.ticks {
             if let Some(&idx) = nodes_by_position.get(&entry.pos) {
                 graph[idx].state.pending_tick = true;
@@ -135,10 +161,26 @@ fn for_pos<W: World>(
         ty,
         NodeType::Button | NodeType::Lever | NodeType::PressurePlate
     );
-    let is_output = matches!(
-        ty,
-        NodeType::Trapdoor | NodeType::Lamp | NodeType::NoteBlock { .. }
-    );
+    let dynamic_command_override = match block {
+        Block::RedstoneComparator { comparator } => {
+            comparator::get_far_input(world, pos, comparator.facing).is_some()
+                && world
+                    .get_block(
+                        pos.offset(comparator.facing.block_face())
+                            .offset(comparator.facing.block_face()),
+                    )
+                    .is_command_block()
+        }
+        _ => false,
+    };
+    let is_output = dynamic_command_override
+        || matches!(
+            ty,
+            NodeType::Trapdoor
+                | NodeType::Lamp
+                | NodeType::NoteBlock { .. }
+                | NodeType::CommandBlock { .. }
+        );
     if ignore_wires && ty == NodeType::Wire && !(is_input | is_output) {
         return;
     }
@@ -213,6 +255,29 @@ fn identify_block<W: World>(
             (
                 NodeType::NoteBlock { instrument, note },
                 NodeState::simple(powered),
+            )
+        }
+        block if block.is_command_block() => {
+            let entity = match world.get_block_entity(pos) {
+                Some(BlockEntity::CommandBlock(entity)) => Some(entity.as_ref()),
+                _ => None,
+            };
+            (
+                NodeType::CommandBlock {
+                    repeating: block.get_name() == "repeating_command_block",
+                    chain: block.get_name() == "chain_command_block",
+                    automatic: entity.is_some_and(|entity| entity.automatic),
+                    initial_tick: entity.is_some_and(|entity| {
+                        entity.automatic
+                            && (entity.last_execution < 0
+                                || block.get_name() == "repeating_command_block")
+                    }),
+                },
+                NodeState {
+                    powered: entity.is_some_and(|entity| entity.powered),
+                    output_strength: comparator::get_override(block, world, pos),
+                    ..Default::default()
+                },
             )
         }
         block if comparator::has_override(block) => (

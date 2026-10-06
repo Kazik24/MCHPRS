@@ -3,6 +3,43 @@ use super::*;
 use std::io::Cursor;
 
 #[test]
+fn play_teleport_confirmations_dispatch_in_order_and_reject_invalid_ids() {
+    #[derive(Default)]
+    struct Handler(Vec<(usize, i32)>);
+    impl ServerBoundPacketHandler for Handler {
+        fn handle_teleport_confirm(&mut self, packet: STeleportConfirm, player: usize) {
+            self.0.push((player, packet.id));
+        }
+    }
+    let mut bytes = Vec::new();
+    for id in [1, 2, 1, 2, i32::MAX, 0] {
+        let mut data = Vec::new();
+        data.write_varint(id);
+        PacketEncoder::new(data, 0x00)
+            .write_uncompressed(&mut bytes)
+            .unwrap();
+    }
+    let mut reader = Cursor::new(bytes);
+    let mut state = NetworkState::Play;
+    let mut handler = Handler::default();
+    let compression = Arc::new(AtomicBool::new(false));
+    for _ in 0..6 {
+        read_packet(&mut reader, &compression, &mut state)
+            .unwrap()
+            .handle(&mut handler, 7);
+    }
+    assert_eq!(
+        handler.0,
+        [(7, 1), (7, 2), (7, 1), (7, 2), (7, i32::MAX), (7, 0)]
+    );
+    assert_eq!(state, NetworkState::Play);
+    let mut invalid = Vec::new();
+    invalid.write_varint(-1);
+    assert!(STeleportConfirm::decode(&mut Cursor::new(invalid)).is_err());
+    assert!(STeleportConfirm::decode(&mut Cursor::new(vec![0x80])).is_err());
+}
+
+#[test]
 fn clean_connection_closes_are_distinct_from_truncated_packet_frames() {
     let compression = Arc::new(AtomicBool::new(false));
     let mut state = NetworkState::Status;

@@ -2,7 +2,7 @@ use super::Pass;
 use crate::redpiler::compile_graph::{CompileGraph, LinkType, NodeIdx, NodeType};
 use crate::redpiler::{CompilerInput, CompilerOptions};
 use crate::world::World;
-use mchprs_blocks::blocks::ComparatorMode;
+use mchprs_blocks::blocks::{Block, ComparatorMode};
 use petgraph::visit::{EdgeRef, NodeIndexable};
 use petgraph::Direction;
 use tracing::trace;
@@ -14,10 +14,10 @@ impl<W: World> Pass<W> for ConstantFold {
         &self,
         graph: &mut CompileGraph,
         _: &CompilerOptions,
-        _: &CompilerInput<'_, W>,
+        input: &CompilerInput<'_, W>,
     ) -> Result<(), super::GraphError> {
         loop {
-            let num_folded = fold(graph);
+            let num_folded = fold(graph, input.world);
             if num_folded == 0 {
                 break;
             }
@@ -31,13 +31,23 @@ impl<W: World> Pass<W> for ConstantFold {
     }
 }
 
-fn fold(graph: &mut CompileGraph) -> usize {
+fn fold(graph: &mut CompileGraph, world: &impl World) -> usize {
     let mut num_folded = 0;
 
     'nodes: for i in 0..graph.node_bound() {
         let idx = NodeIdx::new(i);
         if !graph.contains_node(idx) || graph[idx].state.pending_tick {
             continue;
+        }
+        if let Some((pos, id)) = graph[idx].block {
+            if let Block::RedstoneComparator { comparator } = Block::from_id(id) {
+                let far = pos
+                    .offset(comparator.facing.block_face())
+                    .offset(comparator.facing.block_face());
+                if world.get_block(far).is_command_block() {
+                    continue;
+                }
+            }
         }
 
         let mut default_power = 0;

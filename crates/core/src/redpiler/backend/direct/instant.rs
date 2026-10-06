@@ -3,13 +3,13 @@
 use super::node::{NodeId, Nodes};
 use crate::plot::{PlotWorld, PLOT_BLOCK_WIDTH, PLOT_WIDTH};
 use crate::redpiler::backend::BackendError;
-use crate::redpiler::instant::boolean::{Expr, Variable, TRUE};
+use crate::redpiler::instant::boolean::{Expr, GeometryPart, Variable, TRUE};
 use crate::redpiler::instant::program::PreparedInstant;
 use crate::world::storage::Chunk;
 use crate::world::World;
 use mchprs_blocks::blocks::{Block, LeverFace};
 use mchprs_blocks::{BlockFace, BlockPos};
-use rustc_hash::FxHashMap;
+use rustc_hash::{FxHashMap, FxHashSet};
 
 pub(super) struct Runtime {
     program: PreparedInstant,
@@ -24,6 +24,11 @@ pub(super) struct Runtime {
     actions: Vec<(BlockPos, u8)>,
     epoch_actions: Vec<(BlockPos, u8)>,
     decisions: Vec<Decision>,
+    outputs: Vec<Output>,
+    output_sources: FxHashSet<NodeId>,
+    actor_groups: Vec<usize>,
+    group_fired: Vec<bool>,
+    memory_actors: Vec<bool>,
     memory: Vec<bool>,
     moving_memory: Vec<bool>,
     replay_memory: Vec<bool>,
@@ -37,9 +42,21 @@ struct Decision {
     high: Expr,
 }
 
+struct Output {
+    node: NodeId,
+    terms: Vec<Term>,
+}
+
+struct Term {
+    guard: Expr,
+    source: Option<NodeId>,
+    attenuation: u8,
+}
+
 enum Input {
     Source(NodeId),
     Memory(usize),
+    Geometry { actor: usize, part: GeometryPart },
 }
 enum Supply {
     Wave { group: usize, initial: bool },
@@ -50,6 +67,7 @@ impl Runtime {
     pub(super) fn bind(
         mut program: PreparedInstant,
         bindings: FxHashMap<BlockPos, NodeId>,
+        output_bindings: FxHashMap<usize, NodeId>,
         nodes: &Nodes,
     ) -> Result<Self, BackendError> {
         let mut sources = FxHashMap::default();
@@ -105,6 +123,9 @@ impl Runtime {
                     {
                         (Input::Memory(actor), 0)
                     }
+                    Variable::Geometry { actor, part } if actor < program.logic.responses.len() => {
+                        (Input::Geometry { actor, part }, 0)
+                    }
                     _ => return Err(BackendError::InvalidInstantProgram),
                 };
                 Ok(Decision {
@@ -115,6 +136,56 @@ impl Runtime {
                 })
             })
             .collect::<Result<Vec<_>, _>>()?;
+        let outputs: Vec<Output> = program
+            .logic
+            .outputs
+            .iter()
+            .enumerate()
+            .map(|(port, output)| {
+                let node =
+                    *output_bindings
+                        .get(&port)
+                        .ok_or(BackendError::MissingInstantBinding {
+                            pos: output.consumer,
+                        })?;
+                let terms = output
+                    .terms
+                    .iter()
+                    .map(|term| {
+                        Ok(Term {
+                            guard: term.guard,
+                            source: term
+                                .source
+                                .map(|pos| {
+                                    bindings
+                                        .get(&pos)
+                                        .copied()
+                                        .ok_or(BackendError::MissingInstantBinding { pos })
+                                })
+                                .transpose()?,
+                            attenuation: term.attenuation,
+                        })
+                    })
+                    .collect::<Result<_, BackendError>>()?;
+                Ok(Output { node, terms })
+            })
+            .collect::<Result<_, BackendError>>()?;
+        let mut actor_groups = vec![0; program.logic.responses.len()];
+        for (group, actors) in program.groups.iter().enumerate() {
+            for &actor in actors {
+                actor_groups[actor] = group;
+            }
+        }
+        let output_sources = outputs
+            .iter()
+            .flat_map(|output| output.terms.iter().filter_map(|term| term.source))
+            .collect();
+        let mut memory_actors = vec![false; program.logic.responses.len()];
+        if let Some(clocked) = &program.clocked {
+            for cell in &clocked.memory {
+                memory_actors[cell.actor] = true;
+            }
+        }
         program.logic.arena = Default::default();
         Ok(Self {
             fired: vec![false; program.logic.responses.len()],
@@ -122,6 +193,7 @@ impl Runtime {
             moving_memory: vec![false; program.logic.responses.len()],
             replay_memory: vec![false; program.logic.responses.len()],
             previous_wave_memory: vec![false; program.logic.responses.len()],
+            group_fired: vec![false; program.groups.len()],
             program,
             sources,
             aliases,
@@ -133,6 +205,10 @@ impl Runtime {
             actions: Vec::new(),
             epoch_actions: Vec::new(),
             decisions,
+            outputs,
+            output_sources,
+            actor_groups,
+            memory_actors,
         })
     }
 
@@ -156,10 +232,17 @@ impl Runtime {
                     let high = match d.input {
                         Input::Source(source) => nodes[source].output_power > d.threshold,
                         Input::Memory(actor) => self.memory[actor],
+                        Input::Geometry { .. } => {
+                            unreachable!("response functions contain no output geometry")
+                        }
                     };
                     id = if high { d.high } else { d.low };
                 }
                 *value = id == TRUE;
+            }
+            self.group_fired.fill(false);
+            for (actor, &fired) in self.fired.iter().enumerate() {
+                self.group_fired[self.actor_groups[actor]] |= fired;
             }
             let active = self
                 .program
@@ -207,14 +290,13 @@ impl Runtime {
                 self.moving_memory.fill(false);
             }
         }
-        self.aliases
+        let mut changes: Vec<_> = self
+            .aliases
             .iter()
             .map(|(id, supply)| {
                 let powered = match *supply {
                     Supply::Wave { group, initial } => {
-                        let low = self.phase != 0
-                            && self.phase != 6
-                            && self.program.groups[group].iter().any(|&p| self.fired[p]);
+                        let low = self.phase != 0 && self.phase != 6 && self.group_fired[group];
                         initial && !low
                     }
                     Supply::Memory { actor, far } => {
@@ -222,6 +304,66 @@ impl Runtime {
                     }
                 };
                 (*id, if powered { 15 } else { 0 })
+            })
+            .collect();
+        changes.extend(self.output_changes(nodes));
+        changes
+    }
+
+    fn geometry(&self, actor: usize, part: GeometryPart) -> bool {
+        if self.memory_actors[actor] {
+            return match part {
+                GeometryPart::FarPayload | GeometryPart::Head => {
+                    !self.memory[actor] && !self.moving_memory[actor]
+                }
+                GeometryPart::NearPayload => self.memory[actor] && !self.moving_memory[actor],
+                GeometryPart::RetractedBase => self.memory[actor] && !self.moving_memory[actor],
+                GeometryPart::MovingBase => self.memory[actor] && self.moving_memory[actor],
+            };
+        }
+        let active = self.phase != 0 && self.phase != 6;
+        match part {
+            GeometryPart::FarPayload => !active || !self.group_fired[self.actor_groups[actor]],
+            GeometryPart::NearPayload => self.phase == 3 && self.fired[actor],
+            GeometryPart::Head => !active || !self.fired[actor],
+            GeometryPart::RetractedBase => self.phase == 3 && self.fired[actor],
+            GeometryPart::MovingBase => (1..=2).contains(&self.phase) && self.fired[actor],
+        }
+    }
+
+    pub(super) fn output_depends_on(&self, source: NodeId) -> bool {
+        self.output_sources.contains(&source)
+    }
+
+    fn evaluate(&self, mut root: Expr, nodes: &Nodes) -> bool {
+        while root > TRUE {
+            let decision = &self.decisions[(root - 2) as usize];
+            let high = match decision.input {
+                Input::Source(source) => nodes[source].output_power > decision.threshold,
+                Input::Memory(actor) => self.memory[actor],
+                Input::Geometry { actor, part } => self.geometry(actor, part),
+            };
+            root = if high { decision.high } else { decision.low };
+        }
+        root == TRUE
+    }
+
+    pub(super) fn output_changes(&self, nodes: &Nodes) -> Vec<(NodeId, u8)> {
+        self.outputs
+            .iter()
+            .filter_map(|output| {
+                let strength = output
+                    .terms
+                    .iter()
+                    .filter(|term| self.evaluate(term.guard, nodes))
+                    .map(|term| {
+                        term.source
+                            .map_or(15, |source| nodes[source].output_power)
+                            .saturating_sub(term.attenuation)
+                    })
+                    .max()
+                    .unwrap_or(0);
+                (strength != nodes[output.node].output_power).then_some((output.node, strength))
             })
             .collect()
     }

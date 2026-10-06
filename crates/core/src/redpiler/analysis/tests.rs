@@ -1,4 +1,5 @@
 use super::*;
+mod outputs;
 use crate::plot::worldedit::{load_schematic, paste_clipboard};
 use crate::plot::{PlotWorld, PLOT_WIDTH};
 use crate::redpiler::instant::contract::{ElectricalState, Strength, TriggerState};
@@ -763,7 +764,7 @@ fn extracted_counter_transition_matches_all_sixteen_bit_states() {
             if logic.arena.evaluate(logic.responses[actor], |v| match v {
                 Variable::Signal { .. } => false,
                 Variable::Memory(actor) => bits[actor],
-                Variable::Actuator(_) => unreachable!(),
+                Variable::Actuator(_) | Variable::Geometry { .. } => unreachable!(),
             }) {
                 next |= 1 << bit;
             }
@@ -1222,9 +1223,9 @@ fn unrelated_ordinary_nodes_keep_working_in_a_compiled_piston_plot() {
 }
 
 #[test]
-fn storage_and_moving_conductor_consumer_boundaries_fail_transactionally() {
+fn unsupported_storage_and_shared_reset_boundaries_fail_transactionally() {
     for name in [
-        "adder_1bit",
+        "and_3",
         "bud_noninstantinputs",
         "bud_pistonupdate",
         "or_interpreter_illigal",

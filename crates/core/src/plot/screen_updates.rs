@@ -144,7 +144,8 @@ impl PlotWorld {
             };
             for pos in positions {
                 let state = self.screen_state(pos);
-                if updates.forced.remove(&pos) || updates.visible.get(&pos).copied() != Some(state) {
+                if updates.forced.remove(&pos) || updates.visible.get(&pos).copied() != Some(state)
+                {
                     packet.records.push(C3BMultiBlockChangeRecord {
                         block_id: state,
                         x: (pos.x & 15) as u8,
@@ -178,9 +179,75 @@ impl PlotWorld {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::plot::client_test_utils::{read_ack, read_blocks};
     use crate::plot::PLOT_WIDTH;
     use crate::world::storage::Chunk;
     use mchprs_blocks::blocks::{RedstoneMovingPiston, RedstoneWire};
+    use mchprs_network::{
+        test_support::connection, BlockActionAcknowledgement, PlayerPacketSender,
+    };
+
+    #[test]
+    fn external_placement_and_removal_reach_clients_before_ack_in_screen_mode() {
+        for compressed in [false, true] {
+            let mut w = world();
+            let wire = BlockPos::new(5, 5, 5);
+            let edited = BlockPos::new(32, 20, 32);
+            w.set_block(
+                wire,
+                Block::RedstoneWire {
+                    wire: Default::default(),
+                },
+            );
+            w.set_screen_only(true);
+            let conn = connection(compressed).unwrap();
+            let mut peer = conn.peer;
+            w.packet_senders.push(PlayerPacketSender::new(&conn.player));
+
+            // Ordinary simulation changes are deliberately hidden.
+            w.set_block(
+                wire,
+                Block::RedstoneWire {
+                    wire: RedstoneWire {
+                        power: 15,
+                        ..Default::default()
+                    },
+                },
+            );
+            w.flush_block_changes();
+            drop(BlockActionAcknowledgement::new(&conn.player, 0));
+            read_ack(&mut peer, compressed, 0);
+
+            for (sequence, block) in [(1, Block::Sandstone {}), (2, Block::Air)] {
+                let ack = BlockActionAcknowledgement::new(&conn.player, sequence);
+                let previous = w.set_authoritative_updates(true);
+                w.set_block(edited, block);
+                w.flush_block_changes();
+                w.set_authoritative_updates(previous);
+                drop(ack);
+                assert_eq!(
+                    read_blocks(&mut peer, compressed),
+                    [(edited, block.get_id())]
+                );
+                read_ack(&mut peer, compressed, sequence);
+            }
+
+            w.set_block(
+                wire,
+                Block::RedstoneWire {
+                    wire: RedstoneWire {
+                        power: 1,
+                        ..Default::default()
+                    },
+                },
+            );
+            w.flush_block_changes();
+            drop(BlockActionAcknowledgement::new(&conn.player, 3));
+            read_ack(&mut peer, compressed, 3);
+            assert!(w.screen_only());
+            assert!(matches!(w.get_block(wire), Block::RedstoneWire { wire } if wire.power == 1));
+        }
+    }
 
     fn world() -> PlotWorld {
         PlotWorld::from_chunks(

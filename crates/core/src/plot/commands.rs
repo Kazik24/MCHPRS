@@ -373,8 +373,8 @@ impl Plot {
                         Ok(candidate) => {
                             let summary = candidate.summary();
                             self.players[player].send_system_message(&format!(
-                                "Candidate graph: {} ordinary nodes, {} instant inputs, {} mobile sources, {} electrical links; execution remains disabled",
-                                summary.ordinary_nodes, summary.instant_inputs, summary.mobile_sources, summary.electrical_links,
+                                "Candidate graph: {} ordinary nodes, {} instant inputs, {} mobile sources, {} compiled output ports, {} electrical links; execution remains disabled",
+                                summary.ordinary_nodes, summary.instant_inputs, summary.mobile_sources, summary.compiled_outputs, summary.electrical_links,
                             ));
                             self.players[player]
                                 .send_system_message(&candidate.report.recognition_summary());
@@ -402,7 +402,7 @@ impl Plot {
                         // keep a large plot from flooding the player's chat.
                         debug!(report = %serde_json::to_string(&report).unwrap(), "Redpiler analysis");
                         for issue in report.issues.iter().take(8) {
-                            self.players[player].send_system_message(&issue.to_string());
+                            self.players[player].send_error_message(&issue.to_string());
                         }
                         if report.issues.len() > 8 {
                             self.players[player].send_system_message(
@@ -972,7 +972,7 @@ fn declared_command_nodes() -> Vec<Node<'static>> {
         Node::root(&[
             1, 4, 5, 6, 11, 12, 14, 16, 18, 19, 20, 21, 22, 23, 24, 26, 29, 31, 33, 35, 46, 48, 52,
             59, 60, 62, 64, 65, 66, 70, 72, 73, 74, 81, 82, 84, 87, 89, 90, 100, 105, 110, 111,
-            112, 113, 114, 115, 117, 119, 120, 123, 130, 134, 135, 142, 143,
+            112, 113, 114, 115, 117, 119, 120, 123, 130, 134, 135, 142, 143, 144, 145, 146,
         ]),
         // 1: /teleport
         Node::literal("teleport", &[2, 3]),
@@ -1028,7 +1028,7 @@ fn declared_command_nodes() -> Vec<Node<'static>> {
         // 24: //set
         Node::literal("/set", &[25]),
         // 25: //set [block]
-        Node::argument("block", Parser::BlockState, &[]).executable(),
+        Node::argument("block", Parser::String(0), &[]).executable(),
         // 26: //replace
         Node::literal("/replace", &[27]),
         // 27: //replace [oldblock]
@@ -1243,6 +1243,11 @@ fn declared_command_nodes() -> Vec<Node<'static>> {
         Node::literal("3", &[]).executable(),
         Node::literal("gmc", &[]).executable(),
         Node::literal("gmsp", &[]).executable(),
+        // 144-145: clear the WorldEdit selection.
+        Node::redirect("/desel", 36).executable(),
+        Node::redirect("desel", 36).executable(),
+        // 146: /set accepts the same block patterns as //set.
+        Node::redirect("set", 24),
     ]
 }
 
@@ -1260,7 +1265,7 @@ mod security_tests {
     #[test]
     fn command_declarations_have_valid_edges_and_no_legacy_tick_aliases() {
         let nodes = declared_command_nodes();
-        assert_eq!(nodes.len(), 144);
+        assert_eq!(nodes.len(), 147);
         for node in &nodes {
             for edge in node.children.iter().copied().chain(node.redirect_node) {
                 assert!(edge >= 0 && (edge as usize) < nodes.len());
@@ -1280,7 +1285,14 @@ mod security_tests {
         for retained in ["tps", "adv", "back", "rhistory", "redpiler", "rp", "gm"] {
             assert!(names.contains(&retained), "missing command {retained}");
         }
-        for (alias, target) in [("rp", "redpiler"), ("gm", "gamemode"), ("tp", "teleport")] {
+        for (alias, target) in [
+            ("rp", "redpiler"),
+            ("gm", "gamemode"),
+            ("tp", "teleport"),
+            ("/desel", "/sel"),
+            ("desel", "/sel"),
+            ("set", "/set"),
+        ] {
             let node = nodes.iter().find(|node| node.name == Some(alias)).unwrap();
             assert_eq!(
                 nodes[node.redirect_node.unwrap() as usize].name,

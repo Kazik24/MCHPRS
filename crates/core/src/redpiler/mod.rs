@@ -286,6 +286,10 @@ impl Compiler {
         self.backend().flush(world, io_only);
     }
 
+    pub fn tick_with_world<W: World>(&mut self, world: &mut W) {
+        self.backend().tick_with_world(world);
+    }
+
     pub fn inspect(&mut self, pos: BlockPos) {
         if let Some(backend) = &mut self.jit {
             backend.inspect(pos);

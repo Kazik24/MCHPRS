@@ -510,6 +510,38 @@ fn supports_dust(world: &impl World, pos: BlockPos) -> bool {
     )
 }
 
+/// Stationary support used by attachments. Compilation also uses this mapping
+/// to reject attachments which would be destroyed by an owned moving block.
+pub(crate) fn attachment_support(block: Block, pos: BlockPos) -> Option<(BlockPos, BlockFace)> {
+    let face = if block.pressure_plate_powered().is_some() {
+        BlockFace::Top
+    } else {
+        match block {
+            Block::RedstoneWire { .. }
+            | Block::RedstoneComparator { .. }
+            | Block::RedstoneRepeater { .. }
+            | Block::Sign { .. }
+            | Block::RedstoneTorch { .. } => BlockFace::Top,
+            Block::RedstoneWallTorch { facing, .. } | Block::WallSign { facing, .. } => {
+                facing.block_face()
+            }
+            Block::TripwireHook { direction, .. } => direction.block_face(),
+            Block::Lever { lever } => match lever.face {
+                LeverFace::Floor => BlockFace::Top,
+                LeverFace::Ceiling => BlockFace::Bottom,
+                LeverFace::Wall => lever.facing.block_face(),
+            },
+            Block::StoneButton { button } => match button.face {
+                ButtonFace::Floor => BlockFace::Top,
+                ButtonFace::Ceiling => BlockFace::Bottom,
+                ButtonFace::Wall => button.facing.block_face(),
+            },
+            _ => return None,
+        }
+    };
+    Some((pos.offset(face.opposite()), face))
+}
+
 pub fn is_valid_position(block: Block, world: &impl World, pos: BlockPos) -> bool {
     if world.is_cursed() {
         return true;
@@ -525,46 +557,13 @@ pub fn is_valid_position(block: Block, world: &impl World, pos: BlockPos) -> boo
         support_model.set_properties(props.iter().map(|(k, v)| (*k, v.as_str())).collect());
         return is_valid_position(support_model, world, pos);
     }
-    if block.pressure_plate_powered().is_some() {
-        return supports_attachment(
-            world.get_block(pos.offset(BlockFace::Bottom)),
-            BlockFace::Top,
-        );
+    if matches!(block, Block::RedstoneWire { .. }) {
+        return supports_dust(world, pos.offset(BlockFace::Bottom));
     }
-
+    if let Some((support, face)) = attachment_support(block, pos) {
+        return supports_attachment(world.get_block(support), face);
+    }
     match block {
-        Block::RedstoneWire { .. } => supports_dust(world, pos.offset(BlockFace::Bottom)),
-        Block::RedstoneComparator { .. }
-        | Block::RedstoneRepeater { .. }
-        | Block::Sign { .. }
-        | Block::RedstoneTorch { .. } => {
-            let bottom_block = world.get_block(pos.offset(BlockFace::Bottom));
-            supports_attachment(bottom_block, BlockFace::Top)
-        }
-        Block::RedstoneWallTorch { facing, .. } | Block::WallSign { facing, .. } => {
-            let parent_block = world.get_block(pos.offset(facing.opposite().block_face()));
-            supports_attachment(parent_block, facing.block_face())
-        }
-        Block::TripwireHook { direction, .. } => {
-            let parent_block = world.get_block(pos.offset(direction.opposite().block_face()));
-            supports_attachment(parent_block, direction.block_face())
-        }
-        Block::Lever { lever } => {
-            let face = match lever.face {
-                LeverFace::Floor => BlockFace::Top,
-                LeverFace::Ceiling => BlockFace::Bottom,
-                LeverFace::Wall => lever.facing.block_face(),
-            };
-            supports_attachment(world.get_block(pos.offset(face.opposite())), face)
-        }
-        Block::StoneButton { button } => {
-            let face = match button.face {
-                ButtonFace::Floor => BlockFace::Top,
-                ButtonFace::Ceiling => BlockFace::Bottom,
-                ButtonFace::Wall => button.facing.block_face(),
-            };
-            supports_attachment(world.get_block(pos.offset(face.opposite())), face)
-        }
         Block::PistonHead { head } => {
             matches!(
                 world.get_block(pos.offset(BlockFace::from(head.facing).opposite())),

@@ -117,7 +117,17 @@ fn compile_node(
         CNodeType::Trapdoor => NodeType::Trapdoor,
         CNodeType::Wire => NodeType::Wire,
         CNodeType::Constant => NodeType::Constant,
-        CNodeType::MobileSource { .. } => NodeType::InstantSource,
+        CNodeType::CommandBlock {
+            repeating,
+            chain,
+            automatic,
+            ..
+        } => NodeType::CommandBlock {
+            repeating: *repeating,
+            chain: *chain,
+            automatic: *automatic,
+        },
+        CNodeType::MobileSource { .. } | CNodeType::InstantOutput { .. } => NodeType::InstantSource,
         CNodeType::InstantInput { .. } => {
             unreachable!("boundary nodes rejected before lowering")
         }
@@ -155,6 +165,7 @@ pub fn compile(
             n.ty,
             crate::redpiler::compile_graph::NodeType::InstantInput { .. }
                 | crate::redpiler::compile_graph::NodeType::MobileSource { .. }
+                | crate::redpiler::compile_graph::NodeType::InstantOutput { .. }
         )
     }) && instant.is_none()
     {
@@ -232,9 +243,19 @@ pub fn compile(
                     .map(|(pos, _)| (pos, backend.nodes.get(nodes_map[&idx]))),
             })
             .collect();
+        let outputs = graph
+            .node_indices()
+            .filter_map(|idx| match graph[idx].ty {
+                crate::redpiler::compile_graph::NodeType::InstantOutput { port } => {
+                    Some((port, backend.nodes.get(nodes_map[&idx])))
+                }
+                _ => None,
+            })
+            .collect();
         backend.instant = Some(super::instant::Runtime::bind(
             program,
             bindings,
+            outputs,
             &backend.nodes,
         )?);
     }
@@ -247,6 +268,34 @@ pub fn compile(
     }
 
     // Schedule backend ticks
+    for (i, block) in backend.blocks.iter().enumerate() {
+        let Some((pos, Block::RedstoneComparator { comparator })) = block else {
+            continue;
+        };
+        let id = backend.nodes.get(i);
+        if !matches!(
+            backend.nodes[id].ty,
+            NodeType::Comparator {
+                far_input: Some(_),
+                ..
+            }
+        ) {
+            continue;
+        }
+        let far = pos
+            .offset(comparator.facing.block_face())
+            .offset(comparator.facing.block_face());
+        if let Some(&source) = backend.pos_map.get(&far) {
+            if matches!(backend.nodes[source].ty, NodeType::CommandBlock { .. }) {
+                backend
+                    .command_far_comparators
+                    .entry(source)
+                    .or_default()
+                    .push(id);
+            }
+        }
+    }
+
     for entry in ticks {
         if let Some(node) = backend.pos_map.get(&entry.pos) {
             backend.scheduler.schedule_half_tick(
@@ -259,10 +308,42 @@ pub fn compile(
     }
 
     // Dot file output
+    for idx in graph.node_indices() {
+        if let crate::redpiler::compile_graph::NodeType::CommandBlock {
+            initial_tick,
+            chain,
+            ..
+        } = graph[idx].ty
+        {
+            let id = backend.nodes.get(nodes_map[&idx]);
+            update_command_output(backend, id, initial_tick && !chain);
+        }
+    }
+
     if options.export_dot_graph {
         std::fs::write("backend_graph.dot", format!("{}", backend)).unwrap();
     }
     Ok(())
+}
+
+fn update_command_output(backend: &mut DirectBackend, id: NodeId, initial_tick: bool) {
+    super::update::update_node(
+        &mut backend.scheduler,
+        &mut backend.events,
+        &mut backend.nodes,
+        id,
+    );
+    if initial_tick && !backend.nodes[id].pending_tick {
+        backend.nodes[id].pending_tick = true;
+        backend
+            .scheduler
+            .schedule_half_tick(id, 1, mchprs_world::TickPriority::Normal);
+        backend.events.push(super::Event::CommandBlockPower {
+            node_id: id,
+            powered: backend.nodes[id].powered,
+            capture_condition: true,
+        });
+    }
 }
 
 #[cfg(test)]
