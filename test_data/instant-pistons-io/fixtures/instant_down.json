@@ -138,5 +138,210 @@
   "expected_status": "Arithmetic expectations require the declared polarity/width decoder; other functional claims remain measured projections.",
   "unknowns": [
     "Quiet/periodic readiness is assessed from physical work; no universal reuse interval."
-  ]
+  ],
+  "evidence": {
+    "schema_version": 1,
+    "catalog": "docs/INSTANT_PISTON_IO_SCHEMATICS.md#instant-down",
+    "authority": {
+      "author_intent": "ANSWERS.md plus supplied Data/Update/port signs",
+      "imported_state": "test_data/instant-pistons-io/inspection/instant_down.json",
+      "observed_mchprs": "frozen traces, not independent Minecraft oracles",
+      "observed_java": "SHA-pinned vanilla 1.21.5 captures with real lever interactions",
+      "inferred_mechanism": "The down-facing base (0,3,5), head (0,2,5) and redstone payload (0,1,5) move vertically. The raw output at (0,1,7) feeds a delay-two repeater (0,1,8). An observer/cap above the base resets it; the source lever is (0,3,0).",
+      "proposed_compiler_guard": "Recognize vertical payload/support effects and the explicit output path; a horizontal-family rotation is insufficient."
+    },
+    "label_mappings": [
+      {
+        "sign_position": [
+          0,
+          4,
+          1
+        ],
+        "normalized": "IN",
+        "original_text": {
+          "front_text": {
+            "original": [
+              {
+                "text": "IN"
+              },
+              {
+                "text": ""
+              },
+              {
+                "text": ""
+              },
+              {
+                "text": ""
+              }
+            ],
+            "readable": [
+              "IN",
+              "",
+              "",
+              ""
+            ]
+          },
+          "back_text": {
+            "original": [
+              {
+                "text": ""
+              },
+              {
+                "text": ""
+              },
+              {
+                "text": ""
+              },
+              {
+                "text": ""
+              }
+            ],
+            "readable": [
+              "",
+              "",
+              "",
+              ""
+            ]
+          },
+          "legacy": {
+            "original": [],
+            "readable": []
+          }
+        },
+        "candidates": [
+          {
+            "position": [
+              0,
+              3,
+              1
+            ],
+            "role": "geometric support candidate; not automatically a port"
+          },
+          {
+            "position": [
+              0,
+              3,
+              0
+            ],
+            "role": "trigger"
+          }
+        ],
+        "port_position": [
+          0,
+          3,
+          0
+        ],
+        "role": "trigger",
+        "evidence": "Reviewed input attachment/electrical path or consumer connection; independent port stimuli and watched geometry. Repeated O1 labels use physical Z spacing, not text index.",
+        "status": "resolved for declared episode"
+      }
+    ],
+    "observation_decoder": {
+      "raw_output": "positive-to-zero fall is event1; held zero is not a new root",
+      "repeater": "first unpowered boundary6 for activation, delay2; blocked fixture stays powered"
+    },
+    "reset_and_next_use": "A held falling input releases recurring reset work. Fresh snapshots are the validated next-use rule. This vertical construction is measured separately from horizontal rotation.",
+    "initial_state": {
+      "source": "test_data/instant-pistons-io/inspection/instant_down.json",
+      "scheduled": [],
+      "piston_events": [],
+      "active_motions": [],
+      "observed_ready": "Strict imported idle is unchanged and quiescent for 24 ticks; physical construction reachability is a separate claim"
+    },
+    "ordering": {
+      "supported_episode": "activate",
+      "measured_operations": [
+        {
+          "tick": 2,
+          "phase": "ScheduledTicks",
+          "operation": 2,
+          "external_action": 1,
+          "event": "event_enqueue",
+          "piston_action": "Retract",
+          "actor": [
+            0,
+            3,
+            5
+          ]
+        },
+        {
+          "tick": 2,
+          "phase": "PistonEvents",
+          "operation": 3,
+          "external_action": 1,
+          "event": "event_execute",
+          "piston_action": "Retract",
+          "actor": [
+            0,
+            3,
+            5
+          ]
+        },
+        {
+          "tick": 2,
+          "phase": "PistonEvents",
+          "operation": 3,
+          "external_action": 1,
+          "event": "event_applied",
+          "piston_action": "Retract",
+          "actor": [
+            0,
+            3,
+            5
+          ]
+        }
+      ],
+      "contract": "Certified synchronized physical family; compiled execution omits internal nanoticks. Logical data/sample dependencies and exposed reset/consumer timing remain.",
+      "requirements": "Recognize vertical payload/support effects and the explicit output path; a horizontal-family rotation is insufficient."
+    },
+    "cases": [
+      {
+        "id": "saved-idle",
+        "artifacts": [
+          "test_data/instant-pistons-io/traces/java-instant_down-saved-idle-r0.json.gz",
+          "test_data/instant-pistons-io/traces/mchprs-instant_down-saved-idle-r0.json.gz"
+        ],
+        "independent_status": [
+          {
+            "engine": "Java",
+            "rotation": 0,
+            "status": "match"
+          }
+        ],
+        "expected_status": "observed declared episode; not an invented Boolean oracle"
+      },
+      {
+        "id": "activate",
+        "artifacts": [
+          "test_data/instant-pistons-io/traces/java-instant_down-activate-r0.json.gz",
+          "test_data/instant-pistons-io/traces/mchprs-instant_down-activate-r0.json.gz"
+        ],
+        "independent_status": [
+          {
+            "engine": "Java",
+            "rotation": 0,
+            "status": "match"
+          }
+        ],
+        "expected_status": "observed declared episode; not an invented Boolean oracle"
+      },
+      {
+        "id": "held-active",
+        "artifacts": [
+          "test_data/instant-pistons-io/traces/java-instant_down-held-active-r0.json.gz",
+          "test_data/instant-pistons-io/traces/mchprs-instant_down-held-active-r0.json.gz"
+        ],
+        "independent_status": [
+          {
+            "engine": "Java",
+            "rotation": 0,
+            "status": "match"
+          }
+        ],
+        "expected_status": "observed declared episode; not an invented Boolean oracle"
+      }
+    ],
+    "status": "observed declared projections agree where independently captured",
+    "trace_index": "test_data/instant-pistons-io/trace-index.json"
+  }
 }

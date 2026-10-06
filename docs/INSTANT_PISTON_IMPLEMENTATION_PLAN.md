@@ -8,7 +8,7 @@ This roadmap implements the [instant and BUD mathematical model](INSTANT_PISTON_
 
 ## Scope and assumptions
 
-The next schematic set is assumed to contain the same or similar instant mechanisms, driven through levers or ordinary input circuitry and connected to repeater outputs. This assumption is sufficient to design the compiler interface. Each supplied variant still needs an exact hash, port map, operating protocol and reference capture before its runtime family is enabled. Attaching a repeater or changing an input circuit can change dust shape, loading and notifications.
+The [supplied lever/repeater revision](INSTANT_PISTON_IO_SCHEMATICS.md) now has exact hashes, reviewed ports, bounded protocols and independent Java captures. It is separate from the original pack. Attaching a repeater or changing an input circuit changes dust shape, loading and notifications; admission remains specific to a validated consumer/protocol rather than a matching filename. [Validation](INSTANT_PISTON_IO_VALIDATION.md) records limits and spatial/order-dependent XOR reset behavior.
 
 | Area | First implementation | Later work |
 | --- | --- | --- |
@@ -49,6 +49,10 @@ The current pack has 20 basic or diagnostic dossiers and two deferred CPU invent
 The canonical [ADDER_11BITS.schem](../test_data/instant-pistons/ADDER_11BITS.schem) is 21 by 7 by 46, SHA-256 `41476594941f234f8759c2b4b12dab72641fbda9fb5f0412a2b0089ba964464e`. It has six signs, 11 stages and a separate unlabeled trigger. Its decoded result is available at response boundaries 1 through 3; moving outputs and reset are separate observations. The signless replacement and historical ADDER_GWIEZDNY_TEST are not current expectations. The downloaded edge case also has independent hashes and traces.
 
 ### Existing code that needs extension
+
+The old-pack table above retains its original binary context. The I/O revision changes `INSTANT_RESET_REDSTONE` to an under-head dust autoreset and adds output stages to gates. New NOT_1 demonstrates effective inhibition before downstream event acceptance even when the ordinary target retracts first. Its supported compiled abstraction needs no internal nanotick schedule. AND_3 still requires separate live power and sampling updates. XOR's first-wave function is validated, but later reset output depends on the recorded spatial/order context; do not admit a complete constant-XOR boundary contract.
+
+Standalone `BUD_NonInstantInputs` and `BUD_PistonUpdate` now verify independent data/update ports, retained state after data restoration and a quiet resampling protocol in four horizontal rotations. `BUD_InstantMemoryCellObserverUpdate` verifies instant-produced data before delayed sampling and a recurring generator; `BUD_InstantPistonUpdate` remains a derived-control diagnostic because its saved lever is absent. Counter storage and its repeater bank publish different waves: count n is stored at 6n, then visible at the consumer in [6n+5,6n+8]. Keep BUD transactions, wave identity and generator/consumer timing explicit while omitting synchronized internal nanoticks. None of this enables piston compilation or proves general interpreter handoff.
 
 | Location | Current constraint | Required extension |
 | --- | --- | --- |
@@ -228,6 +232,16 @@ Capture current-binary interpreter and independent Java episodes: single events,
 **Acceptance:** one minimal circuit has a validated executable lever-to-repeater protocol including reuse. Undefined reset-time inputs remain excluded. Other family contracts can remain pending without blocking analysis.
 
 ### M1 Add the snapshot and diagnostic report
+
+**Implementation status (2026-10-06):** Rust live inventory, bounded/cancellable analysis, head/payload diagnostics, conservative reset seeds and possible shared-payload groups are implemented in [redpiler/analysis](../crates/core/src/redpiler/analysis/mod.rs). `/rp analyze` has help, completion and a read-only permission. Structured reports distinguish candidates from executable support. Both the original 20 small fixtures and the 22 lever/repeater fixtures are regression inputs; inventories are deterministic and preserve physical state and queued work. Full context/dependency closure and family certification belong to M2/M3 and remain pending.
+
+The typed boundary foundation is implemented in [instant/contract.rs](../crates/core/src/redpiler/instant/contract.rs): validated strengths, attenuation, prepared-data polarity, falling-trigger edges, electrical output aliases and an independent sampling channel. Requests require an explicit recheck; restoring power cancels acceptance, compiling a low input creates no edge, and requests during reset are discarded. These types do not yet connect a recognized physical region to the runtime or certify a family waveform.
+
+The transaction foundation from M8 was necessary for safe compiler admission and is implemented alongside M1: `Compiler::compile` returns a result, stages a fresh backend and checks cancellation before activation. The plot retains interpreter ticks and history until success, joins the worker explicitly and reports actual failure. Live unsupported pistons/observers remain interpreted. Unused palette states no longer prevent ordinary compilation or automatic compilation. Runnable instant compilation is still pending M2 through M7; this milestone must not be described as executable piston support.
+
+Validation for this foundation: 20 Redpiler tests, 93 redstone tests and six command/permission tests pass; the two opt-in physical capture tests remain separate. The contract integration test follows a real lever/torch falling edge at completed game boundary 2 and the supplied delay-2 repeater's first falling response at boundary 6. `cargo check -p mchprs_core --lib --locked` and the scoped formatting/diff checks pass. These checks establish parser/contract safety and existing behavior; they do not establish compiled instant equivalence or a performance improvement.
+
+The new [lever/repeater catalog](INSTANT_PISTON_IO_SCHEMATICS.md) is arriving separately from this implementation. Its current XOR dossier records a Java/MCHPRS reset-response discrepancy. Preserve that diagnostic and keep XOR admission disabled until the discrepancy is resolved; a first-wave Boolean table does not resolve it.
 
 Implement the entry point, live inventory, indexes, report types and bounded traversal. Add an analysis-only command, for example `/rp analyze`, with permission/help/completion handling. It remains available when the compile guard rejects pistons. Produce a player summary and detailed structured report.
 

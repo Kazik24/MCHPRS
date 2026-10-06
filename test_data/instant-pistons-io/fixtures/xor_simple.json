@@ -197,5 +197,529 @@
   "expected_status": "Arithmetic expectations require the declared polarity/width decoder; other functional claims remain measured projections.",
   "unknowns": [
     "First-wave logical projection and complete consumer waveform must be measured separately."
-  ]
+  ],
+  "evidence": {
+    "schema_version": 1,
+    "catalog": "docs/INSTANT_PISTON_IO_SCHEMATICS.md#xor-simple",
+    "authority": {
+      "author_intent": "ANSWERS.md plus supplied Data/Update/port signs",
+      "imported_state": "test_data/instant-pistons-io/inspection/xor_simple.json",
+      "observed_mchprs": "frozen traces, not independent Minecraft oracles",
+      "observed_java": "SHA-pinned vanilla 1.21.5 captures with real lever interactions",
+      "inferred_mechanism": "IN1 is right lever (2,2,15), IN2 left (0,2,15). West base (2,2,8), north base (0,2,10) and down-facing inhibitor (1,4,7) interact through shared payloads/dust; output base is (0,2,5). The four first-wave results match XOR at repeater tick 4 and lamp tick 8.",
+      "proposed_compiler_guard": "Do not enable a complete XOR boundary abstraction from the first truth table. The inhibitory payload must become effective before the output event is accepted, including reset-generated waves. Preserve the spatial/order differences; interpreter fixes are outside this assignment."
+    },
+    "label_mappings": [
+      {
+        "sign_position": [
+          0,
+          3,
+          0
+        ],
+        "normalized": "OUTPUT LAMP",
+        "original_text": {
+          "front_text": {
+            "original": [
+              {
+                "text": "OUTPUT LAMP"
+              },
+              {
+                "text": ""
+              },
+              {
+                "text": ""
+              },
+              {
+                "text": ""
+              }
+            ],
+            "readable": [
+              "OUTPUT LAMP",
+              "",
+              "",
+              ""
+            ]
+          },
+          "back_text": {
+            "original": [
+              {
+                "text": ""
+              },
+              {
+                "text": ""
+              },
+              {
+                "text": ""
+              },
+              {
+                "text": ""
+              }
+            ],
+            "readable": [
+              "",
+              "",
+              "",
+              ""
+            ]
+          },
+          "legacy": {
+            "original": [],
+            "readable": []
+          }
+        },
+        "candidates": [
+          {
+            "position": [
+              0,
+              2,
+              0
+            ],
+            "role": "geometric support candidate; not automatically a port"
+          },
+          {
+            "position": [
+              0,
+              2,
+              0
+            ],
+            "role": "lamp"
+          }
+        ],
+        "port_position": [
+          0,
+          2,
+          0
+        ],
+        "role": "lamp",
+        "evidence": "Reviewed input attachment/electrical path or consumer connection; independent port stimuli and watched geometry. Repeated O1 labels use physical Z spacing, not text index.",
+        "status": "resolved for declared episode"
+      },
+      {
+        "sign_position": [
+          0,
+          3,
+          14
+        ],
+        "normalized": "IN2",
+        "original_text": {
+          "front_text": {
+            "original": [
+              {
+                "text": "IN2"
+              },
+              {
+                "text": ""
+              },
+              {
+                "text": ""
+              },
+              {
+                "text": ""
+              }
+            ],
+            "readable": [
+              "IN2",
+              "",
+              "",
+              ""
+            ]
+          },
+          "back_text": {
+            "original": [
+              {
+                "text": ""
+              },
+              {
+                "text": ""
+              },
+              {
+                "text": ""
+              },
+              {
+                "text": ""
+              }
+            ],
+            "readable": [
+              "",
+              "",
+              "",
+              ""
+            ]
+          },
+          "legacy": {
+            "original": [],
+            "readable": []
+          }
+        },
+        "candidates": [
+          {
+            "position": [
+              0,
+              2,
+              14
+            ],
+            "role": "geometric support candidate; not automatically a port"
+          },
+          {
+            "position": [
+              0,
+              2,
+              15
+            ],
+            "role": "IN2"
+          }
+        ],
+        "port_position": [
+          0,
+          2,
+          15
+        ],
+        "role": "IN2",
+        "evidence": "Reviewed input attachment/electrical path or consumer connection; independent port stimuli and watched geometry. Repeated O1 labels use physical Z spacing, not text index.",
+        "status": "resolved for declared episode"
+      },
+      {
+        "sign_position": [
+          2,
+          3,
+          14
+        ],
+        "normalized": "IN1",
+        "original_text": {
+          "front_text": {
+            "original": [
+              {
+                "text": "IN1"
+              },
+              {
+                "text": ""
+              },
+              {
+                "text": ""
+              },
+              {
+                "text": ""
+              }
+            ],
+            "readable": [
+              "IN1",
+              "",
+              "",
+              ""
+            ]
+          },
+          "back_text": {
+            "original": [
+              {
+                "text": ""
+              },
+              {
+                "text": ""
+              },
+              {
+                "text": ""
+              },
+              {
+                "text": ""
+              }
+            ],
+            "readable": [
+              "",
+              "",
+              "",
+              ""
+            ]
+          },
+          "legacy": {
+            "original": [],
+            "readable": []
+          }
+        },
+        "candidates": [
+          {
+            "position": [
+              2,
+              2,
+              14
+            ],
+            "role": "geometric support candidate; not automatically a port"
+          },
+          {
+            "position": [
+              2,
+              2,
+              15
+            ],
+            "role": "IN1"
+          }
+        ],
+        "port_position": [
+          2,
+          2,
+          15
+        ],
+        "role": "IN1",
+        "evidence": "Reviewed input attachment/electrical path or consumer connection; independent port stimuli and watched geometry. Repeated O1 labels use physical Z spacing, not text index.",
+        "status": "resolved for declared episode"
+      }
+    ],
+    "observation_decoder": {
+      "repeater": "unpowered=1 at first-wave boundary4",
+      "lamp": "dark=activation; first-wave boundary8",
+      "consumer_input": "falling-event wire, not a static permanent Boolean result"
+    },
+    "reset_and_next_use": "Whole-response behavior has unresolved spatial/order and conformance differences: at MCHPRS origin (40,30,40), events-11-12 produces a later consumer fall at tick 8 and lamp dark at 12; events-11-21 stays powered. Initial Java captures at origins (6784,40,128)/(6848,40,128) show these later behaviors for the opposite orders. Additional Java captures at exactly (40,30,40) agree for order12 but still produce the later pulse for order21, differing from MCHPRS. The high-origin Java order12 is independently replayed with the same no-pulse response. Thus location matters in Java, but it does not explain all differences. Preserve every version; no location-independent constant-XOR reset contract or diagnosed interpreter-only root cause is claimed. Fresh snapshots isolate cases; no reuse claim.",
+    "initial_state": {
+      "source": "test_data/instant-pistons-io/inspection/xor_simple.json",
+      "scheduled": [],
+      "piston_events": [],
+      "active_motions": [],
+      "observed_ready": "Strict imported idle is unchanged and quiescent for 24 ticks; physical construction reachability is a separate claim"
+    },
+    "ordering": {
+      "supported_episode": "events-11-21",
+      "measured_operations": [
+        {
+          "tick": 2,
+          "phase": "ScheduledTicks",
+          "operation": 2,
+          "external_action": 2,
+          "event": "event_enqueue",
+          "piston_action": "Retract",
+          "actor": [
+            0,
+            2,
+            10
+          ]
+        },
+        {
+          "tick": 2,
+          "phase": "ScheduledTicks",
+          "operation": 3,
+          "external_action": 2,
+          "event": "event_enqueue",
+          "piston_action": "Retract",
+          "actor": [
+            2,
+            2,
+            8
+          ]
+        },
+        {
+          "tick": 2,
+          "phase": "ScheduledTicks",
+          "operation": 3,
+          "external_action": 2,
+          "event": "event_enqueue",
+          "piston_action": "Retract",
+          "actor": [
+            1,
+            4,
+            7
+          ]
+        },
+        {
+          "tick": 2,
+          "phase": "PistonEvents",
+          "operation": 4,
+          "external_action": 2,
+          "event": "event_execute",
+          "piston_action": "Retract",
+          "actor": [
+            0,
+            2,
+            10
+          ]
+        },
+        {
+          "tick": 2,
+          "phase": "PistonEvents",
+          "operation": 4,
+          "external_action": 2,
+          "event": "event_enqueue",
+          "piston_action": "Retract",
+          "actor": [
+            0,
+            2,
+            5
+          ]
+        },
+        {
+          "tick": 2,
+          "phase": "PistonEvents",
+          "operation": 4,
+          "external_action": 2,
+          "event": "event_applied",
+          "piston_action": "Retract",
+          "actor": [
+            0,
+            2,
+            10
+          ]
+        },
+        {
+          "tick": 2,
+          "phase": "PistonEvents",
+          "operation": 5,
+          "external_action": 2,
+          "event": "event_execute",
+          "piston_action": "Retract",
+          "actor": [
+            2,
+            2,
+            8
+          ]
+        },
+        {
+          "tick": 2,
+          "phase": "PistonEvents",
+          "operation": 5,
+          "external_action": 2,
+          "event": "event_applied",
+          "piston_action": "Retract",
+          "actor": [
+            2,
+            2,
+            8
+          ]
+        },
+        {
+          "tick": 2,
+          "phase": "PistonEvents",
+          "operation": 6,
+          "external_action": 2,
+          "event": "event_execute",
+          "piston_action": "Retract",
+          "actor": [
+            1,
+            4,
+            7
+          ]
+        },
+        {
+          "tick": 2,
+          "phase": "PistonEvents",
+          "operation": 6,
+          "external_action": 2,
+          "event": "event_applied",
+          "piston_action": "Retract",
+          "actor": [
+            1,
+            4,
+            7
+          ]
+        },
+        {
+          "tick": 2,
+          "phase": "PistonEvents",
+          "operation": 7,
+          "external_action": 2,
+          "event": "event_execute",
+          "piston_action": "Retract",
+          "actor": [
+            0,
+            2,
+            5
+          ]
+        }
+      ],
+      "contract": "Certified synchronized physical family; compiled execution omits internal nanoticks. Logical data/sample dependencies and exposed reset/consumer timing remain.",
+      "requirements": "Do not enable a complete XOR boundary abstraction from the first truth table. The inhibitory payload must become effective before the output event is accepted, including reset-generated waves. Preserve the spatial/order differences; interpreter fixes are outside this assignment."
+    },
+    "cases": [
+      {
+        "id": "saved-idle",
+        "artifacts": [
+          "test_data/instant-pistons-io/traces/java-xor_simple-saved-idle-r0.json.gz",
+          "test_data/instant-pistons-io/traces/mchprs-xor_simple-saved-idle-r0.json.gz"
+        ],
+        "independent_status": [
+          {
+            "engine": "Java",
+            "rotation": 0,
+            "status": "match"
+          }
+        ],
+        "expected_status": "observed declared episode; not an invented Boolean oracle"
+      },
+      {
+        "id": "events-00-12",
+        "artifacts": [
+          "test_data/instant-pistons-io/traces/java-xor_simple-events-00-12-r0.json.gz",
+          "test_data/instant-pistons-io/traces/mchprs-xor_simple-events-00-12-r0.json.gz"
+        ],
+        "independent_status": [
+          {
+            "engine": "Java",
+            "rotation": 0,
+            "status": "match"
+          }
+        ],
+        "expected_status": "observed declared episode; not an invented Boolean oracle"
+      },
+      {
+        "id": "events-10-12",
+        "artifacts": [
+          "test_data/instant-pistons-io/traces/java-xor_simple-events-10-12-r0.json.gz",
+          "test_data/instant-pistons-io/traces/mchprs-xor_simple-events-10-12-r0.json.gz"
+        ],
+        "independent_status": [
+          {
+            "engine": "Java",
+            "rotation": 0,
+            "status": "match"
+          }
+        ],
+        "expected_status": "observed declared episode; not an invented Boolean oracle"
+      },
+      {
+        "id": "events-01-12",
+        "artifacts": [
+          "test_data/instant-pistons-io/traces/java-xor_simple-events-01-12-r0.json.gz",
+          "test_data/instant-pistons-io/traces/mchprs-xor_simple-events-01-12-r0.json.gz"
+        ],
+        "independent_status": [
+          {
+            "engine": "Java",
+            "rotation": 0,
+            "status": "match"
+          }
+        ],
+        "expected_status": "observed declared episode; not an invented Boolean oracle"
+      },
+      {
+        "id": "events-11-12",
+        "artifacts": [
+          "test_data/instant-pistons-io/traces/java-xor_simple-events-11-12-r0.json.gz",
+          "test_data/instant-pistons-io/traces/mchprs-xor_simple-events-11-12-r0.json.gz"
+        ],
+        "independent_status": [
+          {
+            "engine": "Java",
+            "rotation": 0,
+            "status": "mismatch"
+          }
+        ],
+        "expected_status": "observed declared episode; not an invented Boolean oracle"
+      },
+      {
+        "id": "events-11-21",
+        "artifacts": [
+          "test_data/instant-pistons-io/traces/java-xor_simple-events-11-21-r0.json.gz",
+          "test_data/instant-pistons-io/traces/mchprs-xor_simple-events-11-21-r0.json.gz"
+        ],
+        "independent_status": [
+          {
+            "engine": "Java",
+            "rotation": 0,
+            "status": "mismatch"
+          }
+        ],
+        "expected_status": "observed declared episode; not an invented Boolean oracle"
+      }
+    ],
+    "status": "Two primary whole-reset differences. Exact-origin Java order12 agrees, order21 differs. Spatial effects measured; conformance root cause unresolved",
+    "trace_index": "test_data/instant-pistons-io/trace-index.json",
+    "additional_versions": "test_data/instant-pistons-io/diagnostics/xor-origin-comparisons.json"
+  }
 }

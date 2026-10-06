@@ -333,6 +333,37 @@ impl Plot {
     /// Handles a command that starts with `/redpiler` or `/rp`
     fn handle_redpiler_command(&mut self, player: usize, command: &str, args: &[&str]) {
         match command {
+            "analyze" => {
+                if self.redpiler.is_active() {
+                    self.players[player]
+                        .send_error_message("Reset Redpiler before analyzing live geometry.");
+                    return;
+                }
+                let ticks: Vec<_> = self.world.scheduler().iter_entries().collect();
+                match crate::redpiler::analysis::analyze(
+                    &self.world,
+                    self.world.get_corners(),
+                    &ticks,
+                    &Default::default(),
+                    Default::default(),
+                ) {
+                    Ok(report) => {
+                        self.players[player].send_system_message(&report.summary());
+                        // The complete structured report is available in logs;
+                        // keep a large plot from flooding the player's chat.
+                        debug!(report = %serde_json::to_string(&report).unwrap(), "Redpiler analysis");
+                        for issue in report.issues.iter().take(8) {
+                            self.players[player].send_system_message(&issue.to_string());
+                        }
+                        if report.issues.len() > 8 {
+                            self.players[player].send_system_message(
+                                "The full report is written when debug logging is enabled.",
+                            );
+                        }
+                    }
+                    Err(error) => self.players[player].send_error_message(&error.to_string()),
+                }
+            }
             "compile" | "c" => {
                 let start_time = Instant::now();
                 let args = args.join(" ");
@@ -852,6 +883,7 @@ fn native_command_permission(command: &str, args: &[&str]) -> Option<String> {
                 Some("c" | "compile") => "compile",
                 Some("r" | "reset") => "reset",
                 Some("i" | "inspect") => "inspect",
+                Some("analyze") => "analyze",
                 _ => "help",
             }
         ),
@@ -868,7 +900,7 @@ fn changes_plot(command: &str, args: &[&str]) -> bool {
             !args.is_empty()
         }
         "/adv" | "/radv" | "/radvance" | "/toggleautorp" | "/curse" | "/bless" => true,
-        "/redpiler" | "/rp" => !matches!(args.first().copied(), Some("inspect" | "i")),
+        "/redpiler" | "/rp" => !matches!(args.first().copied(), Some("inspect" | "i" | "analyze")),
         _ => false,
     }
 }
@@ -1029,7 +1061,7 @@ pub static DECLARE_COMMANDS: Lazy<PacketEncoder> = Lazy::new(|| {
             // 65: /toggleautorp
             Node::literal("toggleautorp", &[]).executable(),
             // 66: /redpiler
-            Node::literal("redpiler", &[68, 69, 70]),
+            Node::literal("redpiler", &[68, 69, 70, 135]),
             // 67: /rp
             Node::redirect("rp", 66),
             // 68: /redpiler compile
@@ -1151,6 +1183,8 @@ pub static DECLARE_COMMANDS: Lazy<PacketEncoder> = Lazy::new(|| {
                 .suggestions("minecraft:ask_server"),
             // 134: /git uses the existing greedy, server-completed arguments node.
             Node::literal("git", &[110]).executable(),
+            // 135: /redpiler analyze
+            Node::literal("analyze", &[]).executable(),
         ],
         root_index: 0,
     }
@@ -1162,12 +1196,12 @@ mod security_tests {
     use super::*;
     #[test]
     fn command_declarations_preserve_original_wire_bytes() {
-        // Remove only the new Git root edge and node, then verify the original
-        // declarations still have identical flags, parsers, aliases and edges.
+        // Remove the Git and analysis additions, then verify all preexisting
+        // flags, parsers, aliases and edges still have identical wire bytes.
         use mchprs_network::packets::{PacketDecoderExt, PacketEncoderExt};
         use std::io::Cursor;
         let mut cursor = Cursor::new(&DECLARE_COMMANDS.buffer);
-        assert_eq!(cursor.read_varint().unwrap(), 135);
+        assert_eq!(cursor.read_varint().unwrap(), 136);
         assert_eq!(cursor.read_byte().unwrap(), 0);
         let children = cursor.read_varint().unwrap();
         let mut edges = Vec::new();
@@ -1177,7 +1211,13 @@ mod security_tests {
         assert_eq!(edges.pop(), Some(134));
         let rest = cursor.position() as usize;
         let git_node = [5, 1, 110, 3, b'g', b'i', b't'];
-        let end = DECLARE_COMMANDS.buffer.len() - 1 - git_node.len();
+        let analyze_node = [5, 0, 7, b'a', b'n', b'a', b'l', b'y', b'z', b'e'];
+        let analyze_start = DECLARE_COMMANDS.buffer.len() - 1 - analyze_node.len();
+        assert_eq!(
+            &DECLARE_COMMANDS.buffer[analyze_start..analyze_start + analyze_node.len()],
+            &analyze_node
+        );
+        let end = analyze_start - git_node.len();
         assert_eq!(
             &DECLARE_COMMANDS.buffer[end..end + git_node.len()],
             &git_node
@@ -1191,6 +1231,17 @@ mod security_tests {
         }
         original.extend_from_slice(&DECLARE_COMMANDS.buffer[rest..end]);
         original.push(0);
+        let new_redpiler = [
+            1, 4, 68, 69, 70, 135, 1, 8, b'r', b'e', b'd', b'p', b'i', b'l', b'e', b'r',
+        ];
+        let old_redpiler = [
+            1, 3, 68, 69, 70, 8, b'r', b'e', b'd', b'p', b'i', b'l', b'e', b'r',
+        ];
+        let offset = original
+            .windows(new_redpiler.len())
+            .position(|bytes| bytes == new_redpiler)
+            .unwrap();
+        original.splice(offset..offset + new_redpiler.len(), old_redpiler);
         assert_eq!(original.len(), 1553);
         assert_eq!(
             format!("{:x}", md5::compute(original)),
@@ -1271,6 +1322,18 @@ mod security_tests {
                 native_command_permission(canonical, &args)
             );
             assert_eq!(changes_plot(alias, &args), changes_plot(canonical, &args));
+        }
+    }
+
+    #[test]
+    fn redpiler_analysis_has_a_read_only_permission() {
+        for command in ["/rp", "/redpiler"] {
+            assert_eq!(
+                native_command_permission(command, &["analyze"]).as_deref(),
+                Some("commands.redpiler.analyze")
+            );
+            assert!(!changes_plot(command, &["analyze"]));
+            assert!(changes_plot(command, &["compile"]));
         }
     }
 }

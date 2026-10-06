@@ -200,5 +200,547 @@
   "expected_status": "Arithmetic expectations require the declared polarity/width decoder; other functional claims remain measured projections.",
   "unknowns": [
     "First-wave logical projection and complete consumer waveform must be measured separately."
-  ]
+  ],
+  "evidence": {
+    "schema_version": 1,
+    "catalog": "docs/INSTANT_PISTON_IO_SCHEMATICS.md#and-3",
+    "authority": {
+      "author_intent": "ANSWERS.md plus supplied Data/Update/port signs",
+      "imported_state": "test_data/instant-pistons-io/inspection/and_3.json",
+      "observed_mchprs": "frozen traces, not independent Minecraft oracles",
+      "observed_java": "SHA-pinned vanilla 1.21.5 captures with real lever interactions",
+      "inferred_mechanism": "IN1 at (0,2,14) removes local power and delivers the relevant base update; IN2 at (0,5,14) removes remote QC power. The sign above (0,2,10) explicitly calls it a BUD switch that is reset. IN2-before-IN1 permits retraction, while IN1-before-IN2 leaves the base extended even though final electrical inputs match.",
+      "proposed_compiler_guard": "Model the independent live data and qualifying update, or reject an unsupported order-independent simplification. A data-only DAG omits this dependency."
+    },
+    "label_mappings": [
+      {
+        "sign_position": [
+          0,
+          3,
+          0
+        ],
+        "normalized": "OUTPUT LAMP",
+        "original_text": {
+          "front_text": {
+            "original": [
+              {
+                "text": "OUTPUT LAMP"
+              },
+              {
+                "text": ""
+              },
+              {
+                "text": ""
+              },
+              {
+                "text": ""
+              }
+            ],
+            "readable": [
+              "OUTPUT LAMP",
+              "",
+              "",
+              ""
+            ]
+          },
+          "back_text": {
+            "original": [
+              {
+                "text": ""
+              },
+              {
+                "text": ""
+              },
+              {
+                "text": ""
+              },
+              {
+                "text": ""
+              }
+            ],
+            "readable": [
+              "",
+              "",
+              "",
+              ""
+            ]
+          },
+          "legacy": {
+            "original": [],
+            "readable": []
+          }
+        },
+        "candidates": [
+          {
+            "position": [
+              0,
+              2,
+              0
+            ],
+            "role": "geometric support candidate; not automatically a port"
+          },
+          {
+            "position": [
+              0,
+              2,
+              0
+            ],
+            "role": "lamp"
+          }
+        ],
+        "port_position": [
+          0,
+          2,
+          0
+        ],
+        "role": "lamp",
+        "evidence": "Reviewed input attachment/electrical path or consumer connection; independent port stimuli and watched geometry. Repeated O1 labels use physical Z spacing, not text index.",
+        "status": "resolved for declared episode"
+      },
+      {
+        "sign_position": [
+          0,
+          3,
+          10
+        ],
+        "normalized": "Note that / this is also / a BUD-switch / but it is reseted",
+        "original_text": {
+          "front_text": {
+            "original": [
+              {
+                "text": "Note that"
+              },
+              {
+                "text": "this is also"
+              },
+              {
+                "text": "a BUD-switch"
+              },
+              {
+                "text": "but it is reseted"
+              }
+            ],
+            "readable": [
+              "Note that",
+              "this is also",
+              "a BUD-switch",
+              "but it is reseted"
+            ]
+          },
+          "back_text": {
+            "original": [
+              {
+                "text": ""
+              },
+              {
+                "text": ""
+              },
+              {
+                "text": ""
+              },
+              {
+                "text": ""
+              }
+            ],
+            "readable": [
+              "",
+              "",
+              "",
+              ""
+            ]
+          },
+          "legacy": {
+            "original": [],
+            "readable": []
+          }
+        },
+        "candidates": [
+          {
+            "position": [
+              0,
+              2,
+              10
+            ],
+            "role": "geometric support candidate; not automatically a port"
+          },
+          {
+            "position": [
+              0,
+              2,
+              10
+            ],
+            "role": "upstream BUD-like base"
+          }
+        ],
+        "port_position": [
+          0,
+          2,
+          10
+        ],
+        "role": "upstream BUD-like base",
+        "evidence": "Reviewed input attachment/electrical path or consumer connection; independent port stimuli and watched geometry. Repeated O1 labels use physical Z spacing, not text index.",
+        "status": "resolved for declared episode"
+      },
+      {
+        "sign_position": [
+          0,
+          3,
+          13
+        ],
+        "normalized": "IN1",
+        "original_text": {
+          "front_text": {
+            "original": [
+              {
+                "text": "IN1"
+              },
+              {
+                "text": ""
+              },
+              {
+                "text": ""
+              },
+              {
+                "text": ""
+              }
+            ],
+            "readable": [
+              "IN1",
+              "",
+              "",
+              ""
+            ]
+          },
+          "back_text": {
+            "original": [
+              {
+                "text": ""
+              },
+              {
+                "text": ""
+              },
+              {
+                "text": ""
+              },
+              {
+                "text": ""
+              }
+            ],
+            "readable": [
+              "",
+              "",
+              "",
+              ""
+            ]
+          },
+          "legacy": {
+            "original": [],
+            "readable": []
+          }
+        },
+        "candidates": [
+          {
+            "position": [
+              0,
+              2,
+              13
+            ],
+            "role": "geometric support candidate; not automatically a port"
+          },
+          {
+            "position": [
+              0,
+              2,
+              14
+            ],
+            "role": "IN1"
+          }
+        ],
+        "port_position": [
+          0,
+          2,
+          14
+        ],
+        "role": "IN1",
+        "evidence": "Reviewed input attachment/electrical path or consumer connection; independent port stimuli and watched geometry. Repeated O1 labels use physical Z spacing, not text index.",
+        "status": "resolved for declared episode"
+      },
+      {
+        "sign_position": [
+          0,
+          6,
+          13
+        ],
+        "normalized": "IN2",
+        "original_text": {
+          "front_text": {
+            "original": [
+              {
+                "text": "IN2"
+              },
+              {
+                "text": ""
+              },
+              {
+                "text": ""
+              },
+              {
+                "text": ""
+              }
+            ],
+            "readable": [
+              "IN2",
+              "",
+              "",
+              ""
+            ]
+          },
+          "back_text": {
+            "original": [
+              {
+                "text": ""
+              },
+              {
+                "text": ""
+              },
+              {
+                "text": ""
+              },
+              {
+                "text": ""
+              }
+            ],
+            "readable": [
+              "",
+              "",
+              "",
+              ""
+            ]
+          },
+          "legacy": {
+            "original": [],
+            "readable": []
+          }
+        },
+        "candidates": [
+          {
+            "position": [
+              0,
+              5,
+              13
+            ],
+            "role": "geometric support candidate; not automatically a port"
+          },
+          {
+            "position": [
+              0,
+              5,
+              14
+            ],
+            "role": "IN2"
+          }
+        ],
+        "port_position": [
+          0,
+          5,
+          14
+        ],
+        "role": "IN2",
+        "evidence": "Reviewed input attachment/electrical path or consumer connection; independent port stimuli and watched geometry. Repeated O1 labels use physical Z spacing, not text index.",
+        "status": "resolved for declared episode"
+      }
+    ],
+    "observation_decoder": {
+      "repeater": "unpowered=1 at first-wave boundary4",
+      "lamp": "dark=activation; first-wave boundary8",
+      "consumer_input": "falling-event wire, not a static permanent Boolean result"
+    },
+    "reset_and_next_use": "The successful case is events-11-21. events-11-12 is a history diagnostic, not an order-independent AND failure. The reset sign expresses intent; these fresh cases do not prove removal of all stored history for arbitrary next computations.",
+    "initial_state": {
+      "source": "test_data/instant-pistons-io/inspection/and_3.json",
+      "scheduled": [],
+      "piston_events": [],
+      "active_motions": [],
+      "observed_ready": "Strict imported idle is unchanged and quiescent for 24 ticks; physical construction reachability is a separate claim"
+    },
+    "ordering": {
+      "supported_episode": "events-11-21",
+      "measured_operations": [
+        {
+          "tick": 2,
+          "phase": "ScheduledTicks",
+          "operation": 3,
+          "external_action": 2,
+          "event": "event_enqueue",
+          "piston_action": "Retract",
+          "actor": [
+            0,
+            2,
+            10
+          ]
+        },
+        {
+          "tick": 2,
+          "phase": "PistonEvents",
+          "operation": 4,
+          "external_action": 2,
+          "event": "event_execute",
+          "piston_action": "Retract",
+          "actor": [
+            0,
+            2,
+            10
+          ]
+        },
+        {
+          "tick": 2,
+          "phase": "PistonEvents",
+          "operation": 4,
+          "external_action": 2,
+          "event": "event_enqueue",
+          "piston_action": "Retract",
+          "actor": [
+            0,
+            2,
+            5
+          ]
+        },
+        {
+          "tick": 2,
+          "phase": "PistonEvents",
+          "operation": 4,
+          "external_action": 2,
+          "event": "event_applied",
+          "piston_action": "Retract",
+          "actor": [
+            0,
+            2,
+            10
+          ]
+        },
+        {
+          "tick": 2,
+          "phase": "PistonEvents",
+          "operation": 5,
+          "external_action": 2,
+          "event": "event_execute",
+          "piston_action": "Retract",
+          "actor": [
+            0,
+            2,
+            5
+          ]
+        },
+        {
+          "tick": 2,
+          "phase": "PistonEvents",
+          "operation": 5,
+          "external_action": 2,
+          "event": "event_applied",
+          "piston_action": "Retract",
+          "actor": [
+            0,
+            2,
+            5
+          ]
+        }
+      ],
+      "contract": "Certified synchronized physical family; compiled execution omits internal nanoticks. Logical data/sample dependencies and exposed reset/consumer timing remain.",
+      "requirements": "Model the independent live data and qualifying update, or reject an unsupported order-independent simplification. A data-only DAG omits this dependency."
+    },
+    "cases": [
+      {
+        "id": "saved-idle",
+        "artifacts": [
+          "test_data/instant-pistons-io/traces/java-and_3-saved-idle-r0.json.gz",
+          "test_data/instant-pistons-io/traces/mchprs-and_3-saved-idle-r0.json.gz"
+        ],
+        "independent_status": [
+          {
+            "engine": "Java",
+            "rotation": 0,
+            "status": "match"
+          }
+        ],
+        "expected_status": "observed declared episode; not an invented Boolean oracle"
+      },
+      {
+        "id": "events-00-12",
+        "artifacts": [
+          "test_data/instant-pistons-io/traces/java-and_3-events-00-12-r0.json.gz",
+          "test_data/instant-pistons-io/traces/mchprs-and_3-events-00-12-r0.json.gz"
+        ],
+        "independent_status": [
+          {
+            "engine": "Java",
+            "rotation": 0,
+            "status": "match"
+          }
+        ],
+        "expected_status": "observed declared episode; not an invented Boolean oracle"
+      },
+      {
+        "id": "events-10-12",
+        "artifacts": [
+          "test_data/instant-pistons-io/traces/java-and_3-events-10-12-r0.json.gz",
+          "test_data/instant-pistons-io/traces/mchprs-and_3-events-10-12-r0.json.gz"
+        ],
+        "independent_status": [
+          {
+            "engine": "Java",
+            "rotation": 0,
+            "status": "match"
+          }
+        ],
+        "expected_status": "observed declared episode; not an invented Boolean oracle"
+      },
+      {
+        "id": "events-01-12",
+        "artifacts": [
+          "test_data/instant-pistons-io/traces/java-and_3-events-01-12-r0.json.gz",
+          "test_data/instant-pistons-io/traces/mchprs-and_3-events-01-12-r0.json.gz"
+        ],
+        "independent_status": [
+          {
+            "engine": "Java",
+            "rotation": 0,
+            "status": "match"
+          }
+        ],
+        "expected_status": "observed declared episode; not an invented Boolean oracle"
+      },
+      {
+        "id": "events-11-12",
+        "artifacts": [
+          "test_data/instant-pistons-io/traces/java-and_3-events-11-12-r0.json.gz",
+          "test_data/instant-pistons-io/traces/mchprs-and_3-events-11-12-r0.json.gz"
+        ],
+        "independent_status": [
+          {
+            "engine": "Java",
+            "rotation": 0,
+            "status": "match"
+          }
+        ],
+        "expected_status": "observed declared episode; not an invented Boolean oracle"
+      },
+      {
+        "id": "events-11-21",
+        "artifacts": [
+          "test_data/instant-pistons-io/traces/java-and_3-events-11-21-r0.json.gz",
+          "test_data/instant-pistons-io/traces/mchprs-and_3-events-11-21-r0.json.gz"
+        ],
+        "independent_status": [
+          {
+            "engine": "Java",
+            "rotation": 0,
+            "status": "match"
+          }
+        ],
+        "expected_status": "observed declared episode; not an invented Boolean oracle"
+      }
+    ],
+    "status": "observed declared projections agree where independently captured",
+    "trace_index": "test_data/instant-pistons-io/trace-index.json"
+  }
 }

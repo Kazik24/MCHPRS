@@ -30,7 +30,9 @@ fn init_compiler() -> Compiler {
     let options = CompilerOptions::parse("-O");
     let bounds = world.get_corners();
     let monitor = Default::default();
-    compiler.compile(&world, bounds, options, Vec::new(), monitor);
+    compiler
+        .compile(&world, bounds, options, Vec::new(), monitor)
+        .unwrap();
     compiler.on_use_block(START_BUTTON);
     compiler
 }

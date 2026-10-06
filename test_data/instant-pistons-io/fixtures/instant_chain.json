@@ -143,5 +143,249 @@
   "expected_status": "Arithmetic expectations require the declared polarity/width decoder; other functional claims remain measured projections.",
   "unknowns": [
     "Quiet/periodic readiness is assessed from physical work; no universal reuse interval."
-  ]
+  ],
+  "evidence": {
+    "schema_version": 1,
+    "catalog": "docs/INSTANT_PISTON_IO_SCHEMATICS.md#instant-chain",
+    "authority": {
+      "author_intent": "ANSWERS.md plus supplied Data/Update/port signs",
+      "imported_state": "test_data/instant-pistons-io/inspection/instant_chain.json",
+      "observed_mchprs": "frozen traces, not independent Minecraft oracles",
+      "observed_java": "SHA-pinned vanilla 1.21.5 captures with real lever interactions",
+      "inferred_mechanism": "Bases (0,1,5) and (0,1,8) face south. The first payload vacates its supplying position, and its nested neighbor callback reaches the second base. In response tick 2, operation 3 executes the first retraction and enqueues the second; operation 4 executes the second. Propagation depth is two bases in one completed game tick, with ordered operations rather than simultaneous movement.",
+      "proposed_compiler_guard": "The physical relation execute_event(0,1,5) \u2192 callback(0,1,8) \u2192 enqueue(0,1,8) \u2192 execute_event(0,1,8) is measured, not inferred from a pico snapshot. A compiled synchronized wave may compose these stages while preserving the consumer response."
+    },
+    "label_mappings": [
+      {
+        "sign_position": [
+          0,
+          2,
+          1
+        ],
+        "normalized": "IN",
+        "original_text": {
+          "front_text": {
+            "original": [
+              {
+                "text": "IN"
+              },
+              {
+                "text": ""
+              },
+              {
+                "text": ""
+              },
+              {
+                "text": ""
+              }
+            ],
+            "readable": [
+              "IN",
+              "",
+              "",
+              ""
+            ]
+          },
+          "back_text": {
+            "original": [
+              {
+                "text": ""
+              },
+              {
+                "text": ""
+              },
+              {
+                "text": ""
+              },
+              {
+                "text": ""
+              }
+            ],
+            "readable": [
+              "",
+              "",
+              "",
+              ""
+            ]
+          },
+          "legacy": {
+            "original": [],
+            "readable": []
+          }
+        },
+        "candidates": [
+          {
+            "position": [
+              0,
+              1,
+              1
+            ],
+            "role": "geometric support candidate; not automatically a port"
+          },
+          {
+            "position": [
+              0,
+              1,
+              0
+            ],
+            "role": "trigger"
+          }
+        ],
+        "port_position": [
+          0,
+          1,
+          0
+        ],
+        "role": "trigger",
+        "evidence": "Reviewed input attachment/electrical path or consumer connection; independent port stimuli and watched geometry. Repeated O1 labels use physical Z spacing, not text index.",
+        "status": "resolved for declared episode"
+      }
+    ],
+    "observation_decoder": {
+      "raw_output": "positive-to-zero fall is event1; held zero is not a new root",
+      "repeater": "first unpowered boundary6 for activation, delay2; blocked fixture stays powered"
+    },
+    "reset_and_next_use": "Both stages reset through the supplied geometry and continue internal work under held activation. Independent cases use fresh snapshots. The first repeater fall is delayed to tick 6.",
+    "initial_state": {
+      "source": "test_data/instant-pistons-io/inspection/instant_chain.json",
+      "scheduled": [],
+      "piston_events": [],
+      "active_motions": [],
+      "observed_ready": "Strict imported idle is unchanged and quiescent for 24 ticks; physical construction reachability is a separate claim"
+    },
+    "ordering": {
+      "supported_episode": "activate",
+      "measured_operations": [
+        {
+          "tick": 2,
+          "phase": "ScheduledTicks",
+          "operation": 2,
+          "external_action": 1,
+          "event": "event_enqueue",
+          "piston_action": "Retract",
+          "actor": [
+            0,
+            1,
+            5
+          ]
+        },
+        {
+          "tick": 2,
+          "phase": "PistonEvents",
+          "operation": 3,
+          "external_action": 1,
+          "event": "event_execute",
+          "piston_action": "Retract",
+          "actor": [
+            0,
+            1,
+            5
+          ]
+        },
+        {
+          "tick": 2,
+          "phase": "PistonEvents",
+          "operation": 3,
+          "external_action": 1,
+          "event": "event_enqueue",
+          "piston_action": "Retract",
+          "actor": [
+            0,
+            1,
+            8
+          ]
+        },
+        {
+          "tick": 2,
+          "phase": "PistonEvents",
+          "operation": 3,
+          "external_action": 1,
+          "event": "event_applied",
+          "piston_action": "Retract",
+          "actor": [
+            0,
+            1,
+            5
+          ]
+        },
+        {
+          "tick": 2,
+          "phase": "PistonEvents",
+          "operation": 4,
+          "external_action": 1,
+          "event": "event_execute",
+          "piston_action": "Retract",
+          "actor": [
+            0,
+            1,
+            8
+          ]
+        },
+        {
+          "tick": 2,
+          "phase": "PistonEvents",
+          "operation": 4,
+          "external_action": 1,
+          "event": "event_applied",
+          "piston_action": "Retract",
+          "actor": [
+            0,
+            1,
+            8
+          ]
+        }
+      ],
+      "contract": "Certified synchronized physical family; compiled execution omits internal nanoticks. Logical data/sample dependencies and exposed reset/consumer timing remain.",
+      "requirements": "The physical relation execute_event(0,1,5) \u2192 callback(0,1,8) \u2192 enqueue(0,1,8) \u2192 execute_event(0,1,8) is measured, not inferred from a pico snapshot. A compiled synchronized wave may compose these stages while preserving the consumer response."
+    },
+    "cases": [
+      {
+        "id": "saved-idle",
+        "artifacts": [
+          "test_data/instant-pistons-io/traces/java-instant_chain-saved-idle-r0.json.gz",
+          "test_data/instant-pistons-io/traces/mchprs-instant_chain-saved-idle-r0.json.gz"
+        ],
+        "independent_status": [
+          {
+            "engine": "Java",
+            "rotation": 0,
+            "status": "match"
+          }
+        ],
+        "expected_status": "observed declared episode; not an invented Boolean oracle"
+      },
+      {
+        "id": "activate",
+        "artifacts": [
+          "test_data/instant-pistons-io/traces/java-instant_chain-activate-r0.json.gz",
+          "test_data/instant-pistons-io/traces/mchprs-instant_chain-activate-r0.json.gz"
+        ],
+        "independent_status": [
+          {
+            "engine": "Java",
+            "rotation": 0,
+            "status": "match"
+          }
+        ],
+        "expected_status": "observed declared episode; not an invented Boolean oracle"
+      },
+      {
+        "id": "held-active",
+        "artifacts": [
+          "test_data/instant-pistons-io/traces/java-instant_chain-held-active-r0.json.gz",
+          "test_data/instant-pistons-io/traces/mchprs-instant_chain-held-active-r0.json.gz"
+        ],
+        "independent_status": [
+          {
+            "engine": "Java",
+            "rotation": 0,
+            "status": "match"
+          }
+        ],
+        "expected_status": "observed declared episode; not an invented Boolean oracle"
+      }
+    ],
+    "status": "observed declared projections agree where independently captured",
+    "trace_index": "test_data/instant-pistons-io/trace-index.json"
+  }
 }

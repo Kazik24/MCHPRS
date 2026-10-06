@@ -138,5 +138,210 @@
   "expected_status": "Arithmetic expectations require the declared polarity/width decoder; other functional claims remain measured projections.",
   "unknowns": [
     "Quiet/periodic readiness is assessed from physical work; no universal reuse interval."
-  ]
+  ],
+  "evidence": {
+    "schema_version": 1,
+    "catalog": "docs/INSTANT_PISTON_IO_SCHEMATICS.md#instant-reset-redstone",
+    "authority": {
+      "author_intent": "ANSWERS.md plus supplied Data/Update/port signs",
+      "imported_state": "test_data/instant-pistons-io/inspection/instant_reset_redstone.json",
+      "observed_mchprs": "frozen traces, not independent Minecraft oracles",
+      "observed_java": "SHA-pinned vanilla 1.21.5 captures with real lever interactions",
+      "inferred_mechanism": "This revision raises the base/head/payload to y=2 and places reset dust (0,1,6) below the head. A retracted payload powers that dust, whose notified changes reset the piston. The lever is at (0,2,0). This is a changed construction: the earlier no-under-head-dust, one-shot classification does not apply to this binary.",
+      "proposed_compiler_guard": "Recognition must inspect the actual reset dust and payload supply; the filename is not a reset-type identifier."
+    },
+    "label_mappings": [
+      {
+        "sign_position": [
+          0,
+          3,
+          1
+        ],
+        "normalized": "IN",
+        "original_text": {
+          "front_text": {
+            "original": [
+              {
+                "text": "IN"
+              },
+              {
+                "text": ""
+              },
+              {
+                "text": ""
+              },
+              {
+                "text": ""
+              }
+            ],
+            "readable": [
+              "IN",
+              "",
+              "",
+              ""
+            ]
+          },
+          "back_text": {
+            "original": [
+              {
+                "text": ""
+              },
+              {
+                "text": ""
+              },
+              {
+                "text": ""
+              },
+              {
+                "text": ""
+              }
+            ],
+            "readable": [
+              "",
+              "",
+              "",
+              ""
+            ]
+          },
+          "legacy": {
+            "original": [],
+            "readable": []
+          }
+        },
+        "candidates": [
+          {
+            "position": [
+              0,
+              2,
+              1
+            ],
+            "role": "geometric support candidate; not automatically a port"
+          },
+          {
+            "position": [
+              0,
+              2,
+              0
+            ],
+            "role": "trigger"
+          }
+        ],
+        "port_position": [
+          0,
+          2,
+          0
+        ],
+        "role": "trigger",
+        "evidence": "Reviewed input attachment/electrical path or consumer connection; independent port stimuli and watched geometry. Repeated O1 labels use physical Z spacing, not text index.",
+        "status": "resolved for declared episode"
+      }
+    ],
+    "observation_decoder": {
+      "raw_output": "positive-to-zero fall is event1; held zero is not a new root",
+      "repeater": "first unpowered boundary6 for activation, delay2; blocked fixture stays powered"
+    },
+    "reset_and_next_use": "Held activation retains recurring internal reset/retraction work. No repeated external-computation protocol is certified; use fresh snapshots. Preserve the lower dust's consumer-dependent callbacks.",
+    "initial_state": {
+      "source": "test_data/instant-pistons-io/inspection/instant_reset_redstone.json",
+      "scheduled": [],
+      "piston_events": [],
+      "active_motions": [],
+      "observed_ready": "Strict imported idle is unchanged and quiescent for 24 ticks; physical construction reachability is a separate claim"
+    },
+    "ordering": {
+      "supported_episode": "activate",
+      "measured_operations": [
+        {
+          "tick": 2,
+          "phase": "ScheduledTicks",
+          "operation": 2,
+          "external_action": 1,
+          "event": "event_enqueue",
+          "piston_action": "Retract",
+          "actor": [
+            0,
+            2,
+            5
+          ]
+        },
+        {
+          "tick": 2,
+          "phase": "PistonEvents",
+          "operation": 3,
+          "external_action": 1,
+          "event": "event_execute",
+          "piston_action": "Retract",
+          "actor": [
+            0,
+            2,
+            5
+          ]
+        },
+        {
+          "tick": 2,
+          "phase": "PistonEvents",
+          "operation": 3,
+          "external_action": 1,
+          "event": "event_applied",
+          "piston_action": "Retract",
+          "actor": [
+            0,
+            2,
+            5
+          ]
+        }
+      ],
+      "contract": "Certified synchronized physical family; compiled execution omits internal nanoticks. Logical data/sample dependencies and exposed reset/consumer timing remain.",
+      "requirements": "Recognition must inspect the actual reset dust and payload supply; the filename is not a reset-type identifier."
+    },
+    "cases": [
+      {
+        "id": "saved-idle",
+        "artifacts": [
+          "test_data/instant-pistons-io/traces/java-instant_reset_redstone-saved-idle-r0.json.gz",
+          "test_data/instant-pistons-io/traces/mchprs-instant_reset_redstone-saved-idle-r0.json.gz"
+        ],
+        "independent_status": [
+          {
+            "engine": "Java",
+            "rotation": 0,
+            "status": "match"
+          }
+        ],
+        "expected_status": "observed declared episode; not an invented Boolean oracle"
+      },
+      {
+        "id": "activate",
+        "artifacts": [
+          "test_data/instant-pistons-io/traces/java-instant_reset_redstone-activate-r0.json.gz",
+          "test_data/instant-pistons-io/traces/mchprs-instant_reset_redstone-activate-r0.json.gz"
+        ],
+        "independent_status": [
+          {
+            "engine": "Java",
+            "rotation": 0,
+            "status": "match"
+          }
+        ],
+        "expected_status": "observed declared episode; not an invented Boolean oracle"
+      },
+      {
+        "id": "held-active",
+        "artifacts": [
+          "test_data/instant-pistons-io/traces/java-instant_reset_redstone-held-active-r0.json.gz",
+          "test_data/instant-pistons-io/traces/mchprs-instant_reset_redstone-held-active-r0.json.gz"
+        ],
+        "independent_status": [
+          {
+            "engine": "Java",
+            "rotation": 0,
+            "status": "match"
+          }
+        ],
+        "expected_status": "observed declared episode; not an invented Boolean oracle"
+      }
+    ],
+    "status": "observed declared projections agree where independently captured",
+    "trace_index": "test_data/instant-pistons-io/trace-index.json"
+  }
 }

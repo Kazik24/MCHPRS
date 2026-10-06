@@ -501,15 +501,23 @@ impl Chunk {
                 )
         };
         self.sections.iter().any(|s| {
-            s.changed_blocks
+            if s.block_count() == 0 {
+                return false;
+            }
+            if s.changed_blocks
                 .iter()
                 .flat_map(|blocks| blocks.iter())
                 .any(|id| *id >= 0 && requires_interpreter(*id as u32))
-                || if s.buffer.use_palette {
-                    s.buffer.palette.iter().any(|id| requires_interpreter(*id))
-                } else {
-                    (0..4096).any(|i| requires_interpreter(s.buffer.get_entry(i)))
-                }
+            {
+                return true;
+            }
+            // Palettes retain removed states. Use them only to avoid scanning
+            // sections that cannot contain interpreter components.
+            if s.buffer.use_palette && !s.buffer.palette.iter().any(|id| requires_interpreter(*id))
+            {
+                return false;
+            }
+            (0..4096).any(|i| requires_interpreter(s.get_block(i & 15, i >> 8, (i >> 4) & 15)))
         })
     }
 
@@ -692,7 +700,13 @@ impl Chunk {
                 .collect_vec()
                 .try_into()
                 .unwrap(),
-            block_entities: self.block_entities.clone(),
+            // Cloning the map also clones spare capacity after mass deletions.
+            // Saved snapshots need space only for the remaining entities.
+            block_entities: self
+                .block_entities
+                .iter()
+                .map(|(&pos, entity)| (pos, entity.clone()))
+                .collect(),
         }
     }
 

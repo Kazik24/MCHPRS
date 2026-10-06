@@ -1,6 +1,7 @@
 //! Persistent, per-plot snapshot repositories. World access stays on the plot thread.
 mod diff;
 mod repository;
+mod resources;
 mod snapshot;
 #[cfg(test)]
 mod tests;
@@ -36,10 +37,22 @@ use std::time::{Duration, Instant};
 
 const ROOT: &str = "./world/plot-git";
 const MAX_WORK_MEMORY_MIB: u64 = 1024;
+const MAX_SNAPSHOT_MIB: u64 = 128;
 
 static USED: AtomicUsize = AtomicUsize::new(0);
 pub(super) struct Reservation(usize);
 impl Reservation {
+    fn snapshot(bytes: usize) -> Result<Self> {
+        // Packed bytes understate decoded maps/collections. Include compression,
+        // deserialization, canonical data scratch and fixed chunk storage.
+        Self::new(
+            bytes
+                .checked_mul(10)
+                .and_then(|n| n.checked_add(32 * 1048576))
+                .context(messages::GIT_CAPTURE_SIZE_OVERFLOW)?,
+        )
+    }
+
     fn new(bytes: usize) -> Result<Self> {
         let limit = mib(CONFIG.git_work_memory_mib.min(MAX_WORK_MEMORY_MIB));
         USED.fetch_update(Ordering::SeqCst, Ordering::SeqCst, |used| {
@@ -60,7 +73,7 @@ fn mib(value: u64) -> usize {
 }
 fn limits() -> Limits {
     Limits {
-        snapshot: mib(CONFIG.git_snapshot_max_mib),
+        snapshot: mib(CONFIG.git_snapshot_max_mib.min(MAX_SNAPSHOT_MIB)),
         plot_bytes: CONFIG.git_plot_storage_mib.saturating_mul(1048576),
         total_bytes: CONFIG.git_total_storage_mib.saturating_mul(1048576),
     }
@@ -192,11 +205,7 @@ pub(super) fn recover_pending(path: &Path) -> Result<()> {
     }
     let mut repo = Repository::open(Path::new(ROOT), plot, limits())?;
     if repo.has_pending()? {
-        let _reservation = Reservation::new(
-            repo.pending_size()?
-                .saturating_mul(6)
-                .saturating_add(4 * 1048576),
-        )?;
+        let _reservation = Reservation::snapshot(repo.pending_size()?)?;
         repo.finish_checkout(path)?;
     }
     Ok(())
@@ -249,6 +258,14 @@ impl Plot {
         self.reset_redpiler(); // Exports compiled block state and its scheduled ticks.
         for chunk in &mut self.world.chunks {
             chunk.prepare_history();
+            for entity in chunk.block_entities.values() {
+                resources::check_entity(entity)?;
+            }
+        }
+        for motion in &self.world.piston_state.motions {
+            if let Some(entity) = &motion.carried_entity {
+                resources::check_entity(entity)?;
+            }
         }
         let chunks_size = self.world.chunks.iter().try_fold(0u64, |total, c| {
             Ok::<_, anyhow::Error>(total + bincode::serialized_size(&c.history_view())?)
@@ -267,12 +284,7 @@ impl Plot {
             estimate < limits().snapshot,
             messages::GIT_SNAPSHOT_SIZE_LIMIT
         );
-        let reservation = Reservation::new(
-            estimate
-                .checked_mul(6)
-                .context(messages::GIT_CAPTURE_SIZE_OVERFLOW)?
-                .saturating_add(4 * 1048576),
-        )?;
+        let reservation = Reservation::snapshot(estimate)?;
         let snapshot = Snapshot {
             version: 1,
             data_version: mchprs_save_data::plot_data::MC_DATA_VERSION,
@@ -432,11 +444,7 @@ impl Plot {
                     let a = repo.resolve(a)?;
                     let b = repo.resolve(b)?;
                     let size = repo.raw_size(&a)?.saturating_add(repo.raw_size(&b)?);
-                    let reservation = Reservation::new(
-                        size.checked_mul(6)
-                            .context(messages::GIT_DIFF_SIZE_OVERFLOW)?
-                            .saturating_add(4 * 1048576),
-                    )?;
+                    let reservation = Reservation::snapshot(size)?;
                     let mut diff = Diff::new(
                         a.clone(),
                         b.clone(),

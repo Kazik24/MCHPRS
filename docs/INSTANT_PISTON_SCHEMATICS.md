@@ -1,5 +1,7 @@
 # Instant-piston schematic behavior catalog
 
+The [new lever/repeater and standalone BUD revision](INSTANT_PISTON_IO_SCHEMATICS.md) has separate binaries, hashes, coordinates and protocols. The dossiers below retain the older pack's evidence; new controls and consumers can change reset geometry and observable timing.
+
 This is interpreter evidence and a compiler requirements catalog. No piston parser or Redpiler execution support is implemented. Logical one is a **new nonzero-to-zero transition** from a declared ready state; positive power is a physical condition, not that logical one. Internal reset/clock cycles remain part of the accepted response. New external data or computations during reset are undefined unless a dossier establishes a separate ready protocol.
 
 Evidence categories remain separate: author intent (including clarifications during this assignment), exact imported state, observed MCHPRS behavior, independent Java behavior, mechanism inferred from geometry/source, and proposed compiler guard. A passing boundary projection does not certify an arbitrary non-instant consumer or a generalized circuit family.

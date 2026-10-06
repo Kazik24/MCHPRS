@@ -174,13 +174,15 @@ fn compiled_handoff_preserves_pending_short_pulse() {
         world.schedule_tick(pos, 2, TickPriority::High);
         let ticks = world.scheduler().iter_entries().collect();
         let mut compiler = Compiler::default();
-        compiler.compile(
-            &world,
-            world.get_corners(),
-            CompilerOptions::parse(options),
-            ticks,
-            Default::default(),
-        );
+        compiler
+            .compile(
+                &world,
+                world.get_corners(),
+                CompilerOptions::parse(options),
+                ticks,
+                Default::default(),
+            )
+            .unwrap();
         let mut trace = Vec::new();
         for _ in 0..12 {
             compiler.tick();
@@ -261,13 +263,15 @@ fn all_binary_plate_variants_power_and_survive_compiler_flush() {
         );
         world.set_block(pos, plate);
         let mut compiler = Compiler::default();
-        compiler.compile(
-            &world,
-            world.get_corners(),
-            CompilerOptions::parse("-O -io"),
-            Vec::new(),
-            Default::default(),
-        );
+        compiler
+            .compile(
+                &world,
+                world.get_corners(),
+                CompilerOptions::parse("-O -io"),
+                Vec::new(),
+                Default::default(),
+            )
+            .unwrap();
         compiler.set_pressure_plate(pos, true);
         compiler.flush(&mut world);
         assert_eq!(
@@ -474,13 +478,15 @@ fn dust_steps_over_opaque_blocks_and_powers_the_block_below_in_both_backends() {
                 }
             } else {
                 let mut compiler = Compiler::default();
-                compiler.compile(
-                    &world,
-                    world.get_corners(),
-                    CompilerOptions::parse(backend),
-                    Vec::new(),
-                    Default::default(),
-                );
+                compiler
+                    .compile(
+                        &world,
+                        world.get_corners(),
+                        CompilerOptions::parse(backend),
+                        Vec::new(),
+                        Default::default(),
+                    )
+                    .unwrap();
                 compiler.on_use_block(source);
                 for _ in 0..4 {
                     compiler.tick();

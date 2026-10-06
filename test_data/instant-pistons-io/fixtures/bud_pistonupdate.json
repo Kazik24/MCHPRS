@@ -264,5 +264,396 @@
   "expected_status": "Arithmetic expectations require the declared polarity/width decoder; other functional claims remain measured projections.",
   "unknowns": [
     "Instant-update generators require their own recurring-response protocol; unrestricted data changes during reset are not assumed."
-  ]
+  ],
+  "evidence": {
+    "schema_version": 1,
+    "catalog": "docs/INSTANT_PISTON_IO_SCHEMATICS.md#bud-pistonupdate",
+    "authority": {
+      "author_intent": "ANSWERS.md plus supplied Data/Update/port signs",
+      "imported_state": "test_data/instant-pistons-io/inspection/bud_pistonupdate.json",
+      "observed_mchprs": "frozen traces, not independent Minecraft oracles",
+      "observed_java": "SHA-pinned vanilla 1.21.5 captures with real lever interactions",
+      "inferred_mechanism": "Down memory M=(0,3,4), head (0,2,4), payload (0,1,4), repeater (0,1,5). Data lever=(0,7,1), update=(1,3,0). Ordinary west-facing piston U=(1,3,3) moves its head at (0,3,3), adjacent to M. Head removal/restoration delivers the independent update that samples the QC condition.",
+      "proposed_compiler_guard": "An ordinary piston is an update owner, not an instant data formula. Recognize the changed head cell and callback route separately from data power."
+    },
+    "label_mappings": [
+      {
+        "sign_position": [
+          0,
+          8,
+          2
+        ],
+        "normalized": "Data",
+        "original_text": {
+          "front_text": {
+            "original": [
+              {
+                "text": "Data"
+              },
+              {
+                "text": ""
+              },
+              {
+                "text": ""
+              },
+              {
+                "text": ""
+              }
+            ],
+            "readable": [
+              "Data",
+              "",
+              "",
+              ""
+            ]
+          },
+          "back_text": {
+            "original": [
+              {
+                "text": ""
+              },
+              {
+                "text": ""
+              },
+              {
+                "text": ""
+              },
+              {
+                "text": ""
+              }
+            ],
+            "readable": [
+              "",
+              "",
+              "",
+              ""
+            ]
+          },
+          "legacy": {
+            "original": [],
+            "readable": []
+          }
+        },
+        "candidates": [
+          {
+            "position": [
+              0,
+              7,
+              2
+            ],
+            "role": "geometric support candidate; not automatically a port"
+          },
+          {
+            "position": [
+              0,
+              7,
+              1
+            ],
+            "role": "data"
+          }
+        ],
+        "port_position": [
+          0,
+          7,
+          1
+        ],
+        "role": "data",
+        "evidence": "Reviewed input attachment/electrical path or consumer connection; independent port stimuli and watched geometry. Repeated O1 labels use physical Z spacing, not text index.",
+        "status": "resolved for declared episode"
+      },
+      {
+        "sign_position": [
+          1,
+          4,
+          1
+        ],
+        "normalized": "Update",
+        "original_text": {
+          "front_text": {
+            "original": [
+              {
+                "text": "Update"
+              },
+              {
+                "text": ""
+              },
+              {
+                "text": ""
+              },
+              {
+                "text": ""
+              }
+            ],
+            "readable": [
+              "Update",
+              "",
+              "",
+              ""
+            ]
+          },
+          "back_text": {
+            "original": [
+              {
+                "text": ""
+              },
+              {
+                "text": ""
+              },
+              {
+                "text": ""
+              },
+              {
+                "text": ""
+              }
+            ],
+            "readable": [
+              "",
+              "",
+              "",
+              ""
+            ]
+          },
+          "legacy": {
+            "original": [],
+            "readable": []
+          }
+        },
+        "candidates": [
+          {
+            "position": [
+              1,
+              3,
+              1
+            ],
+            "role": "geometric support candidate; not automatically a port"
+          },
+          {
+            "position": [
+              1,
+              3,
+              0
+            ],
+            "role": "update"
+          }
+        ],
+        "port_position": [
+          1,
+          3,
+          0
+        ],
+        "role": "update",
+        "evidence": "Reviewed input attachment/electrical path or consumer connection; independent port stimuli and watched geometry. Repeated O1 labels use physical Z spacing, not text index.",
+        "status": "resolved for declared episode"
+      }
+    ],
+    "observation_decoder": {
+      "memory": "stationary retracted=1, extended=0, moving invalid",
+      "repeater": "unpowered=1; ordinary/piston update sample-1 valid from tick6, observer-update from tick7; separate zero-resample timing"
+    },
+    "reset_and_next_use": "The same six storage episodes and validity points as BUD_NonInstantInputs are observed: data-only holds, sample-1 is stationary at 4/consumer off at 6, restored QC retains one until an update samples zero, consumer on by 8. Four rotations and all six Java captures agree. This establishes a quiet repeated sampling protocol with a physically different update adapter.",
+    "initial_state": {
+      "source": "test_data/instant-pistons-io/inspection/bud_pistonupdate.json",
+      "scheduled": [],
+      "piston_events": [],
+      "active_motions": [],
+      "observed_ready": "Strict imported idle is unchanged and quiescent for 24 ticks; physical construction reachability is a separate claim"
+    },
+    "ordering": {
+      "supported_episode": "sample-1",
+      "measured_operations": [
+        {
+          "tick": 2,
+          "phase": "ScheduledTicks",
+          "operation": 7,
+          "external_action": 3,
+          "event": "event_enqueue",
+          "piston_action": "Retract",
+          "actor": [
+            1,
+            3,
+            3
+          ]
+        },
+        {
+          "tick": 2,
+          "phase": "PistonEvents",
+          "operation": 8,
+          "external_action": 3,
+          "event": "event_execute",
+          "piston_action": "Retract",
+          "actor": [
+            1,
+            3,
+            3
+          ]
+        },
+        {
+          "tick": 2,
+          "phase": "PistonEvents",
+          "operation": 8,
+          "external_action": 3,
+          "event": "event_enqueue",
+          "piston_action": "Retract",
+          "actor": [
+            0,
+            3,
+            4
+          ]
+        },
+        {
+          "tick": 2,
+          "phase": "PistonEvents",
+          "operation": 8,
+          "external_action": 3,
+          "event": "event_applied",
+          "piston_action": "Retract",
+          "actor": [
+            1,
+            3,
+            3
+          ]
+        },
+        {
+          "tick": 2,
+          "phase": "PistonEvents",
+          "operation": 9,
+          "external_action": 3,
+          "event": "event_execute",
+          "piston_action": "Retract",
+          "actor": [
+            0,
+            3,
+            4
+          ]
+        },
+        {
+          "tick": 2,
+          "phase": "PistonEvents",
+          "operation": 9,
+          "external_action": 3,
+          "event": "event_applied",
+          "piston_action": "Retract",
+          "actor": [
+            0,
+            3,
+            4
+          ]
+        }
+      ],
+      "contract": "Certified synchronized physical family; compiled execution omits internal nanoticks. Logical data/sample dependencies and exposed reset/consumer timing remain.",
+      "requirements": "An ordinary piston is an update owner, not an instant data formula. Recognize the changed head cell and callback route separately from data power."
+    },
+    "cases": [
+      {
+        "id": "saved-idle",
+        "artifacts": [
+          "test_data/instant-pistons-io/traces/java-bud_pistonupdate-saved-idle-r0.json.gz",
+          "test_data/instant-pistons-io/traces/mchprs-bud_pistonupdate-saved-idle-r0.json.gz",
+          "test_data/instant-pistons-io/traces/mchprs-bud_pistonupdate-saved-idle-r180.json.gz",
+          "test_data/instant-pistons-io/traces/mchprs-bud_pistonupdate-saved-idle-r270.json.gz",
+          "test_data/instant-pistons-io/traces/mchprs-bud_pistonupdate-saved-idle-r90.json.gz"
+        ],
+        "independent_status": [
+          {
+            "engine": "Java",
+            "rotation": 0,
+            "status": "match"
+          }
+        ],
+        "expected_status": "observed declared episode; not an invented Boolean oracle"
+      },
+      {
+        "id": "data-only",
+        "artifacts": [
+          "test_data/instant-pistons-io/traces/java-bud_pistonupdate-data-only-r0.json.gz",
+          "test_data/instant-pistons-io/traces/mchprs-bud_pistonupdate-data-only-r0.json.gz",
+          "test_data/instant-pistons-io/traces/mchprs-bud_pistonupdate-data-only-r180.json.gz",
+          "test_data/instant-pistons-io/traces/mchprs-bud_pistonupdate-data-only-r270.json.gz",
+          "test_data/instant-pistons-io/traces/mchprs-bud_pistonupdate-data-only-r90.json.gz"
+        ],
+        "independent_status": [
+          {
+            "engine": "Java",
+            "rotation": 0,
+            "status": "match"
+          }
+        ],
+        "expected_status": "observed declared episode; not an invented Boolean oracle"
+      },
+      {
+        "id": "sample-0",
+        "artifacts": [
+          "test_data/instant-pistons-io/traces/java-bud_pistonupdate-sample-0-r0.json.gz",
+          "test_data/instant-pistons-io/traces/mchprs-bud_pistonupdate-sample-0-r0.json.gz",
+          "test_data/instant-pistons-io/traces/mchprs-bud_pistonupdate-sample-0-r180.json.gz",
+          "test_data/instant-pistons-io/traces/mchprs-bud_pistonupdate-sample-0-r270.json.gz",
+          "test_data/instant-pistons-io/traces/mchprs-bud_pistonupdate-sample-0-r90.json.gz"
+        ],
+        "independent_status": [
+          {
+            "engine": "Java",
+            "rotation": 0,
+            "status": "match"
+          }
+        ],
+        "expected_status": "observed declared episode; not an invented Boolean oracle"
+      },
+      {
+        "id": "sample-1",
+        "artifacts": [
+          "test_data/instant-pistons-io/traces/java-bud_pistonupdate-sample-1-r0.json.gz",
+          "test_data/instant-pistons-io/traces/mchprs-bud_pistonupdate-sample-1-r0.json.gz",
+          "test_data/instant-pistons-io/traces/mchprs-bud_pistonupdate-sample-1-r180.json.gz",
+          "test_data/instant-pistons-io/traces/mchprs-bud_pistonupdate-sample-1-r270.json.gz",
+          "test_data/instant-pistons-io/traces/mchprs-bud_pistonupdate-sample-1-r90.json.gz"
+        ],
+        "independent_status": [
+          {
+            "engine": "Java",
+            "rotation": 0,
+            "status": "match"
+          }
+        ],
+        "expected_status": "observed declared episode; not an invented Boolean oracle"
+      },
+      {
+        "id": "store-hold-resample",
+        "artifacts": [
+          "test_data/instant-pistons-io/traces/java-bud_pistonupdate-store-hold-resample-r0.json.gz",
+          "test_data/instant-pistons-io/traces/mchprs-bud_pistonupdate-store-hold-resample-r0.json.gz",
+          "test_data/instant-pistons-io/traces/mchprs-bud_pistonupdate-store-hold-resample-r180.json.gz",
+          "test_data/instant-pistons-io/traces/mchprs-bud_pistonupdate-store-hold-resample-r270.json.gz",
+          "test_data/instant-pistons-io/traces/mchprs-bud_pistonupdate-store-hold-resample-r90.json.gz"
+        ],
+        "independent_status": [
+          {
+            "engine": "Java",
+            "rotation": 0,
+            "status": "match"
+          }
+        ],
+        "expected_status": "observed declared episode; not an invented Boolean oracle"
+      },
+      {
+        "id": "update-before-data",
+        "artifacts": [
+          "test_data/instant-pistons-io/traces/java-bud_pistonupdate-update-before-data-r0.json.gz",
+          "test_data/instant-pistons-io/traces/mchprs-bud_pistonupdate-update-before-data-r0.json.gz",
+          "test_data/instant-pistons-io/traces/mchprs-bud_pistonupdate-update-before-data-r180.json.gz",
+          "test_data/instant-pistons-io/traces/mchprs-bud_pistonupdate-update-before-data-r270.json.gz",
+          "test_data/instant-pistons-io/traces/mchprs-bud_pistonupdate-update-before-data-r90.json.gz"
+        ],
+        "independent_status": [
+          {
+            "engine": "Java",
+            "rotation": 0,
+            "status": "match"
+          }
+        ],
+        "expected_status": "observed declared episode; not an invented Boolean oracle"
+      }
+    ],
+    "status": "observed declared projections agree where independently captured",
+    "trace_index": "test_data/instant-pistons-io/trace-index.json"
+  }
 }

@@ -8,6 +8,7 @@ use mchprs_save_data::plot_data::{ChunkData, WorldSendRate};
 use mchprs_world::{PistonAction, PistonEvent, TickEntry, TickPriority};
 use rusqlite::Connection;
 use serde_json::json;
+use sha2::{Digest, Sha256};
 use std::fs;
 
 struct TempRoot(PathBuf);
@@ -584,6 +585,201 @@ fn snapshots_restore_scheduled_ticks_piston_events_and_entities_exactly() {
             .full,
         snapshot.fingerprints().unwrap().full
     );
+}
+
+#[test]
+fn streamed_execution_hash_keeps_existing_object_ids() {
+    let mut snapshot = empty();
+    snapshot.data.pending_ticks = (0..2000)
+        .map(|n| TickEntry {
+            ticks_left: 2,
+            tick_priority: TickPriority::High,
+            pos: pos(n % 256, 64, n / 256),
+            block_type: None,
+        })
+        .collect();
+    let state = &mut snapshot.data.piston_state;
+    state.logical_tick = 42;
+    state.next_identity = 1;
+    state.events.push_back(PistonEvent {
+        pos: pos(10, 64, 8),
+        sticky: true,
+        facing: mchprs_blocks::BlockFace::Top,
+        action: PistonAction::Extend,
+    });
+    let mut tag = nbt::Blob::new();
+    tag.insert("data", nbt::Value::ByteArray(vec![-1, 0, 1]))
+        .unwrap();
+    let mut nbt = Vec::new();
+    tag.to_writer(&mut nbt).unwrap();
+    state.motions.push_back(mchprs_world::PistonMotion {
+        pos: pos(10, 64, 8),
+        identity: 1,
+        progress: 0.1,
+        previous_progress: 0.05,
+        last_tick: 40,
+        carried_entity: Some(Box::new(BlockEntity::Container {
+            ty: ContainerType::Chest,
+            comparator_override: 1,
+            inventory: [InventoryEntry {
+                id: 1,
+                slot: 0,
+                count: 1,
+                nbt: Some(nbt),
+            }]
+            .into_iter()
+            .collect(),
+        })),
+    });
+    state.phase = mchprs_world::AdvancePhase::MovingEntities;
+    state.movement_work.push((pos(10, 64, 8), 1));
+    for scheduled in [false, true] {
+        snapshot.data.piston_state.scheduled_advanced = scheduled;
+        let mut legacy =
+            serde_json::to_value((&snapshot.data.pending_ticks, &snapshot.data.piston_state))
+                .unwrap();
+        snapshot::normalize(&mut legacy).unwrap();
+        let expected = snapshot::hex(Sha256::digest(serde_json::to_vec(&legacy).unwrap()));
+        assert_eq!(snapshot.fingerprints().unwrap().execution, expected);
+    }
+}
+
+#[test]
+fn malformed_lengths_are_rejected_before_snapshot_and_blob_allocations() {
+    for tps in [Tps::Limited(20), Tps::Unlimited] {
+        let mut snapshot = empty();
+        snapshot.data.tps = tps;
+        let mut bytes = bincode::serialize(&snapshot).unwrap();
+        let offset = if tps == Tps::Unlimited { 24 } else { 28 };
+        bytes[offset..offset + 8].copy_from_slice(&u64::MAX.to_le_bytes());
+        let packed = lz4_flex::compress_prepend_size(&bytes);
+        assert!(
+            Snapshot::decode(&packed, snapshot.plot, test_limits().snapshot)
+                .unwrap_err()
+                .to_string()
+                .contains("plot size")
+        );
+    }
+    let root = TempRoot::new();
+    let mut repo = root.repo();
+    repo.commit(&empty(), 1, "Alice", "base").unwrap();
+    let head = repo.head().unwrap();
+    let mut forged = vec![0; 1024 * 1024];
+    forged[..4].copy_from_slice(&32u32.to_le_bytes());
+    root.db()
+        .execute("UPDATE objects SET blob=?1", [forged])
+        .unwrap();
+    let error = repo.load(head.1.as_ref().unwrap()).unwrap_err();
+    assert!(error.to_string().contains("oversized"));
+    assert_eq!(repo.head().unwrap(), head);
+    assert!(Reservation::snapshot(mib(MAX_SNAPSHOT_MIB)).is_err());
+    assert!(Reservation::snapshot(usize::MAX).is_err());
+    assert!(limits().snapshot <= mib(MAX_SNAPSHOT_MIB));
+}
+
+#[test]
+fn nbt_resource_guards_reject_length_depth_and_tag_bombs() {
+    resources::check_nbt(&[10, 0, 0, 0]).unwrap();
+    for tag in [7, 9, 11, 12] {
+        let mut bytes = vec![10, 0, 0, tag, 0, 0];
+        if tag == 9 {
+            bytes.push(1);
+        }
+        bytes.extend_from_slice(&i32::MAX.to_be_bytes());
+        bytes.push(0);
+        assert!(resources::check_nbt(&bytes).is_err());
+    }
+    let mut nested = vec![10, 0, 0];
+    for _ in 0..65 {
+        nested.extend_from_slice(&[10, 0, 0]);
+    }
+    nested.extend_from_slice(&[0; 66]);
+    assert!(resources::check_nbt(&nested).is_err());
+    let mut tags = vec![10, 0, 0, 9, 0, 0, 1];
+    tags.extend_from_slice(&4096i32.to_be_bytes());
+    tags.extend_from_slice(&[0; 4097]);
+    assert!(resources::check_nbt(&tags).is_err());
+    assert!(resources::check_nbt(&vec![0; 65537]).is_err());
+
+    let root = TempRoot::new();
+    let mut repo = root.repo();
+    let mut snapshot = empty();
+    repo.commit(&snapshot, 1, "Alice", "base").unwrap();
+    let head = repo.head().unwrap();
+    set(
+        &mut snapshot,
+        2,
+        64,
+        2,
+        Block::from_name("command_block").unwrap(),
+        Some(BlockEntity::CommandBlock(Box::new(CommandBlockEntity {
+            last_output: Some("x".repeat(256 * 1024)),
+            ..Default::default()
+        }))),
+    );
+    assert!(repo.commit(&snapshot, 1, "Alice", "too much data").is_err());
+    assert_eq!(repo.head().unwrap(), head);
+}
+
+#[test]
+fn creation_and_concurrent_writes_obey_disk_quota_before_growing_files() {
+    let root = TempRoot::new();
+    let mut quota = test_limits();
+    quota.plot_bytes = 1;
+    assert!(Repository::open(&root.0, (-1, 2), quota).is_err());
+    assert_eq!(
+        fs::metadata(root.0.join("p-1,2/repository.sqlite"))
+            .unwrap()
+            .len(),
+        0
+    );
+    let repo = root.repo();
+    let size = fs::metadata(root.0.join("p-1,2/repository.sqlite"))
+        .unwrap()
+        .len();
+    drop(repo);
+    quota = test_limits();
+    quota.total_bytes = size;
+    let error = Repository::open(&root.0, (0, 0), quota).err().unwrap();
+    assert!(error.to_string().contains("server's Git storage quota"));
+    assert_eq!(
+        fs::metadata(root.0.join("p0,0/repository.sqlite"))
+            .unwrap()
+            .len(),
+        0
+    );
+    // Existing history remains readable even when its owner has been downgraded.
+    quota.plot_bytes = 1;
+    assert!(Repository::open(&root.0, (-1, 2), quota).is_ok());
+
+    let simultaneous = TempRoot::new();
+    let barrier = Arc::new(std::sync::Barrier::new(2));
+    quota.plot_bytes = test_limits().plot_bytes;
+    let handles: Vec<_> = (0..2)
+        .map(|x| {
+            let path = simultaneous.0.clone();
+            let barrier = barrier.clone();
+            std::thread::spawn(move || {
+                barrier.wait();
+                Repository::open(&path, (x, 0), quota).is_ok()
+            })
+        })
+        .collect();
+    let admitted = handles
+        .into_iter()
+        .map(|h| h.join().unwrap())
+        .filter(|ok| *ok)
+        .count();
+    assert_eq!(admitted, 1);
+    let total: u64 = fs::read_dir(&simultaneous.0)
+        .unwrap()
+        .map(|dir| {
+            fs::metadata(dir.unwrap().path().join("repository.sqlite"))
+                .unwrap()
+                .len()
+        })
+        .sum();
+    assert!(total <= quota.total_bytes);
 }
 
 #[test]

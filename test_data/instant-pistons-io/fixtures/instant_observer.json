@@ -141,5 +141,219 @@
   "expected_status": "Arithmetic expectations require the declared polarity/width decoder; other functional claims remain measured projections.",
   "unknowns": [
     "Quiet/periodic readiness is assessed from physical work; no universal reuse interval."
-  ]
+  ],
+  "evidence": {
+    "schema_version": 1,
+    "catalog": "docs/INSTANT_PISTON_IO_SCHEMATICS.md#instant-observer",
+    "authority": {
+      "author_intent": "ANSWERS.md plus supplied Data/Update/port signs",
+      "imported_state": "test_data/instant-pistons-io/inspection/instant_observer.json",
+      "observed_mchprs": "frozen traces, not independent Minecraft oracles",
+      "observed_java": "SHA-pinned vanilla 1.21.5 captures with real lever interactions",
+      "inferred_mechanism": "The south-facing sticky base (0,1,5), head (0,1,6) and redstone payload (0,1,7) start extended. The observer above the base watches its state; its pulse supplies reset through the block above it. A falling input withdraws the payload and removes the raw output's power. Observer reset re-extends it, then loss of reset power permits another internal cycle while the root input remains low.",
+      "proposed_compiler_guard": "Recognize the observer/cap feedback and retain exposed repeater timing. Do not collapse its complete response into one permanent Boolean output."
+    },
+    "label_mappings": [
+      {
+        "sign_position": [
+          0,
+          2,
+          1
+        ],
+        "normalized": "IN",
+        "original_text": {
+          "front_text": {
+            "original": [
+              {
+                "text": "IN"
+              },
+              {
+                "text": ""
+              },
+              {
+                "text": ""
+              },
+              {
+                "text": ""
+              }
+            ],
+            "readable": [
+              "IN",
+              "",
+              "",
+              ""
+            ]
+          },
+          "back_text": {
+            "original": [
+              {
+                "text": ""
+              },
+              {
+                "text": ""
+              },
+              {
+                "text": ""
+              },
+              {
+                "text": ""
+              }
+            ],
+            "readable": [
+              "",
+              "",
+              "",
+              ""
+            ]
+          },
+          "legacy": {
+            "original": [],
+            "readable": []
+          }
+        },
+        "candidates": [
+          {
+            "position": [
+              0,
+              1,
+              1
+            ],
+            "role": "geometric support candidate; not automatically a port"
+          },
+          {
+            "position": [
+              0,
+              1,
+              0
+            ],
+            "role": "trigger"
+          }
+        ],
+        "port_position": [
+          0,
+          1,
+          0
+        ],
+        "role": "trigger",
+        "evidence": "Reviewed input attachment/electrical path or consumer connection; independent port stimuli and watched geometry. Repeated O1 labels use physical Z spacing, not text index.",
+        "status": "resolved for declared episode"
+      }
+    ],
+    "observation_decoder": {
+      "raw_output": "positive-to-zero fall is event1; held zero is not a new root",
+      "repeater": "first unpowered boundary6 for activation, delay2; blocked fixture stays powered"
+    },
+    "reset_and_next_use": "Recurring response, not a quiescent ready state under held activation. Base cycles recur six ticks apart; no complete-state period is certified unless the trace index gives a three-cycle witness. Fresh snapshots define independent cases. The four horizontal rotations preserve the measured named-port response.",
+    "initial_state": {
+      "source": "test_data/instant-pistons-io/inspection/instant_observer.json",
+      "scheduled": [],
+      "piston_events": [],
+      "active_motions": [],
+      "observed_ready": "Strict imported idle is unchanged and quiescent for 24 ticks; physical construction reachability is a separate claim"
+    },
+    "ordering": {
+      "supported_episode": "activate",
+      "measured_operations": [
+        {
+          "tick": 2,
+          "phase": "ScheduledTicks",
+          "operation": 2,
+          "external_action": 1,
+          "event": "event_enqueue",
+          "piston_action": "Retract",
+          "actor": [
+            0,
+            1,
+            5
+          ]
+        },
+        {
+          "tick": 2,
+          "phase": "PistonEvents",
+          "operation": 3,
+          "external_action": 1,
+          "event": "event_execute",
+          "piston_action": "Retract",
+          "actor": [
+            0,
+            1,
+            5
+          ]
+        },
+        {
+          "tick": 2,
+          "phase": "PistonEvents",
+          "operation": 3,
+          "external_action": 1,
+          "event": "event_applied",
+          "piston_action": "Retract",
+          "actor": [
+            0,
+            1,
+            5
+          ]
+        }
+      ],
+      "contract": "Certified synchronized physical family; compiled execution omits internal nanoticks. Logical data/sample dependencies and exposed reset/consumer timing remain.",
+      "requirements": "Recognize the observer/cap feedback and retain exposed repeater timing. Do not collapse its complete response into one permanent Boolean output."
+    },
+    "cases": [
+      {
+        "id": "saved-idle",
+        "artifacts": [
+          "test_data/instant-pistons-io/traces/java-instant_observer-saved-idle-r0.json.gz",
+          "test_data/instant-pistons-io/traces/mchprs-instant_observer-saved-idle-r0.json.gz",
+          "test_data/instant-pistons-io/traces/mchprs-instant_observer-saved-idle-r180.json.gz",
+          "test_data/instant-pistons-io/traces/mchprs-instant_observer-saved-idle-r270.json.gz",
+          "test_data/instant-pistons-io/traces/mchprs-instant_observer-saved-idle-r90.json.gz"
+        ],
+        "independent_status": [
+          {
+            "engine": "Java",
+            "rotation": 0,
+            "status": "match"
+          }
+        ],
+        "expected_status": "observed declared episode; not an invented Boolean oracle"
+      },
+      {
+        "id": "activate",
+        "artifacts": [
+          "test_data/instant-pistons-io/traces/java-instant_observer-activate-r0.json.gz",
+          "test_data/instant-pistons-io/traces/mchprs-instant_observer-activate-r0.json.gz",
+          "test_data/instant-pistons-io/traces/mchprs-instant_observer-activate-r180.json.gz",
+          "test_data/instant-pistons-io/traces/mchprs-instant_observer-activate-r270.json.gz",
+          "test_data/instant-pistons-io/traces/mchprs-instant_observer-activate-r90.json.gz"
+        ],
+        "independent_status": [
+          {
+            "engine": "Java",
+            "rotation": 0,
+            "status": "match"
+          }
+        ],
+        "expected_status": "observed declared episode; not an invented Boolean oracle"
+      },
+      {
+        "id": "held-active",
+        "artifacts": [
+          "test_data/instant-pistons-io/traces/java-instant_observer-held-active-r0.json.gz",
+          "test_data/instant-pistons-io/traces/mchprs-instant_observer-held-active-r0.json.gz",
+          "test_data/instant-pistons-io/traces/mchprs-instant_observer-held-active-r180.json.gz",
+          "test_data/instant-pistons-io/traces/mchprs-instant_observer-held-active-r270.json.gz",
+          "test_data/instant-pistons-io/traces/mchprs-instant_observer-held-active-r90.json.gz"
+        ],
+        "independent_status": [
+          {
+            "engine": "Java",
+            "rotation": 0,
+            "status": "match"
+          }
+        ],
+        "expected_status": "observed declared episode; not an invented Boolean oracle"
+      }
+    ],
+    "status": "observed declared projections agree where independently captured",
+    "trace_index": "test_data/instant-pistons-io/trace-index.json"
+  }
 }

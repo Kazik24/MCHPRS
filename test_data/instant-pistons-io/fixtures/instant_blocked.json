@@ -138,5 +138,170 @@
   "expected_status": "Arithmetic expectations require the declared polarity/width decoder; other functional claims remain measured projections.",
   "unknowns": [
     "Quiet/periodic readiness is assessed from physical work; no universal reuse interval."
-  ]
+  ],
+  "evidence": {
+    "schema_version": 1,
+    "catalog": "docs/INSTANT_PISTON_IO_SCHEMATICS.md#instant-blocked",
+    "authority": {
+      "author_intent": "ANSWERS.md plus supplied Data/Update/port signs",
+      "imported_state": "test_data/instant-pistons-io/inspection/instant_blocked.json",
+      "observed_mchprs": "frozen traces, not independent Minecraft oracles",
+      "observed_java": "SHA-pinned vanilla 1.21.5 captures with real lever interactions",
+      "inferred_mechanism": "The source lever can extinguish the input torch, but the redstone block (0,3,5) continues quasi-connected power to the base (0,1,5). The base stays extended and no retraction event is applied. The blocked object is the piston activation, not the lever or repeater.",
+      "proposed_compiler_guard": "This negative construction guards against recognizing a base from only its apparent input wire. Include every effective power/inhibit path."
+    },
+    "label_mappings": [
+      {
+        "sign_position": [
+          0,
+          2,
+          1
+        ],
+        "normalized": "IN",
+        "original_text": {
+          "front_text": {
+            "original": [
+              {
+                "text": "IN"
+              },
+              {
+                "text": ""
+              },
+              {
+                "text": ""
+              },
+              {
+                "text": ""
+              }
+            ],
+            "readable": [
+              "IN",
+              "",
+              "",
+              ""
+            ]
+          },
+          "back_text": {
+            "original": [
+              {
+                "text": ""
+              },
+              {
+                "text": ""
+              },
+              {
+                "text": ""
+              },
+              {
+                "text": ""
+              }
+            ],
+            "readable": [
+              "",
+              "",
+              "",
+              ""
+            ]
+          },
+          "legacy": {
+            "original": [],
+            "readable": []
+          }
+        },
+        "candidates": [
+          {
+            "position": [
+              0,
+              1,
+              1
+            ],
+            "role": "geometric support candidate; not automatically a port"
+          },
+          {
+            "position": [
+              0,
+              1,
+              0
+            ],
+            "role": "trigger"
+          }
+        ],
+        "port_position": [
+          0,
+          1,
+          0
+        ],
+        "role": "trigger",
+        "evidence": "Reviewed input attachment/electrical path or consumer connection; independent port stimuli and watched geometry. Repeated O1 labels use physical Z spacing, not text index.",
+        "status": "resolved for declared episode"
+      }
+    ],
+    "observation_decoder": {
+      "raw_output": "positive-to-zero fall is event1; held zero is not a new root",
+      "repeater": "first unpowered boundary6 for activation, delay2; blocked fixture stays powered"
+    },
+    "reset_and_next_use": "The imported fixture remains blocked through all 24 response boundaries. It supplies no saved control to remove the cap. The older pack contains a separately named conducting-cap diagnostic; it is not silently substituted for this revision.",
+    "initial_state": {
+      "source": "test_data/instant-pistons-io/inspection/instant_blocked.json",
+      "scheduled": [],
+      "piston_events": [],
+      "active_motions": [],
+      "observed_ready": "Strict imported idle is unchanged and quiescent for 24 ticks; physical construction reachability is a separate claim"
+    },
+    "ordering": {
+      "supported_episode": "activate",
+      "measured_operations": [],
+      "contract": "Certified synchronized physical family; compiled execution omits internal nanoticks. Logical data/sample dependencies and exposed reset/consumer timing remain.",
+      "requirements": "This negative construction guards against recognizing a base from only its apparent input wire. Include every effective power/inhibit path."
+    },
+    "cases": [
+      {
+        "id": "saved-idle",
+        "artifacts": [
+          "test_data/instant-pistons-io/traces/java-instant_blocked-saved-idle-r0.json.gz",
+          "test_data/instant-pistons-io/traces/mchprs-instant_blocked-saved-idle-r0.json.gz"
+        ],
+        "independent_status": [
+          {
+            "engine": "Java",
+            "rotation": 0,
+            "status": "match"
+          }
+        ],
+        "expected_status": "observed declared episode; not an invented Boolean oracle"
+      },
+      {
+        "id": "activate",
+        "artifacts": [
+          "test_data/instant-pistons-io/traces/java-instant_blocked-activate-r0.json.gz",
+          "test_data/instant-pistons-io/traces/mchprs-instant_blocked-activate-r0.json.gz"
+        ],
+        "independent_status": [
+          {
+            "engine": "Java",
+            "rotation": 0,
+            "status": "match"
+          }
+        ],
+        "expected_status": "observed declared episode; not an invented Boolean oracle"
+      },
+      {
+        "id": "held-active",
+        "artifacts": [
+          "test_data/instant-pistons-io/traces/java-instant_blocked-held-active-r0.json.gz",
+          "test_data/instant-pistons-io/traces/mchprs-instant_blocked-held-active-r0.json.gz"
+        ],
+        "independent_status": [
+          {
+            "engine": "Java",
+            "rotation": 0,
+            "status": "match"
+          }
+        ],
+        "expected_status": "observed declared episode; not an invented Boolean oracle"
+      }
+    ],
+    "status": "observed declared projections agree where independently captured",
+    "trace_index": "test_data/instant-pistons-io/trace-index.json"
+  }
 }

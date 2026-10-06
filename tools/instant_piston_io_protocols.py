@@ -95,11 +95,11 @@ def generate(path):
     elif name=="COUNTER_BASIC":
         inputs={"trigger":[7,8,0]}
         outputs={"control":[7,8,0],"memory":[[5,11,4+2*i] for i in range(16)],
-                 "output_memory":[[17,3,4+2*i] for i in range(16)],
+                 "output_input":[[17,1,4+2*i] for i in range(16)],
                  "repeater":[[18,1,4+2*i] for i in range(16)],"generator":[2,11,19]}
-        cases += [case("release",[lever(inputs["trigger"],True)],[1],ticks=96)]
+        cases += [case("release",[lever(inputs["trigger"],True)],[1],ticks=102)]
         classification="stateful free-running counter with explicit consumer bank"
-        purpose="Compare stored count with the newly attached output-memory/repeater bank."
+        purpose="Compare stored count with the newly attached dust/repeater bank and its delayed validity window."
         roles={"trigger":"off-to-on lever, torch negation", "memory":"retracted=one, extended=zero; LSB increasing Z"}
         unknowns += ["Clear, restart, high carry and full wrap are outside this bounded protocol."]
     else:

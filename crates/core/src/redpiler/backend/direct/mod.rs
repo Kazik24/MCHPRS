@@ -113,7 +113,10 @@ impl JITBackend for DirectBackend {
                 world.set_block_entity(pos, block_entity);
             }
 
-            if io_only && !node.is_io {
+            // Constants never acquire virtual state. Closing a container after
+            // activation may change its physical presentation (a barrel's open
+            // property), which must not be undone by a stale compile snapshot.
+            if io_only && !node.is_io && !matches!(node.ty, NodeType::Constant) {
                 world.set_block(pos, block);
             }
         }

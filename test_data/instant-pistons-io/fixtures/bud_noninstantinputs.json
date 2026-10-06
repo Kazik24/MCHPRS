@@ -264,5 +264,357 @@
   "expected_status": "Arithmetic expectations require the declared polarity/width decoder; other functional claims remain measured projections.",
   "unknowns": [
     "Instant-update generators require their own recurring-response protocol; unrestricted data changes during reset are not assumed."
-  ]
+  ],
+  "evidence": {
+    "schema_version": 1,
+    "catalog": "docs/INSTANT_PISTON_IO_SCHEMATICS.md#bud-noninstantinputs",
+    "authority": {
+      "author_intent": "ANSWERS.md plus supplied Data/Update/port signs",
+      "imported_state": "test_data/instant-pistons-io/inspection/bud_noninstantinputs.json",
+      "observed_mchprs": "frozen traces, not independent Minecraft oracles",
+      "observed_java": "SHA-pinned vanilla 1.21.5 captures with real lever interactions",
+      "inferred_mechanism": "Down-facing memory M=(0,3,3), head (0,2,3), redstone payload (0,1,3), delay-two repeater (0,1,4). Data lever (0,7,0) negates through a torch into QC dust (0,6,3). Update lever (1,4,0) negates into EW wire (0,3,2). Its side connection delivers a callback without powering the south-adjacent memory directly. Data=true means power removed and logical one.",
+      "proposed_compiler_guard": "A BUD port must represent both data and update. Data changes alone are not samples; either qualifying update edge can recheck power. Reuse is proved for the tested quiet store/hold/resample sequence."
+    },
+    "label_mappings": [
+      {
+        "sign_position": [
+          0,
+          8,
+          1
+        ],
+        "normalized": "Data",
+        "original_text": {
+          "front_text": {
+            "original": [
+              {
+                "text": "Data"
+              },
+              {
+                "text": ""
+              },
+              {
+                "text": ""
+              },
+              {
+                "text": ""
+              }
+            ],
+            "readable": [
+              "Data",
+              "",
+              "",
+              ""
+            ]
+          },
+          "back_text": {
+            "original": [
+              {
+                "text": ""
+              },
+              {
+                "text": ""
+              },
+              {
+                "text": ""
+              },
+              {
+                "text": ""
+              }
+            ],
+            "readable": [
+              "",
+              "",
+              "",
+              ""
+            ]
+          },
+          "legacy": {
+            "original": [],
+            "readable": []
+          }
+        },
+        "candidates": [
+          {
+            "position": [
+              0,
+              7,
+              1
+            ],
+            "role": "geometric support candidate; not automatically a port"
+          },
+          {
+            "position": [
+              0,
+              7,
+              0
+            ],
+            "role": "data"
+          }
+        ],
+        "port_position": [
+          0,
+          7,
+          0
+        ],
+        "role": "data",
+        "evidence": "Reviewed input attachment/electrical path or consumer connection; independent port stimuli and watched geometry. Repeated O1 labels use physical Z spacing, not text index.",
+        "status": "resolved for declared episode"
+      },
+      {
+        "sign_position": [
+          1,
+          5,
+          1
+        ],
+        "normalized": "Update",
+        "original_text": {
+          "front_text": {
+            "original": [
+              {
+                "text": "Update"
+              },
+              {
+                "text": ""
+              },
+              {
+                "text": ""
+              },
+              {
+                "text": ""
+              }
+            ],
+            "readable": [
+              "Update",
+              "",
+              "",
+              ""
+            ]
+          },
+          "back_text": {
+            "original": [
+              {
+                "text": ""
+              },
+              {
+                "text": ""
+              },
+              {
+                "text": ""
+              },
+              {
+                "text": ""
+              }
+            ],
+            "readable": [
+              "",
+              "",
+              "",
+              ""
+            ]
+          },
+          "legacy": {
+            "original": [],
+            "readable": []
+          }
+        },
+        "candidates": [
+          {
+            "position": [
+              1,
+              4,
+              1
+            ],
+            "role": "geometric support candidate; not automatically a port"
+          },
+          {
+            "position": [
+              1,
+              4,
+              0
+            ],
+            "role": "update"
+          }
+        ],
+        "port_position": [
+          1,
+          4,
+          0
+        ],
+        "role": "update",
+        "evidence": "Reviewed input attachment/electrical path or consumer connection; independent port stimuli and watched geometry. Repeated O1 labels use physical Z spacing, not text index.",
+        "status": "resolved for declared episode"
+      }
+    ],
+    "observation_decoder": {
+      "memory": "stationary retracted=1, extended=0, moving invalid",
+      "repeater": "unpowered=1; ordinary/piston update sample-1 valid from tick6, observer-update from tick7; separate zero-resample timing"
+    },
+    "reset_and_next_use": "Data-only leaves M extended despite piston_power=false. Update-before-data also holds old zero. Preparing data, proving quiescence, then updating samples zero or one: sample-1 moves at ticks 2/3, becomes stationary retracted at 4 and turns the repeater off at 6. Store-hold-resample restores data power while retaining one, then the opposite update-lever edge samples zero and restores the repeater by tick 8. All four rotations and all six Java episodes agree.",
+    "initial_state": {
+      "source": "test_data/instant-pistons-io/inspection/bud_noninstantinputs.json",
+      "scheduled": [],
+      "piston_events": [],
+      "active_motions": [],
+      "observed_ready": "Strict imported idle is unchanged and quiescent for 24 ticks; physical construction reachability is a separate claim"
+    },
+    "ordering": {
+      "supported_episode": "sample-1",
+      "measured_operations": [
+        {
+          "tick": 2,
+          "phase": "ScheduledTicks",
+          "operation": 7,
+          "external_action": 3,
+          "event": "event_enqueue",
+          "piston_action": "Retract",
+          "actor": [
+            0,
+            3,
+            3
+          ]
+        },
+        {
+          "tick": 2,
+          "phase": "PistonEvents",
+          "operation": 8,
+          "external_action": 3,
+          "event": "event_execute",
+          "piston_action": "Retract",
+          "actor": [
+            0,
+            3,
+            3
+          ]
+        },
+        {
+          "tick": 2,
+          "phase": "PistonEvents",
+          "operation": 8,
+          "external_action": 3,
+          "event": "event_applied",
+          "piston_action": "Retract",
+          "actor": [
+            0,
+            3,
+            3
+          ]
+        }
+      ],
+      "contract": "Certified synchronized physical family; compiled execution omits internal nanoticks. Logical data/sample dependencies and exposed reset/consumer timing remain.",
+      "requirements": "A BUD port must represent both data and update. Data changes alone are not samples; either qualifying update edge can recheck power. Reuse is proved for the tested quiet store/hold/resample sequence."
+    },
+    "cases": [
+      {
+        "id": "saved-idle",
+        "artifacts": [
+          "test_data/instant-pistons-io/traces/java-bud_noninstantinputs-saved-idle-r0.json.gz",
+          "test_data/instant-pistons-io/traces/mchprs-bud_noninstantinputs-saved-idle-r0.json.gz",
+          "test_data/instant-pistons-io/traces/mchprs-bud_noninstantinputs-saved-idle-r180.json.gz",
+          "test_data/instant-pistons-io/traces/mchprs-bud_noninstantinputs-saved-idle-r270.json.gz",
+          "test_data/instant-pistons-io/traces/mchprs-bud_noninstantinputs-saved-idle-r90.json.gz"
+        ],
+        "independent_status": [
+          {
+            "engine": "Java",
+            "rotation": 0,
+            "status": "match"
+          }
+        ],
+        "expected_status": "observed declared episode; not an invented Boolean oracle"
+      },
+      {
+        "id": "data-only",
+        "artifacts": [
+          "test_data/instant-pistons-io/traces/java-bud_noninstantinputs-data-only-r0.json.gz",
+          "test_data/instant-pistons-io/traces/mchprs-bud_noninstantinputs-data-only-r0.json.gz",
+          "test_data/instant-pistons-io/traces/mchprs-bud_noninstantinputs-data-only-r180.json.gz",
+          "test_data/instant-pistons-io/traces/mchprs-bud_noninstantinputs-data-only-r270.json.gz",
+          "test_data/instant-pistons-io/traces/mchprs-bud_noninstantinputs-data-only-r90.json.gz"
+        ],
+        "independent_status": [
+          {
+            "engine": "Java",
+            "rotation": 0,
+            "status": "match"
+          }
+        ],
+        "expected_status": "observed declared episode; not an invented Boolean oracle"
+      },
+      {
+        "id": "sample-0",
+        "artifacts": [
+          "test_data/instant-pistons-io/traces/java-bud_noninstantinputs-sample-0-r0.json.gz",
+          "test_data/instant-pistons-io/traces/mchprs-bud_noninstantinputs-sample-0-r0.json.gz",
+          "test_data/instant-pistons-io/traces/mchprs-bud_noninstantinputs-sample-0-r180.json.gz",
+          "test_data/instant-pistons-io/traces/mchprs-bud_noninstantinputs-sample-0-r270.json.gz",
+          "test_data/instant-pistons-io/traces/mchprs-bud_noninstantinputs-sample-0-r90.json.gz"
+        ],
+        "independent_status": [
+          {
+            "engine": "Java",
+            "rotation": 0,
+            "status": "match"
+          }
+        ],
+        "expected_status": "observed declared episode; not an invented Boolean oracle"
+      },
+      {
+        "id": "sample-1",
+        "artifacts": [
+          "test_data/instant-pistons-io/traces/java-bud_noninstantinputs-sample-1-r0.json.gz",
+          "test_data/instant-pistons-io/traces/mchprs-bud_noninstantinputs-sample-1-r0.json.gz",
+          "test_data/instant-pistons-io/traces/mchprs-bud_noninstantinputs-sample-1-r180.json.gz",
+          "test_data/instant-pistons-io/traces/mchprs-bud_noninstantinputs-sample-1-r270.json.gz",
+          "test_data/instant-pistons-io/traces/mchprs-bud_noninstantinputs-sample-1-r90.json.gz"
+        ],
+        "independent_status": [
+          {
+            "engine": "Java",
+            "rotation": 0,
+            "status": "match"
+          }
+        ],
+        "expected_status": "observed declared episode; not an invented Boolean oracle"
+      },
+      {
+        "id": "store-hold-resample",
+        "artifacts": [
+          "test_data/instant-pistons-io/traces/java-bud_noninstantinputs-store-hold-resample-r0.json.gz",
+          "test_data/instant-pistons-io/traces/mchprs-bud_noninstantinputs-store-hold-resample-r0.json.gz",
+          "test_data/instant-pistons-io/traces/mchprs-bud_noninstantinputs-store-hold-resample-r180.json.gz",
+          "test_data/instant-pistons-io/traces/mchprs-bud_noninstantinputs-store-hold-resample-r270.json.gz",
+          "test_data/instant-pistons-io/traces/mchprs-bud_noninstantinputs-store-hold-resample-r90.json.gz"
+        ],
+        "independent_status": [
+          {
+            "engine": "Java",
+            "rotation": 0,
+            "status": "match"
+          }
+        ],
+        "expected_status": "observed declared episode; not an invented Boolean oracle"
+      },
+      {
+        "id": "update-before-data",
+        "artifacts": [
+          "test_data/instant-pistons-io/traces/java-bud_noninstantinputs-update-before-data-r0.json.gz",
+          "test_data/instant-pistons-io/traces/mchprs-bud_noninstantinputs-update-before-data-r0.json.gz",
+          "test_data/instant-pistons-io/traces/mchprs-bud_noninstantinputs-update-before-data-r180.json.gz",
+          "test_data/instant-pistons-io/traces/mchprs-bud_noninstantinputs-update-before-data-r270.json.gz",
+          "test_data/instant-pistons-io/traces/mchprs-bud_noninstantinputs-update-before-data-r90.json.gz"
+        ],
+        "independent_status": [
+          {
+            "engine": "Java",
+            "rotation": 0,
+            "status": "match"
+          }
+        ],
+        "expected_status": "observed declared episode; not an invented Boolean oracle"
+      }
+    ],
+    "status": "observed declared projections agree where independently captured",
+    "trace_index": "test_data/instant-pistons-io/trace-index.json"
+  }
 }

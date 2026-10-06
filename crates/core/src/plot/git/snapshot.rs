@@ -8,6 +8,7 @@ use mchprs_save_data::plot_data::{ChunkSectionData, PlotData, MC_DATA_VERSION};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
+use std::io::{self, Write};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub(super) struct Snapshot {
@@ -49,7 +50,7 @@ pub(super) fn entity_value(entity: &BlockEntity) -> Result<Value> {
     Ok(value)
 }
 
-fn normalize(value: &mut Value) -> Result<()> {
+pub(super) fn normalize(value: &mut Value) -> Result<()> {
     match value {
         Value::Object(map) => {
             if let Some(Value::Array(entries)) = map.get_mut("inventory") {
@@ -108,6 +109,18 @@ impl Snapshot {
             self.plot == plot && self.data.chunk_data.len() == NUM_CHUNKS,
             messages::GIT_SNAPSHOT_PLOT_MISMATCH
         );
+        // The NBT parser allocates from declared lengths. Scan without allocating
+        // before ordinary plot validation or canonical JSON conversion.
+        for chunk in &self.data.chunk_data {
+            for entity in chunk.block_entities.values() {
+                super::resources::check_entity(entity)?;
+            }
+        }
+        for motion in &self.data.piston_state.motions {
+            if let Some(entity) = &motion.carried_entity {
+                super::resources::check_entity(entity)?;
+            }
+        }
         self.data.validate()?;
         for chunk in &self.data.chunk_data {
             ensure!(
@@ -163,10 +176,7 @@ impl Snapshot {
             }
         }
         let content = hex(content.finalize());
-        let mut runtime =
-            serde_json::to_value((&self.data.pending_ticks, &self.data.piston_state))?;
-        normalize(&mut runtime)?;
-        let execution = hex(Sha256::digest(serde_json::to_vec(&runtime)?));
+        let execution = self.execution_hash()?;
         let full = hex(Sha256::digest(format!("{content}:{execution}")));
         Ok(Fingerprints {
             content,
@@ -188,15 +198,64 @@ impl Snapshot {
             .ok_or_else(|| anyhow::anyhow!(messages::GIT_TRUNCATED_SNAPSHOT))?;
         let size = u32::from_le_bytes(size.try_into()?) as usize;
         ensure!(size <= limit, messages::GIT_DECOMPRESSION_LIMIT);
+        ensure!(
+            bytes.len() <= compressed_bound(size),
+            messages::GIT_OVERSIZED_OBJECT
+        );
         let data = lz4_flex::decompress_size_prepended(bytes)?;
         ensure!(data.len() == size, messages::GIT_INVALID_COMPRESSED_SIZE);
+        // Validate the fixed bincode header's chunk count before serde allocates
+        // a Vec of large chunk structs from an untrusted declared length.
+        let tps = data
+            .get(16..20)
+            .ok_or_else(|| anyhow::anyhow!(messages::GIT_TRUNCATED_SNAPSHOT))?;
+        let offset = match u32::from_le_bytes(tps.try_into()?) {
+            0 => 28, // Limited(u32), then world_send_rate(u32).
+            1 => 24, // Unlimited, then world_send_rate(u32).
+            _ => bail!(messages::GIT_UNSUPPORTED_SNAPSHOT),
+        };
+        let chunks = data
+            .get(offset..offset + 8)
+            .ok_or_else(|| anyhow::anyhow!(messages::GIT_TRUNCATED_SNAPSHOT))?;
+        ensure!(
+            u64::from_le_bytes(chunks.try_into()?) == NUM_CHUNKS as u64,
+            messages::GIT_SNAPSHOT_PLOT_MISMATCH
+        );
         let snapshot: Self = bincode::DefaultOptions::new()
             .with_fixint_encoding()
-            .with_limit(limit as u64)
+            .with_limit(size as u64)
             .reject_trailing_bytes()
             .deserialize(&data)?;
         snapshot.validate(plot)?;
         Ok(snapshot)
+    }
+
+    fn execution_hash(&self) -> Result<String> {
+        let state = &self.data.piston_state;
+        let mut writer = HashWriter(Sha256::new());
+        // Preserve the original canonical JSON bytes and stored object IDs.
+        // Only one sequence entry is converted to JSON at a time; object keys
+        // follow serde_json::Value's alphabetical order.
+        writer.write_all(b"[")?;
+        canonical_sequence(&mut writer, &self.data.pending_ticks)?;
+        writer.write_all(b",{\"events\":")?;
+        canonical_sequence(&mut writer, &state.events)?;
+        writer.write_all(b",\"logical_tick\":")?;
+        serde_json::to_writer(&mut writer, &state.logical_tick)?;
+        writer.write_all(b",\"motions\":")?;
+        canonical_sequence(&mut writer, &state.motions)?;
+        writer.write_all(b",\"movement_cursor\":")?;
+        serde_json::to_writer(&mut writer, &state.movement_cursor)?;
+        writer.write_all(b",\"movement_work\":")?;
+        canonical_sequence(&mut writer, &state.movement_work)?;
+        writer.write_all(b",\"next_identity\":")?;
+        serde_json::to_writer(&mut writer, &state.next_identity)?;
+        writer.write_all(b",\"phase\":")?;
+        serde_json::to_writer(&mut writer, &state.phase)?;
+        writer.write_all(b",\"scheduled_advanced\":")?;
+        serde_json::to_writer(&mut writer, &state.scheduled_advanced)?;
+        writer.write_all(b"}]")?;
+        Ok(hex(writer.0.finalize()))
     }
 
     fn location(&self, pos: BlockPos) -> Option<(usize, BlockPos)> {
@@ -235,4 +294,36 @@ impl Snapshot {
             .map(entity_value)
             .transpose()
     }
+}
+
+pub(super) fn compressed_bound(size: usize) -> usize {
+    lz4_flex::block::get_maximum_output_size(size).saturating_add(4)
+}
+
+struct HashWriter(Sha256);
+impl Write for HashWriter {
+    fn write(&mut self, bytes: &[u8]) -> io::Result<usize> {
+        self.0.update(bytes);
+        Ok(bytes.len())
+    }
+    fn flush(&mut self) -> io::Result<()> {
+        Ok(())
+    }
+}
+
+fn canonical_sequence(
+    writer: &mut impl Write,
+    values: impl IntoIterator<Item = impl Serialize>,
+) -> Result<()> {
+    writer.write_all(b"[")?;
+    for (index, value) in values.into_iter().enumerate() {
+        if index != 0 {
+            writer.write_all(b",")?;
+        }
+        let mut value = serde_json::to_value(value)?;
+        normalize(&mut value)?;
+        serde_json::to_writer(&mut *writer, &value)?;
+    }
+    writer.write_all(b"]")?;
+    Ok(())
 }

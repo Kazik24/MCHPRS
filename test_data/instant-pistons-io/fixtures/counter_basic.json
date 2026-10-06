@@ -10,7 +10,7 @@
   ],
   "inspection": "test_data/instant-pistons-io/inspection/counter_basic.json",
   "classification": "stateful free-running counter with explicit consumer bank",
-  "purpose": "Compare stored count with the newly attached output-memory/repeater bank.",
+  "purpose": "Compare stored count with the newly attached dust/repeater bank and its delayed validity window.",
   "coordinates": {
     "convention": "selection-local relative to saved minimum",
     "origin": [
@@ -126,85 +126,85 @@
           34
         ]
       ],
-      "output_memory": [
+      "output_input": [
         [
           17,
-          3,
+          1,
           4
         ],
         [
           17,
-          3,
+          1,
           6
         ],
         [
           17,
-          3,
+          1,
           8
         ],
         [
           17,
-          3,
+          1,
           10
         ],
         [
           17,
-          3,
+          1,
           12
         ],
         [
           17,
-          3,
+          1,
           14
         ],
         [
           17,
-          3,
+          1,
           16
         ],
         [
           17,
-          3,
+          1,
           18
         ],
         [
           17,
-          3,
+          1,
           20
         ],
         [
           17,
-          3,
+          1,
           22
         ],
         [
           17,
-          3,
+          1,
           24
         ],
         [
           17,
-          3,
+          1,
           26
         ],
         [
           17,
-          3,
+          1,
           28
         ],
         [
           17,
-          3,
+          1,
           30
         ],
         [
           17,
-          3,
+          1,
           32
         ],
         [
           17,
-          3,
+          1,
           34
         ]
       ],
@@ -326,7 +326,7 @@
       "inputs": [
         1
       ],
-      "ticks": 96
+      "ticks": 102
     }
   ],
   "rotations": [
@@ -336,5 +336,1473 @@
   "expected_status": "Arithmetic expectations require the declared polarity/width decoder; other functional claims remain measured projections.",
   "unknowns": [
     "Clear, restart, high carry and full wrap are outside this bounded protocol."
-  ]
+  ],
+  "evidence": {
+    "schema_version": 1,
+    "catalog": "docs/INSTANT_PISTON_IO_SCHEMATICS.md#counter-basic",
+    "authority": {
+      "author_intent": "ANSWERS.md plus supplied Data/Update/port signs",
+      "imported_state": "test_data/instant-pistons-io/inspection/counter_basic.json",
+      "observed_mchprs": "frozen traces, not independent Minecraft oracles",
+      "observed_java": "SHA-pinned vanilla 1.21.5 captures with real lever interactions",
+      "inferred_mechanism": "The corrected trigger lever is (7,8,0), on support (7,8,1), with torch (7,8,2). One on-transition releases the update generator at (2,11,19). Upper memory bases (5,11,4+2i) are LSB-first, stationary retracted=one/extended=zero. Real output dust is (17,1,4+2i), repeaters (18,1,4+2i); an earlier candidate at y=3 is cyan wool, not a second memory bank.",
+      "proposed_compiler_guard": "Requires explicit BUD state and an owned update generator. Preserve wave identity and exposed propagation timing; a combinational node or one external event\u2192one increment is incorrect."
+    },
+    "label_mappings": [
+      {
+        "sign_position": [
+          3,
+          12,
+          19
+        ],
+        "normalized": "Update generator",
+        "original_text": {
+          "front_text": {
+            "original": [
+              {
+                "text": "Update generator"
+              },
+              {
+                "text": ""
+              },
+              {
+                "text": ""
+              },
+              {
+                "text": ""
+              }
+            ],
+            "readable": [
+              "Update generator",
+              "",
+              "",
+              ""
+            ]
+          },
+          "back_text": {
+            "original": [
+              {
+                "text": ""
+              },
+              {
+                "text": ""
+              },
+              {
+                "text": ""
+              },
+              {
+                "text": ""
+              }
+            ],
+            "readable": [
+              "",
+              "",
+              "",
+              ""
+            ]
+          },
+          "legacy": {
+            "original": [],
+            "readable": []
+          }
+        },
+        "candidates": [
+          {
+            "position": [
+              3,
+              11,
+              19
+            ],
+            "role": "geometric support candidate; not automatically a port"
+          },
+          {
+            "position": [
+              2,
+              11,
+              19
+            ],
+            "role": "generator"
+          }
+        ],
+        "port_position": [
+          2,
+          11,
+          19
+        ],
+        "role": "generator",
+        "evidence": "Reviewed input attachment/electrical path or consumer connection; independent port stimuli and watched geometry. Repeated O1 labels use physical Z spacing, not text index.",
+        "status": "resolved for declared episode"
+      },
+      {
+        "sign_position": [
+          5,
+          13,
+          4
+        ],
+        "normalized": "BUD-Switch Below",
+        "original_text": {
+          "front_text": {
+            "original": [
+              {
+                "text": "BUD-Switch Below"
+              },
+              {
+                "text": ""
+              },
+              {
+                "text": ""
+              },
+              {
+                "text": ""
+              }
+            ],
+            "readable": [
+              "BUD-Switch Below",
+              "",
+              "",
+              ""
+            ]
+          },
+          "back_text": {
+            "original": [
+              {
+                "text": ""
+              },
+              {
+                "text": ""
+              },
+              {
+                "text": ""
+              },
+              {
+                "text": ""
+              }
+            ],
+            "readable": [
+              "",
+              "",
+              "",
+              ""
+            ]
+          },
+          "legacy": {
+            "original": [],
+            "readable": []
+          }
+        },
+        "candidates": [
+          {
+            "position": [
+              5,
+              12,
+              4
+            ],
+            "role": "geometric support candidate; not automatically a port"
+          },
+          {
+            "position": [
+              5,
+              11,
+              4
+            ],
+            "role": "memory"
+          }
+        ],
+        "port_position": [
+          5,
+          11,
+          4
+        ],
+        "role": "memory",
+        "evidence": "Reviewed input attachment/electrical path or consumer connection; independent port stimuli and watched geometry. Repeated O1 labels use physical Z spacing, not text index.",
+        "status": "resolved for declared episode"
+      },
+      {
+        "sign_position": [
+          5,
+          13,
+          6
+        ],
+        "normalized": "BUD-Switch Below",
+        "original_text": {
+          "front_text": {
+            "original": [
+              {
+                "text": "BUD-Switch Below"
+              },
+              {
+                "text": ""
+              },
+              {
+                "text": ""
+              },
+              {
+                "text": ""
+              }
+            ],
+            "readable": [
+              "BUD-Switch Below",
+              "",
+              "",
+              ""
+            ]
+          },
+          "back_text": {
+            "original": [
+              {
+                "text": ""
+              },
+              {
+                "text": ""
+              },
+              {
+                "text": ""
+              },
+              {
+                "text": ""
+              }
+            ],
+            "readable": [
+              "",
+              "",
+              "",
+              ""
+            ]
+          },
+          "legacy": {
+            "original": [],
+            "readable": []
+          }
+        },
+        "candidates": [
+          {
+            "position": [
+              5,
+              12,
+              6
+            ],
+            "role": "geometric support candidate; not automatically a port"
+          },
+          {
+            "position": [
+              5,
+              11,
+              6
+            ],
+            "role": "memory"
+          }
+        ],
+        "port_position": [
+          5,
+          11,
+          6
+        ],
+        "role": "memory",
+        "evidence": "Reviewed input attachment/electrical path or consumer connection; independent port stimuli and watched geometry. Repeated O1 labels use physical Z spacing, not text index.",
+        "status": "resolved for declared episode"
+      },
+      {
+        "sign_position": [
+          7,
+          9,
+          1
+        ],
+        "normalized": "Trigger",
+        "original_text": {
+          "front_text": {
+            "original": [
+              {
+                "text": "Trigger"
+              },
+              {
+                "text": ""
+              },
+              {
+                "text": ""
+              },
+              {
+                "text": ""
+              }
+            ],
+            "readable": [
+              "Trigger",
+              "",
+              "",
+              ""
+            ]
+          },
+          "back_text": {
+            "original": [
+              {
+                "text": ""
+              },
+              {
+                "text": ""
+              },
+              {
+                "text": ""
+              },
+              {
+                "text": ""
+              }
+            ],
+            "readable": [
+              "",
+              "",
+              "",
+              ""
+            ]
+          },
+          "legacy": {
+            "original": [],
+            "readable": []
+          }
+        },
+        "candidates": [
+          {
+            "position": [
+              7,
+              8,
+              1
+            ],
+            "role": "geometric support candidate; not automatically a port"
+          },
+          {
+            "position": [
+              7,
+              8,
+              0
+            ],
+            "role": "trigger"
+          }
+        ],
+        "port_position": [
+          7,
+          8,
+          0
+        ],
+        "role": "trigger",
+        "evidence": "Reviewed input attachment/electrical path or consumer connection; independent port stimuli and watched geometry. Repeated O1 labels use physical Z spacing, not text index.",
+        "status": "resolved for declared episode"
+      },
+      {
+        "sign_position": [
+          19,
+          1,
+          4
+        ],
+        "normalized": "O1",
+        "original_text": {
+          "front_text": {
+            "original": [
+              {
+                "text": "O1"
+              },
+              {
+                "text": ""
+              },
+              {
+                "text": ""
+              },
+              {
+                "text": ""
+              }
+            ],
+            "readable": [
+              "O1",
+              "",
+              "",
+              ""
+            ]
+          },
+          "back_text": {
+            "original": [
+              {
+                "text": ""
+              },
+              {
+                "text": ""
+              },
+              {
+                "text": ""
+              },
+              {
+                "text": ""
+              }
+            ],
+            "readable": [
+              "",
+              "",
+              "",
+              ""
+            ]
+          },
+          "legacy": {
+            "original": [],
+            "readable": []
+          }
+        },
+        "candidates": [
+          {
+            "position": [
+              19,
+              0,
+              4
+            ],
+            "role": "geometric support candidate; not automatically a port"
+          },
+          {
+            "position": [
+              18,
+              1,
+              4
+            ],
+            "role": "repeater"
+          }
+        ],
+        "port_position": [
+          18,
+          1,
+          4
+        ],
+        "role": "repeater",
+        "evidence": "Reviewed input attachment/electrical path or consumer connection; independent port stimuli and watched geometry. Repeated O1 labels use physical Z spacing, not text index.",
+        "status": "resolved for declared episode"
+      },
+      {
+        "sign_position": [
+          19,
+          1,
+          6
+        ],
+        "normalized": "O2",
+        "original_text": {
+          "front_text": {
+            "original": [
+              {
+                "text": "O2"
+              },
+              {
+                "text": ""
+              },
+              {
+                "text": ""
+              },
+              {
+                "text": ""
+              }
+            ],
+            "readable": [
+              "O2",
+              "",
+              "",
+              ""
+            ]
+          },
+          "back_text": {
+            "original": [
+              {
+                "text": ""
+              },
+              {
+                "text": ""
+              },
+              {
+                "text": ""
+              },
+              {
+                "text": ""
+              }
+            ],
+            "readable": [
+              "",
+              "",
+              "",
+              ""
+            ]
+          },
+          "legacy": {
+            "original": [],
+            "readable": []
+          }
+        },
+        "candidates": [
+          {
+            "position": [
+              19,
+              0,
+              6
+            ],
+            "role": "geometric support candidate; not automatically a port"
+          },
+          {
+            "position": [
+              18,
+              1,
+              6
+            ],
+            "role": "repeater"
+          }
+        ],
+        "port_position": [
+          18,
+          1,
+          6
+        ],
+        "role": "repeater",
+        "evidence": "Reviewed input attachment/electrical path or consumer connection; independent port stimuli and watched geometry. Repeated O1 labels use physical Z spacing, not text index.",
+        "status": "resolved for declared episode"
+      }
+    ],
+    "observation_decoder": {
+      "memory": "LSB increasing Z; stationary retracted=1/extended=0, moving invalid; count n at tick6n",
+      "repeater": "LSB increasing Z; unpowered=1; nth count window [6n+5,6n+8], bound102"
+    },
+    "reset_and_next_use": "Stored counts n=1..16 appear at completed boundaries 6n. The delay-one repeater bank publishes count n in conservative windows [6n+5,6n+8], bounded at capture tick 102. Outside those windows the exposed bank has resets and partial values: tick 22 decodes 1, tick 23 decodes 3. Those are not new root computations. Memory may already contain a newer wave than the consumer bank. Persistence is storage within the running sequence, not a stationary free-clock count. Clear/restart/high carry/full 16-bit wrap are unverified.",
+    "initial_state": {
+      "source": "test_data/instant-pistons-io/inspection/counter_basic.json",
+      "scheduled": [],
+      "piston_events": [],
+      "active_motions": [],
+      "observed_ready": "Strict imported idle is unchanged and quiescent for 24 ticks; physical construction reachability is a separate claim"
+    },
+    "ordering": {
+      "supported_episode": "release",
+      "measured_operations": [
+        {
+          "tick": 2,
+          "phase": "ScheduledTicks",
+          "operation": 2,
+          "external_action": 1,
+          "event": "event_enqueue",
+          "piston_action": "Retract",
+          "actor": [
+            9,
+            8,
+            1
+          ]
+        },
+        {
+          "tick": 2,
+          "phase": "ScheduledTicks",
+          "operation": 2,
+          "external_action": 1,
+          "event": "event_enqueue",
+          "piston_action": "Retract",
+          "actor": [
+            0,
+            8,
+            2
+          ]
+        },
+        {
+          "tick": 2,
+          "phase": "ScheduledTicks",
+          "operation": 2,
+          "external_action": 1,
+          "event": "event_enqueue",
+          "piston_action": "Retract",
+          "actor": [
+            2,
+            12,
+            8
+          ]
+        },
+        {
+          "tick": 2,
+          "phase": "PistonEvents",
+          "operation": 3,
+          "external_action": 1,
+          "event": "event_execute",
+          "piston_action": "Retract",
+          "actor": [
+            9,
+            8,
+            1
+          ]
+        },
+        {
+          "tick": 2,
+          "phase": "PistonEvents",
+          "operation": 3,
+          "external_action": 1,
+          "event": "event_enqueue",
+          "piston_action": "Retract",
+          "actor": [
+            12,
+            8,
+            1
+          ]
+        },
+        {
+          "tick": 2,
+          "phase": "PistonEvents",
+          "operation": 3,
+          "external_action": 1,
+          "event": "event_applied",
+          "piston_action": "Retract",
+          "actor": [
+            9,
+            8,
+            1
+          ]
+        },
+        {
+          "tick": 2,
+          "phase": "PistonEvents",
+          "operation": 4,
+          "external_action": 1,
+          "event": "event_execute",
+          "piston_action": "Retract",
+          "actor": [
+            0,
+            8,
+            2
+          ]
+        },
+        {
+          "tick": 2,
+          "phase": "PistonEvents",
+          "operation": 4,
+          "external_action": 1,
+          "event": "event_enqueue",
+          "piston_action": "Retract",
+          "actor": [
+            0,
+            7,
+            4
+          ]
+        },
+        {
+          "tick": 2,
+          "phase": "PistonEvents",
+          "operation": 4,
+          "external_action": 1,
+          "event": "event_applied",
+          "piston_action": "Retract",
+          "actor": [
+            0,
+            8,
+            2
+          ]
+        },
+        {
+          "tick": 2,
+          "phase": "PistonEvents",
+          "operation": 5,
+          "external_action": 1,
+          "event": "event_execute",
+          "piston_action": "Retract",
+          "actor": [
+            2,
+            12,
+            8
+          ]
+        },
+        {
+          "tick": 2,
+          "phase": "PistonEvents",
+          "operation": 5,
+          "external_action": 1,
+          "event": "event_enqueue",
+          "piston_action": "Retract",
+          "actor": [
+            2,
+            11,
+            19
+          ]
+        },
+        {
+          "tick": 2,
+          "phase": "PistonEvents",
+          "operation": 5,
+          "external_action": 1,
+          "event": "event_applied",
+          "piston_action": "Retract",
+          "actor": [
+            2,
+            12,
+            8
+          ]
+        },
+        {
+          "tick": 2,
+          "phase": "PistonEvents",
+          "operation": 6,
+          "external_action": 1,
+          "event": "event_execute",
+          "piston_action": "Retract",
+          "actor": [
+            12,
+            8,
+            1
+          ]
+        },
+        {
+          "tick": 2,
+          "phase": "PistonEvents",
+          "operation": 6,
+          "external_action": 1,
+          "event": "event_enqueue",
+          "piston_action": "Retract",
+          "actor": [
+            16,
+            6,
+            4
+          ]
+        },
+        {
+          "tick": 2,
+          "phase": "PistonEvents",
+          "operation": 6,
+          "external_action": 1,
+          "event": "event_applied",
+          "piston_action": "Retract",
+          "actor": [
+            12,
+            8,
+            1
+          ]
+        },
+        {
+          "tick": 2,
+          "phase": "PistonEvents",
+          "operation": 7,
+          "external_action": 1,
+          "event": "event_execute",
+          "piston_action": "Retract",
+          "actor": [
+            0,
+            7,
+            4
+          ]
+        },
+        {
+          "tick": 2,
+          "phase": "PistonEvents",
+          "operation": 7,
+          "external_action": 1,
+          "event": "event_enqueue",
+          "piston_action": "Retract",
+          "actor": [
+            0,
+            8,
+            6
+          ]
+        },
+        {
+          "tick": 2,
+          "phase": "PistonEvents",
+          "operation": 7,
+          "external_action": 1,
+          "event": "event_applied",
+          "piston_action": "Retract",
+          "actor": [
+            0,
+            7,
+            4
+          ]
+        },
+        {
+          "tick": 2,
+          "phase": "PistonEvents",
+          "operation": 8,
+          "external_action": 1,
+          "event": "event_execute",
+          "piston_action": "Retract",
+          "actor": [
+            2,
+            11,
+            19
+          ]
+        },
+        {
+          "tick": 2,
+          "phase": "PistonEvents",
+          "operation": 8,
+          "external_action": 1,
+          "event": "event_applied",
+          "piston_action": "Retract",
+          "actor": [
+            2,
+            11,
+            19
+          ]
+        },
+        {
+          "tick": 2,
+          "phase": "PistonEvents",
+          "operation": 9,
+          "external_action": 1,
+          "event": "event_execute",
+          "piston_action": "Retract",
+          "actor": [
+            16,
+            6,
+            4
+          ]
+        },
+        {
+          "tick": 2,
+          "phase": "PistonEvents",
+          "operation": 9,
+          "external_action": 1,
+          "event": "event_enqueue",
+          "piston_action": "Retract",
+          "actor": [
+            15,
+            13,
+            4
+          ]
+        },
+        {
+          "tick": 2,
+          "phase": "PistonEvents",
+          "operation": 9,
+          "external_action": 1,
+          "event": "event_applied",
+          "piston_action": "Retract",
+          "actor": [
+            16,
+            6,
+            4
+          ]
+        },
+        {
+          "tick": 2,
+          "phase": "PistonEvents",
+          "operation": 10,
+          "external_action": 1,
+          "event": "event_execute",
+          "piston_action": "Retract",
+          "actor": [
+            0,
+            8,
+            6
+          ]
+        },
+        {
+          "tick": 2,
+          "phase": "PistonEvents",
+          "operation": 10,
+          "external_action": 1,
+          "event": "event_enqueue",
+          "piston_action": "Retract",
+          "actor": [
+            0,
+            7,
+            8
+          ]
+        },
+        {
+          "tick": 2,
+          "phase": "PistonEvents",
+          "operation": 10,
+          "external_action": 1,
+          "event": "event_applied",
+          "piston_action": "Retract",
+          "actor": [
+            0,
+            8,
+            6
+          ]
+        },
+        {
+          "tick": 2,
+          "phase": "PistonEvents",
+          "operation": 11,
+          "external_action": 1,
+          "event": "event_execute",
+          "piston_action": "Retract",
+          "actor": [
+            15,
+            13,
+            4
+          ]
+        },
+        {
+          "tick": 2,
+          "phase": "PistonEvents",
+          "operation": 11,
+          "external_action": 1,
+          "event": "event_enqueue",
+          "piston_action": "Retract",
+          "actor": [
+            8,
+            12,
+            4
+          ]
+        },
+        {
+          "tick": 2,
+          "phase": "PistonEvents",
+          "operation": 11,
+          "external_action": 1,
+          "event": "event_applied",
+          "piston_action": "Retract",
+          "actor": [
+            15,
+            13,
+            4
+          ]
+        },
+        {
+          "tick": 2,
+          "phase": "PistonEvents",
+          "operation": 12,
+          "external_action": 1,
+          "event": "event_execute",
+          "piston_action": "Retract",
+          "actor": [
+            0,
+            7,
+            8
+          ]
+        },
+        {
+          "tick": 2,
+          "phase": "PistonEvents",
+          "operation": 12,
+          "external_action": 1,
+          "event": "event_enqueue",
+          "piston_action": "Retract",
+          "actor": [
+            0,
+            8,
+            10
+          ]
+        },
+        {
+          "tick": 2,
+          "phase": "PistonEvents",
+          "operation": 12,
+          "external_action": 1,
+          "event": "event_applied",
+          "piston_action": "Retract",
+          "actor": [
+            0,
+            7,
+            8
+          ]
+        },
+        {
+          "tick": 2,
+          "phase": "PistonEvents",
+          "operation": 13,
+          "external_action": 1,
+          "event": "event_execute",
+          "piston_action": "Retract",
+          "actor": [
+            8,
+            12,
+            4
+          ]
+        },
+        {
+          "tick": 2,
+          "phase": "PistonEvents",
+          "operation": 13,
+          "external_action": 1,
+          "event": "event_applied",
+          "piston_action": "Retract",
+          "actor": [
+            8,
+            12,
+            4
+          ]
+        },
+        {
+          "tick": 2,
+          "phase": "PistonEvents",
+          "operation": 14,
+          "external_action": 1,
+          "event": "event_execute",
+          "piston_action": "Retract",
+          "actor": [
+            0,
+            8,
+            10
+          ]
+        },
+        {
+          "tick": 2,
+          "phase": "PistonEvents",
+          "operation": 14,
+          "external_action": 1,
+          "event": "event_enqueue",
+          "piston_action": "Retract",
+          "actor": [
+            0,
+            7,
+            12
+          ]
+        },
+        {
+          "tick": 2,
+          "phase": "PistonEvents",
+          "operation": 14,
+          "external_action": 1,
+          "event": "event_applied",
+          "piston_action": "Retract",
+          "actor": [
+            0,
+            8,
+            10
+          ]
+        },
+        {
+          "tick": 2,
+          "phase": "PistonEvents",
+          "operation": 15,
+          "external_action": 1,
+          "event": "event_execute",
+          "piston_action": "Retract",
+          "actor": [
+            0,
+            7,
+            12
+          ]
+        },
+        {
+          "tick": 2,
+          "phase": "PistonEvents",
+          "operation": 15,
+          "external_action": 1,
+          "event": "event_enqueue",
+          "piston_action": "Retract",
+          "actor": [
+            0,
+            8,
+            14
+          ]
+        },
+        {
+          "tick": 2,
+          "phase": "PistonEvents",
+          "operation": 15,
+          "external_action": 1,
+          "event": "event_applied",
+          "piston_action": "Retract",
+          "actor": [
+            0,
+            7,
+            12
+          ]
+        },
+        {
+          "tick": 2,
+          "phase": "PistonEvents",
+          "operation": 16,
+          "external_action": 1,
+          "event": "event_execute",
+          "piston_action": "Retract",
+          "actor": [
+            0,
+            8,
+            14
+          ]
+        },
+        {
+          "tick": 2,
+          "phase": "PistonEvents",
+          "operation": 16,
+          "external_action": 1,
+          "event": "event_enqueue",
+          "piston_action": "Retract",
+          "actor": [
+            0,
+            7,
+            16
+          ]
+        },
+        {
+          "tick": 2,
+          "phase": "PistonEvents",
+          "operation": 16,
+          "external_action": 1,
+          "event": "event_applied",
+          "piston_action": "Retract",
+          "actor": [
+            0,
+            8,
+            14
+          ]
+        },
+        {
+          "tick": 2,
+          "phase": "PistonEvents",
+          "operation": 17,
+          "external_action": 1,
+          "event": "event_execute",
+          "piston_action": "Retract",
+          "actor": [
+            0,
+            7,
+            16
+          ]
+        },
+        {
+          "tick": 2,
+          "phase": "PistonEvents",
+          "operation": 17,
+          "external_action": 1,
+          "event": "event_enqueue",
+          "piston_action": "Retract",
+          "actor": [
+            0,
+            8,
+            18
+          ]
+        },
+        {
+          "tick": 2,
+          "phase": "PistonEvents",
+          "operation": 17,
+          "external_action": 1,
+          "event": "event_applied",
+          "piston_action": "Retract",
+          "actor": [
+            0,
+            7,
+            16
+          ]
+        },
+        {
+          "tick": 2,
+          "phase": "PistonEvents",
+          "operation": 18,
+          "external_action": 1,
+          "event": "event_execute",
+          "piston_action": "Retract",
+          "actor": [
+            0,
+            8,
+            18
+          ]
+        },
+        {
+          "tick": 2,
+          "phase": "PistonEvents",
+          "operation": 18,
+          "external_action": 1,
+          "event": "event_enqueue",
+          "piston_action": "Retract",
+          "actor": [
+            0,
+            7,
+            20
+          ]
+        },
+        {
+          "tick": 2,
+          "phase": "PistonEvents",
+          "operation": 18,
+          "external_action": 1,
+          "event": "event_applied",
+          "piston_action": "Retract",
+          "actor": [
+            0,
+            8,
+            18
+          ]
+        },
+        {
+          "tick": 2,
+          "phase": "PistonEvents",
+          "operation": 19,
+          "external_action": 1,
+          "event": "event_execute",
+          "piston_action": "Retract",
+          "actor": [
+            0,
+            7,
+            20
+          ]
+        },
+        {
+          "tick": 2,
+          "phase": "PistonEvents",
+          "operation": 19,
+          "external_action": 1,
+          "event": "event_enqueue",
+          "piston_action": "Retract",
+          "actor": [
+            0,
+            8,
+            22
+          ]
+        },
+        {
+          "tick": 2,
+          "phase": "PistonEvents",
+          "operation": 19,
+          "external_action": 1,
+          "event": "event_applied",
+          "piston_action": "Retract",
+          "actor": [
+            0,
+            7,
+            20
+          ]
+        },
+        {
+          "tick": 2,
+          "phase": "PistonEvents",
+          "operation": 20,
+          "external_action": 1,
+          "event": "event_execute",
+          "piston_action": "Retract",
+          "actor": [
+            0,
+            8,
+            22
+          ]
+        },
+        {
+          "tick": 2,
+          "phase": "PistonEvents",
+          "operation": 20,
+          "external_action": 1,
+          "event": "event_enqueue",
+          "piston_action": "Retract",
+          "actor": [
+            0,
+            7,
+            24
+          ]
+        },
+        {
+          "tick": 2,
+          "phase": "PistonEvents",
+          "operation": 20,
+          "external_action": 1,
+          "event": "event_applied",
+          "piston_action": "Retract",
+          "actor": [
+            0,
+            8,
+            22
+          ]
+        },
+        {
+          "tick": 2,
+          "phase": "PistonEvents",
+          "operation": 21,
+          "external_action": 1,
+          "event": "event_execute",
+          "piston_action": "Retract",
+          "actor": [
+            0,
+            7,
+            24
+          ]
+        },
+        {
+          "tick": 2,
+          "phase": "PistonEvents",
+          "operation": 21,
+          "external_action": 1,
+          "event": "event_enqueue",
+          "piston_action": "Retract",
+          "actor": [
+            0,
+            8,
+            26
+          ]
+        },
+        {
+          "tick": 2,
+          "phase": "PistonEvents",
+          "operation": 21,
+          "external_action": 1,
+          "event": "event_applied",
+          "piston_action": "Retract",
+          "actor": [
+            0,
+            7,
+            24
+          ]
+        },
+        {
+          "tick": 2,
+          "phase": "PistonEvents",
+          "operation": 22,
+          "external_action": 1,
+          "event": "event_execute",
+          "piston_action": "Retract",
+          "actor": [
+            0,
+            8,
+            26
+          ]
+        },
+        {
+          "tick": 2,
+          "phase": "PistonEvents",
+          "operation": 22,
+          "external_action": 1,
+          "event": "event_enqueue",
+          "piston_action": "Retract",
+          "actor": [
+            0,
+            7,
+            28
+          ]
+        },
+        {
+          "tick": 2,
+          "phase": "PistonEvents",
+          "operation": 22,
+          "external_action": 1,
+          "event": "event_applied",
+          "piston_action": "Retract",
+          "actor": [
+            0,
+            8,
+            26
+          ]
+        },
+        {
+          "tick": 2,
+          "phase": "PistonEvents",
+          "operation": 23,
+          "external_action": 1,
+          "event": "event_execute",
+          "piston_action": "Retract",
+          "actor": [
+            0,
+            7,
+            28
+          ]
+        },
+        {
+          "tick": 2,
+          "phase": "PistonEvents",
+          "operation": 23,
+          "external_action": 1,
+          "event": "event_enqueue",
+          "piston_action": "Retract",
+          "actor": [
+            0,
+            8,
+            30
+          ]
+        },
+        {
+          "tick": 2,
+          "phase": "PistonEvents",
+          "operation": 23,
+          "external_action": 1,
+          "event": "event_applied",
+          "piston_action": "Retract",
+          "actor": [
+            0,
+            7,
+            28
+          ]
+        },
+        {
+          "tick": 2,
+          "phase": "PistonEvents",
+          "operation": 24,
+          "external_action": 1,
+          "event": "event_execute",
+          "piston_action": "Retract",
+          "actor": [
+            0,
+            8,
+            30
+          ]
+        },
+        {
+          "tick": 2,
+          "phase": "PistonEvents",
+          "operation": 24,
+          "external_action": 1,
+          "event": "event_enqueue",
+          "piston_action": "Retract",
+          "actor": [
+            0,
+            7,
+            32
+          ]
+        },
+        {
+          "tick": 2,
+          "phase": "PistonEvents",
+          "operation": 24,
+          "external_action": 1,
+          "event": "event_applied",
+          "piston_action": "Retract",
+          "actor": [
+            0,
+            8,
+            30
+          ]
+        },
+        {
+          "tick": 2,
+          "phase": "PistonEvents",
+          "operation": 25,
+          "external_action": 1,
+          "event": "event_execute",
+          "piston_action": "Retract",
+          "actor": [
+            0,
+            7,
+            32
+          ]
+        },
+        {
+          "tick": 2,
+          "phase": "PistonEvents",
+          "operation": 25,
+          "external_action": 1,
+          "event": "event_applied",
+          "piston_action": "Retract",
+          "actor": [
+            0,
+            7,
+            32
+          ]
+        }
+      ],
+      "contract": "Certified synchronized physical family; compiled execution omits internal nanoticks. Logical data/sample dependencies and exposed reset/consumer timing remain.",
+      "requirements": "Requires explicit BUD state and an owned update generator. Preserve wave identity and exposed propagation timing; a combinational node or one external event\u2192one increment is incorrect."
+    },
+    "cases": [
+      {
+        "id": "saved-idle",
+        "artifacts": [
+          "test_data/instant-pistons-io/traces/java-counter_basic-saved-idle-r0.json.gz",
+          "test_data/instant-pistons-io/traces/mchprs-counter_basic-saved-idle-r0.json.gz"
+        ],
+        "independent_status": [
+          {
+            "engine": "Java",
+            "rotation": 0,
+            "status": "match"
+          }
+        ],
+        "expected_status": "observed declared episode; not an invented Boolean oracle"
+      },
+      {
+        "id": "release",
+        "artifacts": [
+          "test_data/instant-pistons-io/traces/java-counter_basic-release-r0.json.gz",
+          "test_data/instant-pistons-io/traces/mchprs-counter_basic-release-r0.json.gz"
+        ],
+        "independent_status": [
+          {
+            "engine": "Java",
+            "rotation": 0,
+            "status": "match"
+          }
+        ],
+        "expected_status": "observed declared episode; not an invented Boolean oracle"
+      }
+    ],
+    "status": "observed declared projections agree where independently captured",
+    "trace_index": "test_data/instant-pistons-io/trace-index.json"
+  }
 }

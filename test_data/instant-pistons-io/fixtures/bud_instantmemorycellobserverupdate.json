@@ -186,5 +186,413 @@
   "expected_status": "Arithmetic expectations require the declared polarity/width decoder; other functional claims remain measured projections.",
   "unknowns": [
     "Instant-update generators require their own recurring-response protocol; unrestricted data changes during reset are not assumed."
-  ]
+  ],
+  "evidence": {
+    "schema_version": 1,
+    "catalog": "docs/INSTANT_PISTON_IO_SCHEMATICS.md#bud-instantmemorycellobserverupdate",
+    "authority": {
+      "author_intent": "ANSWERS.md plus supplied Data/Update/port signs",
+      "imported_state": "test_data/instant-pistons-io/inspection/bud_instantmemorycellobserverupdate.json",
+      "observed_mchprs": "frozen traces, not independent Minecraft oracles",
+      "observed_java": "SHA-pinned vanilla 1.21.5 captures with real lever interactions",
+      "inferred_mechanism": "Corrected controls are Data=(1,6,3), Update=(1,4,0), both saved powered=true. Data instant=(0,6,4), with its own observer/cap, supplies QC dust (0,6,8). Memory M=(0,3,8), head (0,2,8), payload (0,1,8), repeater (0,1,9). Down generator=(1,3,5), reset observer=(1,4,5), cap=(1,5,5); north-facing observer (1,3,6) watches the generator and drives EW update wire (0,3,7). The memory is not directly powered by that wire.",
+      "proposed_compiler_guard": "The required logical dependency is data-wave availability before qualifying observer sample. Collapse synchronized internal order into a transaction, while preserving BUD state, generator deadlines and consumer validity."
+    },
+    "label_mappings": [
+      {
+        "sign_position": [
+          0,
+          4,
+          0
+        ],
+        "normalized": "Update",
+        "original_text": {
+          "front_text": {
+            "original": [
+              {
+                "text": "Update"
+              },
+              {
+                "text": ""
+              },
+              {
+                "text": ""
+              },
+              {
+                "text": ""
+              }
+            ],
+            "readable": [
+              "Update",
+              "",
+              "",
+              ""
+            ]
+          },
+          "back_text": {
+            "original": [
+              {
+                "text": ""
+              },
+              {
+                "text": ""
+              },
+              {
+                "text": ""
+              },
+              {
+                "text": ""
+              }
+            ],
+            "readable": [
+              "",
+              "",
+              "",
+              ""
+            ]
+          },
+          "legacy": {
+            "original": [],
+            "readable": []
+          }
+        },
+        "candidates": [
+          {
+            "position": [
+              0,
+              3,
+              0
+            ],
+            "role": "geometric support candidate; not automatically a port"
+          },
+          {
+            "position": [
+              1,
+              4,
+              0
+            ],
+            "role": "update"
+          }
+        ],
+        "port_position": [
+          1,
+          4,
+          0
+        ],
+        "role": "update",
+        "evidence": "Reviewed input attachment/electrical path or consumer connection; independent port stimuli and watched geometry. Repeated O1 labels use physical Z spacing, not text index.",
+        "status": "resolved for declared episode"
+      },
+      {
+        "sign_position": [
+          1,
+          7,
+          4
+        ],
+        "normalized": "Data",
+        "original_text": {
+          "front_text": {
+            "original": [
+              {
+                "text": "Data"
+              },
+              {
+                "text": ""
+              },
+              {
+                "text": ""
+              },
+              {
+                "text": ""
+              }
+            ],
+            "readable": [
+              "Data",
+              "",
+              "",
+              ""
+            ]
+          },
+          "back_text": {
+            "original": [
+              {
+                "text": ""
+              },
+              {
+                "text": ""
+              },
+              {
+                "text": ""
+              },
+              {
+                "text": ""
+              }
+            ],
+            "readable": [
+              "",
+              "",
+              "",
+              ""
+            ]
+          },
+          "legacy": {
+            "original": [],
+            "readable": []
+          }
+        },
+        "candidates": [
+          {
+            "position": [
+              1,
+              6,
+              4
+            ],
+            "role": "geometric support candidate; not automatically a port"
+          },
+          {
+            "position": [
+              1,
+              6,
+              3
+            ],
+            "role": "data"
+          }
+        ],
+        "port_position": [
+          1,
+          6,
+          3
+        ],
+        "role": "data",
+        "evidence": "Reviewed input attachment/electrical path or consumer connection; independent port stimuli and watched geometry. Repeated O1 labels use physical Z spacing, not text index.",
+        "status": "resolved for declared episode"
+      }
+    ],
+    "observation_decoder": {
+      "memory": "stationary retracted=1, extended=0, moving invalid",
+      "repeater": "unpowered=1; ordinary/piston update sample-1 valid from tick6, observer-update from tick7; separate zero-resample timing"
+    },
+    "reset_and_next_use": "Prepare Data=false for one while holding Update=true and prove quiescence. Releasing Update=false launches the data wave: QC dust is zero at response tick 1, M still extended at 2; observer update wire turns positive at 3 and M starts moving. M is stationary retracted at 5, repeater off at 7, stored one retained through 36. The full watched state has a demonstrated six-tick period over three cycles. Data-only does not sample; prepared zero samples zero. Four Java episodes agree. Unrestricted new external data during the recurring response is not certified.",
+    "initial_state": {
+      "source": "test_data/instant-pistons-io/inspection/bud_instantmemorycellobserverupdate.json",
+      "scheduled": [],
+      "piston_events": [],
+      "active_motions": [],
+      "observed_ready": "Strict imported idle is unchanged and quiescent for 24 ticks; physical construction reachability is a separate claim"
+    },
+    "ordering": {
+      "supported_episode": "sample-1",
+      "measured_operations": [
+        {
+          "tick": 0,
+          "phase": "BetweenTicks",
+          "operation": 2,
+          "external_action": 3,
+          "event": "event_enqueue",
+          "piston_action": "Retract",
+          "actor": [
+            0,
+            6,
+            4
+          ]
+        },
+        {
+          "tick": 0,
+          "phase": "BetweenTicks",
+          "operation": 2,
+          "external_action": 3,
+          "event": "event_enqueue",
+          "piston_action": "Retract",
+          "actor": [
+            1,
+            3,
+            5
+          ]
+        },
+        {
+          "tick": 1,
+          "phase": "PistonEvents",
+          "operation": 3,
+          "external_action": 3,
+          "event": "event_execute",
+          "piston_action": "Retract",
+          "actor": [
+            0,
+            6,
+            4
+          ]
+        },
+        {
+          "tick": 1,
+          "phase": "PistonEvents",
+          "operation": 3,
+          "external_action": 3,
+          "event": "event_applied",
+          "piston_action": "Retract",
+          "actor": [
+            0,
+            6,
+            4
+          ]
+        },
+        {
+          "tick": 1,
+          "phase": "PistonEvents",
+          "operation": 4,
+          "external_action": 3,
+          "event": "event_execute",
+          "piston_action": "Retract",
+          "actor": [
+            1,
+            3,
+            5
+          ]
+        },
+        {
+          "tick": 1,
+          "phase": "PistonEvents",
+          "operation": 4,
+          "external_action": 3,
+          "event": "event_applied",
+          "piston_action": "Retract",
+          "actor": [
+            1,
+            3,
+            5
+          ]
+        },
+        {
+          "tick": 3,
+          "phase": "ScheduledTicks",
+          "operation": 14,
+          "external_action": 3,
+          "event": "event_enqueue",
+          "piston_action": "Retract",
+          "actor": [
+            0,
+            3,
+            8
+          ]
+        },
+        {
+          "tick": 3,
+          "phase": "PistonEvents",
+          "operation": 16,
+          "external_action": 3,
+          "event": "event_execute",
+          "piston_action": "Retract",
+          "actor": [
+            0,
+            3,
+            8
+          ]
+        },
+        {
+          "tick": 3,
+          "phase": "PistonEvents",
+          "operation": 16,
+          "external_action": 3,
+          "event": "event_applied",
+          "piston_action": "Retract",
+          "actor": [
+            0,
+            3,
+            8
+          ]
+        },
+        {
+          "tick": 3,
+          "phase": "MovingEntities",
+          "operation": 18,
+          "external_action": 3,
+          "event": "event_enqueue",
+          "piston_action": "Extend",
+          "actor": [
+            0,
+            6,
+            4
+          ]
+        },
+        {
+          "tick": 3,
+          "phase": "MovingEntities",
+          "operation": 19,
+          "external_action": 3,
+          "event": "event_enqueue",
+          "piston_action": "Extend",
+          "actor": [
+            1,
+            3,
+            5
+          ]
+        }
+      ],
+      "contract": "Certified synchronized physical family; compiled execution omits internal nanoticks. Logical data/sample dependencies and exposed reset/consumer timing remain.",
+      "requirements": "The required logical dependency is data-wave availability before qualifying observer sample. Collapse synchronized internal order into a transaction, while preserving BUD state, generator deadlines and consumer validity."
+    },
+    "cases": [
+      {
+        "id": "saved-idle",
+        "artifacts": [
+          "test_data/instant-pistons-io/traces/java-bud_instantmemorycellobserverupdate-saved-idle-r0.json.gz",
+          "test_data/instant-pistons-io/traces/mchprs-bud_instantmemorycellobserverupdate-saved-idle-r0.json.gz"
+        ],
+        "independent_status": [
+          {
+            "engine": "Java",
+            "rotation": 0,
+            "status": "match"
+          }
+        ],
+        "expected_status": "observed declared episode; not an invented Boolean oracle"
+      },
+      {
+        "id": "data-only",
+        "artifacts": [
+          "test_data/instant-pistons-io/traces/java-bud_instantmemorycellobserverupdate-data-only-r0.json.gz",
+          "test_data/instant-pistons-io/traces/mchprs-bud_instantmemorycellobserverupdate-data-only-r0.json.gz"
+        ],
+        "independent_status": [
+          {
+            "engine": "Java",
+            "rotation": 0,
+            "status": "match"
+          }
+        ],
+        "expected_status": "observed declared episode; not an invented Boolean oracle"
+      },
+      {
+        "id": "sample-0",
+        "artifacts": [
+          "test_data/instant-pistons-io/traces/java-bud_instantmemorycellobserverupdate-sample-0-r0.json.gz",
+          "test_data/instant-pistons-io/traces/mchprs-bud_instantmemorycellobserverupdate-sample-0-r0.json.gz"
+        ],
+        "independent_status": [
+          {
+            "engine": "Java",
+            "rotation": 0,
+            "status": "match"
+          }
+        ],
+        "expected_status": "observed declared episode; not an invented Boolean oracle"
+      },
+      {
+        "id": "sample-1",
+        "artifacts": [
+          "test_data/instant-pistons-io/traces/java-bud_instantmemorycellobserverupdate-sample-1-r0.json.gz",
+          "test_data/instant-pistons-io/traces/mchprs-bud_instantmemorycellobserverupdate-sample-1-r0.json.gz"
+        ],
+        "independent_status": [
+          {
+            "engine": "Java",
+            "rotation": 0,
+            "status": "match"
+          }
+        ],
+        "expected_status": "observed declared episode; not an invented Boolean oracle"
+      }
+    ],
+    "status": "observed declared projections agree where independently captured",
+    "trace_index": "test_data/instant-pistons-io/trace-index.json"
+  }
 }

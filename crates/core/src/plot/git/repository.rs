@@ -1,4 +1,4 @@
-use super::snapshot::{hex, Fingerprints, Snapshot};
+use super::snapshot::{compressed_bound, hex, Fingerprints, Snapshot};
 use crate::messages;
 use anyhow::{bail, ensure, Context, Result};
 use chrono::TimeZone;
@@ -22,6 +22,7 @@ pub(super) struct Repository {
     pub plot: (i32, i32),
     root: PathBuf,
     limits: Limits,
+    _memory: super::Reservation,
 }
 
 pub(super) fn valid_branch(name: &str) -> bool {
@@ -42,37 +43,45 @@ impl Repository {
     }
 
     pub fn open(root: &Path, plot: (i32, i32), limits: Limits) -> Result<Self> {
+        let memory = super::Reservation::new(4 * 1048576)?;
         let dir = root.join(format!("p{},{}", plot.0, plot.1));
         std::fs::create_dir_all(&dir)?;
         let conn = Connection::open(dir.join("repository.sqlite"))?;
         conn.busy_timeout(std::time::Duration::from_secs(5))?;
-        conn.execute_batch("PRAGMA foreign_keys=ON; PRAGMA synchronous=FULL;
+        conn.execute_batch(
+            "PRAGMA foreign_keys=ON; PRAGMA synchronous=FULL;
+            PRAGMA journal_mode=DELETE; PRAGMA cache_size=-2048;
+            PRAGMA cache_spill=ON; PRAGMA mmap_size=0;
+            PRAGMA temp_store=FILE; PRAGMA temp.cache_size=-1024;",
+        )?;
+        let mut repo = Self {
+            conn,
+            plot,
+            root: root.into(),
+            limits,
+            _memory: memory,
+        };
+        repo.transaction(|repo| {
+            repo.conn.execute_batch("
             CREATE TABLE IF NOT EXISTS meta(key TEXT PRIMARY KEY,value TEXT NOT NULL);
             CREATE TABLE IF NOT EXISTS objects(id TEXT PRIMARY KEY,content TEXT NOT NULL,execution TEXT NOT NULL,blob BLOB NOT NULL);
             CREATE TABLE IF NOT EXISTS commits(seq INTEGER PRIMARY KEY AUTOINCREMENT,id TEXT UNIQUE NOT NULL,parent TEXT REFERENCES commits(id),snapshot TEXT NOT NULL REFERENCES objects(id),author TEXT NOT NULL,name TEXT NOT NULL,date INTEGER NOT NULL,message TEXT NOT NULL,message_fold TEXT NOT NULL);
             CREATE TABLE IF NOT EXISTS branches(name TEXT PRIMARY KEY,tip TEXT NOT NULL REFERENCES commits(id));
             CREATE TABLE IF NOT EXISTS recoveries(seq INTEGER PRIMARY KEY AUTOINCREMENT,id TEXT UNIQUE NOT NULL,snapshot TEXT NOT NULL REFERENCES objects(id),parent TEXT NOT NULL REFERENCES commits(id),author TEXT NOT NULL,name TEXT NOT NULL,date INTEGER NOT NULL,source TEXT NOT NULL);
             CREATE TABLE IF NOT EXISTS checkout(id INTEGER PRIMARY KEY CHECK(id=1),branch TEXT NOT NULL,commit_id TEXT NOT NULL,before_snapshot TEXT NOT NULL REFERENCES objects(id));")?;
-        let identity = format!("1:{}:{}", plot.0, plot.1);
-        conn.execute(
-            "INSERT OR IGNORE INTO meta VALUES('identity',?1)",
-            [&identity],
-        )?;
-        let stored: String =
-            conn.query_row("SELECT value FROM meta WHERE key='identity'", [], |r| {
-                r.get(0)
-            })?;
-        ensure!(
-            identity == stored,
-            messages::GIT_REPOSITORY_IDENTITY_MISMATCH
-        );
-        conn.execute("INSERT OR IGNORE INTO meta VALUES('active','main')", [])?;
-        Ok(Self {
-            conn,
-            plot,
-            root: root.into(),
-            limits,
-        })
+            let identity = format!("1:{}:{}", plot.0, plot.1);
+            repo.conn.execute(
+                "INSERT OR IGNORE INTO meta VALUES('identity',?1)",
+                [&identity],
+            )?;
+            let stored: String = repo.conn.query_row(
+                "SELECT value FROM meta WHERE key='identity'", [], |r| r.get(0),
+            )?;
+            ensure!(identity == stored, messages::GIT_REPOSITORY_IDENTITY_MISMATCH);
+            repo.conn.execute("INSERT OR IGNORE INTO meta VALUES('active','main')", [])?;
+            Ok(())
+        })?;
+        Ok(repo)
     }
 
     pub fn head(&self) -> Result<(String, Option<String>)> {
@@ -166,19 +175,20 @@ impl Repository {
             [],
             |r| Ok((r.get(0)?, r.get(1)?)),
         )?;
-        Ok(self
-            .raw_size(&target)?
-            .saturating_add(self.object_raw_size(&before)?))
+        // Startup recovery decodes the before snapshot, drops it, then decodes
+        // the target. Reserve the larger peak rather than both at once.
+        Ok(self.raw_size(&target)?.max(self.object_raw_size(&before)?))
     }
 
     fn load_object(&self, id: &str) -> Result<Snapshot> {
+        let declared = self.object_raw_size(id)?;
         let size: usize =
             self.conn
                 .query_row("SELECT length(blob) FROM objects WHERE id=?1", [id], |r| {
                     r.get(0)
                 })?;
         ensure!(
-            size <= self.limits.snapshot + self.limits.snapshot / 100 + 1024,
+            size <= compressed_bound(declared),
             messages::GIT_OVERSIZED_OBJECT
         );
         let bytes: Vec<u8> =
@@ -212,11 +222,9 @@ impl Repository {
             used.saturating_add(bytes.len() as u64) <= self.limits.plot_bytes,
             messages::GIT_PLOT_STORAGE_FULL
         );
-        let total: u64 = std::fs::read_dir(&self.root)?
-            .filter_map(|e| e.ok())
-            .filter_map(|e| std::fs::metadata(e.path().join("repository.sqlite")).ok())
-            .map(|m| m.len())
-            .sum();
+        let total = self
+            .other_database_bytes()?
+            .saturating_add(self.database_bytes()?);
         ensure!(
             total.saturating_add(bytes.len() as u64 + 65536) <= self.limits.total_bytes,
             messages::GIT_GLOBAL_STORAGE_FULL
@@ -233,6 +241,24 @@ impl Repository {
             .lock()
             .map_err(|_| anyhow::anyhow!(messages::GIT_STORAGE_LOCK_FAILED))?;
         let previous_bytes = self.database_bytes()?;
+        let global_allowance = self
+            .limits
+            .total_bytes
+            .saturating_sub(self.other_database_bytes()?);
+        let allowance = self.limits.plot_bytes.min(global_allowance);
+        let quota_message = if global_allowance < self.limits.plot_bytes {
+            messages::GIT_GLOBAL_STORAGE_FULL
+        } else {
+            messages::GIT_PLOT_STORAGE_FULL
+        };
+        let page_size: u64 = self.conn.query_row("PRAGMA page_size", [], |r| r.get(0))?;
+        // SQLite enforces admission while writing, before dirty pages can spill.
+        // Keep existing files readable/recoverable after a quota downgrade.
+        self.conn.pragma_update(
+            None,
+            "max_page_count",
+            (allowance.max(previous_bytes) / page_size).max(1),
+        )?;
         self.conn.execute_batch("BEGIN IMMEDIATE")?;
         let result = f(self).and_then(|value| {
             self.check_growth(previous_bytes)?;
@@ -248,6 +274,12 @@ impl Repository {
             }
             Err(error) => {
                 let _ = self.conn.execute_batch("ROLLBACK");
+                if error
+                    .downcast_ref::<rusqlite::Error>()
+                    .is_some_and(|e| e.sqlite_error_code() == Some(rusqlite::ErrorCode::DiskFull))
+                {
+                    bail!(quota_message);
+                }
                 Err(error)
             }
         }
@@ -270,8 +302,17 @@ impl Repository {
             bytes <= self.limits.plot_bytes,
             messages::GIT_PLOT_STORAGE_FULL
         );
+        let total = bytes.saturating_add(self.other_database_bytes()?);
+        ensure!(
+            total <= self.limits.total_bytes,
+            messages::GIT_GLOBAL_STORAGE_FULL
+        );
+        Ok(())
+    }
+
+    fn other_database_bytes(&self) -> Result<u64> {
         let own = self.root.join(format!("p{},{}", self.plot.0, self.plot.1));
-        let mut total = bytes;
+        let mut total = 0u64;
         for entry in std::fs::read_dir(&self.root)? {
             let path = entry?.path();
             if path == own {
@@ -283,11 +324,7 @@ impl Repository {
                 Err(e) => return Err(e.into()),
             }
         }
-        ensure!(
-            total <= self.limits.total_bytes,
-            messages::GIT_GLOBAL_STORAGE_FULL
-        );
-        Ok(())
+        Ok(total)
     }
 
     pub fn commit(
@@ -392,9 +429,10 @@ impl Repository {
         let sql = if all {
             "SELECT id,date,name,message FROM commits WHERE instr(message_fold,?2)>0 ORDER BY seq DESC LIMIT 11 OFFSET ?3"
         } else {
-            "WITH RECURSIVE history(id,parent,date,name,message,message_fold,depth) AS (SELECT id,parent,date,name,message,message_fold,0 FROM commits WHERE id=?1 UNION ALL SELECT c.id,c.parent,c.date,c.name,c.message,c.message_fold,h.depth+1 FROM commits c JOIN history h ON c.id=h.parent) SELECT id,date,name,message FROM history WHERE instr(message_fold,?2)>0 ORDER BY depth LIMIT 11 OFFSET ?3"
+            "WITH RECURSIVE history(id,parent,date,name,message,message_fold,depth) AS (SELECT id,parent,date,name,message,message_fold,0 FROM commits WHERE id=?1 UNION ALL SELECT c.id,c.parent,c.date,c.name,c.message,c.message_fold,h.depth+1 FROM commits c JOIN history h ON c.id=h.parent ORDER BY 7) SELECT id,date,name,message FROM history WHERE instr(message_fold,?2)>0 LIMIT 11 OFFSET ?3"
         };
-        // Recursive order follows commit ancestry, independently of clock changes.
+        // Order the recursive queue, not a materialized result containing the
+        // entire history. Pages/searches retain only their eleven result rows.
         let mut statement = self.conn.prepare(sql)?;
         let rows = statement
             .query_map(
@@ -619,11 +657,7 @@ impl Repository {
         name: &str,
         save: &Path,
     ) -> Result<(Snapshot, String, super::Reservation)> {
-        let reservation = super::Reservation::new(
-            self.raw_size(target)?
-                .saturating_mul(6)
-                .saturating_add(4 * 1048576),
-        )?;
+        let reservation = super::Reservation::snapshot(self.raw_size(target)?)?;
         let fp = before.fingerprints()?;
         let mut recovery = None;
         self.transaction(|repo| {
@@ -650,7 +684,10 @@ impl Repository {
     }
 
     fn finish_or_rollback(&mut self, before: &Snapshot, save: &Path) -> Result<Snapshot> {
-        match self.finish_checkout(save) {
+        match self.finish_checkout_with_settings(
+            save,
+            Some((before.data.world_send_rate, before.data.piston_animation)),
+        ) {
             Ok(snapshot) => Ok(snapshot),
             Err(error) => {
                 // Restore the exact captured working state, even if target save succeeded.
@@ -668,16 +705,36 @@ impl Repository {
     }
 
     pub fn finish_checkout(&mut self, save: &Path) -> Result<Snapshot> {
+        self.finish_checkout_with_settings(save, None)
+    }
+
+    fn finish_checkout_with_settings(
+        &mut self,
+        save: &Path,
+        settings: Option<(
+            mchprs_save_data::plot_data::WorldSendRate,
+            mchprs_save_data::plot_data::PistonAnimation,
+        )>,
+    ) -> Result<Snapshot> {
         let (branch, id, before): (String, String, String) = self.conn.query_row(
             "SELECT branch,commit_id,before_snapshot FROM checkout WHERE id=1",
             [],
             |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
         )?;
+        let (send_rate, piston_animation) = match settings {
+            Some(settings) => settings,
+            None => {
+                let previous = self.load_object(&before)?;
+                (
+                    previous.data.world_send_rate,
+                    previous.data.piston_animation,
+                )
+            }
+        };
         let mut target = self.load(&id)?;
-        let previous = self.load_object(&before)?;
         target.data.tps = mchprs_save_data::plot_data::Tps::Limited(0);
-        target.data.world_send_rate = previous.data.world_send_rate;
-        target.data.piston_animation = previous.data.piston_animation;
+        target.data.world_send_rate = send_rate;
+        target.data.piston_animation = piston_animation;
         target.data.save_to_file(save)?;
         self.transaction(|repo| {
             repo.conn

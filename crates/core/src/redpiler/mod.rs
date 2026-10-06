@@ -1,5 +1,7 @@
+pub mod analysis;
 pub(crate) mod backend;
 mod compile_graph;
+pub mod instant;
 mod task_monitor;
 // mod debug_graph;
 mod passes;
@@ -14,10 +16,37 @@ use mchprs_blocks::BlockPos;
 use mchprs_world::TickEntry;
 use std::sync::Arc;
 use std::time::Instant;
-use tracing::{debug, error, trace, warn};
+use tracing::{debug, trace, warn};
 
 pub use backend::{Queues, TickScheduler};
 pub use task_monitor::TaskMonitor;
+
+#[derive(Debug)]
+pub enum CompileError {
+    AlreadyActive,
+    Analysis(analysis::AnalysisError),
+    Unsupported(Box<analysis::AnalysisReport>),
+    Cancelled,
+}
+
+impl std::fmt::Display for CompileError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::AlreadyActive => f.write_str("reset the active compiler before recompiling"),
+            Self::Analysis(error) => error.fmt(f),
+            Self::Unsupported(report) => {
+                write!(f, "{}", report.summary())?;
+                if let Some(issue) = report.issues.first() {
+                    write!(f, "; {issue}")?;
+                }
+                Ok(())
+            }
+            Self::Cancelled => f.write_str("compilation cancelled"),
+        }
+    }
+}
+
+impl std::error::Error for CompileError {}
 
 fn block_powered_mut(block: &mut Block) -> Option<&mut bool> {
     Some(match block {
@@ -112,12 +141,6 @@ impl Compiler {
         }
     }
 
-    /// Use just-in-time compilation with a `JITBackend` such as the `DirectBackend`.
-    /// Requires recompilation to take effect.
-    pub fn use_jit(&mut self, jit: BackendDispatcher) {
-        self.jit = Some(jit);
-    }
-
     pub fn compile<W: World>(
         &mut self,
         world: &W,
@@ -125,9 +148,18 @@ impl Compiler {
         options: CompilerOptions,
         ticks: Vec<TickEntry>,
         monitor: Arc<TaskMonitor>,
-    ) {
+    ) -> Result<(), CompileError> {
         debug!("Starting compile");
         let start = Instant::now();
+
+        if self.is_active {
+            return Err(CompileError::AlreadyActive);
+        }
+        let report = analysis::analyze(world, bounds, &ticks, &monitor, Default::default())
+            .map_err(CompileError::Analysis)?;
+        if !report.can_compile() {
+            return Err(CompileError::Unsupported(Box::new(report)));
+        }
 
         let ticks: Vec<_> = ticks
             .into_iter()
@@ -146,39 +178,27 @@ impl Compiler {
         let graph = pass_manager.run_passes(&options, &input, monitor.clone());
 
         if monitor.cancelled() {
-            return;
+            return Err(CompileError::Cancelled);
         }
 
-        let replace_jit = match self.jit {
-            Some(BackendDispatcher::DirectBackend(_)) => {
-                options.backend_variant != BackendVariant::Direct
-            }
-            None => true,
+        // Stage a fresh backend. Reusing one can leave aliases, scheduler work
+        // or side tables from a previous compilation. Publish only on success.
+        let mut jit = match options.backend_variant {
+            BackendVariant::Direct => BackendDispatcher::DirectBackend(Default::default()),
         };
-        if replace_jit {
-            debug!("Switching jit backend to {:?}", options.backend_variant);
-            let jit = match options.backend_variant {
-                BackendVariant::Direct => BackendDispatcher::DirectBackend(Default::default()),
-            };
-            self.use_jit(jit);
+        trace!("Compiling backend");
+        monitor.set_message("Compiling backend".to_string());
+        jit.compile(graph, ticks, &options, monitor.clone());
+        if monitor.cancelled() {
+            return Err(CompileError::Cancelled);
         }
+        monitor.inc_progress();
 
-        if let Some(jit) = &mut self.jit {
-            trace!("Compiling backend");
-            monitor.set_message("Compiling backend".to_string());
-            let start = Instant::now();
-
-            jit.compile(graph, ticks, &options, monitor.clone());
-
-            monitor.inc_progress();
-            trace!("Backend compiled in {:?}", start.elapsed());
-        } else {
-            error!("Cannot compile without JIT variant selected");
-        }
-
+        self.jit = Some(jit);
         self.options = options;
         self.is_active = true;
         debug!("Compile completed in {:?}", start.elapsed());
+        Ok(())
     }
 
     pub fn reset<W: World>(&mut self, world: &mut W, bounds: (BlockPos, BlockPos)) {

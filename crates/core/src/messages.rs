@@ -77,7 +77,8 @@ catalog! {
         GIT_CHECKOUT_LOCKED = "Plot changes are locked, pup: checkout is in progress or needs recovery.";
         USAGE_GIT_DIFF_INSPECT = "Usage: /git diff inspect <x> <y> <z> [from|to]";
         GIT_NO_COMPARISON = "No comparison for this snoot yet. Use /git diff <from> <to>.";
-        GIT_DIFF_SIZE_OVERFLOW = "These pawprints are too big to compare: diff size overflow.";
+        GIT_ENTITY_SIZE_LIMIT = "This pawprint has block data larger than 256 KiB. Trim that data before saving, pup.";
+        GIT_NBT_RESOURCE_LIMIT = "This pawprint has item NBT beyond safe limits (64 KiB, 4096 tags, 64 levels). Existing history was preserved, pup.";
         GIT_OPERATION_STARTED = "Git helper on the trail :3";
         GIT_WORKER_DISCONNECTED = "The Git helper lost the trail: worker disconnected.";
         GIT_WORKER_DISCONNECTED_SHUTDOWN = "The Git helper lost the trail during shutdown: worker disconnected.";
@@ -210,7 +211,7 @@ catalog! {
         HELP_PISTONS = "Piston animation and updates\n/piston_anim [auto|on|off] controls animations. /bisdon_anim is an alias.\n/wsr [rate|0] shows or sets the update rate; 0 stops periodic updates.\nAbove the server TPS threshold (200 by default), updates cap at 10 Hz. A lower /wsr still applies.";
         HELP_PLOTS = "Plots\n/p auto claims an empty plot; /p claim claims the plot you're in.\n/p info shows the owner; /p middle goes to the centre.\n/p home visits your first plot; /p visit <player> [number] visits a plot.\n/p add <nick> and /p remove <nick> manage plot members.\n/p tp <x> <z> uses plot coordinates.\n/p lock and /p unlock control leaving. /p select selects the plot for WorldEdit.";
         HELP_QUICK_START = "MROWW — Minecraft Redstone o Wysokiej Wydajności\n/p auto claims a plot.\n/help plots - Claim and visit plots.\n/help tps - Control and step simulation.\n/help we - WorldEdit.\n/help tools - Redstone tools.\n/help schematics - Load and save builds.\n/help screenonly - Reduce visual updates.\n/help pistons - Animations and update rate.\n/help rewind - Tick history.\n/help git - Plot commits, branches and glowing diffs.\n/help chat - Chat and command blocks.\n/help redpiler - Compiled simulation.";
-        HELP_REDPILER = "Compiled simulation\n/rp compile enables compiled mode; /rp reset returns to the interpreter.\n/rp inspect checks the targeted block. /toggleautorp toggles automatic compilation.\nPistons, observers and command blocks require the interpreter.\nUse /tps 0 to step: /adv nano 1 or /adv pico 1.";
+        HELP_REDPILER = "Compiled simulation\n/rp compile enables compiled mode; /rp reset returns to the interpreter.\n/rp inspect checks the targeted block. /toggleautorp toggles automatic compilation.\n/rp analyze reports live piston candidates and compilation blockers without changing the plot.\nPistons, observers and command blocks require the interpreter until their runtime is supported.\nUse /tps 0 to step: /adv nano 1 or /adv pico 1.";
         HELP_REDSTONE_TOOLS = "Redstone tools\n//find <block> searches your selection.\n//ss <regex> searches signs; -p <page> shows more.\n//rs [direction] [count] [spacing] stacks copies; -e expands selection; -w includes air.\n/autostack [direction] [count] [spacing] [-e] automatically stacks your placements and removals in the selected region; /autostack off stops it. Leaving the plot stops it.\n/container <type> <0..15> creates a comparator container.\n/cursel toggles the selection sidebar.";
         USAGE_AUTOSTACK = "Usage: /autostack [direction] [count] [spacing] [-e], or /autostack off.";
         AUTO_STACK_ENABLED = "Enabled auto stack. From now on, blocks you place or remove in the selected region will automatically be stacked at the corresponding positions. Use /autostack off to stop.";
@@ -317,7 +318,6 @@ catalog! {
         PLOT_ALREADY_CLAIMED = "Someone has already claimed this patch of turf.";
         PLOT_ALREADY_LOCKED = "You're already leashed to this plot.";
         PLOT_CANNOT_INTERACTED_WHILE_REDPILER_ACTIVE = "Redpiler's `--io-only` mode blocks interaction with this plot. Run `/redpiler reset` to put your paws back to work.";
-        PLOT_CONTAINS_PISTONS_OBSERVERS_OR_COMMAND = "This plot has pistons, observers or command blocks. The interpreter keeps a careful paw on their behavior.";
         PLOT_INDEX_ZERO = "Plot indexes start at 1, pup.";
         PLOT_INVALID_ARGUMENT = "/plot doesn't know that trick. Peek at /help plots.";
         PLOT_INVALID_INDEX = "Couldn't read that plot index, pup. Use a positive integer.";

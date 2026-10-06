@@ -461,7 +461,11 @@ impl PlotWorld {
             AdvancePhase::ScheduledTicks => {
                 let tick = self.to_be_ticked.this_tick().pop_first().unwrap();
                 #[cfg(test)]
-                redstone::instant_piston_tests::record_operation(self, "scheduled_tick", serde_json::json!({"pos":tick.pos,"block_type":tick.block_type}));
+                redstone::instant_piston_tests::record_operation(
+                    self,
+                    "scheduled_tick",
+                    serde_json::json!({"pos":tick.pos,"block_type":tick.block_type}),
+                );
                 self.tick_index.popped(tick);
                 let block = self.get_block(tick.pos);
                 if tick.block_type == Some(block.registry_id()) {
@@ -478,7 +482,11 @@ impl PlotWorld {
                     self.piston_state.movement_work[self.piston_state.movement_cursor];
                 self.piston_state.movement_cursor += 1;
                 #[cfg(test)]
-                redstone::instant_piston_tests::record_operation(self, "motion", serde_json::json!([pos, identity]));
+                redstone::instant_piston_tests::record_operation(
+                    self,
+                    "motion",
+                    serde_json::json!([pos, identity]),
+                );
                 redstone::piston::tick_motion(self, pos, identity);
             }
             AdvancePhase::BetweenTicks => unreachable!(),
@@ -1340,23 +1348,7 @@ impl Plot {
     }
 
     fn start_redpiler(&mut self, options: CompilerOptions) {
-        if self.world.chunks.iter().any(Chunk::requires_interpreter)
-            || !self.world.piston_state.events.is_empty()
-            || !self.world.piston_state.motions.is_empty()
-        {
-            for player in &self.players {
-                player.send_system_message(messages::PLOT_CONTAINS_PISTONS_OBSERVERS_OR_COMMAND);
-            }
-            return;
-        }
         debug!("Starting redpiler");
-        self.close_all_containers();
-        if self.world.history.enabled() {
-            let bytes = self.world.history.disable();
-            self.broadcast_plot_chat_message(&messages::history_disabled_for_compilation(
-                history::format_memory(bytes),
-            ));
-        }
         self.scoreboard
             .set_redpiler_state(&self.players, RedpilerState::Compiling);
         self.scoreboard
@@ -1366,11 +1358,9 @@ impl Plot {
         // TODO: use monitor
         let monitor = Default::default();
         let ticks = self.world.to_be_ticked.iter_entries().collect();
-        self.world.to_be_ticked.clear();
-        self.world.tick_index.invalidate();
 
         let mut players_need_updates = HashSet::new();
-        thread::scope(|s| {
+        let result = thread::scope(|s| {
             // Move an exclusive borrow: the world's RefCell caches are Send, not Sync.
             let world = &mut self.world;
             let compiler = &mut self.redpiler;
@@ -1387,6 +1377,7 @@ impl Plot {
                 }
                 thread::sleep(Duration::from_millis(20));
             }
+            handle.join()
         });
 
         // Now that we have ownership of the world again, we can update player view positions
@@ -1394,8 +1385,39 @@ impl Plot {
             self.update_view_pos_for_player(player_idx, false);
         }
 
-        self.scoreboard
-            .set_redpiler_state(&self.players, RedpilerState::Running);
+        match result {
+            Ok(Ok(())) => {
+                // Transfer scheduled work only after the complete backend exists.
+                self.world.to_be_ticked.clear();
+                self.world.tick_index.invalidate();
+                self.close_all_containers();
+                if self.world.history.enabled() {
+                    let bytes = self.world.history.disable();
+                    self.broadcast_plot_chat_message(&messages::history_disabled_for_compilation(
+                        history::format_memory(bytes),
+                    ));
+                }
+                self.scoreboard
+                    .set_redpiler_state(&self.players, RedpilerState::Running);
+            }
+            failure => {
+                let reason = match failure {
+                    Ok(Err(error)) => error.to_string(),
+                    Err(_) => "compiler worker failed".to_owned(),
+                    Ok(Ok(())) => unreachable!(),
+                };
+                warn!("Redpiler compilation rejected: {reason}");
+                for player in &self.players {
+                    player.send_error_message(&format!(
+                        "Redpiler: {reason}. Use /rp analyze for details."
+                    ));
+                }
+                self.scoreboard
+                    .set_redpiler_state(&self.players, RedpilerState::Stopped);
+                self.scoreboard
+                    .set_redpiler_options(&self.players, &Default::default());
+            }
+        }
 
         self.reset_timings();
     }
@@ -1778,9 +1800,9 @@ impl Plot {
 
             if self.auto_redpiler
                 && !self.git_checkout_locked()
-                && !self.world.chunks.iter().any(Chunk::requires_interpreter)
                 && !self.redpiler.is_active()
                 && (self.tps == Tps::Unlimited || self.timings.is_running_behind())
+                && !self.world.chunks.iter().any(Chunk::requires_interpreter)
             {
                 self.start_redpiler(Default::default());
             }

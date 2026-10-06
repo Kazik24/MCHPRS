@@ -12,9 +12,11 @@ import hashlib
 import json
 from pathlib import Path
 import re
+import queue
 import subprocess
 import tempfile
 import time
+import threading
 from capture_piston_oscillator import Rcon, SERVER_SHA1
 from inspect_instant_pistons import ROOT, PACK, inspect
 
@@ -35,13 +37,56 @@ def flat_ports(v):
     return sum((flat_ports(x) for x in v), [])
 
 
+class LeverClient:
+    """Use the unmodified vanilla server's real player interaction path."""
+    def __init__(self, node, log):
+        self.process = subprocess.Popen([node, str(ROOT/"tools/java_lever_client.cjs")],
+            stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=log, text=True,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+        self.responses = queue.Queue()
+        threading.Thread(target=self.read, daemon=True).start()
+        self.ready = self.receive("ready")
+        self.identity = dict(method="vanilla UseItemOn packet from isolated offline player",
+            minecraft_protocol_version=self.ready["version"],
+            helper_sha256=hashlib.sha256((ROOT/"tools/java_lever_client.cjs").read_bytes()).hexdigest())
+        self.index = 0
+
+    def read(self):
+        for line in self.process.stdout:
+            try:self.responses.put(json.loads(line))
+            except ValueError:self.responses.put(dict(event="error", message=line))
+
+    def receive(self, event):
+        response = self.responses.get(timeout=25)
+        if response["event"] != event:
+            raise RuntimeError(response)
+        return response
+
+    def click(self, pos, send):
+        self.index += 1
+        self.process.stdin.write(json.dumps(dict(op="prepare", id=self.index, pos=pos))+"\n")
+        self.process.stdin.flush()
+        self.receive("prepared")
+        send(f"tp InstantReference {pos[0]+0.5} {pos[1]+1.0} {pos[2]+1.5}")
+        return self.receive("sent")
+
+    def close(self):
+        if self.process.poll() is None:
+            self.process.stdin.write('{"op":"stop"}\n');self.process.stdin.flush()
+            try:self.process.wait(timeout=5)
+            except subprocess.TimeoutExpired:self.process.kill();self.process.wait(timeout=5)
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--server-jar", type=Path, required=True)
     parser.add_argument("--output-dir", type=Path, required=True)
     parser.add_argument("--fixture")
     parser.add_argument("--reference",type=Path,help="replay one frozen Java episode at its recorded origin")
+    parser.add_argument("--origin",help="diagnostic x,y,z origin override; requires --reference and records the changed setup")
     parser.add_argument("--java", default="java")
+    parser.add_argument("--pack-dir", type=Path, default=PACK)
+    parser.add_argument("--node", default="C:/Program Files/nodejs/node.exe")
     args = parser.parse_args()
     if args.output_dir.exists():
         parser.error("refusing existing output directory")
@@ -50,10 +95,13 @@ def main():
         parser.error("Java server SHA1 mismatch")
     server_sha256 = hashlib.sha256(jar.read_bytes()).hexdigest()
     reference=json.loads(gzip.decompress(args.reference.read_bytes())) if args.reference else None
+    diagnostic_origin = [int(v) for v in args.origin.split(",")] if args.origin else None
+    if diagnostic_origin and (len(diagnostic_origin) != 3 or not reference):
+        parser.error("--origin requires three coordinates and --reference")
     if reference:
         if reference["engine"]!="Java" or reference["server_sha256"]!=server_sha256 or reference["rotation"]!=0:
             parser.error("reference engine/binary/orientation mismatch")
-    manifests = [json.loads(p.read_text()) for p in sorted((PACK/"fixtures").glob("*.json"))]
+    manifests = [json.loads(p.read_text()) for p in sorted((args.pack_dir/"fixtures").glob("*.json"))]
     episodes = []
     for m in manifests:
         if args.fixture and m["id"] != args.fixture:
@@ -91,7 +139,7 @@ def main():
             if info["sha256"] != m["sha256"]:
                 raise ValueError("stale manifest")
             # New, never previously occupied chunk region per independent snapshot.
-            origin = reference["origin"] if reference else [128 + index*64, 40, 128]
+            origin = diagnostic_origin or (reference["origin"] if reference else [128 + index*64, 40, 128])
             def absolute(p):
                 return " ".join(str(a+b) for a, b in zip(origin, p))
             commands = [f"setblock {absolute(b['pos'])} {b['state']} strict" for b in info["nonair_cells"]]
@@ -101,7 +149,7 @@ def main():
                     d.pop(k, None)
                 commands.append(f"data merge block {absolute(e['Pos'])} {snbt(d)}")
             (functions/f"place_{index}.mcfunction").write_text("\n".join(commands)+"\n")
-            relevant = {tuple(b["pos"]) for b in info["nonair_cells"] if any(x in b["state"].split("[")[0] for x in ("piston", "observer", "redstone_wire", "torch", "repeater", "comparator", "lamp"))}
+            relevant = {tuple(b["pos"]) for b in info["nonair_cells"] if any(x in b["state"].split("[")[0] for x in ("piston", "observer", "redstone_wire", "torch", "repeater", "comparator", "lamp", "lever"))}
             if m["id"] == "adder_11bits":
                 relevant = {p for p in relevant if p[2] >= 37}  # detailed first two stages plus every output
             if m["id"] == "counter_basic":
@@ -127,7 +175,7 @@ def main():
                 states += [f"{b}[extended={v}]" for b in ("piston", "sticky_piston") for v in ("false", "true")]
                 states += [f"observer[powered={v}]" for v in ("false", "true")]
                 states += [f"redstone_wire[power={v}]" for v in range(16)]
-                states += [f"{b}[{prop}={v}]" for b,prop in (("redstone_torch","lit"),("redstone_wall_torch","lit"),("repeater","powered"),("comparator","powered"),("redstone_lamp","lit")) for v in ("false","true")]
+                states += [f"{b}[{prop}={v}]" for b,prop in (("redstone_torch","lit"),("redstone_wall_torch","lit"),("repeater","powered"),("comparator","powered"),("redstone_lamp","lit"),("lever","powered")) for v in ("false","true")]
                 for state in states:
                     commands.append(f"execute if block {coord} minecraft:{state} run data modify {target} set value {json.dumps(state)}")
                 for face in ("north", "south", "east", "west"):
@@ -140,6 +188,7 @@ def main():
         with logpath.open("w") as log:
             server = subprocess.Popen([args.java,"-Xmx4G","-Xms256M","-jar",str(jar),"nogui"],cwd=run,stdout=log,stderr=subprocess.STDOUT,creationflags=getattr(subprocess,"CREATE_NO_WINDOW",0))
             rcon = None
+            actor = None
             try:
                 deadline = time.monotonic()+120
                 while "Done (" not in logpath.read_text(errors="replace"):
@@ -150,6 +199,9 @@ def main():
                     time.sleep(.25)
                 rcon=Rcon()
                 rcon.request("tick freeze")
+                if any(op["op"]=="lever" for m,c in episodes for op in c["actions"]):
+                    actor=LeverClient(args.node, log)
+                    rcon.request("gamemode creative InstantReference")
                 args.output_dir.mkdir(parents=True)
                 for index,(m,c,origin,positions) in enumerate(specs):
                     dims=m["dimensions"]
@@ -160,7 +212,8 @@ def main():
                         return result
                     def absolute(p):
                         return " ".join(str(a+b) for a,b in zip(origin,p))
-                    send(f"forceload add {origin[0]-16} 112 {origin[0]+48} 176")
+                    load_z = [origin[2]-16, origin[2]+dims[2]+16] if diagnostic_origin else [112,176]
+                    send(f"forceload add {origin[0]-16} {load_z[0]} {origin[0]+48} {load_z[1]}")
                     for _ in range(4):rcon.step()
                     response=send(f"function piston_reference:place_{index}")
                     if "Running function" not in response:
@@ -181,6 +234,8 @@ def main():
                     sample("initial",0,0)
                     tick=0
                     ai=0
+                    info=inspect(ROOT/m["fixture"])
+                    lever_states={tuple(b["pos"]):"powered=true" in b["state"] for b in info["nonair_cells"] if b["state"].startswith("minecraft:lever")}
                     for ai,op in enumerate(c["actions"],1):
                         kind=op["op"]
                         if kind in ("wait","wait_ready"):
@@ -191,9 +246,27 @@ def main():
                         elif kind=="notify":
                             # Java normal setblock already delivered notifications at preparation.
                             commands.append({"MCHPRS_only_notification":op["pos"],"Java":"covered by preceding normal setblock"})
+                        elif kind=="lever":
+                            pos=tuple(op["pos"])
+                            if lever_states[pos]!=op["powered"]:
+                                absolute_pos=[a+b for a,b in zip(origin,pos)]
+                                interaction=actor.click(absolute_pos,send)
+                                commands.append(dict(player_interaction=interaction))
+                                deadline=time.monotonic()+3
+                                expected=str(op["powered"]).lower()
+                                while True:
+                                    response=send(f"execute if block {absolute(pos)} minecraft:lever[powered={expected}] run time query gametime")
+                                    if "The time is" in response:break
+                                    if time.monotonic()>deadline:raise RuntimeError("lever interaction not accepted: "+response)
+                                    time.sleep(.01)
+                                lever_states[pos]=op["powered"]
+                            else:commands.append(dict(held_lever_no_new_interaction=list(pos)))
                         else:
                             state="air" if kind=="destroy" else op["state"]
+                            if op.get("properties"):
+                                state+="["+",".join(k+"="+v for k,v in op["properties"].items())+"]"
                             send(f"setblock {absolute(op['pos'])} minecraft:{state}")
+                            if op.get("state")=="lever":lever_states[tuple(op["pos"])]=op["properties"]["powered"]=="true"
                         sample("after-action",ai,tick)
                     start=tick
                     for _ in range(c["ticks"]):
@@ -201,18 +274,21 @@ def main():
                     result=dict(schema_version=1,engine="Java",engine_version="1.21.5",server_sha1=SERVER_SHA1,server_sha256=server_sha256,
                                 fixture=m["fixture"],fixture_sha256=m["sha256"],case_id=c["id"],inputs=c["inputs"],origin=origin,rotation=0,
                                 coordinate_convention=m["coordinates"]["convention"],positions_local=positions,
-                                setup="isolated frozen void world; strict setblock saved states, data merge saved entities; unique region for every case; 4 chunk-load ticks before import; prepared data normal setblock then 8 measured game ticks",
+                                setup="isolated frozen void world; strict setblock saved states, data merge saved entities; unique region for every case; 4 chunk-load ticks before import; actual vanilla UseItemOn lever interactions; preparation wait_ready is 8 measured game ticks, not a Java queue-quiescence proof",
                                 protocol=m["protocol"],ordered_stimuli=c["actions"],commands=commands,samples=samples,start_tick=start,
                                 observation_projection="named ports and listed piston/head/payload/observer/dust/torch/consumer cells; dust strength; queued work and internal callback order unavailable in command-only Java capture",
                                 limits={"ticks":c["ticks"],"startup_seconds":120},termination="completed bounded response; no claim of settled state",
-                                capture_command=subprocess.list2cmdline(["py","tools/capture_instant_pistons_java.py","--server-jar",str(jar),"--output-dir",str(args.output_dir)]+(["--fixture",args.fixture]if args.fixture else [])+(["--reference",str(args.reference)]if args.reference else [])))
+                                control_driver=actor.identity if actor else None,
+                                capture_command=subprocess.list2cmdline(["py","tools/capture_instant_pistons_java.py","--server-jar",str(jar),"--output-dir",str(args.output_dir),"--pack-dir",str(args.pack_dir)]+(["--fixture",args.fixture]if args.fixture else [])+(["--reference",str(args.reference)]if args.reference else [])+(["--origin",args.origin]if args.origin else [])))
                     if reference:result["reproduced_reference"]=dict(path=str(args.reference),sha256=hashlib.sha256(args.reference.read_bytes()).hexdigest())
+                    if diagnostic_origin:result["diagnostic_origin_override"]=dict(previous=reference["origin"],actual=origin)
                     p=args.output_dir/f"java-{m['id']}-{c['id']}-r0.json.gz"
                     p.write_bytes(gzip.compress((json.dumps(result,sort_keys=True,separators=(",",":"))+"\n").encode(),mtime=0))
                     print("captured",p.name,flush=True)
-                    send(f"forceload remove {origin[0]-16} 112 {origin[0]+48} 176")
+                    send(f"forceload remove {origin[0]-16} {load_z[0]} {origin[0]+48} {load_z[1]}")
                 (args.output_dir/"server.log").write_bytes(logpath.read_bytes())
             finally:
+                if actor:actor.close()
                 if rcon:
                     try:rcon.request("stop")
                     except (OSError,ConnectionError):server.terminate()

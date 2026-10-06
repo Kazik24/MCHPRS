@@ -203,5 +203,507 @@
   "expected_status": "Arithmetic expectations require the declared polarity/width decoder; other functional claims remain measured projections.",
   "unknowns": [
     "First-wave logical projection and complete consumer waveform must be measured separately."
-  ]
+  ],
+  "evidence": {
+    "schema_version": 1,
+    "catalog": "docs/INSTANT_PISTON_IO_SCHEMATICS.md#not-1",
+    "authority": {
+      "author_intent": "ANSWERS.md plus supplied Data/Update/port signs",
+      "imported_state": "test_data/instant-pistons-io/inspection/not_1.json",
+      "observed_mchprs": "frozen traces, not independent Minecraft oracles",
+      "observed_java": "SHA-pinned vanilla 1.21.5 captures with real lever interactions",
+      "inferred_mechanism": "Historical NOT naming denotes trigger IN2 (0,2,14), upstream base T=(0,2,10), inhibited by IN1 (2,2,14), base I=(2,2,10). I's sandstone payload uncovers a lower powered connection when it retracts. Output base O=(1,2,5), repeater (1,2,1) and lamp (1,2,0) are new explicit boundary components. First-wave result is IN2 AND NOT IN1.",
+      "proposed_compiler_guard": "The supported condition is effective_inhibit before acceptance of O's retraction. The author allows equal-time firing and warns about extra delay pistons on the negating side. Redpiler may omit internal nanoticks for certified synchronized regions; it still needs the actual consumer adapter and reset contract."
+    },
+    "label_mappings": [
+      {
+        "sign_position": [
+          0,
+          3,
+          13
+        ],
+        "normalized": "IN2",
+        "original_text": {
+          "front_text": {
+            "original": [
+              {
+                "text": "IN2"
+              },
+              {
+                "text": ""
+              },
+              {
+                "text": ""
+              },
+              {
+                "text": ""
+              }
+            ],
+            "readable": [
+              "IN2",
+              "",
+              "",
+              ""
+            ]
+          },
+          "back_text": {
+            "original": [
+              {
+                "text": ""
+              },
+              {
+                "text": ""
+              },
+              {
+                "text": ""
+              },
+              {
+                "text": ""
+              }
+            ],
+            "readable": [
+              "",
+              "",
+              "",
+              ""
+            ]
+          },
+          "legacy": {
+            "original": [],
+            "readable": []
+          }
+        },
+        "candidates": [
+          {
+            "position": [
+              0,
+              2,
+              13
+            ],
+            "role": "geometric support candidate; not automatically a port"
+          },
+          {
+            "position": [
+              0,
+              2,
+              14
+            ],
+            "role": "IN2"
+          }
+        ],
+        "port_position": [
+          0,
+          2,
+          14
+        ],
+        "role": "IN2",
+        "evidence": "Reviewed input attachment/electrical path or consumer connection; independent port stimuli and watched geometry. Repeated O1 labels use physical Z spacing, not text index.",
+        "status": "resolved for declared episode"
+      },
+      {
+        "sign_position": [
+          1,
+          3,
+          0
+        ],
+        "normalized": "OUTPUT LAMP",
+        "original_text": {
+          "front_text": {
+            "original": [
+              {
+                "text": "OUTPUT LAMP"
+              },
+              {
+                "text": ""
+              },
+              {
+                "text": ""
+              },
+              {
+                "text": ""
+              }
+            ],
+            "readable": [
+              "OUTPUT LAMP",
+              "",
+              "",
+              ""
+            ]
+          },
+          "back_text": {
+            "original": [
+              {
+                "text": ""
+              },
+              {
+                "text": ""
+              },
+              {
+                "text": ""
+              },
+              {
+                "text": ""
+              }
+            ],
+            "readable": [
+              "",
+              "",
+              "",
+              ""
+            ]
+          },
+          "legacy": {
+            "original": [],
+            "readable": []
+          }
+        },
+        "candidates": [
+          {
+            "position": [
+              1,
+              2,
+              0
+            ],
+            "role": "geometric support candidate; not automatically a port"
+          },
+          {
+            "position": [
+              1,
+              2,
+              0
+            ],
+            "role": "lamp"
+          }
+        ],
+        "port_position": [
+          1,
+          2,
+          0
+        ],
+        "role": "lamp",
+        "evidence": "Reviewed input attachment/electrical path or consumer connection; independent port stimuli and watched geometry. Repeated O1 labels use physical Z spacing, not text index.",
+        "status": "resolved for declared episode"
+      },
+      {
+        "sign_position": [
+          2,
+          3,
+          13
+        ],
+        "normalized": "IN1",
+        "original_text": {
+          "front_text": {
+            "original": [
+              {
+                "text": "IN1"
+              },
+              {
+                "text": ""
+              },
+              {
+                "text": ""
+              },
+              {
+                "text": ""
+              }
+            ],
+            "readable": [
+              "IN1",
+              "",
+              "",
+              ""
+            ]
+          },
+          "back_text": {
+            "original": [
+              {
+                "text": ""
+              },
+              {
+                "text": ""
+              },
+              {
+                "text": ""
+              },
+              {
+                "text": ""
+              }
+            ],
+            "readable": [
+              "",
+              "",
+              "",
+              ""
+            ]
+          },
+          "legacy": {
+            "original": [],
+            "readable": []
+          }
+        },
+        "candidates": [
+          {
+            "position": [
+              2,
+              2,
+              13
+            ],
+            "role": "geometric support candidate; not automatically a port"
+          },
+          {
+            "position": [
+              2,
+              2,
+              14
+            ],
+            "role": "IN1"
+          }
+        ],
+        "port_position": [
+          2,
+          2,
+          14
+        ],
+        "role": "IN1",
+        "evidence": "Reviewed input attachment/electrical path or consumer connection; independent port stimuli and watched geometry. Repeated O1 labels use physical Z spacing, not text index.",
+        "status": "resolved for declared episode"
+      }
+    ],
+    "observation_decoder": {
+      "repeater": "unpowered=1 at first-wave boundary4",
+      "lamp": "dark=activation; first-wave boundary8",
+      "consumer_input": "falling-event wire, not a static permanent Boolean result"
+    },
+    "reset_and_next_use": "Both same-boundary source orders are measured. In events-11-21, T executes at tick 2/op 4 and enqueues O, I executes at op 5, and O executes at op 6 with restored power: it is not applied. Thus inhibitor movement need not precede target movement. Four rotations preserve the named consumer result. Delayed-input nanotick constructions were explicitly skipped for this revision.",
+    "initial_state": {
+      "source": "test_data/instant-pistons-io/inspection/not_1.json",
+      "scheduled": [],
+      "piston_events": [],
+      "active_motions": [],
+      "observed_ready": "Strict imported idle is unchanged and quiescent for 24 ticks; physical construction reachability is a separate claim"
+    },
+    "ordering": {
+      "supported_episode": "events-11-21",
+      "measured_operations": [
+        {
+          "tick": 2,
+          "phase": "ScheduledTicks",
+          "operation": 2,
+          "external_action": 2,
+          "event": "event_enqueue",
+          "piston_action": "Retract",
+          "actor": [
+            0,
+            2,
+            10
+          ]
+        },
+        {
+          "tick": 2,
+          "phase": "ScheduledTicks",
+          "operation": 3,
+          "external_action": 2,
+          "event": "event_enqueue",
+          "piston_action": "Retract",
+          "actor": [
+            2,
+            2,
+            10
+          ]
+        },
+        {
+          "tick": 2,
+          "phase": "PistonEvents",
+          "operation": 4,
+          "external_action": 2,
+          "event": "event_execute",
+          "piston_action": "Retract",
+          "actor": [
+            0,
+            2,
+            10
+          ]
+        },
+        {
+          "tick": 2,
+          "phase": "PistonEvents",
+          "operation": 4,
+          "external_action": 2,
+          "event": "event_enqueue",
+          "piston_action": "Retract",
+          "actor": [
+            1,
+            2,
+            5
+          ]
+        },
+        {
+          "tick": 2,
+          "phase": "PistonEvents",
+          "operation": 4,
+          "external_action": 2,
+          "event": "event_applied",
+          "piston_action": "Retract",
+          "actor": [
+            0,
+            2,
+            10
+          ]
+        },
+        {
+          "tick": 2,
+          "phase": "PistonEvents",
+          "operation": 5,
+          "external_action": 2,
+          "event": "event_execute",
+          "piston_action": "Retract",
+          "actor": [
+            2,
+            2,
+            10
+          ]
+        },
+        {
+          "tick": 2,
+          "phase": "PistonEvents",
+          "operation": 5,
+          "external_action": 2,
+          "event": "event_applied",
+          "piston_action": "Retract",
+          "actor": [
+            2,
+            2,
+            10
+          ]
+        },
+        {
+          "tick": 2,
+          "phase": "PistonEvents",
+          "operation": 6,
+          "external_action": 2,
+          "event": "event_execute",
+          "piston_action": "Retract",
+          "actor": [
+            1,
+            2,
+            5
+          ]
+        }
+      ],
+      "contract": "Certified synchronized physical family; compiled execution omits internal nanoticks. Logical data/sample dependencies and exposed reset/consumer timing remain.",
+      "requirements": "The supported condition is effective_inhibit before acceptance of O's retraction. The author allows equal-time firing and warns about extra delay pistons on the negating side. Redpiler may omit internal nanoticks for certified synchronized regions; it still needs the actual consumer adapter and reset contract."
+    },
+    "cases": [
+      {
+        "id": "saved-idle",
+        "artifacts": [
+          "test_data/instant-pistons-io/traces/java-not_1-saved-idle-r0.json.gz",
+          "test_data/instant-pistons-io/traces/mchprs-not_1-saved-idle-r0.json.gz",
+          "test_data/instant-pistons-io/traces/mchprs-not_1-saved-idle-r180.json.gz",
+          "test_data/instant-pistons-io/traces/mchprs-not_1-saved-idle-r270.json.gz",
+          "test_data/instant-pistons-io/traces/mchprs-not_1-saved-idle-r90.json.gz"
+        ],
+        "independent_status": [
+          {
+            "engine": "Java",
+            "rotation": 0,
+            "status": "match"
+          }
+        ],
+        "expected_status": "observed declared episode; not an invented Boolean oracle"
+      },
+      {
+        "id": "events-00-12",
+        "artifacts": [
+          "test_data/instant-pistons-io/traces/java-not_1-events-00-12-r0.json.gz",
+          "test_data/instant-pistons-io/traces/mchprs-not_1-events-00-12-r0.json.gz",
+          "test_data/instant-pistons-io/traces/mchprs-not_1-events-00-12-r180.json.gz",
+          "test_data/instant-pistons-io/traces/mchprs-not_1-events-00-12-r270.json.gz",
+          "test_data/instant-pistons-io/traces/mchprs-not_1-events-00-12-r90.json.gz"
+        ],
+        "independent_status": [
+          {
+            "engine": "Java",
+            "rotation": 0,
+            "status": "match"
+          }
+        ],
+        "expected_status": "observed declared episode; not an invented Boolean oracle"
+      },
+      {
+        "id": "events-10-12",
+        "artifacts": [
+          "test_data/instant-pistons-io/traces/java-not_1-events-10-12-r0.json.gz",
+          "test_data/instant-pistons-io/traces/mchprs-not_1-events-10-12-r0.json.gz",
+          "test_data/instant-pistons-io/traces/mchprs-not_1-events-10-12-r180.json.gz",
+          "test_data/instant-pistons-io/traces/mchprs-not_1-events-10-12-r270.json.gz",
+          "test_data/instant-pistons-io/traces/mchprs-not_1-events-10-12-r90.json.gz"
+        ],
+        "independent_status": [
+          {
+            "engine": "Java",
+            "rotation": 0,
+            "status": "match"
+          }
+        ],
+        "expected_status": "observed declared episode; not an invented Boolean oracle"
+      },
+      {
+        "id": "events-01-12",
+        "artifacts": [
+          "test_data/instant-pistons-io/traces/java-not_1-events-01-12-r0.json.gz",
+          "test_data/instant-pistons-io/traces/mchprs-not_1-events-01-12-r0.json.gz",
+          "test_data/instant-pistons-io/traces/mchprs-not_1-events-01-12-r180.json.gz",
+          "test_data/instant-pistons-io/traces/mchprs-not_1-events-01-12-r270.json.gz",
+          "test_data/instant-pistons-io/traces/mchprs-not_1-events-01-12-r90.json.gz"
+        ],
+        "independent_status": [
+          {
+            "engine": "Java",
+            "rotation": 0,
+            "status": "match"
+          }
+        ],
+        "expected_status": "observed declared episode; not an invented Boolean oracle"
+      },
+      {
+        "id": "events-11-12",
+        "artifacts": [
+          "test_data/instant-pistons-io/traces/java-not_1-events-11-12-r0.json.gz",
+          "test_data/instant-pistons-io/traces/mchprs-not_1-events-11-12-r0.json.gz",
+          "test_data/instant-pistons-io/traces/mchprs-not_1-events-11-12-r180.json.gz",
+          "test_data/instant-pistons-io/traces/mchprs-not_1-events-11-12-r270.json.gz",
+          "test_data/instant-pistons-io/traces/mchprs-not_1-events-11-12-r90.json.gz"
+        ],
+        "independent_status": [
+          {
+            "engine": "Java",
+            "rotation": 0,
+            "status": "match"
+          }
+        ],
+        "expected_status": "observed declared episode; not an invented Boolean oracle"
+      },
+      {
+        "id": "events-11-21",
+        "artifacts": [
+          "test_data/instant-pistons-io/traces/java-not_1-events-11-21-r0.json.gz",
+          "test_data/instant-pistons-io/traces/mchprs-not_1-events-11-21-r0.json.gz",
+          "test_data/instant-pistons-io/traces/mchprs-not_1-events-11-21-r180.json.gz",
+          "test_data/instant-pistons-io/traces/mchprs-not_1-events-11-21-r270.json.gz",
+          "test_data/instant-pistons-io/traces/mchprs-not_1-events-11-21-r90.json.gz"
+        ],
+        "independent_status": [
+          {
+            "engine": "Java",
+            "rotation": 0,
+            "status": "match"
+          }
+        ],
+        "expected_status": "observed declared episode; not an invented Boolean oracle"
+      }
+    ],
+    "status": "observed declared projections agree where independently captured",
+    "trace_index": "test_data/instant-pistons-io/trace-index.json"
+  }
 }

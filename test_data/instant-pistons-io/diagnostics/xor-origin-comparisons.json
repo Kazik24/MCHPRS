@@ -1,0 +1,39 @@
+{
+  "schema_version": 1,
+  "fixture_id": "xor_simple",
+  "comparisons": [
+    {
+      "case_id": "events-11-12",
+      "fixture_sha256": "e98f986b32d38c511690b2f781089c870cf44bb7b9c5d10f9bfd04478ba104a5",
+      "origin": [
+        40,
+        30,
+        40
+      ],
+      "mchprs": "test_data/instant-pistons-io/traces/mchprs-xor_simple-events-11-12-r0.json.gz",
+      "java": "test_data/instant-pistons-io/diagnostics/java-xor_simple-events-11-12-origin-40-30-40-v2.json.gz",
+      "java_artifact_sha256": "b133793f061c69d935b4ae4496e9472f490c112a490091c8cf8cc6deaa9ea161",
+      "status": "match",
+      "distinct_previous_reference": "test_data/instant-pistons-io/traces/java-xor_simple-events-11-12-r0.json.gz",
+      "classification": "Order12 agrees at aligned origin and differs from its Java high-origin capture. Order21 still differs at aligned origin. Spatial/order effects exist but do not explain every conformance difference; root cause unresolved.",
+      "limits": "First-wave XOR works. A location-independent complete reset contract and general runtime admission remain unverified."
+    },
+    {
+      "case_id": "events-11-21",
+      "fixture_sha256": "e98f986b32d38c511690b2f781089c870cf44bb7b9c5d10f9bfd04478ba104a5",
+      "origin": [
+        40,
+        30,
+        40
+      ],
+      "mchprs": "test_data/instant-pistons-io/traces/mchprs-xor_simple-events-11-21-r0.json.gz",
+      "java": "test_data/instant-pistons-io/diagnostics/java-xor_simple-events-11-21-origin-40-30-40-v2.json.gz",
+      "java_artifact_sha256": "6b19c91cc6e2394b66aaf90a1e5e85ff6995c7bb146c43ab9ea8b8bdfcedbf2e",
+      "status": "mismatch",
+      "distinct_previous_reference": "test_data/instant-pistons-io/traces/java-xor_simple-events-11-21-r0.json.gz",
+      "classification": "Order12 agrees at aligned origin and differs from its Java high-origin capture. Order21 still differs at aligned origin. Spatial/order effects exist but do not explain every conformance difference; root cause unresolved.",
+      "limits": "First-wave XOR works. A location-independent complete reset contract and general runtime admission remain unverified."
+    }
+  ],
+  "evidence": "Additional vanilla Java versions; original different-origin frozen captures remain unchanged."
+}

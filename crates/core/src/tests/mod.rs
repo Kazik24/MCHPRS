@@ -92,7 +92,9 @@ fn run_mandelbrot_chungus_compiled() {
     let mut compiler: Compiler = Default::default();
     let options = CompilerOptions::parse("-O");
     let bounds = plot.get_corners();
-    compiler.compile(&plot, bounds, options, Vec::new(), Default::default());
+    compiler
+        .compile(&plot, bounds, options, Vec::new(), Default::default())
+        .unwrap();
     compiler.on_use_block(CHUNGUS_START_BUTTON);
 
     for _ in 0..1000 * TICK_MUL {
@@ -118,7 +120,9 @@ fn run_mandelbrot_chungus_interpreted_to_compiled() {
     let options = CompilerOptions::parse("-O");
     let bounds = plot.get_corners();
     let ticks = plot.scheduler().iter_entries().collect();
-    compiler.compile(&plot, bounds, options, ticks, Default::default());
+    compiler
+        .compile(&plot, bounds, options, ticks, Default::default())
+        .unwrap();
 
     for _ in 0..1000 * TICK_MUL {
         compiler.tick();
@@ -169,7 +173,9 @@ fn run_mandelbrot_chungus_compiled_to_interpreted() {
     let mut compiler: Compiler = Default::default();
     let options = CompilerOptions::parse("-O");
     let bounds = plot.get_corners();
-    compiler.compile(&plot, bounds, options, Vec::new(), Default::default());
+    compiler
+        .compile(&plot, bounds, options, Vec::new(), Default::default())
+        .unwrap();
     compiler.on_use_block(CHUNGUS_START_BUTTON);
 
     for _ in 0..1000 * TICK_MUL {

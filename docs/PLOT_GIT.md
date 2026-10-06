@@ -189,16 +189,43 @@ git_marker_radius = 64
 git_session_seconds = 300
 ```
 
-Quotas count compressed objects, recoveries and repository metadata; every write
-checks database growth even when it reuses a snapshot. Global admission accounts
-for repository file sizes and staging headroom. Work memory
-uses conservative reservations for captures, decoded comparisons and retained
-sessions. The server-wide Git **RAM** workspace is capped at **1 GiB**, including
-retained comparisons; `git_work_memory_mib` can lower this cap, but values above
-1024 are clamped. This reservation budget is separate from rank disk quotas and
-is not a measurement of the server's total RAM usage. Quota rejection preserves existing
-history; history is never pruned automatically. Radius is capped at 128 blocks,
-marker count at 512, session duration at 10–3600 seconds. Operations whose
+Quotas count the complete persistent SQLite files, including compressed objects,
+recoveries, indexes and metadata. Database creation and every write share a
+global admission lock. SQLite's page limit prevents growth beyond the available
+plot/global allowance while writing, even when a commit reuses a snapshot.
+Quota rejection preserves existing history; history is never pruned automatically.
+An existing repository above a lowered quota remains readable, with further
+file growth blocked.
+
+The global default is **16 GiB of persistent Git history**, not a filesystem-wide
+limit. SQLite rollback journals and atomic ordinary plot-save staging files need
+additional temporary space. Database writers are serialized and journal mode
+is DELETE. Keep space outside the history quota for a journal up to the largest
+repository's size (plus page headers) and restore staging files. Two background
+workers handle commands; startup recovery also shares the RAM admission budget.
+Normal world saves and operator backups have separate disk requirements.
+
+The server-wide Git **RAM reservation budget** is capped at **1 GiB**, including
+queued captures, active operations, retained comparisons and repository caches.
+`git_work_memory_mib` can lower this cap; values above 1024 are clamped.
+Snapshot work reserves ten times the raw serialized size plus 32 MiB of scratch;
+each repository connection additionally reserves 4 MiB and uses small page caches
+with memory mapping disabled. These are conservative admissions, not a measurement
+or an operating-system limit on the server's total RAM. Loaded worlds, ordinary
+tick history and packet buffers have separate budgets.
+
+Execution fingerprints stream one tick/event/motion at a time and preserve the
+existing object hashes. Startup recovery drops its before snapshot before loading
+the target. Snapshot sizes are capped at 128 MiB even if configured higher;
+the shared RAM budget can reject smaller snapshots or comparisons before that
+size limit. Blob lengths are checked against their declared raw size before
+reading; chunk counts are checked before allocating decoded chunks.
+Block data is limited to 256 KiB per entity, and item NBT to 64 KiB, 4096 tags and
+64 nesting levels. An allocation-free NBT scan rejects impossible lengths before
+parsing. Unsafe existing snapshots are refused and retained on disk.
+
+Radius is capped at 128 blocks, marker count at 512, session duration at
+10–3600 seconds. Operations whose
 conservative memory reservations do not fit are rejected before replacing the
 plot or history.
 
