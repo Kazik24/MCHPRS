@@ -64,7 +64,7 @@ impl PowerDependencies {
     }
 }
 
-pub(super) struct Topology<'a, W: World> {
+pub(crate) struct Topology<'a, W: World> {
     pub world: &'a W,
     bounds: (BlockPos, BlockPos),
     monitor: &'a TaskMonitor,

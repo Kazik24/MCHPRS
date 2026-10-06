@@ -4,6 +4,7 @@
 //! physical circuit, and observing a falling edge never moves a piston.
 pub(crate) mod boolean;
 pub(crate) mod boundary;
+pub(crate) mod clocked;
 pub mod contract;
 pub(crate) mod logic;
 pub(crate) mod program;

@@ -17,6 +17,7 @@ pub(crate) enum Variable {
         order: usize,
     },
     Actuator(usize),
+    Memory(usize),
 }
 
 impl Ord for Variable {
@@ -35,6 +36,11 @@ impl Ord for Variable {
                 },
             ) => (ao, at, a.y, a.z, a.x).cmp(&(bo, bt, b.y, b.z, b.x)),
             (Self::Actuator(a), Self::Actuator(b)) => a.cmp(&b),
+            (Self::Memory(a), Self::Memory(b)) => a.cmp(&b),
+            (Self::Memory(_), Self::Actuator(_)) => Ordering::Less,
+            (Self::Actuator(_), Self::Memory(_)) => Ordering::Greater,
+            (Self::Signal { .. }, Self::Memory(_)) => Ordering::Less,
+            (Self::Memory(_), Self::Signal { .. }) => Ordering::Greater,
             (Self::Signal { .. }, Self::Actuator(_)) => Ordering::Less,
             (Self::Actuator(_), Self::Signal { .. }) => Ordering::Greater,
         }

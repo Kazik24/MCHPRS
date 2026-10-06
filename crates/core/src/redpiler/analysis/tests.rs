@@ -675,6 +675,369 @@ fn compiled_adder_matches_arithmetic_and_interpreted_repeater_waveforms() {
 }
 
 #[test]
+fn compiled_counter_matches_free_running_interpreted_outputs() {
+    for optimize in [false, true] {
+        for io_only in [false, true] {
+            let (mut interpreted, _, manifest) = fixture("counter_basic");
+            let (mut compiled, _, _) = fixture("counter_basic");
+            let mut compiler = Compiler::default();
+            compiler
+                .compile(
+                    &compiled,
+                    compiled.get_corners(),
+                    CompilerOptions {
+                        optimize,
+                        io_only,
+                        ..Default::default()
+                    },
+                    Vec::new(),
+                    Default::default(),
+                )
+                .unwrap();
+            for _ in 0..24 {
+                interpreted.tick_interpreted();
+                compiler.tick();
+                compiler.flush(&mut compiled);
+            }
+            let trigger = local_pos(&manifest["ports"]["inputs"]["trigger"]);
+            lever_action(&mut interpreted, trigger, true);
+            compiler.on_use_block(trigger);
+            compiler.flush(&mut compiled);
+            for tick in 1..=102 {
+                interpreted.tick_interpreted();
+                compiler.tick();
+                compiler.flush(&mut compiled);
+                for local in manifest["ports"]["observations"]["repeater"]
+                    .as_array()
+                    .unwrap()
+                {
+                    let pos = local_pos(local);
+                    assert_eq!(
+                        compiled.get_block(pos),
+                        interpreted.get_block(pos),
+                        "counter tick {tick}, pos {pos:?}, optimize={optimize} io={io_only}"
+                    );
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn extracted_counter_transition_matches_all_sixteen_bit_states() {
+    use crate::redpiler::instant::{boolean::Variable, clocked, logic};
+    let (world, _, manifest) = fixture("counter_basic");
+    let report = analyze_world(&world);
+    let program = clocked::recognize(&world, &report, &Default::default())
+        .unwrap()
+        .unwrap();
+    let logic = logic::extract_with_state(
+        &world,
+        &report,
+        &Default::default(),
+        program.memory.iter().map(|m| m.actor).collect(),
+        Some(program.clock),
+    )
+    .unwrap();
+    let ids: Vec<_> = manifest["ports"]["observations"]["memory"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|local| {
+            program
+                .memory
+                .iter()
+                .find(|m| m.base == local_pos(local))
+                .unwrap()
+                .actor
+        })
+        .collect();
+    assert_eq!(program.memory.len(), ids.len());
+    let mut bits = vec![false; report.pistons.len()];
+    for count in 0..=u16::MAX {
+        for (bit, &actor) in ids.iter().enumerate() {
+            bits[actor] = count & (1 << bit) != 0;
+        }
+        let mut next = 0u16;
+        for (bit, &actor) in ids.iter().enumerate() {
+            if logic.arena.evaluate(logic.responses[actor], |v| match v {
+                Variable::Signal { .. } => false,
+                Variable::Memory(actor) => bits[actor],
+                Variable::Actuator(_) => unreachable!(),
+            }) {
+                next |= 1 << bit;
+            }
+        }
+        assert_eq!(
+            next,
+            count.wrapping_add(1),
+            "counter transition from {count}"
+        );
+    }
+}
+
+#[test]
+fn clocked_counter_rejects_missing_sampling_extra_writers_and_exposed_clock() {
+    for mutation in ["sampling", "cap", "writer", "consumer"] {
+        let (mut world, bounds, _) = fixture("counter_basic");
+        let expected = match mutation {
+            "sampling" => {
+                world.set_block(BASE + BlockPos::new(3, 11, 19), Block::Air);
+                "independent sampling output"
+            }
+            "cap" => {
+                world.set_block(BASE + BlockPos::new(2, 13, 19), Block::Glass {});
+                "observer-clock generator"
+            }
+            "writer" => {
+                world.set_block(BASE + BlockPos::new(3, 10, 4), Block::Stone {});
+                world.set_block(
+                    BASE + BlockPos::new(3, 11, 4),
+                    Block::Lever {
+                        lever: mchprs_blocks::blocks::Lever::new(
+                            mchprs_blocks::blocks::LeverFace::Floor,
+                            mchprs_blocks::BlockDirection::East,
+                            false,
+                        ),
+                    },
+                );
+                "writer"
+            }
+            "consumer" => {
+                world.set_block(
+                    BASE + BlockPos::new(4, 12, 19),
+                    Block::RedstoneLamp { lit: false },
+                );
+                "ordinary consumer"
+            }
+            _ => unreachable!(),
+        };
+        let before = snapshot(&world, bounds);
+        let mut compiler = Compiler::default();
+        let error = compiler
+            .compile(
+                &world,
+                world.get_corners(),
+                Default::default(),
+                Vec::new(),
+                Default::default(),
+            )
+            .unwrap_err()
+            .to_string();
+        assert!(error.contains(expected), "{mutation}: {error}");
+        assert!(!compiler.is_active());
+        assert_eq!(snapshot(&world, bounds), before, "{mutation}");
+    }
+}
+
+#[test]
+fn compiled_counter_clock_and_storage_follow_rotated_translated_geometry() {
+    use mchprs_blocks::blocks::RotateAmt;
+    let (original, bounds, manifest) = fixture("counter_basic");
+    let width = bounds.1.x - bounds.0.x + 1;
+    let length = bounds.1.z - bounds.0.z + 1;
+    for rotation in [
+        RotateAmt::Rotate90,
+        RotateAmt::Rotate180,
+        RotateAmt::Rotate270,
+    ] {
+        let transform = |p: BlockPos| {
+            let (x, z) = match rotation {
+                RotateAmt::Rotate90 => (length - 1 - p.z, p.x),
+                RotateAmt::Rotate180 => (width - 1 - p.x, length - 1 - p.z),
+                RotateAmt::Rotate270 => (p.z, width - 1 - p.x),
+            };
+            BASE + BlockPos::new(x + 71, p.y + 20, z + 89)
+        };
+        let mut world = empty();
+        crate::world::for_each_block_optimized(&original, bounds.0, bounds.1, |pos| {
+            let mut block = original.get_block(pos);
+            if block == Block::Air {
+                return;
+            }
+            block.rotate(rotation);
+            let target = transform(pos - BASE);
+            world.set_block(target, block);
+            if let Some(entity) = original.get_block_entity(pos) {
+                world.set_block_entity(target, entity.clone());
+            }
+        });
+        let mut compiler = Compiler::default();
+        compiler
+            .compile(
+                &world,
+                world.get_corners(),
+                CompilerOptions {
+                    optimize: true,
+                    io_only: true,
+                    ..Default::default()
+                },
+                Vec::new(),
+                Default::default(),
+            )
+            .unwrap();
+        let trigger = transform(local_pos(&manifest["ports"]["inputs"]["trigger"]) - BASE);
+        compiler.on_use_block(trigger);
+        for tick in 1..=102 {
+            compiler.tick();
+            compiler.flush(&mut world);
+            if tick % 6 != 5 {
+                continue;
+            }
+            let mut value = 0u16;
+            for (bit, local) in manifest["ports"]["observations"]["repeater"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .enumerate()
+            {
+                let pos = transform(local_pos(local) - BASE);
+                if matches!(world.get_block(pos),Block::RedstoneRepeater {repeater} if !repeater.powered)
+                {
+                    value |= 1 << bit;
+                }
+            }
+            assert_eq!(value, (tick - 5) / 6, "counter {rotation:?} tick {tick}");
+        }
+    }
+}
+
+#[test]
+fn counter_handoff_preserves_stored_state_and_future_output_waves() {
+    for phase in [
+        0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 18, 24, 30, 48, 96, 102,
+    ] {
+        let (mut interpreted, _, manifest) = fixture("counter_basic");
+        let (mut compiled, _, _) = fixture("counter_basic");
+        let mut compiler = Compiler::default();
+        compiler
+            .compile(
+                &compiled,
+                compiled.get_corners(),
+                CompilerOptions {
+                    optimize: true,
+                    io_only: true,
+                    ..Default::default()
+                },
+                Vec::new(),
+                Default::default(),
+            )
+            .unwrap();
+        let trigger = local_pos(&manifest["ports"]["inputs"]["trigger"]);
+        lever_action(&mut interpreted, trigger, true);
+        compiler.on_use_block(trigger);
+        compiler.flush(&mut compiled);
+        for _ in 0..phase {
+            interpreted.tick_interpreted();
+            compiler.tick();
+            compiler.flush(&mut compiled);
+        }
+        compiler.reset(&mut compiled, interpreted.get_corners());
+        for tick in 1..=24 {
+            interpreted.tick_interpreted();
+            compiled.tick_interpreted();
+            for local in manifest["ports"]["observations"]["repeater"]
+                .as_array()
+                .unwrap()
+            {
+                let pos = local_pos(local);
+                assert_eq!(
+                    compiled.get_block(pos),
+                    interpreted.get_block(pos),
+                    "counter handoff phase {phase}, resumed {tick}, pos {pos:?}"
+                );
+            }
+            if (phase + tick) % 6 == 0 {
+                for local in manifest["ports"]["observations"]["memory"]
+                    .as_array()
+                    .unwrap()
+                {
+                    let pos = local_pos(local);
+                    assert_eq!(
+                        compiled.get_block(pos),
+                        interpreted.get_block(pos),
+                        "counter memory phase {phase}, resumed {tick}, pos {pos:?}"
+                    );
+                }
+            }
+        }
+    }
+}
+
+#[test]
+#[ignore = "long-running physical reference through all 65,536 counter states"]
+fn compiled_counter_matches_interpreter_through_high_carries_and_wrap() {
+    let (mut interpreted, _, manifest) = fixture("counter_basic");
+    let (mut compiled, _, _) = fixture("counter_basic");
+    let mut compiler = Compiler::default();
+    compiler
+        .compile(
+            &compiled,
+            compiled.get_corners(),
+            CompilerOptions {
+                optimize: true,
+                io_only: true,
+                ..Default::default()
+            },
+            Vec::new(),
+            Default::default(),
+        )
+        .unwrap();
+    let outputs: Vec<_> = manifest["ports"]["observations"]["repeater"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(local_pos)
+        .collect();
+    let memory: Vec<_> = manifest["ports"]["observations"]["memory"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(local_pos)
+        .collect();
+    let trigger = local_pos(&manifest["ports"]["inputs"]["trigger"]);
+    lever_action(&mut interpreted, trigger, true);
+    compiler.on_use_block(trigger);
+    for tick in 1..=6 * (u16::MAX as u32 + 1) + 6 {
+        interpreted.tick_interpreted();
+        compiler.tick();
+        compiler.flush(&mut compiled);
+        let mut result = 0u16;
+        for (bit, &pos) in outputs.iter().enumerate() {
+            let actual = compiled.get_block(pos);
+            assert_eq!(
+                actual,
+                interpreted.get_block(pos),
+                "counter tick {tick}, bit {bit}"
+            );
+            if matches!(actual,Block::RedstoneRepeater {repeater} if !repeater.powered) {
+                result |= 1 << bit;
+            }
+        }
+        if tick % 6 == 5 {
+            assert_eq!(
+                result,
+                ((tick - 5) / 6) as u16,
+                "published count at tick {tick}"
+            );
+        }
+        if tick % 6 == 0 {
+            let mut stored = 0u16;
+            for (bit, &pos) in memory.iter().enumerate() {
+                let Block::Piston { piston } = interpreted.get_block(pos) else {
+                    panic!("moving storage at {tick}");
+                };
+                stored |= u16::from(!piston.extended) << bit;
+            }
+            assert_eq!(stored, (tick / 6) as u16, "stored count at tick {tick}");
+            if tick % (6 * 4096) == 0 {
+                eprintln!("counter verified {} increments", tick / 6);
+            }
+        }
+    }
+}
+
+#[test]
 fn adder_handoff_preserves_outputs_in_every_response_and_reset_phase() {
     let (_, _, manifest) = fixture("adder_11bits");
     for case in manifest["cases"]

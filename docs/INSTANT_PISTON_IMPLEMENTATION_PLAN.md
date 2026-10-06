@@ -2,7 +2,7 @@
 
 Implement instant circuits as recognized subassemblies with graph ports, a Boolean computation function, and the small amount of protocol or clock state needed at their boundaries. Ordinary Redpiler components supply inputs and receive outputs. Compiled evaluation uses ideal internal synchronization and does not reproduce internal nanoticks, callback traversal, piston event FIFO, or piston animation. A recognized circuit may compute correctly when its physical Java/interpreter construction fails solely through nanotick misalignment.
 
-The read-only classifier, candidate graphs and first executable adder target are implemented. Normal `/rp compile` accepts the supported lever/repeater 11-bit adder without a new feature flag. Admission remains conditional on complete ownership, a ready entry state, a supported output protocol and interpreter handoff. BUD memory and counters are later stages with explicit stored state. PM1, ANPU, general piston mechanics and hybrid interpretation remain outside the first release.
+The read-only classifier, candidate graphs, executable 11-bit adder and shared-clock `COUNTER_BASIC` target are implemented. Normal `/rp compile` accepts their supported lever/repeater revisions without a new feature flag. Admission remains conditional on complete ownership, a ready entry state, a supported output protocol and interpreter handoff. Counter execution includes independently sampled BUD storage; standalone BUD adapters, additional clock families and general stop/restart remain later work. PM1, ANPU, general piston mechanics and hybrid interpretation remain outside the first release.
 
 This roadmap implements the [instant and BUD mathematical model](INSTANT_PISTON_REDPILER_MODEL.md), the [feature scope](INSTANT_REDPILLER.md), and the [author's clarifications](ANSWERS.md). Physical recognition follows [REDSTONE_MODEL.md](REDSTONE_MODEL.md); fixture behavior is recorded in the [schematic catalog](INSTANT_PISTON_SCHEMATICS.md) and [validation report](INSTANT_PISTON_VALIDATION.md). The [implemented pipeline](INSTANT_PISTON_RUNTIME.md) records the actual working-tree modules, limits, waveform, tests and commands as of 2026-10-06. Broader types and protocols below remain design proposals where the milestone explicitly says they are pending.
 
@@ -219,7 +219,7 @@ A fixture-terminal repeater needs an explicit observation root or a real downstr
 | M8 | Transactional activation of first supported circuits | M6, M7 and complete support report | Normal compile accepts supported scope |
 | M9 | Audited optimization and performance | M8 baseline | Decision simplification and flag comparisons implemented; benchmarks pending |
 | M10 | Adders, decoders, longer chains and wires | Required families/adapters and M8 | 11-bit adder accepted; 1-bit carry and other builds pending |
-| M11 | BUD storage and a supported counter | Standalone BUD contract, M10 interfaces and clock integration | Characterized fixtures; executable storage pending |
+| M11 | BUD storage and a supported counter | M10 interfaces and owned clock integration | COUNTER_BASIC/shared-clock storage implemented; standalone adapters and rearm pending |
 
 M1 through M5 can progress while new schematics are prepared. M0 does not block the classifier. Ordinary-input/repeater fixtures become an execution requirement at M6. Design restoration early so a family that cannot be restored is not promised as runnable.
 
@@ -369,6 +369,10 @@ Validate repeated arithmetic with the new rearm protocol, attenuation thresholds
 
 ### M11 Add BUD storage and counters
 
+**Implemented shared-clock scope:** [clocked.rs](../crates/core/src/redpiler/instant/clocked.rs) recognizes one empty ordinary observer-reset generator, its side sampling observer and independently updated downward BUD cells. Conditional geometry derives next-state functions from stored far/near occupancy; it does not replace the schematic with a predefined counter instruction. The supplied 16-bit bank's extracted functions pass all 65,536 increment states. Runtime samples the old bank together, updates storage in the owned sampling phase and publishes through existing output stages/repeater scheduling. Four optimize/I/O combinations match the recorded 102-tick physical response. Bounded handoff seeds stored state and replays the last two waves, reconstructing consumer dust omitted by optimization. Missing sampling, extra writers and exposed clock outputs reject transactionally. See the [actual protocol and manual counter test](INSTANT_PISTON_RUNTIME.md#clocked-storage-and-the-counter).
+
+The normal regression covers the captured release; the opt-in full-cycle Rust comparison passed all 65,536 increments, matching each tick's repeater states and checking high carries and wrap against the interpreter. That comparison is separate from the existing Java captures. Standalone BUD data/update adapters, multiple clocks, clear, stop/restart and arbitrary rearm histories remain separate acceptance requirements.
+
 Use a standalone BUD fixture to define initialization, independent power/update ports, polarity, sampling, validity and reuse. Implement `q_next = update ? decoded_data : q`. Data without an update retain storage; ordered samples and old/new memory reads remain explicit dependencies.
 
 Integrate memory with functions/coordinator and preserve it through optimization/materialization. Recognize the counter generator/bank, then define release and update cadence. Add clear/restart/high carry/wrap only when evidence establishes those contracts.
@@ -467,4 +471,4 @@ The original five foundation steps below have been delivered for the admitted co
 4. Add port resolution, source/consumer discovery and typed boundaries. Report BUD-like/delayed-inhibit cases without guessing executable semantics.
 5. Add region representation and pure evaluation, then graph integration behind tests. Validate tables/arithmetic independently of activation.
 
-The runnable 11-bit lever-to-repeater slice, graph bridges, observer adapter, reconstruction and transactional activation are now delivered. Continue with the 1-bit moving-wool carry consumer, additional reset/rearm protocols and benchmark evidence, then independent BUD storage and counter clocks. Each expansion needs its own boundary and continuation tests; whole-plot admission remains conservative.
+The runnable 11-bit lever-to-repeater slice and the shared-clock counter are delivered, including graph bridges, storage functions, output timing, reconstruction and transactional activation. Next work includes additional reset/rearm protocols, the 1-bit moving-wool carry consumer, standalone BUD data/update adapters, independent clock composition and benchmark evidence. Each expansion needs its own boundary and continuation tests; whole-plot admission remains conservative.

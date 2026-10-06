@@ -637,7 +637,7 @@ impl Plot {
                     return false;
                 }
             },
-            "/tps" | "/rtps" => {
+            "/tps" => {
                 if args == ["timings"] {
                     self.players[player].send_system_message(&self.update_timing_report());
                     return false;
@@ -684,12 +684,12 @@ impl Plot {
                 Ok(message) => self.players[player].send_system_message(&message),
                 Err(error) => self.players[player].send_error_message(&error),
             },
-            "/back" | "/rback" => {
+            "/back" => {
                 if let Err(error) = self.rewind_plot(player, &args) {
                     self.players[player].send_error_message(&error);
                 }
             }
-            "/adv" | "/radv" | "/radvance" => {
+            "/adv" => {
                 let (unit, ticks) =
                     match AdvanceUnit::parse(&args, crate::config::CONFIG.max_command_ticks) {
                         Ok(request) => request,
@@ -908,7 +908,7 @@ fn native_command_permission(command: &str, args: &[&str]) -> Option<String> {
         "/whitelist" => "whitelist".to_owned(),
         "/tellraw" => "tellraw".to_owned(),
         "/say" => "say".to_owned(),
-        "/tps" | "/rtps" => format!(
+        "/tps" => format!(
             "rtps.{}",
             if args.is_empty() || args == ["timings"] {
                 "view"
@@ -919,7 +919,7 @@ fn native_command_permission(command: &str, args: &[&str]) -> Option<String> {
         "/worldsendrate" | "/wsr" => format!("worldsendrate.{action}"),
         "/screenonly" => format!("screenonly.{action}"),
         "/piston_anim" | "/bisdon_anim" => format!("piston_anim.{action}"),
-        "/adv" | "/radv" | "/radvance" => "radvance".to_owned(),
+        "/adv" => "radvance".to_owned(),
         "/toggleautorp" => "toggleautorp".to_owned(),
         "/curse" => "curse".to_owned(),
         "/bless" => "bless".to_owned(),
@@ -941,11 +941,11 @@ fn native_command_permission(command: &str, args: &[&str]) -> Option<String> {
 
 fn changes_plot(command: &str, args: &[&str]) -> bool {
     match command {
-        "/tps" | "/rtps" => !args.is_empty() && args != ["timings"],
+        "/tps" => !args.is_empty() && args != ["timings"],
         "/worldsendrate" | "/wsr" | "/screenonly" | "/piston_anim" | "/bisdon_anim" => {
             !args.is_empty()
         }
-        "/adv" | "/radv" | "/radvance" | "/toggleautorp" | "/curse" | "/bless" => true,
+        "/adv" | "/toggleautorp" | "/curse" | "/bless" => true,
         "/redpiler" | "/rp" => !matches!(args.first().copied(), Some("inspect" | "i" | "analyze")),
         _ => false,
     }
@@ -961,291 +961,289 @@ pub static NO_COMMANDS: Lazy<PacketEncoder> = Lazy::new(|| {
 
 /// The `DeclareCommands` packet that is sent when the player joins.
 /// This is used for command autocomplete.
+fn declared_command_nodes() -> Vec<Node<'static>> {
+    vec![
+        // 0: Root Node
+        Node::root(&[
+            1, 4, 5, 6, 11, 12, 14, 16, 18, 19, 20, 21, 22, 23, 24, 26, 29, 31, 33, 35, 46, 48, 52,
+            59, 60, 62, 64, 65, 66, 70, 72, 73, 74, 81, 82, 84, 87, 89, 90, 100, 105, 110, 111,
+            112, 113, 114, 115, 117, 119, 120, 123, 130, 134, 135, 142, 143,
+        ]),
+        // 1: /teleport
+        Node::literal("teleport", &[2, 3]),
+        // 2: /teleport [x, y, z]
+        Node::argument("x, y, z", Parser::Vec3, &[]).executable(),
+        // 3: /teleport [player]
+        Node::argument("player", Parser::Entity(3), &[]).executable(),
+        // 4: /tp
+        Node::redirect("tp", 1),
+        // 5: /stop
+        Node::literal("stop", &[]).executable(),
+        // 6: /plot
+        Node::literal(
+            "plot",
+            &[
+                7, 8, 9, 10, 37, 38, 39, 40, 42, 43, 45, 57, 58, 79, 80, 124, 125, 126, 128,
+            ],
+        ),
+        // 7: /plot info
+        Node::literal("info", &[]).executable(),
+        // 8: /plot i
+        Node::redirect("i", 7),
+        // 9: /plot claim
+        Node::literal("claim", &[]).executable(),
+        // 10: /plot c
+        Node::redirect("c", 9),
+        // 11: /p
+        Node::redirect("p", 6),
+        // 12: /tps
+        Node::literal("tps", &[13, 116]).executable(),
+        // 13: /tps [tps]
+        Node::argument("tps", Parser::Integer(0, i32::MAX), &[]).executable(),
+        // 14: //pos1
+        Node::literal("/pos1", &[15]).executable(),
+        // 15: //pos1 [pos]
+        Node::argument("pos", Parser::BlockPos, &[]).executable(),
+        // 16: //pos2
+        Node::literal("/pos2", &[17]).executable(),
+        // 17: //pos2 [pos]
+        Node::argument("pos", Parser::BlockPos, &[]).executable(),
+        // 18: /1
+        Node::redirect("/1", 14),
+        // 19: /2
+        Node::redirect("/2", 16),
+        // 20: //copy
+        Node::literal("/copy", &[]).executable(),
+        // 21: //c
+        Node::redirect("/c", 20),
+        // 22: //paste
+        Node::literal("/paste", &[]).executable(),
+        // 23: //p
+        Node::redirect("/p", 22),
+        // 24: //set
+        Node::literal("/set", &[25]),
+        // 25: //set [block]
+        Node::argument("block", Parser::BlockState, &[]).executable(),
+        // 26: //replace
+        Node::literal("/replace", &[27]),
+        // 27: //replace [oldblock]
+        Node::argument("oldblock", Parser::BlockState, &[28]),
+        // 28: //replace [oldblock] [newblock]
+        Node::argument("newblock", Parser::BlockState, &[]).executable(),
+        // 29: /adv
+        Node::literal("adv", &[30, 75, 77]),
+        // 30: /adv [rticks]
+        Node::argument("rticks", Parser::Integer(0, 100000), &[]).executable(),
+        // 31: /speed
+        Node::literal("speed", &[32]),
+        // 32: /speed [speed]
+        Node::argument("speed", Parser::Float(0.0, 10.0), &[]).executable(),
+        // 33: //stack
+        Node::literal("/stack", &[34]).executable(),
+        // 34: //stack [amount]
+        Node::argument("amount", Parser::Integer(0, 256), &[]).executable(),
+        // 35: //undo
+        Node::literal("/undo", &[]).executable(),
+        // 36: //sel
+        Node::literal("/sel", &[]).executable(),
+        // 37: /p auto
+        Node::literal("auto", &[]).executable(),
+        // 38: /p a
+        Node::redirect("a", 9),
+        // 39: /p middle
+        Node::literal("middle", &[]).executable(),
+        // 40: /p visit
+        Node::literal("visit", &[41]),
+        // 41: /p visit [player]
+        Node::argument("player", Parser::Entity(3), &[]).executable(),
+        // 42: /p v
+        Node::redirect("v", 40),
+        // 43: /p teleport
+        Node::literal("teleport", &[44]),
+        // 44: /p teleport [x, z]
+        Node::argument("x, z", Parser::Vec2, &[]).executable(),
+        // 45: /p tp
+        Node::redirect("tp", 43),
+        // 46: //shift
+        Node::literal("/shift", &[34]).executable(),
+        // 47: //shift [amount]
+        Node::argument("amount", Parser::Integer(0, 256), &[]).executable(),
+        // 48: /whitelist
+        Node::literal("whitelist", &[49, 50]),
+        // 49: /whitelist add
+        Node::literal("add", &[51]),
+        // 50: /whitelist remove
+        Node::literal("remove", &[51]),
+        // 51: /whitelist add|remove [username]
+        Node::argument("username", Parser::Entity(3), &[]).executable(),
+        // 52-56: /container <type> <power>
+        Node::literal("container", &[53, 54, 55]),
+        Node::argument("type", Parser::String(0), &[56]).suggestions("minecraft:ask_server"),
+        // Preserve the existing literal alternatives and their node indices.
+        Node::literal("hopper", &[56]),
+        Node::literal("furnace", &[56]),
+        Node::argument("power", Parser::String(0), &[])
+            .executable()
+            .suggestions("minecraft:ask_server"),
+        // 57: /plot lock
+        Node::literal("lock", &[]).executable(),
+        // 58: /plot unlock
+        Node::literal("unlock", &[]).executable(),
+        // 59: //wand
+        Node::literal("/wand", &[]).executable(),
+        // 60: //save
+        Node::literal("/save", &[61]),
+        // 61: //save [filename]
+        Node::argument("filename", Parser::String(0), &[]).executable(),
+        // 62: //load
+        Node::literal("/load", &[63]),
+        // 63: //load [filename]
+        Node::argument("filename", Parser::String(0), &[])
+            .executable()
+            .suggestions("minecraft:ask_server"),
+        // 64: /toggleautorp
+        Node::literal("toggleautorp", &[]).executable(),
+        // 65: /redpiler
+        Node::literal("redpiler", &[67, 68, 69, 131]),
+        // 66: /rp
+        Node::redirect("rp", 65),
+        // 67: /redpiler compile
+        Node::literal("compile", &[]).executable(),
+        // 68: /redpiler inspect
+        Node::literal("inspect", &[]).executable(),
+        // 69: /redpiler reset
+        Node::literal("reset", &[]).executable(),
+        // 70: /worldsendrate
+        Node::literal("worldsendrate", &[71]).executable(),
+        // 71: /worldsendrate [rticks]
+        Node::argument("hertz", Parser::Integer(0, 1000), &[]).executable(),
+        // 72: /wsr
+        Node::redirect("wsr", 70),
+        // 73: /curse
+        Node::literal("curse", &[]),
+        // 74: /bless
+        Node::literal("bless", &[]),
+        // 75: /adv nano
+        Node::literal("nano", &[76]),
+        // 76: /adv nano [nticks]
+        Node::argument("nticks", Parser::Integer(0, 100000), &[]).executable(),
+        // 77: /adv pico
+        Node::literal("pico", &[78]),
+        // 78: /adv pico [pticks]
+        Node::argument("pticks", Parser::Integer(0, 100000), &[]).executable(),
+        // 79: /plot select
+        Node::literal("select", &[]).executable(),
+        // 80: /plot sel
+        Node::redirect("sel", 79),
+        // 81: /version
+        Node::literal("version", &[]).executable(),
+        // 82–86: /say <message>, /tellraw <targets> <JSON text>
+        Node::literal("say", &[83]),
+        Node::argument("message", Parser::String(2), &[]).executable(),
+        Node::literal("tellraw", &[85]),
+        Node::argument("targets", Parser::Entity(2), &[86]),
+        Node::argument("message", Parser::String(2), &[]).executable(),
+        // 87–89: animation preference and alias
+        Node::literal("piston_anim", &[88]).executable(),
+        Node::argument("mode", Parser::String(0), &[]).executable(),
+        Node::redirect("bisdon_anim", 87).executable(),
+        // 90–99: /help and its topic suggestions
+        Node::literal("help", &[91, 92, 93, 94, 95, 96, 97, 98, 99]).executable(),
+        Node::argument("topic", Parser::String(0), &[]).executable(),
+        Node::literal("plots", &[]).executable(),
+        Node::literal("tps", &[]).executable(),
+        Node::literal("we", &[]).executable(),
+        Node::literal("schematics", &[]).executable(),
+        Node::literal("pistons", &[]).executable(),
+        Node::literal("rewind", &[]).executable(),
+        Node::literal("chat", &[]).executable(),
+        Node::literal("redpiler", &[]).executable(),
+        // 100–106: tick history and whole-game-tick rewind
+        Node::literal("rhistory", &[101, 103, 104, 107]).executable(),
+        Node::literal("on", &[102]).executable(),
+        Node::argument(
+            messages::ADV_GAME_TICKS_LABEL,
+            Parser::Integer(1, i32::MAX),
+            &[],
+        )
+        .executable(),
+        Node::literal("off", &[]).executable(),
+        Node::literal("status", &[]).executable(),
+        Node::literal("back", &[106]).executable(),
+        Node::argument(
+            messages::ADV_GAME_TICKS_LABEL,
+            Parser::Integer(1, i32::MAX),
+            &[],
+        )
+        .executable(),
+        // 107–108: server history memory limit, in MiB
+        Node::literal("limit", &[108]).executable(),
+        Node::argument("MiB", Parser::Integer(0, i32::MAX), &[]).executable(),
+        // 109: flexible tool arguments, validated by the command handler
+        Node::argument("arguments", Parser::String(2), &[])
+            .executable()
+            .suggestions("minecraft:ask_server"),
+        // 110: //find
+        Node::literal("/find", &[109]).executable(),
+        // 111: //signsearch
+        Node::literal("/signsearch", &[109]).executable(),
+        // 112: //ss
+        Node::literal("/ss", &[109]).executable(),
+        // 113: //rstack
+        Node::literal("/rstack", &[109]).executable(),
+        // 114: //rs
+        Node::literal("/rs", &[109]).executable(),
+        // 115: /cursel
+        Node::literal("cursel", &[109]).executable(),
+        // 116: /tps timings
+        Node::literal("timings", &[]).executable(),
+        // 117: //update
+        Node::literal("/update", &[118]).executable(),
+        // 118: //update -p
+        Node::literal("-p", &[]).executable(),
+        // 119: //invalidatecaches
+        Node::literal("/invalidatecaches", &[]).executable(),
+        // 120-122: /screenonly [on|off]
+        Node::literal("screenonly", &[121, 122]).executable(),
+        Node::literal("on", &[]).executable(),
+        Node::literal("off", &[]).executable(),
+        // 123: /autostack
+        Node::literal("autostack", &[109]).executable(),
+        // 124-129: /p home, /p h, /p add <nick>, /p remove <nick>.
+        Node::literal("home", &[]).executable(),
+        Node::redirect("h", 124),
+        Node::literal("add", &[127]),
+        Node::argument("nick", Parser::String(0), &[])
+            .executable()
+            .suggestions("minecraft:ask_server"),
+        Node::literal("remove", &[129]),
+        Node::argument("nick", Parser::String(0), &[])
+            .executable()
+            .suggestions("minecraft:ask_server"),
+        // 130: /git uses the existing greedy, server-completed arguments node.
+        Node::literal("git", &[109]).executable(),
+        // 131: /redpiler analyze
+        Node::literal("analyze", &[132]).executable(),
+        // 132-133: read-only graph preparation and ordinary optimization flags.
+        Node::literal("--graph", &[133]).executable(),
+        Node::argument("options", Parser::String(2), &[]).executable(),
+        // 134-143: gamemode alias, names, IDs and legacy shortcuts.
+        Node::redirect("gm", 135),
+        Node::literal("gamemode", &[136, 137, 138, 139, 140, 141]),
+        Node::literal("creative", &[]).executable(),
+        Node::literal("adventure", &[]).executable(),
+        Node::literal("spectator", &[]).executable(),
+        Node::literal("1", &[]).executable(),
+        Node::literal("2", &[]).executable(),
+        Node::literal("3", &[]).executable(),
+        Node::literal("gmc", &[]).executable(),
+        Node::literal("gmsp", &[]).executable(),
+    ]
+}
+
 pub static DECLARE_COMMANDS: Lazy<PacketEncoder> = Lazy::new(|| {
     CDeclareCommands {
-        nodes: &[
-            // 0: Root Node
-            Node::root(&[
-                1, 4, 5, 6, 11, 12, 14, 16, 18, 19, 20, 21, 22, 23, 24, 26, 29, 31, 32, 34, 36, 47,
-                49, 53, 60, 61, 63, 65, 66, 67, 71, 73, 74, 75, 82, 83, 85, 88, 90, 91, 101, 106,
-                111, 112, 113, 114, 115, 116, 118, 120, 121, 124, 125, 126, 127, 134, 138, 139, 146, 147,
-            ]),
-            // 1: /teleport
-            Node::literal("teleport", &[2, 3]),
-            // 2: /teleport [x, y, z]
-            Node::argument("x, y, z", Parser::Vec3, &[]).executable(),
-            // 3: /teleport [player]
-            Node::argument("player", Parser::Entity(3), &[]).executable(),
-            // 4: /tp
-            Node::redirect("tp", 1),
-            // 5: /stop
-            Node::literal("stop", &[]).executable(),
-            // 6: /plot
-            Node::literal(
-                "plot",
-                &[
-                    7, 8, 9, 10, 38, 39, 40, 41, 43, 44, 46, 58, 59, 80, 81, 128, 129, 130, 132,
-                ],
-            ),
-            // 7: /plot info
-            Node::literal("info", &[]).executable(),
-            // 8: /plot i
-            Node::redirect("i", 7),
-            // 9: /plot claim
-            Node::literal("claim", &[]).executable(),
-            // 10: /plot c
-            Node::redirect("c", 9),
-            // 11: /p
-            Node::redirect("p", 6),
-            // 12: /tps
-            Node::literal("tps", &[13, 117]).executable(),
-            // 13: /tps [tps]
-            Node::argument("tps", Parser::Integer(0, i32::MAX), &[]).executable(),
-            // 14: //pos1
-            Node::literal("/pos1", &[15]).executable(),
-            // 15: //pos1 [pos]
-            Node::argument("pos", Parser::BlockPos, &[]).executable(),
-            // 16: //pos2
-            Node::literal("/pos2", &[17]).executable(),
-            // 17: //pos2 [pos]
-            Node::argument("pos", Parser::BlockPos, &[]).executable(),
-            // 18: /1
-            Node::redirect("/1", 14),
-            // 19: /2
-            Node::redirect("/2", 16),
-            // 20: //copy
-            Node::literal("/copy", &[]).executable(),
-            // 21: //c
-            Node::redirect("/c", 20),
-            // 22: //paste
-            Node::literal("/paste", &[]).executable(),
-            // 23: //p
-            Node::redirect("/p", 22),
-            // 24: //set
-            Node::literal("/set", &[25]),
-            // 25: //set [block]
-            Node::argument("block", Parser::BlockState, &[]).executable(),
-            // 26: //replace
-            Node::literal("/replace", &[27]),
-            // 27: //replace [oldblock]
-            Node::argument("oldblock", Parser::BlockState, &[28]),
-            // 28: //replace [oldblock] [newblock]
-            Node::argument("newblock", Parser::BlockState, &[]).executable(),
-            // 29: /adv
-            Node::literal("adv", &[30, 76, 78]),
-            // 30: /adv [rticks]
-            Node::argument("rticks", Parser::Integer(0, 100000), &[]).executable(),
-            // 31: /radv
-            Node::redirect("radv", 29),
-            // 32: /speed
-            Node::literal("speed", &[33]),
-            // 33: /speed [speed]
-            Node::argument("speed", Parser::Float(0.0, 10.0), &[]).executable(),
-            // 34: //stack
-            Node::literal("/stack", &[35]).executable(),
-            // 35: //stack [amount]
-            Node::argument("amount", Parser::Integer(0, 256), &[]).executable(),
-            // 36: //undo
-            Node::literal("/undo", &[]).executable(),
-            // 37: //sel
-            Node::literal("/sel", &[]).executable(),
-            // 38: /p auto
-            Node::literal("auto", &[]).executable(),
-            // 39: /p a
-            Node::redirect("a", 9),
-            // 40: /p middle
-            Node::literal("middle", &[]).executable(),
-            // 41: /p visit
-            Node::literal("visit", &[42]),
-            // 42: /p visit [player]
-            Node::argument("player", Parser::Entity(3), &[]).executable(),
-            // 43: /p v
-            Node::redirect("v", 41),
-            // 44: /p teleport
-            Node::literal("teleport", &[45]),
-            // 45: /p teleport [x, z]
-            Node::argument("x, z", Parser::Vec2, &[]).executable(),
-            // 46: /p tp
-            Node::redirect("tp", 44),
-            // 47: //shift
-            Node::literal("/shift", &[35]).executable(),
-            // 48: //shift [amount]
-            Node::argument("amount", Parser::Integer(0, 256), &[]).executable(),
-            // 49: /whitelist
-            Node::literal("whitelist", &[50, 51]),
-            // 50: /whitelist add
-            Node::literal("add", &[52]),
-            // 51: /whitelist remove
-            Node::literal("remove", &[52]),
-            // 52: /whitelist add|remove [username]
-            Node::argument("username", Parser::Entity(3), &[]).executable(),
-            // 53-57: /container <type> <power>
-            Node::literal("container", &[54, 55, 56]),
-            Node::argument("type", Parser::String(0), &[57]).suggestions("minecraft:ask_server"),
-            // Preserve the existing literal alternatives and their node indices.
-            Node::literal("hopper", &[57]),
-            Node::literal("furnace", &[57]),
-            Node::argument("power", Parser::String(0), &[])
-                .executable()
-                .suggestions("minecraft:ask_server"),
-            // 58: /plot lock
-            Node::literal("lock", &[]).executable(),
-            // 59: /plot unlock
-            Node::literal("unlock", &[]).executable(),
-            // 60: //wand
-            Node::literal("/wand", &[]).executable(),
-            // 61: //save
-            Node::literal("/save", &[62]),
-            // 62: //save [filename]
-            Node::argument("filename", Parser::String(0), &[]).executable(),
-            // 63: //load
-            Node::literal("/load", &[64]),
-            // 64: //load [filename]
-            Node::argument("filename", Parser::String(0), &[])
-                .executable()
-                .suggestions("minecraft:ask_server"),
-            // 65: /toggleautorp
-            Node::literal("toggleautorp", &[]).executable(),
-            // 66: /redpiler
-            Node::literal("redpiler", &[68, 69, 70, 135]),
-            // 67: /rp
-            Node::redirect("rp", 66),
-            // 68: /redpiler compile
-            Node::literal("compile", &[]).executable(),
-            // 69: /redpiler inspect
-            Node::literal("inspect", &[]).executable(),
-            // 70: /redpiler reset
-            Node::literal("reset", &[]).executable(),
-            // 71: /worldsendrate
-            Node::literal("worldsendrate", &[72]).executable(),
-            // 72: /worldsendrate [rticks]
-            Node::argument("hertz", Parser::Integer(0, 1000), &[]).executable(),
-            // 73: /wsr
-            Node::redirect("wsr", 71),
-            // 74: /curse
-            Node::literal("curse", &[]),
-            // 75: /bless
-            Node::literal("bless", &[]),
-            // 76: /adv nano
-            Node::literal("nano", &[77]),
-            // 77: /adv nano [nticks]
-            Node::argument("nticks", Parser::Integer(0, 100000), &[]).executable(),
-            // 78: /adv pico
-            Node::literal("pico", &[79]),
-            // 79: /adv pico [pticks]
-            Node::argument("pticks", Parser::Integer(0, 100000), &[]).executable(),
-            // 80: /plot select
-            Node::literal("select", &[]).executable(),
-            // 81: /plot sel
-            Node::redirect("sel", 80),
-            // 82: /version
-            Node::literal("version", &[]).executable(),
-            // 83–87: /say <message>, /tellraw <targets> <JSON text>
-            Node::literal("say", &[84]),
-            Node::argument("message", Parser::String(2), &[]).executable(),
-            Node::literal("tellraw", &[86]),
-            Node::argument("targets", Parser::Entity(2), &[87]),
-            Node::argument("message", Parser::String(2), &[]).executable(),
-            // 88–90: animation preference and alias
-            Node::literal("piston_anim", &[89]).executable(),
-            Node::argument("mode", Parser::String(0), &[]).executable(),
-            Node::redirect("bisdon_anim", 88).executable(),
-            // 91–100: /help and its topic suggestions
-            Node::literal("help", &[92, 93, 94, 95, 96, 97, 98, 99, 100]).executable(),
-            Node::argument("topic", Parser::String(0), &[]).executable(),
-            Node::literal("plots", &[]).executable(),
-            Node::literal("tps", &[]).executable(),
-            Node::literal("we", &[]).executable(),
-            Node::literal("schematics", &[]).executable(),
-            Node::literal("pistons", &[]).executable(),
-            Node::literal("rewind", &[]).executable(),
-            Node::literal("chat", &[]).executable(),
-            Node::literal("redpiler", &[]).executable(),
-            // 101–107: tick history and whole-game-tick rewind
-            Node::literal("rhistory", &[102, 104, 105, 108]).executable(),
-            Node::literal("on", &[103]).executable(),
-            Node::argument(
-                messages::ADV_GAME_TICKS_LABEL,
-                Parser::Integer(1, i32::MAX),
-                &[],
-            )
-            .executable(),
-            Node::literal("off", &[]).executable(),
-            Node::literal("status", &[]).executable(),
-            Node::literal("back", &[107]).executable(),
-            Node::argument(
-                messages::ADV_GAME_TICKS_LABEL,
-                Parser::Integer(1, i32::MAX),
-                &[],
-            )
-            .executable(),
-            // 108–109: server history memory limit, in MiB
-            Node::literal("limit", &[109]).executable(),
-            Node::argument("MiB", Parser::Integer(0, i32::MAX), &[]).executable(),
-            // 110: flexible tool arguments, validated by the command handler
-            Node::argument("arguments", Parser::String(2), &[])
-                .executable()
-                .suggestions("minecraft:ask_server"),
-            // 111: //find
-            Node::literal("/find", &[110]).executable(),
-            // 112: //signsearch
-            Node::literal("/signsearch", &[110]).executable(),
-            // 113: //ss
-            Node::literal("/ss", &[110]).executable(),
-            // 114: //rstack
-            Node::literal("/rstack", &[110]).executable(),
-            // 115: //rs
-            Node::literal("/rs", &[110]).executable(),
-            // 116: /cursel
-            Node::literal("cursel", &[110]).executable(),
-            // 117: /tps timings
-            Node::literal("timings", &[]).executable(),
-            // 118: //update
-            Node::literal("/update", &[119]).executable(),
-            // 119: //update -p
-            Node::literal("-p", &[]).executable(),
-            // 120: //invalidatecaches
-            Node::literal("/invalidatecaches", &[]).executable(),
-            // 121-123: /screenonly [on|off]
-            Node::literal("screenonly", &[122, 123]).executable(),
-            Node::literal("on", &[]).executable(),
-            Node::literal("off", &[]).executable(),
-            // 124: /autostack
-            Node::literal("autostack", &[110]).executable(),
-            // 125-127: legacy aliases for /tps, /adv and /back.
-            Node::redirect("rtps", 12).executable(),
-            Node::redirect("radvance", 29),
-            Node::redirect("rback", 106).executable(),
-            // 128-133: /p home, /p h, /p add <nick>, /p remove <nick>.
-            Node::literal("home", &[]).executable(),
-            Node::redirect("h", 128),
-            Node::literal("add", &[131]),
-            Node::argument("nick", Parser::String(0), &[])
-                .executable()
-                .suggestions("minecraft:ask_server"),
-            Node::literal("remove", &[133]),
-            Node::argument("nick", Parser::String(0), &[])
-                .executable()
-                .suggestions("minecraft:ask_server"),
-            // 134: /git uses the existing greedy, server-completed arguments node.
-            Node::literal("git", &[110]).executable(),
-            // 135: /redpiler analyze
-            Node::literal("analyze", &[136]).executable(),
-            // 136-137: read-only graph preparation and ordinary optimization flags.
-            Node::literal("--graph", &[137]).executable(),
-            Node::argument("options", Parser::String(2), &[]).executable(),
-            // 138-147: gamemode alias, names, IDs and legacy shortcuts.
-            Node::redirect("gm", 139),
-            Node::literal("gamemode", &[140, 141, 142, 143, 144, 145]),
-            Node::literal("creative", &[]).executable(),
-            Node::literal("adventure", &[]).executable(),
-            Node::literal("spectator", &[]).executable(),
-            Node::literal("1", &[]).executable(),
-            Node::literal("2", &[]).executable(),
-            Node::literal("3", &[]).executable(),
-            Node::literal("gmc", &[]).executable(),
-            Node::literal("gmsp", &[]).executable(),
-        ],
+        nodes: &declared_command_nodes(),
         root_index: 0,
     }
     .encode()
@@ -1255,72 +1253,41 @@ pub static DECLARE_COMMANDS: Lazy<PacketEncoder> = Lazy::new(|| {
 mod security_tests {
     use super::*;
     #[test]
-    fn command_declarations_preserve_original_wire_bytes() {
-        // Remove the Git and analysis additions, then verify all preexisting
-        // flags, parsers, aliases and edges still have identical wire bytes.
-        use mchprs_network::packets::{PacketDecoderExt, PacketEncoderExt};
-        use std::io::Cursor;
-        let mut cursor = Cursor::new(&DECLARE_COMMANDS.buffer);
-        assert_eq!(cursor.read_varint().unwrap(), 148);
-        assert_eq!(cursor.read_byte().unwrap(), 0);
-        let children = cursor.read_varint().unwrap();
-        let mut edges = Vec::new();
-        for _ in 0..children {
-            edges.push(cursor.read_varint().unwrap());
+    fn command_declarations_have_valid_edges_and_no_legacy_tick_aliases() {
+        let nodes = declared_command_nodes();
+        assert_eq!(nodes.len(), 144);
+        for node in &nodes {
+            for edge in node.children.iter().copied().chain(node.redirect_node) {
+                assert!(edge >= 0 && (edge as usize) < nodes.len());
+            }
         }
-        for expected in [147, 146, 139, 138, 134] {
-            assert_eq!(edges.pop(), Some(expected));
+        let names: Vec<_> = nodes[0]
+            .children
+            .iter()
+            .filter_map(|index| nodes[*index as usize].name)
+            .collect();
+        for removed in ["rtps", "radv", "radvance", "rback"] {
+            assert!(!nodes.iter().any(|node| node.name == Some(removed)));
+            let command = format!("/{removed}");
+            assert!(native_command_permission(&command, &["1"]).is_none());
+            assert!(!changes_plot(&command, &["1"]));
         }
-        let rest = cursor.position() as usize;
-        let git_node = [5, 1, 110, 3, b'g', b'i', b't'];
-        let analyze_node = [5, 1, 0x88, 1, 7, b'a', b'n', b'a', b'l', b'y', b'z', b'e'];
-        let analyze_start = DECLARE_COMMANDS
-            .buffer
-            .windows(analyze_node.len())
-            .position(|bytes| bytes == analyze_node)
-            .unwrap();
+        for retained in ["tps", "adv", "back", "rhistory", "redpiler", "rp", "gm"] {
+            assert!(names.contains(&retained), "missing command {retained}");
+        }
+        for (alias, target) in [("rp", "redpiler"), ("gm", "gamemode"), ("tp", "teleport")] {
+            let node = nodes.iter().find(|node| node.name == Some(alias)).unwrap();
+            assert_eq!(
+                nodes[node.redirect_node.unwrap() as usize].name,
+                Some(target)
+            );
+        }
+        assert_eq!(NO_COMMANDS.packet_id, 0x10);
         assert_eq!(
-            &DECLARE_COMMANDS.buffer[analyze_start..analyze_start + analyze_node.len()],
-            &analyze_node
+            format!("{:x}", md5::compute(&NO_COMMANDS.buffer)),
+            "4352d88a78aa39750bf70cd6f27bcaa5"
         );
-        let end = analyze_start - git_node.len();
-        assert_eq!(
-            &DECLARE_COMMANDS.buffer[end..end + git_node.len()],
-            &git_node
-        );
-        let mut original = Vec::new();
-        original.write_varint(134);
-        original.push(0);
-        original.write_varint(children - 5);
-        for edge in edges {
-            original.write_varint(edge);
-        }
-        original.extend_from_slice(&DECLARE_COMMANDS.buffer[rest..end]);
-        original.push(0);
-        let new_redpiler = [
-            1, 4, 68, 69, 70, 135, 1, 8, b'r', b'e', b'd', b'p', b'i', b'l', b'e', b'r',
-        ];
-        let old_redpiler = [
-            1, 3, 68, 69, 70, 8, b'r', b'e', b'd', b'p', b'i', b'l', b'e', b'r',
-        ];
-        let offset = original
-            .windows(new_redpiler.len())
-            .position(|bytes| bytes == new_redpiler)
-            .unwrap();
-        original.splice(offset..offset + new_redpiler.len(), old_redpiler);
-        assert_eq!(original.len(), 1553);
-        assert_eq!(
-            format!("{:x}", md5::compute(original)),
-            "f78c2d87c05142f9056cc44014e2a3ff"
-        );
-        {
-            let (packet, length, digest) = (&*NO_COMMANDS, 4, "4352d88a78aa39750bf70cd6f27bcaa5");
-            assert_eq!(packet.packet_id, 0x10);
-            assert_eq!(packet.buffer.len(), length);
-            assert_eq!(format!("{:x}", md5::compute(&packet.buffer)), digest);
-        }
     }
-
     #[test]
     fn advance_arguments_preserve_units_limits_and_error_messages() {
         for (args, expected) in [
@@ -1398,7 +1365,6 @@ mod security_tests {
         for (alias, canonical, args) in [
             ("/bisdon_anim", "/piston_anim", vec!["off"]),
             ("/wsr", "/worldsendrate", vec!["100"]),
-            ("/radv", "/radvance", vec!["1"]),
             ("/rp", "/redpiler", vec!["compile"]),
             ("/tp", "/teleport", vec!["Admin"]),
             ("/gm", "/gamemode", vec!["2"]),

@@ -1,4 +1,6 @@
 pub mod generated;
+#[cfg(test)]
+mod inbound_tests;
 mod outbound;
 pub mod packets;
 pub mod text;
@@ -314,18 +316,12 @@ impl NetworkClient {
                     return;
                 }
             };
-            // Disconnect a flooding client instead of growing an unbounded queue.
-            if let Err(error) = sender.try_send(packet) {
-                match error {
-                    mpsc::TrySendError::Full(_) => warn!(
-                        ?peer,
-                        ?state,
-                        "Client incoming packet queue is full; disconnecting"
-                    ),
-                    mpsc::TrySendError::Disconnected(_) => {
-                        debug!(?peer, ?state, "Client packet receiver closed")
-                    }
-                }
+            // Only this connection's reader waits when the bounded queue fills.
+            // Pausing reads applies TCP backpressure during plot stalls without
+            // dropping ordered actions or disconnecting on a temporary burst.
+            // Dropping the receiver wakes a reader waiting for queue space.
+            if sender.send(packet).is_err() {
+                debug!(?peer, ?state, "Client packet receiver closed");
                 let _ = stream.shutdown(Shutdown::Both);
                 return;
             }

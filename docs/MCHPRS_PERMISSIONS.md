@@ -108,16 +108,16 @@ permission as their canonical command.
 | `/tp`, `/teleport`                                 | `mchprs.commands.teleport`                                                                       |
 | `/speed`                                           | `mchprs.commands.speed`                                                                          |
 | `/gamemode`, `/gm`, `/gmc`, `/gmsp`                | `mchprs.commands.gamemode`, plus `.creative`, `.adventure`, or `.spectator`                       |
-| `/tps` (`/rtps`)                                   | `mchprs.commands.rtps.view` or `.set`; `timings` uses `.view`                                    |
+| `/tps`                                   | `mchprs.commands.rtps.view` or `.set`; `timings` uses `.view`                                    |
 | `/wsr`, `/worldsendrate`                           | `mchprs.commands.worldsendrate.view` or `.set`                                                   |
 | `/screenonly`                                      | `mchprs.commands.screenonly`, plus `.view` or `.set`                                             |
 | `/piston_anim`, `/bisdon_anim`                     | `mchprs.commands.piston_anim`, plus `.view` or `.set`                                            |
 | `/rp`, `/redpiler`                                 | `mchprs.commands.redpiler.compile`, `.reset`, `.inspect` or `.help`                              |
-| `/adv` (`/radv`, `/radvance`)                      | `mchprs.commands.radvance`                                                                       |
+| `/adv`                      | `mchprs.commands.radvance`                                                                       |
 | `/toggleautorp`                                    | `mchprs.commands.toggleautorp`                                                                   |
 | `/curse`, `/bless`                                 | `mchprs.commands.curse`, `mchprs.commands.bless`; granted only to Admin/Moderator                |
 | `/rhistory`                                        | `mchprs.commands.rhistory`, plus `.status`, `.enable`, `.disable`, `.limit.view` or `.limit.set` |
-| `/back` (`/rback`)                                 | `mchprs.commands.rback`                                                                          |
+| `/back`                                 | `mchprs.commands.rback`                                                                          |
 | `/say`, `/tellraw`                                 | `mchprs.commands.say`, `mchprs.commands.tellraw`                                                 |
 | `/stop`, `/whitelist`                              | `mchprs.commands.stop`, `mchprs.commands.whitelist`                                              |
 | Command-block editor                               | `mchprs.commands.commandblock.edit`                                                              |

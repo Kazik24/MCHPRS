@@ -15,6 +15,8 @@ use rustc_hash::FxHashSet;
 use std::sync::Arc;
 
 pub(crate) struct PreparedInstant {
+    pub clocked: Option<super::clocked::ClockedProgram>,
+    pub controls: Vec<BlockPos>,
     pub logic: WaveLogic,
     pub groups: Vec<Vec<usize>>,
     pub aliases: Vec<(usize, BlockPos, bool)>,
@@ -49,11 +51,18 @@ pub(crate) fn prepare(
             return Err(issue.to_string());
         }
     }
+    let clocked = super::clocked::recognize(world, report, &monitor)?;
+    let is_clock = |id| clocked.as_ref().is_some_and(|c| c.clock == id);
+    let is_memory = |id| {
+        clocked
+            .as_ref()
+            .is_some_and(|c| c.memory.iter().any(|m| m.actor == id))
+    };
     let mut reset_owners = FxHashSet::default();
     let mut observer_pistons = FxHashSet::default();
     let mut owned = FxHashSet::default();
     for (id, p) in report.pistons.iter().enumerate() {
-        if !p.piston.sticky
+        if (!p.piston.sticky && !is_clock(id))
             || !p.piston.extended
             || !p.powered
             || p.piston.facing == BlockFacing::Up
@@ -64,10 +73,10 @@ pub(crate) fn prepare(
             ));
         }
         let payload = world.get_block(p.payload);
-        if !matches!(payload, Block::RedstoneBlock | Block::Wool { .. }) {
+        if !matches!(payload, Block::RedstoneBlock | Block::Wool { .. }) && !is_clock(id) {
             return Err(format!("unsupported payload minecraft:{} at {:?}, owned by piston {:?}; expected a redstone block or wool",payload.get_name(),p.payload,p.pos));
         }
-        if !matches!(world.get_block(p.head), Block::PistonHead { head } if head.sticky && head.facing == p.piston.facing && !head.short)
+        if !matches!(world.get_block(p.head), Block::PistonHead { head } if head.sticky==p.piston.sticky && head.facing == p.piston.facing && !head.short)
             || [p.pos, p.head, p.payload]
                 .iter()
                 .any(|&pos| world.get_block_entity(pos).is_some())
@@ -104,7 +113,7 @@ pub(crate) fn prepare(
             let d = s.source - p.pos;
             d.x.abs() + d.y.abs() + d.z.abs() == 1
         });
-        if !power_notification && !adjacent_source {
+        if !power_notification && !adjacent_source && !is_memory(id) {
             return Err(format!("piston at {:?} needs a qualifying update coupled to its power input; independent BUD sampling is not implemented",p.pos));
         }
         let observer_pos = p.pos.offset(BlockFace::Top);
@@ -145,15 +154,32 @@ pub(crate) fn prepare(
             owned.insert(observer_pos);
         }
     }
+    if let Some(clocked) = &clocked {
+        reset_owners.extend(clocked.observers.iter().copied());
+        owned.extend(clocked.observers.iter().copied());
+    }
     if let Some(pos) = report.observers.iter().find(|p| !reset_owners.contains(p)) {
         return Err(format!("observer at {pos:?} has no supported region owner"));
     }
     if ticks.iter().any(|t| owned.contains(&t.pos)) {
         return Err("instant entry contains pending reset or movement work".into());
     }
-    let logic = logic::extract(world, report, &monitor)?;
+    let logic = if let Some(clocked) = &clocked {
+        logic::extract_with_state(
+            world,
+            report,
+            &monitor,
+            clocked.memory.iter().map(|m| m.actor).collect(),
+            Some(clocked.clock),
+        )?
+    } else {
+        logic::extract(world, report, &monitor)?
+    };
+    if let Some(clocked) = &clocked {
+        clocked.validate(world, &logic)?;
+    }
     for (id, p) in report.pistons.iter().enumerate() {
-        if !observer_pistons.contains(&id) && !logic.follows_payload[id] {
+        if clocked.is_none() && !observer_pistons.contains(&id) && !logic.follows_payload[id] {
             return Err(format!("piston at {:?} has neither an observer reset nor a proven payload-following response",p.pos));
         }
     }
@@ -199,13 +225,19 @@ pub(crate) fn prepare(
                 .collect();
             if world.get_block(pos) != Block::RedstoneBlock
                 || owners.is_empty()
-                || owners.iter().any(|id| !observer_pistons.contains(id))
+                || owners.iter().any(|id| {
+                    !observer_pistons.contains(id)
+                        && !clocked
+                            .as_ref()
+                            .is_some_and(|c| c.observed_outputs.contains(id))
+                })
             {
                 return Err(format!("ordinary consumer at {consumer:?} sees moving conductor, near payload or unverified reset context at {pos:?}"));
             }
         }
     }
     owned.extend(logic.wires.iter().copied());
+    owned.extend(logic.consumer_wires.iter().copied());
     owned.extend(crate::redpiler::analysis::families::reset_internals(
         &report.recognition,
     ));
@@ -219,6 +251,35 @@ pub(crate) fn prepare(
     let graph = crate::redpiler::passes::make_default_pass_manager()
         .run_passes(options, &input, monitor.clone())
         .map_err(|e| e.to_string())?;
+    // Retain interaction provenance across ordinary timed input stages. The
+    // program may read a torch while the player actually changes its lever.
+    let mut visited = FxHashSet::default();
+    let mut pending: Vec<_> = graph
+        .node_indices()
+        .filter(|&id| {
+            graph[id]
+                .block
+                .is_some_and(|(pos, _)| logic.sources.contains(&pos))
+        })
+        .collect();
+    let mut controls = Vec::new();
+    while let Some(id) = pending.pop() {
+        if !visited.insert(id) {
+            continue;
+        }
+        if let Some((pos, _)) = graph[id].block {
+            if matches!(
+                graph[id].ty,
+                crate::redpiler::compile_graph::NodeType::Lever
+                    | crate::redpiler::compile_graph::NodeType::Button
+                    | crate::redpiler::compile_graph::NodeType::PressurePlate
+            ) {
+                controls.push(pos);
+            }
+        }
+        pending.extend(graph.neighbors_directed(id, petgraph::Direction::Incoming));
+    }
+    controls.sort_by_key(|p| (p.y, p.z, p.x));
     let mut template = Vec::new();
     let (first, last) = logic
         .context
@@ -243,6 +304,8 @@ pub(crate) fn prepare(
     Ok((
         graph,
         PreparedInstant {
+            clocked,
+            controls,
             logic,
             groups: report
                 .payload_groups

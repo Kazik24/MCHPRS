@@ -110,6 +110,14 @@ impl JITBackend for DirectBackend {
     }
 
     fn reset<W: World>(&mut self, world: &mut W, io_only: bool) {
+        // Display flushing can clear dirty flags without writing hidden nodes.
+        // Handoff must materialize their current strengths, including ordinary
+        // dust between a virtual region supply and its consumer.
+        for node in self.nodes.inner_mut() {
+            if !matches!(node.ty, NodeType::Constant) {
+                node.changed = true;
+            }
+        }
         self.flush(world, false);
         if let Some(runtime) = self.instant.take() {
             runtime.materialize(world);

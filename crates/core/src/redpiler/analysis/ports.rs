@@ -92,6 +92,38 @@ pub(crate) fn is_consumer(block: Block) -> bool {
     )
 }
 
+/// Receiving cells and faces, shared by static and conditional admission.
+pub(crate) fn consumer_roots(
+    block: Block,
+    pos: BlockPos,
+) -> Vec<(BlockPos, BlockFace, ConsumerInput)> {
+    let main = |face: BlockFace| (pos.offset(face), face, ConsumerInput::Main);
+    match block {
+        Block::RedstoneRepeater { repeater } => vec![main(repeater.facing.block_face())],
+        Block::RedstoneComparator { comparator } => vec![
+            main(comparator.facing.block_face()),
+            (
+                pos.offset(comparator.facing.rotate().block_face()),
+                comparator.facing.rotate().block_face(),
+                ConsumerInput::ComparatorSide,
+            ),
+            (
+                pos.offset(comparator.facing.rotate_ccw().block_face()),
+                comparator.facing.rotate_ccw().block_face(),
+                ConsumerInput::ComparatorSide,
+            ),
+        ],
+        Block::RedstoneTorch { .. } => vec![(
+            pos.offset(BlockFace::Bottom),
+            BlockFace::Top,
+            ConsumerInput::Main,
+        )],
+        Block::RedstoneWallTorch { facing, .. } => vec![main(facing.opposite().block_face())],
+        _ if is_consumer(block) => BlockFace::values().into_iter().map(main).collect(),
+        _ => Vec::new(),
+    }
+}
+
 pub(super) fn discover<W: World>(
     topology: &mut Topology<'_, W>,
     pistons: &[PistonDescriptor],
@@ -196,77 +228,19 @@ pub(super) fn discover<W: World>(
         if reset_internals.contains(&pos) {
             continue;
         }
-        let (kind, roots) = match block {
-            Block::RedstoneRepeater { repeater } => (
-                ConsumerKind::Repeater {
-                    delay: repeater.delay,
-                    locked: repeater.locked,
-                },
-                vec![(
-                    pos.offset(repeater.facing.block_face()),
-                    repeater.facing.block_face(),
-                    ConsumerInput::Main,
-                )],
-            ),
-            Block::RedstoneComparator { comparator } => (
-                ConsumerKind::Comparator,
-                vec![
-                    (
-                        pos.offset(comparator.facing.block_face()),
-                        comparator.facing.block_face(),
-                        ConsumerInput::Main,
-                    ),
-                    (
-                        pos.offset(comparator.facing.rotate().block_face()),
-                        comparator.facing.rotate().block_face(),
-                        ConsumerInput::ComparatorSide,
-                    ),
-                    (
-                        pos.offset(comparator.facing.rotate_ccw().block_face()),
-                        comparator.facing.rotate_ccw().block_face(),
-                        ConsumerInput::ComparatorSide,
-                    ),
-                ],
-            ),
-            Block::RedstoneTorch { .. } => (
-                ConsumerKind::Torch,
-                vec![(
-                    pos.offset(BlockFace::Bottom),
-                    BlockFace::Top,
-                    ConsumerInput::Main,
-                )],
-            ),
-            Block::RedstoneWallTorch { facing, .. } => (
-                ConsumerKind::Torch,
-                vec![(
-                    pos.offset(facing.opposite().block_face()),
-                    facing.opposite().block_face(),
-                    ConsumerInput::Main,
-                )],
-            ),
-            Block::RedstoneLamp { .. } => (
-                ConsumerKind::Lamp,
-                BlockFace::values()
-                    .into_iter()
-                    .map(|f| (pos.offset(f), f, ConsumerInput::Main))
-                    .collect(),
-            ),
-            Block::IronTrapdoor { .. } => (
-                ConsumerKind::Trapdoor,
-                BlockFace::values()
-                    .into_iter()
-                    .map(|f| (pos.offset(f), f, ConsumerInput::Main))
-                    .collect(),
-            ),
-            Block::NoteBlock { .. } => (
-                ConsumerKind::NoteBlock,
-                BlockFace::values()
-                    .into_iter()
-                    .map(|f| (pos.offset(f), f, ConsumerInput::Main))
-                    .collect(),
-            ),
+        let kind = match block {
+            Block::RedstoneRepeater { repeater } => ConsumerKind::Repeater {
+                delay: repeater.delay,
+                locked: repeater.locked,
+            },
+            Block::RedstoneComparator { .. } => ConsumerKind::Comparator,
+            Block::RedstoneTorch { .. } | Block::RedstoneWallTorch { .. } => ConsumerKind::Torch,
+            Block::RedstoneLamp { .. } => ConsumerKind::Lamp,
+            Block::IronTrapdoor { .. } => ConsumerKind::Trapdoor,
+            Block::NoteBlock { .. } => ConsumerKind::NoteBlock,
             _ => continue,
         };
+        let roots = consumer_roots(block, pos);
         for (root, face, input) in roots {
             let dependencies = match input {
                 ConsumerInput::Main => topology.signal_inputs(root, face)?,

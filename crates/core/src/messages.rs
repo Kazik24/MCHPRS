@@ -219,7 +219,7 @@ catalog! {
         AUTO_STACK_ALWAYS_COPIES_REMOVALS = "Auto stack always copies removals; omit -a and -w.";
         AUTO_STACK_NEEDS_NONZERO_COPIES_AND_SPACING = "Auto stack needs at least one copy and nonzero spacing.";
         HELP_SCHEMATICS = "Schematics\n//load <file>.schem loads a schematic; //paste places it.\nTo save: select the build, //copy, then //save <file>.schem.\nRedstoneFun schematics are in the rf/ folder.";
-        HELP_TICKS = "Tick control\n/tps shows or sets speed: 20 is normal, 0 pauses, unlimited runs as fast as possible.\n/adv [count] steps game ticks; /radv and /radvance are aliases. Pause first.\n/adv nano 1 steps a nanotick; /adv pico 1 steps a picotick.";
+        HELP_TICKS = "Tick control\n/tps shows or sets speed: 20 is normal, 0 pauses, unlimited runs as fast as possible.\n/adv [count] steps game ticks. Pause first.\n/adv nano 1 steps a nanotick; /adv pico 1 steps a picotick.";
         HELP_WORLD_EDIT = "WorldEdit\nThis server supports a subset of WorldEdit. Type // and use tab completion to see available commands.";
         WE_HELP_INVALIDATE_CACHES = "Clears interpreter caches for the current plot";
         INTERPRETER_CACHES_INVALIDATED = "Interpreter caches cleared for this plot.";

@@ -18,6 +18,7 @@ pub(crate) struct WaveLogic {
     pub responses: Vec<Expr>,
     pub sources: Vec<BlockPos>,
     pub wires: FxHashSet<BlockPos>,
+    pub consumer_wires: FxHashSet<BlockPos>,
     pub consumers: Vec<(BlockPos, Vec<BlockPos>)>,
     pub follows_payload: Vec<bool>,
     pub context: FxHashSet<BlockPos>,
@@ -25,6 +26,14 @@ pub(crate) struct WaveLogic {
 
 impl WaveLogic {
     pub fn evaluate(&self, read: impl Fn(BlockPos) -> u8) -> Vec<bool> {
+        self.evaluate_with_memory(read, |_| false)
+    }
+
+    pub fn evaluate_with_memory(
+        &self,
+        read: impl Fn(BlockPos) -> u8,
+        memory: impl Fn(usize) -> bool,
+    ) -> Vec<bool> {
         self.responses
             .iter()
             .map(|&root| {
@@ -33,6 +42,7 @@ impl WaveLogic {
                     Variable::Actuator(_) => {
                         unreachable!("final program has no provisional actuator variables")
                     }
+                    Variable::Memory(actor) => memory(actor),
                 })
             })
             .collect()
@@ -57,12 +67,23 @@ struct Extractor<'a, W: World> {
     signal_order: FxHashMap<BlockPos, usize>,
     context_only: bool,
     context: FxHashSet<BlockPos>,
+    memory: FxHashSet<usize>,
 }
 
 pub(crate) fn extract(
     world: &impl World,
     report: &AnalysisReport,
     monitor: &TaskMonitor,
+) -> Result<WaveLogic, String> {
+    extract_with_state(world, report, monitor, FxHashSet::default(), None)
+}
+
+pub(crate) fn extract_with_state(
+    world: &impl World,
+    report: &AnalysisReport,
+    monitor: &TaskMonitor,
+    memory: FxHashSet<usize>,
+    clock: Option<usize>,
 ) -> Result<WaveLogic, String> {
     if report.pistons.len() > 1024 {
         return Err("instant actor budget exceeded (1024)".into());
@@ -85,6 +106,7 @@ pub(crate) fn extract(
         signal_order: Default::default(),
         context_only: false,
         context: Default::default(),
+        memory,
     };
     for (group, descriptor) in report.payload_groups.iter().enumerate() {
         let payloads: Vec<_> = descriptor
@@ -95,21 +117,30 @@ pub(crate) fn extract(
                 matches!(block, Block::RedstoneBlock | Block::Wool { .. }).then_some(block)
             })
             .collect();
-        if payloads.len() != 1 {
+        let empty_clock = descriptor.members.len() == 1
+            && Some(descriptor.members[0]) == clock
+            && payloads.is_empty();
+        if payloads.len() != 1 && !empty_clock {
             return Err(format!(
                 "payload group {group} needs exactly one supported payload"
             ));
         }
-        extractor.payloads.push(payloads[0]);
+        let payload = payloads.first().copied().unwrap_or(Block::Air);
+        extractor.payloads.push(payload);
         for &member in &descriptor.members {
             let p = &report.pistons[member];
-            if !p.piston.extended || !p.piston.sticky || world.get_block(p.payload) != payloads[0] {
+            if !p.piston.extended
+                || (!p.piston.sticky && Some(member) != clock)
+                || world.get_block(p.payload) != payload
+            {
                 return Err(format!(
                     "piston at {:?} is not a ready single-payload mechanism",
                     p.pos
                 ));
             }
-            extractor.far.insert(p.payload, group);
+            if !empty_clock {
+                extractor.far.insert(p.payload, group);
+            }
             extractor.near.insert(p.head, member);
             extractor.bases.insert(p.pos, member);
             extractor.group_of[member] = group;
@@ -179,27 +210,19 @@ pub(crate) fn extract(
     let wires = extractor.wires.clone();
     let sources = extractor.sources.clone();
     let context = extractor.context.clone();
+    let mut consumer_wires = FxHashSet::default();
     extractor.context_only = true;
     for (pos, block) in blocks {
         extractor.touched.clear();
+        extractor.wires.clear();
         let mut power = FALSE;
         let mut queue = VecDeque::new();
-        let faces: Vec<_> = match block {
-            Block::RedstoneRepeater { repeater } => vec![repeater.facing.block_face()],
-            Block::RedstoneComparator { comparator } => vec![
-                comparator.facing.block_face(),
-                comparator.facing.rotate().block_face(),
-                comparator.facing.rotate_ccw().block_face(),
-            ],
-            Block::RedstoneTorch { .. } => vec![BlockFace::Bottom],
-            Block::RedstoneWallTorch { facing, .. } => vec![facing.opposite().block_face()],
-            _ => BlockFace::values().to_vec(),
-        };
-        for face in faces {
-            extractor.signal(usize::MAX, pos.offset(face), face, &mut power, &mut queue)?;
+        for (root, face, _) in crate::redpiler::analysis::ports::consumer_roots(block, pos) {
+            extractor.signal(usize::MAX, root, face, &mut power, &mut queue)?;
         }
         extractor.walk_wires(usize::MAX, power, queue)?;
         if !extractor.touched.is_empty() {
+            consumer_wires.extend(extractor.wires.iter().copied());
             let mut aliases: Vec<_> = extractor.touched.iter().copied().collect();
             aliases.sort_by_key(|p| (p.y, p.z, p.x));
             consumers.push((pos, aliases));
@@ -217,6 +240,7 @@ pub(crate) fn extract(
         responses,
         sources,
         wires: extractor.wires,
+        consumer_wires,
         consumers,
         follows_payload,
         context,
@@ -296,6 +320,9 @@ impl<W: World> Extractor<'_, W> {
         if let Some(&owner) = self.near.get(&pos) {
             let group = self.group_of[owner];
             if group != self.own_group(actor) && fired(owner) {
+                if self.memory.contains(&owner) {
+                    return self.payloads[group];
+                }
                 // Retraction carries the block in a moving-piston entity.
                 // It provides neither conduction nor redstone power during
                 // the response wave; settled near occupancy belongs to reset.
@@ -315,7 +342,12 @@ impl<W: World> Extractor<'_, W> {
     fn assignment_guard(&mut self, actors: &[usize], bits: usize) -> Expr {
         let mut guard = TRUE;
         for (bit, &actor) in actors.iter().enumerate() {
-            let mut variable = self.arena.variable(Variable::Actuator(actor));
+            let variable = if self.memory.contains(&actor) {
+                Variable::Memory(actor)
+            } else {
+                Variable::Actuator(actor)
+            };
+            let mut variable = self.arena.variable(variable);
             if bits & (1 << bit) == 0 {
                 variable = self.arena.not(variable);
             }

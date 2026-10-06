@@ -216,7 +216,7 @@ The grants use `mchprs.commands.git` and `mchprs.git.storage.<MiB>` in the
 - Database group: `builder`; yellow tag.
 - Join and chat; creative inventory and ordinary backend commands.
 - Edit, interact, use WorldEdit, and change simulation/render settings **only on plots owned by the player**.
-- History is disabled: no `/rhistory` or `/back` (including `/rback`), including history status and memory settings.
+- History is disabled: no `/rhistory` or `/back`, including history status and memory settings.
 
 ### Allowed permissions
 
@@ -289,7 +289,7 @@ The grants use `mchprs.commands.git` and `mchprs.git.storage.<MiB>` in the
 - Ordinary ranks may own at most one plot: `mchprs.plots.limit.1 = true` and `mchprs.plots.limit.unlimited = false`, inherited from `default`. Claim permission is still required.
 - Admin and Moderator have `mchprs.plots.limit.unlimited = true` and may own unlimited plots.
 - `/rhistory` turns off and clears its buffer when the last player leaves the plot; another player leaving does not stop recording.
-- Primary tick commands are `/tps`, `/adv` and `/back`; `/rtps`, `/radv`, `/radvance` and `/rback` remain aliases with their existing permission nodes.
+- Tick commands are `/tps`, `/adv` and `/back`. Legacy aliases `/rtps`, `/radv`, `/radvance` and `/rback` are removed; existing permission node names are unchanged.
 - New plots default to 20 TPS (`default_tps = 20`).
 - `builder` inherits `default`, with dedicated own-plot grants and history denials; its Paper inheritance was preserved.
 - `advanced` inherits `builder` and `default`.

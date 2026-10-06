@@ -14,7 +14,7 @@ use rustc_hash::FxHashMap;
 pub(super) struct Runtime {
     program: PreparedInstant,
     sources: FxHashMap<BlockPos, NodeId>,
-    aliases: Vec<(usize, NodeId, bool)>,
+    aliases: Vec<(NodeId, Supply)>,
     fired: Vec<bool>,
     phase: u8,
     repeated: bool,
@@ -24,13 +24,26 @@ pub(super) struct Runtime {
     actions: Vec<(BlockPos, u8)>,
     epoch_actions: Vec<(BlockPos, u8)>,
     decisions: Vec<Decision>,
+    memory: Vec<bool>,
+    moving_memory: Vec<bool>,
+    replay_memory: Vec<bool>,
+    previous_wave_memory: Vec<bool>,
 }
 
 struct Decision {
-    source: NodeId,
+    input: Input,
     threshold: u8,
     low: Expr,
     high: Expr,
+}
+
+enum Input {
+    Source(NodeId),
+    Memory(usize),
+}
+enum Supply {
+    Wave { group: usize, initial: bool },
+    Memory { actor: usize, far: bool },
 }
 
 impl Runtime {
@@ -40,7 +53,7 @@ impl Runtime {
         nodes: &Nodes,
     ) -> Result<Self, BackendError> {
         let mut sources = FxHashMap::default();
-        for &pos in &program.logic.sources {
+        for &pos in program.logic.sources.iter().chain(&program.controls) {
             sources.insert(
                 pos,
                 *bindings
@@ -50,12 +63,24 @@ impl Runtime {
         }
         let mut aliases = Vec::new();
         for &(group, pos, initial) in &program.aliases {
+            let memory = program.clocked.as_ref().and_then(|c| {
+                c.memory
+                    .iter()
+                    .find(|m| program.groups[group].contains(&m.actor))
+            });
+            let supply = if let Some(cell) = memory {
+                Supply::Memory {
+                    actor: cell.actor,
+                    far: pos == cell.far,
+                }
+            } else {
+                Supply::Wave { group, initial }
+            };
             aliases.push((
-                group,
                 *bindings
                     .get(&pos)
                     .ok_or(BackendError::MissingInstantBinding { pos })?,
-                initial,
+                supply,
             ));
         }
         let ready = sources
@@ -68,11 +93,22 @@ impl Runtime {
             .nodes
             .iter()
             .map(|d| {
-                let Variable::Signal { pos, threshold, .. } = d.variable else {
-                    return Err(BackendError::InvalidInstantProgram);
+                let (input, threshold) = match d.variable {
+                    Variable::Signal { pos, threshold, .. } => {
+                        (Input::Source(sources[&pos]), threshold)
+                    }
+                    Variable::Memory(actor)
+                        if program
+                            .clocked
+                            .as_ref()
+                            .is_some_and(|c| c.memory.iter().any(|m| m.actor == actor)) =>
+                    {
+                        (Input::Memory(actor), 0)
+                    }
+                    _ => return Err(BackendError::InvalidInstantProgram),
                 };
                 Ok(Decision {
-                    source: sources[&pos],
+                    input,
                     threshold,
                     low: d.low,
                     high: d.high,
@@ -82,6 +118,10 @@ impl Runtime {
         program.logic.arena = Default::default();
         Ok(Self {
             fired: vec![false; program.logic.responses.len()],
+            memory: vec![false; program.logic.responses.len()],
+            moving_memory: vec![false; program.logic.responses.len()],
+            replay_memory: vec![false; program.logic.responses.len()],
+            previous_wave_memory: vec![false; program.logic.responses.len()],
             program,
             sources,
             aliases,
@@ -113,15 +153,24 @@ impl Runtime {
                 let mut id = root;
                 while id > TRUE {
                     let d = &self.decisions[(id - 2) as usize];
-                    id = if nodes[d.source].output_power > d.threshold {
-                        d.high
-                    } else {
-                        d.low
+                    let high = match d.input {
+                        Input::Source(source) => nodes[source].output_power > d.threshold,
+                        Input::Memory(actor) => self.memory[actor],
                     };
+                    id = if high { d.high } else { d.low };
                 }
                 *value = id == TRUE;
             }
-            if self.fired.iter().any(|&f| f) {
+            let active = self
+                .program
+                .clocked
+                .as_ref()
+                .map_or_else(|| self.fired.iter().any(|&f| f), |c| self.fired[c.clock]);
+            if active {
+                if self.program.clocked.is_some() {
+                    self.replay_memory.clone_from(&self.previous_wave_memory);
+                    self.previous_wave_memory.clone_from(&self.memory);
+                }
                 if self.phase == 0 {
                     self.epoch = self
                         .sources
@@ -146,13 +195,33 @@ impl Runtime {
         } else {
             self.phase += 1;
         }
+        if let Some(clocked) = &self.program.clocked {
+            if self.phase == 3 {
+                for cell in &clocked.memory {
+                    self.moving_memory[cell.actor] =
+                        self.memory[cell.actor] != self.fired[cell.actor];
+                    self.memory[cell.actor] = self.fired[cell.actor];
+                }
+            }
+            if self.phase == 5 {
+                self.moving_memory.fill(false);
+            }
+        }
         self.aliases
             .iter()
-            .map(|&(group, id, initial)| {
-                let low = self.phase != 0
-                    && self.phase != 6
-                    && self.program.groups[group].iter().any(|&p| self.fired[p]);
-                (id, if initial && !low { 15 } else { 0 })
+            .map(|(id, supply)| {
+                let powered = match *supply {
+                    Supply::Wave { group, initial } => {
+                        let low = self.phase != 0
+                            && self.phase != 6
+                            && self.program.groups[group].iter().any(|&p| self.fired[p]);
+                        initial && !low
+                    }
+                    Supply::Memory { actor, far } => {
+                        !self.moving_memory[actor] && self.memory[actor] != far
+                    }
+                };
+                (*id, if powered { 15 } else { 0 })
             })
             .collect()
     }
@@ -172,6 +241,24 @@ impl Runtime {
             replay.set_block(pos, block);
             if let Some(entity) = entity {
                 replay.set_block_entity(pos, entity.clone());
+            }
+        }
+        if let Some(clocked) = &self.program.clocked {
+            for cell in &clocked.memory {
+                if !self.replay_memory[cell.actor] {
+                    continue;
+                }
+                let Block::Piston { mut piston } = replay.get_block(cell.base) else {
+                    unreachable!()
+                };
+                piston.extended = false;
+                replay.set_block(cell.base, Block::Piston { piston });
+                replay.set_block(cell.near, Block::RedstoneBlock);
+                replay.set_block(cell.far, Block::Air);
+            }
+            for &pos in &self.program.logic.wires {
+                let block = replay.get_block(pos);
+                crate::redstone::update(block, &mut replay, pos, None);
             }
         }
         for (&pos, &strength) in &self.ready {
