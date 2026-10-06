@@ -30,6 +30,20 @@ boundaries, including the initial frame. Each bitmap contains 1,024 literal
 distinct consecutive display states, with the final change at tick 3,422.
 Comparing only the final frame would miss animation regressions.
 
+`anpu_bud_updates.json` is a supplementary 2026-10-06 interpreter capture for the
+896 downward sticky cells with note blocks above them. It retains sorted world
+positions and, for each nonempty game tick, sample/accepted-event counts and the
+SHA-256 of the ordered filtered JSON trace entries. Entries include tick, phase,
+position, old extension, sampled power and accepted event kind. Same-value
+samples remain significant. Its capture passed the unchanged original screen
+and all migrated CPU checkpoints. Original artifacts are retained.
+
+The [ANPU Redpiler extension](../../docs/ANPU_REDPILER.md) compares this reference
+and the complete screen in opt-in physical compatibility mode. This mode runs
+the shared interpreter in a private plot; optimized CPU graph lowering is
+separate work. Its paired test also compares every piston operation, and enabled
+tests cover warm entry, paddle inputs and active-motion handoff.
+
 Both CPU JSON files also contain stricter SHA-256 checkpoints at ticks 0, 10,
 100, 1,000, 5,000, 10,000, 20,000, 30,000, and 50,000. PM1 includes 50,100 too.
 These cover:

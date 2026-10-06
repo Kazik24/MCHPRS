@@ -1,5 +1,8 @@
 #![deny(rust_2018_idioms)]
 
+#[cfg(test)]
+extern crate self as mchprs_core;
+
 #[macro_use]
 mod utils;
 mod chat;

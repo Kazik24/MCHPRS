@@ -7,6 +7,8 @@ use smallvec::SmallVec;
 
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+pub(crate) mod trace;
 
 const NEIGHBORS: [BlockFace; 6] = [
     BlockFace::West,
@@ -53,6 +55,8 @@ pub fn should_piston_extend(world: &impl World, facing: BlockFacing, pos: BlockP
 
 pub fn update_piston_state(world: &mut impl World, piston: RedstonePiston, pos: BlockPos) {
     let extending = should_piston_extend(world, piston.facing, pos);
+    #[cfg(test)]
+    trace::sample(world, pos, piston.extended, extending);
     if extending == piston.extended {
         return;
     }
@@ -132,6 +136,8 @@ pub(crate) fn execute_event(world: &mut impl World, event: PistonEvent) {
     );
     #[cfg(test)]
     super::instant_piston_tests::record_event(world, "event_applied", event);
+    #[cfg(test)]
+    trace::applied(world, event);
 }
 
 fn moving(

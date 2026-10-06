@@ -43,7 +43,7 @@ use mchprs_network::packets::clientbound::*;
 use mchprs_network::packets::SlotData;
 use mchprs_network::PlayerPacketSender;
 use mchprs_save_data::plot_data::{ChunkData, PistonAnimation, PlotData, Tps, WorldSendRate};
-use mchprs_world::{AdvancePhase, PistonMotion, PistonState, TickPriority};
+use mchprs_world::{AdvancePhase, PistonMotion, PistonState, TickEntry, TickPriority};
 use monitor::TimingsMonitor;
 use scoreboard::RedpilerState;
 use serde_json::json;
@@ -345,6 +345,32 @@ impl PlotWorld {
 
     pub fn scheduler(&self) -> &TickScheduler<ScheduledBlockTick> {
         &self.to_be_ticked
+    }
+
+    /// Consume private simulation deltas without encoding client packets.
+    pub(crate) fn collect_block_changes(&mut self, changes: &mut Vec<(BlockPos, u32)>) {
+        changes.clear();
+        for chunk in &mut self.chunks {
+            for packet in chunk.multi_blocks() {
+                for record in &packet.records {
+                    changes.push((
+                        BlockPos::new(
+                            packet.chunk_x * 16 + i32::from(record.x),
+                            packet.chunk_y as i32 * 16 + i32::from(record.y),
+                            packet.chunk_z * 16 + i32::from(record.z),
+                        ),
+                        record.block_id,
+                    ));
+                }
+            }
+            chunk.reset_multi_blocks();
+        }
+    }
+
+    pub(crate) fn flush_generated_sounds(&mut self, world: &mut impl World) {
+        for sound in self.sounds.drain(..) {
+            sound.replay(world);
+        }
     }
 
     /// A handoff replay owns region requests; ordinary deadlines are restored
@@ -811,6 +837,15 @@ impl World for PlotWorld {
                 .schedule_half_tick(node, delay as usize, priority);
             self.tick_index.pushed(node);
         }
+    }
+
+    fn restore_tick_requests(&mut self, ticks: Vec<TickEntry>) {
+        self.to_be_ticked = ticks.into_iter().collect();
+        self.tick_index.invalidate();
+    }
+
+    fn supports_exact_tick_transfer(&self) -> bool {
+        true
     }
 
     fn pending_tick_at(&mut self, pos: BlockPos) -> bool {

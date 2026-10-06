@@ -2,7 +2,7 @@
 
 Implement instant circuits as recognized subassemblies with graph ports, a Boolean computation function, and the small amount of protocol or clock state needed at their boundaries. Ordinary Redpiler components supply inputs and receive outputs. Compiled evaluation uses ideal internal synchronization and does not reproduce internal nanoticks, callback traversal, piston event FIFO, or piston animation. A recognized circuit may compute correctly when its physical Java/interpreter construction fails solely through nanotick misalignment.
 
-The read-only classifier, candidate graphs, executable 11-bit adder and shared-clock `COUNTER_BASIC` target are implemented. Normal `/rp compile` accepts their supported lever/repeater revisions without a new feature flag. Admission remains conditional on complete ownership, a ready entry state, a supported output protocol and interpreter handoff. Counter execution includes independently sampled BUD storage; standalone BUD adapters, additional clock families and general stop/restart remain later work. PM1, ANPU, general piston mechanics and hybrid interpretation remain outside the first release.
+The read-only classifier, candidate graphs, executable 11-bit adder and shared-clock `COUNTER_BASIC` target are implemented. Normal `/rp compile` accepts their supported lever/repeater revisions without a new feature flag. Admission remains conditional on complete ownership, a ready entry state, a supported output protocol and interpreter handoff. Counter execution includes independently sampled BUD storage; standalone BUD adapters, additional clock families and general stop/restart remain later graph work. The author has now promoted ANPU Pong to the next target. Its separate `--piston-events` physical compatibility mode passes the exact memory/screen episode; optimized CPU graph lowering remains pending. See the [ANPU pipeline, evidence and sequential milestones](ANPU_REDPILER.md).
 
 This roadmap implements the [instant and BUD mathematical model](INSTANT_PISTON_REDPILER_MODEL.md), the [feature scope](INSTANT_REDPILLER.md), and the [author's clarifications](ANSWERS.md). Physical recognition follows [REDSTONE_MODEL.md](REDSTONE_MODEL.md); fixture behavior is recorded in the [schematic catalog](INSTANT_PISTON_SCHEMATICS.md) and [validation report](INSTANT_PISTON_VALIDATION.md). The [implemented pipeline](INSTANT_PISTON_RUNTIME.md) records the actual working-tree modules, limits, waveform, tests and commands as of 2026-10-06. Broader types and protocols below remain design proposals where the milestone explicitly says they are pending.
 
@@ -220,6 +220,9 @@ A fixture-terminal repeater needs an explicit observation root or a real downstr
 | M9 | Audited optimization and performance | M8 baseline | Decision simplification and flag comparisons implemented; benchmarks pending |
 | M10 | Adders, decoders, longer chains and wires | Required families/adapters and M8 | 11-bit adder accepted; 1-bit carry and other builds pending |
 | M11 | BUD storage and a supported counter | M10 interfaces and owned clock integration | COUNTER_BASIC/shared-clock storage implemented; standalone adapters and rearm pending |
+| M12 | ANPU physical compatibility and ordered memory/screen oracle | Shared interpreter, whole-plot ownership and exact handoff | Explicit event mode implemented; 50,000-tick Pong and warm/paddle/handoff episodes pass |
+| M13 | General BUD/update channels and ANPU compiled graph | M12 oracle; conducting movers; ordered sampling and acceptance | Pending; ANPU A3–A5 |
+| M14 | CPU graph optimization and active-window performance | M13 equivalence and phase-specific recovery | Pending; ANPU A6 |
 
 M1 through M5 can progress while new schematics are prepared. M0 does not block the classifier. Ordinary-input/repeater fixtures become an execution requirement at M6. Design restoration early so a family that cannot be restored is not promised as runnable.
 
@@ -378,6 +381,12 @@ Use a standalone BUD fixture to define initialization, independent power/update 
 Integrate memory with functions/coordinator and preserve it through optimization/materialization. Recognize the counter generator/bank, then define release and update cadence. Add clear/restart/high carry/wrap only when evidence establishes those contracts.
 
 **Acceptance:** independent tests store both bits and retain data without updates. Counter values/timing match the validated range; handoff preserves bank and clock. Bank length does not certify wrap.
+
+### M12–M14 ANPU memory and screen equivalence
+
+The [ANPU extension](ANPU_REDPILER.md) defines the separate physical compatibility contract and actual implementation. It preserves physical sample/event order rather than adopting the ideal synchronization used for recognized instant arithmetic. ANPU's 896 note-block BUD cells move black concrete; the counter's redstone-block storage and six-phase macro cannot own them without another representation.
+
+M12 retains one physical owner behind Redpiler, publishes I/O and transfers actual state at reset. It freezes an ordered BUD trace alongside the unchanged original CPU/screen references. M13 separates electrical data from notification/sampling events, supports conducting occupancy, retracted entry and event power rechecks, then lowers the CPU while passing these oracles. M14 may optimize only after preserving memory position, sampled value, accepted transaction order and game-tick screen timing. Compatibility execution remains available as the differential baseline; it is not presented as optimized graph lowering.
 
 ## Activation and recovery policy
 

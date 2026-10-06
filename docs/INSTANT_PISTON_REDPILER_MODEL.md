@@ -6,6 +6,8 @@ The intended interface uses ordinary Redpiler nodes: levers, buttons, torches an
 
 **Status (2026-10-06):** this contract is partially implemented. Redpiler executes the lever/repeater 11-bit adder and a shared-clock BUD network supporting `COUNTER_BASIC`, through Boolean programs paired with ordinary graph nodes. Counter next-state expressions use stored bits; an owned observer protocol supplies sampling and output timing. Standalone BUD adapters, multiple clocks and general reset/consumer protocols remain proposed. The [implemented pipeline](INSTANT_PISTON_RUNTIME.md) defines current admission, output timing, handoff and validation; the wider mathematical model below does not imply that every described family can compile.
 
+ANPU now has a separate [physical compatibility owner](ANPU_REDPILER.md), selected by `--piston-events`. It runs the shared interpreter in a private plot and preserves exact sampling, accepted-movement and screen traces. It does not implement this document's proposed general BUD graph abstraction. Its 896 note-block BUD cells carry conducting black concrete and require ordered update channels before optimized CPU lowering can replace physical execution.
+
 ## 1. Circuit boundaries
 
 The parser identifies a region of interacting pistons, their payloads, reset circuits and internal connections. Its interface is derived from connections to the surrounding graph:

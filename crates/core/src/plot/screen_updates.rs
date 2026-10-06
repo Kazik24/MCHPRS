@@ -92,7 +92,7 @@ impl PlotWorld {
         }
     }
 
-    pub(super) fn screen_state(&self, pos: BlockPos) -> u32 {
+    pub(crate) fn screen_state(&self, pos: BlockPos) -> u32 {
         if matches!(self.get_block(pos), Block::MovingPiston { .. }) {
             if let Some(BlockEntity::MovingPiston(entity)) = self.get_block_entity(pos) {
                 return entity.block_state;

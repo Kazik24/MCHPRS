@@ -12,7 +12,7 @@ Let piston be an entity that performs an task in circut. Possible tasks are:
 - Memory (BUD Switch)
 - Other (non-Instant Piston)
 
-These tasks are very diffrent from eachother and all of them will eventually be required for redpiler to correctly parse and analyze complex builds like PM1 or ANPU. Initial acceptance focuses on gates, adders, counters, decoders and long wires; full CPU support is deferred.
+These tasks are very diffrent from eachother and all of them will eventually be required for redpiler to correctly parse and analyze complex builds like PM1 or ANPU. Initial graph acceptance focuses on gates, adders, counters, decoders and long wires. ANPU Pong is now the next target, with an explicit physical compatibility mode and a frozen memory/screen oracle; full CPU graph lowering remains pending.
 
 - Instant Piston is defined as a piston with a reset circuit. Reset allows the mechanism to return to a reusable extended configuration after retracting. The first computation wave can propagate through multiple stages in the same game tick while physical reset takes subsequent ticks. There is an enormous number of possible reset constructions, but a basic one is:
   - Side-facing piston, observer with its red dot up (`facing=Down`, watching the base), solid block on the observer. After powering and depowering, this circuit can periodically retract and extend in a predictable way.
@@ -23,7 +23,7 @@ These tasks are very diffrent from eachother and all of them will eventually be 
     - Negation is an inhibition circuit that blocks another piston when its input is active. It is not a typical standalone NOT gate. Its required update order must be established from the circuit; the author specifies that the "negated piston must fire first, update-wise."
     - Logical one is a transition from nonzero power to zero. The low state enables downstream instants to retract and schedule their update cycles. A held zero is not a fresh external trigger; internal reset-generated cycles remain part of the triggered behavior.
   - PM_1 is fully instant CPU, it contains mostly Instant logic and is fully combinatonic.
-  - ANPU is noninstant CPU, it contains BUD-switch memory
+  - ANPU is noninstant CPU, it contains BUD-switch memory. It is now the next acceptance target: an explicit `--piston-events` compatibility owner preserves physical memory/screen traces; full graph lowering remains pending. See [ANPU milestones](ANPU_REDPILER.md).
   - Shared-output OR groups may drop the output block, and either piston may recapture it; ownership can transfer. Recognition must validate the complete group's output and reset behavior. Other families require their own payload and reset rules rather than assuming that every candidate always resets properly.
 - BUD-switch (Block Update Detector) is an circuit that can detect an update above the pistion and save it in the piston state (either retracted or extended).
   - BUD switch contains some kind of update, an input and optionaly output block.

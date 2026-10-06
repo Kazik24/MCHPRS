@@ -30,6 +30,7 @@ pub enum CompileError {
     Backend(backend::BackendError),
     Graph(compile_graph::GraphError),
     Instant(String),
+    PistonEvents(String),
 }
 
 impl std::fmt::Display for CompileError {
@@ -48,6 +49,7 @@ impl std::fmt::Display for CompileError {
             Self::Backend(error) => error.fmt(f),
             Self::Graph(error) => error.fmt(f),
             Self::Instant(error) => f.write_str(error),
+            Self::PistonEvents(error) => f.write_str(error),
         }
     }
 }
@@ -72,6 +74,9 @@ fn block_powered_mut(block: &mut Block) -> Option<&mut bool> {
 
 #[derive(Default, PartialEq, Eq, Debug)]
 pub struct CompilerOptions {
+    /// Preserve physical piston/BUD update ordering in a private interpreted plot.
+    /// This compatibility mode does not perform Boolean graph optimization.
+    pub piston_events: bool,
     /// Enable optimization passes which may significantly increase compile times.
     pub optimize: bool,
     /// Export the graph to a binary format. See the [`redpiler_graph`] crate.
@@ -99,6 +104,7 @@ impl CompilerOptions {
         for option in options {
             if option.starts_with("--") {
                 match option {
+                    "--piston-events" => co.piston_events = true,
                     "--optimize" => co.optimize = true,
                     "--export" => co.export = true,
                     "--io-only" => co.io_only = true,
@@ -161,6 +167,22 @@ impl Compiler {
         if self.is_active {
             return Err(CompileError::AlreadyActive);
         }
+        if options.piston_events {
+            let backend =
+                backend::events::EventBackend::prepare(world, bounds, ticks, &options, &monitor)
+                    .map_err(CompileError::PistonEvents)?;
+            if monitor.cancelled() {
+                return Err(CompileError::Cancelled);
+            }
+            self.jit = Some(BackendDispatcher::EventBackend(backend));
+            self.options = options;
+            self.is_active = true;
+            debug!(
+                "Piston event compatibility mode prepared in {:?}",
+                start.elapsed()
+            );
+            return Ok(());
+        }
         let report = analysis::analyze(world, bounds, &ticks, &monitor, Default::default())
             .map_err(CompileError::Analysis)?;
         if report.pistons.is_empty() && !report.can_compile() {
@@ -212,6 +234,7 @@ impl Compiler {
                 BackendDispatcher::DirectBackend(backend) => backend
                     .compile_instant(graph, program, ticks, &options, monitor.clone())
                     .map_err(CompileError::Backend)?,
+                BackendDispatcher::EventBackend(_) => unreachable!(),
             }
         } else {
             jit.compile(graph, ticks, &options, monitor.clone())
@@ -232,7 +255,7 @@ impl Compiler {
     pub fn reset<W: World>(&mut self, world: &mut W, bounds: (BlockPos, BlockPos)) {
         if self.is_active {
             self.is_active = false;
-            if let Some(jit) = &mut self.jit {
+            if let Some(mut jit) = self.jit.take() {
                 jit.reset(world, self.options.io_only)
             }
         }
@@ -300,6 +323,7 @@ mod tests {
     fn parse_options() {
         let input = "-io -u --export";
         let expected_options = CompilerOptions {
+            piston_events: false,
             io_only: true,
             optimize: true,
             export: true,

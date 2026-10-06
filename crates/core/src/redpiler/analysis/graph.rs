@@ -124,6 +124,11 @@ pub fn prepare_candidate_graph(
     options: &CompilerOptions,
     monitor: Arc<TaskMonitor>,
 ) -> Result<CandidateGraph, GraphPreparationError> {
+    if options.piston_events {
+        return Err(GraphPreparationError::Execution(
+            "piston event compatibility mode owns the physical plot and does not produce an electrical candidate graph".into(),
+        ));
+    }
     if options.export {
         return Err(GraphPreparationError::UnsupportedExport);
     }
