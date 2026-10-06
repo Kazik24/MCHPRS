@@ -25,9 +25,26 @@ HEAD; `/git log --all` retains them. Name that history with `/git branch revisit
 then `/git checkout revisit` to continue on the named branch. Detached HEAD also
 survives restarts, interrupted checkout recovery, and automatic work recovery.
 
+To copy another branch's saved plot into your current branch, use:
+
+```text
+/git checkout main
+/git rebase revisit
+# Edit the copied build if needed.
+/git commit Bring revisit into main
+```
+
+Rebase replaces the whole working plot with the source branch's tip, including
+saved block data and simulation state. It leaves you on the current branch,
+moves neither branch tip, and creates no commit. Your next ordinary commit saves
+the result on the current branch, with its previous tip as parent. Both source
+and current branch must be named branches. Unfinished work is saved in a recovery
+before replacement. Copying your own branch restores its saved contents too.
+
 Checkout pauses simulation; use `/tps 20` or the existing stepping commands to
 resume. Players whose standing body would intersect the restored build are
 moved above it. Checkout closes menus and clears tick history and WorldEdit undo.
+Rebase uses the same restoration behavior and leaves simulation paused.
 
 ## Commands
 
@@ -42,6 +59,7 @@ moved above it. Checkout closes menus and clears tick history and WorldEdit undo
 | `/git branch` | List branches and their tips. |
 | `/git branch <name> [ref]` | Create a branch, defaulting to `HEAD`. |
 | `/git checkout <branch\|commit>` | Restore a branch tip or commit ID/prefix, preserving unfinished work. |
+| `/git rebase <branch>` | Copy that branch's saved plot into the current working plot; edit, then commit. |
 | `/git diff <from> <to>` | Prepare a comparison and show its summary. |
 | `/git diff show`, `/git diff hide` | Enable/disable the prepared glow overlay. |
 | `/git diff inspect <x> <y> <z> [from\|to]` | Show a changed coordinate's states and data immediately; optionally restrict data to one side. |
@@ -83,7 +101,7 @@ node for the whole feature, including completion, glow and sword inspection.
 Backend command access (`mchprs.access.commands`) is also required.
 
 Ownership or membership is required for reading history. Commit and branch
-creation additionally require existing plot edit access. Checkout/recovery are
+creation additionally require existing plot edit access. Checkout/recovery/rebase are
 restricted to the plot owner with plot edit access. `mchprs.plots.admin.git` explicitly overrides these
 plot restrictions, while the Git allow/deny node still applies.
 
@@ -110,7 +128,7 @@ layout, inventory order or NBT compound ordering; identical snapshots share an
 object. Execution order remains significant. Version and checksum validation
 reject corrupt or incompatible snapshots.
 
-Checkout saves unfinished work before replacing the plot. `/git recoveries`
+Checkout and rebase save unfinished work before replacing the plot. `/git recoveries`
 shows the recovery IDs. A durable checkout record reconciles the atomic ordinary
 plot save with the active branch on restart. Recoverable failures roll back;
 if rollback cannot finish, the plot stays paused and locked until startup recovery.

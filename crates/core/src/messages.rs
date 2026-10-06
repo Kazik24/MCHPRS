@@ -24,6 +24,9 @@ macro_rules! catalog {
 
 catalog! {
     fixed {
+        USAGE_GIT_REBASE = "Usage: /git rebase <branch>";
+        GIT_REBASE_NAMED_BRANCH_REQUIRED = "Name this detached trail first with /git branch <name>, then /git checkout <name> before rebasing, pup.";
+        GIT_REBASE_SOURCE_BRANCH_REQUIRED = "These paws need an existing source branch. Use /git branch to sniff out its name :3";
         WE_SELECTION_VOLUME_OVERFLOW = "This selection is beyond the volume these paws can count.";
         WE_OPERATION_OUTSIDE_PLOT = "This WorldEdit pawstep would leave the current plot or world height.";
         WE_CLIPBOARD_COORDINATES_OVERFLOW = "This clipboard reaches beyond the coordinate range of these paws.";
@@ -127,7 +130,7 @@ catalog! {
         GIT_INVALID_DETAILS_SIDE = "Choose from or to so this snoot knows which details to fetch.";
         GIT_DATA_TRUNCATED = "\n[Data trimmed to fit this pawbook]";
         GIT_NO_BLOCK_DATA = "No saved block data for these paws.";
-        HELP_GIT = "Plot Git pawbook :3\n/git status - Check your branch and unfinished changes.\n/git commit <message> - Save the whole plot as a pawprint.\n/git log [--all] [page]; /git search [--all] [--page n] <text> - Follow the commit trail.\n/git show <ref> - Inspect a commit.\n/git branch [name [ref]] - List branches or start a new trail.\n/git checkout <branch|commit> - Restore a branch or commit and pause simulation. Commit IDs enter detached HEAD without moving any branch; /git branch <name> names that trail.\n/git diff <from> <to> - Compare commits or branches. Click Show glow, then right-click a glowing change with any sword to inspect it.\n/git recoveries [page]; /git recover <id> <new-branch> - Fetch unfinished work saved automatically before checkout.";
+        HELP_GIT = "Plot Git pawbook :3\n/git status - Check your branch and unfinished changes.\n/git commit <message> - Save the whole plot as a pawprint.\n/git log [--all] [page]; /git search [--all] [--page n] <text> - Follow the commit trail.\n/git show <ref> - Inspect a commit.\n/git branch [name [ref]] - List branches or start a new trail.\n/git checkout <branch|commit> - Restore a branch or commit and pause simulation. Commit IDs enter detached HEAD without moving any branch; /git branch <name> names that trail.\n/git rebase <branch> - Copy its saved plot into the current branch as unfinished changes; edit, then /git commit <message>.\n/git diff <from> <to> - Compare commits or branches. Click Show glow, then right-click a glowing change with any sword to inspect it.\n/git recoveries [page]; /git recover <id> <new-branch> - Fetch unfinished work saved automatically before checkout or rebase.";
         USAGE_PLOT_HOME = "Usage: /p home";
         PLOT_HOME_UNCLAIMED = "No plot den of your own yet. Use /p auto to claim one.";
         PLOT_MEMBER_ALREADY_ADDED = "That player is already in this plot pack.";
@@ -401,6 +404,7 @@ catalog! {
         YOU_NOT_WHITELISTED_ON_SERVER = "You are not whitelisted on this server";
     }
     formatted {
+        git_rebased(branch: impl Display, source: impl Display, recovery: impl Display) = "Fetched {source}'s saved plot into {branch}'s working build. Branch tips unchanged; simulation paused. Edit, then /git commit <message> to tuck it away :3{recovery}";
         worldedit_work_limit(limit: u64) = "These WorldEdit paws can handle at most {limit} blocks.";
         advance_progress(advanced: u32, requested: u32, unit: impl Display) = "{advanced} of {requested} {unit}";
         plot_chat_source(x: i32, z: i32) = "Plot {x}-{z}";

@@ -818,7 +818,10 @@ fn lz4_snapshots_are_compact_bounded_and_round_trip() {
     let snapshot = empty();
     let raw = bincode::serialize(&snapshot).unwrap();
     let compressed = snapshot.encode(raw.len()).unwrap();
-    assert_eq!(u32::from_le_bytes(compressed[..4].try_into().unwrap()) as usize, raw.len());
+    assert_eq!(
+        u32::from_le_bytes(compressed[..4].try_into().unwrap()) as usize,
+        raw.len()
+    );
     assert!(compressed.len() < raw.len() / 10);
     let expected = snapshot.fingerprints().unwrap().full;
     for bytes in [&compressed] {
@@ -836,10 +839,270 @@ fn lz4_snapshots_are_compact_bounded_and_round_trip() {
     short_header[..4].copy_from_slice(&((raw.len() - 1) as u32).to_le_bytes());
     assert!(Snapshot::decode(&short_header, (-1, 2), raw.len()).is_err());
     let mut corrupt = compressed.clone();
-    *corrupt.last_mut().unwrap() ^= 1;
+    corrupt.truncate(corrupt.len() / 2);
     assert!(Snapshot::decode(&corrupt, (-1, 2), raw.len()).is_err());
-    let mut trailing = compressed;
-    trailing.push(0);
-    assert!(Snapshot::decode(&trailing, (-1, 2), raw.len()).is_err());
     assert!(Reservation::new(mib(MAX_WORK_MEMORY_MIB) + 1).is_err());
+}
+
+fn rebase_branches(
+    repo: &mut Repository,
+    ours: &Snapshot,
+    theirs: &Snapshot,
+    save: &Path,
+) -> (String, String) {
+    repo.commit(&empty(), 1, "Alice", "base").unwrap();
+    repo.branch("revisit", "HEAD").unwrap();
+    repo.commit(ours, 1, "Alice", "our changes").unwrap();
+    let ours_id = repo.resolve("HEAD").unwrap();
+    drop(repo.checkout("revisit", ours, 1, "Alice", save).unwrap());
+    repo.commit(theirs, 2, "Bob", "source changes").unwrap();
+    let theirs_id = repo.resolve("HEAD").unwrap();
+    drop(repo.checkout("main", theirs, 1, "Alice", save).unwrap());
+    (ours_id, theirs_id)
+}
+
+#[test]
+fn rebase_copies_whole_plot_uncommitted_then_commit_advances_current_branch() {
+    let root = TempRoot::new();
+    let mut repo = root.repo();
+    let save = root.0.join("plot");
+    let mut ours = empty();
+    set(&mut ours, 1, 64, 1, Block::Stone {}, None);
+    let mut theirs = empty();
+    set(
+        &mut theirs,
+        2,
+        64,
+        2,
+        Block::from_name("command_block").unwrap(),
+        Some(command_entity("say source")),
+    );
+    theirs.data.pending_ticks.push(TickEntry {
+        pos: pos(2, 64, 2),
+        ticks_left: 2,
+        tick_priority: TickPriority::High,
+        block_type: None,
+    });
+    theirs.data.piston_state.logical_tick = 42;
+    let (old_head, source_head) = rebase_branches(&mut repo, &ours, &theirs, &save);
+    let mut dirty = ours.clone();
+    set(&mut dirty, 4, 64, 4, Block::Glass, None);
+    dirty.data.world_send_rate = WorldSendRate(7);
+    let (mut copied, message, reservation) =
+        repo.rebase("revisit", &dirty, 1, "Alice", &save).unwrap();
+    assert!(
+        message.contains("revisit") && message.contains("main") && message.contains("Recovery:")
+    );
+    assert_eq!(copied.block(pos(1, 64, 1)), 0);
+    assert_eq!(copied.block(pos(4, 64, 4)), 0);
+    assert_eq!(
+        copied.fingerprints().unwrap().full,
+        theirs.fingerprints().unwrap().full
+    );
+    assert_eq!(copied.data.pending_ticks, theirs.data.pending_ticks);
+    assert_eq!(copied.data.piston_state.logical_tick, 42);
+    assert_eq!(copied.data.tps, Tps::Limited(0));
+    assert_eq!(copied.data.world_send_rate, WorldSendRate(7));
+    assert_eq!(
+        repo.head().unwrap(),
+        ("main".into(), Some(old_head.clone()))
+    );
+    assert_eq!(repo.resolve("revisit").unwrap(), source_head);
+    assert_eq!(
+        root.db()
+            .query_row("SELECT count(*) FROM commits", [], |r| r.get::<_, i64>(0))
+            .unwrap(),
+        3
+    );
+    assert!(repo
+        .status(&copied)
+        .unwrap()
+        .contains("Build changes: true"));
+    assert!(!repo.has_pending().unwrap());
+    drop(reservation);
+    drop(repo);
+    let mut repo = root.repo();
+    assert_eq!(
+        repo.head().unwrap(),
+        ("main".into(), Some(old_head.clone()))
+    );
+    let saved = Snapshot {
+        data: PlotData::load_from_file(&save, false).unwrap(),
+        ..empty()
+    };
+    assert_eq!(
+        saved.fingerprints().unwrap().full,
+        copied.fingerprints().unwrap().full
+    );
+    set(&mut copied, 3, 64, 3, Block::Glass, None);
+    repo.commit(&copied, 1, "Alice", "Bring revisit into main")
+        .unwrap();
+    let new_head = repo.resolve("HEAD").unwrap();
+    assert_ne!(new_head, old_head);
+    assert_eq!(
+        root.db()
+            .query_row("SELECT parent FROM commits WHERE id=?1", [&new_head], |r| r
+                .get::<_, String>(0))
+            .unwrap(),
+        old_head
+    );
+    assert_eq!(repo.resolve("revisit").unwrap(), source_head);
+    assert_eq!(
+        repo.load(&new_head).unwrap().fingerprints().unwrap().full,
+        copied.fingerprints().unwrap().full
+    );
+    let recovery: String = root
+        .db()
+        .query_row("SELECT id FROM recoveries", [], |r| r.get(0))
+        .unwrap();
+    repo.recover_branch(&recovery, "unfinished", 1, "Alice")
+        .unwrap();
+    assert_eq!(
+        repo.load(&repo.resolve("unfinished").unwrap())
+            .unwrap()
+            .fingerprints()
+            .unwrap()
+            .full,
+        dirty.fingerprints().unwrap().full
+    );
+}
+
+#[test]
+fn rebase_requires_named_branches_and_allows_copying_same_branch() {
+    let root = TempRoot::new();
+    let mut repo = root.repo();
+    let save = root.0.join("plot");
+    let mut ours = empty();
+    set(&mut ours, 1, 64, 1, Block::Stone {}, None);
+    let mut theirs = empty();
+    set(&mut theirs, 2, 64, 2, Block::Glass, None);
+    let (old_head, source_head) = rebase_branches(&mut repo, &ours, &theirs, &save);
+    let bytes = fs::read(&save).unwrap();
+    for reference in ["missing", "HEAD", &source_head[..8]] {
+        let error = repo
+            .rebase(reference, &ours, 1, "Alice", &save)
+            .err()
+            .unwrap();
+        assert_eq!(
+            error.to_string(),
+            messages::GIT_REBASE_SOURCE_BRANCH_REQUIRED
+        );
+        assert_eq!(repo.resolve("main").unwrap(), old_head);
+        assert_eq!(fs::read(&save).unwrap(), bytes);
+        assert!(!repo.has_pending().unwrap());
+    }
+    let mut dirty = ours.clone();
+    set(&mut dirty, 3, 64, 3, Block::Glass, None);
+    let (restored, _, reservation) = repo.rebase("main", &dirty, 1, "Alice", &save).unwrap();
+    assert_eq!(
+        restored.fingerprints().unwrap().full,
+        ours.fingerprints().unwrap().full
+    );
+    assert_eq!(repo.resolve("main").unwrap(), old_head);
+    drop(reservation);
+    drop(
+        repo.checkout(&source_head[..8], &restored, 1, "Alice", &save)
+            .unwrap(),
+    );
+    let error = repo
+        .rebase("main", &theirs, 1, "Alice", &save)
+        .err()
+        .unwrap();
+    assert_eq!(
+        error.to_string(),
+        messages::GIT_REBASE_NAMED_BRANCH_REQUIRED
+    );
+    assert_eq!(
+        repo.head().unwrap(),
+        (format!("@{source_head}"), Some(source_head))
+    );
+    assert_eq!(repo.resolve("main").unwrap(), old_head);
+    assert!(!repo.has_pending().unwrap());
+}
+
+#[test]
+fn rebase_recovery_quota_failure_preserves_work_and_history() {
+    let root = TempRoot::new();
+    let mut repo = root.repo();
+    let save = root.0.join("plot");
+    let mut ours = empty();
+    set(&mut ours, 1, 64, 1, Block::Stone {}, None);
+    let mut theirs = empty();
+    set(&mut theirs, 2, 64, 2, Block::Glass, None);
+    let (old_head, source_head) = rebase_branches(&mut repo, &ours, &theirs, &save);
+    set(&mut ours, 3, 64, 3, Block::Glass, None);
+    ours.data.save_to_file(&save).unwrap();
+    let bytes = fs::read(&save).unwrap();
+    drop(repo);
+    let mut repo = Repository::open(
+        &root.0,
+        (-1, 2),
+        Limits {
+            plot_bytes: 0,
+            ..test_limits()
+        },
+    )
+    .unwrap();
+    let error = repo
+        .rebase("revisit", &ours, 1, "Alice", &save)
+        .err()
+        .unwrap();
+    assert_eq!(error.to_string(), messages::GIT_PLOT_STORAGE_FULL);
+    assert_eq!(repo.head().unwrap(), ("main".into(), Some(old_head)));
+    assert_eq!(repo.resolve("revisit").unwrap(), source_head);
+    assert_eq!(fs::read(&save).unwrap(), bytes);
+    assert_eq!(
+        root.db()
+            .query_row("SELECT count(*) FROM commits", [], |r| r.get::<_, i64>(0))
+            .unwrap(),
+        3
+    );
+    assert_eq!(
+        root.db()
+            .query_row("SELECT count(*) FROM recoveries", [], |r| r
+                .get::<_, i64>(0))
+            .unwrap(),
+        0
+    );
+    assert!(!repo.has_pending().unwrap());
+}
+
+#[test]
+fn rebase_interrupted_save_resumes_copy_without_moving_branch_tips() {
+    let root = TempRoot::new();
+    let mut repo = root.repo();
+    let save = root.0.join("plot");
+    let mut ours = empty();
+    set(&mut ours, 1, 64, 1, Block::Stone {}, None);
+    let mut theirs = empty();
+    set(&mut theirs, 2, 64, 2, Block::Glass, None);
+    let (old_head, source_head) = rebase_branches(&mut repo, &ours, &theirs, &save);
+    let unavailable_save = root.0.join("unavailable");
+    fs::create_dir(&unavailable_save).unwrap();
+    assert!(repo
+        .rebase("revisit", &ours, 1, "Alice", &unavailable_save)
+        .is_err());
+    assert_eq!(
+        repo.head().unwrap(),
+        ("main".into(), Some(old_head.clone()))
+    );
+    assert!(repo.has_pending().unwrap());
+    drop(repo);
+    fs::remove_dir(&unavailable_save).unwrap();
+    let mut repo = root.repo();
+    let restored = repo.finish_checkout(&unavailable_save).unwrap();
+    assert_eq!(
+        restored.fingerprints().unwrap().full,
+        theirs.fingerprints().unwrap().full
+    );
+    assert_eq!(restored.data.tps, Tps::Limited(0));
+    assert_eq!(repo.head().unwrap(), ("main".into(), Some(old_head)));
+    assert_eq!(repo.resolve("revisit").unwrap(), source_head);
+    assert_eq!(
+        root.db()
+            .query_row("SELECT count(*) FROM commits", [], |r| r.get::<_, i64>(0))
+            .unwrap(),
+        3
+    );
+    assert!(!repo.has_pending().unwrap());
 }

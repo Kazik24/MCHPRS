@@ -556,8 +556,66 @@ impl Repository {
         } else {
             format!("@{target}")
         };
+        ensure!(
+            self.head()?.0 != destination,
+            messages::git_already_on_branch(head_label(&destination))
+        );
+        let (snapshot, recovery, reservation) =
+            self.restore(&target, &destination, before, author, name, save)?;
+        Ok((
+            snapshot,
+            messages::git_checked_out(
+                if destination.starts_with('@') {
+                    messages::git_detached_head(&target[..8])
+                } else {
+                    destination
+                },
+                recovery,
+            ),
+            reservation,
+        ))
+    }
+
+    pub fn rebase(
+        &mut self,
+        source: &str,
+        before: &Snapshot,
+        author: u128,
+        name: &str,
+        save: &Path,
+    ) -> Result<(Snapshot, String, super::Reservation)> {
+        let branch = self.head()?.0;
+        ensure!(
+            !branch.starts_with('@'),
+            messages::GIT_REBASE_NAMED_BRANCH_REQUIRED
+        );
+        ensure!(
+            self.names()?.iter().any(|name| name == source),
+            messages::GIT_REBASE_SOURCE_BRANCH_REQUIRED
+        );
+        let target = self.resolve(source)?;
+        // Restore the source snapshot while keeping the current branch and its
+        // tip. A later ordinary commit records the copied working state.
+        let (snapshot, recovery, reservation) =
+            self.restore(&target, &branch, before, author, name, save)?;
+        Ok((
+            snapshot,
+            messages::git_rebased(&branch, source, recovery),
+            reservation,
+        ))
+    }
+
+    fn restore(
+        &mut self,
+        target: &str,
+        destination: &str,
+        before: &Snapshot,
+        author: u128,
+        name: &str,
+        save: &Path,
+    ) -> Result<(Snapshot, String, super::Reservation)> {
         let reservation = super::Reservation::new(
-            self.raw_size(&target)?
+            self.raw_size(target)?
                 .saturating_mul(6)
                 .saturating_add(4 * 1048576),
         )?;
@@ -565,9 +623,8 @@ impl Repository {
         let mut recovery = None;
         self.transaction(|repo| {
             let (source,head)=repo.head()?;
-            ensure!(source!=destination,messages::git_already_on_branch(head_label(&destination)));
             let head=head.context(messages::GIT_NO_COMMITS)?;
-            repo.load(&target)?; // Validate before creating a recovery or a journal.
+            repo.load(target)?; // Validate before creating a recovery or a journal.
             repo.store(before,&fp)?;
             if repo.snapshot_id(&head)?!=fp.full {
                 let now=chrono::Utc::now().timestamp();
@@ -577,21 +634,19 @@ impl Repository {
             }
             repo.conn.execute("INSERT INTO checkout VALUES(1,?1,?2,?3)",params![destination,target,fp.full])?; Ok(())
         })?;
+        let snapshot = self.finish_or_rollback(before, save)?;
+        Ok((
+            snapshot,
+            recovery
+                .map(|id| messages::git_checkout_recovery_suffix(&id[..8]))
+                .unwrap_or_default(),
+            reservation,
+        ))
+    }
+
+    fn finish_or_rollback(&mut self, before: &Snapshot, save: &Path) -> Result<Snapshot> {
         match self.finish_checkout(save) {
-            Ok(snapshot) => Ok((
-                snapshot,
-                messages::git_checked_out(
-                    if destination.starts_with('@') {
-                        messages::git_detached_head(&target[..8])
-                    } else {
-                        destination.clone()
-                    },
-                    recovery
-                        .map(|id| messages::git_checkout_recovery_suffix(&id[..8]))
-                        .unwrap_or_default(),
-                ),
-                reservation,
-            )),
+            Ok(snapshot) => Ok(snapshot),
             Err(error) => {
                 // Restore the exact captured working state, even if target save succeeded.
                 before

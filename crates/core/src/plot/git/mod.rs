@@ -278,7 +278,7 @@ impl Plot {
         let action = match args.first().copied() {
             Some("commit") => "commit",
             Some("branch") if args.len() > 1 => "branch",
-            Some("checkout" | "recover") => "checkout",
+            Some("checkout" | "recover" | "rebase") => "checkout",
             Some("diff") if args.get(1) == Some(&"show") => "visual",
             _ => "read",
         };
@@ -340,10 +340,10 @@ impl Plot {
         let plot = (self.world.x, self.world.z);
         let name = self.players[player].username.clone();
         let owned: Vec<String> = args.iter().map(|s| s.to_string()).collect();
-        let checkout = matches!(args.first(), Some(&"checkout" | &"recover"));
+        let checkout = matches!(args.first(), Some(&"checkout" | &"recover" | &"rebase"));
         let captured = if matches!(
             args.first(),
-            Some(&"commit" | &"status" | &"checkout" | &"recover")
+            Some(&"commit" | &"status" | &"checkout" | &"recover" | &"rebase")
         ) {
             Some(self.capture_git()?)
         } else {
@@ -403,6 +403,25 @@ impl Plot {
                     actor,
                     &name,
                 ),
+                ["rebase", reference] => {
+                    let save = PathBuf::from(format!("./world/plots/p{},{}", plot.0, plot.1));
+                    match repo.rebase(
+                        reference,
+                        &captured.as_ref().unwrap().0,
+                        actor,
+                        &name,
+                        &save,
+                    ) {
+                        Ok((snapshot, message, reservation)) => {
+                            Payload::Checkout(snapshot, message, reservation)
+                        }
+                        Err(error) => Payload::CheckoutFailed(
+                            format!("{error:#}"),
+                            repo.has_pending().unwrap_or(true),
+                        ),
+                    }
+                }
+                ["rebase", ..] => bail!(messages::USAGE_GIT_REBASE),
                 ["recover", id, branch] => {
                     repo.recover_branch(id, branch, actor, &name)?;
                     checkout_payload(
@@ -761,6 +780,7 @@ impl Plot {
                 "search",
                 "branch",
                 "checkout",
+                "rebase",
                 "diff",
                 "recoveries",
                 "recover",
@@ -768,6 +788,8 @@ impl Plot {
             ]
         } else if words.get(1) == Some(&"diff") && words.len() == 2 {
             vec!["show", "hide", "inspect", "HEAD"]
+        } else if words.get(1) == Some(&"rebase") {
+            vec![]
         } else {
             vec!["HEAD"]
         };

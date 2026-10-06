@@ -24,6 +24,8 @@ or managing a conventional `.git` directory is not required.
 - Branch creation from the current commit or an older commit.
 - A single active branch or detached commit shared by everyone on the plot.
 - Recoverable branch or commit checkout with simulation paused after restoration.
+- Simple rebase: copy a named branch's saved plot into the current branch as
+  unfinished changes, then edit and commit normally.
 - Comparison of any two commits or branch tips in the same plot.
 - Compact diff summaries, colored glowing markers, and optional sword-based inspection.
 - Storage, memory, work, and marker limits.
@@ -31,7 +33,7 @@ or managing a conventional `.git` directory is not required.
 
 ### Deferred
 
-- Merges, conflict resolution, rebases, cherry-picks, and partial commits.
+- Merges, conflict resolution, history-replaying rebases, cherry-picks, and partial commits.
 - Remotes, GitHub integration, and interoperability with ordinary Git repositories.
 - Personal working copies or simultaneous active branches on one plot.
 - History rewriting, branch deletion, and automatic commit pruning.
@@ -107,6 +109,7 @@ or search query is the remaining text after the command and its flags.
 | `/git branch` | List branches, highlight the active branch, and show tip IDs. |
 | `/git branch <name> [ref]` | Create a branch at the current tip or a supplied reference; do not switch. |
 | `/git checkout <branch\|commit>` | Restore a branch tip or commit after preserving unfinished work; commit IDs enter detached HEAD. |
+| `/git rebase <branch>` | Copy the source branch's tip into the current working plot without moving tips or creating commits. |
 | `/git diff <from> <to>` | Prepare a comparison and show a compact summary with clickable glow controls. |
 | `/git diff show` | Show glowing markers for the player's prepared comparison. Normally invoked by clicking Show glow. |
 | `/git diff inspect <x> <y> <z>` | Optional coordinate fallback for inspecting a position in the player's prepared comparison. Ordinary inspection uses a sword. |
@@ -189,9 +192,17 @@ rollback uses the captured previous state, or startup completes the recorded
 checkout. The implementation must never silently accept a saved plot/HEAD mismatch.
 On startup, resolve pending operations before admitting players to the plot.
 
-Checkout of the already active branch is a no-op; it does not discard edits.
-Branches cannot be checked out by commit ID in the first release. To work from
-an old commit, create a branch at that commit and check out that branch.
+Checkout of the already active branch refuses to replace it; it does not discard edits.
+
+`/git rebase <branch>` follows the same recovery, journal, player safety, and
+paused restoration sequence, but keeps the current named branch active and
+leaves both branch tips untouched. Copy the entire saved source snapshot,
+including block data and execution state, without merging or replaying history.
+The copied build is ordinary unfinished work. Players may edit it and run
+`/git commit <message>` to advance the current branch from its existing tip.
+Rebase requires named source and current branches; copying the current branch
+itself restores its saved state while preserving unfinished work in a recovery.
+An interrupted rebase resumes the copy with the current tip unchanged.
 
 ## 5. Commit comparison
 
