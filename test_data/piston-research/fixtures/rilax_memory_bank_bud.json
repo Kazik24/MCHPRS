@@ -1,0 +1,3708 @@
+{
+  "schema_version": 1,
+  "fixture": "test_data/piston-research/RILAX_MEMORY_BANK_BUD.schem",
+  "sha256": "123ea6bc48de1ab159d0909ab91c286ad2aeef0758a9b3dae9ca3dbf2a025559",
+  "dimensions": [
+    21,
+    15,
+    26
+  ],
+  "loader_offset": [
+    18,
+    13,
+    3
+  ],
+  "observations": {
+    "output": [
+      [
+        15,
+        1,
+        24
+      ],
+      [
+        15,
+        1,
+        22
+      ],
+      [
+        15,
+        1,
+        20
+      ],
+      [
+        15,
+        1,
+        18
+      ],
+      [
+        15,
+        1,
+        16
+      ],
+      [
+        15,
+        1,
+        14
+      ],
+      [
+        15,
+        1,
+        12
+      ],
+      [
+        15,
+        1,
+        10
+      ]
+    ],
+    "memory": [
+      [
+        0,
+        9,
+        24
+      ],
+      [
+        0,
+        9,
+        22
+      ],
+      [
+        0,
+        9,
+        20
+      ],
+      [
+        0,
+        9,
+        18
+      ],
+      [
+        0,
+        9,
+        16
+      ],
+      [
+        0,
+        9,
+        14
+      ],
+      [
+        0,
+        9,
+        12
+      ],
+      [
+        0,
+        9,
+        10
+      ],
+      [
+        2,
+        9,
+        24
+      ],
+      [
+        2,
+        9,
+        22
+      ],
+      [
+        2,
+        9,
+        20
+      ],
+      [
+        2,
+        9,
+        18
+      ],
+      [
+        2,
+        9,
+        16
+      ],
+      [
+        2,
+        9,
+        14
+      ],
+      [
+        2,
+        9,
+        12
+      ],
+      [
+        2,
+        9,
+        10
+      ],
+      [
+        4,
+        9,
+        24
+      ],
+      [
+        4,
+        9,
+        22
+      ],
+      [
+        4,
+        9,
+        20
+      ],
+      [
+        4,
+        9,
+        18
+      ],
+      [
+        4,
+        9,
+        16
+      ],
+      [
+        4,
+        9,
+        14
+      ],
+      [
+        4,
+        9,
+        12
+      ],
+      [
+        4,
+        9,
+        10
+      ],
+      [
+        6,
+        9,
+        24
+      ],
+      [
+        6,
+        9,
+        22
+      ],
+      [
+        6,
+        9,
+        20
+      ],
+      [
+        6,
+        9,
+        18
+      ],
+      [
+        6,
+        9,
+        16
+      ],
+      [
+        6,
+        9,
+        14
+      ],
+      [
+        6,
+        9,
+        12
+      ],
+      [
+        6,
+        9,
+        10
+      ],
+      [
+        8,
+        9,
+        24
+      ],
+      [
+        8,
+        9,
+        22
+      ],
+      [
+        8,
+        9,
+        20
+      ],
+      [
+        8,
+        9,
+        18
+      ],
+      [
+        8,
+        9,
+        16
+      ],
+      [
+        8,
+        9,
+        14
+      ],
+      [
+        8,
+        9,
+        12
+      ],
+      [
+        8,
+        9,
+        10
+      ],
+      [
+        10,
+        9,
+        24
+      ],
+      [
+        10,
+        9,
+        22
+      ],
+      [
+        10,
+        9,
+        20
+      ],
+      [
+        10,
+        9,
+        18
+      ],
+      [
+        10,
+        9,
+        16
+      ],
+      [
+        10,
+        9,
+        14
+      ],
+      [
+        10,
+        9,
+        12
+      ],
+      [
+        10,
+        9,
+        10
+      ],
+      [
+        12,
+        9,
+        24
+      ],
+      [
+        12,
+        9,
+        22
+      ],
+      [
+        12,
+        9,
+        20
+      ],
+      [
+        12,
+        9,
+        18
+      ],
+      [
+        12,
+        9,
+        16
+      ],
+      [
+        12,
+        9,
+        14
+      ],
+      [
+        12,
+        9,
+        12
+      ],
+      [
+        12,
+        9,
+        10
+      ],
+      [
+        14,
+        9,
+        24
+      ],
+      [
+        14,
+        9,
+        22
+      ],
+      [
+        14,
+        9,
+        20
+      ],
+      [
+        14,
+        9,
+        18
+      ],
+      [
+        14,
+        9,
+        16
+      ],
+      [
+        14,
+        9,
+        14
+      ],
+      [
+        14,
+        9,
+        12
+      ],
+      [
+        14,
+        9,
+        10
+      ]
+    ],
+    "read_gates": [
+      [
+        0,
+        5,
+        24
+      ],
+      [
+        0,
+        5,
+        22
+      ],
+      [
+        0,
+        5,
+        20
+      ],
+      [
+        0,
+        5,
+        18
+      ],
+      [
+        0,
+        5,
+        16
+      ],
+      [
+        0,
+        5,
+        14
+      ],
+      [
+        0,
+        5,
+        12
+      ],
+      [
+        0,
+        5,
+        10
+      ],
+      [
+        2,
+        5,
+        24
+      ],
+      [
+        2,
+        5,
+        22
+      ],
+      [
+        2,
+        5,
+        20
+      ],
+      [
+        2,
+        5,
+        18
+      ],
+      [
+        2,
+        5,
+        16
+      ],
+      [
+        2,
+        5,
+        14
+      ],
+      [
+        2,
+        5,
+        12
+      ],
+      [
+        2,
+        5,
+        10
+      ],
+      [
+        4,
+        5,
+        24
+      ],
+      [
+        4,
+        5,
+        22
+      ],
+      [
+        4,
+        5,
+        20
+      ],
+      [
+        4,
+        5,
+        18
+      ],
+      [
+        4,
+        5,
+        16
+      ],
+      [
+        4,
+        5,
+        14
+      ],
+      [
+        4,
+        5,
+        12
+      ],
+      [
+        4,
+        5,
+        10
+      ],
+      [
+        6,
+        5,
+        24
+      ],
+      [
+        6,
+        5,
+        22
+      ],
+      [
+        6,
+        5,
+        20
+      ],
+      [
+        6,
+        5,
+        18
+      ],
+      [
+        6,
+        5,
+        16
+      ],
+      [
+        6,
+        5,
+        14
+      ],
+      [
+        6,
+        5,
+        12
+      ],
+      [
+        6,
+        5,
+        10
+      ],
+      [
+        8,
+        5,
+        24
+      ],
+      [
+        8,
+        5,
+        22
+      ],
+      [
+        8,
+        5,
+        20
+      ],
+      [
+        8,
+        5,
+        18
+      ],
+      [
+        8,
+        5,
+        16
+      ],
+      [
+        8,
+        5,
+        14
+      ],
+      [
+        8,
+        5,
+        12
+      ],
+      [
+        8,
+        5,
+        10
+      ],
+      [
+        10,
+        5,
+        24
+      ],
+      [
+        10,
+        5,
+        22
+      ],
+      [
+        10,
+        5,
+        20
+      ],
+      [
+        10,
+        5,
+        18
+      ],
+      [
+        10,
+        5,
+        16
+      ],
+      [
+        10,
+        5,
+        14
+      ],
+      [
+        10,
+        5,
+        12
+      ],
+      [
+        10,
+        5,
+        10
+      ],
+      [
+        12,
+        5,
+        24
+      ],
+      [
+        12,
+        5,
+        22
+      ],
+      [
+        12,
+        5,
+        20
+      ],
+      [
+        12,
+        5,
+        18
+      ],
+      [
+        12,
+        5,
+        16
+      ],
+      [
+        12,
+        5,
+        14
+      ],
+      [
+        12,
+        5,
+        12
+      ],
+      [
+        12,
+        5,
+        10
+      ],
+      [
+        14,
+        5,
+        24
+      ],
+      [
+        14,
+        5,
+        22
+      ],
+      [
+        14,
+        5,
+        20
+      ],
+      [
+        14,
+        5,
+        18
+      ],
+      [
+        14,
+        5,
+        16
+      ],
+      [
+        14,
+        5,
+        14
+      ],
+      [
+        14,
+        5,
+        12
+      ],
+      [
+        14,
+        5,
+        10
+      ]
+    ],
+    "data": [
+      [
+        14,
+        14,
+        25
+      ],
+      [
+        14,
+        14,
+        23
+      ],
+      [
+        14,
+        14,
+        21
+      ],
+      [
+        14,
+        14,
+        19
+      ],
+      [
+        14,
+        14,
+        17
+      ],
+      [
+        14,
+        14,
+        15
+      ],
+      [
+        14,
+        14,
+        13
+      ],
+      [
+        14,
+        14,
+        11
+      ]
+    ],
+    "notes": [
+      [
+        0,
+        6,
+        24
+      ],
+      [
+        0,
+        6,
+        22
+      ],
+      [
+        0,
+        6,
+        20
+      ],
+      [
+        0,
+        6,
+        18
+      ],
+      [
+        0,
+        6,
+        16
+      ],
+      [
+        0,
+        6,
+        14
+      ],
+      [
+        0,
+        6,
+        12
+      ],
+      [
+        0,
+        6,
+        10
+      ],
+      [
+        2,
+        6,
+        24
+      ],
+      [
+        2,
+        6,
+        22
+      ],
+      [
+        2,
+        6,
+        20
+      ],
+      [
+        2,
+        6,
+        18
+      ],
+      [
+        2,
+        6,
+        16
+      ],
+      [
+        2,
+        6,
+        14
+      ],
+      [
+        2,
+        6,
+        12
+      ],
+      [
+        2,
+        6,
+        10
+      ],
+      [
+        4,
+        6,
+        24
+      ],
+      [
+        4,
+        6,
+        22
+      ],
+      [
+        4,
+        6,
+        20
+      ],
+      [
+        4,
+        6,
+        18
+      ],
+      [
+        4,
+        6,
+        16
+      ],
+      [
+        4,
+        6,
+        14
+      ],
+      [
+        4,
+        6,
+        12
+      ],
+      [
+        4,
+        6,
+        10
+      ],
+      [
+        6,
+        6,
+        24
+      ],
+      [
+        6,
+        6,
+        22
+      ],
+      [
+        6,
+        6,
+        20
+      ],
+      [
+        6,
+        6,
+        18
+      ],
+      [
+        6,
+        6,
+        16
+      ],
+      [
+        6,
+        6,
+        14
+      ],
+      [
+        6,
+        6,
+        12
+      ],
+      [
+        6,
+        6,
+        10
+      ],
+      [
+        8,
+        6,
+        24
+      ],
+      [
+        8,
+        6,
+        22
+      ],
+      [
+        8,
+        6,
+        20
+      ],
+      [
+        8,
+        6,
+        18
+      ],
+      [
+        8,
+        6,
+        16
+      ],
+      [
+        8,
+        6,
+        14
+      ],
+      [
+        8,
+        6,
+        12
+      ],
+      [
+        8,
+        6,
+        10
+      ],
+      [
+        10,
+        6,
+        24
+      ],
+      [
+        10,
+        6,
+        22
+      ],
+      [
+        10,
+        6,
+        20
+      ],
+      [
+        10,
+        6,
+        18
+      ],
+      [
+        10,
+        6,
+        16
+      ],
+      [
+        10,
+        6,
+        14
+      ],
+      [
+        10,
+        6,
+        12
+      ],
+      [
+        10,
+        6,
+        10
+      ],
+      [
+        12,
+        6,
+        24
+      ],
+      [
+        12,
+        6,
+        22
+      ],
+      [
+        12,
+        6,
+        20
+      ],
+      [
+        12,
+        6,
+        18
+      ],
+      [
+        12,
+        6,
+        16
+      ],
+      [
+        12,
+        6,
+        14
+      ],
+      [
+        12,
+        6,
+        12
+      ],
+      [
+        12,
+        6,
+        10
+      ],
+      [
+        14,
+        6,
+        24
+      ],
+      [
+        14,
+        6,
+        22
+      ],
+      [
+        14,
+        6,
+        20
+      ],
+      [
+        14,
+        6,
+        18
+      ],
+      [
+        14,
+        6,
+        16
+      ],
+      [
+        14,
+        6,
+        14
+      ],
+      [
+        14,
+        6,
+        12
+      ],
+      [
+        14,
+        6,
+        10
+      ]
+    ]
+  },
+  "cases": [
+    {
+      "id": "saved_idle",
+      "steps": [
+        {
+          "advance": 32
+        }
+      ]
+    },
+    {
+      "id": "saved_read",
+      "steps": [
+        {
+          "op": "lever",
+          "pos": [
+            18,
+            7,
+            1
+          ],
+          "powered": true
+        },
+        {
+          "advance": 32
+        }
+      ]
+    },
+    {
+      "id": "saved_update",
+      "steps": [
+        {
+          "op": "lever",
+          "pos": [
+            19,
+            12,
+            1
+          ],
+          "powered": true
+        },
+        {
+          "advance": 32
+        },
+        {
+          "op": "lever",
+          "pos": [
+            19,
+            12,
+            1
+          ],
+          "powered": false
+        },
+        {
+          "advance": 32
+        }
+      ]
+    },
+    {
+      "id": "address_0_write_a5_read",
+      "address": 0,
+      "data": 165,
+      "steps": [
+        {
+          "op": "lever",
+          "pos": [
+            19,
+            12,
+            3
+          ],
+          "powered": false
+        },
+        {
+          "op": "lever",
+          "pos": [
+            19,
+            12,
+            5
+          ],
+          "powered": false
+        },
+        {
+          "op": "lever",
+          "pos": [
+            19,
+            12,
+            7
+          ],
+          "powered": false
+        },
+        {
+          "advance": 24
+        },
+        {
+          "op": "lever",
+          "pos": [
+            14,
+            14,
+            25
+          ],
+          "powered": true
+        },
+        {
+          "op": "lever",
+          "pos": [
+            14,
+            14,
+            23
+          ],
+          "powered": false
+        },
+        {
+          "op": "lever",
+          "pos": [
+            14,
+            14,
+            21
+          ],
+          "powered": true
+        },
+        {
+          "op": "lever",
+          "pos": [
+            14,
+            14,
+            19
+          ],
+          "powered": false
+        },
+        {
+          "op": "lever",
+          "pos": [
+            14,
+            14,
+            17
+          ],
+          "powered": false
+        },
+        {
+          "op": "lever",
+          "pos": [
+            14,
+            14,
+            15
+          ],
+          "powered": true
+        },
+        {
+          "op": "lever",
+          "pos": [
+            14,
+            14,
+            13
+          ],
+          "powered": false
+        },
+        {
+          "op": "lever",
+          "pos": [
+            14,
+            14,
+            11
+          ],
+          "powered": true
+        },
+        {
+          "advance": 24
+        },
+        {
+          "op": "lever",
+          "pos": [
+            19,
+            12,
+            1
+          ],
+          "powered": true
+        },
+        {
+          "advance": 24
+        },
+        {
+          "op": "lever",
+          "pos": [
+            19,
+            12,
+            1
+          ],
+          "powered": false
+        },
+        {
+          "advance": 24
+        },
+        {
+          "op": "lever",
+          "pos": [
+            20,
+            7,
+            3
+          ],
+          "powered": false
+        },
+        {
+          "op": "lever",
+          "pos": [
+            20,
+            7,
+            5
+          ],
+          "powered": false
+        },
+        {
+          "op": "lever",
+          "pos": [
+            20,
+            7,
+            7
+          ],
+          "powered": false
+        },
+        {
+          "advance": 24
+        },
+        {
+          "op": "lever",
+          "pos": [
+            18,
+            7,
+            1
+          ],
+          "powered": true
+        },
+        {
+          "advance": 24
+        },
+        {
+          "op": "lever",
+          "pos": [
+            18,
+            7,
+            1
+          ],
+          "powered": false
+        },
+        {
+          "advance": 24
+        }
+      ]
+    },
+    {
+      "id": "address_1_write_a5_read",
+      "address": 1,
+      "data": 165,
+      "steps": [
+        {
+          "op": "lever",
+          "pos": [
+            19,
+            12,
+            3
+          ],
+          "powered": true
+        },
+        {
+          "op": "lever",
+          "pos": [
+            19,
+            12,
+            5
+          ],
+          "powered": false
+        },
+        {
+          "op": "lever",
+          "pos": [
+            19,
+            12,
+            7
+          ],
+          "powered": false
+        },
+        {
+          "advance": 24
+        },
+        {
+          "op": "lever",
+          "pos": [
+            14,
+            14,
+            25
+          ],
+          "powered": true
+        },
+        {
+          "op": "lever",
+          "pos": [
+            14,
+            14,
+            23
+          ],
+          "powered": false
+        },
+        {
+          "op": "lever",
+          "pos": [
+            14,
+            14,
+            21
+          ],
+          "powered": true
+        },
+        {
+          "op": "lever",
+          "pos": [
+            14,
+            14,
+            19
+          ],
+          "powered": false
+        },
+        {
+          "op": "lever",
+          "pos": [
+            14,
+            14,
+            17
+          ],
+          "powered": false
+        },
+        {
+          "op": "lever",
+          "pos": [
+            14,
+            14,
+            15
+          ],
+          "powered": true
+        },
+        {
+          "op": "lever",
+          "pos": [
+            14,
+            14,
+            13
+          ],
+          "powered": false
+        },
+        {
+          "op": "lever",
+          "pos": [
+            14,
+            14,
+            11
+          ],
+          "powered": true
+        },
+        {
+          "advance": 24
+        },
+        {
+          "op": "lever",
+          "pos": [
+            19,
+            12,
+            1
+          ],
+          "powered": true
+        },
+        {
+          "advance": 24
+        },
+        {
+          "op": "lever",
+          "pos": [
+            19,
+            12,
+            1
+          ],
+          "powered": false
+        },
+        {
+          "advance": 24
+        },
+        {
+          "op": "lever",
+          "pos": [
+            20,
+            7,
+            3
+          ],
+          "powered": true
+        },
+        {
+          "op": "lever",
+          "pos": [
+            20,
+            7,
+            5
+          ],
+          "powered": false
+        },
+        {
+          "op": "lever",
+          "pos": [
+            20,
+            7,
+            7
+          ],
+          "powered": false
+        },
+        {
+          "advance": 24
+        },
+        {
+          "op": "lever",
+          "pos": [
+            18,
+            7,
+            1
+          ],
+          "powered": true
+        },
+        {
+          "advance": 24
+        },
+        {
+          "op": "lever",
+          "pos": [
+            18,
+            7,
+            1
+          ],
+          "powered": false
+        },
+        {
+          "advance": 24
+        }
+      ]
+    },
+    {
+      "id": "address_2_write_a5_read",
+      "address": 2,
+      "data": 165,
+      "steps": [
+        {
+          "op": "lever",
+          "pos": [
+            19,
+            12,
+            3
+          ],
+          "powered": false
+        },
+        {
+          "op": "lever",
+          "pos": [
+            19,
+            12,
+            5
+          ],
+          "powered": true
+        },
+        {
+          "op": "lever",
+          "pos": [
+            19,
+            12,
+            7
+          ],
+          "powered": false
+        },
+        {
+          "advance": 24
+        },
+        {
+          "op": "lever",
+          "pos": [
+            14,
+            14,
+            25
+          ],
+          "powered": true
+        },
+        {
+          "op": "lever",
+          "pos": [
+            14,
+            14,
+            23
+          ],
+          "powered": false
+        },
+        {
+          "op": "lever",
+          "pos": [
+            14,
+            14,
+            21
+          ],
+          "powered": true
+        },
+        {
+          "op": "lever",
+          "pos": [
+            14,
+            14,
+            19
+          ],
+          "powered": false
+        },
+        {
+          "op": "lever",
+          "pos": [
+            14,
+            14,
+            17
+          ],
+          "powered": false
+        },
+        {
+          "op": "lever",
+          "pos": [
+            14,
+            14,
+            15
+          ],
+          "powered": true
+        },
+        {
+          "op": "lever",
+          "pos": [
+            14,
+            14,
+            13
+          ],
+          "powered": false
+        },
+        {
+          "op": "lever",
+          "pos": [
+            14,
+            14,
+            11
+          ],
+          "powered": true
+        },
+        {
+          "advance": 24
+        },
+        {
+          "op": "lever",
+          "pos": [
+            19,
+            12,
+            1
+          ],
+          "powered": true
+        },
+        {
+          "advance": 24
+        },
+        {
+          "op": "lever",
+          "pos": [
+            19,
+            12,
+            1
+          ],
+          "powered": false
+        },
+        {
+          "advance": 24
+        },
+        {
+          "op": "lever",
+          "pos": [
+            20,
+            7,
+            3
+          ],
+          "powered": false
+        },
+        {
+          "op": "lever",
+          "pos": [
+            20,
+            7,
+            5
+          ],
+          "powered": true
+        },
+        {
+          "op": "lever",
+          "pos": [
+            20,
+            7,
+            7
+          ],
+          "powered": false
+        },
+        {
+          "advance": 24
+        },
+        {
+          "op": "lever",
+          "pos": [
+            18,
+            7,
+            1
+          ],
+          "powered": true
+        },
+        {
+          "advance": 24
+        },
+        {
+          "op": "lever",
+          "pos": [
+            18,
+            7,
+            1
+          ],
+          "powered": false
+        },
+        {
+          "advance": 24
+        }
+      ]
+    },
+    {
+      "id": "address_3_write_a5_read",
+      "address": 3,
+      "data": 165,
+      "steps": [
+        {
+          "op": "lever",
+          "pos": [
+            19,
+            12,
+            3
+          ],
+          "powered": true
+        },
+        {
+          "op": "lever",
+          "pos": [
+            19,
+            12,
+            5
+          ],
+          "powered": true
+        },
+        {
+          "op": "lever",
+          "pos": [
+            19,
+            12,
+            7
+          ],
+          "powered": false
+        },
+        {
+          "advance": 24
+        },
+        {
+          "op": "lever",
+          "pos": [
+            14,
+            14,
+            25
+          ],
+          "powered": true
+        },
+        {
+          "op": "lever",
+          "pos": [
+            14,
+            14,
+            23
+          ],
+          "powered": false
+        },
+        {
+          "op": "lever",
+          "pos": [
+            14,
+            14,
+            21
+          ],
+          "powered": true
+        },
+        {
+          "op": "lever",
+          "pos": [
+            14,
+            14,
+            19
+          ],
+          "powered": false
+        },
+        {
+          "op": "lever",
+          "pos": [
+            14,
+            14,
+            17
+          ],
+          "powered": false
+        },
+        {
+          "op": "lever",
+          "pos": [
+            14,
+            14,
+            15
+          ],
+          "powered": true
+        },
+        {
+          "op": "lever",
+          "pos": [
+            14,
+            14,
+            13
+          ],
+          "powered": false
+        },
+        {
+          "op": "lever",
+          "pos": [
+            14,
+            14,
+            11
+          ],
+          "powered": true
+        },
+        {
+          "advance": 24
+        },
+        {
+          "op": "lever",
+          "pos": [
+            19,
+            12,
+            1
+          ],
+          "powered": true
+        },
+        {
+          "advance": 24
+        },
+        {
+          "op": "lever",
+          "pos": [
+            19,
+            12,
+            1
+          ],
+          "powered": false
+        },
+        {
+          "advance": 24
+        },
+        {
+          "op": "lever",
+          "pos": [
+            20,
+            7,
+            3
+          ],
+          "powered": true
+        },
+        {
+          "op": "lever",
+          "pos": [
+            20,
+            7,
+            5
+          ],
+          "powered": true
+        },
+        {
+          "op": "lever",
+          "pos": [
+            20,
+            7,
+            7
+          ],
+          "powered": false
+        },
+        {
+          "advance": 24
+        },
+        {
+          "op": "lever",
+          "pos": [
+            18,
+            7,
+            1
+          ],
+          "powered": true
+        },
+        {
+          "advance": 24
+        },
+        {
+          "op": "lever",
+          "pos": [
+            18,
+            7,
+            1
+          ],
+          "powered": false
+        },
+        {
+          "advance": 24
+        }
+      ]
+    },
+    {
+      "id": "address_4_write_a5_read",
+      "address": 4,
+      "data": 165,
+      "steps": [
+        {
+          "op": "lever",
+          "pos": [
+            19,
+            12,
+            3
+          ],
+          "powered": false
+        },
+        {
+          "op": "lever",
+          "pos": [
+            19,
+            12,
+            5
+          ],
+          "powered": false
+        },
+        {
+          "op": "lever",
+          "pos": [
+            19,
+            12,
+            7
+          ],
+          "powered": true
+        },
+        {
+          "advance": 24
+        },
+        {
+          "op": "lever",
+          "pos": [
+            14,
+            14,
+            25
+          ],
+          "powered": true
+        },
+        {
+          "op": "lever",
+          "pos": [
+            14,
+            14,
+            23
+          ],
+          "powered": false
+        },
+        {
+          "op": "lever",
+          "pos": [
+            14,
+            14,
+            21
+          ],
+          "powered": true
+        },
+        {
+          "op": "lever",
+          "pos": [
+            14,
+            14,
+            19
+          ],
+          "powered": false
+        },
+        {
+          "op": "lever",
+          "pos": [
+            14,
+            14,
+            17
+          ],
+          "powered": false
+        },
+        {
+          "op": "lever",
+          "pos": [
+            14,
+            14,
+            15
+          ],
+          "powered": true
+        },
+        {
+          "op": "lever",
+          "pos": [
+            14,
+            14,
+            13
+          ],
+          "powered": false
+        },
+        {
+          "op": "lever",
+          "pos": [
+            14,
+            14,
+            11
+          ],
+          "powered": true
+        },
+        {
+          "advance": 24
+        },
+        {
+          "op": "lever",
+          "pos": [
+            19,
+            12,
+            1
+          ],
+          "powered": true
+        },
+        {
+          "advance": 24
+        },
+        {
+          "op": "lever",
+          "pos": [
+            19,
+            12,
+            1
+          ],
+          "powered": false
+        },
+        {
+          "advance": 24
+        },
+        {
+          "op": "lever",
+          "pos": [
+            20,
+            7,
+            3
+          ],
+          "powered": false
+        },
+        {
+          "op": "lever",
+          "pos": [
+            20,
+            7,
+            5
+          ],
+          "powered": false
+        },
+        {
+          "op": "lever",
+          "pos": [
+            20,
+            7,
+            7
+          ],
+          "powered": true
+        },
+        {
+          "advance": 24
+        },
+        {
+          "op": "lever",
+          "pos": [
+            18,
+            7,
+            1
+          ],
+          "powered": true
+        },
+        {
+          "advance": 24
+        },
+        {
+          "op": "lever",
+          "pos": [
+            18,
+            7,
+            1
+          ],
+          "powered": false
+        },
+        {
+          "advance": 24
+        }
+      ]
+    },
+    {
+      "id": "address_5_write_a5_read",
+      "address": 5,
+      "data": 165,
+      "steps": [
+        {
+          "op": "lever",
+          "pos": [
+            19,
+            12,
+            3
+          ],
+          "powered": true
+        },
+        {
+          "op": "lever",
+          "pos": [
+            19,
+            12,
+            5
+          ],
+          "powered": false
+        },
+        {
+          "op": "lever",
+          "pos": [
+            19,
+            12,
+            7
+          ],
+          "powered": true
+        },
+        {
+          "advance": 24
+        },
+        {
+          "op": "lever",
+          "pos": [
+            14,
+            14,
+            25
+          ],
+          "powered": true
+        },
+        {
+          "op": "lever",
+          "pos": [
+            14,
+            14,
+            23
+          ],
+          "powered": false
+        },
+        {
+          "op": "lever",
+          "pos": [
+            14,
+            14,
+            21
+          ],
+          "powered": true
+        },
+        {
+          "op": "lever",
+          "pos": [
+            14,
+            14,
+            19
+          ],
+          "powered": false
+        },
+        {
+          "op": "lever",
+          "pos": [
+            14,
+            14,
+            17
+          ],
+          "powered": false
+        },
+        {
+          "op": "lever",
+          "pos": [
+            14,
+            14,
+            15
+          ],
+          "powered": true
+        },
+        {
+          "op": "lever",
+          "pos": [
+            14,
+            14,
+            13
+          ],
+          "powered": false
+        },
+        {
+          "op": "lever",
+          "pos": [
+            14,
+            14,
+            11
+          ],
+          "powered": true
+        },
+        {
+          "advance": 24
+        },
+        {
+          "op": "lever",
+          "pos": [
+            19,
+            12,
+            1
+          ],
+          "powered": true
+        },
+        {
+          "advance": 24
+        },
+        {
+          "op": "lever",
+          "pos": [
+            19,
+            12,
+            1
+          ],
+          "powered": false
+        },
+        {
+          "advance": 24
+        },
+        {
+          "op": "lever",
+          "pos": [
+            20,
+            7,
+            3
+          ],
+          "powered": true
+        },
+        {
+          "op": "lever",
+          "pos": [
+            20,
+            7,
+            5
+          ],
+          "powered": false
+        },
+        {
+          "op": "lever",
+          "pos": [
+            20,
+            7,
+            7
+          ],
+          "powered": true
+        },
+        {
+          "advance": 24
+        },
+        {
+          "op": "lever",
+          "pos": [
+            18,
+            7,
+            1
+          ],
+          "powered": true
+        },
+        {
+          "advance": 24
+        },
+        {
+          "op": "lever",
+          "pos": [
+            18,
+            7,
+            1
+          ],
+          "powered": false
+        },
+        {
+          "advance": 24
+        }
+      ]
+    },
+    {
+      "id": "address_6_write_a5_read",
+      "address": 6,
+      "data": 165,
+      "steps": [
+        {
+          "op": "lever",
+          "pos": [
+            19,
+            12,
+            3
+          ],
+          "powered": false
+        },
+        {
+          "op": "lever",
+          "pos": [
+            19,
+            12,
+            5
+          ],
+          "powered": true
+        },
+        {
+          "op": "lever",
+          "pos": [
+            19,
+            12,
+            7
+          ],
+          "powered": true
+        },
+        {
+          "advance": 24
+        },
+        {
+          "op": "lever",
+          "pos": [
+            14,
+            14,
+            25
+          ],
+          "powered": true
+        },
+        {
+          "op": "lever",
+          "pos": [
+            14,
+            14,
+            23
+          ],
+          "powered": false
+        },
+        {
+          "op": "lever",
+          "pos": [
+            14,
+            14,
+            21
+          ],
+          "powered": true
+        },
+        {
+          "op": "lever",
+          "pos": [
+            14,
+            14,
+            19
+          ],
+          "powered": false
+        },
+        {
+          "op": "lever",
+          "pos": [
+            14,
+            14,
+            17
+          ],
+          "powered": false
+        },
+        {
+          "op": "lever",
+          "pos": [
+            14,
+            14,
+            15
+          ],
+          "powered": true
+        },
+        {
+          "op": "lever",
+          "pos": [
+            14,
+            14,
+            13
+          ],
+          "powered": false
+        },
+        {
+          "op": "lever",
+          "pos": [
+            14,
+            14,
+            11
+          ],
+          "powered": true
+        },
+        {
+          "advance": 24
+        },
+        {
+          "op": "lever",
+          "pos": [
+            19,
+            12,
+            1
+          ],
+          "powered": true
+        },
+        {
+          "advance": 24
+        },
+        {
+          "op": "lever",
+          "pos": [
+            19,
+            12,
+            1
+          ],
+          "powered": false
+        },
+        {
+          "advance": 24
+        },
+        {
+          "op": "lever",
+          "pos": [
+            20,
+            7,
+            3
+          ],
+          "powered": false
+        },
+        {
+          "op": "lever",
+          "pos": [
+            20,
+            7,
+            5
+          ],
+          "powered": true
+        },
+        {
+          "op": "lever",
+          "pos": [
+            20,
+            7,
+            7
+          ],
+          "powered": true
+        },
+        {
+          "advance": 24
+        },
+        {
+          "op": "lever",
+          "pos": [
+            18,
+            7,
+            1
+          ],
+          "powered": true
+        },
+        {
+          "advance": 24
+        },
+        {
+          "op": "lever",
+          "pos": [
+            18,
+            7,
+            1
+          ],
+          "powered": false
+        },
+        {
+          "advance": 24
+        }
+      ]
+    },
+    {
+      "id": "address_7_write_a5_read",
+      "address": 7,
+      "data": 165,
+      "steps": [
+        {
+          "op": "lever",
+          "pos": [
+            19,
+            12,
+            3
+          ],
+          "powered": true
+        },
+        {
+          "op": "lever",
+          "pos": [
+            19,
+            12,
+            5
+          ],
+          "powered": true
+        },
+        {
+          "op": "lever",
+          "pos": [
+            19,
+            12,
+            7
+          ],
+          "powered": true
+        },
+        {
+          "advance": 24
+        },
+        {
+          "op": "lever",
+          "pos": [
+            14,
+            14,
+            25
+          ],
+          "powered": true
+        },
+        {
+          "op": "lever",
+          "pos": [
+            14,
+            14,
+            23
+          ],
+          "powered": false
+        },
+        {
+          "op": "lever",
+          "pos": [
+            14,
+            14,
+            21
+          ],
+          "powered": true
+        },
+        {
+          "op": "lever",
+          "pos": [
+            14,
+            14,
+            19
+          ],
+          "powered": false
+        },
+        {
+          "op": "lever",
+          "pos": [
+            14,
+            14,
+            17
+          ],
+          "powered": false
+        },
+        {
+          "op": "lever",
+          "pos": [
+            14,
+            14,
+            15
+          ],
+          "powered": true
+        },
+        {
+          "op": "lever",
+          "pos": [
+            14,
+            14,
+            13
+          ],
+          "powered": false
+        },
+        {
+          "op": "lever",
+          "pos": [
+            14,
+            14,
+            11
+          ],
+          "powered": true
+        },
+        {
+          "advance": 24
+        },
+        {
+          "op": "lever",
+          "pos": [
+            19,
+            12,
+            1
+          ],
+          "powered": true
+        },
+        {
+          "advance": 24
+        },
+        {
+          "op": "lever",
+          "pos": [
+            19,
+            12,
+            1
+          ],
+          "powered": false
+        },
+        {
+          "advance": 24
+        },
+        {
+          "op": "lever",
+          "pos": [
+            20,
+            7,
+            3
+          ],
+          "powered": true
+        },
+        {
+          "op": "lever",
+          "pos": [
+            20,
+            7,
+            5
+          ],
+          "powered": true
+        },
+        {
+          "op": "lever",
+          "pos": [
+            20,
+            7,
+            7
+          ],
+          "powered": true
+        },
+        {
+          "advance": 24
+        },
+        {
+          "op": "lever",
+          "pos": [
+            18,
+            7,
+            1
+          ],
+          "powered": true
+        },
+        {
+          "advance": 24
+        },
+        {
+          "op": "lever",
+          "pos": [
+            18,
+            7,
+            1
+          ],
+          "powered": false
+        },
+        {
+          "advance": 24
+        }
+      ]
+    },
+    {
+      "id": "held_update_data_change",
+      "steps": [
+        {
+          "op": "lever",
+          "pos": [
+            19,
+            12,
+            1
+          ],
+          "powered": true
+        },
+        {
+          "advance": 24
+        },
+        {
+          "op": "lever",
+          "pos": [
+            14,
+            14,
+            25
+          ],
+          "powered": true
+        },
+        {
+          "op": "lever",
+          "pos": [
+            14,
+            14,
+            23
+          ],
+          "powered": true
+        },
+        {
+          "op": "lever",
+          "pos": [
+            14,
+            14,
+            21
+          ],
+          "powered": true
+        },
+        {
+          "op": "lever",
+          "pos": [
+            14,
+            14,
+            19
+          ],
+          "powered": true
+        },
+        {
+          "op": "lever",
+          "pos": [
+            14,
+            14,
+            17
+          ],
+          "powered": true
+        },
+        {
+          "op": "lever",
+          "pos": [
+            14,
+            14,
+            15
+          ],
+          "powered": true
+        },
+        {
+          "op": "lever",
+          "pos": [
+            14,
+            14,
+            13
+          ],
+          "powered": true
+        },
+        {
+          "op": "lever",
+          "pos": [
+            14,
+            14,
+            11
+          ],
+          "powered": true
+        },
+        {
+          "advance": 24
+        },
+        {
+          "op": "lever",
+          "pos": [
+            19,
+            12,
+            1
+          ],
+          "powered": false
+        },
+        {
+          "advance": 24
+        }
+      ]
+    },
+    {
+      "id": "read_held_during_write",
+      "steps": [
+        {
+          "op": "lever",
+          "pos": [
+            18,
+            7,
+            1
+          ],
+          "powered": true
+        },
+        {
+          "advance": 24
+        },
+        {
+          "op": "lever",
+          "pos": [
+            14,
+            14,
+            25
+          ],
+          "powered": true
+        },
+        {
+          "op": "lever",
+          "pos": [
+            14,
+            14,
+            23
+          ],
+          "powered": true
+        },
+        {
+          "op": "lever",
+          "pos": [
+            14,
+            14,
+            21
+          ],
+          "powered": true
+        },
+        {
+          "op": "lever",
+          "pos": [
+            14,
+            14,
+            19
+          ],
+          "powered": true
+        },
+        {
+          "op": "lever",
+          "pos": [
+            14,
+            14,
+            17
+          ],
+          "powered": true
+        },
+        {
+          "op": "lever",
+          "pos": [
+            14,
+            14,
+            15
+          ],
+          "powered": true
+        },
+        {
+          "op": "lever",
+          "pos": [
+            14,
+            14,
+            13
+          ],
+          "powered": true
+        },
+        {
+          "op": "lever",
+          "pos": [
+            14,
+            14,
+            11
+          ],
+          "powered": true
+        },
+        {
+          "advance": 24
+        },
+        {
+          "op": "lever",
+          "pos": [
+            19,
+            12,
+            1
+          ],
+          "powered": true
+        },
+        {
+          "advance": 24
+        },
+        {
+          "op": "lever",
+          "pos": [
+            19,
+            12,
+            1
+          ],
+          "powered": false
+        },
+        {
+          "advance": 24
+        }
+      ]
+    },
+    {
+      "id": "same_value_repeated_write",
+      "steps": [
+        {
+          "advance": 24
+        },
+        {
+          "op": "lever",
+          "pos": [
+            19,
+            12,
+            1
+          ],
+          "powered": true
+        },
+        {
+          "advance": 24
+        },
+        {
+          "op": "lever",
+          "pos": [
+            19,
+            12,
+            1
+          ],
+          "powered": false
+        },
+        {
+          "advance": 24
+        },
+        {
+          "op": "lever",
+          "pos": [
+            19,
+            12,
+            1
+          ],
+          "powered": true
+        },
+        {
+          "advance": 24
+        },
+        {
+          "op": "lever",
+          "pos": [
+            19,
+            12,
+            1
+          ],
+          "powered": false
+        },
+        {
+          "advance": 24
+        }
+      ]
+    },
+    {
+      "id": "update_pulse_1",
+      "steps": [
+        {
+          "op": "lever",
+          "pos": [
+            14,
+            14,
+            25
+          ],
+          "powered": true
+        },
+        {
+          "op": "lever",
+          "pos": [
+            14,
+            14,
+            23
+          ],
+          "powered": true
+        },
+        {
+          "op": "lever",
+          "pos": [
+            14,
+            14,
+            21
+          ],
+          "powered": true
+        },
+        {
+          "op": "lever",
+          "pos": [
+            14,
+            14,
+            19
+          ],
+          "powered": true
+        },
+        {
+          "op": "lever",
+          "pos": [
+            14,
+            14,
+            17
+          ],
+          "powered": true
+        },
+        {
+          "op": "lever",
+          "pos": [
+            14,
+            14,
+            15
+          ],
+          "powered": true
+        },
+        {
+          "op": "lever",
+          "pos": [
+            14,
+            14,
+            13
+          ],
+          "powered": true
+        },
+        {
+          "op": "lever",
+          "pos": [
+            14,
+            14,
+            11
+          ],
+          "powered": true
+        },
+        {
+          "advance": 24
+        },
+        {
+          "op": "lever",
+          "pos": [
+            19,
+            12,
+            1
+          ],
+          "powered": true
+        },
+        {
+          "advance": 1
+        },
+        {
+          "op": "lever",
+          "pos": [
+            19,
+            12,
+            1
+          ],
+          "powered": false
+        },
+        {
+          "advance": 24
+        }
+      ]
+    },
+    {
+      "id": "update_pulse_2",
+      "steps": [
+        {
+          "op": "lever",
+          "pos": [
+            14,
+            14,
+            25
+          ],
+          "powered": true
+        },
+        {
+          "op": "lever",
+          "pos": [
+            14,
+            14,
+            23
+          ],
+          "powered": true
+        },
+        {
+          "op": "lever",
+          "pos": [
+            14,
+            14,
+            21
+          ],
+          "powered": true
+        },
+        {
+          "op": "lever",
+          "pos": [
+            14,
+            14,
+            19
+          ],
+          "powered": true
+        },
+        {
+          "op": "lever",
+          "pos": [
+            14,
+            14,
+            17
+          ],
+          "powered": true
+        },
+        {
+          "op": "lever",
+          "pos": [
+            14,
+            14,
+            15
+          ],
+          "powered": true
+        },
+        {
+          "op": "lever",
+          "pos": [
+            14,
+            14,
+            13
+          ],
+          "powered": true
+        },
+        {
+          "op": "lever",
+          "pos": [
+            14,
+            14,
+            11
+          ],
+          "powered": true
+        },
+        {
+          "advance": 24
+        },
+        {
+          "op": "lever",
+          "pos": [
+            19,
+            12,
+            1
+          ],
+          "powered": true
+        },
+        {
+          "advance": 2
+        },
+        {
+          "op": "lever",
+          "pos": [
+            19,
+            12,
+            1
+          ],
+          "powered": false
+        },
+        {
+          "advance": 24
+        }
+      ]
+    },
+    {
+      "id": "update_pulse_4",
+      "steps": [
+        {
+          "op": "lever",
+          "pos": [
+            14,
+            14,
+            25
+          ],
+          "powered": true
+        },
+        {
+          "op": "lever",
+          "pos": [
+            14,
+            14,
+            23
+          ],
+          "powered": true
+        },
+        {
+          "op": "lever",
+          "pos": [
+            14,
+            14,
+            21
+          ],
+          "powered": true
+        },
+        {
+          "op": "lever",
+          "pos": [
+            14,
+            14,
+            19
+          ],
+          "powered": true
+        },
+        {
+          "op": "lever",
+          "pos": [
+            14,
+            14,
+            17
+          ],
+          "powered": true
+        },
+        {
+          "op": "lever",
+          "pos": [
+            14,
+            14,
+            15
+          ],
+          "powered": true
+        },
+        {
+          "op": "lever",
+          "pos": [
+            14,
+            14,
+            13
+          ],
+          "powered": true
+        },
+        {
+          "op": "lever",
+          "pos": [
+            14,
+            14,
+            11
+          ],
+          "powered": true
+        },
+        {
+          "advance": 24
+        },
+        {
+          "op": "lever",
+          "pos": [
+            19,
+            12,
+            1
+          ],
+          "powered": true
+        },
+        {
+          "advance": 4
+        },
+        {
+          "op": "lever",
+          "pos": [
+            19,
+            12,
+            1
+          ],
+          "powered": false
+        },
+        {
+          "advance": 24
+        }
+      ]
+    },
+    {
+      "id": "update_pulse_6",
+      "steps": [
+        {
+          "op": "lever",
+          "pos": [
+            14,
+            14,
+            25
+          ],
+          "powered": true
+        },
+        {
+          "op": "lever",
+          "pos": [
+            14,
+            14,
+            23
+          ],
+          "powered": true
+        },
+        {
+          "op": "lever",
+          "pos": [
+            14,
+            14,
+            21
+          ],
+          "powered": true
+        },
+        {
+          "op": "lever",
+          "pos": [
+            14,
+            14,
+            19
+          ],
+          "powered": true
+        },
+        {
+          "op": "lever",
+          "pos": [
+            14,
+            14,
+            17
+          ],
+          "powered": true
+        },
+        {
+          "op": "lever",
+          "pos": [
+            14,
+            14,
+            15
+          ],
+          "powered": true
+        },
+        {
+          "op": "lever",
+          "pos": [
+            14,
+            14,
+            13
+          ],
+          "powered": true
+        },
+        {
+          "op": "lever",
+          "pos": [
+            14,
+            14,
+            11
+          ],
+          "powered": true
+        },
+        {
+          "advance": 24
+        },
+        {
+          "op": "lever",
+          "pos": [
+            19,
+            12,
+            1
+          ],
+          "powered": true
+        },
+        {
+          "advance": 6
+        },
+        {
+          "op": "lever",
+          "pos": [
+            19,
+            12,
+            1
+          ],
+          "powered": false
+        },
+        {
+          "advance": 24
+        }
+      ]
+    },
+    {
+      "id": "update_pulse_8",
+      "steps": [
+        {
+          "op": "lever",
+          "pos": [
+            14,
+            14,
+            25
+          ],
+          "powered": true
+        },
+        {
+          "op": "lever",
+          "pos": [
+            14,
+            14,
+            23
+          ],
+          "powered": true
+        },
+        {
+          "op": "lever",
+          "pos": [
+            14,
+            14,
+            21
+          ],
+          "powered": true
+        },
+        {
+          "op": "lever",
+          "pos": [
+            14,
+            14,
+            19
+          ],
+          "powered": true
+        },
+        {
+          "op": "lever",
+          "pos": [
+            14,
+            14,
+            17
+          ],
+          "powered": true
+        },
+        {
+          "op": "lever",
+          "pos": [
+            14,
+            14,
+            15
+          ],
+          "powered": true
+        },
+        {
+          "op": "lever",
+          "pos": [
+            14,
+            14,
+            13
+          ],
+          "powered": true
+        },
+        {
+          "op": "lever",
+          "pos": [
+            14,
+            14,
+            11
+          ],
+          "powered": true
+        },
+        {
+          "advance": 24
+        },
+        {
+          "op": "lever",
+          "pos": [
+            19,
+            12,
+            1
+          ],
+          "powered": true
+        },
+        {
+          "advance": 8
+        },
+        {
+          "op": "lever",
+          "pos": [
+            19,
+            12,
+            1
+          ],
+          "powered": false
+        },
+        {
+          "advance": 24
+        }
+      ]
+    },
+    {
+      "id": "update_pulse_12",
+      "steps": [
+        {
+          "op": "lever",
+          "pos": [
+            14,
+            14,
+            25
+          ],
+          "powered": true
+        },
+        {
+          "op": "lever",
+          "pos": [
+            14,
+            14,
+            23
+          ],
+          "powered": true
+        },
+        {
+          "op": "lever",
+          "pos": [
+            14,
+            14,
+            21
+          ],
+          "powered": true
+        },
+        {
+          "op": "lever",
+          "pos": [
+            14,
+            14,
+            19
+          ],
+          "powered": true
+        },
+        {
+          "op": "lever",
+          "pos": [
+            14,
+            14,
+            17
+          ],
+          "powered": true
+        },
+        {
+          "op": "lever",
+          "pos": [
+            14,
+            14,
+            15
+          ],
+          "powered": true
+        },
+        {
+          "op": "lever",
+          "pos": [
+            14,
+            14,
+            13
+          ],
+          "powered": true
+        },
+        {
+          "op": "lever",
+          "pos": [
+            14,
+            14,
+            11
+          ],
+          "powered": true
+        },
+        {
+          "advance": 24
+        },
+        {
+          "op": "lever",
+          "pos": [
+            19,
+            12,
+            1
+          ],
+          "powered": true
+        },
+        {
+          "advance": 12
+        },
+        {
+          "op": "lever",
+          "pos": [
+            19,
+            12,
+            1
+          ],
+          "powered": false
+        },
+        {
+          "advance": 24
+        }
+      ]
+    }
+  ],
+  "coordinate_convention": "Selection-local relative to saved minimum; capture origin (40,30,40).",
+  "ports": {
+    "write_enable": [
+      19,
+      12,
+      1
+    ],
+    "read_enable": [
+      18,
+      7,
+      1
+    ],
+    "write_address_lsb_first": [
+      [
+        19,
+        12,
+        3
+      ],
+      [
+        19,
+        12,
+        5
+      ],
+      [
+        19,
+        12,
+        7
+      ]
+    ],
+    "read_address_lsb_first": [
+      [
+        20,
+        7,
+        3
+      ],
+      [
+        20,
+        7,
+        5
+      ],
+      [
+        20,
+        7,
+        7
+      ]
+    ],
+    "data_lsb_first": [
+      [
+        14,
+        14,
+        25
+      ],
+      [
+        14,
+        14,
+        23
+      ],
+      [
+        14,
+        14,
+        21
+      ],
+      [
+        14,
+        14,
+        19
+      ],
+      [
+        14,
+        14,
+        17
+      ],
+      [
+        14,
+        14,
+        15
+      ],
+      [
+        14,
+        14,
+        13
+      ],
+      [
+        14,
+        14,
+        11
+      ]
+    ],
+    "output_lsb_first": [
+      [
+        15,
+        1,
+        24
+      ],
+      [
+        15,
+        1,
+        22
+      ],
+      [
+        15,
+        1,
+        20
+      ],
+      [
+        15,
+        1,
+        18
+      ],
+      [
+        15,
+        1,
+        16
+      ],
+      [
+        15,
+        1,
+        14
+      ],
+      [
+        15,
+        1,
+        12
+      ],
+      [
+        15,
+        1,
+        10
+      ]
+    ]
+  },
+  "memory_mapping": {
+    "address": "x=14-2*address",
+    "bit": "z=24-2*bit",
+    "base_y": 9,
+    "retracted_is_one": true,
+    "saved_words_address_order": [
+      0,
+      3,
+      8,
+      0,
+      0,
+      0,
+      0,
+      0
+    ]
+  },
+  "protocol": {
+    "setup": "strict paste without notifications; no automatic normalization",
+    "normal": "enables off; prepare decoder; advance 24 ticks; prepare data; advance 24 ticks; enable on 24 ticks, off 24 ticks; prepare read decoder; advance 24 ticks; read enable on 24 ticks, off 24 ticks",
+    "write_both_edges": "ordinary piston extension and retraction both generate sampling updates; keep data stable until both have completed",
+    "read": "sampled gate behavior, not a continuously refreshed RAM read",
+    "known_fixture_omission": {
+      "pos": [
+        13,
+        11,
+        2
+      ],
+      "missing": "south-facing wall torch",
+      "affected_address": 1,
+      "author": "Probably omission; will fix later",
+      "preservation": "Original binary remains unchanged; derived test world adds one torch only"
+    }
+  },
+  "evidence": "references/rilax-episodes.json.gz; original-file address 1 is a negative example, not a passing write"
+}

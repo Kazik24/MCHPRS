@@ -126,6 +126,8 @@ The final Redpiler-filtered run passed 61 tests with two excluded: the opt-in lo
 
 Workspace checking and release compilation are separate build checks, not additional Java evidence.
 
+The subsequent [FPU/RILAX characterization](FPU_RILAX_REDPILER_RESEARCH.md) added ten test-only import/memory regressions. The newer complete Redpiler run passed 71 tests with no failures and four ignored (two explicit capture tests, the long Counter test and the known-failing XOR comparison). FPU and RILAX still reject executable preparation; this research does not broaden runtime admission or rebuild the server executable.
+
 The independent Java evidence remains the separately versioned [I/O validation](INSTANT_PISTON_IO_VALIDATION.md). Compiled execution is compared directly with MCHPRS here; this implementation did not produce a new Java capture set. No measured runtime speedup is claimed yet.
 
 ## Manual counter test

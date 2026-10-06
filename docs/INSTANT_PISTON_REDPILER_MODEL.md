@@ -8,6 +8,8 @@ The intended interface uses ordinary Redpiler nodes: levers, buttons, torches an
 
 ANPU is the next [compiled acceptance target](ANPU_REDPILER.md). Its interpreter sampling/write projection and screen trace are retained as reference data; the general BUD graph abstraction remains pending. Its 896 identified note-block BUD cells carry conducting black concrete and require independent ordered update channels. Unsupported ANPU programs reject compilation; there is no physical compatibility backend.
 
+[RILAX bank characterization](FPU_RILAX_REDPILER_RESEARCH.md) now supplies a smaller precursor: distinct data power and head-notification channels, samples on both ordinary-piston movement edges, unchanged samples without writes, and read-gate state that retains an earlier read across a later write. A direct combinational read of stored bits would lose this sampled behavior. Its physical data/output levels use powered = one; that fixture decoder does not redefine the instant logical-one falling event. The same report separates FPU compiler limitations from author-confirmed broken saved geometry and leaves its custom arithmetic outside acceptance.
+
 ## 1. Circuit boundaries
 
 The parser identifies a region of interacting pistons, their payloads, reset circuits and internal connections. Its interface is derived from connections to the surrounding graph:

@@ -1,0 +1,8387 @@
+{
+  "schema_version": 1,
+  "fixture": "test_data/piston-research/RILAX_MEMORY_BANK_BUD.schem",
+  "fixture_sha256": "123ea6bc48de1ab159d0909ab91c286ad2aeef0758a9b3dae9ca3dbf2a025559",
+  "coordinates": "selection-local in summaries; full captures retain absolute operation/work positions",
+  "memory_word_order": "increasing x; logical address is 7-index; bit 0 at z=24",
+  "moving_word": "null marks a moving base; it is not a stored zero",
+  "analysis": [
+    {
+      "budget": 1,
+      "elapsed_ms": 5,
+      "inspected_cells": 40960,
+      "nonair_blocks": 2241,
+      "dependency_steps": 147293,
+      "pistons": 184,
+      "observers": 0,
+      "payload_groups": 184,
+      "group_sizes": {
+        "1": 184
+      },
+      "matched_reset_mechanisms": 0,
+      "diagnostic_counts": {
+        "UnsupportedPayload": 120,
+        "OrdinaryPiston": 56,
+        "RetractedEntry": 59,
+        "NoResetSeed": 56,
+        "EntryPowerMismatch": 3
+      },
+      "recognition_failure_counts": {
+        "NoResetPath": 184,
+        "NonSticky": 56,
+        "RetractedEntry": 59,
+        "UnsupportedPayload": 56,
+        "UnsampledEntry": 3
+      },
+      "examples": {
+        "NoResetPath": {
+          "base": [
+            0,
+            5,
+            10
+          ],
+          "failure": "NoResetPath"
+        },
+        "NonSticky": {
+          "base": [
+            1,
+            9,
+            11
+          ],
+          "failure": "NonSticky"
+        },
+        "RetractedEntry": {
+          "base": [
+            1,
+            9,
+            11
+          ],
+          "failure": "RetractedEntry"
+        },
+        "UnsupportedPayload": {
+          "base": [
+            1,
+            9,
+            11
+          ],
+          "failure": {
+            "UnsupportedPayload": {
+              "block": "air",
+              "pos": {
+                "x": 40,
+                "y": 39,
+                "z": 51
+              }
+            }
+          }
+        },
+        "UnsampledEntry": {
+          "base": [
+            10,
+            9,
+            18
+          ],
+          "failure": "UnsampledEntry"
+        }
+      },
+      "output_interfaces": 64,
+      "reset_exposures": 0
+    },
+    {
+      "budget": 8,
+      "elapsed_ms": 4,
+      "inspected_cells": 40960,
+      "nonair_blocks": 2241,
+      "dependency_steps": 147293,
+      "pistons": 184,
+      "observers": 0,
+      "payload_groups": 184,
+      "group_sizes": {
+        "1": 184
+      },
+      "matched_reset_mechanisms": 0,
+      "diagnostic_counts": {
+        "UnsupportedPayload": 120,
+        "OrdinaryPiston": 56,
+        "RetractedEntry": 59,
+        "NoResetSeed": 56,
+        "EntryPowerMismatch": 3
+      },
+      "recognition_failure_counts": {
+        "NoResetPath": 184,
+        "NonSticky": 56,
+        "RetractedEntry": 59,
+        "UnsupportedPayload": 56,
+        "UnsampledEntry": 3
+      },
+      "examples": {
+        "NoResetPath": {
+          "base": [
+            0,
+            5,
+            10
+          ],
+          "failure": "NoResetPath"
+        },
+        "NonSticky": {
+          "base": [
+            1,
+            9,
+            11
+          ],
+          "failure": "NonSticky"
+        },
+        "RetractedEntry": {
+          "base": [
+            1,
+            9,
+            11
+          ],
+          "failure": "RetractedEntry"
+        },
+        "UnsupportedPayload": {
+          "base": [
+            1,
+            9,
+            11
+          ],
+          "failure": {
+            "UnsupportedPayload": {
+              "block": "air",
+              "pos": {
+                "x": 40,
+                "y": 39,
+                "z": 51
+              }
+            }
+          }
+        },
+        "UnsampledEntry": {
+          "base": [
+            10,
+            9,
+            18
+          ],
+          "failure": "UnsampledEntry"
+        }
+      },
+      "output_interfaces": 64,
+      "reset_exposures": 0
+    }
+  ],
+  "compile": [
+    {
+      "active": false,
+      "budget": 1,
+      "elapsed_ms": 4,
+      "error": "clocked instant execution needs one owned generator"
+    },
+    {
+      "active": false,
+      "budget": 8,
+      "elapsed_ms": 4,
+      "error": "clocked instant execution needs one owned generator"
+    }
+  ],
+  "episodes": [
+    {
+      "case_id": "saved_idle",
+      "actions": [],
+      "transitions": [
+        {
+          "tick": 0,
+          "step": null,
+          "label": "import",
+          "words_in_increasing_x_order": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            8,
+            3,
+            0
+          ],
+          "output": 0
+        }
+      ],
+      "accepted_events": [],
+      "sample_counts": {},
+      "completed_ticks": 32
+    },
+    {
+      "case_id": "saved_read",
+      "actions": [
+        {
+          "tick": 0,
+          "op": "lever",
+          "pos": [
+            18,
+            7,
+            1
+          ],
+          "powered": true
+        }
+      ],
+      "transitions": [
+        {
+          "tick": 0,
+          "step": null,
+          "label": "import",
+          "words_in_increasing_x_order": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            8,
+            3,
+            0
+          ],
+          "output": 0
+        }
+      ],
+      "accepted_events": [],
+      "sample_counts": {
+        "[14, 5, 10]": 4,
+        "[14, 5, 12]": 4,
+        "[14, 5, 14]": 4,
+        "[14, 5, 16]": 4,
+        "[14, 5, 18]": 4,
+        "[14, 5, 20]": 4,
+        "[14, 5, 22]": 4,
+        "[14, 5, 24]": 4
+      },
+      "completed_ticks": 32
+    },
+    {
+      "case_id": "saved_update",
+      "actions": [
+        {
+          "tick": 0,
+          "op": "lever",
+          "pos": [
+            19,
+            12,
+            1
+          ],
+          "powered": true
+        },
+        {
+          "tick": 32,
+          "op": "lever",
+          "pos": [
+            19,
+            12,
+            1
+          ],
+          "powered": false
+        }
+      ],
+      "transitions": [
+        {
+          "tick": 0,
+          "step": null,
+          "label": "import",
+          "words_in_increasing_x_order": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            8,
+            3,
+            0
+          ],
+          "output": 0
+        }
+      ],
+      "accepted_events": [
+        {
+          "tick": 6,
+          "phase": "PistonEvents",
+          "pos": [
+            15,
+            9,
+            11
+          ],
+          "sticky": false,
+          "action": "Extend"
+        },
+        {
+          "tick": 6,
+          "phase": "PistonEvents",
+          "pos": [
+            15,
+            9,
+            13
+          ],
+          "sticky": false,
+          "action": "Extend"
+        },
+        {
+          "tick": 6,
+          "phase": "PistonEvents",
+          "pos": [
+            15,
+            9,
+            15
+          ],
+          "sticky": false,
+          "action": "Extend"
+        },
+        {
+          "tick": 6,
+          "phase": "PistonEvents",
+          "pos": [
+            15,
+            9,
+            17
+          ],
+          "sticky": false,
+          "action": "Extend"
+        },
+        {
+          "tick": 6,
+          "phase": "PistonEvents",
+          "pos": [
+            15,
+            9,
+            19
+          ],
+          "sticky": false,
+          "action": "Extend"
+        },
+        {
+          "tick": 6,
+          "phase": "PistonEvents",
+          "pos": [
+            15,
+            9,
+            21
+          ],
+          "sticky": false,
+          "action": "Extend"
+        },
+        {
+          "tick": 6,
+          "phase": "PistonEvents",
+          "pos": [
+            15,
+            9,
+            23
+          ],
+          "sticky": false,
+          "action": "Extend"
+        },
+        {
+          "tick": 38,
+          "phase": "PistonEvents",
+          "pos": [
+            15,
+            9,
+            21
+          ],
+          "sticky": false,
+          "action": "Retract"
+        },
+        {
+          "tick": 38,
+          "phase": "PistonEvents",
+          "pos": [
+            15,
+            9,
+            23
+          ],
+          "sticky": false,
+          "action": "Retract"
+        },
+        {
+          "tick": 38,
+          "phase": "PistonEvents",
+          "pos": [
+            15,
+            9,
+            17
+          ],
+          "sticky": false,
+          "action": "Retract"
+        },
+        {
+          "tick": 38,
+          "phase": "PistonEvents",
+          "pos": [
+            15,
+            9,
+            19
+          ],
+          "sticky": false,
+          "action": "Retract"
+        },
+        {
+          "tick": 38,
+          "phase": "PistonEvents",
+          "pos": [
+            15,
+            9,
+            13
+          ],
+          "sticky": false,
+          "action": "Retract"
+        },
+        {
+          "tick": 38,
+          "phase": "PistonEvents",
+          "pos": [
+            15,
+            9,
+            15
+          ],
+          "sticky": false,
+          "action": "Retract"
+        },
+        {
+          "tick": 38,
+          "phase": "PistonEvents",
+          "pos": [
+            15,
+            9,
+            11
+          ],
+          "sticky": false,
+          "action": "Retract"
+        }
+      ],
+      "sample_counts": {
+        "[15, 9, 11]": 16,
+        "[15, 9, 13]": 14,
+        "[15, 9, 15]": 13,
+        "[15, 9, 17]": 11,
+        "[15, 9, 19]": 10,
+        "[15, 9, 21]": 8,
+        "[15, 9, 23]": 7,
+        "[13, 9, 11]": 3,
+        "[14, 9, 10]": 3,
+        "[14, 9, 12]": 6,
+        "[13, 9, 13]": 3,
+        "[14, 9, 14]": 6,
+        "[13, 9, 15]": 3,
+        "[14, 9, 16]": 6,
+        "[13, 9, 17]": 3,
+        "[14, 9, 18]": 6,
+        "[13, 9, 19]": 3,
+        "[14, 9, 20]": 6,
+        "[13, 9, 21]": 3,
+        "[14, 9, 22]": 6,
+        "[13, 9, 23]": 3,
+        "[14, 9, 24]": 3
+      },
+      "completed_ticks": 64
+    },
+    {
+      "case_id": "address_0_write_a5_read",
+      "actions": [
+        {
+          "tick": 0,
+          "op": "lever",
+          "pos": [
+            19,
+            12,
+            3
+          ],
+          "powered": false
+        },
+        {
+          "tick": 0,
+          "op": "lever",
+          "pos": [
+            19,
+            12,
+            5
+          ],
+          "powered": false
+        },
+        {
+          "tick": 0,
+          "op": "lever",
+          "pos": [
+            19,
+            12,
+            7
+          ],
+          "powered": false
+        },
+        {
+          "tick": 24,
+          "op": "lever",
+          "pos": [
+            14,
+            14,
+            25
+          ],
+          "powered": true
+        },
+        {
+          "tick": 24,
+          "op": "lever",
+          "pos": [
+            14,
+            14,
+            23
+          ],
+          "powered": false
+        },
+        {
+          "tick": 24,
+          "op": "lever",
+          "pos": [
+            14,
+            14,
+            21
+          ],
+          "powered": true
+        },
+        {
+          "tick": 24,
+          "op": "lever",
+          "pos": [
+            14,
+            14,
+            19
+          ],
+          "powered": false
+        },
+        {
+          "tick": 24,
+          "op": "lever",
+          "pos": [
+            14,
+            14,
+            17
+          ],
+          "powered": false
+        },
+        {
+          "tick": 24,
+          "op": "lever",
+          "pos": [
+            14,
+            14,
+            15
+          ],
+          "powered": true
+        },
+        {
+          "tick": 24,
+          "op": "lever",
+          "pos": [
+            14,
+            14,
+            13
+          ],
+          "powered": false
+        },
+        {
+          "tick": 24,
+          "op": "lever",
+          "pos": [
+            14,
+            14,
+            11
+          ],
+          "powered": true
+        },
+        {
+          "tick": 48,
+          "op": "lever",
+          "pos": [
+            19,
+            12,
+            1
+          ],
+          "powered": true
+        },
+        {
+          "tick": 72,
+          "op": "lever",
+          "pos": [
+            19,
+            12,
+            1
+          ],
+          "powered": false
+        },
+        {
+          "tick": 96,
+          "op": "lever",
+          "pos": [
+            20,
+            7,
+            3
+          ],
+          "powered": false
+        },
+        {
+          "tick": 96,
+          "op": "lever",
+          "pos": [
+            20,
+            7,
+            5
+          ],
+          "powered": false
+        },
+        {
+          "tick": 96,
+          "op": "lever",
+          "pos": [
+            20,
+            7,
+            7
+          ],
+          "powered": false
+        },
+        {
+          "tick": 120,
+          "op": "lever",
+          "pos": [
+            18,
+            7,
+            1
+          ],
+          "powered": true
+        },
+        {
+          "tick": 144,
+          "op": "lever",
+          "pos": [
+            18,
+            7,
+            1
+          ],
+          "powered": false
+        }
+      ],
+      "transitions": [
+        {
+          "tick": 0,
+          "step": null,
+          "label": "import",
+          "words_in_increasing_x_order": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            8,
+            3,
+            0
+          ],
+          "output": 0
+        },
+        {
+          "tick": 54,
+          "step": 14,
+          "label": "tick",
+          "words_in_increasing_x_order": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            8,
+            3,
+            null
+          ],
+          "output": 0
+        },
+        {
+          "tick": 56,
+          "step": 14,
+          "label": "tick",
+          "words_in_increasing_x_order": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            8,
+            3,
+            165
+          ],
+          "output": 0
+        },
+        {
+          "tick": 130,
+          "step": 22,
+          "label": "tick",
+          "words_in_increasing_x_order": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            8,
+            3,
+            165
+          ],
+          "output": 165
+        },
+        {
+          "tick": 156,
+          "step": 24,
+          "label": "tick",
+          "words_in_increasing_x_order": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            8,
+            3,
+            165
+          ],
+          "output": 0
+        }
+      ],
+      "accepted_events": [
+        {
+          "tick": 54,
+          "phase": "PistonEvents",
+          "pos": [
+            15,
+            9,
+            11
+          ],
+          "sticky": false,
+          "action": "Extend"
+        },
+        {
+          "tick": 54,
+          "phase": "PistonEvents",
+          "pos": [
+            15,
+            9,
+            13
+          ],
+          "sticky": false,
+          "action": "Extend"
+        },
+        {
+          "tick": 54,
+          "phase": "PistonEvents",
+          "pos": [
+            15,
+            9,
+            15
+          ],
+          "sticky": false,
+          "action": "Extend"
+        },
+        {
+          "tick": 54,
+          "phase": "PistonEvents",
+          "pos": [
+            15,
+            9,
+            17
+          ],
+          "sticky": false,
+          "action": "Extend"
+        },
+        {
+          "tick": 54,
+          "phase": "PistonEvents",
+          "pos": [
+            15,
+            9,
+            19
+          ],
+          "sticky": false,
+          "action": "Extend"
+        },
+        {
+          "tick": 54,
+          "phase": "PistonEvents",
+          "pos": [
+            15,
+            9,
+            21
+          ],
+          "sticky": false,
+          "action": "Extend"
+        },
+        {
+          "tick": 54,
+          "phase": "PistonEvents",
+          "pos": [
+            15,
+            9,
+            23
+          ],
+          "sticky": false,
+          "action": "Extend"
+        },
+        {
+          "tick": 54,
+          "phase": "PistonEvents",
+          "pos": [
+            14,
+            9,
+            10
+          ],
+          "sticky": true,
+          "action": "Retract"
+        },
+        {
+          "tick": 54,
+          "phase": "PistonEvents",
+          "pos": [
+            14,
+            9,
+            14
+          ],
+          "sticky": true,
+          "action": "Retract"
+        },
+        {
+          "tick": 54,
+          "phase": "PistonEvents",
+          "pos": [
+            14,
+            9,
+            20
+          ],
+          "sticky": true,
+          "action": "Retract"
+        },
+        {
+          "tick": 54,
+          "phase": "PistonEvents",
+          "pos": [
+            14,
+            9,
+            24
+          ],
+          "sticky": true,
+          "action": "Retract"
+        },
+        {
+          "tick": 78,
+          "phase": "PistonEvents",
+          "pos": [
+            15,
+            9,
+            21
+          ],
+          "sticky": false,
+          "action": "Retract"
+        },
+        {
+          "tick": 78,
+          "phase": "PistonEvents",
+          "pos": [
+            15,
+            9,
+            23
+          ],
+          "sticky": false,
+          "action": "Retract"
+        },
+        {
+          "tick": 78,
+          "phase": "PistonEvents",
+          "pos": [
+            15,
+            9,
+            17
+          ],
+          "sticky": false,
+          "action": "Retract"
+        },
+        {
+          "tick": 78,
+          "phase": "PistonEvents",
+          "pos": [
+            15,
+            9,
+            19
+          ],
+          "sticky": false,
+          "action": "Retract"
+        },
+        {
+          "tick": 78,
+          "phase": "PistonEvents",
+          "pos": [
+            15,
+            9,
+            13
+          ],
+          "sticky": false,
+          "action": "Retract"
+        },
+        {
+          "tick": 78,
+          "phase": "PistonEvents",
+          "pos": [
+            15,
+            9,
+            15
+          ],
+          "sticky": false,
+          "action": "Retract"
+        },
+        {
+          "tick": 78,
+          "phase": "PistonEvents",
+          "pos": [
+            15,
+            9,
+            11
+          ],
+          "sticky": false,
+          "action": "Retract"
+        },
+        {
+          "tick": 128,
+          "phase": "PistonEvents",
+          "pos": [
+            14,
+            5,
+            10
+          ],
+          "sticky": true,
+          "action": "Retract"
+        },
+        {
+          "tick": 128,
+          "phase": "PistonEvents",
+          "pos": [
+            14,
+            5,
+            14
+          ],
+          "sticky": true,
+          "action": "Retract"
+        },
+        {
+          "tick": 128,
+          "phase": "PistonEvents",
+          "pos": [
+            14,
+            5,
+            20
+          ],
+          "sticky": true,
+          "action": "Retract"
+        },
+        {
+          "tick": 128,
+          "phase": "PistonEvents",
+          "pos": [
+            14,
+            5,
+            24
+          ],
+          "sticky": true,
+          "action": "Retract"
+        },
+        {
+          "tick": 152,
+          "phase": "PistonEvents",
+          "pos": [
+            14,
+            5,
+            24
+          ],
+          "sticky": true,
+          "action": "Extend"
+        },
+        {
+          "tick": 152,
+          "phase": "PistonEvents",
+          "pos": [
+            14,
+            5,
+            20
+          ],
+          "sticky": true,
+          "action": "Extend"
+        },
+        {
+          "tick": 152,
+          "phase": "PistonEvents",
+          "pos": [
+            14,
+            5,
+            14
+          ],
+          "sticky": true,
+          "action": "Extend"
+        },
+        {
+          "tick": 152,
+          "phase": "PistonEvents",
+          "pos": [
+            14,
+            5,
+            10
+          ],
+          "sticky": true,
+          "action": "Extend"
+        }
+      ],
+      "sample_counts": {
+        "[15, 9, 11]": 17,
+        "[15, 9, 13]": 15,
+        "[15, 9, 15]": 14,
+        "[15, 9, 17]": 11,
+        "[15, 9, 19]": 11,
+        "[15, 9, 21]": 9,
+        "[15, 9, 23]": 8,
+        "[13, 9, 11]": 3,
+        "[14, 9, 10]": 4,
+        "[14, 9, 12]": 6,
+        "[13, 9, 13]": 3,
+        "[14, 9, 14]": 6,
+        "[13, 9, 15]": 3,
+        "[14, 9, 16]": 6,
+        "[13, 9, 17]": 3,
+        "[14, 9, 18]": 6,
+        "[13, 9, 19]": 3,
+        "[14, 9, 20]": 6,
+        "[13, 9, 21]": 3,
+        "[14, 9, 22]": 6,
+        "[13, 9, 23]": 3,
+        "[14, 9, 24]": 4,
+        "[14, 5, 10]": 18,
+        "[14, 5, 12]": 24,
+        "[14, 5, 14]": 16,
+        "[14, 5, 16]": 20,
+        "[14, 5, 18]": 18,
+        "[14, 5, 20]": 13,
+        "[14, 5, 22]": 14,
+        "[14, 5, 24]": 11,
+        "[12, 5, 10]": 12,
+        "[10, 5, 10]": 10,
+        "[8, 5, 10]": 9,
+        "[6, 5, 10]": 7,
+        "[4, 5, 10]": 6,
+        "[2, 5, 10]": 4,
+        "[12, 5, 14]": 12,
+        "[10, 5, 14]": 10,
+        "[8, 5, 14]": 9,
+        "[6, 5, 14]": 7,
+        "[4, 5, 14]": 6,
+        "[2, 5, 14]": 4,
+        "[12, 5, 20]": 12,
+        "[10, 5, 20]": 10,
+        "[8, 5, 20]": 9,
+        "[6, 5, 20]": 7,
+        "[4, 5, 20]": 6,
+        "[2, 5, 20]": 4,
+        "[12, 5, 24]": 12,
+        "[10, 5, 24]": 10,
+        "[8, 5, 24]": 9,
+        "[6, 5, 24]": 7,
+        "[4, 5, 24]": 6,
+        "[2, 5, 24]": 4
+      },
+      "completed_ticks": 168
+    },
+    {
+      "case_id": "address_1_write_a5_read",
+      "actions": [
+        {
+          "tick": 0,
+          "op": "lever",
+          "pos": [
+            19,
+            12,
+            3
+          ],
+          "powered": true
+        },
+        {
+          "tick": 0,
+          "op": "lever",
+          "pos": [
+            19,
+            12,
+            5
+          ],
+          "powered": false
+        },
+        {
+          "tick": 0,
+          "op": "lever",
+          "pos": [
+            19,
+            12,
+            7
+          ],
+          "powered": false
+        },
+        {
+          "tick": 24,
+          "op": "lever",
+          "pos": [
+            14,
+            14,
+            25
+          ],
+          "powered": true
+        },
+        {
+          "tick": 24,
+          "op": "lever",
+          "pos": [
+            14,
+            14,
+            23
+          ],
+          "powered": false
+        },
+        {
+          "tick": 24,
+          "op": "lever",
+          "pos": [
+            14,
+            14,
+            21
+          ],
+          "powered": true
+        },
+        {
+          "tick": 24,
+          "op": "lever",
+          "pos": [
+            14,
+            14,
+            19
+          ],
+          "powered": false
+        },
+        {
+          "tick": 24,
+          "op": "lever",
+          "pos": [
+            14,
+            14,
+            17
+          ],
+          "powered": false
+        },
+        {
+          "tick": 24,
+          "op": "lever",
+          "pos": [
+            14,
+            14,
+            15
+          ],
+          "powered": true
+        },
+        {
+          "tick": 24,
+          "op": "lever",
+          "pos": [
+            14,
+            14,
+            13
+          ],
+          "powered": false
+        },
+        {
+          "tick": 24,
+          "op": "lever",
+          "pos": [
+            14,
+            14,
+            11
+          ],
+          "powered": true
+        },
+        {
+          "tick": 48,
+          "op": "lever",
+          "pos": [
+            19,
+            12,
+            1
+          ],
+          "powered": true
+        },
+        {
+          "tick": 72,
+          "op": "lever",
+          "pos": [
+            19,
+            12,
+            1
+          ],
+          "powered": false
+        },
+        {
+          "tick": 96,
+          "op": "lever",
+          "pos": [
+            20,
+            7,
+            3
+          ],
+          "powered": true
+        },
+        {
+          "tick": 96,
+          "op": "lever",
+          "pos": [
+            20,
+            7,
+            5
+          ],
+          "powered": false
+        },
+        {
+          "tick": 96,
+          "op": "lever",
+          "pos": [
+            20,
+            7,
+            7
+          ],
+          "powered": false
+        },
+        {
+          "tick": 120,
+          "op": "lever",
+          "pos": [
+            18,
+            7,
+            1
+          ],
+          "powered": true
+        },
+        {
+          "tick": 144,
+          "op": "lever",
+          "pos": [
+            18,
+            7,
+            1
+          ],
+          "powered": false
+        }
+      ],
+      "transitions": [
+        {
+          "tick": 0,
+          "step": null,
+          "label": "import",
+          "words_in_increasing_x_order": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            8,
+            3,
+            0
+          ],
+          "output": 0
+        },
+        {
+          "tick": 6,
+          "step": 3,
+          "label": "tick",
+          "words_in_increasing_x_order": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            8,
+            0,
+            0
+          ],
+          "output": 0
+        }
+      ],
+      "accepted_events": [
+        {
+          "tick": 6,
+          "phase": "PistonEvents",
+          "pos": [
+            13,
+            9,
+            11
+          ],
+          "sticky": false,
+          "action": "Extend"
+        },
+        {
+          "tick": 6,
+          "phase": "PistonEvents",
+          "pos": [
+            13,
+            9,
+            13
+          ],
+          "sticky": false,
+          "action": "Extend"
+        },
+        {
+          "tick": 6,
+          "phase": "PistonEvents",
+          "pos": [
+            13,
+            9,
+            15
+          ],
+          "sticky": false,
+          "action": "Extend"
+        },
+        {
+          "tick": 6,
+          "phase": "PistonEvents",
+          "pos": [
+            13,
+            9,
+            17
+          ],
+          "sticky": false,
+          "action": "Extend"
+        },
+        {
+          "tick": 6,
+          "phase": "PistonEvents",
+          "pos": [
+            13,
+            9,
+            19
+          ],
+          "sticky": false,
+          "action": "Extend"
+        },
+        {
+          "tick": 6,
+          "phase": "PistonEvents",
+          "pos": [
+            13,
+            9,
+            21
+          ],
+          "sticky": false,
+          "action": "Extend"
+        },
+        {
+          "tick": 6,
+          "phase": "PistonEvents",
+          "pos": [
+            13,
+            9,
+            23
+          ],
+          "sticky": false,
+          "action": "Extend"
+        },
+        {
+          "tick": 6,
+          "phase": "PistonEvents",
+          "pos": [
+            12,
+            9,
+            22
+          ],
+          "sticky": true,
+          "action": "Extend"
+        },
+        {
+          "tick": 6,
+          "phase": "PistonEvents",
+          "pos": [
+            12,
+            9,
+            24
+          ],
+          "sticky": true,
+          "action": "Extend"
+        }
+      ],
+      "sample_counts": {
+        "[13, 9, 11]": 4,
+        "[13, 9, 13]": 4,
+        "[13, 9, 15]": 4,
+        "[13, 9, 17]": 4,
+        "[13, 9, 19]": 4,
+        "[13, 9, 21]": 4,
+        "[13, 9, 23]": 4,
+        "[11, 9, 11]": 2,
+        "[12, 9, 10]": 2,
+        "[12, 9, 12]": 4,
+        "[11, 9, 13]": 2,
+        "[12, 9, 14]": 4,
+        "[11, 9, 15]": 2,
+        "[12, 9, 16]": 4,
+        "[11, 9, 17]": 2,
+        "[12, 9, 18]": 4,
+        "[11, 9, 19]": 2,
+        "[12, 9, 20]": 4,
+        "[11, 9, 21]": 2,
+        "[12, 9, 22]": 7,
+        "[11, 9, 23]": 2,
+        "[12, 9, 24]": 5,
+        "[12, 5, 10]": 22,
+        "[14, 5, 10]": 18,
+        "[14, 5, 12]": 16,
+        "[12, 5, 12]": 20,
+        "[14, 5, 14]": 14,
+        "[12, 5, 14]": 18,
+        "[14, 5, 16]": 12,
+        "[12, 5, 16]": 16,
+        "[14, 5, 18]": 10,
+        "[12, 5, 18]": 14,
+        "[14, 5, 20]": 8,
+        "[12, 5, 20]": 12,
+        "[14, 5, 22]": 6,
+        "[12, 5, 22]": 10,
+        "[14, 5, 24]": 4,
+        "[12, 5, 24]": 8
+      },
+      "completed_ticks": 168
+    },
+    {
+      "case_id": "address_2_write_a5_read",
+      "actions": [
+        {
+          "tick": 0,
+          "op": "lever",
+          "pos": [
+            19,
+            12,
+            3
+          ],
+          "powered": false
+        },
+        {
+          "tick": 0,
+          "op": "lever",
+          "pos": [
+            19,
+            12,
+            5
+          ],
+          "powered": true
+        },
+        {
+          "tick": 0,
+          "op": "lever",
+          "pos": [
+            19,
+            12,
+            7
+          ],
+          "powered": false
+        },
+        {
+          "tick": 24,
+          "op": "lever",
+          "pos": [
+            14,
+            14,
+            25
+          ],
+          "powered": true
+        },
+        {
+          "tick": 24,
+          "op": "lever",
+          "pos": [
+            14,
+            14,
+            23
+          ],
+          "powered": false
+        },
+        {
+          "tick": 24,
+          "op": "lever",
+          "pos": [
+            14,
+            14,
+            21
+          ],
+          "powered": true
+        },
+        {
+          "tick": 24,
+          "op": "lever",
+          "pos": [
+            14,
+            14,
+            19
+          ],
+          "powered": false
+        },
+        {
+          "tick": 24,
+          "op": "lever",
+          "pos": [
+            14,
+            14,
+            17
+          ],
+          "powered": false
+        },
+        {
+          "tick": 24,
+          "op": "lever",
+          "pos": [
+            14,
+            14,
+            15
+          ],
+          "powered": true
+        },
+        {
+          "tick": 24,
+          "op": "lever",
+          "pos": [
+            14,
+            14,
+            13
+          ],
+          "powered": false
+        },
+        {
+          "tick": 24,
+          "op": "lever",
+          "pos": [
+            14,
+            14,
+            11
+          ],
+          "powered": true
+        },
+        {
+          "tick": 48,
+          "op": "lever",
+          "pos": [
+            19,
+            12,
+            1
+          ],
+          "powered": true
+        },
+        {
+          "tick": 72,
+          "op": "lever",
+          "pos": [
+            19,
+            12,
+            1
+          ],
+          "powered": false
+        },
+        {
+          "tick": 96,
+          "op": "lever",
+          "pos": [
+            20,
+            7,
+            3
+          ],
+          "powered": false
+        },
+        {
+          "tick": 96,
+          "op": "lever",
+          "pos": [
+            20,
+            7,
+            5
+          ],
+          "powered": true
+        },
+        {
+          "tick": 96,
+          "op": "lever",
+          "pos": [
+            20,
+            7,
+            7
+          ],
+          "powered": false
+        },
+        {
+          "tick": 120,
+          "op": "lever",
+          "pos": [
+            18,
+            7,
+            1
+          ],
+          "powered": true
+        },
+        {
+          "tick": 144,
+          "op": "lever",
+          "pos": [
+            18,
+            7,
+            1
+          ],
+          "powered": false
+        }
+      ],
+      "transitions": [
+        {
+          "tick": 0,
+          "step": null,
+          "label": "import",
+          "words_in_increasing_x_order": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            8,
+            3,
+            0
+          ],
+          "output": 0
+        },
+        {
+          "tick": 54,
+          "step": 14,
+          "label": "tick",
+          "words_in_increasing_x_order": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            null,
+            3,
+            0
+          ],
+          "output": 0
+        },
+        {
+          "tick": 56,
+          "step": 14,
+          "label": "tick",
+          "words_in_increasing_x_order": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            165,
+            3,
+            0
+          ],
+          "output": 0
+        },
+        {
+          "tick": 130,
+          "step": 22,
+          "label": "tick",
+          "words_in_increasing_x_order": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            165,
+            3,
+            0
+          ],
+          "output": 165
+        },
+        {
+          "tick": 156,
+          "step": 24,
+          "label": "tick",
+          "words_in_increasing_x_order": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            165,
+            3,
+            0
+          ],
+          "output": 0
+        }
+      ],
+      "accepted_events": [
+        {
+          "tick": 54,
+          "phase": "PistonEvents",
+          "pos": [
+            11,
+            9,
+            11
+          ],
+          "sticky": false,
+          "action": "Extend"
+        },
+        {
+          "tick": 54,
+          "phase": "PistonEvents",
+          "pos": [
+            11,
+            9,
+            13
+          ],
+          "sticky": false,
+          "action": "Extend"
+        },
+        {
+          "tick": 54,
+          "phase": "PistonEvents",
+          "pos": [
+            11,
+            9,
+            15
+          ],
+          "sticky": false,
+          "action": "Extend"
+        },
+        {
+          "tick": 54,
+          "phase": "PistonEvents",
+          "pos": [
+            11,
+            9,
+            17
+          ],
+          "sticky": false,
+          "action": "Extend"
+        },
+        {
+          "tick": 54,
+          "phase": "PistonEvents",
+          "pos": [
+            11,
+            9,
+            19
+          ],
+          "sticky": false,
+          "action": "Extend"
+        },
+        {
+          "tick": 54,
+          "phase": "PistonEvents",
+          "pos": [
+            11,
+            9,
+            21
+          ],
+          "sticky": false,
+          "action": "Extend"
+        },
+        {
+          "tick": 54,
+          "phase": "PistonEvents",
+          "pos": [
+            11,
+            9,
+            23
+          ],
+          "sticky": false,
+          "action": "Extend"
+        },
+        {
+          "tick": 54,
+          "phase": "PistonEvents",
+          "pos": [
+            10,
+            9,
+            10
+          ],
+          "sticky": true,
+          "action": "Retract"
+        },
+        {
+          "tick": 54,
+          "phase": "PistonEvents",
+          "pos": [
+            10,
+            9,
+            14
+          ],
+          "sticky": true,
+          "action": "Retract"
+        },
+        {
+          "tick": 54,
+          "phase": "PistonEvents",
+          "pos": [
+            10,
+            9,
+            18
+          ],
+          "sticky": true,
+          "action": "Extend"
+        },
+        {
+          "tick": 54,
+          "phase": "PistonEvents",
+          "pos": [
+            10,
+            9,
+            20
+          ],
+          "sticky": true,
+          "action": "Retract"
+        },
+        {
+          "tick": 54,
+          "phase": "PistonEvents",
+          "pos": [
+            10,
+            9,
+            24
+          ],
+          "sticky": true,
+          "action": "Retract"
+        },
+        {
+          "tick": 78,
+          "phase": "PistonEvents",
+          "pos": [
+            11,
+            9,
+            21
+          ],
+          "sticky": false,
+          "action": "Retract"
+        },
+        {
+          "tick": 78,
+          "phase": "PistonEvents",
+          "pos": [
+            11,
+            9,
+            23
+          ],
+          "sticky": false,
+          "action": "Retract"
+        },
+        {
+          "tick": 78,
+          "phase": "PistonEvents",
+          "pos": [
+            11,
+            9,
+            17
+          ],
+          "sticky": false,
+          "action": "Retract"
+        },
+        {
+          "tick": 78,
+          "phase": "PistonEvents",
+          "pos": [
+            11,
+            9,
+            19
+          ],
+          "sticky": false,
+          "action": "Retract"
+        },
+        {
+          "tick": 78,
+          "phase": "PistonEvents",
+          "pos": [
+            11,
+            9,
+            13
+          ],
+          "sticky": false,
+          "action": "Retract"
+        },
+        {
+          "tick": 78,
+          "phase": "PistonEvents",
+          "pos": [
+            11,
+            9,
+            15
+          ],
+          "sticky": false,
+          "action": "Retract"
+        },
+        {
+          "tick": 78,
+          "phase": "PistonEvents",
+          "pos": [
+            11,
+            9,
+            11
+          ],
+          "sticky": false,
+          "action": "Retract"
+        },
+        {
+          "tick": 128,
+          "phase": "PistonEvents",
+          "pos": [
+            10,
+            5,
+            10
+          ],
+          "sticky": true,
+          "action": "Retract"
+        },
+        {
+          "tick": 128,
+          "phase": "PistonEvents",
+          "pos": [
+            10,
+            5,
+            14
+          ],
+          "sticky": true,
+          "action": "Retract"
+        },
+        {
+          "tick": 128,
+          "phase": "PistonEvents",
+          "pos": [
+            10,
+            5,
+            20
+          ],
+          "sticky": true,
+          "action": "Retract"
+        },
+        {
+          "tick": 128,
+          "phase": "PistonEvents",
+          "pos": [
+            10,
+            5,
+            24
+          ],
+          "sticky": true,
+          "action": "Retract"
+        },
+        {
+          "tick": 152,
+          "phase": "PistonEvents",
+          "pos": [
+            10,
+            5,
+            24
+          ],
+          "sticky": true,
+          "action": "Extend"
+        },
+        {
+          "tick": 152,
+          "phase": "PistonEvents",
+          "pos": [
+            10,
+            5,
+            20
+          ],
+          "sticky": true,
+          "action": "Extend"
+        },
+        {
+          "tick": 152,
+          "phase": "PistonEvents",
+          "pos": [
+            10,
+            5,
+            14
+          ],
+          "sticky": true,
+          "action": "Extend"
+        },
+        {
+          "tick": 152,
+          "phase": "PistonEvents",
+          "pos": [
+            10,
+            5,
+            10
+          ],
+          "sticky": true,
+          "action": "Extend"
+        }
+      ],
+      "sample_counts": {
+        "[11, 9, 11]": 17,
+        "[11, 9, 13]": 15,
+        "[11, 9, 15]": 14,
+        "[11, 9, 17]": 11,
+        "[11, 9, 19]": 11,
+        "[11, 9, 21]": 9,
+        "[11, 9, 23]": 8,
+        "[9, 9, 11]": 3,
+        "[10, 9, 10]": 4,
+        "[10, 9, 12]": 6,
+        "[9, 9, 13]": 3,
+        "[10, 9, 14]": 6,
+        "[9, 9, 15]": 3,
+        "[10, 9, 16]": 6,
+        "[9, 9, 17]": 3,
+        "[10, 9, 18]": 9,
+        "[9, 9, 19]": 3,
+        "[10, 9, 20]": 6,
+        "[9, 9, 21]": 3,
+        "[10, 9, 22]": 6,
+        "[9, 9, 23]": 3,
+        "[10, 9, 24]": 4,
+        "[10, 5, 10]": 18,
+        "[12, 5, 10]": 30,
+        "[12, 5, 12]": 16,
+        "[10, 5, 12]": 24,
+        "[12, 5, 14]": 26,
+        "[10, 5, 14]": 16,
+        "[12, 5, 16]": 12,
+        "[10, 5, 16]": 20,
+        "[12, 5, 18]": 10,
+        "[10, 5, 18]": 18,
+        "[12, 5, 20]": 20,
+        "[10, 5, 20]": 13,
+        "[12, 5, 22]": 6,
+        "[10, 5, 22]": 14,
+        "[12, 5, 24]": 16,
+        "[10, 5, 24]": 11,
+        "[8, 5, 10]": 12,
+        "[6, 5, 10]": 10,
+        "[14, 5, 10]": 10,
+        "[4, 5, 10]": 9,
+        "[2, 5, 10]": 7,
+        "[0, 5, 10]": 6,
+        "[8, 5, 14]": 12,
+        "[6, 5, 14]": 10,
+        "[14, 5, 14]": 10,
+        "[4, 5, 14]": 9,
+        "[2, 5, 14]": 7,
+        "[0, 5, 14]": 6,
+        "[8, 5, 20]": 12,
+        "[6, 5, 20]": 10,
+        "[14, 5, 20]": 10,
+        "[4, 5, 20]": 9,
+        "[2, 5, 20]": 7,
+        "[0, 5, 20]": 6,
+        "[8, 5, 24]": 12,
+        "[6, 5, 24]": 10,
+        "[14, 5, 24]": 10,
+        "[4, 5, 24]": 9,
+        "[2, 5, 24]": 7,
+        "[0, 5, 24]": 6
+      },
+      "completed_ticks": 168
+    },
+    {
+      "case_id": "address_3_write_a5_read",
+      "actions": [
+        {
+          "tick": 0,
+          "op": "lever",
+          "pos": [
+            19,
+            12,
+            3
+          ],
+          "powered": true
+        },
+        {
+          "tick": 0,
+          "op": "lever",
+          "pos": [
+            19,
+            12,
+            5
+          ],
+          "powered": true
+        },
+        {
+          "tick": 0,
+          "op": "lever",
+          "pos": [
+            19,
+            12,
+            7
+          ],
+          "powered": false
+        },
+        {
+          "tick": 24,
+          "op": "lever",
+          "pos": [
+            14,
+            14,
+            25
+          ],
+          "powered": true
+        },
+        {
+          "tick": 24,
+          "op": "lever",
+          "pos": [
+            14,
+            14,
+            23
+          ],
+          "powered": false
+        },
+        {
+          "tick": 24,
+          "op": "lever",
+          "pos": [
+            14,
+            14,
+            21
+          ],
+          "powered": true
+        },
+        {
+          "tick": 24,
+          "op": "lever",
+          "pos": [
+            14,
+            14,
+            19
+          ],
+          "powered": false
+        },
+        {
+          "tick": 24,
+          "op": "lever",
+          "pos": [
+            14,
+            14,
+            17
+          ],
+          "powered": false
+        },
+        {
+          "tick": 24,
+          "op": "lever",
+          "pos": [
+            14,
+            14,
+            15
+          ],
+          "powered": true
+        },
+        {
+          "tick": 24,
+          "op": "lever",
+          "pos": [
+            14,
+            14,
+            13
+          ],
+          "powered": false
+        },
+        {
+          "tick": 24,
+          "op": "lever",
+          "pos": [
+            14,
+            14,
+            11
+          ],
+          "powered": true
+        },
+        {
+          "tick": 48,
+          "op": "lever",
+          "pos": [
+            19,
+            12,
+            1
+          ],
+          "powered": true
+        },
+        {
+          "tick": 72,
+          "op": "lever",
+          "pos": [
+            19,
+            12,
+            1
+          ],
+          "powered": false
+        },
+        {
+          "tick": 96,
+          "op": "lever",
+          "pos": [
+            20,
+            7,
+            3
+          ],
+          "powered": true
+        },
+        {
+          "tick": 96,
+          "op": "lever",
+          "pos": [
+            20,
+            7,
+            5
+          ],
+          "powered": true
+        },
+        {
+          "tick": 96,
+          "op": "lever",
+          "pos": [
+            20,
+            7,
+            7
+          ],
+          "powered": false
+        },
+        {
+          "tick": 120,
+          "op": "lever",
+          "pos": [
+            18,
+            7,
+            1
+          ],
+          "powered": true
+        },
+        {
+          "tick": 144,
+          "op": "lever",
+          "pos": [
+            18,
+            7,
+            1
+          ],
+          "powered": false
+        }
+      ],
+      "transitions": [
+        {
+          "tick": 0,
+          "step": null,
+          "label": "import",
+          "words_in_increasing_x_order": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            8,
+            3,
+            0
+          ],
+          "output": 0
+        },
+        {
+          "tick": 54,
+          "step": 14,
+          "label": "tick",
+          "words_in_increasing_x_order": [
+            0,
+            0,
+            0,
+            0,
+            null,
+            8,
+            3,
+            0
+          ],
+          "output": 0
+        },
+        {
+          "tick": 56,
+          "step": 14,
+          "label": "tick",
+          "words_in_increasing_x_order": [
+            0,
+            0,
+            0,
+            0,
+            165,
+            8,
+            3,
+            0
+          ],
+          "output": 0
+        },
+        {
+          "tick": 130,
+          "step": 22,
+          "label": "tick",
+          "words_in_increasing_x_order": [
+            0,
+            0,
+            0,
+            0,
+            165,
+            8,
+            3,
+            0
+          ],
+          "output": 165
+        },
+        {
+          "tick": 156,
+          "step": 24,
+          "label": "tick",
+          "words_in_increasing_x_order": [
+            0,
+            0,
+            0,
+            0,
+            165,
+            8,
+            3,
+            0
+          ],
+          "output": 0
+        }
+      ],
+      "accepted_events": [
+        {
+          "tick": 54,
+          "phase": "PistonEvents",
+          "pos": [
+            9,
+            9,
+            11
+          ],
+          "sticky": false,
+          "action": "Extend"
+        },
+        {
+          "tick": 54,
+          "phase": "PistonEvents",
+          "pos": [
+            9,
+            9,
+            13
+          ],
+          "sticky": false,
+          "action": "Extend"
+        },
+        {
+          "tick": 54,
+          "phase": "PistonEvents",
+          "pos": [
+            9,
+            9,
+            15
+          ],
+          "sticky": false,
+          "action": "Extend"
+        },
+        {
+          "tick": 54,
+          "phase": "PistonEvents",
+          "pos": [
+            9,
+            9,
+            17
+          ],
+          "sticky": false,
+          "action": "Extend"
+        },
+        {
+          "tick": 54,
+          "phase": "PistonEvents",
+          "pos": [
+            9,
+            9,
+            19
+          ],
+          "sticky": false,
+          "action": "Extend"
+        },
+        {
+          "tick": 54,
+          "phase": "PistonEvents",
+          "pos": [
+            9,
+            9,
+            21
+          ],
+          "sticky": false,
+          "action": "Extend"
+        },
+        {
+          "tick": 54,
+          "phase": "PistonEvents",
+          "pos": [
+            9,
+            9,
+            23
+          ],
+          "sticky": false,
+          "action": "Extend"
+        },
+        {
+          "tick": 54,
+          "phase": "PistonEvents",
+          "pos": [
+            8,
+            9,
+            10
+          ],
+          "sticky": true,
+          "action": "Retract"
+        },
+        {
+          "tick": 54,
+          "phase": "PistonEvents",
+          "pos": [
+            8,
+            9,
+            14
+          ],
+          "sticky": true,
+          "action": "Retract"
+        },
+        {
+          "tick": 54,
+          "phase": "PistonEvents",
+          "pos": [
+            8,
+            9,
+            20
+          ],
+          "sticky": true,
+          "action": "Retract"
+        },
+        {
+          "tick": 54,
+          "phase": "PistonEvents",
+          "pos": [
+            8,
+            9,
+            24
+          ],
+          "sticky": true,
+          "action": "Retract"
+        },
+        {
+          "tick": 78,
+          "phase": "PistonEvents",
+          "pos": [
+            9,
+            9,
+            21
+          ],
+          "sticky": false,
+          "action": "Retract"
+        },
+        {
+          "tick": 78,
+          "phase": "PistonEvents",
+          "pos": [
+            9,
+            9,
+            23
+          ],
+          "sticky": false,
+          "action": "Retract"
+        },
+        {
+          "tick": 78,
+          "phase": "PistonEvents",
+          "pos": [
+            9,
+            9,
+            17
+          ],
+          "sticky": false,
+          "action": "Retract"
+        },
+        {
+          "tick": 78,
+          "phase": "PistonEvents",
+          "pos": [
+            9,
+            9,
+            19
+          ],
+          "sticky": false,
+          "action": "Retract"
+        },
+        {
+          "tick": 78,
+          "phase": "PistonEvents",
+          "pos": [
+            9,
+            9,
+            13
+          ],
+          "sticky": false,
+          "action": "Retract"
+        },
+        {
+          "tick": 78,
+          "phase": "PistonEvents",
+          "pos": [
+            9,
+            9,
+            15
+          ],
+          "sticky": false,
+          "action": "Retract"
+        },
+        {
+          "tick": 78,
+          "phase": "PistonEvents",
+          "pos": [
+            9,
+            9,
+            11
+          ],
+          "sticky": false,
+          "action": "Retract"
+        },
+        {
+          "tick": 128,
+          "phase": "PistonEvents",
+          "pos": [
+            8,
+            5,
+            10
+          ],
+          "sticky": true,
+          "action": "Retract"
+        },
+        {
+          "tick": 128,
+          "phase": "PistonEvents",
+          "pos": [
+            8,
+            5,
+            14
+          ],
+          "sticky": true,
+          "action": "Retract"
+        },
+        {
+          "tick": 128,
+          "phase": "PistonEvents",
+          "pos": [
+            8,
+            5,
+            20
+          ],
+          "sticky": true,
+          "action": "Retract"
+        },
+        {
+          "tick": 128,
+          "phase": "PistonEvents",
+          "pos": [
+            8,
+            5,
+            24
+          ],
+          "sticky": true,
+          "action": "Retract"
+        },
+        {
+          "tick": 152,
+          "phase": "PistonEvents",
+          "pos": [
+            8,
+            5,
+            24
+          ],
+          "sticky": true,
+          "action": "Extend"
+        },
+        {
+          "tick": 152,
+          "phase": "PistonEvents",
+          "pos": [
+            8,
+            5,
+            20
+          ],
+          "sticky": true,
+          "action": "Extend"
+        },
+        {
+          "tick": 152,
+          "phase": "PistonEvents",
+          "pos": [
+            8,
+            5,
+            14
+          ],
+          "sticky": true,
+          "action": "Extend"
+        },
+        {
+          "tick": 152,
+          "phase": "PistonEvents",
+          "pos": [
+            8,
+            5,
+            10
+          ],
+          "sticky": true,
+          "action": "Extend"
+        }
+      ],
+      "sample_counts": {
+        "[9, 9, 11]": 17,
+        "[9, 9, 13]": 15,
+        "[9, 9, 15]": 14,
+        "[9, 9, 17]": 11,
+        "[9, 9, 19]": 11,
+        "[9, 9, 21]": 9,
+        "[9, 9, 23]": 8,
+        "[7, 9, 11]": 3,
+        "[8, 9, 10]": 4,
+        "[8, 9, 12]": 6,
+        "[7, 9, 13]": 3,
+        "[8, 9, 14]": 6,
+        "[7, 9, 15]": 3,
+        "[8, 9, 16]": 6,
+        "[7, 9, 17]": 3,
+        "[8, 9, 18]": 6,
+        "[7, 9, 19]": 3,
+        "[8, 9, 20]": 6,
+        "[7, 9, 21]": 3,
+        "[8, 9, 22]": 6,
+        "[7, 9, 23]": 3,
+        "[8, 9, 24]": 4,
+        "[8, 5, 10]": 18,
+        "[10, 5, 10]": 30,
+        "[10, 5, 12]": 16,
+        "[8, 5, 12]": 24,
+        "[10, 5, 14]": 26,
+        "[8, 5, 14]": 16,
+        "[10, 5, 16]": 12,
+        "[8, 5, 16]": 20,
+        "[10, 5, 18]": 10,
+        "[8, 5, 18]": 18,
+        "[10, 5, 20]": 20,
+        "[8, 5, 20]": 13,
+        "[10, 5, 22]": 6,
+        "[8, 5, 22]": 14,
+        "[10, 5, 24]": 16,
+        "[8, 5, 24]": 11,
+        "[6, 5, 10]": 12,
+        "[4, 5, 10]": 10,
+        "[12, 5, 10]": 10,
+        "[2, 5, 10]": 9,
+        "[14, 5, 10]": 9,
+        "[0, 5, 10]": 7,
+        "[6, 5, 14]": 12,
+        "[4, 5, 14]": 10,
+        "[12, 5, 14]": 10,
+        "[2, 5, 14]": 9,
+        "[14, 5, 14]": 9,
+        "[0, 5, 14]": 7,
+        "[6, 5, 20]": 12,
+        "[4, 5, 20]": 10,
+        "[12, 5, 20]": 10,
+        "[2, 5, 20]": 9,
+        "[14, 5, 20]": 9,
+        "[0, 5, 20]": 7,
+        "[6, 5, 24]": 12,
+        "[4, 5, 24]": 10,
+        "[12, 5, 24]": 10,
+        "[2, 5, 24]": 9,
+        "[14, 5, 24]": 9,
+        "[0, 5, 24]": 7
+      },
+      "completed_ticks": 168
+    },
+    {
+      "case_id": "address_4_write_a5_read",
+      "actions": [
+        {
+          "tick": 0,
+          "op": "lever",
+          "pos": [
+            19,
+            12,
+            3
+          ],
+          "powered": false
+        },
+        {
+          "tick": 0,
+          "op": "lever",
+          "pos": [
+            19,
+            12,
+            5
+          ],
+          "powered": false
+        },
+        {
+          "tick": 0,
+          "op": "lever",
+          "pos": [
+            19,
+            12,
+            7
+          ],
+          "powered": true
+        },
+        {
+          "tick": 24,
+          "op": "lever",
+          "pos": [
+            14,
+            14,
+            25
+          ],
+          "powered": true
+        },
+        {
+          "tick": 24,
+          "op": "lever",
+          "pos": [
+            14,
+            14,
+            23
+          ],
+          "powered": false
+        },
+        {
+          "tick": 24,
+          "op": "lever",
+          "pos": [
+            14,
+            14,
+            21
+          ],
+          "powered": true
+        },
+        {
+          "tick": 24,
+          "op": "lever",
+          "pos": [
+            14,
+            14,
+            19
+          ],
+          "powered": false
+        },
+        {
+          "tick": 24,
+          "op": "lever",
+          "pos": [
+            14,
+            14,
+            17
+          ],
+          "powered": false
+        },
+        {
+          "tick": 24,
+          "op": "lever",
+          "pos": [
+            14,
+            14,
+            15
+          ],
+          "powered": true
+        },
+        {
+          "tick": 24,
+          "op": "lever",
+          "pos": [
+            14,
+            14,
+            13
+          ],
+          "powered": false
+        },
+        {
+          "tick": 24,
+          "op": "lever",
+          "pos": [
+            14,
+            14,
+            11
+          ],
+          "powered": true
+        },
+        {
+          "tick": 48,
+          "op": "lever",
+          "pos": [
+            19,
+            12,
+            1
+          ],
+          "powered": true
+        },
+        {
+          "tick": 72,
+          "op": "lever",
+          "pos": [
+            19,
+            12,
+            1
+          ],
+          "powered": false
+        },
+        {
+          "tick": 96,
+          "op": "lever",
+          "pos": [
+            20,
+            7,
+            3
+          ],
+          "powered": false
+        },
+        {
+          "tick": 96,
+          "op": "lever",
+          "pos": [
+            20,
+            7,
+            5
+          ],
+          "powered": false
+        },
+        {
+          "tick": 96,
+          "op": "lever",
+          "pos": [
+            20,
+            7,
+            7
+          ],
+          "powered": true
+        },
+        {
+          "tick": 120,
+          "op": "lever",
+          "pos": [
+            18,
+            7,
+            1
+          ],
+          "powered": true
+        },
+        {
+          "tick": 144,
+          "op": "lever",
+          "pos": [
+            18,
+            7,
+            1
+          ],
+          "powered": false
+        }
+      ],
+      "transitions": [
+        {
+          "tick": 0,
+          "step": null,
+          "label": "import",
+          "words_in_increasing_x_order": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            8,
+            3,
+            0
+          ],
+          "output": 0
+        },
+        {
+          "tick": 54,
+          "step": 14,
+          "label": "tick",
+          "words_in_increasing_x_order": [
+            0,
+            0,
+            0,
+            null,
+            0,
+            8,
+            3,
+            0
+          ],
+          "output": 0
+        },
+        {
+          "tick": 56,
+          "step": 14,
+          "label": "tick",
+          "words_in_increasing_x_order": [
+            0,
+            0,
+            0,
+            165,
+            0,
+            8,
+            3,
+            0
+          ],
+          "output": 0
+        },
+        {
+          "tick": 130,
+          "step": 22,
+          "label": "tick",
+          "words_in_increasing_x_order": [
+            0,
+            0,
+            0,
+            165,
+            0,
+            8,
+            3,
+            0
+          ],
+          "output": 165
+        },
+        {
+          "tick": 156,
+          "step": 24,
+          "label": "tick",
+          "words_in_increasing_x_order": [
+            0,
+            0,
+            0,
+            165,
+            0,
+            8,
+            3,
+            0
+          ],
+          "output": 0
+        }
+      ],
+      "accepted_events": [
+        {
+          "tick": 54,
+          "phase": "PistonEvents",
+          "pos": [
+            7,
+            9,
+            11
+          ],
+          "sticky": false,
+          "action": "Extend"
+        },
+        {
+          "tick": 54,
+          "phase": "PistonEvents",
+          "pos": [
+            7,
+            9,
+            13
+          ],
+          "sticky": false,
+          "action": "Extend"
+        },
+        {
+          "tick": 54,
+          "phase": "PistonEvents",
+          "pos": [
+            7,
+            9,
+            15
+          ],
+          "sticky": false,
+          "action": "Extend"
+        },
+        {
+          "tick": 54,
+          "phase": "PistonEvents",
+          "pos": [
+            7,
+            9,
+            17
+          ],
+          "sticky": false,
+          "action": "Extend"
+        },
+        {
+          "tick": 54,
+          "phase": "PistonEvents",
+          "pos": [
+            7,
+            9,
+            19
+          ],
+          "sticky": false,
+          "action": "Extend"
+        },
+        {
+          "tick": 54,
+          "phase": "PistonEvents",
+          "pos": [
+            7,
+            9,
+            21
+          ],
+          "sticky": false,
+          "action": "Extend"
+        },
+        {
+          "tick": 54,
+          "phase": "PistonEvents",
+          "pos": [
+            7,
+            9,
+            23
+          ],
+          "sticky": false,
+          "action": "Extend"
+        },
+        {
+          "tick": 54,
+          "phase": "PistonEvents",
+          "pos": [
+            6,
+            9,
+            10
+          ],
+          "sticky": true,
+          "action": "Retract"
+        },
+        {
+          "tick": 54,
+          "phase": "PistonEvents",
+          "pos": [
+            6,
+            9,
+            14
+          ],
+          "sticky": true,
+          "action": "Retract"
+        },
+        {
+          "tick": 54,
+          "phase": "PistonEvents",
+          "pos": [
+            6,
+            9,
+            20
+          ],
+          "sticky": true,
+          "action": "Retract"
+        },
+        {
+          "tick": 54,
+          "phase": "PistonEvents",
+          "pos": [
+            6,
+            9,
+            24
+          ],
+          "sticky": true,
+          "action": "Retract"
+        },
+        {
+          "tick": 78,
+          "phase": "PistonEvents",
+          "pos": [
+            7,
+            9,
+            21
+          ],
+          "sticky": false,
+          "action": "Retract"
+        },
+        {
+          "tick": 78,
+          "phase": "PistonEvents",
+          "pos": [
+            7,
+            9,
+            23
+          ],
+          "sticky": false,
+          "action": "Retract"
+        },
+        {
+          "tick": 78,
+          "phase": "PistonEvents",
+          "pos": [
+            7,
+            9,
+            17
+          ],
+          "sticky": false,
+          "action": "Retract"
+        },
+        {
+          "tick": 78,
+          "phase": "PistonEvents",
+          "pos": [
+            7,
+            9,
+            19
+          ],
+          "sticky": false,
+          "action": "Retract"
+        },
+        {
+          "tick": 78,
+          "phase": "PistonEvents",
+          "pos": [
+            7,
+            9,
+            13
+          ],
+          "sticky": false,
+          "action": "Retract"
+        },
+        {
+          "tick": 78,
+          "phase": "PistonEvents",
+          "pos": [
+            7,
+            9,
+            15
+          ],
+          "sticky": false,
+          "action": "Retract"
+        },
+        {
+          "tick": 78,
+          "phase": "PistonEvents",
+          "pos": [
+            7,
+            9,
+            11
+          ],
+          "sticky": false,
+          "action": "Retract"
+        },
+        {
+          "tick": 128,
+          "phase": "PistonEvents",
+          "pos": [
+            6,
+            5,
+            10
+          ],
+          "sticky": true,
+          "action": "Retract"
+        },
+        {
+          "tick": 128,
+          "phase": "PistonEvents",
+          "pos": [
+            6,
+            5,
+            14
+          ],
+          "sticky": true,
+          "action": "Retract"
+        },
+        {
+          "tick": 128,
+          "phase": "PistonEvents",
+          "pos": [
+            6,
+            5,
+            20
+          ],
+          "sticky": true,
+          "action": "Retract"
+        },
+        {
+          "tick": 128,
+          "phase": "PistonEvents",
+          "pos": [
+            6,
+            5,
+            24
+          ],
+          "sticky": true,
+          "action": "Retract"
+        },
+        {
+          "tick": 152,
+          "phase": "PistonEvents",
+          "pos": [
+            6,
+            5,
+            24
+          ],
+          "sticky": true,
+          "action": "Extend"
+        },
+        {
+          "tick": 152,
+          "phase": "PistonEvents",
+          "pos": [
+            6,
+            5,
+            20
+          ],
+          "sticky": true,
+          "action": "Extend"
+        },
+        {
+          "tick": 152,
+          "phase": "PistonEvents",
+          "pos": [
+            6,
+            5,
+            14
+          ],
+          "sticky": true,
+          "action": "Extend"
+        },
+        {
+          "tick": 152,
+          "phase": "PistonEvents",
+          "pos": [
+            6,
+            5,
+            10
+          ],
+          "sticky": true,
+          "action": "Extend"
+        }
+      ],
+      "sample_counts": {
+        "[7, 9, 11]": 17,
+        "[7, 9, 13]": 15,
+        "[7, 9, 15]": 14,
+        "[7, 9, 17]": 11,
+        "[7, 9, 19]": 11,
+        "[7, 9, 21]": 9,
+        "[7, 9, 23]": 8,
+        "[5, 9, 11]": 3,
+        "[6, 9, 10]": 4,
+        "[6, 9, 12]": 6,
+        "[5, 9, 13]": 3,
+        "[6, 9, 14]": 6,
+        "[5, 9, 15]": 3,
+        "[6, 9, 16]": 6,
+        "[5, 9, 17]": 3,
+        "[6, 9, 18]": 6,
+        "[5, 9, 19]": 3,
+        "[6, 9, 20]": 6,
+        "[5, 9, 21]": 3,
+        "[6, 9, 22]": 6,
+        "[5, 9, 23]": 3,
+        "[6, 9, 24]": 4,
+        "[6, 5, 10]": 18,
+        "[8, 5, 10]": 30,
+        "[8, 5, 12]": 16,
+        "[6, 5, 12]": 24,
+        "[8, 5, 14]": 26,
+        "[6, 5, 14]": 16,
+        "[8, 5, 16]": 12,
+        "[6, 5, 16]": 20,
+        "[8, 5, 18]": 10,
+        "[6, 5, 18]": 18,
+        "[8, 5, 20]": 20,
+        "[6, 5, 20]": 13,
+        "[8, 5, 22]": 6,
+        "[6, 5, 22]": 14,
+        "[8, 5, 24]": 16,
+        "[6, 5, 24]": 11,
+        "[4, 5, 10]": 12,
+        "[2, 5, 10]": 10,
+        "[10, 5, 10]": 10,
+        "[0, 5, 10]": 9,
+        "[12, 5, 10]": 9,
+        "[14, 5, 10]": 7,
+        "[4, 5, 14]": 12,
+        "[2, 5, 14]": 10,
+        "[10, 5, 14]": 10,
+        "[0, 5, 14]": 9,
+        "[12, 5, 14]": 9,
+        "[14, 5, 14]": 7,
+        "[4, 5, 20]": 12,
+        "[2, 5, 20]": 10,
+        "[10, 5, 20]": 10,
+        "[0, 5, 20]": 9,
+        "[12, 5, 20]": 9,
+        "[14, 5, 20]": 7,
+        "[4, 5, 24]": 12,
+        "[2, 5, 24]": 10,
+        "[10, 5, 24]": 10,
+        "[0, 5, 24]": 9,
+        "[12, 5, 24]": 9,
+        "[14, 5, 24]": 7
+      },
+      "completed_ticks": 168
+    },
+    {
+      "case_id": "address_5_write_a5_read",
+      "actions": [
+        {
+          "tick": 0,
+          "op": "lever",
+          "pos": [
+            19,
+            12,
+            3
+          ],
+          "powered": true
+        },
+        {
+          "tick": 0,
+          "op": "lever",
+          "pos": [
+            19,
+            12,
+            5
+          ],
+          "powered": false
+        },
+        {
+          "tick": 0,
+          "op": "lever",
+          "pos": [
+            19,
+            12,
+            7
+          ],
+          "powered": true
+        },
+        {
+          "tick": 24,
+          "op": "lever",
+          "pos": [
+            14,
+            14,
+            25
+          ],
+          "powered": true
+        },
+        {
+          "tick": 24,
+          "op": "lever",
+          "pos": [
+            14,
+            14,
+            23
+          ],
+          "powered": false
+        },
+        {
+          "tick": 24,
+          "op": "lever",
+          "pos": [
+            14,
+            14,
+            21
+          ],
+          "powered": true
+        },
+        {
+          "tick": 24,
+          "op": "lever",
+          "pos": [
+            14,
+            14,
+            19
+          ],
+          "powered": false
+        },
+        {
+          "tick": 24,
+          "op": "lever",
+          "pos": [
+            14,
+            14,
+            17
+          ],
+          "powered": false
+        },
+        {
+          "tick": 24,
+          "op": "lever",
+          "pos": [
+            14,
+            14,
+            15
+          ],
+          "powered": true
+        },
+        {
+          "tick": 24,
+          "op": "lever",
+          "pos": [
+            14,
+            14,
+            13
+          ],
+          "powered": false
+        },
+        {
+          "tick": 24,
+          "op": "lever",
+          "pos": [
+            14,
+            14,
+            11
+          ],
+          "powered": true
+        },
+        {
+          "tick": 48,
+          "op": "lever",
+          "pos": [
+            19,
+            12,
+            1
+          ],
+          "powered": true
+        },
+        {
+          "tick": 72,
+          "op": "lever",
+          "pos": [
+            19,
+            12,
+            1
+          ],
+          "powered": false
+        },
+        {
+          "tick": 96,
+          "op": "lever",
+          "pos": [
+            20,
+            7,
+            3
+          ],
+          "powered": true
+        },
+        {
+          "tick": 96,
+          "op": "lever",
+          "pos": [
+            20,
+            7,
+            5
+          ],
+          "powered": false
+        },
+        {
+          "tick": 96,
+          "op": "lever",
+          "pos": [
+            20,
+            7,
+            7
+          ],
+          "powered": true
+        },
+        {
+          "tick": 120,
+          "op": "lever",
+          "pos": [
+            18,
+            7,
+            1
+          ],
+          "powered": true
+        },
+        {
+          "tick": 144,
+          "op": "lever",
+          "pos": [
+            18,
+            7,
+            1
+          ],
+          "powered": false
+        }
+      ],
+      "transitions": [
+        {
+          "tick": 0,
+          "step": null,
+          "label": "import",
+          "words_in_increasing_x_order": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            8,
+            3,
+            0
+          ],
+          "output": 0
+        },
+        {
+          "tick": 54,
+          "step": 14,
+          "label": "tick",
+          "words_in_increasing_x_order": [
+            0,
+            0,
+            null,
+            0,
+            0,
+            8,
+            3,
+            0
+          ],
+          "output": 0
+        },
+        {
+          "tick": 56,
+          "step": 14,
+          "label": "tick",
+          "words_in_increasing_x_order": [
+            0,
+            0,
+            165,
+            0,
+            0,
+            8,
+            3,
+            0
+          ],
+          "output": 0
+        },
+        {
+          "tick": 130,
+          "step": 22,
+          "label": "tick",
+          "words_in_increasing_x_order": [
+            0,
+            0,
+            165,
+            0,
+            0,
+            8,
+            3,
+            0
+          ],
+          "output": 165
+        },
+        {
+          "tick": 156,
+          "step": 24,
+          "label": "tick",
+          "words_in_increasing_x_order": [
+            0,
+            0,
+            165,
+            0,
+            0,
+            8,
+            3,
+            0
+          ],
+          "output": 0
+        }
+      ],
+      "accepted_events": [
+        {
+          "tick": 54,
+          "phase": "PistonEvents",
+          "pos": [
+            5,
+            9,
+            11
+          ],
+          "sticky": false,
+          "action": "Extend"
+        },
+        {
+          "tick": 54,
+          "phase": "PistonEvents",
+          "pos": [
+            5,
+            9,
+            13
+          ],
+          "sticky": false,
+          "action": "Extend"
+        },
+        {
+          "tick": 54,
+          "phase": "PistonEvents",
+          "pos": [
+            5,
+            9,
+            15
+          ],
+          "sticky": false,
+          "action": "Extend"
+        },
+        {
+          "tick": 54,
+          "phase": "PistonEvents",
+          "pos": [
+            5,
+            9,
+            17
+          ],
+          "sticky": false,
+          "action": "Extend"
+        },
+        {
+          "tick": 54,
+          "phase": "PistonEvents",
+          "pos": [
+            5,
+            9,
+            19
+          ],
+          "sticky": false,
+          "action": "Extend"
+        },
+        {
+          "tick": 54,
+          "phase": "PistonEvents",
+          "pos": [
+            5,
+            9,
+            21
+          ],
+          "sticky": false,
+          "action": "Extend"
+        },
+        {
+          "tick": 54,
+          "phase": "PistonEvents",
+          "pos": [
+            5,
+            9,
+            23
+          ],
+          "sticky": false,
+          "action": "Extend"
+        },
+        {
+          "tick": 54,
+          "phase": "PistonEvents",
+          "pos": [
+            4,
+            9,
+            10
+          ],
+          "sticky": true,
+          "action": "Retract"
+        },
+        {
+          "tick": 54,
+          "phase": "PistonEvents",
+          "pos": [
+            4,
+            9,
+            14
+          ],
+          "sticky": true,
+          "action": "Retract"
+        },
+        {
+          "tick": 54,
+          "phase": "PistonEvents",
+          "pos": [
+            4,
+            9,
+            20
+          ],
+          "sticky": true,
+          "action": "Retract"
+        },
+        {
+          "tick": 54,
+          "phase": "PistonEvents",
+          "pos": [
+            4,
+            9,
+            24
+          ],
+          "sticky": true,
+          "action": "Retract"
+        },
+        {
+          "tick": 78,
+          "phase": "PistonEvents",
+          "pos": [
+            5,
+            9,
+            21
+          ],
+          "sticky": false,
+          "action": "Retract"
+        },
+        {
+          "tick": 78,
+          "phase": "PistonEvents",
+          "pos": [
+            5,
+            9,
+            23
+          ],
+          "sticky": false,
+          "action": "Retract"
+        },
+        {
+          "tick": 78,
+          "phase": "PistonEvents",
+          "pos": [
+            5,
+            9,
+            17
+          ],
+          "sticky": false,
+          "action": "Retract"
+        },
+        {
+          "tick": 78,
+          "phase": "PistonEvents",
+          "pos": [
+            5,
+            9,
+            19
+          ],
+          "sticky": false,
+          "action": "Retract"
+        },
+        {
+          "tick": 78,
+          "phase": "PistonEvents",
+          "pos": [
+            5,
+            9,
+            13
+          ],
+          "sticky": false,
+          "action": "Retract"
+        },
+        {
+          "tick": 78,
+          "phase": "PistonEvents",
+          "pos": [
+            5,
+            9,
+            15
+          ],
+          "sticky": false,
+          "action": "Retract"
+        },
+        {
+          "tick": 78,
+          "phase": "PistonEvents",
+          "pos": [
+            5,
+            9,
+            11
+          ],
+          "sticky": false,
+          "action": "Retract"
+        },
+        {
+          "tick": 128,
+          "phase": "PistonEvents",
+          "pos": [
+            4,
+            5,
+            10
+          ],
+          "sticky": true,
+          "action": "Retract"
+        },
+        {
+          "tick": 128,
+          "phase": "PistonEvents",
+          "pos": [
+            4,
+            5,
+            14
+          ],
+          "sticky": true,
+          "action": "Retract"
+        },
+        {
+          "tick": 128,
+          "phase": "PistonEvents",
+          "pos": [
+            4,
+            5,
+            20
+          ],
+          "sticky": true,
+          "action": "Retract"
+        },
+        {
+          "tick": 128,
+          "phase": "PistonEvents",
+          "pos": [
+            4,
+            5,
+            24
+          ],
+          "sticky": true,
+          "action": "Retract"
+        },
+        {
+          "tick": 152,
+          "phase": "PistonEvents",
+          "pos": [
+            4,
+            5,
+            24
+          ],
+          "sticky": true,
+          "action": "Extend"
+        },
+        {
+          "tick": 152,
+          "phase": "PistonEvents",
+          "pos": [
+            4,
+            5,
+            20
+          ],
+          "sticky": true,
+          "action": "Extend"
+        },
+        {
+          "tick": 152,
+          "phase": "PistonEvents",
+          "pos": [
+            4,
+            5,
+            14
+          ],
+          "sticky": true,
+          "action": "Extend"
+        },
+        {
+          "tick": 152,
+          "phase": "PistonEvents",
+          "pos": [
+            4,
+            5,
+            10
+          ],
+          "sticky": true,
+          "action": "Extend"
+        }
+      ],
+      "sample_counts": {
+        "[5, 9, 11]": 17,
+        "[5, 9, 13]": 15,
+        "[5, 9, 15]": 14,
+        "[5, 9, 17]": 11,
+        "[5, 9, 19]": 11,
+        "[5, 9, 21]": 9,
+        "[5, 9, 23]": 8,
+        "[3, 9, 11]": 3,
+        "[4, 9, 10]": 4,
+        "[4, 9, 12]": 6,
+        "[3, 9, 13]": 3,
+        "[4, 9, 14]": 6,
+        "[3, 9, 15]": 3,
+        "[4, 9, 16]": 6,
+        "[3, 9, 17]": 3,
+        "[4, 9, 18]": 6,
+        "[3, 9, 19]": 3,
+        "[4, 9, 20]": 6,
+        "[3, 9, 21]": 3,
+        "[4, 9, 22]": 6,
+        "[3, 9, 23]": 3,
+        "[4, 9, 24]": 4,
+        "[4, 5, 10]": 18,
+        "[6, 5, 10]": 30,
+        "[6, 5, 12]": 16,
+        "[4, 5, 12]": 24,
+        "[6, 5, 14]": 26,
+        "[4, 5, 14]": 16,
+        "[6, 5, 16]": 12,
+        "[4, 5, 16]": 20,
+        "[6, 5, 18]": 10,
+        "[4, 5, 18]": 18,
+        "[6, 5, 20]": 20,
+        "[4, 5, 20]": 13,
+        "[6, 5, 22]": 6,
+        "[4, 5, 22]": 14,
+        "[6, 5, 24]": 16,
+        "[4, 5, 24]": 11,
+        "[2, 5, 10]": 12,
+        "[0, 5, 10]": 10,
+        "[8, 5, 10]": 10,
+        "[10, 5, 10]": 9,
+        "[12, 5, 10]": 7,
+        "[14, 5, 10]": 6,
+        "[2, 5, 14]": 12,
+        "[0, 5, 14]": 10,
+        "[8, 5, 14]": 10,
+        "[10, 5, 14]": 9,
+        "[12, 5, 14]": 7,
+        "[14, 5, 14]": 6,
+        "[2, 5, 20]": 12,
+        "[0, 5, 20]": 10,
+        "[8, 5, 20]": 10,
+        "[10, 5, 20]": 9,
+        "[12, 5, 20]": 7,
+        "[14, 5, 20]": 6,
+        "[2, 5, 24]": 12,
+        "[0, 5, 24]": 10,
+        "[8, 5, 24]": 10,
+        "[10, 5, 24]": 9,
+        "[12, 5, 24]": 7,
+        "[14, 5, 24]": 6
+      },
+      "completed_ticks": 168
+    },
+    {
+      "case_id": "address_6_write_a5_read",
+      "actions": [
+        {
+          "tick": 0,
+          "op": "lever",
+          "pos": [
+            19,
+            12,
+            3
+          ],
+          "powered": false
+        },
+        {
+          "tick": 0,
+          "op": "lever",
+          "pos": [
+            19,
+            12,
+            5
+          ],
+          "powered": true
+        },
+        {
+          "tick": 0,
+          "op": "lever",
+          "pos": [
+            19,
+            12,
+            7
+          ],
+          "powered": true
+        },
+        {
+          "tick": 24,
+          "op": "lever",
+          "pos": [
+            14,
+            14,
+            25
+          ],
+          "powered": true
+        },
+        {
+          "tick": 24,
+          "op": "lever",
+          "pos": [
+            14,
+            14,
+            23
+          ],
+          "powered": false
+        },
+        {
+          "tick": 24,
+          "op": "lever",
+          "pos": [
+            14,
+            14,
+            21
+          ],
+          "powered": true
+        },
+        {
+          "tick": 24,
+          "op": "lever",
+          "pos": [
+            14,
+            14,
+            19
+          ],
+          "powered": false
+        },
+        {
+          "tick": 24,
+          "op": "lever",
+          "pos": [
+            14,
+            14,
+            17
+          ],
+          "powered": false
+        },
+        {
+          "tick": 24,
+          "op": "lever",
+          "pos": [
+            14,
+            14,
+            15
+          ],
+          "powered": true
+        },
+        {
+          "tick": 24,
+          "op": "lever",
+          "pos": [
+            14,
+            14,
+            13
+          ],
+          "powered": false
+        },
+        {
+          "tick": 24,
+          "op": "lever",
+          "pos": [
+            14,
+            14,
+            11
+          ],
+          "powered": true
+        },
+        {
+          "tick": 48,
+          "op": "lever",
+          "pos": [
+            19,
+            12,
+            1
+          ],
+          "powered": true
+        },
+        {
+          "tick": 72,
+          "op": "lever",
+          "pos": [
+            19,
+            12,
+            1
+          ],
+          "powered": false
+        },
+        {
+          "tick": 96,
+          "op": "lever",
+          "pos": [
+            20,
+            7,
+            3
+          ],
+          "powered": false
+        },
+        {
+          "tick": 96,
+          "op": "lever",
+          "pos": [
+            20,
+            7,
+            5
+          ],
+          "powered": true
+        },
+        {
+          "tick": 96,
+          "op": "lever",
+          "pos": [
+            20,
+            7,
+            7
+          ],
+          "powered": true
+        },
+        {
+          "tick": 120,
+          "op": "lever",
+          "pos": [
+            18,
+            7,
+            1
+          ],
+          "powered": true
+        },
+        {
+          "tick": 144,
+          "op": "lever",
+          "pos": [
+            18,
+            7,
+            1
+          ],
+          "powered": false
+        }
+      ],
+      "transitions": [
+        {
+          "tick": 0,
+          "step": null,
+          "label": "import",
+          "words_in_increasing_x_order": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            8,
+            3,
+            0
+          ],
+          "output": 0
+        },
+        {
+          "tick": 54,
+          "step": 14,
+          "label": "tick",
+          "words_in_increasing_x_order": [
+            0,
+            null,
+            0,
+            0,
+            0,
+            8,
+            3,
+            0
+          ],
+          "output": 0
+        },
+        {
+          "tick": 56,
+          "step": 14,
+          "label": "tick",
+          "words_in_increasing_x_order": [
+            0,
+            165,
+            0,
+            0,
+            0,
+            8,
+            3,
+            0
+          ],
+          "output": 0
+        },
+        {
+          "tick": 130,
+          "step": 22,
+          "label": "tick",
+          "words_in_increasing_x_order": [
+            0,
+            165,
+            0,
+            0,
+            0,
+            8,
+            3,
+            0
+          ],
+          "output": 165
+        },
+        {
+          "tick": 156,
+          "step": 24,
+          "label": "tick",
+          "words_in_increasing_x_order": [
+            0,
+            165,
+            0,
+            0,
+            0,
+            8,
+            3,
+            0
+          ],
+          "output": 0
+        }
+      ],
+      "accepted_events": [
+        {
+          "tick": 54,
+          "phase": "PistonEvents",
+          "pos": [
+            3,
+            9,
+            11
+          ],
+          "sticky": false,
+          "action": "Extend"
+        },
+        {
+          "tick": 54,
+          "phase": "PistonEvents",
+          "pos": [
+            3,
+            9,
+            13
+          ],
+          "sticky": false,
+          "action": "Extend"
+        },
+        {
+          "tick": 54,
+          "phase": "PistonEvents",
+          "pos": [
+            3,
+            9,
+            15
+          ],
+          "sticky": false,
+          "action": "Extend"
+        },
+        {
+          "tick": 54,
+          "phase": "PistonEvents",
+          "pos": [
+            3,
+            9,
+            17
+          ],
+          "sticky": false,
+          "action": "Extend"
+        },
+        {
+          "tick": 54,
+          "phase": "PistonEvents",
+          "pos": [
+            3,
+            9,
+            19
+          ],
+          "sticky": false,
+          "action": "Extend"
+        },
+        {
+          "tick": 54,
+          "phase": "PistonEvents",
+          "pos": [
+            3,
+            9,
+            21
+          ],
+          "sticky": false,
+          "action": "Extend"
+        },
+        {
+          "tick": 54,
+          "phase": "PistonEvents",
+          "pos": [
+            3,
+            9,
+            23
+          ],
+          "sticky": false,
+          "action": "Extend"
+        },
+        {
+          "tick": 54,
+          "phase": "PistonEvents",
+          "pos": [
+            2,
+            9,
+            10
+          ],
+          "sticky": true,
+          "action": "Retract"
+        },
+        {
+          "tick": 54,
+          "phase": "PistonEvents",
+          "pos": [
+            2,
+            9,
+            14
+          ],
+          "sticky": true,
+          "action": "Retract"
+        },
+        {
+          "tick": 54,
+          "phase": "PistonEvents",
+          "pos": [
+            2,
+            9,
+            20
+          ],
+          "sticky": true,
+          "action": "Retract"
+        },
+        {
+          "tick": 54,
+          "phase": "PistonEvents",
+          "pos": [
+            2,
+            9,
+            24
+          ],
+          "sticky": true,
+          "action": "Retract"
+        },
+        {
+          "tick": 78,
+          "phase": "PistonEvents",
+          "pos": [
+            3,
+            9,
+            21
+          ],
+          "sticky": false,
+          "action": "Retract"
+        },
+        {
+          "tick": 78,
+          "phase": "PistonEvents",
+          "pos": [
+            3,
+            9,
+            23
+          ],
+          "sticky": false,
+          "action": "Retract"
+        },
+        {
+          "tick": 78,
+          "phase": "PistonEvents",
+          "pos": [
+            3,
+            9,
+            17
+          ],
+          "sticky": false,
+          "action": "Retract"
+        },
+        {
+          "tick": 78,
+          "phase": "PistonEvents",
+          "pos": [
+            3,
+            9,
+            19
+          ],
+          "sticky": false,
+          "action": "Retract"
+        },
+        {
+          "tick": 78,
+          "phase": "PistonEvents",
+          "pos": [
+            3,
+            9,
+            13
+          ],
+          "sticky": false,
+          "action": "Retract"
+        },
+        {
+          "tick": 78,
+          "phase": "PistonEvents",
+          "pos": [
+            3,
+            9,
+            15
+          ],
+          "sticky": false,
+          "action": "Retract"
+        },
+        {
+          "tick": 78,
+          "phase": "PistonEvents",
+          "pos": [
+            3,
+            9,
+            11
+          ],
+          "sticky": false,
+          "action": "Retract"
+        },
+        {
+          "tick": 128,
+          "phase": "PistonEvents",
+          "pos": [
+            2,
+            5,
+            10
+          ],
+          "sticky": true,
+          "action": "Retract"
+        },
+        {
+          "tick": 128,
+          "phase": "PistonEvents",
+          "pos": [
+            2,
+            5,
+            14
+          ],
+          "sticky": true,
+          "action": "Retract"
+        },
+        {
+          "tick": 128,
+          "phase": "PistonEvents",
+          "pos": [
+            2,
+            5,
+            20
+          ],
+          "sticky": true,
+          "action": "Retract"
+        },
+        {
+          "tick": 128,
+          "phase": "PistonEvents",
+          "pos": [
+            2,
+            5,
+            24
+          ],
+          "sticky": true,
+          "action": "Retract"
+        },
+        {
+          "tick": 152,
+          "phase": "PistonEvents",
+          "pos": [
+            2,
+            5,
+            24
+          ],
+          "sticky": true,
+          "action": "Extend"
+        },
+        {
+          "tick": 152,
+          "phase": "PistonEvents",
+          "pos": [
+            2,
+            5,
+            20
+          ],
+          "sticky": true,
+          "action": "Extend"
+        },
+        {
+          "tick": 152,
+          "phase": "PistonEvents",
+          "pos": [
+            2,
+            5,
+            14
+          ],
+          "sticky": true,
+          "action": "Extend"
+        },
+        {
+          "tick": 152,
+          "phase": "PistonEvents",
+          "pos": [
+            2,
+            5,
+            10
+          ],
+          "sticky": true,
+          "action": "Extend"
+        }
+      ],
+      "sample_counts": {
+        "[3, 9, 11]": 17,
+        "[3, 9, 13]": 15,
+        "[3, 9, 15]": 14,
+        "[3, 9, 17]": 11,
+        "[3, 9, 19]": 11,
+        "[3, 9, 21]": 9,
+        "[3, 9, 23]": 8,
+        "[1, 9, 11]": 3,
+        "[2, 9, 10]": 4,
+        "[2, 9, 12]": 6,
+        "[1, 9, 13]": 3,
+        "[2, 9, 14]": 6,
+        "[1, 9, 15]": 3,
+        "[2, 9, 16]": 6,
+        "[1, 9, 17]": 3,
+        "[2, 9, 18]": 6,
+        "[1, 9, 19]": 3,
+        "[2, 9, 20]": 6,
+        "[1, 9, 21]": 3,
+        "[2, 9, 22]": 6,
+        "[1, 9, 23]": 3,
+        "[2, 9, 24]": 4,
+        "[2, 5, 10]": 18,
+        "[4, 5, 10]": 30,
+        "[4, 5, 12]": 16,
+        "[2, 5, 12]": 24,
+        "[4, 5, 14]": 26,
+        "[2, 5, 14]": 16,
+        "[4, 5, 16]": 12,
+        "[2, 5, 16]": 20,
+        "[4, 5, 18]": 10,
+        "[2, 5, 18]": 18,
+        "[4, 5, 20]": 20,
+        "[2, 5, 20]": 13,
+        "[4, 5, 22]": 6,
+        "[2, 5, 22]": 14,
+        "[4, 5, 24]": 16,
+        "[2, 5, 24]": 11,
+        "[0, 5, 10]": 12,
+        "[6, 5, 10]": 10,
+        "[8, 5, 10]": 9,
+        "[10, 5, 10]": 7,
+        "[12, 5, 10]": 6,
+        "[14, 5, 10]": 4,
+        "[0, 5, 14]": 12,
+        "[6, 5, 14]": 10,
+        "[8, 5, 14]": 9,
+        "[10, 5, 14]": 7,
+        "[12, 5, 14]": 6,
+        "[14, 5, 14]": 4,
+        "[0, 5, 20]": 12,
+        "[6, 5, 20]": 10,
+        "[8, 5, 20]": 9,
+        "[10, 5, 20]": 7,
+        "[12, 5, 20]": 6,
+        "[14, 5, 20]": 4,
+        "[0, 5, 24]": 12,
+        "[6, 5, 24]": 10,
+        "[8, 5, 24]": 9,
+        "[10, 5, 24]": 7,
+        "[12, 5, 24]": 6,
+        "[14, 5, 24]": 4
+      },
+      "completed_ticks": 168
+    },
+    {
+      "case_id": "address_7_write_a5_read",
+      "actions": [
+        {
+          "tick": 0,
+          "op": "lever",
+          "pos": [
+            19,
+            12,
+            3
+          ],
+          "powered": true
+        },
+        {
+          "tick": 0,
+          "op": "lever",
+          "pos": [
+            19,
+            12,
+            5
+          ],
+          "powered": true
+        },
+        {
+          "tick": 0,
+          "op": "lever",
+          "pos": [
+            19,
+            12,
+            7
+          ],
+          "powered": true
+        },
+        {
+          "tick": 24,
+          "op": "lever",
+          "pos": [
+            14,
+            14,
+            25
+          ],
+          "powered": true
+        },
+        {
+          "tick": 24,
+          "op": "lever",
+          "pos": [
+            14,
+            14,
+            23
+          ],
+          "powered": false
+        },
+        {
+          "tick": 24,
+          "op": "lever",
+          "pos": [
+            14,
+            14,
+            21
+          ],
+          "powered": true
+        },
+        {
+          "tick": 24,
+          "op": "lever",
+          "pos": [
+            14,
+            14,
+            19
+          ],
+          "powered": false
+        },
+        {
+          "tick": 24,
+          "op": "lever",
+          "pos": [
+            14,
+            14,
+            17
+          ],
+          "powered": false
+        },
+        {
+          "tick": 24,
+          "op": "lever",
+          "pos": [
+            14,
+            14,
+            15
+          ],
+          "powered": true
+        },
+        {
+          "tick": 24,
+          "op": "lever",
+          "pos": [
+            14,
+            14,
+            13
+          ],
+          "powered": false
+        },
+        {
+          "tick": 24,
+          "op": "lever",
+          "pos": [
+            14,
+            14,
+            11
+          ],
+          "powered": true
+        },
+        {
+          "tick": 48,
+          "op": "lever",
+          "pos": [
+            19,
+            12,
+            1
+          ],
+          "powered": true
+        },
+        {
+          "tick": 72,
+          "op": "lever",
+          "pos": [
+            19,
+            12,
+            1
+          ],
+          "powered": false
+        },
+        {
+          "tick": 96,
+          "op": "lever",
+          "pos": [
+            20,
+            7,
+            3
+          ],
+          "powered": true
+        },
+        {
+          "tick": 96,
+          "op": "lever",
+          "pos": [
+            20,
+            7,
+            5
+          ],
+          "powered": true
+        },
+        {
+          "tick": 96,
+          "op": "lever",
+          "pos": [
+            20,
+            7,
+            7
+          ],
+          "powered": true
+        },
+        {
+          "tick": 120,
+          "op": "lever",
+          "pos": [
+            18,
+            7,
+            1
+          ],
+          "powered": true
+        },
+        {
+          "tick": 144,
+          "op": "lever",
+          "pos": [
+            18,
+            7,
+            1
+          ],
+          "powered": false
+        }
+      ],
+      "transitions": [
+        {
+          "tick": 0,
+          "step": null,
+          "label": "import",
+          "words_in_increasing_x_order": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            8,
+            3,
+            0
+          ],
+          "output": 0
+        },
+        {
+          "tick": 54,
+          "step": 14,
+          "label": "tick",
+          "words_in_increasing_x_order": [
+            null,
+            0,
+            0,
+            0,
+            0,
+            8,
+            3,
+            0
+          ],
+          "output": 0
+        },
+        {
+          "tick": 56,
+          "step": 14,
+          "label": "tick",
+          "words_in_increasing_x_order": [
+            165,
+            0,
+            0,
+            0,
+            0,
+            8,
+            3,
+            0
+          ],
+          "output": 0
+        },
+        {
+          "tick": 130,
+          "step": 22,
+          "label": "tick",
+          "words_in_increasing_x_order": [
+            165,
+            0,
+            0,
+            0,
+            0,
+            8,
+            3,
+            0
+          ],
+          "output": 165
+        },
+        {
+          "tick": 156,
+          "step": 24,
+          "label": "tick",
+          "words_in_increasing_x_order": [
+            165,
+            0,
+            0,
+            0,
+            0,
+            8,
+            3,
+            0
+          ],
+          "output": 0
+        }
+      ],
+      "accepted_events": [
+        {
+          "tick": 54,
+          "phase": "PistonEvents",
+          "pos": [
+            1,
+            9,
+            11
+          ],
+          "sticky": false,
+          "action": "Extend"
+        },
+        {
+          "tick": 54,
+          "phase": "PistonEvents",
+          "pos": [
+            1,
+            9,
+            13
+          ],
+          "sticky": false,
+          "action": "Extend"
+        },
+        {
+          "tick": 54,
+          "phase": "PistonEvents",
+          "pos": [
+            1,
+            9,
+            15
+          ],
+          "sticky": false,
+          "action": "Extend"
+        },
+        {
+          "tick": 54,
+          "phase": "PistonEvents",
+          "pos": [
+            1,
+            9,
+            17
+          ],
+          "sticky": false,
+          "action": "Extend"
+        },
+        {
+          "tick": 54,
+          "phase": "PistonEvents",
+          "pos": [
+            1,
+            9,
+            19
+          ],
+          "sticky": false,
+          "action": "Extend"
+        },
+        {
+          "tick": 54,
+          "phase": "PistonEvents",
+          "pos": [
+            1,
+            9,
+            21
+          ],
+          "sticky": false,
+          "action": "Extend"
+        },
+        {
+          "tick": 54,
+          "phase": "PistonEvents",
+          "pos": [
+            1,
+            9,
+            23
+          ],
+          "sticky": false,
+          "action": "Extend"
+        },
+        {
+          "tick": 54,
+          "phase": "PistonEvents",
+          "pos": [
+            0,
+            9,
+            10
+          ],
+          "sticky": true,
+          "action": "Retract"
+        },
+        {
+          "tick": 54,
+          "phase": "PistonEvents",
+          "pos": [
+            0,
+            9,
+            14
+          ],
+          "sticky": true,
+          "action": "Retract"
+        },
+        {
+          "tick": 54,
+          "phase": "PistonEvents",
+          "pos": [
+            0,
+            9,
+            20
+          ],
+          "sticky": true,
+          "action": "Retract"
+        },
+        {
+          "tick": 54,
+          "phase": "PistonEvents",
+          "pos": [
+            0,
+            9,
+            24
+          ],
+          "sticky": true,
+          "action": "Retract"
+        },
+        {
+          "tick": 78,
+          "phase": "PistonEvents",
+          "pos": [
+            1,
+            9,
+            21
+          ],
+          "sticky": false,
+          "action": "Retract"
+        },
+        {
+          "tick": 78,
+          "phase": "PistonEvents",
+          "pos": [
+            1,
+            9,
+            23
+          ],
+          "sticky": false,
+          "action": "Retract"
+        },
+        {
+          "tick": 78,
+          "phase": "PistonEvents",
+          "pos": [
+            1,
+            9,
+            17
+          ],
+          "sticky": false,
+          "action": "Retract"
+        },
+        {
+          "tick": 78,
+          "phase": "PistonEvents",
+          "pos": [
+            1,
+            9,
+            19
+          ],
+          "sticky": false,
+          "action": "Retract"
+        },
+        {
+          "tick": 78,
+          "phase": "PistonEvents",
+          "pos": [
+            1,
+            9,
+            13
+          ],
+          "sticky": false,
+          "action": "Retract"
+        },
+        {
+          "tick": 78,
+          "phase": "PistonEvents",
+          "pos": [
+            1,
+            9,
+            15
+          ],
+          "sticky": false,
+          "action": "Retract"
+        },
+        {
+          "tick": 78,
+          "phase": "PistonEvents",
+          "pos": [
+            1,
+            9,
+            11
+          ],
+          "sticky": false,
+          "action": "Retract"
+        },
+        {
+          "tick": 128,
+          "phase": "PistonEvents",
+          "pos": [
+            0,
+            5,
+            10
+          ],
+          "sticky": true,
+          "action": "Retract"
+        },
+        {
+          "tick": 128,
+          "phase": "PistonEvents",
+          "pos": [
+            0,
+            5,
+            14
+          ],
+          "sticky": true,
+          "action": "Retract"
+        },
+        {
+          "tick": 128,
+          "phase": "PistonEvents",
+          "pos": [
+            0,
+            5,
+            20
+          ],
+          "sticky": true,
+          "action": "Retract"
+        },
+        {
+          "tick": 128,
+          "phase": "PistonEvents",
+          "pos": [
+            0,
+            5,
+            24
+          ],
+          "sticky": true,
+          "action": "Retract"
+        },
+        {
+          "tick": 152,
+          "phase": "PistonEvents",
+          "pos": [
+            0,
+            5,
+            24
+          ],
+          "sticky": true,
+          "action": "Extend"
+        },
+        {
+          "tick": 152,
+          "phase": "PistonEvents",
+          "pos": [
+            0,
+            5,
+            20
+          ],
+          "sticky": true,
+          "action": "Extend"
+        },
+        {
+          "tick": 152,
+          "phase": "PistonEvents",
+          "pos": [
+            0,
+            5,
+            14
+          ],
+          "sticky": true,
+          "action": "Extend"
+        },
+        {
+          "tick": 152,
+          "phase": "PistonEvents",
+          "pos": [
+            0,
+            5,
+            10
+          ],
+          "sticky": true,
+          "action": "Extend"
+        }
+      ],
+      "sample_counts": {
+        "[1, 9, 11]": 17,
+        "[1, 9, 13]": 15,
+        "[1, 9, 15]": 14,
+        "[1, 9, 17]": 11,
+        "[1, 9, 19]": 11,
+        "[1, 9, 21]": 9,
+        "[1, 9, 23]": 8,
+        "[0, 9, 10]": 4,
+        "[0, 9, 12]": 6,
+        "[0, 9, 14]": 6,
+        "[0, 9, 16]": 6,
+        "[0, 9, 18]": 6,
+        "[0, 9, 20]": 6,
+        "[0, 9, 22]": 6,
+        "[0, 9, 24]": 4,
+        "[0, 5, 10]": 18,
+        "[2, 5, 10]": 30,
+        "[2, 5, 12]": 16,
+        "[0, 5, 12]": 24,
+        "[2, 5, 14]": 26,
+        "[0, 5, 14]": 16,
+        "[2, 5, 16]": 12,
+        "[0, 5, 16]": 20,
+        "[2, 5, 18]": 10,
+        "[0, 5, 18]": 18,
+        "[2, 5, 20]": 20,
+        "[0, 5, 20]": 13,
+        "[2, 5, 22]": 6,
+        "[0, 5, 22]": 14,
+        "[2, 5, 24]": 16,
+        "[0, 5, 24]": 11,
+        "[4, 5, 10]": 10,
+        "[6, 5, 10]": 9,
+        "[8, 5, 10]": 7,
+        "[10, 5, 10]": 6,
+        "[12, 5, 10]": 4,
+        "[4, 5, 14]": 10,
+        "[6, 5, 14]": 9,
+        "[8, 5, 14]": 7,
+        "[10, 5, 14]": 6,
+        "[12, 5, 14]": 4,
+        "[4, 5, 20]": 10,
+        "[6, 5, 20]": 9,
+        "[8, 5, 20]": 7,
+        "[10, 5, 20]": 6,
+        "[12, 5, 20]": 4,
+        "[4, 5, 24]": 10,
+        "[6, 5, 24]": 9,
+        "[8, 5, 24]": 7,
+        "[10, 5, 24]": 6,
+        "[12, 5, 24]": 4
+      },
+      "completed_ticks": 168
+    },
+    {
+      "case_id": "held_update_data_change",
+      "actions": [
+        {
+          "tick": 0,
+          "op": "lever",
+          "pos": [
+            19,
+            12,
+            1
+          ],
+          "powered": true
+        },
+        {
+          "tick": 24,
+          "op": "lever",
+          "pos": [
+            14,
+            14,
+            25
+          ],
+          "powered": true
+        },
+        {
+          "tick": 24,
+          "op": "lever",
+          "pos": [
+            14,
+            14,
+            23
+          ],
+          "powered": true
+        },
+        {
+          "tick": 24,
+          "op": "lever",
+          "pos": [
+            14,
+            14,
+            21
+          ],
+          "powered": true
+        },
+        {
+          "tick": 24,
+          "op": "lever",
+          "pos": [
+            14,
+            14,
+            19
+          ],
+          "powered": true
+        },
+        {
+          "tick": 24,
+          "op": "lever",
+          "pos": [
+            14,
+            14,
+            17
+          ],
+          "powered": true
+        },
+        {
+          "tick": 24,
+          "op": "lever",
+          "pos": [
+            14,
+            14,
+            15
+          ],
+          "powered": true
+        },
+        {
+          "tick": 24,
+          "op": "lever",
+          "pos": [
+            14,
+            14,
+            13
+          ],
+          "powered": true
+        },
+        {
+          "tick": 24,
+          "op": "lever",
+          "pos": [
+            14,
+            14,
+            11
+          ],
+          "powered": true
+        },
+        {
+          "tick": 48,
+          "op": "lever",
+          "pos": [
+            19,
+            12,
+            1
+          ],
+          "powered": false
+        }
+      ],
+      "transitions": [
+        {
+          "tick": 0,
+          "step": null,
+          "label": "import",
+          "words_in_increasing_x_order": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            8,
+            3,
+            0
+          ],
+          "output": 0
+        },
+        {
+          "tick": 54,
+          "step": 12,
+          "label": "tick",
+          "words_in_increasing_x_order": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            8,
+            3,
+            null
+          ],
+          "output": 0
+        },
+        {
+          "tick": 56,
+          "step": 12,
+          "label": "tick",
+          "words_in_increasing_x_order": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            8,
+            3,
+            255
+          ],
+          "output": 0
+        }
+      ],
+      "accepted_events": [
+        {
+          "tick": 6,
+          "phase": "PistonEvents",
+          "pos": [
+            15,
+            9,
+            11
+          ],
+          "sticky": false,
+          "action": "Extend"
+        },
+        {
+          "tick": 6,
+          "phase": "PistonEvents",
+          "pos": [
+            15,
+            9,
+            13
+          ],
+          "sticky": false,
+          "action": "Extend"
+        },
+        {
+          "tick": 6,
+          "phase": "PistonEvents",
+          "pos": [
+            15,
+            9,
+            15
+          ],
+          "sticky": false,
+          "action": "Extend"
+        },
+        {
+          "tick": 6,
+          "phase": "PistonEvents",
+          "pos": [
+            15,
+            9,
+            17
+          ],
+          "sticky": false,
+          "action": "Extend"
+        },
+        {
+          "tick": 6,
+          "phase": "PistonEvents",
+          "pos": [
+            15,
+            9,
+            19
+          ],
+          "sticky": false,
+          "action": "Extend"
+        },
+        {
+          "tick": 6,
+          "phase": "PistonEvents",
+          "pos": [
+            15,
+            9,
+            21
+          ],
+          "sticky": false,
+          "action": "Extend"
+        },
+        {
+          "tick": 6,
+          "phase": "PistonEvents",
+          "pos": [
+            15,
+            9,
+            23
+          ],
+          "sticky": false,
+          "action": "Extend"
+        },
+        {
+          "tick": 54,
+          "phase": "PistonEvents",
+          "pos": [
+            15,
+            9,
+            21
+          ],
+          "sticky": false,
+          "action": "Retract"
+        },
+        {
+          "tick": 54,
+          "phase": "PistonEvents",
+          "pos": [
+            15,
+            9,
+            23
+          ],
+          "sticky": false,
+          "action": "Retract"
+        },
+        {
+          "tick": 54,
+          "phase": "PistonEvents",
+          "pos": [
+            15,
+            9,
+            17
+          ],
+          "sticky": false,
+          "action": "Retract"
+        },
+        {
+          "tick": 54,
+          "phase": "PistonEvents",
+          "pos": [
+            15,
+            9,
+            19
+          ],
+          "sticky": false,
+          "action": "Retract"
+        },
+        {
+          "tick": 54,
+          "phase": "PistonEvents",
+          "pos": [
+            15,
+            9,
+            13
+          ],
+          "sticky": false,
+          "action": "Retract"
+        },
+        {
+          "tick": 54,
+          "phase": "PistonEvents",
+          "pos": [
+            15,
+            9,
+            15
+          ],
+          "sticky": false,
+          "action": "Retract"
+        },
+        {
+          "tick": 54,
+          "phase": "PistonEvents",
+          "pos": [
+            15,
+            9,
+            11
+          ],
+          "sticky": false,
+          "action": "Retract"
+        },
+        {
+          "tick": 54,
+          "phase": "PistonEvents",
+          "pos": [
+            14,
+            9,
+            20
+          ],
+          "sticky": true,
+          "action": "Retract"
+        },
+        {
+          "tick": 54,
+          "phase": "PistonEvents",
+          "pos": [
+            14,
+            9,
+            22
+          ],
+          "sticky": true,
+          "action": "Retract"
+        },
+        {
+          "tick": 54,
+          "phase": "PistonEvents",
+          "pos": [
+            14,
+            9,
+            24
+          ],
+          "sticky": true,
+          "action": "Retract"
+        },
+        {
+          "tick": 54,
+          "phase": "PistonEvents",
+          "pos": [
+            14,
+            9,
+            16
+          ],
+          "sticky": true,
+          "action": "Retract"
+        },
+        {
+          "tick": 54,
+          "phase": "PistonEvents",
+          "pos": [
+            14,
+            9,
+            18
+          ],
+          "sticky": true,
+          "action": "Retract"
+        },
+        {
+          "tick": 54,
+          "phase": "PistonEvents",
+          "pos": [
+            14,
+            9,
+            12
+          ],
+          "sticky": true,
+          "action": "Retract"
+        },
+        {
+          "tick": 54,
+          "phase": "PistonEvents",
+          "pos": [
+            14,
+            9,
+            14
+          ],
+          "sticky": true,
+          "action": "Retract"
+        },
+        {
+          "tick": 54,
+          "phase": "PistonEvents",
+          "pos": [
+            14,
+            9,
+            10
+          ],
+          "sticky": true,
+          "action": "Retract"
+        }
+      ],
+      "sample_counts": {
+        "[15, 9, 11]": 16,
+        "[15, 9, 13]": 14,
+        "[15, 9, 15]": 13,
+        "[15, 9, 17]": 11,
+        "[15, 9, 19]": 10,
+        "[15, 9, 21]": 8,
+        "[15, 9, 23]": 7,
+        "[13, 9, 11]": 3,
+        "[14, 9, 10]": 5,
+        "[14, 9, 12]": 8,
+        "[13, 9, 13]": 3,
+        "[14, 9, 14]": 8,
+        "[13, 9, 15]": 3,
+        "[14, 9, 16]": 8,
+        "[13, 9, 17]": 3,
+        "[14, 9, 18]": 8,
+        "[13, 9, 19]": 3,
+        "[14, 9, 20]": 8,
+        "[13, 9, 21]": 3,
+        "[14, 9, 22]": 8,
+        "[13, 9, 23]": 3,
+        "[14, 9, 24]": 5
+      },
+      "completed_ticks": 72
+    },
+    {
+      "case_id": "read_held_during_write",
+      "actions": [
+        {
+          "tick": 0,
+          "op": "lever",
+          "pos": [
+            18,
+            7,
+            1
+          ],
+          "powered": true
+        },
+        {
+          "tick": 24,
+          "op": "lever",
+          "pos": [
+            14,
+            14,
+            25
+          ],
+          "powered": true
+        },
+        {
+          "tick": 24,
+          "op": "lever",
+          "pos": [
+            14,
+            14,
+            23
+          ],
+          "powered": true
+        },
+        {
+          "tick": 24,
+          "op": "lever",
+          "pos": [
+            14,
+            14,
+            21
+          ],
+          "powered": true
+        },
+        {
+          "tick": 24,
+          "op": "lever",
+          "pos": [
+            14,
+            14,
+            19
+          ],
+          "powered": true
+        },
+        {
+          "tick": 24,
+          "op": "lever",
+          "pos": [
+            14,
+            14,
+            17
+          ],
+          "powered": true
+        },
+        {
+          "tick": 24,
+          "op": "lever",
+          "pos": [
+            14,
+            14,
+            15
+          ],
+          "powered": true
+        },
+        {
+          "tick": 24,
+          "op": "lever",
+          "pos": [
+            14,
+            14,
+            13
+          ],
+          "powered": true
+        },
+        {
+          "tick": 24,
+          "op": "lever",
+          "pos": [
+            14,
+            14,
+            11
+          ],
+          "powered": true
+        },
+        {
+          "tick": 48,
+          "op": "lever",
+          "pos": [
+            19,
+            12,
+            1
+          ],
+          "powered": true
+        },
+        {
+          "tick": 72,
+          "op": "lever",
+          "pos": [
+            19,
+            12,
+            1
+          ],
+          "powered": false
+        }
+      ],
+      "transitions": [
+        {
+          "tick": 0,
+          "step": null,
+          "label": "import",
+          "words_in_increasing_x_order": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            8,
+            3,
+            0
+          ],
+          "output": 0
+        },
+        {
+          "tick": 54,
+          "step": 12,
+          "label": "tick",
+          "words_in_increasing_x_order": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            8,
+            3,
+            null
+          ],
+          "output": 0
+        },
+        {
+          "tick": 56,
+          "step": 12,
+          "label": "tick",
+          "words_in_increasing_x_order": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            8,
+            3,
+            255
+          ],
+          "output": 0
+        }
+      ],
+      "accepted_events": [
+        {
+          "tick": 54,
+          "phase": "PistonEvents",
+          "pos": [
+            15,
+            9,
+            11
+          ],
+          "sticky": false,
+          "action": "Extend"
+        },
+        {
+          "tick": 54,
+          "phase": "PistonEvents",
+          "pos": [
+            15,
+            9,
+            13
+          ],
+          "sticky": false,
+          "action": "Extend"
+        },
+        {
+          "tick": 54,
+          "phase": "PistonEvents",
+          "pos": [
+            15,
+            9,
+            15
+          ],
+          "sticky": false,
+          "action": "Extend"
+        },
+        {
+          "tick": 54,
+          "phase": "PistonEvents",
+          "pos": [
+            15,
+            9,
+            17
+          ],
+          "sticky": false,
+          "action": "Extend"
+        },
+        {
+          "tick": 54,
+          "phase": "PistonEvents",
+          "pos": [
+            15,
+            9,
+            19
+          ],
+          "sticky": false,
+          "action": "Extend"
+        },
+        {
+          "tick": 54,
+          "phase": "PistonEvents",
+          "pos": [
+            15,
+            9,
+            21
+          ],
+          "sticky": false,
+          "action": "Extend"
+        },
+        {
+          "tick": 54,
+          "phase": "PistonEvents",
+          "pos": [
+            15,
+            9,
+            23
+          ],
+          "sticky": false,
+          "action": "Extend"
+        },
+        {
+          "tick": 54,
+          "phase": "PistonEvents",
+          "pos": [
+            14,
+            9,
+            10
+          ],
+          "sticky": true,
+          "action": "Retract"
+        },
+        {
+          "tick": 54,
+          "phase": "PistonEvents",
+          "pos": [
+            14,
+            9,
+            12
+          ],
+          "sticky": true,
+          "action": "Retract"
+        },
+        {
+          "tick": 54,
+          "phase": "PistonEvents",
+          "pos": [
+            14,
+            9,
+            14
+          ],
+          "sticky": true,
+          "action": "Retract"
+        },
+        {
+          "tick": 54,
+          "phase": "PistonEvents",
+          "pos": [
+            14,
+            9,
+            16
+          ],
+          "sticky": true,
+          "action": "Retract"
+        },
+        {
+          "tick": 54,
+          "phase": "PistonEvents",
+          "pos": [
+            14,
+            9,
+            18
+          ],
+          "sticky": true,
+          "action": "Retract"
+        },
+        {
+          "tick": 54,
+          "phase": "PistonEvents",
+          "pos": [
+            14,
+            9,
+            20
+          ],
+          "sticky": true,
+          "action": "Retract"
+        },
+        {
+          "tick": 54,
+          "phase": "PistonEvents",
+          "pos": [
+            14,
+            9,
+            22
+          ],
+          "sticky": true,
+          "action": "Retract"
+        },
+        {
+          "tick": 54,
+          "phase": "PistonEvents",
+          "pos": [
+            14,
+            9,
+            24
+          ],
+          "sticky": true,
+          "action": "Retract"
+        },
+        {
+          "tick": 78,
+          "phase": "PistonEvents",
+          "pos": [
+            15,
+            9,
+            21
+          ],
+          "sticky": false,
+          "action": "Retract"
+        },
+        {
+          "tick": 78,
+          "phase": "PistonEvents",
+          "pos": [
+            15,
+            9,
+            23
+          ],
+          "sticky": false,
+          "action": "Retract"
+        },
+        {
+          "tick": 78,
+          "phase": "PistonEvents",
+          "pos": [
+            15,
+            9,
+            17
+          ],
+          "sticky": false,
+          "action": "Retract"
+        },
+        {
+          "tick": 78,
+          "phase": "PistonEvents",
+          "pos": [
+            15,
+            9,
+            19
+          ],
+          "sticky": false,
+          "action": "Retract"
+        },
+        {
+          "tick": 78,
+          "phase": "PistonEvents",
+          "pos": [
+            15,
+            9,
+            13
+          ],
+          "sticky": false,
+          "action": "Retract"
+        },
+        {
+          "tick": 78,
+          "phase": "PistonEvents",
+          "pos": [
+            15,
+            9,
+            15
+          ],
+          "sticky": false,
+          "action": "Retract"
+        },
+        {
+          "tick": 78,
+          "phase": "PistonEvents",
+          "pos": [
+            15,
+            9,
+            11
+          ],
+          "sticky": false,
+          "action": "Retract"
+        }
+      ],
+      "sample_counts": {
+        "[14, 5, 10]": 4,
+        "[14, 5, 12]": 4,
+        "[14, 5, 14]": 4,
+        "[14, 5, 16]": 4,
+        "[14, 5, 18]": 4,
+        "[14, 5, 20]": 4,
+        "[14, 5, 22]": 4,
+        "[14, 5, 24]": 4,
+        "[15, 9, 11]": 18,
+        "[15, 9, 13]": 16,
+        "[15, 9, 15]": 15,
+        "[15, 9, 17]": 13,
+        "[15, 9, 19]": 12,
+        "[15, 9, 21]": 10,
+        "[15, 9, 23]": 9,
+        "[13, 9, 11]": 3,
+        "[14, 9, 10]": 4,
+        "[14, 9, 12]": 6,
+        "[13, 9, 13]": 3,
+        "[14, 9, 14]": 6,
+        "[13, 9, 15]": 3,
+        "[14, 9, 16]": 6,
+        "[13, 9, 17]": 3,
+        "[14, 9, 18]": 6,
+        "[13, 9, 19]": 3,
+        "[14, 9, 20]": 6,
+        "[13, 9, 21]": 3,
+        "[14, 9, 22]": 6,
+        "[13, 9, 23]": 3,
+        "[14, 9, 24]": 4
+      },
+      "completed_ticks": 96
+    },
+    {
+      "case_id": "same_value_repeated_write",
+      "actions": [
+        {
+          "tick": 24,
+          "op": "lever",
+          "pos": [
+            19,
+            12,
+            1
+          ],
+          "powered": true
+        },
+        {
+          "tick": 48,
+          "op": "lever",
+          "pos": [
+            19,
+            12,
+            1
+          ],
+          "powered": false
+        },
+        {
+          "tick": 72,
+          "op": "lever",
+          "pos": [
+            19,
+            12,
+            1
+          ],
+          "powered": true
+        },
+        {
+          "tick": 96,
+          "op": "lever",
+          "pos": [
+            19,
+            12,
+            1
+          ],
+          "powered": false
+        }
+      ],
+      "transitions": [
+        {
+          "tick": 0,
+          "step": null,
+          "label": "import",
+          "words_in_increasing_x_order": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            8,
+            3,
+            0
+          ],
+          "output": 0
+        }
+      ],
+      "accepted_events": [
+        {
+          "tick": 30,
+          "phase": "PistonEvents",
+          "pos": [
+            15,
+            9,
+            11
+          ],
+          "sticky": false,
+          "action": "Extend"
+        },
+        {
+          "tick": 30,
+          "phase": "PistonEvents",
+          "pos": [
+            15,
+            9,
+            13
+          ],
+          "sticky": false,
+          "action": "Extend"
+        },
+        {
+          "tick": 30,
+          "phase": "PistonEvents",
+          "pos": [
+            15,
+            9,
+            15
+          ],
+          "sticky": false,
+          "action": "Extend"
+        },
+        {
+          "tick": 30,
+          "phase": "PistonEvents",
+          "pos": [
+            15,
+            9,
+            17
+          ],
+          "sticky": false,
+          "action": "Extend"
+        },
+        {
+          "tick": 30,
+          "phase": "PistonEvents",
+          "pos": [
+            15,
+            9,
+            19
+          ],
+          "sticky": false,
+          "action": "Extend"
+        },
+        {
+          "tick": 30,
+          "phase": "PistonEvents",
+          "pos": [
+            15,
+            9,
+            21
+          ],
+          "sticky": false,
+          "action": "Extend"
+        },
+        {
+          "tick": 30,
+          "phase": "PistonEvents",
+          "pos": [
+            15,
+            9,
+            23
+          ],
+          "sticky": false,
+          "action": "Extend"
+        },
+        {
+          "tick": 54,
+          "phase": "PistonEvents",
+          "pos": [
+            15,
+            9,
+            21
+          ],
+          "sticky": false,
+          "action": "Retract"
+        },
+        {
+          "tick": 54,
+          "phase": "PistonEvents",
+          "pos": [
+            15,
+            9,
+            23
+          ],
+          "sticky": false,
+          "action": "Retract"
+        },
+        {
+          "tick": 54,
+          "phase": "PistonEvents",
+          "pos": [
+            15,
+            9,
+            17
+          ],
+          "sticky": false,
+          "action": "Retract"
+        },
+        {
+          "tick": 54,
+          "phase": "PistonEvents",
+          "pos": [
+            15,
+            9,
+            19
+          ],
+          "sticky": false,
+          "action": "Retract"
+        },
+        {
+          "tick": 54,
+          "phase": "PistonEvents",
+          "pos": [
+            15,
+            9,
+            13
+          ],
+          "sticky": false,
+          "action": "Retract"
+        },
+        {
+          "tick": 54,
+          "phase": "PistonEvents",
+          "pos": [
+            15,
+            9,
+            15
+          ],
+          "sticky": false,
+          "action": "Retract"
+        },
+        {
+          "tick": 54,
+          "phase": "PistonEvents",
+          "pos": [
+            15,
+            9,
+            11
+          ],
+          "sticky": false,
+          "action": "Retract"
+        },
+        {
+          "tick": 78,
+          "phase": "PistonEvents",
+          "pos": [
+            15,
+            9,
+            11
+          ],
+          "sticky": false,
+          "action": "Extend"
+        },
+        {
+          "tick": 78,
+          "phase": "PistonEvents",
+          "pos": [
+            15,
+            9,
+            13
+          ],
+          "sticky": false,
+          "action": "Extend"
+        },
+        {
+          "tick": 78,
+          "phase": "PistonEvents",
+          "pos": [
+            15,
+            9,
+            15
+          ],
+          "sticky": false,
+          "action": "Extend"
+        },
+        {
+          "tick": 78,
+          "phase": "PistonEvents",
+          "pos": [
+            15,
+            9,
+            17
+          ],
+          "sticky": false,
+          "action": "Extend"
+        },
+        {
+          "tick": 78,
+          "phase": "PistonEvents",
+          "pos": [
+            15,
+            9,
+            19
+          ],
+          "sticky": false,
+          "action": "Extend"
+        },
+        {
+          "tick": 78,
+          "phase": "PistonEvents",
+          "pos": [
+            15,
+            9,
+            21
+          ],
+          "sticky": false,
+          "action": "Extend"
+        },
+        {
+          "tick": 78,
+          "phase": "PistonEvents",
+          "pos": [
+            15,
+            9,
+            23
+          ],
+          "sticky": false,
+          "action": "Extend"
+        },
+        {
+          "tick": 102,
+          "phase": "PistonEvents",
+          "pos": [
+            15,
+            9,
+            21
+          ],
+          "sticky": false,
+          "action": "Retract"
+        },
+        {
+          "tick": 102,
+          "phase": "PistonEvents",
+          "pos": [
+            15,
+            9,
+            23
+          ],
+          "sticky": false,
+          "action": "Retract"
+        },
+        {
+          "tick": 102,
+          "phase": "PistonEvents",
+          "pos": [
+            15,
+            9,
+            17
+          ],
+          "sticky": false,
+          "action": "Retract"
+        },
+        {
+          "tick": 102,
+          "phase": "PistonEvents",
+          "pos": [
+            15,
+            9,
+            19
+          ],
+          "sticky": false,
+          "action": "Retract"
+        },
+        {
+          "tick": 102,
+          "phase": "PistonEvents",
+          "pos": [
+            15,
+            9,
+            13
+          ],
+          "sticky": false,
+          "action": "Retract"
+        },
+        {
+          "tick": 102,
+          "phase": "PistonEvents",
+          "pos": [
+            15,
+            9,
+            15
+          ],
+          "sticky": false,
+          "action": "Retract"
+        },
+        {
+          "tick": 102,
+          "phase": "PistonEvents",
+          "pos": [
+            15,
+            9,
+            11
+          ],
+          "sticky": false,
+          "action": "Retract"
+        }
+      ],
+      "sample_counts": {
+        "[15, 9, 11]": 32,
+        "[15, 9, 13]": 28,
+        "[15, 9, 15]": 26,
+        "[15, 9, 17]": 22,
+        "[15, 9, 19]": 20,
+        "[15, 9, 21]": 16,
+        "[15, 9, 23]": 14,
+        "[13, 9, 11]": 6,
+        "[14, 9, 10]": 6,
+        "[14, 9, 12]": 12,
+        "[13, 9, 13]": 6,
+        "[14, 9, 14]": 12,
+        "[13, 9, 15]": 6,
+        "[14, 9, 16]": 12,
+        "[13, 9, 17]": 6,
+        "[14, 9, 18]": 12,
+        "[13, 9, 19]": 6,
+        "[14, 9, 20]": 12,
+        "[13, 9, 21]": 6,
+        "[14, 9, 22]": 12,
+        "[13, 9, 23]": 6,
+        "[14, 9, 24]": 6
+      },
+      "completed_ticks": 120
+    },
+    {
+      "case_id": "update_pulse_1",
+      "actions": [
+        {
+          "tick": 0,
+          "op": "lever",
+          "pos": [
+            14,
+            14,
+            25
+          ],
+          "powered": true
+        },
+        {
+          "tick": 0,
+          "op": "lever",
+          "pos": [
+            14,
+            14,
+            23
+          ],
+          "powered": true
+        },
+        {
+          "tick": 0,
+          "op": "lever",
+          "pos": [
+            14,
+            14,
+            21
+          ],
+          "powered": true
+        },
+        {
+          "tick": 0,
+          "op": "lever",
+          "pos": [
+            14,
+            14,
+            19
+          ],
+          "powered": true
+        },
+        {
+          "tick": 0,
+          "op": "lever",
+          "pos": [
+            14,
+            14,
+            17
+          ],
+          "powered": true
+        },
+        {
+          "tick": 0,
+          "op": "lever",
+          "pos": [
+            14,
+            14,
+            15
+          ],
+          "powered": true
+        },
+        {
+          "tick": 0,
+          "op": "lever",
+          "pos": [
+            14,
+            14,
+            13
+          ],
+          "powered": true
+        },
+        {
+          "tick": 0,
+          "op": "lever",
+          "pos": [
+            14,
+            14,
+            11
+          ],
+          "powered": true
+        },
+        {
+          "tick": 24,
+          "op": "lever",
+          "pos": [
+            19,
+            12,
+            1
+          ],
+          "powered": true
+        },
+        {
+          "tick": 25,
+          "op": "lever",
+          "pos": [
+            19,
+            12,
+            1
+          ],
+          "powered": false
+        }
+      ],
+      "transitions": [
+        {
+          "tick": 0,
+          "step": null,
+          "label": "import",
+          "words_in_increasing_x_order": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            8,
+            3,
+            0
+          ],
+          "output": 0
+        }
+      ],
+      "accepted_events": [],
+      "sample_counts": {},
+      "completed_ticks": 49
+    },
+    {
+      "case_id": "update_pulse_2",
+      "actions": [
+        {
+          "tick": 0,
+          "op": "lever",
+          "pos": [
+            14,
+            14,
+            25
+          ],
+          "powered": true
+        },
+        {
+          "tick": 0,
+          "op": "lever",
+          "pos": [
+            14,
+            14,
+            23
+          ],
+          "powered": true
+        },
+        {
+          "tick": 0,
+          "op": "lever",
+          "pos": [
+            14,
+            14,
+            21
+          ],
+          "powered": true
+        },
+        {
+          "tick": 0,
+          "op": "lever",
+          "pos": [
+            14,
+            14,
+            19
+          ],
+          "powered": true
+        },
+        {
+          "tick": 0,
+          "op": "lever",
+          "pos": [
+            14,
+            14,
+            17
+          ],
+          "powered": true
+        },
+        {
+          "tick": 0,
+          "op": "lever",
+          "pos": [
+            14,
+            14,
+            15
+          ],
+          "powered": true
+        },
+        {
+          "tick": 0,
+          "op": "lever",
+          "pos": [
+            14,
+            14,
+            13
+          ],
+          "powered": true
+        },
+        {
+          "tick": 0,
+          "op": "lever",
+          "pos": [
+            14,
+            14,
+            11
+          ],
+          "powered": true
+        },
+        {
+          "tick": 24,
+          "op": "lever",
+          "pos": [
+            19,
+            12,
+            1
+          ],
+          "powered": true
+        },
+        {
+          "tick": 26,
+          "op": "lever",
+          "pos": [
+            19,
+            12,
+            1
+          ],
+          "powered": false
+        }
+      ],
+      "transitions": [
+        {
+          "tick": 0,
+          "step": null,
+          "label": "import",
+          "words_in_increasing_x_order": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            8,
+            3,
+            0
+          ],
+          "output": 0
+        }
+      ],
+      "accepted_events": [],
+      "sample_counts": {},
+      "completed_ticks": 50
+    },
+    {
+      "case_id": "update_pulse_4",
+      "actions": [
+        {
+          "tick": 0,
+          "op": "lever",
+          "pos": [
+            14,
+            14,
+            25
+          ],
+          "powered": true
+        },
+        {
+          "tick": 0,
+          "op": "lever",
+          "pos": [
+            14,
+            14,
+            23
+          ],
+          "powered": true
+        },
+        {
+          "tick": 0,
+          "op": "lever",
+          "pos": [
+            14,
+            14,
+            21
+          ],
+          "powered": true
+        },
+        {
+          "tick": 0,
+          "op": "lever",
+          "pos": [
+            14,
+            14,
+            19
+          ],
+          "powered": true
+        },
+        {
+          "tick": 0,
+          "op": "lever",
+          "pos": [
+            14,
+            14,
+            17
+          ],
+          "powered": true
+        },
+        {
+          "tick": 0,
+          "op": "lever",
+          "pos": [
+            14,
+            14,
+            15
+          ],
+          "powered": true
+        },
+        {
+          "tick": 0,
+          "op": "lever",
+          "pos": [
+            14,
+            14,
+            13
+          ],
+          "powered": true
+        },
+        {
+          "tick": 0,
+          "op": "lever",
+          "pos": [
+            14,
+            14,
+            11
+          ],
+          "powered": true
+        },
+        {
+          "tick": 24,
+          "op": "lever",
+          "pos": [
+            19,
+            12,
+            1
+          ],
+          "powered": true
+        },
+        {
+          "tick": 28,
+          "op": "lever",
+          "pos": [
+            19,
+            12,
+            1
+          ],
+          "powered": false
+        }
+      ],
+      "transitions": [
+        {
+          "tick": 0,
+          "step": null,
+          "label": "import",
+          "words_in_increasing_x_order": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            8,
+            3,
+            0
+          ],
+          "output": 0
+        },
+        {
+          "tick": 30,
+          "step": 12,
+          "label": "tick",
+          "words_in_increasing_x_order": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            8,
+            3,
+            null
+          ],
+          "output": 0
+        },
+        {
+          "tick": 32,
+          "step": 12,
+          "label": "tick",
+          "words_in_increasing_x_order": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            8,
+            3,
+            255
+          ],
+          "output": 0
+        }
+      ],
+      "accepted_events": [
+        {
+          "tick": 30,
+          "phase": "PistonEvents",
+          "pos": [
+            15,
+            9,
+            11
+          ],
+          "sticky": false,
+          "action": "Extend"
+        },
+        {
+          "tick": 30,
+          "phase": "PistonEvents",
+          "pos": [
+            15,
+            9,
+            13
+          ],
+          "sticky": false,
+          "action": "Extend"
+        },
+        {
+          "tick": 30,
+          "phase": "PistonEvents",
+          "pos": [
+            15,
+            9,
+            15
+          ],
+          "sticky": false,
+          "action": "Extend"
+        },
+        {
+          "tick": 30,
+          "phase": "PistonEvents",
+          "pos": [
+            15,
+            9,
+            17
+          ],
+          "sticky": false,
+          "action": "Extend"
+        },
+        {
+          "tick": 30,
+          "phase": "PistonEvents",
+          "pos": [
+            15,
+            9,
+            19
+          ],
+          "sticky": false,
+          "action": "Extend"
+        },
+        {
+          "tick": 30,
+          "phase": "PistonEvents",
+          "pos": [
+            15,
+            9,
+            21
+          ],
+          "sticky": false,
+          "action": "Extend"
+        },
+        {
+          "tick": 30,
+          "phase": "PistonEvents",
+          "pos": [
+            15,
+            9,
+            23
+          ],
+          "sticky": false,
+          "action": "Extend"
+        },
+        {
+          "tick": 30,
+          "phase": "PistonEvents",
+          "pos": [
+            14,
+            9,
+            10
+          ],
+          "sticky": true,
+          "action": "Retract"
+        },
+        {
+          "tick": 30,
+          "phase": "PistonEvents",
+          "pos": [
+            14,
+            9,
+            12
+          ],
+          "sticky": true,
+          "action": "Retract"
+        },
+        {
+          "tick": 30,
+          "phase": "PistonEvents",
+          "pos": [
+            14,
+            9,
+            14
+          ],
+          "sticky": true,
+          "action": "Retract"
+        },
+        {
+          "tick": 30,
+          "phase": "PistonEvents",
+          "pos": [
+            14,
+            9,
+            16
+          ],
+          "sticky": true,
+          "action": "Retract"
+        },
+        {
+          "tick": 30,
+          "phase": "PistonEvents",
+          "pos": [
+            14,
+            9,
+            18
+          ],
+          "sticky": true,
+          "action": "Retract"
+        },
+        {
+          "tick": 30,
+          "phase": "PistonEvents",
+          "pos": [
+            14,
+            9,
+            20
+          ],
+          "sticky": true,
+          "action": "Retract"
+        },
+        {
+          "tick": 30,
+          "phase": "PistonEvents",
+          "pos": [
+            14,
+            9,
+            22
+          ],
+          "sticky": true,
+          "action": "Retract"
+        },
+        {
+          "tick": 30,
+          "phase": "PistonEvents",
+          "pos": [
+            14,
+            9,
+            24
+          ],
+          "sticky": true,
+          "action": "Retract"
+        },
+        {
+          "tick": 34,
+          "phase": "PistonEvents",
+          "pos": [
+            15,
+            9,
+            21
+          ],
+          "sticky": false,
+          "action": "Retract"
+        },
+        {
+          "tick": 34,
+          "phase": "PistonEvents",
+          "pos": [
+            15,
+            9,
+            23
+          ],
+          "sticky": false,
+          "action": "Retract"
+        },
+        {
+          "tick": 34,
+          "phase": "PistonEvents",
+          "pos": [
+            15,
+            9,
+            17
+          ],
+          "sticky": false,
+          "action": "Retract"
+        },
+        {
+          "tick": 34,
+          "phase": "PistonEvents",
+          "pos": [
+            15,
+            9,
+            19
+          ],
+          "sticky": false,
+          "action": "Retract"
+        },
+        {
+          "tick": 34,
+          "phase": "PistonEvents",
+          "pos": [
+            15,
+            9,
+            13
+          ],
+          "sticky": false,
+          "action": "Retract"
+        },
+        {
+          "tick": 34,
+          "phase": "PistonEvents",
+          "pos": [
+            15,
+            9,
+            15
+          ],
+          "sticky": false,
+          "action": "Retract"
+        },
+        {
+          "tick": 34,
+          "phase": "PistonEvents",
+          "pos": [
+            15,
+            9,
+            11
+          ],
+          "sticky": false,
+          "action": "Retract"
+        }
+      ],
+      "sample_counts": {
+        "[15, 9, 11]": 18,
+        "[15, 9, 13]": 16,
+        "[15, 9, 15]": 15,
+        "[15, 9, 17]": 13,
+        "[15, 9, 19]": 12,
+        "[15, 9, 21]": 10,
+        "[15, 9, 23]": 9,
+        "[13, 9, 11]": 3,
+        "[14, 9, 10]": 4,
+        "[14, 9, 12]": 6,
+        "[13, 9, 13]": 3,
+        "[14, 9, 14]": 6,
+        "[13, 9, 15]": 3,
+        "[14, 9, 16]": 6,
+        "[13, 9, 17]": 3,
+        "[14, 9, 18]": 6,
+        "[13, 9, 19]": 3,
+        "[14, 9, 20]": 6,
+        "[13, 9, 21]": 3,
+        "[14, 9, 22]": 6,
+        "[13, 9, 23]": 3,
+        "[14, 9, 24]": 4
+      },
+      "completed_ticks": 52
+    },
+    {
+      "case_id": "update_pulse_6",
+      "actions": [
+        {
+          "tick": 0,
+          "op": "lever",
+          "pos": [
+            14,
+            14,
+            25
+          ],
+          "powered": true
+        },
+        {
+          "tick": 0,
+          "op": "lever",
+          "pos": [
+            14,
+            14,
+            23
+          ],
+          "powered": true
+        },
+        {
+          "tick": 0,
+          "op": "lever",
+          "pos": [
+            14,
+            14,
+            21
+          ],
+          "powered": true
+        },
+        {
+          "tick": 0,
+          "op": "lever",
+          "pos": [
+            14,
+            14,
+            19
+          ],
+          "powered": true
+        },
+        {
+          "tick": 0,
+          "op": "lever",
+          "pos": [
+            14,
+            14,
+            17
+          ],
+          "powered": true
+        },
+        {
+          "tick": 0,
+          "op": "lever",
+          "pos": [
+            14,
+            14,
+            15
+          ],
+          "powered": true
+        },
+        {
+          "tick": 0,
+          "op": "lever",
+          "pos": [
+            14,
+            14,
+            13
+          ],
+          "powered": true
+        },
+        {
+          "tick": 0,
+          "op": "lever",
+          "pos": [
+            14,
+            14,
+            11
+          ],
+          "powered": true
+        },
+        {
+          "tick": 24,
+          "op": "lever",
+          "pos": [
+            19,
+            12,
+            1
+          ],
+          "powered": true
+        },
+        {
+          "tick": 30,
+          "op": "lever",
+          "pos": [
+            19,
+            12,
+            1
+          ],
+          "powered": false
+        }
+      ],
+      "transitions": [
+        {
+          "tick": 0,
+          "step": null,
+          "label": "import",
+          "words_in_increasing_x_order": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            8,
+            3,
+            0
+          ],
+          "output": 0
+        },
+        {
+          "tick": 30,
+          "step": 10,
+          "label": "tick",
+          "words_in_increasing_x_order": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            8,
+            3,
+            null
+          ],
+          "output": 0
+        },
+        {
+          "tick": 32,
+          "step": 12,
+          "label": "tick",
+          "words_in_increasing_x_order": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            8,
+            3,
+            255
+          ],
+          "output": 0
+        }
+      ],
+      "accepted_events": [
+        {
+          "tick": 30,
+          "phase": "PistonEvents",
+          "pos": [
+            15,
+            9,
+            11
+          ],
+          "sticky": false,
+          "action": "Extend"
+        },
+        {
+          "tick": 30,
+          "phase": "PistonEvents",
+          "pos": [
+            15,
+            9,
+            13
+          ],
+          "sticky": false,
+          "action": "Extend"
+        },
+        {
+          "tick": 30,
+          "phase": "PistonEvents",
+          "pos": [
+            15,
+            9,
+            15
+          ],
+          "sticky": false,
+          "action": "Extend"
+        },
+        {
+          "tick": 30,
+          "phase": "PistonEvents",
+          "pos": [
+            15,
+            9,
+            17
+          ],
+          "sticky": false,
+          "action": "Extend"
+        },
+        {
+          "tick": 30,
+          "phase": "PistonEvents",
+          "pos": [
+            15,
+            9,
+            19
+          ],
+          "sticky": false,
+          "action": "Extend"
+        },
+        {
+          "tick": 30,
+          "phase": "PistonEvents",
+          "pos": [
+            15,
+            9,
+            21
+          ],
+          "sticky": false,
+          "action": "Extend"
+        },
+        {
+          "tick": 30,
+          "phase": "PistonEvents",
+          "pos": [
+            15,
+            9,
+            23
+          ],
+          "sticky": false,
+          "action": "Extend"
+        },
+        {
+          "tick": 30,
+          "phase": "PistonEvents",
+          "pos": [
+            14,
+            9,
+            10
+          ],
+          "sticky": true,
+          "action": "Retract"
+        },
+        {
+          "tick": 30,
+          "phase": "PistonEvents",
+          "pos": [
+            14,
+            9,
+            12
+          ],
+          "sticky": true,
+          "action": "Retract"
+        },
+        {
+          "tick": 30,
+          "phase": "PistonEvents",
+          "pos": [
+            14,
+            9,
+            14
+          ],
+          "sticky": true,
+          "action": "Retract"
+        },
+        {
+          "tick": 30,
+          "phase": "PistonEvents",
+          "pos": [
+            14,
+            9,
+            16
+          ],
+          "sticky": true,
+          "action": "Retract"
+        },
+        {
+          "tick": 30,
+          "phase": "PistonEvents",
+          "pos": [
+            14,
+            9,
+            18
+          ],
+          "sticky": true,
+          "action": "Retract"
+        },
+        {
+          "tick": 30,
+          "phase": "PistonEvents",
+          "pos": [
+            14,
+            9,
+            20
+          ],
+          "sticky": true,
+          "action": "Retract"
+        },
+        {
+          "tick": 30,
+          "phase": "PistonEvents",
+          "pos": [
+            14,
+            9,
+            22
+          ],
+          "sticky": true,
+          "action": "Retract"
+        },
+        {
+          "tick": 30,
+          "phase": "PistonEvents",
+          "pos": [
+            14,
+            9,
+            24
+          ],
+          "sticky": true,
+          "action": "Retract"
+        },
+        {
+          "tick": 36,
+          "phase": "PistonEvents",
+          "pos": [
+            15,
+            9,
+            21
+          ],
+          "sticky": false,
+          "action": "Retract"
+        },
+        {
+          "tick": 36,
+          "phase": "PistonEvents",
+          "pos": [
+            15,
+            9,
+            23
+          ],
+          "sticky": false,
+          "action": "Retract"
+        },
+        {
+          "tick": 36,
+          "phase": "PistonEvents",
+          "pos": [
+            15,
+            9,
+            17
+          ],
+          "sticky": false,
+          "action": "Retract"
+        },
+        {
+          "tick": 36,
+          "phase": "PistonEvents",
+          "pos": [
+            15,
+            9,
+            19
+          ],
+          "sticky": false,
+          "action": "Retract"
+        },
+        {
+          "tick": 36,
+          "phase": "PistonEvents",
+          "pos": [
+            15,
+            9,
+            13
+          ],
+          "sticky": false,
+          "action": "Retract"
+        },
+        {
+          "tick": 36,
+          "phase": "PistonEvents",
+          "pos": [
+            15,
+            9,
+            15
+          ],
+          "sticky": false,
+          "action": "Retract"
+        },
+        {
+          "tick": 36,
+          "phase": "PistonEvents",
+          "pos": [
+            15,
+            9,
+            11
+          ],
+          "sticky": false,
+          "action": "Retract"
+        }
+      ],
+      "sample_counts": {
+        "[15, 9, 11]": 18,
+        "[15, 9, 13]": 16,
+        "[15, 9, 15]": 15,
+        "[15, 9, 17]": 13,
+        "[15, 9, 19]": 12,
+        "[15, 9, 21]": 10,
+        "[15, 9, 23]": 9,
+        "[13, 9, 11]": 3,
+        "[14, 9, 10]": 4,
+        "[14, 9, 12]": 6,
+        "[13, 9, 13]": 3,
+        "[14, 9, 14]": 6,
+        "[13, 9, 15]": 3,
+        "[14, 9, 16]": 6,
+        "[13, 9, 17]": 3,
+        "[14, 9, 18]": 6,
+        "[13, 9, 19]": 3,
+        "[14, 9, 20]": 6,
+        "[13, 9, 21]": 3,
+        "[14, 9, 22]": 6,
+        "[13, 9, 23]": 3,
+        "[14, 9, 24]": 4
+      },
+      "completed_ticks": 54
+    },
+    {
+      "case_id": "update_pulse_8",
+      "actions": [
+        {
+          "tick": 0,
+          "op": "lever",
+          "pos": [
+            14,
+            14,
+            25
+          ],
+          "powered": true
+        },
+        {
+          "tick": 0,
+          "op": "lever",
+          "pos": [
+            14,
+            14,
+            23
+          ],
+          "powered": true
+        },
+        {
+          "tick": 0,
+          "op": "lever",
+          "pos": [
+            14,
+            14,
+            21
+          ],
+          "powered": true
+        },
+        {
+          "tick": 0,
+          "op": "lever",
+          "pos": [
+            14,
+            14,
+            19
+          ],
+          "powered": true
+        },
+        {
+          "tick": 0,
+          "op": "lever",
+          "pos": [
+            14,
+            14,
+            17
+          ],
+          "powered": true
+        },
+        {
+          "tick": 0,
+          "op": "lever",
+          "pos": [
+            14,
+            14,
+            15
+          ],
+          "powered": true
+        },
+        {
+          "tick": 0,
+          "op": "lever",
+          "pos": [
+            14,
+            14,
+            13
+          ],
+          "powered": true
+        },
+        {
+          "tick": 0,
+          "op": "lever",
+          "pos": [
+            14,
+            14,
+            11
+          ],
+          "powered": true
+        },
+        {
+          "tick": 24,
+          "op": "lever",
+          "pos": [
+            19,
+            12,
+            1
+          ],
+          "powered": true
+        },
+        {
+          "tick": 32,
+          "op": "lever",
+          "pos": [
+            19,
+            12,
+            1
+          ],
+          "powered": false
+        }
+      ],
+      "transitions": [
+        {
+          "tick": 0,
+          "step": null,
+          "label": "import",
+          "words_in_increasing_x_order": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            8,
+            3,
+            0
+          ],
+          "output": 0
+        },
+        {
+          "tick": 30,
+          "step": 10,
+          "label": "tick",
+          "words_in_increasing_x_order": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            8,
+            3,
+            null
+          ],
+          "output": 0
+        },
+        {
+          "tick": 32,
+          "step": 10,
+          "label": "tick",
+          "words_in_increasing_x_order": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            8,
+            3,
+            255
+          ],
+          "output": 0
+        }
+      ],
+      "accepted_events": [
+        {
+          "tick": 30,
+          "phase": "PistonEvents",
+          "pos": [
+            15,
+            9,
+            11
+          ],
+          "sticky": false,
+          "action": "Extend"
+        },
+        {
+          "tick": 30,
+          "phase": "PistonEvents",
+          "pos": [
+            15,
+            9,
+            13
+          ],
+          "sticky": false,
+          "action": "Extend"
+        },
+        {
+          "tick": 30,
+          "phase": "PistonEvents",
+          "pos": [
+            15,
+            9,
+            15
+          ],
+          "sticky": false,
+          "action": "Extend"
+        },
+        {
+          "tick": 30,
+          "phase": "PistonEvents",
+          "pos": [
+            15,
+            9,
+            17
+          ],
+          "sticky": false,
+          "action": "Extend"
+        },
+        {
+          "tick": 30,
+          "phase": "PistonEvents",
+          "pos": [
+            15,
+            9,
+            19
+          ],
+          "sticky": false,
+          "action": "Extend"
+        },
+        {
+          "tick": 30,
+          "phase": "PistonEvents",
+          "pos": [
+            15,
+            9,
+            21
+          ],
+          "sticky": false,
+          "action": "Extend"
+        },
+        {
+          "tick": 30,
+          "phase": "PistonEvents",
+          "pos": [
+            15,
+            9,
+            23
+          ],
+          "sticky": false,
+          "action": "Extend"
+        },
+        {
+          "tick": 30,
+          "phase": "PistonEvents",
+          "pos": [
+            14,
+            9,
+            10
+          ],
+          "sticky": true,
+          "action": "Retract"
+        },
+        {
+          "tick": 30,
+          "phase": "PistonEvents",
+          "pos": [
+            14,
+            9,
+            12
+          ],
+          "sticky": true,
+          "action": "Retract"
+        },
+        {
+          "tick": 30,
+          "phase": "PistonEvents",
+          "pos": [
+            14,
+            9,
+            14
+          ],
+          "sticky": true,
+          "action": "Retract"
+        },
+        {
+          "tick": 30,
+          "phase": "PistonEvents",
+          "pos": [
+            14,
+            9,
+            16
+          ],
+          "sticky": true,
+          "action": "Retract"
+        },
+        {
+          "tick": 30,
+          "phase": "PistonEvents",
+          "pos": [
+            14,
+            9,
+            18
+          ],
+          "sticky": true,
+          "action": "Retract"
+        },
+        {
+          "tick": 30,
+          "phase": "PistonEvents",
+          "pos": [
+            14,
+            9,
+            20
+          ],
+          "sticky": true,
+          "action": "Retract"
+        },
+        {
+          "tick": 30,
+          "phase": "PistonEvents",
+          "pos": [
+            14,
+            9,
+            22
+          ],
+          "sticky": true,
+          "action": "Retract"
+        },
+        {
+          "tick": 30,
+          "phase": "PistonEvents",
+          "pos": [
+            14,
+            9,
+            24
+          ],
+          "sticky": true,
+          "action": "Retract"
+        },
+        {
+          "tick": 38,
+          "phase": "PistonEvents",
+          "pos": [
+            15,
+            9,
+            21
+          ],
+          "sticky": false,
+          "action": "Retract"
+        },
+        {
+          "tick": 38,
+          "phase": "PistonEvents",
+          "pos": [
+            15,
+            9,
+            23
+          ],
+          "sticky": false,
+          "action": "Retract"
+        },
+        {
+          "tick": 38,
+          "phase": "PistonEvents",
+          "pos": [
+            15,
+            9,
+            17
+          ],
+          "sticky": false,
+          "action": "Retract"
+        },
+        {
+          "tick": 38,
+          "phase": "PistonEvents",
+          "pos": [
+            15,
+            9,
+            19
+          ],
+          "sticky": false,
+          "action": "Retract"
+        },
+        {
+          "tick": 38,
+          "phase": "PistonEvents",
+          "pos": [
+            15,
+            9,
+            13
+          ],
+          "sticky": false,
+          "action": "Retract"
+        },
+        {
+          "tick": 38,
+          "phase": "PistonEvents",
+          "pos": [
+            15,
+            9,
+            15
+          ],
+          "sticky": false,
+          "action": "Retract"
+        },
+        {
+          "tick": 38,
+          "phase": "PistonEvents",
+          "pos": [
+            15,
+            9,
+            11
+          ],
+          "sticky": false,
+          "action": "Retract"
+        }
+      ],
+      "sample_counts": {
+        "[15, 9, 11]": 18,
+        "[15, 9, 13]": 16,
+        "[15, 9, 15]": 15,
+        "[15, 9, 17]": 13,
+        "[15, 9, 19]": 12,
+        "[15, 9, 21]": 10,
+        "[15, 9, 23]": 9,
+        "[13, 9, 11]": 3,
+        "[14, 9, 10]": 4,
+        "[14, 9, 12]": 6,
+        "[13, 9, 13]": 3,
+        "[14, 9, 14]": 6,
+        "[13, 9, 15]": 3,
+        "[14, 9, 16]": 6,
+        "[13, 9, 17]": 3,
+        "[14, 9, 18]": 6,
+        "[13, 9, 19]": 3,
+        "[14, 9, 20]": 6,
+        "[13, 9, 21]": 3,
+        "[14, 9, 22]": 6,
+        "[13, 9, 23]": 3,
+        "[14, 9, 24]": 4
+      },
+      "completed_ticks": 56
+    },
+    {
+      "case_id": "update_pulse_12",
+      "actions": [
+        {
+          "tick": 0,
+          "op": "lever",
+          "pos": [
+            14,
+            14,
+            25
+          ],
+          "powered": true
+        },
+        {
+          "tick": 0,
+          "op": "lever",
+          "pos": [
+            14,
+            14,
+            23
+          ],
+          "powered": true
+        },
+        {
+          "tick": 0,
+          "op": "lever",
+          "pos": [
+            14,
+            14,
+            21
+          ],
+          "powered": true
+        },
+        {
+          "tick": 0,
+          "op": "lever",
+          "pos": [
+            14,
+            14,
+            19
+          ],
+          "powered": true
+        },
+        {
+          "tick": 0,
+          "op": "lever",
+          "pos": [
+            14,
+            14,
+            17
+          ],
+          "powered": true
+        },
+        {
+          "tick": 0,
+          "op": "lever",
+          "pos": [
+            14,
+            14,
+            15
+          ],
+          "powered": true
+        },
+        {
+          "tick": 0,
+          "op": "lever",
+          "pos": [
+            14,
+            14,
+            13
+          ],
+          "powered": true
+        },
+        {
+          "tick": 0,
+          "op": "lever",
+          "pos": [
+            14,
+            14,
+            11
+          ],
+          "powered": true
+        },
+        {
+          "tick": 24,
+          "op": "lever",
+          "pos": [
+            19,
+            12,
+            1
+          ],
+          "powered": true
+        },
+        {
+          "tick": 36,
+          "op": "lever",
+          "pos": [
+            19,
+            12,
+            1
+          ],
+          "powered": false
+        }
+      ],
+      "transitions": [
+        {
+          "tick": 0,
+          "step": null,
+          "label": "import",
+          "words_in_increasing_x_order": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            8,
+            3,
+            0
+          ],
+          "output": 0
+        },
+        {
+          "tick": 30,
+          "step": 10,
+          "label": "tick",
+          "words_in_increasing_x_order": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            8,
+            3,
+            null
+          ],
+          "output": 0
+        },
+        {
+          "tick": 32,
+          "step": 10,
+          "label": "tick",
+          "words_in_increasing_x_order": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            8,
+            3,
+            255
+          ],
+          "output": 0
+        }
+      ],
+      "accepted_events": [
+        {
+          "tick": 30,
+          "phase": "PistonEvents",
+          "pos": [
+            15,
+            9,
+            11
+          ],
+          "sticky": false,
+          "action": "Extend"
+        },
+        {
+          "tick": 30,
+          "phase": "PistonEvents",
+          "pos": [
+            15,
+            9,
+            13
+          ],
+          "sticky": false,
+          "action": "Extend"
+        },
+        {
+          "tick": 30,
+          "phase": "PistonEvents",
+          "pos": [
+            15,
+            9,
+            15
+          ],
+          "sticky": false,
+          "action": "Extend"
+        },
+        {
+          "tick": 30,
+          "phase": "PistonEvents",
+          "pos": [
+            15,
+            9,
+            17
+          ],
+          "sticky": false,
+          "action": "Extend"
+        },
+        {
+          "tick": 30,
+          "phase": "PistonEvents",
+          "pos": [
+            15,
+            9,
+            19
+          ],
+          "sticky": false,
+          "action": "Extend"
+        },
+        {
+          "tick": 30,
+          "phase": "PistonEvents",
+          "pos": [
+            15,
+            9,
+            21
+          ],
+          "sticky": false,
+          "action": "Extend"
+        },
+        {
+          "tick": 30,
+          "phase": "PistonEvents",
+          "pos": [
+            15,
+            9,
+            23
+          ],
+          "sticky": false,
+          "action": "Extend"
+        },
+        {
+          "tick": 30,
+          "phase": "PistonEvents",
+          "pos": [
+            14,
+            9,
+            10
+          ],
+          "sticky": true,
+          "action": "Retract"
+        },
+        {
+          "tick": 30,
+          "phase": "PistonEvents",
+          "pos": [
+            14,
+            9,
+            12
+          ],
+          "sticky": true,
+          "action": "Retract"
+        },
+        {
+          "tick": 30,
+          "phase": "PistonEvents",
+          "pos": [
+            14,
+            9,
+            14
+          ],
+          "sticky": true,
+          "action": "Retract"
+        },
+        {
+          "tick": 30,
+          "phase": "PistonEvents",
+          "pos": [
+            14,
+            9,
+            16
+          ],
+          "sticky": true,
+          "action": "Retract"
+        },
+        {
+          "tick": 30,
+          "phase": "PistonEvents",
+          "pos": [
+            14,
+            9,
+            18
+          ],
+          "sticky": true,
+          "action": "Retract"
+        },
+        {
+          "tick": 30,
+          "phase": "PistonEvents",
+          "pos": [
+            14,
+            9,
+            20
+          ],
+          "sticky": true,
+          "action": "Retract"
+        },
+        {
+          "tick": 30,
+          "phase": "PistonEvents",
+          "pos": [
+            14,
+            9,
+            22
+          ],
+          "sticky": true,
+          "action": "Retract"
+        },
+        {
+          "tick": 30,
+          "phase": "PistonEvents",
+          "pos": [
+            14,
+            9,
+            24
+          ],
+          "sticky": true,
+          "action": "Retract"
+        },
+        {
+          "tick": 42,
+          "phase": "PistonEvents",
+          "pos": [
+            15,
+            9,
+            21
+          ],
+          "sticky": false,
+          "action": "Retract"
+        },
+        {
+          "tick": 42,
+          "phase": "PistonEvents",
+          "pos": [
+            15,
+            9,
+            23
+          ],
+          "sticky": false,
+          "action": "Retract"
+        },
+        {
+          "tick": 42,
+          "phase": "PistonEvents",
+          "pos": [
+            15,
+            9,
+            17
+          ],
+          "sticky": false,
+          "action": "Retract"
+        },
+        {
+          "tick": 42,
+          "phase": "PistonEvents",
+          "pos": [
+            15,
+            9,
+            19
+          ],
+          "sticky": false,
+          "action": "Retract"
+        },
+        {
+          "tick": 42,
+          "phase": "PistonEvents",
+          "pos": [
+            15,
+            9,
+            13
+          ],
+          "sticky": false,
+          "action": "Retract"
+        },
+        {
+          "tick": 42,
+          "phase": "PistonEvents",
+          "pos": [
+            15,
+            9,
+            15
+          ],
+          "sticky": false,
+          "action": "Retract"
+        },
+        {
+          "tick": 42,
+          "phase": "PistonEvents",
+          "pos": [
+            15,
+            9,
+            11
+          ],
+          "sticky": false,
+          "action": "Retract"
+        }
+      ],
+      "sample_counts": {
+        "[15, 9, 11]": 18,
+        "[15, 9, 13]": 16,
+        "[15, 9, 15]": 15,
+        "[15, 9, 17]": 13,
+        "[15, 9, 19]": 12,
+        "[15, 9, 21]": 10,
+        "[15, 9, 23]": 9,
+        "[13, 9, 11]": 3,
+        "[14, 9, 10]": 4,
+        "[14, 9, 12]": 6,
+        "[13, 9, 13]": 3,
+        "[14, 9, 14]": 6,
+        "[13, 9, 15]": 3,
+        "[14, 9, 16]": 6,
+        "[13, 9, 17]": 3,
+        "[14, 9, 18]": 6,
+        "[13, 9, 19]": 3,
+        "[14, 9, 20]": 6,
+        "[13, 9, 21]": 3,
+        "[14, 9, 22]": 6,
+        "[13, 9, 23]": 3,
+        "[14, 9, 24]": 4
+      },
+      "completed_ticks": 60
+    }
+  ]
+}

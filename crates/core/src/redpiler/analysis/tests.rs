@@ -1,5 +1,6 @@
 use super::*;
 mod outputs;
+mod research;
 use crate::plot::worldedit::{load_schematic, paste_clipboard};
 use crate::plot::{PlotWorld, PLOT_WIDTH};
 use crate::redpiler::instant::contract::{ElectricalState, Strength, TriggerState};

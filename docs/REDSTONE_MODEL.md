@@ -1669,6 +1669,14 @@ The [Java 1.21.5 reference](../test_data/piston-repair/java-piston-oscillator-tr
 
 Both stages begin retracting during the first game tick, so this falling computation wave does not add a game tick per stage. The reset and payload restoration span subsequent phases and ticks, and the fixture keeps cycling after source removal. Its valid computational abstraction therefore needs an observation point or input protocol; a permanently settled Boolean wire value does not describe its physical trace. The interpreter regression in [piston/tests.rs](../crates/core/src/redstone/piston/tests.rs) compares this reference using game, nano and pico stepping.
 
+### 19.9 RILAX memory samples on head notifications
+
+The [RILAX memory characterization](FPU_RILAX_REDPILER_RESEARCH.md) provides an eight-word/eight-bit example of the power/update separation in section 13. In its settled data-preparation interval, changing data can make `should_piston_extend` false while an extended memory piston remains unchanged. Idle game ticks do not resample it. Seven ordinary piston heads subsequently notify all eight memory cells in the selected word. Both head placement during extension and head removal during retraction can produce samples; a held enable level is not continuous sampling.
+
+For the saved orientation and tested stable protocol, an enable rise reaches the ordinary generators at tick six, and the required upper-cell movements settle at tick eight. Read selection uses separate lower gray-concrete gates; repeaters expose the sampled word at tick ten. A held read keeps the preceding sampled result across a later write until another read episode. These are fixture-level consequences of ordinary delays, notifications and transport, not universal piston latency constants.
+
+Unchanged power samples do not create accepted storage movements, but remain present in the ordered test trace. The downloaded revision has a missing address-one decoder torch: changing that address can sample/erase its saved bits while update enable is off. Preserve this as the original negative fixture; the normal measured protocol applies to the healthy addresses and a separately identified one-block diagnostic probe. The same report records author-confirmed broken geometry in the FPU snapshot, without treating those imported blocks as legal ready transport states.
+
 ## 20. Implementation and regression-test index
 
 | Subject | Source |

@@ -5,6 +5,8 @@ trace index are local analysis outputs excluded from Git. Fixture schematics,
 protocol manifests, capture provenance and frozen CPU/Java regression baselines
 remain versioned. The files in `mc_data` are required build inputs.
 
+The [FPU and RILAX research](../docs/FPU_RILAX_REDPILER_RESEARCH.md) uses `test_data/piston-research`. Its new-file captures under `references` are versioned characterization evidence. Use `download_piston_research.py`, `capture_piston_research.py` and `summarize_piston_research.py --check`; generic inspection still uses `inspect_instant_pistons.py --pack-dir test_data/piston-research`. Capture outputs are never substituted for independent Java expectations.
+
 Regenerate schematic inspections from the checked-in `.schem` files:
 
 ```powershell

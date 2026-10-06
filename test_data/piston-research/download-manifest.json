@@ -1,0 +1,20 @@
+{
+  "schema_version": 1,
+  "source_host": "urmom",
+  "source_directory": "/srv/mchprs/data/schems",
+  "verified_utc": "2026-10-06T20:44:46.924834+00:00",
+  "files": [
+    {
+      "name": "FPU_LEGAL.schem",
+      "bytes": 77327,
+      "sha256": "2f8ceb38c0c2092592bd32e83aa3a3ae80fd090d73865f90c9123b8091fad2b3",
+      "mtime": 1791318862.212106
+    },
+    {
+      "name": "RILAX_MEMORY_BANK_BUD.schem",
+      "bytes": 1696,
+      "sha256": "123ea6bc48de1ab159d0909ab91c286ad2aeef0758a9b3dae9ca3dbf2a025559",
+      "mtime": 1791317305.1104515
+    }
+  ]
+}
