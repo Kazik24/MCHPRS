@@ -204,6 +204,15 @@ owner. Names are matched case-insensitively against players who have joined this
 server; members retain their normal build and command permission requirements.
 Membership persists in `world/plots.db` and grants access only to the named plot.
 
+Accepted logins refresh the current name-to-UUID binding. Conflicting cached
+names from older UUIDs are excluded from name resolution, including plot visits
+and member completion. Existing UUID records, ownership and memberships remain
+intact. A target rejoining repairs a legacy nickname collision without requiring
+the other account to return. This handles stale names and old identity records;
+it does not merge accounts or transfer access. `/p add` and `/p remove` also
+accept full UUIDs. Remove completion shows UUIDs for members whose names are
+stale, so those memberships can still be revoked.
+
 ## WorldEdit and redstone tools
 
 WorldEdit uses the existing per-command nodes with the `mchprs.` prefix:

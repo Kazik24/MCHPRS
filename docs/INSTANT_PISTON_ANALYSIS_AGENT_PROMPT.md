@@ -39,7 +39,7 @@ The circuit author's latest clarifications take precedence over older planning a
 6. Shared-output OR mechanisms may drop the payload and transfer it between pistons.
 7. There is no typical standalone NOT gate in this instant logic. A negation circuit inhibits or blocks other pistons when its input is active.
 8. Negation requires update-order synchronization. The author specifically says: “negated piston must fire first, update-wise.” Identify the physical piston meant by this statement and what “fire” means operationally. Do not silently replace it with an assumption about which actor moves first.
-9. Dedicated BUD examples and circuits demonstrating nanotick misalignment have not yet been supplied. Existing embedded memory or BUD-like mechanisms still need documentation.
+9. Dedicated standalone BUD examples have not yet been supplied. The author has now provided NANOTICK_EXAMPLE.schem as an ordering/synchronization example. Existing embedded memory or BUD-like mechanisms still need documentation.
 10. Here “nanoticks” also refers to circuit synchronization and relative update ordering. MCHPRS's nanotick_advance API is an inspection mechanism with its own semantics. Advancing a correctly synchronized circuit with that API does not turn it into a supplied nanotick counterexample.
 11. Gates, adders, counters, decoders and long wires are initial targets. Full CPU analysis and compilation are later work.
 12. Compiled rendering may update infrequently and omit internal piston animation and internal wire-state display. Simulation timing and interpreter handoff remain separate correctness questions.
@@ -56,10 +56,11 @@ Inventory every schematic in test_data/instant-pistons. Give the following basic
 | Order-dependent negation and XOR | NOT_1.schem, XOR_Simple.schem |
 | Arithmetic and state | ADDER_1BIT.schem, ADDER_11BITS.schem, COUNTER_BASIC.schem |
 | Intentional counterexample | OR_Interpreter_illigal.schem |
+| Update-order synchronization example | NANOTICK_EXAMPLE.schem |
 
 Also document and test the downloaded MCHPRS_REDSTONE_UPDATE_EDGECASE.schem as its own version. Its hash and dimensions differ from test_data/MCHPRS_REDSTONE_UPDATE_EDGECASE.schem. Keep the older reference fixture separate.
 
-ADDER_11BITS.schem is the canonical corrected replacement for ADDER_GWIEZDNY_TEST.schem. 
+ADDER_11BITS.schem is the canonical corrected replacement for ADDER_GWIEZDNY_TEST.schem.
 
 The refreshed canonical adder has dimensions 21 x 7 x 46 and six signs labeled A1, A2, B1, B2, O1 and O2. The initial downloaded revision was 21 x 7 x 45 without sign entities. Recheck the actual file and hash: existing test/capture helpers may still refer to the earlier revision's dimensions, offsets or coordinates. Find the actual trigger separately; the six observed signs do not include a TICK label.
 
@@ -144,6 +145,7 @@ Use fresh equivalent ready snapshots for independent input cases. Separate prepa
 - ADDER_11BITS: derive current sign-to-port mapping, bank direction, bit order, trigger, width, carry/overflow policy and validity window. Check zero, single bits, carry chains, overflow, maximum values, 0x555 + 0x2aa in both orders, and reproducible seeded cases. Use mathematical expectations only after the encoding and width are established. Test repeated calculations only after proving the reuse protocol.
 - COUNTER_BASIC: identify trigger, update generator, memory and output encoding. Measure the actual count sequence, persistence between valid triggers, carry/reset/wrap if present, and any required ordering. Treat the counter as stateful; do not force it into a combinational truth table.
 - Downloaded MCHPRS_REDSTONE_UPDATE_EDGECASE: rederive ports and setup for its current binary, then trace drop/recapture and reset. Do not import old coordinates or waveform expectations without checking their provenance.
+- NANOTICK_EXAMPLE: identify the synchronization or relative-update-order mechanism from its signs, geometry and trace. Document working and failing sequences where applicable and the exact operations whose order matters. Keep this analysis proportional to the example and continue the rest of the basic pack; do not assume every fixture requires the same ordering model.
 
 Test supported positive-to-positive changes and repeated observations of a held zero to ensure they are not described as fresh root computations. Retain any real internal cycles. Use strength-one-to-zero cases only where the fixture permits them.
 
@@ -159,7 +161,7 @@ Provide a partial-order graph/table for the supported episode. State what fixes 
 
 A later compiler may use a guarded expression such as “target trigger and absence of an effective inhibit,” but only after validating the protocol and order. Report any constraints crossing region boundaries. A topological data DAG alone may omit these dependencies.
 
-Do not invent missing nanotick-misalignment schematics or claim their family is covered. Record the smallest additional author example needed where existing evidence is insufficient.
+NANOTICK_EXAMPLE.schem is now available as the first dedicated author-supplied ordering example. Analyze its demonstrated mechanism without claiming all nanotick-misalignment families are covered. Record the smallest additional author example needed where evidence is insufficient.
 
 ## 8. Preserve intentional counterexamples
 
@@ -203,7 +205,7 @@ Create:
 3. test_data/instant-pistons/traces/: reproducible, engine-labeled traces linked by fixture hash and case ID. Keep useful summaries in the catalog and detailed operation data in artifacts.
 4. A reusable inspection/capture utility and shared test helpers where useful. Add focused Rust regression tests in an appropriate redstone test module, registered through the existing test structure.
 5. Targeted corrections to REDSTONE_MODEL.md when actual source behavior contradicts it, and to INSTANT_PISTON_IMPLEMENTATION_PLAN.md for fixture evidence, negation ordering, recognition guards and compiler boundaries.
-6. A short final report listing what is verified, mismatches, remaining author questions, missing standalone BUD/nanotick examples and the exact test/capture commands executed.
+6. A short final report listing what is verified, mismatches, remaining author questions, missing standalone BUD examples or additional ordering variants, and the exact test/capture commands executed.
 
 Each dossier must state its purpose, coordinate/port map, initial state, ordered stimulus, logical result, physical timeline, causal explanation, reset/next-use rule, required update order, counterexamples, classification/recognition implications and evidence links. Include a compact diagram or annotated slice where geometry is hard to explain.
 

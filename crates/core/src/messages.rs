@@ -136,8 +136,8 @@ catalog! {
         PLOT_HOME_UNCLAIMED = "No plot den of your own yet. Use /p auto to claim one.";
         PLOT_MEMBER_ALREADY_ADDED = "That player is already in this plot pack.";
         PLOT_MEMBER_NOT_ADDED = "That player is not in this plot pack.";
-        PLOT_MEMBER_UNKNOWN_PLAYER = "No cached pawprint for that player. They must have joined this server at least once.";
-        PLOT_MEMBER_AMBIGUOUS_PLAYER = "Several cached pawprints share that nickname. Those players must rejoin with distinct current names before access can be changed.";
+        PLOT_MEMBER_UNKNOWN_PLAYER = "No cached pawprint for that name or UUID. They must have joined this server at least once.";
+        PLOT_MEMBER_AMBIGUOUS_PLAYER = "Old cached pawprints share that nickname. Ask the target player to rejoin so these paws can refresh their identity, or use their UUID.";
         PLOT_MEMBER_IS_OWNER = "The plot owner leads this pack and cannot be added or removed as a member.";
         PLOT_CLAIMS_READ_FAILED = "Could not sniff out the plot claims. Try again in a moment.";
         PLOT_AUTO_SEARCH_FULL = "No free den in the automatic search area. Choose a plot and use /plot claim.";
@@ -469,7 +469,7 @@ catalog! {
         plot_read_failed(error: impl Display) = "Could not sniff out your plots: {error}";
         plot_members_update_failed(error: impl Display) = "Could not update this plot pack: {error}";
         visual_setting_save_failed(error: impl Display) = "Could not tuck away the visual setting: {error}";
-        plot_member_usage(command: impl Display) = "Usage: /p {command} <nick>";
+        plot_member_usage(command: impl Display) = "Usage: /p {command} <nick|uuid>";
         advance_tick_count_limit(limit: u32) = "These paws can advance between 0 and {limit} ticks per command.";
         plot_claim_failed(error: impl Display) = "Could not claim this plot den: {error}";
         history_limit_save_failed(error: impl Display) = "Could not tuck away the history limit: {error}";

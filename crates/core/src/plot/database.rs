@@ -59,22 +59,28 @@ pub fn get_plot_owner(plot_x: i32, plot_z: i32) -> Option<String> {
 }
 
 pub fn get_cached_username(uuid: String) -> Option<String> {
-    lock()
-        .query_row(
-            "SELECT
+    get_cached_username_in(&lock(), &uuid)
+}
+
+fn get_cached_username_in(conn: &Connection, uuid: &str) -> Option<String> {
+    conn.query_row(
+        "SELECT
                 name
             FROM
                 user
             WHERE
-                uuid=?1",
-            params![uuid],
-            |row| row.get::<_, String>(0),
-        )
-        .ok()
+                uuid=?1 AND name_current=TRUE",
+        params![uuid],
+        |row| row.get::<_, String>(0),
+    )
+    .ok()
 }
 
 pub fn get_owned_plots(player: &str) -> rusqlite::Result<Vec<(i32, i32)>> {
-    let conn = lock();
+    get_owned_plots_in(&lock(), player)
+}
+
+fn get_owned_plots_in(conn: &Connection, player: &str) -> rusqlite::Result<Vec<(i32, i32)>> {
     let mut stmt = conn.prepare_cached(
         "SELECT
                     plot_x, plot_z
@@ -85,7 +91,7 @@ pub fn get_owned_plots(player: &str) -> rusqlite::Result<Vec<(i32, i32)>> {
                 JOIN
                     user ON user.id = userplot.user_id
                 WHERE
-                    name=?1 COLLATE NOCASE
+                    name=?1 COLLATE NOCASE AND name_current=TRUE
                     AND is_owner=TRUE
                 ORDER BY plot.id",
     )?;
@@ -115,17 +121,24 @@ fn get_owned_plots_by_uuid_in(conn: &Connection, uuid: u128) -> rusqlite::Result
 }
 
 pub fn known_usernames() -> rusqlite::Result<Vec<String>> {
-    let conn = lock();
-    let mut stmt =
-        conn.prepare_cached("SELECT DISTINCT name FROM user ORDER BY name COLLATE NOCASE")?;
+    known_usernames_in(&lock())
+}
+
+fn known_usernames_in(conn: &Connection) -> rusqlite::Result<Vec<String>> {
+    let mut stmt = conn.prepare_cached(
+        "SELECT DISTINCT name FROM user WHERE name_current=TRUE ORDER BY name COLLATE NOCASE",
+    )?;
     let result = stmt.query_map([], |row| row.get(0))?.collect();
     result
 }
 
 pub fn plot_member_names(x: i32, z: i32) -> rusqlite::Result<Vec<String>> {
-    let conn = lock();
+    plot_member_names_in(&lock(), x, z)
+}
+
+fn plot_member_names_in(conn: &Connection, x: i32, z: i32) -> rusqlite::Result<Vec<String>> {
     let mut stmt = conn.prepare_cached(
-        "SELECT DISTINCT name FROM user
+        "SELECT DISTINCT CASE WHEN name_current=TRUE THEN name ELSE uuid END AS name FROM user
          JOIN userplot ON userplot.user_id=user.id
          JOIN plot ON plot.id=userplot.plot_id
          WHERE plot_x=?1 AND plot_z=?2 AND is_owner=FALSE ORDER BY name COLLATE NOCASE",
@@ -192,10 +205,27 @@ fn set_plot_member_in(
     if owner != format!("{actor:032x}") && !admin {
         return Ok(MembershipResult::NotOwner);
     }
-    let mut stmt =
-        tx.prepare("SELECT id, uuid, name FROM user WHERE name=?1 COLLATE NOCASE LIMIT 2")?;
+    // A cached nickname can belong to a retired identity. UUIDs remain usable
+    // for removing old memberships, without transferring any plot access.
+    let uuid = if matches!(name.len(), 32 | 36) {
+        name.parse::<crate::utils::HyphenatedUUID>().ok()
+    } else {
+        None
+    };
+    let (query, key) = if let Some(uuid) = uuid {
+        (
+            "SELECT id, uuid, CASE WHEN name_current=TRUE THEN name ELSE uuid END FROM user WHERE uuid=?1",
+            format!("{:032x}", uuid.0),
+        )
+    } else {
+        (
+            "SELECT id, uuid, name FROM user WHERE name=?1 COLLATE NOCASE AND name_current=TRUE LIMIT 2",
+            name.to_owned(),
+        )
+    };
+    let mut stmt = tx.prepare(query)?;
     let mut users: Vec<(i64, String, String)> = stmt
-        .query_map([name], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)))?
+        .query_map([key], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)))?
         .collect::<rusqlite::Result<_>>()?;
     drop(stmt);
     if users.len() > 1 {
@@ -310,11 +340,41 @@ fn claim_plot_in(
 }
 
 pub fn ensure_user(uuid: &str, name: &str) -> rusqlite::Result<()> {
-    lock().execute(
-        "INSERT INTO user(uuid, name)
-                VALUES (?1, ?2)
-                ON CONFLICT (uuid) DO UPDATE SET name = ?3",
-        params![uuid, name, name],
+    ensure_user_in(&mut lock(), uuid, name)
+}
+
+fn ensure_user_in(conn: &mut Connection, uuid: &str, name: &str) -> rusqlite::Result<()> {
+    let tx = conn.transaction()?;
+    tx.execute(
+        "INSERT INTO user(uuid, name, name_current) VALUES (?1, ?2, TRUE)
+         ON CONFLICT (uuid) DO UPDATE SET name=excluded.name, name_current=TRUE",
+        params![uuid, name],
+    )?;
+    // The accepted login profile supplies the current UUID/name binding. Retain
+    // conflicting UUID rows and their ownership/memberships, but stop resolving
+    // their stale names. Rejoining the target alone repairs legacy collisions.
+    tx.execute(
+        "UPDATE user SET name_current=FALSE WHERE name=?1 COLLATE NOCASE AND uuid<>?2",
+        params![name, uuid],
+    )?;
+    tx.commit()
+}
+
+fn init_user_name_cache(conn: &Connection) -> rusqlite::Result<()> {
+    let migrated: bool = conn.query_row(
+        "SELECT EXISTS(SELECT 1 FROM pragma_table_info('user') WHERE name='name_current')",
+        [],
+        |row| row.get(0),
+    )?;
+    if !migrated {
+        conn.execute(
+            "ALTER TABLE user ADD COLUMN name_current BOOLEAN NOT NULL DEFAULT TRUE",
+            [],
+        )?;
+    }
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS user_current_name ON user(name COLLATE NOCASE) WHERE name_current=TRUE",
+        [],
     )?;
     Ok(())
 }
@@ -346,6 +406,8 @@ pub fn init() {
         [],
     )
     .unwrap();
+
+    init_user_name_cache(&conn).expect("Could not initialize the current player-name cache");
 
     conn.execute(
         "CREATE TABLE IF NOT EXISTS plot(
@@ -405,6 +467,145 @@ pub fn init() {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn legacy_name_collision() -> Connection {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch("PRAGMA foreign_keys=ON;
+            CREATE TABLE user(id INTEGER PRIMARY KEY, uuid TEXT UNIQUE, name TEXT NOT NULL);
+            CREATE TABLE plot(id INTEGER PRIMARY KEY, plot_x INTEGER, plot_z INTEGER, UNIQUE(plot_x, plot_z));
+            CREATE TABLE userplot(user_id INTEGER REFERENCES user(id), plot_id INTEGER REFERENCES plot(id), is_owner BOOLEAN);").unwrap();
+        for (id, name) in [(1, "Owner"), (2, "Kazik24"), (3, "KAZIK24")] {
+            conn.execute(
+                "INSERT INTO user VALUES(?1,?2,?3)",
+                params![id, format!("{id:032x}"), name],
+            )
+            .unwrap();
+        }
+        conn.execute_batch(
+            "INSERT INTO plot VALUES(1,2,3),(2,4,5);
+            INSERT INTO userplot VALUES(1,1,TRUE),(2,2,TRUE),(2,1,FALSE);",
+        )
+        .unwrap();
+        conn
+    }
+
+    #[test]
+    fn target_rejoin_resolves_legacy_name_collision_without_transferring_access() {
+        let mut conn = legacy_name_collision();
+        init_user_name_cache(&conn).unwrap();
+        init_user_name_cache(&conn).unwrap();
+        assert_eq!(
+            set_plot_member_in(&mut conn, 2, 3, 1, false, "Kazik24", true).unwrap(),
+            MembershipResult::AmbiguousPlayer
+        );
+        ensure_user_in(&mut conn, &format!("{:032x}", 3), "Kazik24").unwrap();
+        assert_eq!(
+            set_plot_member_in(&mut conn, 2, 3, 1, false, "kAzIk24", true).unwrap(),
+            MembershipResult::Changed {
+                uuid: 3,
+                name: "Kazik24".into()
+            }
+        );
+        assert_eq!(get_cached_username_in(&conn, &format!("{:032x}", 2)), None);
+        assert_eq!(
+            get_cached_username_in(&conn, &format!("{:032x}", 3)),
+            Some("Kazik24".into())
+        );
+        assert_eq!(get_owned_plots_by_uuid_in(&conn, 2).unwrap(), [(4, 5)]);
+        assert!(get_owned_plots_by_uuid_in(&conn, 3).unwrap().is_empty());
+        assert!(get_owned_plots_in(&conn, "Kazik24").unwrap().is_empty());
+        assert_eq!(
+            plot_member_names_in(&conn, 2, 3).unwrap(),
+            [format!("{:032x}", 2), "Kazik24".into()]
+        );
+        assert_eq!(
+            conn.query_row("SELECT count(*) FROM user", [], |r| r.get::<_, i64>(0))
+                .unwrap(),
+            3
+        );
+        assert_eq!(
+            conn.query_row("SELECT count(*) FROM userplot WHERE user_id=2", [], |r| r
+                .get::<_, i64>(
+                0
+            ))
+            .unwrap(),
+            2
+        );
+        let uuid = crate::utils::HyphenatedUUID(2).to_string();
+        assert_eq!(
+            set_plot_member_in(&mut conn, 2, 3, 1, false, &uuid, false).unwrap(),
+            MembershipResult::Changed {
+                uuid: 2,
+                name: format!("{:032x}", 2)
+            }
+        );
+        assert_eq!(
+            set_plot_member_in(&mut conn, 2, 3, 1, false, &format!("{:032x}", 1), false).unwrap(),
+            MembershipResult::IsOwner
+        );
+        assert_eq!(get_owned_plots_by_uuid_in(&conn, 2).unwrap(), [(4, 5)]);
+        assert_eq!(plot_member_names_in(&conn, 2, 3).unwrap(), ["Kazik24"]);
+    }
+
+    #[test]
+    fn rename_and_new_uuid_registration_keep_only_current_names_resolvable() {
+        let mut conn = legacy_name_collision();
+        init_user_name_cache(&conn).unwrap();
+        // This also covers a new proxy UUID replacing an old offline identity.
+        ensure_user_in(&mut conn, &format!("{:032x}", 4), "kazik24").unwrap();
+        assert_eq!(
+            set_plot_member_in(&mut conn, 2, 3, 1, false, "KAZIK24", true).unwrap(),
+            MembershipResult::Changed {
+                uuid: 4,
+                name: "kazik24".into()
+            }
+        );
+        ensure_user_in(&mut conn, &format!("{:032x}", 4), "NewKazik").unwrap();
+        assert_eq!(
+            set_plot_member_in(&mut conn, 2, 3, 1, false, "Kazik24", true).unwrap(),
+            MembershipResult::UnknownPlayer
+        );
+        assert_eq!(known_usernames_in(&conn).unwrap(), ["NewKazik", "Owner"]);
+        ensure_user_in(&mut conn, &format!("{:032x}", 2), "FormerKazik").unwrap();
+        assert_eq!(get_owned_plots_in(&conn, "formerkazik").unwrap(), [(4, 5)]);
+        assert_eq!(
+            plot_member_names_in(&conn, 2, 3).unwrap(),
+            ["FormerKazik", "NewKazik"]
+        );
+        assert_eq!(get_owned_plots_by_uuid_in(&conn, 2).unwrap(), [(4, 5)]);
+    }
+
+    #[test]
+    fn failed_name_refresh_rolls_back_registration_and_keeps_legacy_access() {
+        let mut conn = legacy_name_collision();
+        init_user_name_cache(&conn).unwrap();
+        conn.execute_batch(
+            "CREATE TRIGGER fail_refresh BEFORE UPDATE OF name_current ON user
+            WHEN OLD.id=2 BEGIN SELECT RAISE(ABORT,'failed refresh'); END;",
+        )
+        .unwrap();
+        assert!(ensure_user_in(&mut conn, &format!("{:032x}", 4), "Kazik24").is_err());
+        assert_eq!(
+            conn.query_row("SELECT count(*) FROM user", [], |r| r.get::<_, i64>(0))
+                .unwrap(),
+            3
+        );
+        assert_eq!(
+            conn.query_row(
+                "SELECT count(*) FROM user WHERE name_current=TRUE",
+                [],
+                |r| r.get::<_, i64>(0)
+            )
+            .unwrap(),
+            3
+        );
+        assert_eq!(get_owned_plots_by_uuid_in(&conn, 2).unwrap(), [(4, 5)]);
+        assert_eq!(
+            set_plot_member_in(&mut conn, 2, 3, 1, false, "Kazik24", true).unwrap(),
+            MembershipResult::AmbiguousPlayer
+        );
+    }
+
     #[test]
     fn only_owners_or_admins_can_manage_members_and_ownership_is_preserved() {
         let mut conn = Connection::open_in_memory().unwrap();
@@ -412,9 +613,10 @@ mod tests {
             CREATE TABLE user(id INTEGER PRIMARY KEY, uuid TEXT UNIQUE, name TEXT);
             CREATE TABLE plot(id INTEGER PRIMARY KEY, plot_x INTEGER, plot_z INTEGER, UNIQUE(plot_x, plot_z));
             CREATE TABLE userplot(user_id INTEGER REFERENCES user(id), plot_id INTEGER REFERENCES plot(id), is_owner BOOLEAN);").unwrap();
+        init_user_name_cache(&conn).unwrap();
         for (id, name) in [(1, "Owner"), (2, "Builder"), (3, "Other")] {
             conn.execute(
-                "INSERT INTO user VALUES(?1, ?2, ?3)",
+                "INSERT INTO user(id, uuid, name) VALUES(?1, ?2, ?3)",
                 params![id, format!("{id:032x}"), name],
             )
             .unwrap();

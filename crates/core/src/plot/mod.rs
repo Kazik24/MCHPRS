@@ -460,6 +460,8 @@ impl PlotWorld {
         match self.piston_state.phase {
             AdvancePhase::ScheduledTicks => {
                 let tick = self.to_be_ticked.this_tick().pop_first().unwrap();
+                #[cfg(test)]
+                redstone::instant_piston_tests::record_operation(self, "scheduled_tick", serde_json::json!({"pos":tick.pos,"block_type":tick.block_type}));
                 self.tick_index.popped(tick);
                 let block = self.get_block(tick.pos);
                 if tick.block_type == Some(block.registry_id()) {
@@ -475,6 +477,8 @@ impl PlotWorld {
                 let (pos, identity) =
                     self.piston_state.movement_work[self.piston_state.movement_cursor];
                 self.piston_state.movement_cursor += 1;
+                #[cfg(test)]
+                redstone::instant_piston_tests::record_operation(self, "motion", serde_json::json!([pos, identity]));
                 redstone::piston::tick_motion(self, pos, identity);
             }
             AdvancePhase::BetweenTicks => unreachable!(),
@@ -691,6 +695,8 @@ impl World for PlotWorld {
         {
             self.piston_state.events.push_back(event);
             self.piston_index.get_mut().pushed(event);
+            #[cfg(test)]
+            redstone::instant_piston_tests::record_event(self, "event_enqueue", event);
         }
     }
 
