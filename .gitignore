@@ -10,3 +10,6 @@ logs/
 schems/
 tools/node_modules/
 tools/__pycache__/
+/test_data/**/traces
+
+
