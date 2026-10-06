@@ -1,11 +1,19 @@
 //! Supplementary physical BUD oracle; never replace the original CPU references.
-use super::*;
+use crate::redstone::piston::trace::{self, Operation};
+use crate::world::{for_each_block_optimized, World};
+use mchprs_blocks::blocks::Block;
+use mchprs_blocks::{BlockFace, BlockFacing, BlockPos};
+use rustc_hash::FxHashSet;
+
+#[path = "../../../../benches/support/cpus.rs"]
+#[allow(dead_code)]
+mod cpus;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::path::Path;
 
 #[derive(Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub(super) struct BudTick {
+struct BudTick {
     tick: u32,
     samples: usize,
     accepted: usize,
@@ -13,11 +21,7 @@ pub(super) struct BudTick {
     sha256: String,
 }
 
-pub(super) fn sample(
-    tick: u32,
-    entries: &[trace::Entry],
-    memory: &FxHashSet<BlockPos>,
-) -> Option<BudTick> {
+fn sample(tick: u32, entries: &[trace::Entry], memory: &FxHashSet<BlockPos>) -> Option<BudTick> {
     let entries: Vec<_> = entries
         .iter()
         .filter(|entry| {
@@ -46,16 +50,16 @@ pub(super) fn sample(
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-pub(super) struct BudReference {
+struct BudReference {
     schema: u32,
     schematic_sha256: String,
     game_ticks: u32,
     coordinates: String,
     memory: Vec<BlockPos>,
-    pub updates: Vec<BudTick>,
+    updates: Vec<BudTick>,
 }
 
-pub(super) fn read(memory: &FxHashSet<BlockPos>) -> BudReference {
+fn read(memory: &FxHashSet<BlockPos>) -> BudReference {
     let reference: BudReference = serde_json::from_slice(
         &std::fs::read(
             Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -74,15 +78,7 @@ pub(super) fn read(memory: &FxHashSet<BlockPos>) -> BudReference {
     reference
 }
 
-#[test]
-#[ignore = "explicit new-file baseline capture; requires MCHPRS_ANPU_BUD_CAPTURE"]
-fn capture_anpu_bud_reference_to_new_file() {
-    let destination = std::env::var("MCHPRS_ANPU_BUD_CAPTURE")
-        .expect("set MCHPRS_ANPU_BUD_CAPTURE to a new output file");
-    assert!(
-        !Path::new(&destination).exists(),
-        "refusing to replace a BUD reference"
-    );
+fn capture_episode() -> BudReference {
     let cpu = cpus::CPUS[1];
     let frozen = cpus::reference(cpu);
     let mut world = cpus::load_cpu(cpu);
@@ -133,14 +129,42 @@ fn capture_anpu_bud_reference_to_new_file() {
     );
     let mut memory: Vec<_> = memory.into_iter().collect();
     memory.sort_by_key(|pos| (pos.x, pos.y, pos.z));
-    let captured = BudReference {
+    BudReference {
         schema: 1,
         schematic_sha256: cpu.sha256.into(),
         game_ticks: 50_000,
         coordinates: "world positions after placing selection minimum at (8,8,8); ordered entries preserve sample tick, phase, position, old extension and sampled power, and accepted event kind".into(),
         memory,
         updates,
-    };
+    }
+}
+
+#[test]
+#[ignore = "ANPU 50,000-tick frozen physical memory/screen replay"]
+fn anpu_interpreter_preserves_frozen_bud_updates_and_screen() {
+    let captured = capture_episode();
+    let memory = captured.memory.iter().copied().collect();
+    let frozen = read(&memory);
+    assert_eq!(
+        captured.updates, frozen.updates,
+        "frozen ANPU BUD sampling/write pattern"
+    );
+    println!(
+        "ANPU interpreter preserved {} active BUD sample ticks and the frozen screen/checkpoints",
+        captured.updates.len()
+    );
+}
+
+#[test]
+#[ignore = "explicit new-file baseline capture; requires MCHPRS_ANPU_BUD_CAPTURE"]
+fn capture_anpu_bud_reference_to_new_file() {
+    let destination = std::env::var("MCHPRS_ANPU_BUD_CAPTURE")
+        .expect("set MCHPRS_ANPU_BUD_CAPTURE to a new output file");
+    assert!(
+        !Path::new(&destination).exists(),
+        "refusing to replace a BUD reference"
+    );
+    let captured = capture_episode();
     let output = std::fs::OpenOptions::new()
         .write(true)
         .create_new(true)
@@ -151,4 +175,34 @@ fn capture_anpu_bud_reference_to_new_file() {
         "captured {} active BUD sample ticks",
         captured.updates.len()
     );
+}
+
+#[test]
+fn anpu_cannot_bypass_compiled_graph_admission() {
+    use crate::redpiler::{Compiler, CompilerOptions};
+
+    let world = cpus::load_cpu(cpus::CPUS[1]);
+    let before = cpus::checkpoint(&world, 0, &[]);
+    for flags in ["", "--piston-events"] {
+        let mut compiler = Compiler::default();
+        assert!(
+            compiler
+                .compile(
+                    &world,
+                    world.get_corners(),
+                    CompilerOptions::parse(flags),
+                    world.scheduler().iter_entries().collect(),
+                    Default::default(),
+                )
+                .is_err(),
+            "ANPU requires compiled BUD support; flags={flags}"
+        );
+        assert!(!compiler.is_active());
+        assert!(compiler.current_flags().is_none());
+        assert_eq!(
+            cpus::checkpoint(&world, 0, &[]),
+            before,
+            "failed admission must preserve physical state and queued work"
+        );
+    }
 }

@@ -149,6 +149,40 @@ pub enum NetworkState {
     Play,
 }
 
+/// Real socket connections for cross-crate packet regression tests.
+#[cfg(feature = "test-support")]
+#[doc(hidden)]
+pub mod test_support {
+    use super::*;
+
+    pub struct Connection {
+        pub player: PlayerConn,
+        pub peer: TcpStream,
+        pub incoming: mpsc::SyncSender<Box<dyn ServerBoundPacket>>,
+    }
+
+    pub fn connection(compressed: bool) -> io::Result<Connection> {
+        let listener = TcpListener::bind("127.0.0.1:0")?;
+        let peer = TcpStream::connect(listener.local_addr()?)?;
+        peer.set_read_timeout(Some(std::time::Duration::from_secs(3)))?;
+        let (stream, _) = listener.accept()?;
+        let (incoming, packets) = mpsc::sync_channel(64);
+        Ok(Connection {
+            player: PlayerConn {
+                client: NetworkClient {
+                    id: 0,
+                    outbound: outbound::Outbound::new(stream),
+                    packets,
+                    compressed: Arc::new(AtomicBool::new(compressed)),
+                },
+                alive: true,
+            },
+            peer,
+            incoming,
+        })
+    }
+}
+
 #[cfg(test)]
 mod connection_cleanup_tests {
     use super::*;

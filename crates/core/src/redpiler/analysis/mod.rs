@@ -42,6 +42,18 @@ impl Default for AnalysisLimits {
     }
 }
 
+impl AnalysisLimits {
+    pub fn for_budget(multiplier: usize) -> Self {
+        let multiplier = multiplier.clamp(1, 8);
+        let base = Self::default();
+        Self {
+            max_cells: base.max_cells * multiplier,
+            max_pistons: base.max_pistons * multiplier,
+            max_dependency_steps: base.max_dependency_steps * multiplier,
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum AnalysisError {
     Cancelled,

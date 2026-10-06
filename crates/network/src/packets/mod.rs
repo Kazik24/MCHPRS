@@ -173,6 +173,7 @@ fn decode_packet<T: PacketDecoderExt>(
             _ => unknown(),
         },
         NetworkState::Play => match packet_id {
+            0x00 => Box::new(STeleportConfirm::decode(reader)?),
             0x05 => {
                 let message = format!("/{}", reader.read_string()?);
                 Box::new(SChatMessage { message })

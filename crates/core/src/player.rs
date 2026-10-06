@@ -22,6 +22,8 @@ use std::sync::atomic::{AtomicU32, Ordering};
 use std::time::{Instant, SystemTime};
 use tracing::error;
 
+mod client_sync;
+
 pub type EntityId = u32;
 static ENTITY_ID_COUNTER: AtomicU32 = AtomicU32::new(0);
 
@@ -169,6 +171,7 @@ pub struct Player {
     pub gamemode: Gamemode,
     pub entity_id: EntityId,
     pub client: PlayerConn,
+    teleport_state: client_sync::TeleportState,
     /// The last time the keep alive packet was received.
     pub last_keep_alive_received: Instant,
     /// The last time the keep alive packet was sent.
@@ -260,6 +263,7 @@ impl Player {
             last_chunk_z: 0,
             entity_id: allocate_entity_id(),
             client,
+            teleport_state: Default::default(),
             flying: player_data.flying,
             sprinting: false,
             crouching: false,
@@ -424,6 +428,9 @@ impl Player {
 
     /// Manages keep alives and packet reading. Return true if the view position should be updated.
     pub fn update(&mut self) -> bool {
+        if let Some(id) = self.teleport_state.retry(Instant::now()) {
+            self.send_position_sync(id);
+        }
         if self.last_keep_alive_received.elapsed().as_secs() > 30 {
             self.kick(json!({ "text": messages::CONNECTION_TIMEOUT }).to_string());
         }
@@ -497,19 +504,53 @@ impl Player {
             return;
         }
 
+        self.pos = pos;
+        let id = self.teleport_state.begin(Instant::now());
+        self.send_position_sync(id);
+    }
+
+    fn send_position_sync(&self, id: i32) {
         let player_position_and_look = CPlayerPositionAndLook {
-            x: pos.x,
-            y: pos.y,
-            z: pos.z,
-            yaw: 0f32,
-            pitch: 0f32,
-            flags: 0x08 | 0x10, // pitch and yaw are relative
-            teleport_id: 0,
+            x: self.pos.x,
+            y: self.pos.y,
+            z: self.pos.z,
+            yaw: self.yaw,
+            pitch: self.pitch,
+            flags: 0,
+            teleport_id: id,
             dismount_vehicle: false,
         }
         .encode();
-        self.pos = pos;
         self.client.send_packet(&player_position_and_look);
+    }
+
+    pub(crate) fn awaiting_teleport(&self) -> bool {
+        self.teleport_state.pending()
+    }
+
+    pub(crate) fn confirm_teleport(&mut self, id: i32) -> bool {
+        self.teleport_state.confirm(id)
+    }
+
+    /// Ignore movement queued at the previous position until the client accepts
+    /// the current teleport. Return the previous position for viewer updates.
+    pub(crate) fn accept_position(
+        &mut self,
+        pos: PlayerPos,
+        on_ground: bool,
+        rotation: Option<(f32, f32)>,
+    ) -> Option<PlayerPos> {
+        if self.awaiting_teleport() {
+            return None;
+        }
+        let old = self.pos;
+        self.pos = pos;
+        self.on_ground = on_ground;
+        if let Some((yaw, pitch)) = rotation {
+            self.yaw = yaw;
+            self.pitch = pitch;
+        }
+        Some(old)
     }
 
     /// Sends the `ChatMessage` packet containing the raw json data.
@@ -681,6 +722,12 @@ impl Player {
         self.permissions_cache
             .as_ref()
             .and_then(|cache| cache.numeric_limit(prefix))
+    }
+
+    pub fn compilation_budget_multiplier(&self) -> usize {
+        self.permissions_cache
+            .as_ref()
+            .map_or(1, PlayerPermissionsCache::compilation_budget_multiplier)
     }
 
     pub fn can_edit_plot(&self, owner: Option<u128>, plot: (i32, i32)) -> bool {

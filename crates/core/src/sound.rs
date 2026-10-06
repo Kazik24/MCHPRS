@@ -113,16 +113,6 @@ pub(crate) struct Emission {
     seed: i64,
 }
 impl Emission {
-    pub(crate) fn replay(self, world: &mut impl World) {
-        world.play_sound(
-            self.pos,
-            self.sound_id,
-            self.category,
-            self.volume,
-            self.pitch,
-        );
-    }
-
     pub fn new(
         pos: BlockPos,
         sound_id: i32,

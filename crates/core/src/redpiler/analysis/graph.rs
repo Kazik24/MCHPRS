@@ -124,16 +124,18 @@ pub fn prepare_candidate_graph(
     options: &CompilerOptions,
     monitor: Arc<TaskMonitor>,
 ) -> Result<CandidateGraph, GraphPreparationError> {
-    if options.piston_events {
-        return Err(GraphPreparationError::Execution(
-            "piston event compatibility mode owns the physical plot and does not produce an electrical candidate graph".into(),
-        ));
-    }
     if options.export {
         return Err(GraphPreparationError::UnsupportedExport);
     }
-    let report = super::analyze(world, bounds, ticks, &monitor, Default::default())
-        .map_err(GraphPreparationError::Analysis)?;
+    monitor.set_budget_multiplier(options.budget_multiplier);
+    let report = super::analyze(
+        world,
+        bounds,
+        ticks,
+        &monitor,
+        super::AnalysisLimits::for_budget(monitor.budget_multiplier()),
+    )
+    .map_err(GraphPreparationError::Analysis)?;
     // Conducting movers need conditional geometry, which the older electrical
     // candidate graph does not encode. Use the same staged program as compile.
     if report.pistons.iter().any(|p| {

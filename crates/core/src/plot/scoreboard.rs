@@ -301,9 +301,6 @@ impl Scoreboard {
 
     pub fn set_redpiler_options(&mut self, players: &[Player], options: &CompilerOptions) {
         self.compiler_flags.clear();
-        if options.piston_events {
-            self.compiler_flags.push("piston-events".to_owned());
-        }
         if options.optimize {
             self.compiler_flags.push("optimize".to_owned());
         }

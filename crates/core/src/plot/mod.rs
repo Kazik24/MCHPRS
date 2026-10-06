@@ -43,7 +43,7 @@ use mchprs_network::packets::clientbound::*;
 use mchprs_network::packets::SlotData;
 use mchprs_network::PlayerPacketSender;
 use mchprs_save_data::plot_data::{ChunkData, PistonAnimation, PlotData, Tps, WorldSendRate};
-use mchprs_world::{AdvancePhase, PistonMotion, PistonState, TickEntry, TickPriority};
+use mchprs_world::{AdvancePhase, PistonMotion, PistonState, TickPriority};
 use monitor::TimingsMonitor;
 use scoreboard::RedpilerState;
 use serde_json::json;
@@ -347,32 +347,6 @@ impl PlotWorld {
         &self.to_be_ticked
     }
 
-    /// Consume private simulation deltas without encoding client packets.
-    pub(crate) fn collect_block_changes(&mut self, changes: &mut Vec<(BlockPos, u32)>) {
-        changes.clear();
-        for chunk in &mut self.chunks {
-            for packet in chunk.multi_blocks() {
-                for record in &packet.records {
-                    changes.push((
-                        BlockPos::new(
-                            packet.chunk_x * 16 + i32::from(record.x),
-                            packet.chunk_y as i32 * 16 + i32::from(record.y),
-                            packet.chunk_z * 16 + i32::from(record.z),
-                        ),
-                        record.block_id,
-                    ));
-                }
-            }
-            chunk.reset_multi_blocks();
-        }
-    }
-
-    pub(crate) fn flush_generated_sounds(&mut self, world: &mut impl World) {
-        for sound in self.sounds.drain(..) {
-            sound.replay(world);
-        }
-    }
-
     /// A handoff replay owns region requests; ordinary deadlines are restored
     /// from the live compiled scheduler rather than simulated a second time.
     pub(crate) fn retain_tick_requests(&mut self, mut keep: impl FnMut(BlockPos) -> bool) {
@@ -608,7 +582,8 @@ impl World for PlotWorld {
         let old = self.get_block(pos);
         let new = Block::from_id(block);
         let screen_change = self.screen_updates.as_ref().is_some_and(|updates| {
-            matches!(old, Block::RedstoneLamp { .. })
+            updates.authoritative
+                || matches!(old, Block::RedstoneLamp { .. })
                 || matches!(new, Block::RedstoneLamp { .. })
                 || (matches!(old, Block::MovingPiston { .. }) && updates.contains(pos))
         });
@@ -658,7 +633,7 @@ impl World for PlotWorld {
             // Keep an existing sign's text when only its block state changes.
             chunk.set_block_entity(local_pos, BlockEntity::Sign(Default::default()));
         }
-        if changed {
+        if changed || self.screen_updates.as_ref().is_some_and(|updates| updates.authoritative) {
             if let Some(previous) = previous_screen {
                 self.track_screen_change(pos, previous);
             }
@@ -837,15 +812,6 @@ impl World for PlotWorld {
                 .schedule_half_tick(node, delay as usize, priority);
             self.tick_index.pushed(node);
         }
-    }
-
-    fn restore_tick_requests(&mut self, ticks: Vec<TickEntry>) {
-        self.to_be_ticked = ticks.into_iter().collect();
-        self.tick_index.invalidate();
-    }
-
-    fn supports_exact_tick_transfer(&self) -> bool {
-        true
     }
 
     fn pending_tick_at(&mut self, pos: BlockPos) -> bool {

@@ -450,18 +450,7 @@ impl MinecraftServer {
         player.client.send_packet(&brand);
 
         // Send the player's position and rotation.
-        let player_pos_and_look = CPlayerPositionAndLook {
-            x: player.pos.x,
-            y: player.pos.y,
-            z: player.pos.z,
-            yaw: player.yaw,
-            pitch: player.pitch,
-            flags: 0,
-            teleport_id: 0,
-            dismount_vehicle: false,
-        }
-        .encode();
-        player.client.send_packet(&player_pos_and_look);
+        player.teleport(player.pos);
 
         // Send the player list to the newly connected player.
         // (This is the list you see when you press tab in-game)

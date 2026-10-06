@@ -1,6 +1,7 @@
 use super::{DecodeResult, PackedPos, PacketDecoderExt, SlotData};
 
 pub trait ServerBoundPacketHandler {
+    fn handle_teleport_confirm(&mut self, _packet: STeleportConfirm, _player_idx: usize) {}
     fn handle_handshake(&mut self, _packet: SHandshake, _player_idx: usize) {}
     fn handle_request(&mut self, _packet: SRequest, _player_idx: usize) {}
     fn handle_ping(&mut self, _packet: SPing, _player_idx: usize) {}
@@ -85,6 +86,28 @@ impl ServerBoundPacket for SLoginPluginResponse {
 }
 
 pub struct SUnknown;
+
+pub struct STeleportConfirm {
+    pub id: i32,
+}
+
+impl ServerBoundPacket for STeleportConfirm {
+    fn decode<T: PacketDecoderExt>(decoder: &mut T) -> DecodeResult<Self> {
+        let id = decoder.read_varint()?;
+        if id < 0 {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                "negative teleport confirmation id",
+            )
+            .into());
+        }
+        Ok(Self { id })
+    }
+
+    fn handle(self: Box<Self>, handler: &mut dyn ServerBoundPacketHandler, player_idx: usize) {
+        handler.handle_teleport_confirm(*self, player_idx);
+    }
+}
 
 pub struct SPickItemFromBlock {
     pub pos: PackedPos,

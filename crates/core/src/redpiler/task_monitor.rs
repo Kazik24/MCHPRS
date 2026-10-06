@@ -7,9 +7,19 @@ pub struct TaskMonitor {
     max_progress: AtomicUsize,
     progress: AtomicUsize,
     message: Mutex<Option<Arc<String>>>,
+    budget_multiplier: AtomicUsize,
 }
 
 impl TaskMonitor {
+    pub fn set_budget_multiplier(&self, multiplier: usize) {
+        self.budget_multiplier
+            .store(multiplier.clamp(1, 8), Ordering::Relaxed);
+    }
+
+    pub fn budget_multiplier(&self) -> usize {
+        self.budget_multiplier.load(Ordering::Relaxed).clamp(1, 8)
+    }
+
     pub fn cancel(&self) {
         self.cancelled.store(true, Ordering::Relaxed);
     }

@@ -360,7 +360,9 @@ impl Plot {
                         .filter(|&arg| arg != "--graph")
                         .collect::<Vec<_>>()
                         .join(" ");
-                    let options = crate::redpiler::CompilerOptions::parse(&flags);
+                    let mut options = crate::redpiler::CompilerOptions::parse(&flags);
+                    options.budget_multiplier =
+                        self.players[player].compilation_budget_multiplier();
                     match crate::redpiler::analysis::graph::prepare_candidate_graph(
                         &self.world,
                         self.world.get_corners(),
@@ -387,7 +389,9 @@ impl Plot {
                     self.world.get_corners(),
                     &ticks,
                     &Default::default(),
-                    Default::default(),
+                    crate::redpiler::analysis::AnalysisLimits::for_budget(
+                        self.players[player].compilation_budget_multiplier(),
+                    ),
                 ) {
                     Ok(report) => {
                         self.players[player].send_system_message(&report.summary());
@@ -412,7 +416,8 @@ impl Plot {
             "compile" | "c" => {
                 let start_time = Instant::now();
                 let args = args.join(" ");
-                let options = CompilerOptions::parse(&args);
+                let mut options = CompilerOptions::parse(&args);
+                options.budget_multiplier = self.players[player].compilation_budget_multiplier();
 
                 if options.optimize {
                     let msg = messages::REDPILER_OPTIMIZATION_HIGHLY_UNSTABLE_CAN_BREAK;

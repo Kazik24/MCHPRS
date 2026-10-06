@@ -30,7 +30,6 @@ pub enum CompileError {
     Backend(backend::BackendError),
     Graph(compile_graph::GraphError),
     Instant(String),
-    PistonEvents(String),
 }
 
 impl std::fmt::Display for CompileError {
@@ -49,7 +48,6 @@ impl std::fmt::Display for CompileError {
             Self::Backend(error) => error.fmt(f),
             Self::Graph(error) => error.fmt(f),
             Self::Instant(error) => f.write_str(error),
-            Self::PistonEvents(error) => f.write_str(error),
         }
     }
 }
@@ -74,9 +72,9 @@ fn block_powered_mut(block: &mut Block) -> Option<&mut bool> {
 
 #[derive(Default, PartialEq, Eq, Debug)]
 pub struct CompilerOptions {
-    /// Preserve physical piston/BUD update ordering in a private interpreted plot.
-    /// This compatibility mode does not perform Boolean graph optimization.
-    pub piston_events: bool,
+    /// Set by the server from the initiating player's rank, never from flags.
+    /// Zero retains the default 1x budget; values are capped at 8x.
+    pub budget_multiplier: usize,
     /// Enable optimization passes which may significantly increase compile times.
     pub optimize: bool,
     /// Export the graph to a binary format. See the [`redpiler_graph`] crate.
@@ -104,7 +102,6 @@ impl CompilerOptions {
         for option in options {
             if option.starts_with("--") {
                 match option {
-                    "--piston-events" => co.piston_events = true,
                     "--optimize" => co.optimize = true,
                     "--export" => co.export = true,
                     "--io-only" => co.io_only = true,
@@ -167,24 +164,15 @@ impl Compiler {
         if self.is_active {
             return Err(CompileError::AlreadyActive);
         }
-        if options.piston_events {
-            let backend =
-                backend::events::EventBackend::prepare(world, bounds, ticks, &options, &monitor)
-                    .map_err(CompileError::PistonEvents)?;
-            if monitor.cancelled() {
-                return Err(CompileError::Cancelled);
-            }
-            self.jit = Some(BackendDispatcher::EventBackend(backend));
-            self.options = options;
-            self.is_active = true;
-            debug!(
-                "Piston event compatibility mode prepared in {:?}",
-                start.elapsed()
-            );
-            return Ok(());
-        }
-        let report = analysis::analyze(world, bounds, &ticks, &monitor, Default::default())
-            .map_err(CompileError::Analysis)?;
+        monitor.set_budget_multiplier(options.budget_multiplier);
+        let report = analysis::analyze(
+            world,
+            bounds,
+            &ticks,
+            &monitor,
+            analysis::AnalysisLimits::for_budget(monitor.budget_multiplier()),
+        )
+        .map_err(CompileError::Analysis)?;
         if report.pistons.is_empty() && !report.can_compile() {
             return Err(CompileError::Unsupported(Box::new(report)));
         }
@@ -234,7 +222,6 @@ impl Compiler {
                 BackendDispatcher::DirectBackend(backend) => backend
                     .compile_instant(graph, program, ticks, &options, monitor.clone())
                     .map_err(CompileError::Backend)?,
-                BackendDispatcher::EventBackend(_) => unreachable!(),
             }
         } else {
             jit.compile(graph, ticks, &options, monitor.clone())
@@ -323,7 +310,7 @@ mod tests {
     fn parse_options() {
         let input = "-io -u --export";
         let expected_options = CompilerOptions {
-            piston_events: false,
+            budget_multiplier: 0,
             io_only: true,
             optimize: true,
             export: true,
@@ -334,5 +321,17 @@ mod tests {
         let options = CompilerOptions::parse(input);
 
         assert_eq!(options, expected_options);
+    }
+
+    #[test]
+    fn compilation_budget_cannot_be_selected_by_command_flags() {
+        assert_eq!(
+            CompilerOptions::parse("--budget-multiplier=8").budget_multiplier,
+            0
+        );
+        let monitor = TaskMonitor::default();
+        assert_eq!(monitor.budget_multiplier(), 1);
+        monitor.set_budget_multiplier(usize::MAX);
+        assert_eq!(monitor.budget_multiplier(), 8);
     }
 }

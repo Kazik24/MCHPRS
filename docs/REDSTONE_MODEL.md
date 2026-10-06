@@ -1712,4 +1712,4 @@ Existing regression evidence includes:
 
 These tests support their specific assertions. They do not establish exhaustive conformance for every circuit or input history.
 
-The [ANPU Redpiler physical compatibility regression](ANPU_REDPILER.md) additionally compares every piston sample and accepted event in order through 50,000 game ticks, plus the original complete screen trace and physical checkpoints. Its supplementary frozen 896-cell BUD trace includes same-value samples. This applies the physical model unchanged in a private plot; it does not establish equivalence for a future optimized CPU graph or extend the instant runtime's ideal-synchronization contract.
+The [ANPU interpreter regression](ANPU_REDPILER.md) additionally verifies its frozen 896-cell BUD sampling/write projection through 50,000 game ticks, plus the original complete screen trace and physical checkpoints. The ordered trace includes same-value samples. This is a physical reference for future compiled BUD support; it does not establish compiled CPU equivalence or extend the instant runtime's ideal-synchronization contract.

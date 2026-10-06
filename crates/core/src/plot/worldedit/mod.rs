@@ -170,6 +170,9 @@ pub fn execute_command(
     if command.mutates_world {
         plot.reset_redpiler();
     }
+    let previous = command
+        .mutates_world
+        .then(|| plot.world.set_authoritative_updates(true));
     let ctx = CommandExecuteContext {
         plot: &mut plot.world,
         player: &mut plot.players[player_idx],
@@ -177,6 +180,10 @@ pub fn execute_command(
         flags: ctx_flags,
     };
     (command.execute_fn)(ctx);
+    if let Some(previous) = previous {
+        plot.world.flush_block_changes();
+        plot.world.set_authoritative_updates(previous);
+    }
     trim_history(&mut plot.players[player_idx]);
     true
 }
@@ -1152,6 +1159,7 @@ pub fn paste_clipboard(
     pos: BlockPos,
     ignore_air: bool,
 ) {
+    let previous = plot.set_authoritative_updates(true);
     let offset_x = pos.x - cb.offset_x;
     let offset_y = pos.y - cb.offset_y;
     let offset_z = pos.z - cb.offset_z;
@@ -1195,6 +1203,8 @@ pub fn paste_clipboard(
             redstone::command_block::update(plot, new_pos);
         }
     }
+    plot.flush_block_changes();
+    plot.set_authoritative_updates(previous);
 }
 
 #[derive(Clone, Copy, Debug)]

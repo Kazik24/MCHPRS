@@ -1,4 +1,5 @@
 //! Timing, lifecycle and completion regressions; movement rules are deferred.
+mod bud_reference;
 use crate::plot::worldedit::{load_schematic, paste_clipboard};
 use crate::plot::{PlotWorld, PLOT_WIDTH};
 use crate::world::storage::Chunk;

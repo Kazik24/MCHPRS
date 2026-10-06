@@ -94,19 +94,6 @@ pub trait World {
     /// Schedules a tick in the world with `delay` and `pritority`
     fn schedule_half_tick(&mut self, pos: BlockPos, delay: u32, priority: TickPriority);
 
-    fn supports_exact_tick_transfer(&self) -> bool {
-        false
-    }
-
-    /// Transfer authoritative scheduled work at a compiler handoff. Worlds
-    /// claiming exact transfer must override this to replace their queue and
-    /// retain expected block types, priorities and FIFO order.
-    fn restore_tick_requests(&mut self, ticks: Vec<mchprs_world::TickEntry>) {
-        for tick in ticks {
-            self.schedule_half_tick(tick.pos, tick.ticks_left, tick.tick_priority);
-        }
-    }
-
     /// Returns true if there is a tick entry with `pos`
     fn pending_tick_at(&mut self, pos: BlockPos) -> bool;
 

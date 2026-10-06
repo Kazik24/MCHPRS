@@ -85,14 +85,15 @@ pub(crate) fn extract_with_state(
     memory: FxHashSet<usize>,
     clock: Option<usize>,
 ) -> Result<WaveLogic, String> {
-    if report.pistons.len() > 1024 {
-        return Err("instant actor budget exceeded (1024)".into());
+    let actor_limit = 1024 * monitor.budget_multiplier();
+    if report.pistons.len() > actor_limit {
+        return Err(format!("instant actor budget exceeded ({actor_limit})"));
     }
     let mut extractor = Extractor {
         world,
         report,
         monitor,
-        arena: Default::default(),
+        arena: BooleanArena::with_budget(monitor.budget_multiplier()),
         far: Default::default(),
         near: Default::default(),
         bases: Default::default(),
@@ -256,7 +257,10 @@ impl<W: World> Extractor<'_, W> {
             return Err("instant extraction cancelled".into());
         }
         self.steps += 1;
-        if self.steps > 8_388_608 || self.arena.exhausted || self.signal_order.len() > 64 {
+        if self.steps > 8_388_608 * self.monitor.budget_multiplier()
+            || self.arena.exhausted
+            || self.signal_order.len() > 64 * self.monitor.budget_multiplier()
+        {
             return Err("instant conditional geometry budget exceeded".into());
         }
         Ok(())

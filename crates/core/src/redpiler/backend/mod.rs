@@ -1,11 +1,9 @@
 pub mod direct;
-pub(crate) mod events;
 mod queue;
 pub use queue::*;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BackendError {
-    EventProgramRequired,
     InstantRuntimeUnavailable,
     InvalidInstantProgram,
     MissingInstantBinding {
@@ -25,7 +23,6 @@ pub enum BackendError {
 impl std::fmt::Display for BackendError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::EventProgramRequired => f.write_str("piston event mode requires a complete plot snapshot"),
             Self::InstantRuntimeUnavailable => {
                 f.write_str("instant graph boundaries require the region runtime")
             }
@@ -67,10 +64,8 @@ pub trait JITBackend {
 }
 
 use direct::DirectBackend;
-use events::EventBackend;
 
 #[enum_dispatch(JITBackend)]
 pub enum BackendDispatcher {
     DirectBackend,
-    EventBackend,
 }

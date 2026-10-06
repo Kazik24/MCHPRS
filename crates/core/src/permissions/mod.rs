@@ -263,6 +263,7 @@ pub struct PlayerPermissionsCache {
     nodes: Vec<PermissionNode>,
     plotsquared_compat: bool,
     pub rank_profile: Option<RankProfile>,
+    rank_budget_expiry: i64,
     mchprs_permissions: bool,
     valid_until: Option<Instant>,
 }
@@ -293,6 +294,17 @@ pub fn ranked_chat() -> bool {
         .is_some_and(|config| config.redstonefun_ranks)
 }
 impl PlayerPermissionsCache {
+    pub fn compilation_budget_multiplier(&self) -> usize {
+        if (self.rank_budget_expiry != 0 && self.rank_budget_expiry <= now())
+            || self.valid_until.is_none_or(|until| Instant::now() >= until)
+        {
+            return 1;
+        }
+        self.rank_profile
+            .as_ref()
+            .map_or(1, |profile| profile.rank.compilation_budget_multiplier())
+    }
+
     /// Numeric limits are ordinary boolean nodes such as mchprs.history.limit.200.
     /// Only effective positive nodes count, so exact denials and expiry apply.
     pub fn numeric_limit(&self, prefix: &str) -> Option<usize> {
@@ -393,6 +405,7 @@ impl PlayerPermissionsCache {
             nodes: Vec::new(),
             plotsquared_compat: config.plotsquared_compat,
             rank_profile: None,
+            rank_budget_expiry: 0,
             mchprs_permissions: config.mchprs_permissions,
             valid_until: Some(Instant::now() + Duration::from_secs(30)),
         };
@@ -469,6 +482,13 @@ impl PlayerPermissionsCache {
                 .filter_map(|group| Rank::from_group(group))
                 .max()
                 .unwrap_or_default();
+            result.rank_budget_expiry = visited.get(rank.group()).map_or(0, |paths| {
+                if paths.iter().any(|&(_, expiry)| expiry == 0) {
+                    0
+                } else {
+                    paths.iter().map(|&(_, expiry)| expiry).max().unwrap_or(0)
+                }
+            });
             let prefix = grouped
                 .get(rank.group())
                 .into_iter()
@@ -529,6 +549,41 @@ mod tests {
             contexts: "{}".into(),
         }
     }
+    #[test]
+    fn compilation_budget_follows_effective_rank_and_rejects_stale_cache() {
+        let mut config = config();
+        config.redstonefun_ranks = true;
+        for (group, multiplier) in [
+            ("default", 1),
+            ("builder", 1),
+            ("advanced", 2),
+            ("expert", 4),
+            ("engineer", 8),
+            ("moderator", 8),
+            ("admin", 8),
+        ] {
+            let mut cache = PlayerPermissionsCache::resolve(
+                vec![node("", &format!("group.{group}"), true)],
+                vec![],
+                &config,
+                now(),
+            );
+            assert_eq!(cache.compilation_budget_multiplier(), multiplier);
+            cache.valid_until = Some(Instant::now() - Duration::from_secs(1));
+            assert_eq!(cache.compilation_budget_multiplier(), 1);
+        }
+        let mut expired = node("", "group.admin", true);
+        expired.expiry = now() - 1;
+        let cache = PlayerPermissionsCache::resolve(vec![expired], vec![], &config, now());
+        assert_eq!(cache.compilation_budget_multiplier(), 1);
+        let mut temporary = node("", "group.admin", true);
+        temporary.expiry = now() + 60;
+        let mut cache = PlayerPermissionsCache::resolve(vec![temporary], vec![], &config, now());
+        assert_eq!(cache.compilation_budget_multiplier(), 8);
+        cache.rank_budget_expiry = now() - 1;
+        assert_eq!(cache.compilation_budget_multiplier(), 1);
+    }
+
     #[test]
     fn git_access_can_be_granted_or_denied_including_an_admin_wildcard() {
         let mut config = config();

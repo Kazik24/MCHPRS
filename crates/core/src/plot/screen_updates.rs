@@ -12,6 +12,8 @@ use std::time::Instant;
 pub(super) struct ScreenUpdates {
     dirty: BTreeMap<u32, FxHashSet<BlockPos>>,
     visible: FxHashMap<BlockPos, u32>,
+    forced: FxHashSet<BlockPos>,
+    pub authoritative: bool,
 }
 
 impl ScreenUpdates {
@@ -22,10 +24,22 @@ impl ScreenUpdates {
     fn mark(&mut self, section: u32, pos: BlockPos, previous: u32) {
         self.visible.entry(pos).or_insert(previous);
         self.dirty.entry(section).or_default().insert(pos);
+        if self.authoritative {
+            self.forced.insert(pos);
+        }
     }
 }
 
 impl PlotWorld {
+    /// External edits must reach clients even when simulation rendering is filtered.
+    /// Returns the previous mode so nested edits (e.g. a WorldEdit paste) restore it.
+    pub(super) fn set_authoritative_updates(&mut self, enabled: bool) -> bool {
+        self.screen_updates
+            .as_mut()
+            .map(|updates| std::mem::replace(&mut updates.authoritative, enabled))
+            .unwrap_or(false)
+    }
+
     pub fn screen_only(&self) -> bool {
         self.screen_updates.is_some()
     }
@@ -92,7 +106,7 @@ impl PlotWorld {
         }
     }
 
-    pub(crate) fn screen_state(&self, pos: BlockPos) -> u32 {
+    pub(super) fn screen_state(&self, pos: BlockPos) -> u32 {
         if matches!(self.get_block(pos), Block::MovingPiston { .. }) {
             if let Some(BlockEntity::MovingPiston(entity)) = self.get_block_entity(pos) {
                 return entity.block_state;
@@ -130,7 +144,7 @@ impl PlotWorld {
             };
             for pos in positions {
                 let state = self.screen_state(pos);
-                if updates.visible.get(&pos).copied() != Some(state) {
+                if updates.forced.remove(&pos) || updates.visible.get(&pos).copied() != Some(state) {
                     packet.records.push(C3BMultiBlockChangeRecord {
                         block_id: state,
                         x: (pos.x & 15) as u8,

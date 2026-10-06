@@ -13,6 +13,15 @@ pub enum Rank {
 }
 
 impl Rank {
+    pub fn compilation_budget_multiplier(self) -> usize {
+        match self {
+            Self::Player | Self::Builder => 1,
+            Self::Advanced => 2,
+            Self::Expert => 4,
+            Self::Engineer | Self::Moderator | Self::Admin => 8,
+        }
+    }
+
     pub fn from_group(group: &str) -> Option<Self> {
         Some(match group {
             "default" => Self::Player,

@@ -450,32 +450,6 @@ pub struct Chunk {
 }
 
 impl Chunk {
-    /// Copy authoritative states, including the unflushed storage overlay.
-    /// Packet deltas and cache identities belong to the new world independently.
-    pub(crate) fn snapshot(&self) -> Self {
-        Self {
-            x: self.x,
-            z: self.z,
-            instance: CHUNK_INSTANCE.fetch_add(1, Ordering::Relaxed),
-            revision: 0,
-            sections: std::array::from_fn(|i| {
-                let source = &self.sections[i];
-                let mut section = ChunkSection::default();
-                section.buffer = source.buffer.clone();
-                section.block_count = source.block_count;
-                if let Some(changes) = &source.changed_blocks {
-                    for (index, &state) in changes.iter().enumerate() {
-                        if state >= 0 {
-                            section.buffer.set_entry(index, state as u32);
-                        }
-                    }
-                }
-                section
-            }),
-            block_entities: self.block_entities.clone(),
-        }
-    }
-
     /// Independent of local packet flushes, including replacement during rewind.
     pub(crate) fn snapshot_version(&self) -> (u64, u64) {
         (self.instance, self.revision)

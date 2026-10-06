@@ -66,11 +66,23 @@ pub(crate) struct BooleanArena {
     conjunctions: FxHashMap<(Expr, Expr), Expr>,
     inverses: FxHashMap<Expr, Expr>,
     pub exhausted: bool,
+    budget_multiplier: usize,
 }
 
 const MAX_DECISIONS: usize = 1_048_576;
 
 impl BooleanArena {
+    pub fn with_budget(multiplier: usize) -> Self {
+        Self {
+            budget_multiplier: multiplier.clamp(1, 8),
+            ..Self::default()
+        }
+    }
+
+    fn decision_limit(&self) -> usize {
+        MAX_DECISIONS * self.budget_multiplier.clamp(1, 8)
+    }
+
     pub fn decision(&self, id: Expr) -> Option<Decision> {
         id.checked_sub(2).map(|id| self.nodes[id as usize])
     }
@@ -87,7 +99,7 @@ impl BooleanArena {
         if let Some(&id) = self.unique.get(&decision) {
             return id;
         }
-        if self.nodes.len() >= MAX_DECISIONS {
+        if self.nodes.len() >= self.decision_limit() {
             self.exhausted = true;
             return FALSE;
         }
@@ -121,7 +133,7 @@ impl BooleanArena {
     }
 
     pub fn and(&mut self, a: Expr, b: Expr) -> Expr {
-        if self.exhausted || self.conjunctions.len() >= MAX_DECISIONS * 2 {
+        if self.exhausted || self.conjunctions.len() >= self.decision_limit() * 2 {
             self.exhausted = true;
             return FALSE;
         }
@@ -255,7 +267,7 @@ impl BooleanArena {
             memo.insert(id, result);
             result
         }
-        let mut result = Self::default();
+        let mut result = Self::with_budget(self.budget_multiplier);
         let mut memo = FxHashMap::default();
         for root in roots {
             *root = visit(self, &mut result, *root, &mut memo);

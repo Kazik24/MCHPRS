@@ -38,11 +38,11 @@ position, old extension, sampled power and accepted event kind. Same-value
 samples remain significant. Its capture passed the unchanged original screen
 and all migrated CPU checkpoints. Original artifacts are retained.
 
-The [ANPU Redpiler extension](../../docs/ANPU_REDPILER.md) compares this reference
-and the complete screen in opt-in physical compatibility mode. This mode runs
-the shared interpreter in a private plot; optimized CPU graph lowering is
-separate work. Its paired test also compares every piston operation, and enabled
-tests cover warm entry, paddle inputs and active-motion handoff.
+The [ANPU acceptance plan](../../docs/ANPU_REDPILER.md) retains this reference
+and the complete screen for future BUD/update-channel graph lowering. The
+interpreter regression verifies the frozen sampling/write projection, original
+screen frames and physical checkpoints. Redpiler has no interpreter-backed
+compatibility execution path; ANPU compilation remains unsupported.
 
 Both CPU JSON files also contain stricter SHA-256 checkpoints at ticks 0, 10,
 100, 1,000, 5,000, 10,000, 20,000, 30,000, and 50,000. PM1 includes 50,100 too.
