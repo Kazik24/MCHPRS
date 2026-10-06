@@ -112,8 +112,9 @@ gen_config! {
     rhistory_memory_limit_mib: i64 = 2048,
     rhistory_work_memory_limit_mib: i64 = 256,
     git_plot_storage_mib: u64 = 1024,
+    git_default_plot_storage_mib: u64 = 100,
     git_total_storage_mib: u64 = 16384,
-    git_work_memory_mib: u64 = 100,
+    git_work_memory_mib: u64 = 1024,
     git_snapshot_max_mib: u64 = 128,
     git_marker_limit: u32 = 128,
     git_marker_radius: u32 = 64,
@@ -149,6 +150,8 @@ mod tests {
         assert_eq!(config.motd, "Selected container config");
         assert_eq!(config.fast_render_send_rate, 10);
         assert_eq!(config.neighbor_update_interval_ms, 2000);
+        assert_eq!(config.git_work_memory_mib, 1024);
+        assert_eq!(config.git_default_plot_storage_mib, 100);
         assert!(patched.contains("neighbor_update_interval_ms"));
         assert!(patched.contains("rhistory_memory_limit_mib"));
     }

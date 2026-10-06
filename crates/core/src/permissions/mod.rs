@@ -551,6 +551,57 @@ mod tests {
         assert_eq!(denied.get_node_val("commands.git"), Some(0));
         assert_eq!(denied.get_node_val("plots.admin.git"), Some(1));
     }
+
+    #[test]
+    fn git_storage_ranks_respect_inheritance_denials_expiry_and_namespace() {
+        for dedicated in [false, true] {
+            let mut config = config();
+            config.mchprs_permissions = dedicated;
+            let prefix = if dedicated {
+                "mchprs.git.storage."
+            } else {
+                "git.storage."
+            };
+            let grants = vec![
+                node("default", &format!("{prefix}100"), true),
+                node("engineer", "group.default", true),
+                node("engineer", &format!("{prefix}1024"), true),
+            ];
+            let base = PlayerPermissionsCache::resolve(vec![], grants.clone(), &config, now());
+            assert_eq!(base.numeric_limit(prefix), Some(100));
+            let promoted = PlayerPermissionsCache::resolve(
+                vec![node("", "group.engineer", true)],
+                grants.clone(),
+                &config,
+                now(),
+            );
+            assert_eq!(promoted.numeric_limit(prefix), Some(1024));
+            let denied = PlayerPermissionsCache::resolve(
+                vec![
+                    node("", "group.engineer", true),
+                    node("", &format!("{prefix}1024"), false),
+                ],
+                grants.clone(),
+                &config,
+                now(),
+            );
+            assert_eq!(denied.numeric_limit(prefix), Some(100));
+            let mut expired = node("", &format!("{prefix}1024"), true);
+            expired.expiry = now() - 1;
+            let mut fallback =
+                PlayerPermissionsCache::resolve(vec![expired], grants, &config, now());
+            assert_eq!(fallback.numeric_limit(prefix), Some(100));
+            fallback.valid_until = Some(Instant::now() - Duration::from_secs(1));
+            assert_eq!(fallback.numeric_limit(prefix), None);
+            let wildcard = PlayerPermissionsCache::resolve(
+                vec![node("", &format!("{prefix}*"), true)],
+                vec![],
+                &config,
+                now(),
+            );
+            assert_eq!(wildcard.numeric_limit(prefix), None);
+        }
+    }
     #[test]
     fn exact_permissions_do_not_match_prefixes_or_panic() {
         let cache = PlayerPermissionsCache::resolve(

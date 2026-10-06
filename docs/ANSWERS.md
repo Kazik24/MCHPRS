@@ -20,5 +20,7 @@
    I think that PM1 and ANPU are too ambitions projects for now, too complicated. We will first focus on simpler builds: Adders, counters, gate examples, decoders, long wires ect, later we will get into bigger projects like ANPU.
 11. **What should players see while compiled?** Must internal pistons animate and output blocks move visibly, or is displaying computational outputs sufficient? When compilation stops, must the exact physical reset phase be restored?
    It should probably show updates infrequently, for sure not animated pistions or even wire states. After optimalization it will be hard to find what wire is what (circuit can be minimized and lost some connections)
-12. **Is the adder’s changed-input limitation expected?** The current Java reference produces `1087` for the `0x555 + 0x2aa` setup. Is that an intended operating restriction, an initialization problem, or a circuit defect?
-   I will invesigate. 
+12. **Is the adder’s changed-input limitation expected?** The historical Java reference produced `1087` for the `0x555 + 0x2aa` setup. Was that an intended operating restriction, an initialization problem, or a circuit defect?
+   I will invesigate.
+
+   Refreshed replacement fixture verification (2026-10-06): [ADDER_11BITS.schem](../test_data/instant-pistons/ADDER_11BITS.schem) produces the correct `2047` for `0x555 + 0x2aa` in both Java and MCHPRS. It also fixes the preceding replacement's high-bit cases: saved `2047 + 2047` inputs produce `2046`, and prepared `1024 + 1024` inputs produce `0`, both modulo 2048. The replacement Java traces and arithmetic tests use the refreshed binary.

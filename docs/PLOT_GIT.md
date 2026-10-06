@@ -117,6 +117,33 @@ an inherited admin wildcard. Permission refresh follows the existing cache.
 Legacy LuckPerms mode uses `commands.git` and `plots.admin.git`; standalone
 servers retain the usual permissive command fallback and plot access checks.
 
+### Rank storage allowances
+
+Disk history is limited per plot using its **owner's** effective rank allowance,
+even when a member or administrator operates on the plot. The default allowance
+is **100 MiB**; grant **1 GiB** to selected ranks with numeric permission nodes:
+
+```text
+/lp group default permission set mchprs.git.storage.100 true server=mchprs
+/lp group engineer permission set mchprs.git.storage.1024 true server=mchprs
+```
+
+These are configuration examples; apply them to your chosen groups. Values are
+MiB, and the largest effective positive grant wins. Exact denials and expiry
+apply. Storage grants do not grant `/git` access, and wildcard grants alone do
+not select a numeric allowance. Legacy mode uses `git.storage.<MiB>`.
+
+`git_default_plot_storage_mib` sets the fallback when no numeric grant applies,
+including standalone servers and unowned plots. `git_plot_storage_mib` is the
+server ceiling for every plot, so a larger rank grant is clamped to that value.
+The owner's online permission cache is reused; offline owners are resolved on
+a background Git worker. If that lookup fails, the operation stops without
+changing the repository. Ownership changes use the new owner's allowance.
+
+`/git status` shows the applicable disk quota. A rank downgrade preserves
+existing commits and recoveries; writes requiring additional space are rejected
+until the allowance is raised. The global disk limit still applies.
+
 ## Storage and recovery
 
 Each plot has `world/plot-git/p<X>,<Z>/repository.sqlite`. Snapshots use LZ4
@@ -144,8 +171,9 @@ working changes. Checkout temporarily locks world mutations and ordinary saves.
 
 ```toml
 git_plot_storage_mib = 1024
+git_default_plot_storage_mib = 100
 git_total_storage_mib = 16384
-git_work_memory_mib = 100
+git_work_memory_mib = 1024
 git_snapshot_max_mib = 128
 git_marker_limit = 128
 git_marker_radius = 64
@@ -156,9 +184,10 @@ Quotas count compressed objects, recoveries and repository metadata; every write
 checks database growth even when it reuses a snapshot. Global admission accounts
 for repository file sizes and staging headroom. Work memory
 uses conservative reservations for captures, decoded comparisons and retained
-sessions. The server-wide Git workspace is capped at **100 MiB**, including
+sessions. The server-wide Git **RAM** workspace is capped at **1 GiB**, including
 retained comparisons; `git_work_memory_mib` can lower this cap, but values above
-100 are clamped even in older configurations. Quota rejection preserves existing
+1024 are clamped. This reservation budget is separate from rank disk quotas and
+is not a measurement of the server's total RAM usage. Quota rejection preserves existing
 history; history is never pruned automatically. Radius is capped at 128 blocks,
 marker count at 512, session duration at 10–3600 seconds. Operations whose
 conservative memory reservations do not fit are rejected before replacing the

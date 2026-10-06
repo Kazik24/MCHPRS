@@ -434,10 +434,11 @@ Dedicated permission nodes:
 | --- | --- |
 | `mchprs.commands.git` | Single allow/deny gate for the complete feature: commands, completion, glow and sword inspection. |
 | `mchprs.plots.admin.git` | Admin override for repository operations on another plot. |
+| `mchprs.git.storage.<MiB>` | Plot owner's rank-based disk allowance; largest effective positive number, bounded by the server ceiling. |
 
 Read access also requires plot ownership or membership unless the admin override
 is granted. Commit and branch creation must follow existing plot-edit checks.
-Checkout and recovery require ownership or the explicit admin override, in addition
+Checkout, recovery, and rebase require ownership or the explicit admin override, in addition
 to `mchprs.commands.git` and backend command access. An explicit Git denial
 continues to apply to admins. Do not grant permissions by editing a live
 LuckPerms database as part of implementation; document grants for operators.
@@ -477,6 +478,15 @@ Configure storage quotas per plot and globally, including recovery objects and
 staging reservations. Configure maximum decompressed snapshot size, work memory,
 concurrent jobs, query output, and visual sessions. Reject work that exceeds a
 limit with an actionable message. Do not evict committed history automatically.
+
+Git's shared RAM reservation budget defaults to 1 GiB and is capped at 1 GiB;
+operators can lower it independently of disk quotas. Plot disk allowances default
+to 100 MiB, with a rank grant of `mchprs.git.storage.1024` selecting 1 GiB.
+Apply the plot owner's effective numeric grant, not the requester's, and clamp
+it to `git_plot_storage_mib`. `git_default_plot_storage_mib` configures the
+fallback. The global disk quota remains independent. Downgrades preserve history
+and reject additional growth. Offline rank resolution runs on a Git worker;
+startup reconciliation must remain possible without an online owner.
 
 A plot currently contains roughly 16.8 million positions at the default
 256 x 256 x 256 dimensions. Section hashes and bounded spatial diff queries are essential;

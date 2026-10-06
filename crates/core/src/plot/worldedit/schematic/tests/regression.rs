@@ -4,7 +4,8 @@ use crate::plot::{PlotWorld, PLOT_WIDTH};
 use crate::world::{storage::Chunk, World};
 use std::io::Cursor;
 
-const ADDER: &[u8] = include_bytes!("../../../../../../../test_data/ADDER_GWIEZDNY_TEST.schem");
+const ADDER: &[u8] =
+    include_bytes!("../../../../../../../test_data/instant-pistons/ADDER_11BITS.schem");
 
 #[test]
 fn supplied_minesweeper_loads_plain_items_and_reports_discarded_components() {
@@ -393,20 +394,19 @@ fn assert_roundtrip(cb: &WorldEditClipboard) {
     }
 }
 #[test]
-fn actual_v3_adder_preserves_seven_signs_offsets_and_all_states() {
+fn actual_v2_adder_preserves_six_signs_offsets_and_all_states() {
     let cb = load_schematic(Cursor::new(ADDER)).unwrap();
-    assert_eq!((cb.size_x, cb.size_y, cb.size_z), (21, 7, 45));
-    assert_eq!(cb.data.entries(), 6615);
-    assert_eq!((cb.offset_x, cb.offset_y, cb.offset_z), (0, 4, 44));
-    assert_eq!(cb.block_entities.len(), 7);
+    assert_eq!((cb.size_x, cb.size_y, cb.size_z), (21, 7, 46));
+    assert_eq!(cb.data.entries(), 6762);
+    assert_eq!((cb.offset_x, cb.offset_y, cb.offset_z), (2, 4, 44));
+    assert_eq!(cb.block_entities.len(), 6);
     for (x, y, z, label) in [
-        (20, 3, 36, "O2"),
-        (20, 3, 40, "O1"),
-        (2, 5, 44, "TICK"),
-        (3, 6, 36, "B2"),
-        (3, 6, 38, "A2"),
-        (3, 6, 40, "B1"),
-        (3, 6, 42, "A1"),
+        (20, 3, 37, "O2"),
+        (20, 3, 41, "O1"),
+        (3, 6, 37, "B2"),
+        (3, 6, 39, "A2"),
+        (3, 6, 41, "B1"),
+        (3, 6, 43, "A1"),
     ] {
         let BlockEntity::Sign(sign) = &cb.block_entities[&BlockPos::new(x, y, z)] else {
             panic!("not a sign")
@@ -468,21 +468,27 @@ fn mixed_sign_rows_paste_and_roundtrip_without_encoding_failure() {
     assert_roundtrip(&cb);
 }
 #[test]
-fn paste_capture_restore_and_reapply_keep_blocks_and_sign_positions() {
+fn paste_capture_restore_and_reapply_keep_adder_blocks_offsets_and_sign_positions() {
     let cb = load_schematic(Cursor::new(ADDER)).unwrap();
     let chunks = (0..PLOT_WIDTH)
         .flat_map(|x| (0..PLOT_WIDTH).map(move |z| Chunk::empty(x, z)))
         .collect();
     let mut world = PlotWorld::from_chunks(0, 0, chunks, Default::default());
     let origin = BlockPos::new(100, 30, 100);
-    let start = BlockPos::new(100, 26, 56);
-    let end = BlockPos::new(120, 32, 100);
+    let start = origin - BlockPos::new(cb.offset_x, cb.offset_y, cb.offset_z);
+    let end = start
+        + BlockPos::new(
+            cb.size_x as i32 - 1,
+            cb.size_y as i32 - 1,
+            cb.size_z as i32 - 1,
+        );
     let before = create_clipboard(&mut world, origin, start, end);
     paste_clipboard(&mut world, &cb, origin, false);
-    for y in 0..7 {
-        for z in 0..45 {
-            for x in 0..21 {
-                let i = (x + z * 21 + y * 21 * 45) as usize;
+    for y in 0..cb.size_y as i32 {
+        for z in 0..cb.size_z as i32 {
+            for x in 0..cb.size_x as i32 {
+                let i =
+                    (x + z * cb.size_x as i32 + y * cb.size_x as i32 * cb.size_z as i32) as usize;
                 assert_eq!(
                     world.get_block_raw(start + BlockPos::new(x, y, z)),
                     cb.data.get_entry(i)
@@ -490,19 +496,28 @@ fn paste_capture_restore_and_reapply_keep_blocks_and_sign_positions() {
             }
         }
     }
-    assert!(matches!(
-        world.get_block_entity(BlockPos::new(120, 29, 92)),
-        Some(BlockEntity::Sign(_))
-    ));
+    let output = start + BlockPos::new(20, 2, 41);
+    let output_state = world.get_block_raw(output);
+    assert_ne!(output_state, 0);
     let pasted = create_clipboard(&mut world, origin, start, end);
     paste_clipboard(&mut world, &before, origin, false);
-    assert_eq!(world.get_block_raw(BlockPos::new(120, 29, 92)), 0);
-    assert!(world.get_block_entity(BlockPos::new(120, 29, 92)).is_none());
+    assert_eq!(world.get_block_raw(output), 0);
+    for &pos in cb.block_entities.keys() {
+        assert!(world.get_block_entity(start + pos).is_none());
+    }
     paste_clipboard(&mut world, &pasted, origin, false);
-    assert!(matches!(
-        world.get_block_entity(BlockPos::new(120, 29, 92)),
-        Some(BlockEntity::Sign(_))
-    ));
+    assert_eq!(world.get_block_raw(output), output_state);
+    let reapplied = create_clipboard(&mut world, origin, start, end);
+    for i in 0..cb.data.entries() {
+        assert_eq!(reapplied.data.get_entry(i), cb.data.get_entry(i));
+    }
+    assert_eq!(reapplied.block_entities.len(), cb.block_entities.len());
+    for (pos, entity) in &cb.block_entities {
+        assert_eq!(
+            reapplied.block_entities[pos].to_nbt(false).unwrap().content,
+            entity.to_nbt(false).unwrap().content
+        );
+    }
 }
 #[test]
 fn offset_precedence_defaults_and_overflow() {

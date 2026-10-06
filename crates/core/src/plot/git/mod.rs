@@ -12,6 +12,7 @@ use self::snapshot::Snapshot;
 use super::{Plot, PLOT_SCALE, PLOT_WIDTH};
 use crate::config::CONFIG;
 use crate::messages;
+use crate::permissions;
 use crate::player::{PacketSender, PlayerPos};
 use crate::world::storage::Chunk;
 use crate::world::World;
@@ -34,7 +35,7 @@ use std::sync::{
 use std::time::{Duration, Instant};
 
 const ROOT: &str = "./world/plot-git";
-const MAX_WORK_MEMORY_MIB: u64 = 100;
+const MAX_WORK_MEMORY_MIB: u64 = 1024;
 
 static USED: AtomicUsize = AtomicUsize::new(0);
 pub(super) struct Reservation(usize);
@@ -63,6 +64,44 @@ fn limits() -> Limits {
         plot_bytes: CONFIG.git_plot_storage_mib.saturating_mul(1048576),
         total_bytes: CONFIG.git_total_storage_mib.saturating_mul(1048576),
     }
+}
+
+fn storage_permission_prefix() -> &'static str {
+    if permissions::dedicated_permissions() {
+        "mchprs.git.storage."
+    } else {
+        "git.storage."
+    }
+}
+
+fn storage_limit_mib(grant: Option<usize>, default: u64, ceiling: u64) -> u64 {
+    grant.map_or(default, |limit| limit as u64).min(ceiling)
+}
+
+fn plot_storage_mib(grant: Option<usize>) -> u64 {
+    storage_limit_mib(
+        grant,
+        CONFIG.git_default_plot_storage_mib,
+        CONFIG.git_plot_storage_mib,
+    )
+}
+
+fn owner_limits(owner: Option<u128>, cached_storage: Option<u64>) -> Result<Limits> {
+    // Run on a Git worker: an offline owner's rank must not trigger a network
+    // query on the plot thread or let a higher-ranked member bypass its quota.
+    let storage = match (owner, cached_storage) {
+        (_, Some(storage)) => storage,
+        (Some(owner), None) if CONFIG.luckperms.is_some() => {
+            let cache = permissions::load_player_cache(owner)
+                .context(messages::GIT_OWNER_STORAGE_LIMIT_UNAVAILABLE)?;
+            plot_storage_mib(cache.numeric_limit(storage_permission_prefix()))
+        }
+        _ => plot_storage_mib(None),
+    };
+    Ok(Limits {
+        plot_bytes: storage.saturating_mul(1048576),
+        ..limits()
+    })
 }
 
 type Task = Box<dyn FnOnce() -> Result<Reply> + Send>;
@@ -338,6 +377,13 @@ impl Plot {
             );
         }
         let plot = (self.world.x, self.world.z);
+        let owner = self.owner;
+        let cached_storage = owner.and_then(|uuid| {
+            self.players
+                .iter()
+                .find(|p| p.uuid == uuid)
+                .map(|p| plot_storage_mib(p.numeric_permission_limit(storage_permission_prefix())))
+        });
         let name = self.players[player].username.clone();
         let owned: Vec<String> = args.iter().map(|s| s.to_string()).collect();
         let checkout = matches!(args.first(), Some(&"checkout" | &"recover" | &"rebase"));
@@ -351,7 +397,8 @@ impl Plot {
         };
         let previous = checkout.then_some(self.tps);
         let task: Task = Box::new(move || {
-            let mut repo = Repository::open(Path::new(ROOT), plot, limits())?;
+            let mut repo =
+                Repository::open(Path::new(ROOT), plot, owner_limits(owner, cached_storage)?)?;
             let words: Vec<&str> = owned.iter().map(String::as_str).collect();
             let payload = match words.as_slice() {
                 ["status"] => Payload::Text(repo.status(&captured.as_ref().unwrap().0)?),

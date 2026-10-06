@@ -18,7 +18,7 @@ These tasks are very diffrent from eachother and all of them will eventually be 
   - We can define OR and AND gate:
     - OR gates are two instant pistons connected to same output block. If either piston is unlocked it the output will start the oscilations
     - AND gates are two instant pistons with output blocks connected to one output net.
-    - NOT gate can be defined as output block that passes logical (1) to the output net (so by retracting two nets merge and cause the output net to become logical (1))
+    - Negation is an inhibition circuit that blocks another piston when its input is active. It is not a typical standalone NOT gate. Its required update order must be established from the circuit; the author specifies that the "negated piston must fire first, update-wise."
     - Logical one is a transition from nonzero power to zero. The low state enables downstream instants to retract and schedule their update cycles. A held zero is not a fresh external trigger; internal reset-generated cycles remain part of the triggered behavior.
   - PM_1 is fully instant CPU, it contains mostly Instant logic and is fully combinatonic.
   - ANPU is noninstant CPU, it contains BUD-switch memory
@@ -46,7 +46,8 @@ There are many ways of updating the pistion, by either other pistion, wire ect
 - Non-Instant Pistons are pistons that are neither Instant nor BUD switches. They retain ordinary piston behavior. Moving only one block is an initial compiler restriction; the interpreter supports longer straight payload lines.
 - Validated Instant Nodes can be lowered to combinational functions of the events and prepared conditions in a computation wave. Redpiler can minimize a certified network when its behavior at non-instant consumers and its interpreter handoff remain valid.
 
-For future experiments take a look at schematics in test_data, like ADDER_GWIEZDNY_TEST.schem (fully instant adder), EDGECASE_PISTION.schem (Instant repeters), MCHPRS_REDSTONE_UPDATE_EDGECASE.schem
+For future experiments take a look at schematics in test_data, like [ADDER_11BITS.schem](../test_data/instant-pistons/ADDER_11BITS.schem) (instant adder), EDGECASE_PISTION.schem (Instant repeters), MCHPRS_REDSTONE_UPDATE_EDGECASE.schem
+The new basic pack is in [test_data/instant-pistons](../test_data/instant-pistons). `ADDER_11BITS.schem` is the canonical corrected adder; `ADDER_11BIT.schem` is an alias of the same build. The refreshed version has six sign labels and dimensions 21 x 7 x 46. Its port maps and Java references have been updated and verified against that binary.
 BUD-Switch: MemCellUnalignedNanoTicks.schem, UpdateTesterExtendInst.schem,UpdateTesterExtendNonInst.schem ect
 
 ## Clarified execution scope
@@ -59,6 +60,9 @@ The circuit author's [answers](ANSWERS.md) establish the following protocol:
 - New external inputs or a new computation during reset are undefined for the initial supported protocol. Internal propagation and reset work caused by the accepted trigger are still part of its behavior.
 - Torch and dust resets activated by retraction are common families to prioritize alongside the observer reset. Their supplied examples must establish their geometry and update paths.
 - Players should see infrequent useful output updates. Internal piston animation and exact internal wire-state rendering are unnecessary after minimization. Interpreter restoration still needs a validated reconstruction or phase-preserving handoff.
-- Begin with small gates, adders, counters, decoders and long wires. PM1 and ANPU are later targets. The existing adder's changed-input discrepancy remains under investigation.
+- Begin with small gates, adders, counters, decoders and long wires. PM1 and ANPU are later targets. The latest replacement adder passes the previous changed-input, saved maximum-input and high-bit overflow cases. Its Java traces verify `1365 + 682 = 2047` and `2047 + 2047 = 2046` modulo 2048.
+- Negation requires explicit synchronization and relative update ordering. Dedicated standalone BUD and nanotick-misalignment examples have not yet been supplied. Embedded BUD-like mechanisms still need classification; using fine-stepping APIs alone does not establish coverage of those circuit families.
+
+The next task is to characterize the supplied examples before implementing recognition. The [analysis-agent prompt](INSTANT_PISTON_ANALYSIS_AGENT_PROMPT.md) specifies sign-to-port mapping, behavior dossiers, operation-level traces, tests, ordering constraints and treatment of intentional counterexamples.
 
 The full detection strategy, implementation stages, risks and requested fixtures are in [INSTANT_PISTON_IMPLEMENTATION_PLAN.md](INSTANT_PISTON_IMPLEMENTATION_PLAN.md). The physical interpreter semantics are specified separately in [REDSTONE_MODEL.md](REDSTONE_MODEL.md).

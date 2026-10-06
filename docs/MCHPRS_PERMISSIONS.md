@@ -136,12 +136,22 @@ denial overrides inherited wildcards and is enforced even when the player has
 `mchprs.plots.admin.git`.
 
 Owners and plot members can read their repository; creating commits or branches
-also requires ordinary plot edit access. Checkout and recovery require ownership
+also requires ordinary plot edit access. Checkout, recovery, and rebase require ownership
 and plot edit access.
 `mchprs.plots.admin.git` explicitly overrides plot restrictions. Git still
 requires `mchprs.access.commands`. Use `/lp group <group> permission set
 mchprs.commands.git true server=mchprs` to allow it, or `false` to deny it; no
 rank-name grants are implicit. See [Plot Git](PLOT_GIT.md).
+
+The plot owner's largest effective positive `mchprs.git.storage.<MiB>` node sets
+the plot's disk history allowance. For example, `.100` grants 100 MiB and `.1024`
+grants 1 GiB. Denials and expiry apply; wildcard grants alone do not assign a
+number. This allowance applies to members and staff operating on that plot too.
+Missing numeric grants use `git_default_plot_storage_mib` (100 MiB); all grants
+are bounded by `git_plot_storage_mib` (1024 MiB). Downgrades preserve history and
+limit new growth. Grant these nodes through LuckPerms to your chosen groups;
+they do not independently grant Git command access. The shared Git RAM budget
+is separate and defaults to 1 GiB.
 
 ### History capacity limits
 

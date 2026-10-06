@@ -1,0 +1,151 @@
+{
+  "source_host": "urmom",
+  "source_directory": "/srv/mchprs/data/schems",
+  "verified_utc": "2026-10-06T09:12:24.676477+00:00",
+  "files": [
+    {
+      "name": "ADDER_11BIT.schem",
+      "bytes": 1298,
+      "sha256": "b15540895ca8b21f9765e5db2b8a9a58cf635855b8cc3b15696c5ae9dc9a6124",
+      "modified_utc": "2026-10-06T09:23:20.024127+00:00",
+      "verified_utc": "2026-10-06T09:25:43.730Z"
+    },
+    {
+      "name": "ADDER_11BITS.schem",
+      "bytes": 1294,
+      "sha256": "41476594941f234f8759c2b4b12dab72641fbda9fb5f0412a2b0089ba964464e",
+      "modified_utc": "2026-10-06T09:23:27.888197+00:00",
+      "verified_utc": "2026-10-06T09:25:43.730Z"
+    },
+    {
+      "name": "ADDER_1BIT.schem",
+      "bytes": 1133,
+      "sha256": "efe9f7f1703a2fdd1403735acb8f22f98ded0242bdfd63f096896235da300363",
+      "modified_utc": "2026-10-06T09:07:51.367931+00:00"
+    },
+    {
+      "name": "AND_1.schem",
+      "bytes": 637,
+      "sha256": "3affa57440433286e8898e5982b6028300517ec6dee39ebafd9760bda743043c",
+      "modified_utc": "2026-10-06T09:05:43.544804+00:00"
+    },
+    {
+      "name": "AND_2.schem",
+      "bytes": 644,
+      "sha256": "b2aa11b00b7269c3834810232392856cf6d63f7115c6a8505b3f0079d20e919d",
+      "modified_utc": "2026-10-06T09:06:04.621990+00:00"
+    },
+    {
+      "name": "AND_3.schem",
+      "bytes": 649,
+      "sha256": "307f9b9a9eb6c8f750c0a8b9524fba575bd2ba10fc203cbdec4725ea374cfbf9",
+      "modified_utc": "2026-10-06T09:06:18.639114+00:00"
+    },
+    {
+      "name": "COUNTER_BASIC.schem",
+      "bytes": 1740,
+      "sha256": "d65d424aa0751d855148b0aa097a4a5517d978f38e58dd8a8b269dcd94e25863",
+      "modified_utc": "2026-10-06T08:47:35.285249+00:00"
+    },
+    {
+      "name": "INSTANT_BLOCKED.schem",
+      "bytes": 626,
+      "sha256": "c752ed6a8b93e4e6abc365a3c09e0a89fb178ecd2bb2b44014314ba335491b7d",
+      "modified_utc": "2026-10-06T09:08:29.367266+00:00"
+    },
+    {
+      "name": "INSTANT_CHAIN.schem",
+      "bytes": 579,
+      "sha256": "aebe821de00eadbf3610dba929e64e917750ef6a2092e8668bc764a13f220f6c",
+      "modified_utc": "2026-10-06T09:08:15.148141+00:00"
+    },
+    {
+      "name": "INSTANT_DOWN_TORCH_RESET.schem",
+      "bytes": 576,
+      "sha256": "9bc3a4e58caee8eabe35405e1e6e1202374515108a03a016acd29df59992a673",
+      "modified_utc": "2026-10-06T09:08:57.859517+00:00"
+    },
+    {
+      "name": "INSTANT_DOWN.schem",
+      "bytes": 576,
+      "sha256": "14aa642d19ce24ea0e7cb17f017c807e9450c0e67c1c2781515376a84ca20b0e",
+      "modified_utc": "2026-10-06T09:08:42.539382+00:00"
+    },
+    {
+      "name": "INSTANT_OBSERVER.schem",
+      "bytes": 534,
+      "sha256": "98984d6c07a14798c5e9c0a045823a663c4288dbbfc2af3ea96f975f6dd424a9",
+      "modified_utc": "2026-10-06T09:09:50.833984+00:00"
+    },
+    {
+      "name": "INSTANT_RESET_REDSTONE_2.schem",
+      "bytes": 541,
+      "sha256": "98c41d2162bdcc1b347810ea17ccc6c42b357ec6be1a07bb96d4fe95bec497ff",
+      "modified_utc": "2026-10-06T09:09:25.693763+00:00"
+    },
+    {
+      "name": "INSTANT_RESET_REDSTONE.schem",
+      "bytes": 506,
+      "sha256": "e2096e7191ac281a699f6f6b89319a802070df70b09439ecba7e2e0103819e08",
+      "modified_utc": "2026-10-06T09:09:13.228652+00:00"
+    },
+    {
+      "name": "INSTANT_TORCH.schem",
+      "bytes": 521,
+      "sha256": "6d5ed8343ad111f0b976200ac629b7c6030e1b46a5374d548f4e41537babe1ca",
+      "modified_utc": "2026-10-06T09:09:36.664859+00:00"
+    },
+    {
+      "name": "MCHPRS_REDSTONE_UPDATE_EDGECASE.schem",
+      "bytes": 781,
+      "sha256": "355634e77f9c75a07632ab7b72d938a2d42b04ca4366de23d049a058ac777d4c",
+      "modified_utc": "2026-10-05T21:36:42.296164+00:00"
+    },
+    {
+      "name": "NOT_1.schem",
+      "bytes": 616,
+      "sha256": "0e9ecb58307d8cb3d079c56d69317d77cf8fe480ffd813a80a42aa4ec520d180",
+      "modified_utc": "2026-10-06T09:06:57.186453+00:00"
+    },
+    {
+      "name": "OR_1.schem",
+      "bytes": 644,
+      "sha256": "81c59e0b94bf90f5998d5b09054899b6447e2c808c1a1710d00022a34a75e52a",
+      "modified_utc": "2026-10-06T09:05:19.864595+00:00"
+    },
+    {
+      "name": "OR_Interpreter_illigal.schem",
+      "bytes": 707,
+      "sha256": "e67f627905055b158533da5367aedc0ba3744f57070b5f8a69af68c4fac68431",
+      "modified_utc": "2026-10-06T09:04:57.486398+00:00"
+    },
+    {
+      "name": "PM1_SORT.schem",
+      "bytes": 248153,
+      "sha256": "e338028d50a4400056e25037d1f43d37c08baed079edede6298f78b0a6341654",
+      "modified_utc": "2026-10-05T07:54:58.648876+00:00"
+    },
+    {
+      "name": "Q2CK_LyCore5_for_sorting.schem",
+      "bytes": 15402,
+      "sha256": "c338eaece219009b5024e3e2957a6e5ab7db49b62d272868d8bbc8b1b9c0d863",
+      "modified_utc": "2026-10-05T14:40:04.852287+00:00"
+    },
+    {
+      "name": "XOR_Simple.schem",
+      "bytes": 727,
+      "sha256": "84b00be425b4288a896ca51e9df23c3329690e67205b7204d7924fa2ce391266",
+      "modified_utc": "2026-10-06T09:07:28.576730+00:00"
+    }
+  ],
+  "previous_revisions": [
+    {
+      "name": "ADDER_11BITS.schem",
+      "bytes": 1052,
+      "sha256": "de850aabc43084b578153ea9aeb900436f2c0852ecdfe9099b0f7613f7f6f9a8",
+      "modified_utc": "2026-10-06T08:59:37.821592+00:00",
+      "replaced_utc": "2026-10-06T09:25:43.730Z"
+    }
+  ],
+  "last_refresh_utc": "2026-10-06T09:25:43.730Z"
+}

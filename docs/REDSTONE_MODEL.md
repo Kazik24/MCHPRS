@@ -1696,7 +1696,7 @@ Existing regression evidence includes:
 
 - The in-module tests in [redstone/mod.rs](../crates/core/src/redstone/mod.rs): Java output-pulse traces, the four UpdateTester wire traces, and the memory-cell piston-state trace.
 - [redstone/master_tests.rs](../crates/core/src/redstone/master_tests.rs): repeater short pulses, torch direction, analog overrides, plate primitives, slab support, and stepped dust.
-- [redstone/adder_tests.rs](../crates/core/src/redstone/adder_tests.rs): the sign-defined 11-stage adder interface, stored-input arithmetic cases, moving-output observations and the retained Java changed-input circuit limitation.
+- [redstone/adder_tests.rs](../crates/core/src/redstone/adder_tests.rs): the replacement 11-stage adder's sign-defined banks, separate trigger source, stored and prepared arithmetic, carry combinations at every bit, overflow cases, moving-output observations and schematic-hash checks. The refreshed schematic fixes the previous changed-input and maximum-input discrepancies.
 - [redstone/observer_tests.rs](../crates/core/src/redstone/observer_tests.rs): observer emission and conduction direction, and direct dust-shape observation without an indirect observer pulse.
 - [redstone/piston/tests.rs](../crates/core/src/redstone/piston/tests.rs): six-direction movement, event cancellation, short pulses, long payloads, waterlogging, owned-part removal, progress, identities, and Java reference traces for observer feedback, periodic instant resets and dropped-payload recapture.
 - [plot/piston_tests.rs](../crates/core/src/plot/piston_tests.rs): restart/partial-step state, cache clearing, stale work, and rendering independence.

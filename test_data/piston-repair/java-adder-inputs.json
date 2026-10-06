@@ -1,92 +1,58 @@
 {
   "version": "1.21.5",
   "server_sha1": "e6ec2f64e6080b9b5d9b471b291c33cc7f509733",
-  "setup": "Strict fixture paste into frozen void world; normal button power/removal; one game tick per observation",
+  "setup": "Strict fixture paste into frozen void world; changed inputs use normal setblock followed by eight settling game ticks; remove TICK source; observe after each completed game tick.",
+  "origin": [
+    100,
+    26,
+    56
+  ],
+  "ports": {
+    "a": [
+      3,
+      5,
+      43
+    ],
+    "b": [
+      3,
+      5,
+      41
+    ],
+    "out": [
+      20,
+      2,
+      41
+    ],
+    "tick": [
+      2,
+      4,
+      45
+    ]
+  },
+  "bit_width": 11,
+  "bit_order": "Least significant bit first; subtract four from Z for each subsequent bit; intended arithmetic result is sum modulo 2048.",
   "adder_inputs": [
     1365,
     682
   ],
   "fixtures": {
-    "ADDER_GWIEZDNY_TEST.schem": {
-      "sha256": "1ca12fe1214dff068d7eff82a50ade332b805dc48628a1eadb5fd6a33c682245",
-      "stimulus": "setblock 102 30 100 minecraft:air",
-      "trace": [
-        [
-          false,
-          false,
-          false
-        ],
-        [
-          false,
-          false,
-          false
-        ],
-        [
-          false,
-          false,
-          false
-        ],
-        [
-          false,
-          false,
-          false
-        ],
-        [
-          false,
-          false,
-          false
-        ],
-        [
-          false,
-          false,
-          false
-        ],
-        [
-          false,
-          false,
-          false
-        ],
-        [
-          false,
-          false,
-          false
-        ],
-        [
-          false,
-          false,
-          false
-        ],
-        [
-          false,
-          false,
-          false
-        ],
-        [
-          false,
-          false,
-          false
-        ],
-        [
-          false,
-          false,
-          false
-        ]
-      ],
-      "details": [],
+    "ADDER_11BITS.schem": {
+      "stimulus": "setblock 102 30 101 minecraft:air",
       "adder_output": [
-        1087,
-        1087,
-        1087,
+        2047,
+        2047,
+        2047,
         null,
         null,
         0,
-        1087,
-        1087,
-        1087,
+        2047,
+        2047,
+        2047,
         null,
         null,
         0
-      ]
+      ],
+      "sha256": "41476594941f234f8759c2b4b12dab72641fbda9fb5f0412a2b0089ba964464e"
     }
   }
 }

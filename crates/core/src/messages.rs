@@ -27,6 +27,7 @@ catalog! {
         USAGE_GIT_REBASE = "Usage: /git rebase <branch>";
         GIT_REBASE_NAMED_BRANCH_REQUIRED = "Name this detached trail first with /git branch <name>, then /git checkout <name> before rebasing, pup.";
         GIT_REBASE_SOURCE_BRANCH_REQUIRED = "These paws need an existing source branch. Use /git branch to sniff out its name :3";
+        GIT_OWNER_STORAGE_LIMIT_UNAVAILABLE = "Could not sniff out the plot owner's Git storage allowance. Try again in a moment, pup.";
         WE_SELECTION_VOLUME_OVERFLOW = "This selection is beyond the volume these paws can count.";
         WE_OPERATION_OUTSIDE_PLOT = "This WorldEdit pawstep would leave the current plot or world height.";
         WE_CLIPBOARD_COORDINATES_OVERFLOW = "This clipboard reaches beyond the coordinate range of these paws.";
@@ -60,7 +61,7 @@ catalog! {
         SCHEMATIC_PATH_OUTSIDE_FOLDER = "That schematic trail leaves the schematic folder. Keep those paws inside it.";
         SCHEMATIC_SHARED_LIBRARY_READ_ONLY = "The rf schematic library is read-only, pup. Save your own pawprints outside rf.";
         SCHEMATIC_INVALID_ANCESTOR = "Could not follow that schematic path with these paws.";
-        GIT_MEMORY_LIMIT_REACHED = "The Git pawprint workspace is full (at most 100 MiB shared). Wait for comparisons to expire or leave the plot and retry.";
+        GIT_MEMORY_LIMIT_REACHED = "The Git pawprint RAM workspace is full (at most 1 GiB shared). Wait for comparisons to expire or leave the plot and retry.";
         GIT_WORKER_FAILED = "The Git helper tripped over its paws; unfinished checkout may need startup recovery.";
         GIT_STARTUP_RECOVERY_REQUIRED = "Git checkout needs startup recovery, pup. This plot is paused and locked; contact the server administrator.";
         GIT_CHECKOUT_IN_PROGRESS = "Switching plot pawprints. Please wait for checkout to finish.";

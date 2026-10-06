@@ -2,13 +2,13 @@
 
 The first useful implementation is a parser that identifies a piston together with its reset circuit, moving output, electrical ports, and update dependencies. A logical one is a transition from nonzero power to zero that triggers a computation wave from a stable extended state. Only a region with a validated reset and a defined event interface should become combinational logic. Moving blocks change electrical geometry, observers consume callbacks, and quasi-connected pistons can retain state until an update arrives.
 
-The recommended progression is **analysis and diagnostics, validated reset families, trigger-wave extraction, combinational lowering, runtime integration, and simple-build coverage**. Initial acceptance targets are gate examples, adders, counters, decoders and long wires. PM1 and ANPU are deferred. BUD memory and ordinary pistons remain explicit classifications and execution boundaries. An unrecognized piston must prevent activation of a backend that cannot execute it.
+The recommended progression is **schematic characterization, analysis and diagnostics, validated reset families, trigger-wave extraction, combinational lowering, runtime integration, and simple-build coverage**. Initial acceptance targets are gate examples, adders, counters, decoders and long wires. PM1 and ANPU are deferred. BUD memory and ordinary pistons remain explicit classifications and execution boundaries. An unrecognized piston must prevent activation of a backend that cannot execute it.
 
 This plan follows the intended scope in [INSTANT_REDPILLER.md](INSTANT_REDPILLER.md), the circuit author's [clarifications](ANSWERS.md), the interpreter model in [REDSTONE_MODEL.md](REDSTONE_MODEL.md), and the current working-tree sources. The analysis baseline is 2026-10-06, with HEAD `4a2fb767821567ba62c5a63bb9af68fdc19d26e3` and existing local changes. Source behavior takes precedence where the model document differs from it. Proposed types, modules, flags, and fixture names below are implementation choices, not existing functionality.
 
 ## Intended scope and first deliverable
 
-The immediate engineering target is an **instant piston parser**, with enough information to explain whether a circuit can safely be compiled. Start with the existing horizontal observer reset family and incorporate the supplied torch and dust reset examples as separately validated families. Recognize unsupported and potentially stateful circuits without executing them incorrectly.
+The engineering target is an **instant piston parser**, with enough information to explain whether a circuit can safely be compiled. The immediate next task is documentation and testing of the supplied schematic pack, following the [analysis-agent prompt](INSTANT_PISTON_ANALYSIS_AGENT_PROMPT.md). Establish sign-to-port mappings, valid protocols, causal traces and reset/ordering requirements before implementing recognition. Start recognition with the horizontal observer reset family and incorporate the supplied torch and dust reset examples as separately validated families.
 
 The agreed execution contract is:
 
@@ -18,6 +18,7 @@ The agreed execution contract is:
 - Simplification is allowed when it preserves the behavior of those external consumers under valid inputs.
 - External input changes or another computation during reset have undefined circuit behavior and are outside initial conformance requirements. Internal propagation and reset events caused by the accepted trigger remain part of valid execution.
 - Shared-output OR groups may drop a payload and transfer it between pistons. Correctness concerns the group response and reusable mechanism, not permanent ownership by one base.
+- Negation is inhibition of another piston's activation by an active input. It requires a validated update-order protocol, not an assumed standalone NOT gate. Dedicated BUD and nanotick-misalignment examples remain future evidence.
 - Compiled rendering should be infrequent and should not animate internal pistons or track every internal wire state. Original geometry and compile provenance remain available for interpreter restoration.
 
 The exact reset-ready condition and the behavior of each gate or boundary adapter still require the supplied circuits. No fixed reset interval is implied by these decisions.
@@ -31,7 +32,7 @@ The exact reset-ready condition and the behavior of each gate or boundary adapte
 | Ordinary piston | Record movement and affected cells | Continue interpreted execution until a separate implementation exists |
 | Unsupported movement, observer or external dependency | Explain why the region cannot be closed or validated | Reject compiled activation for the affected plot |
 
-The first deliverable is a structured report for every piston and every proposed region. It should be usable before any runtime changes. Report trigger paths, reset families, non-instant boundary consumers and recognition coverage for the small builds. Existing CPU inventories remain useful background evidence, not first-release acceptance requirements.
+The first parser deliverable is a structured report for every piston and every proposed region, informed by the schematic behavior catalog and tests. It should be usable before any runtime changes. Report trigger paths, reset families, non-instant boundary consumers, required operation order and recognition coverage for the small builds. Existing CPU inventories remain useful background evidence, not first-release acceptance requirements.
 
 ```mermaid
 flowchart TD
@@ -146,13 +147,17 @@ The existing observer feedback and oscillator tests cover premature pulses cause
 
 ## Evidence from the existing schematics
 
+The new basic pack is in [test_data/instant-pistons](../test_data/instant-pistons), with exact versions recorded in [download-manifest.json](../test_data/instant-pistons/download-manifest.json). It supplies gates, inhibition, reset variants, a chain, adders, a counter and an intentional OR counterexample. Their detailed behavior and recognition guards are the next analysis task, not yet certified results. `ADDER_11BITS.schem` is the canonical corrected adder; `ADDER_11BIT.schem` is the same build under an alternate name.
+
+The inventory below is the preceding analysis snapshot. The adder row describes its earlier signless 21 x 7 x 45 revision; the latest revision is 21 x 7 x 46 with six signs and needs renewed analysis. The downloaded edge-case schematic also differs from the older root-level fixture and needs independent port and trace validation.
+
 The following inventory comes from decoding the actual Sponge schematic block data, counting live block positions, and looking for a horizontal piston with an observer immediately above it whose `facing=down`. The last column is only a geometric seed count. It does not check cap solidity, output ownership, reset viability, updates or gate behavior.
 
 | Schematic | Dimensions X Y Z | Piston bases | Observers | Basic geometric seeds |
 | --- | --- | ---: | ---: | ---: |
 | [EDGECASE_PISTION.schem](../test_data/EDGECASE_PISTION.schem) | 1 4 9 | 2 | 2 | 2 |
 | [MCHPRS_REDSTONE_UPDATE_EDGECASE.schem](../test_data/MCHPRS_REDSTONE_UPDATE_EDGECASE.schem) | 7 8 7 | 5 | 4 | 2 |
-| [ADDER_GWIEZDNY_TEST.schem](../test_data/ADDER_GWIEZDNY_TEST.schem) | 21 7 45 | 142 | 98 | 98 |
+| [ADDER_11BITS.schem](../test_data/instant-pistons/ADDER_11BITS.schem) | 21 7 46 | 142 | 98 | 98 |
 | [MemCellUnalignedNanoTicks.schem](../test_data/MemCellUnalignedNanoTicks.schem) | 4 5 9 | 5 | 2 | 2 |
 | [UpdateTesterInst.schem](../test_data/UpdateTesterInst.schem) | 7 3 9 | 2 | 3 | 0 |
 | [UpdateTesterNonInst.schem](../test_data/UpdateTesterNonInst.schem) | 7 3 9 | 2 | 3 | 0 |
@@ -165,7 +170,7 @@ Several consequences follow directly:
 
 1. The basic horizontal family is a useful seed, but cannot provide full CPU coverage. PM1 has 30,475 downward-facing bases. ANPU has 2,023 downward-facing bases and none of the basic seeds.
 2. Names containing `Inst` do not guarantee the observer-above geometry. The UpdateTester fixtures are required for alternate update and reset constructions.
-3. The adder contains 15 geometric seeds with a redstone block as the cap. That cap is not solid in this interpreter and also supplies constant quasi-connectivity power. Those positions require contextual classification, not automatic acceptance as the wool-cap reset family.
+3. The replacement adder's 98 geometric seeds all have wool caps: 55 white, 11 lime and 32 light blue. Its prepared input blocks still need contextual classification because replacing a cap with a redstone block changes both solidity and quasi-connectivity power.
 4. The adder's 98 seeds have 87 redstone-block outputs and 11 white-wool outputs at the extended output position. Both source movement and conducting-block movement matter.
 5. PM1 also contains 181 ordinary pistons, two moving-piston block states, and 60 command blocks. Their presence requires classification and execution support beyond instant gates. Moving block states need entity and motion inspection; their presence alone does not establish a valid active motion.
 6. A schematic selection boundary is not a plot boundary. For example, one memory-cell seed has its two-block-ahead cell outside the saved selection. Resolve it in the pasted world and report the actual context rather than inventing a payload or assuming an unavailable world cell.
@@ -190,11 +195,11 @@ The subsequent trace repeats the cycle. This supports same-game-tick propagation
 
 ### The adder has an existing behavioral contract
 
-[adder_tests.rs](../crates/core/src/redstone/adder_tests.rs) identifies ports from sign labels `A1`, `A2`, `B1`, `B2`, `O1`, `O2` and `TICK`. It interpolates **11 stages**, not 16. Its decoder treats a redstone block at an input as zero, a replacement conducting block as one, air at an output as one, a redstone block as zero, and a moving output as temporarily invalid.
+[adder_tests.rs](../crates/core/src/redstone/adder_tests.rs) uses [ADDER_11BITS.schem](../test_data/instant-pistons/ADDER_11BITS.schem), a Sponge v2 fixture with **11 stages** and six signs (`A1`, `A2`, `B1`, `B2`, `O1`, `O2`). The tests derive bit banks from the signs. Relative to the schematic minimum corner, the least significant `A`, `B` and output ports are `(3, 5, 43)`, `(3, 5, 41)` and `(20, 2, 41)`. Each subsequent bit subtracts four from Z; the trigger source is `(2, 4, 45)` and has no `TICK` sign. The clipboard paste offset is `(2, 4, 44)`. Its decoder treats a redstone block at an input as zero, a replacement conducting block as one, air at an output as one, a redstone block as zero, and a moving output as temporarily invalid. Arithmetic expectations use the low 11 bits of the sum.
 
-The stored `63 + 1` input produces `64` after one interpreted game tick following removal of `TICK`. Existing low-bit arithmetic vectors cover a few additional cases. For the changed `0x555 + 0x2aa` setup, the existing Java fixture reports `1087`, although mathematical addition would produce `2047`. The tests deliberately retain this circuit limitation.
+Prepared `63 + 1` inputs produce `64` after one interpreted game tick following removal of the trigger source. The previously failing `0x555 + 0x2aa` setup produces the correct `2047`. The refreshed fixture also fixes the preceding revision's maximum-input and high-bit overflow cases: the saved `2047 + 2047` inputs produce `2046`, and prepared `1024 + 1024` inputs produce `0`. Arithmetic vectors cover higher bits, carry propagation and overflow; a separate test checks each bit's input combinations with and without an incoming carry.
 
-The compiler should match the existing circuit trace under the declared decoding. It should not regenerate the reference or substitute ideal arithmetic for the observed circuit. An ideal-adder acceptance test needs a separately verified fixture.
+The compiler should match the replacement circuit's independently captured Java traces under the declared decoding. The [capture tool](../tools/capture_adder.py) records both saved and changed inputs using the SHA-pinned Java 1.21.5 server; the tests verify the schematic hash before comparing outputs. Arithmetic assertions independently check the expected sum modulo 2048; trace comparisons additionally preserve moving outputs and the physical reset cycle.
 
 ### Update and memory fixtures already have trace coverage
 
@@ -214,7 +219,7 @@ falling_event = previous_strength > 0 && current_strength == 0
 
 The low state permits downstream instants to retract and schedule their update cycles. The event still needs the actual update path: quasi-connectivity power can change without the base being rechecked. A held low input is not a fresh external trigger merely because the evaluator runs again. Internal reset-generated cycles remain part of the accepted episode and must preserve any effects visible outside the region.
 
-Represent an accepted external trigger with a computation-wave identity and capture the relevant prepared circuit conditions. Internal Boolean variables mean that a validated activation or falling transition occurs during that wave. They do not mean that a physical wire is continuously high or low. A zero Boolean result denotes absence of that event within the defined wave; it requires a defined wave boundary before it can be used by gates such as NOT.
+Represent an accepted external trigger with a computation-wave identity and capture the relevant prepared circuit conditions. Internal Boolean variables mean that a validated activation or falling transition occurs during that wave. They do not mean that a physical wire is continuously high or low. A zero Boolean result denotes absence of that event within the defined wave. Negation must use the actual inhibit condition and required operation order rather than an arbitrary timeout for an absent event.
 
 The adder's block-occupancy decoder remains an observation interface for that fixture. It does not replace the event definition at an instant input.
 
@@ -407,6 +412,8 @@ For BUD candidates, record the quasi-connectivity data path and a separate updat
 
 Collapse validated internal reset feedback before analyzing combinational data cycles. Keep reset dependencies in region metadata. Analyze data strongly connected components separately from reset cycles.
 
+Retain a separate graph of required callback and activation ordering, especially for negation. The author's "negated piston must fire first, update-wise" requirement must be resolved to concrete actors and operations by tracing. A data DAG alone does not capture a blocking effect that must become effective before a particular recheck or movement request. Compose regions only when both data and operation-order constraints remain valid.
+
 Acyclic data regions can be evaluated topologically. Cycles involving BUD state or ordinary timed elements become explicit boundaries. Other data cycles remain unsupported unless a separate convergence and uniqueness argument is available. Starting a cyclic solver at zero is not a valid substitute for such an argument.
 
 Emit a report with counts, positions, family names, region bounds, ports, transfer functions, preservation requirements and rejection reasons. Include candidate coverage as well as certified coverage so that increasing the seed count cannot masquerade as increasing correctness.
@@ -455,11 +462,11 @@ Use the following normalized truth tables as labels only after decoding is fixed
 | 1 | 0 | 1 | 0 |
 | 1 | 1 | 1 | 1 |
 
-NOT maps `0 -> 1` and `1 -> 0` within the fixture's triggered evaluation context. An absent falling event is not detectable at an arbitrary instant without a reference wave or prepared-condition protocol. The NOT example must identify the trigger and source that produce its asserted output when its data input does not activate.
+There is no assumed standalone instant NOT primitive. `NOT_1.schem` demonstrates a negation/inhibition circuit: an active input can block another piston's activation. Identify the triggering actor, blocking path, inhibited actor and exact required callback/event order. Compare a working synchronized episode with a deliberately reversed-order diagnostic where meaningful. Dedicated nanotick-misalignment examples are not yet available, so their family cannot be declared covered.
 
-The scope's OR description involves coordinated pistons and a shared output block. Validate all ownership and input-order cases at group level. The AND description involves separate output blocks coupled to one output net; a simple maximum of two source contributions implements electrical OR, so the claimed AND must be established through its physical decoding and connectivity. For NOT, identify the source of the asserted signal and the exact path opened by retraction; an air cell alone is not an emitter.
+The scope's OR description involves coordinated pistons and a shared output block. Validate all ownership and input-order cases at group level. The AND description involves separate output blocks coupled to one output net; a simple maximum of two source contributions implements electrical OR, so the claimed AND must be established through its physical decoding and connectivity. Negation may eventually become a guarded activation expression, but only after proving its physical inhibition and ordering protocol.
 
-Initially use constants, threshold inputs, AND, OR and inversion, with a small explicit truth-table fallback. Preserve multi-output functions and common subexpressions. Add XOR when the extracted truth table warrants it; do not invent a special piston XOR geometry.
+Initially use constants, threshold inputs, AND, OR and validated inhibit guards, with a small explicit truth-table fallback. Algebraic inversion may appear in a lowered formula without implying a physical standalone NOT family. Preserve multi-output functions and common subexpressions. Validate `XOR_Simple.schem` and any ordering constraints before lowering its decoded function.
 
 ### Minimize within validated boundaries
 
@@ -482,7 +489,7 @@ Introduce a shared analysis context before `IdentifyNodes`. Suggested modules un
 | `ResetDescriptor` | Family, internal cells, qualifying callback path, ready predicate, reusable invariant and timing protocol |
 | `InstantPort` | Physical position and face, previous strength, event decoder, electrical and update channels, range and role |
 | `TriggerEpisode` | Wave identity, prepared conditions, accepted root events, active reset status and boundary effects |
-| `InstantRegion` | Owned cells, members, ports, wave functions, reset metadata, dependencies and non-instant observations |
+| `InstantRegion` | Owned cells, members, ports, wave functions, reset metadata, data dependencies, required operation order and non-instant observations |
 | `PistonClassification` | Outcome, family or group ID, acceptance obligations and diagnostics |
 | `CompileArtifact` | Ordinary graph, region functions, source aliases, state and materialization metadata, analysis report |
 
@@ -550,7 +557,7 @@ Evaluate the wave's Boolean DAG in topological order, then publish boundary effe
 
 The propagation worklist should run to completion before leaving the logical computation operation. Its order must be deterministic. No artificial scheduler delay should accumulate with instant-chain depth.
 
-Batch activation values within a certified region only when this preserves the discovered consumers' observations. Preserve sequential external input operations unless the validated fixture explicitly groups them into one wave. AND and NOT evaluation must use the fixture's declared prepared conditions and completion rule; do not invent a timeout for an event that has not arrived. A boundary consumer that observes intermediate transitions requires a finer adapter or interpreted execution.
+Batch activation values within a certified region only when this preserves the discovered consumers' observations. Preserve sequential external input operations unless the validated fixture explicitly groups them into one wave. AND and negation evaluation must use the fixture's declared prepared conditions, completion rule and required operation order; do not invent a timeout for an event that has not arrived. A boundary consumer that observes intermediate transitions requires a finer adapter or interpreted execution.
 
 A falling trigger can result from removing a powering wire or circuit, a lever or ordinary scheduled output depowering, or a validated source operation. A pure update to already-low quasi-connected power is a separate callback effect, not automatically a new electrical falling event. The adder's `TICK` removal is a physical block-destruction input. Fixtures need a trigger adapter or test interface with the same semantics. The current player edit path resets Redpiler; nominated trigger removals need an explicit route that preserves their notifications and checks whether the edit changes topology used by the certificate. Other structural edits still require reset or reanalysis.
 
@@ -614,6 +621,9 @@ World edits, paste, destruction, schematic export, saves, history operations and
 | Falling edge treated as a level | Held zero repeatedly manufactures new external computations | Track previous strength and distinguish root triggers from internal reset cycles |
 | Output published before piston events | Correct result arrives earlier than the original circuit | Launch the wave at the corresponding validated phase |
 | Reset interruption treated as a required case | A valid family is rejected for behavior outside the agreed protocol | Exclude new external inputs during reset from conformance |
+| Negation treated as an unordered NOT | The inhibit becomes effective after the target's computation | Derive and preserve concrete callback/event ordering; validate synchronized and diagnostic misaligned episodes |
+| Intentional OR counterexample normalized silently | Illegal physical state is mistaken for a validated logical circuit | Preserve the saved state; distinguish reachability, observed execution and proposed compiler admissibility |
+| Corrected adder uses a stale harness | Changed dimensions or sign/port offsets give misleading arithmetic failures | Bind maps and references to the current schematic hash and verify coordinates |
 | Same-tick competing inputs | Output depends on event or input order | Test both orders and reject uncontracted dependence |
 | Unsupported ordinary components | Interpreter behavior freezes under compiled activation | Keep activation blocked until every execution owner is supported |
 | Compile cancellation | Scheduler was cleared but no backend owns the work | Commit state transfer only after successful artifact construction |
@@ -651,7 +661,7 @@ The names below are proposed new fixture names.
 | P0 | `instant_single_solid_output` | Same reset with a wool or stone payload; the exact source and conducting path opened or removed |
 | P0 | `instant_or_shared_payload` | Two pistons and one output block; all four wave-event combinations, declared input order, allowed drops and recapture by either member |
 | P0 | `instant_and_shared_net` | Two separate outputs coupled to one net; all four wave-event combinations, prepared conditions and the physical reason the result is AND |
-| P0 | `instant_not_merge` | A retraction-opened path with the source and both nets labeled; reference trigger, output event and reset isolation |
+| P0 | `instant_negation_blocker` | Trigger, blocking input and inhibited piston; effective inhibit condition, required update order and reset isolation |
 | P0 | `instant_reset_counterexamples` | Wrong observer facing, absent or glass cap, constant redstone cap, blocked payload, outside reset input and unsupported shared ownership |
 | P0 | `bud_update_without_power` | Data held at quasi-connectivity input while an independent update toggles stored state; update wire must not power the base directly or indirectly |
 | P0 | `ordinary_piston_control` | Same payload and power geometry without reset, plus short-pulse drop behavior; negative control for instant recognition |
@@ -680,12 +690,12 @@ Generate rotations and relevant single-block mutations from validated minimal ex
 4. **MCHPRS_REDSTONE_UPDATE_EDGECASE:** use as a phase and group-payload stress test. Existing tests show a redstone block dropped at tick 5, a pull in progress at tick 9, and restoration at tick 11 in the selected case. Allowed drops must not be mistaken for permanent payload loss.
 5. **The four UpdateTester schematics and a labeled BUD example:** identify each piston's role and independent update path. Use the existing traces as execution controls and the supplied labels as classification expectations.
 6. **MemCellUnalignedNanoTicks:** isolate the actual memory mechanism from its two reset candidates. Hold data constant while changing only updates, then vary data without updates. Preserve stored state and update alignment at the instant boundary.
-7. **ADDER_GWIEZDNY_TEST:** retain its sign-defined interface, current occupancy decoder, stored `63 + 1` example and existing traces. Add repeated ready-state computations; the changed-input discrepancy remains under investigation and does not block parser analysis.
+7. **ADDER_11BITS:** use its sign-defined 11-bit banks, separately located trigger source, occupancy decoder and replacement Java traces. Preserve correct stored and prepared arithmetic, including `63 + 1`, `0x555 + 0x2aa` and maximum-input overflow. Add repeated ready-state computations.
 8. **Small decoders, long wires and counters:** use prepared input cases and falling-trigger episodes. Validate attenuation, fan-out, non-instant boundaries and retained counter state. Add the minimum stateful execution support required by the counter example.
 
 PM1 and ANPU examples are later work. Small crops may illustrate a family, but full CPU parsing, execution, command outputs and acceptance are deferred.
 
-For new arithmetic evidence, add an independently verified adder with width, bit order, carry and overflow specified. Include carry chains and repeated computation. The present adder is valuable behavioral evidence but cannot serve as a complete ideal-arithmetic oracle.
+For new arithmetic evidence, extend the replacement adder's specified width, bit order, carry and overflow coverage. Include carry chains and repeated computation, and retain both arithmetic assertions and independently captured physical traces.
 
 ## Validation plan
 
@@ -740,7 +750,7 @@ Benchmark gates, chains, adders, decoders, long wires and supported counters. Me
 | 2 | Implement read-only analysis context, live-position inventory and report | Every piston has a classification or unresolved reason; unsupported activation remains blocked |
 | 3 | Implement observer reset seed and supplied torch or dust families with group payload tracking | Positive and mutated negative fixtures distinguish candidates reliably |
 | 4 | Validate falling-edge waves, reset-ready conditions and non-instant boundary discovery | Event semantics, valid episodes and boundary effects are established for each certified family |
-| 5 | Add shared-output groups, conducting output and guarded connectivity | OR, AND and NOT claims match decoded truth tables and repeated physical behavior |
+| 5 | Add shared-output groups, conducting output, inhibit guards and required operation order | OR, AND, negation and XOR claims match supported decoded episodes and repeated physical behavior |
 | 6 | Build region DAGs, aliases and audited optimization integration | Optimized and unoptimized artifacts preserve the same declared function and observations |
 | 7 | Add region evaluator, triggers, validated adapters and materialization | Repeated computations, failure recovery and interpreter reset preserve the supported contract |
 | 8 | Replace activation guard using complete support report | No unsupported component is left without execution ownership; compilation is transactional |
@@ -760,6 +770,6 @@ The falling-edge definition, ready extended entry, trigger-driven protocol, unde
 4. The boundary waveforms and callback sequences needed to preserve lamp, repeater and BUD behavior after simplification.
 5. A minimal decoder, long-wire example and counter after basic gates work, including any stateful components the counter needs.
 
-Interpreter handoff still needs a decision based on demonstrated behavior: whether restoring a validated ready configuration is sufficient or whether externally significant reset phase must be retained. Sparse rendering does not decide this simulation question. The adder changed-input discrepancy remains under investigation; retain its current reference until the cause is established.
+Interpreter handoff still needs a decision based on demonstrated behavior: whether restoring a validated ready configuration is sufficient or whether externally significant reset phase must be retained. Sparse rendering does not decide this simulation question. The refreshed replacement adder resolves the previous changed-input and maximum-input discrepancies; its correct sums and physical reset cycle are recorded in the new Java references.
 
 The first implementation task remains the read-only classifier and boundary report using the existing oscillator and adder, followed by the supplied gate, torch/dust reset and BUD examples. Production execution can wait for those certificates while indexing and candidate diagnostics proceed independently.

@@ -844,6 +844,93 @@ fn lz4_snapshots_are_compact_bounded_and_round_trip() {
     assert!(Reservation::new(mib(MAX_WORK_MEMORY_MIB) + 1).is_err());
 }
 
+#[test]
+fn owner_storage_tiers_apply_server_ceiling_and_default() {
+    let default = CONFIG
+        .git_default_plot_storage_mib
+        .min(CONFIG.git_plot_storage_mib);
+    assert_eq!(
+        owner_limits(None, None).unwrap().plot_bytes,
+        default * 1048576
+    );
+    for (grant, expected) in [
+        (None, 100),
+        (Some(100), 100),
+        (Some(1024), 1024),
+        (Some(2048), 1024),
+        (Some(0), 0),
+    ] {
+        // Simulate a cached owner's effective grant. An administrator/member's
+        // allowance is never an input to resolving this plot's quota.
+        let storage = storage_limit_mib(grant, 100, 1024);
+        let limits = owner_limits(Some(1), Some(storage)).unwrap();
+        assert_eq!(limits.plot_bytes, expected * 1048576);
+    }
+    assert_eq!(storage_limit_mib(Some(1024), 100, 50), 50);
+    assert_eq!(storage_limit_mib(None, 100, 50), 50);
+}
+
+#[test]
+fn storage_rank_downgrade_keeps_history_readable_and_rejects_growth() {
+    let root = TempRoot::new();
+    let mut repo = root.repo();
+    let mut snapshot = empty();
+    repo.commit(&snapshot, 1, "Alice", "first").unwrap();
+    set(&mut snapshot, 1, 64, 1, Block::Stone {}, None);
+    repo.commit(&snapshot, 1, "Alice", "second").unwrap();
+    let head = repo.head().unwrap();
+    let fingerprint = snapshot.fingerprints().unwrap().full;
+    drop(repo);
+    let mut repo = Repository::open(
+        &root.0,
+        (-1, 2),
+        Limits {
+            plot_bytes: 0,
+            ..test_limits()
+        },
+    )
+    .unwrap();
+    assert_eq!(
+        repo.load(head.1.as_ref().unwrap())
+            .unwrap()
+            .fingerprints()
+            .unwrap()
+            .full,
+        fingerprint
+    );
+    assert!(repo
+        .log(false, None, 1)
+        .unwrap()
+        .to_string()
+        .contains("second"));
+    assert!(repo.status(&snapshot).is_ok());
+    set(&mut snapshot, 2, 64, 2, Block::Glass, None);
+    assert_eq!(
+        repo.commit(&snapshot, 1, "Alice", "third")
+            .unwrap_err()
+            .to_string(),
+        messages::GIT_PLOT_STORAGE_FULL
+    );
+    assert_eq!(repo.head().unwrap(), head);
+    assert_eq!(
+        root.db()
+            .query_row("SELECT count(*) FROM commits", [], |r| r.get::<_, i64>(0))
+            .unwrap(),
+        2
+    );
+    drop(repo);
+    let mut repo = root.repo();
+    repo.commit(&snapshot, 1, "Alice", "third").unwrap();
+    assert_eq!(
+        repo.load(&repo.resolve("HEAD").unwrap())
+            .unwrap()
+            .fingerprints()
+            .unwrap()
+            .full,
+        snapshot.fingerprints().unwrap().full
+    );
+}
+
 fn rebase_branches(
     repo: &mut Repository,
     ours: &Snapshot,
