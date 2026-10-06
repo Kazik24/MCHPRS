@@ -8,6 +8,8 @@ The intended interface uses ordinary Redpiler nodes: levers, buttons, torches an
 
 ANPU is the next [compiled acceptance target](ANPU_REDPILER.md). Its interpreter sampling/write projection and screen trace are retained as reference data; the general BUD graph abstraction remains pending. Its 896 identified note-block BUD cells carry conducting black concrete and require independent ordered update channels. Unsupported ANPU programs reject compilation; there is no physical compatibility backend.
 
+**Known conformance gap:** `XOR_Simple` can currently pass compilation, but releasing both inputs exposes a reset-wave repeater mismatch at tick 8. Its first-wave formula does not certify the complete adapter response. The [runtime](INSTANT_PISTON_RUNTIME.md#conditional-output-contract) retains the explicit ignored regression; the preservation equation below is a required contract, not a claim that this admitted case already satisfies it.
+
 [RILAX bank characterization](FPU_RILAX_REDPILER_RESEARCH.md) now supplies a smaller precursor: distinct data power and head-notification channels, samples on both ordinary-piston movement edges, unchanged samples without writes, and read-gate state that retains an earlier read across a later write. A direct combinational read of stored bits would lose this sampled behavior. Its physical data/output levels use powered = one; that fixture decoder does not redefine the instant logical-one falling event. The same report separates FPU compiler limitations from author-confirmed broken saved geometry and leaves its custom arithmetic outside acceptance.
 
 The compiler now admits quartz/smooth-quartz conductors and matching stationary furnace reset-support inventories. A comparator's direct fixed rear override stays an ordinary analog input even when conditional geometry powers that support; comparator sides retain their separate electrical rules. This does not admit transported entities, dynamic rear override reads, unknown reset writers or broken geometry. The report lists the exact manual repairs and remaining FPU/RILAX protocol boundaries.
@@ -37,7 +39,7 @@ Region ports refer to node identities and retained connection semantics. A torch
 
 ## 2. Levels, events and stored bits
 
-Keep four quantities distinct:
+Keep these quantities distinct:
 
 | Symbol | Meaning |
 | --- | --- |
@@ -45,6 +47,7 @@ Keep four quantities distinct:
 | $d_i\in\{0,1\}$ | Prepared data, decoded from a stable input condition |
 | $e_i\in\{0,1\}$ | A falling event in the declared computation wave |
 | $q_j\in\{0,1\}$ | A stored BUD bit, read at a valid observation point |
+| $r_j\in\{0,1\}$ | Retained state of a sampled read gate or other stateful output adapter |
 
 Here $\tau$ identifies a boundary transition or observation point, not an internal nanotick. Define a falling event by
 
@@ -69,10 +72,10 @@ The event occurs at the actual torch output transition, with normal torch timing
 For a supported computation wave $k$, a certified instant region has the logical projection
 
 $$
-\mathbf y_k=F(\mathbf d_k,\mathbf e_k,\mathbf q_k).
+\mathbf y_k=F(\mathbf d_k,\mathbf e_k,\mathbf q_k,\mathbf r_k).
 $$
 
-$\mathbf d_k$ is the prepared data, $\mathbf e_k$ identifies the accepted triggering events, and $\mathbf q_k$ is the memory visible to this computation. An instant-only region has no persistent data memory. Its reset or clock activity can still require execution state.
+$\mathbf d_k$ is the prepared data, $\mathbf e_k$ identifies the accepted triggering events, $\mathbf q_k$ is the data memory visible to this computation, and $\mathbf r_k$ is any retained read-adapter state. The latter can instead be included in a single larger storage vector; separating it prevents a mistaken combinational read assumption. An instant-only computation has no persistent data memory, but reset/clock and consumer adapters may still require state. A stateless region omits both storage arguments.
 
 The formula applies under the region's protocol, ideal internal synchronization and output decoder. Physical synchronization is a compatibility property, not a prerequisite for evaluating the logical function. Wave grouping belongs to the protocol; arbitrary changes are not combined just because they occur near each other. Examples from the characterized first wave are:
 
@@ -109,7 +112,9 @@ The [measured order relations](INSTANT_PISTON_SCHEMATICS.md#negation-partial-ord
 
 A BUD has two semantic inputs: a live data/power condition and a qualifying update. Changing the data need not deliver that update. This separation is the source of storage.
 
-For a recognized BUD cell, let $u_j$ mean a logical sampling update and let $d_j$ be the stable input decoded for that update. The storage rule is
+Distinguish a delivered sampling notification $\nu_j$, a requested movement and an accepted storage transaction $u_j$. A notification samples current power even if no movement is needed. A request can later be rejected by the live power, base state or payload check. The physical rules are [sections 13.2–13.3](REDSTONE_MODEL.md#132-requests-are-not-scheduled-block-ticks); the [ANPU oracle](ANPU_REDPILER.md#observable-contract) retains samples separately from accepted movements.
+
+For a certified logical transaction, let $u_j=1$ mean that its update has passed the family's acceptance rules, and let $d_j$ be the value decoded at that accepted sample boundary. The settled storage rule is
 
 $$
 q_j^+=
@@ -119,30 +124,52 @@ q_j,&u_j=0.
 \end{cases}
 $$
 
-Equivalently, $q_j^+=(u_j\land d_j)\lor(\neg u_j\land q_j)$. The cell can store either bit on an update; this is not restricted to falling data events. Repeated samples of an unchanged value retain that value.
+Equivalently, $q_j^+=(u_j\land d_j)\lor(\neg u_j\land q_j)$. The cell can store either bit; this is not restricted to falling data events. A same-value accepted sample gives $q_j^+=q_j$ and need not produce a movement. Its sampling record remains significant. Conversely, $\nu_j=1$ does not justify setting $u_j=1$ for an unvalidated queued movement. A rejected request leaves storage unchanged. Under a proven stable-data, unblocked protocol the sampling notification and logical storage update can be collapsed; that is a family-specific proof.
 
-This is a target contract for certified BUD families. Recognition must establish the data decoder, qualifying update and state visibility for the declared sample. Redpiler performs the storage update directly with ideal internal synchronization, without replaying callbacks or movement. A moving physical cell is not a valid stationary bit observation. Multiple logical updates are separate transactions; their data dependencies remain explicit. Their ordering is not erased by ignoring internal nanoticks.
+This is a target contract for certified BUD families, implemented only for the current owned Counter bank. Recognition must establish the data decoder, qualifying update, event acceptance and state visibility. A future general adapter must perform validated transactions directly without replaying callbacks or movement. A moving physical cell is not a valid stationary bit observation. Multiple logical updates remain separate transactions unless the protocol proves an atomic batch. Their ordering and live data dependencies are not erased by ignoring internal nanoticks.
 
-The decoder establishes polarity. For a cell with stationary extended state $m$, a possible convention is $q=\neg m$; then sampling physical power $b$ stores $d=\neg b$. COUNTER_BASIC uses retracted=one, extended=zero. Other recognized families must declare their own decoder.
+The decoder establishes polarity. For a cell with stationary extended state $m$, a possible convention is $q=\neg m$; an accepted, unblocked transaction that settles extension to physical power $b$ then stores $d=\neg b$. A notification alone does not promise that settled state. COUNTER_BASIC uses retracted=one, extended=zero. Other recognized families must declare their own decoder.
 
 [AND_3](INSTANT_PISTON_SCHEMATICS.md#and-3) demonstrates why both inputs matter: a remote QC power change can leave the base unrechecked. Removing remote B before callback-generating A permits retraction; reversing those actions leaves the base extended. The final removed-source set is identical, but the sampled history differs.
 
 Memory remains explicit when simplifying the surrounding instant logic. A region that reads and writes BUD state must define which stored state a computation reads; $\mathbf q_k$ in $F$ means that state. Feedback through stored state is permitted. Feedback without a memory or clock owner requires a separate temporal model. These are logical dependencies, not an internal nanotick schedule.
 
+### Sampled read state
+
+RILAX's lower concrete read gates retain their own geometry. Its output therefore has the form $O=\mathcal A(\mathbf q,\mathbf r,c,\mathbf s)$, where $c$ includes read enable/closure timing; it is not generally `data_bank[selected_address]` whenever read enable is high. In the measured held-read case, an initial zero read remains zero after the selected data word becomes `0xff`; a fresh read cycle publishes `0xff`. Read closure also has its measured delay before outputs return to zero. This establishes a need for retained read state, not a complete specification for every overlapping read/write history.
+
+The retained variable describes gate state, not a proven independent latch for an arbitrary eight-bit output word: $\mathbf q$ and ordinary strengths remain arguments of the read adapter. Reverse/mixed-bit writes during held reads, held-read address changes and shorter preparation intervals require additional cases before choosing a general read transition function.
+
+Both movement edges of RILAX's ordinary update pistons can sample the upper bank. A held enable is not continuous sampling, and releasing it can sample data prepared while it was held. The decoder determines which pulses reach those edges. These measured operations are distinct from a universal one-write-per-rising-edge RAM model and remain future compiled-family work.
+
+In the measured prepared-`0xff` protocol, enable widths one and two game ticks cause no updater movement or write; widths four, six, eight and twelve do write. Width three is unmeasured. Ordinary pulse filtering is part of the adapter contract; a raw enable edge cannot be substituted for the resulting sampling notification.
+
+### Analog electrical adapters
+
+For a supported electrical consumer channel, let $g(\tau)$ be certified geometry state, $\gamma_t(g)$ the guard for contribution $t$, $a_t$ its attenuation and $s_t(\tau)$ its ordinary source strength. Then
+
+$$
+s_{\mathrm{consumer}}(\tau)=\max\left(\{s_t(\tau)\mathbin{\dotminus}a_t:\gamma_t(g(\tau))=1\}\cup\{0\}\right).
+$$
+
+Here $x\mathbin{\dotminus}a=\max(0,x-a)$. A redstone-block contribution has $s_t=15$; wool, concrete, stone, sandstone, quartz and smooth quartz conduct permitted sources but do not supply their own fifteen. A fixed contributor can keep the output powered when a mobile contribution disappears.
+
+A comparator's direct stationary rear override is the separate input rule $I=V(\text{rear inventory/state})$, irrespective of electrical power through that rear block. Its side channel accepts dust, diodes and redstone blocks, not general solid conduction. Neither channel is universally Boolean. Fixed furnace inventory strengths remain ordinary graph inputs; changing rear geometry or transporting an override requires a different protocol. The [physical comparator equations](REDSTONE_MODEL.md#103-rear-input-and-far-override) also distinguish a far override and its strength-fifteen exception.
+
 ## 6. Protocol, validity and reset
 
 Attach a protocol $\mathcal P$ to each recognized region. It specifies logical wave grouping, ready condition, preparation, accepted triggers, observation windows, reset/clock response and next-use condition. Record physical synchronization/compatibility separately; internal misalignment is normalized by compiled evaluation.
 
-For an externally launched computation, the ready condition includes the stable extended mechanism, permitted payload arrangement, reset state and relevant queued work. Prepared inputs remain stable through the supported computation/reset episode. New external data or another computation during reset is outside initial conformance. The input adapter must make the promised protocol achievable.
+For the currently admitted instant-wave adapter, a launch requires powered, extended mechanisms, permitted payload arrangements, reset state and relevant queued work. Its prepared inputs remain stable through the supported computation/reset episode; new external data or another computation during that reset is outside initial conformance. This is not a universal initialization rule for memory: a BUD protocol may admit either settled storage state, including a state that differs from live power. RILAX and ANPU preserve that history. Each family's protocol determines which inputs must stay stable through which sampling/acceptance interval.
 
 A logical result is published with validity:
 
 $$
 (v(\tau),y(\tau)),\qquad
-y(\tau)=F(\mathbf d,\mathbf e,\mathbf q)\text{ when }v(\tau)=1.
+y(\tau)=F(\mathbf d,\mathbf e,\mathbf q,\mathbf r)\text{ when }v(\tau)=1.
 $$
 
-An invalid observation is $\bot$, not Boolean zero. The corrected [11-bit adder](INSTANT_PISTON_SCHEMATICS.md#adder-11bits) illustrates this: its first result decodes at response boundaries 1..3; moving outputs at 4..5 are invalid; the physical reset at 6 is not a new arithmetic result.
+An invalid observation is $\bot$, not Boolean zero. The corrected original [11-bit adder](INSTANT_PISTON_SCHEMATICS.md#adder-11bits) illustrates this at its raw payload/net ports: its first result decodes at response boundaries 1..3, moving payload observations at 4..5 are invalid, and the physical reset at 6 is not a new arithmetic result. This is not the repeater output window: the [lever/repeater revision](INSTANT_PISTON_RUNTIME.md#wave-execution-and-output-timing) exposes sum at ticks 3..7 and one-bit carry at 5..9. Validity is per declared port; internal movement does not make every ordinary electrical consumer invalid.
 
 Reset can return to a reusable ready state, require external rearm, or maintain a recurring episode. Therefore there is no universal reset delay or rule that returning to extended means ready. Held-zero observer examples continue cycling; internally generated events remain part of the original accepted response. A compiler must retain their effects at exposed consumers even though the external falling event occurred only once.
 
@@ -159,19 +186,19 @@ $$
 | Component | Responsibility |
 | --- | --- |
 | $F$ | Logical computation within a certified wave |
-| $H$ | Accepted BUD transactions and any reset/clock state transitions |
+| $H$ | Validated storage transactions and retained read/reset/clock/acceptance state transitions |
 | $\mathcal P$ | Supported logical input histories, wave grouping, readiness and observation validity |
 | $\mathcal A$ | Port adapters: internal event/value connections and electrical strengths, transitions, updates and relevant timing at ordinary consumers |
 
-With retained state $z=(\mathbf q,c)$, where $c$ is any required reset/clock state, the transition is
+With retained state $z=(\mathbf q,\mathbf r,c)$, where $c$ includes required reset/clock/read lifecycle and acceptance state, let $\sigma_k$ be the **ordered** protocol actions for step $k$. It retains qualifying sample boundaries and their data, acceptance/cancellation decisions, required adapter deadlines and declared atomic-batch membership. Same-value samples remain observable when the interface requires them. These are logical records owned by the adapter, not a replay of every physical callback. The transition is
 
 $$
-z_{k+1}=H(z_k,\mathbf d_k,\mathbf e_k,\mathbf u_k).
+z_{k+1}=H(z_k,\mathbf d_k,\mathbf e_k,\sigma_k).
 $$
 
-Logical steps are accepted waves, memory updates or required clock deadlines. They are not individual piston callbacks. For a pure combinational region, $z$ is empty.
+Logical steps are accepted waves, memory transactions or required adapter deadlines. They are not individual piston callbacks. Multiple transactions on the same cell must not become an unordered update bit. For the admitted Counter, all next-state expressions read the same old bank and then commit together in phase 3; evaluating one bit after overwriting a preceding bit would change its function. A general BUD family needs its own ordered or atomic protocol. For a pure combinational region with stateless adapters, $z$ is empty.
 
-$F$ is eligible for Boolean minimization and composition into a larger graph. $H$ can be omitted only when boundary behavior needs no retained memory, reset or generator state. It preserves logical state dependencies and the external timing required by $\mathcal P$, with no internal nanotick model. Let $\operatorname{Logical}(\mathcal R,h)$ be execution of the extracted logical circuit with ideal internal synchronization. A successful simplification preserves that reference semantics:
+$F$ is eligible for Boolean minimization and composition into a larger graph. $H$ can be omitted only when boundary behavior needs no retained storage, read-adapter, reset, acceptance or generator state. It preserves logical state dependencies and the external timing required by $\mathcal P$, with no internal nanotick model. Let $\operatorname{Logical}(\mathcal R,h)$ be execution of the extracted logical circuit with ideal internal synchronization. A successful simplification preserves that reference semantics:
 
 $$
 \forall h\in\mathcal P:\quad
@@ -179,10 +206,10 @@ $$
 =\operatorname{Obs}_{boundary}(\operatorname{Compile}(\mathcal R,h)).
 $$
 
-$h$ is an ordered input history from an equivalent ready state. The observation includes declared consumer states, consequential updates and relevant timing throughout the accepted episode, including reset. For physically synchronized compatible histories, the physical interpreter must agree with this projection as well. For a circuit failing solely because of internal nanotick misalignment, physical and compiled outputs may intentionally differ; the compiled result follows the established logical function. Internal animation and internal wire display can be omitted. Rendering frequency does not weaken the logical contract.
+$h$ is an ordered input history from an equivalent protocol entry state, including decoded storage and retained adapter state. The observation includes declared consumer states, required sample records, accepted writes and relevant timing throughout the accepted episode, including reset. ANPU's proposed interface explicitly retains same-value samples and accepted-movement order as well as every game-tick screen state. A no-op logical sample must not be counted as an accepted physical movement. For physically synchronized compatible histories, the physical interpreter must agree with this projection as well. For a circuit failing solely because of internal nanotick misalignment, physical and compiled outputs may intentionally differ; the compiled result follows the established logical function. Internal animation and internal wire display can be omitted. Rendering frequency does not weaken the logical contract.
 
 The parser must establish the port decoders, reset/payload closure, logical protocol and consumer adapters before activation. Recognition can rely on validated families; physical synchronization is not an admission requirement and no nanotick analysis or simulation is required in the compiled evaluator. If the logical contract is unknown, report the candidate and keep interpreted execution. Restoring an interpreter world also requires an equivalent materialized state with appropriate pending work; a final output bit is insufficient. A physically misaligned circuit resumes its physical semantics after handoff, so continuing agreement with compiled logical execution is not promised.
 
 Existing [graph node types](../crates/core/src/redpiler/compile_graph.rs) provide ordinary input/output components and mobile aliases. [Node discovery](../crates/core/src/redpiler/passes/identify_nodes.rs) uses ownership boundaries supplied by prepared instant programs; the executable Boolean program and clock/storage state live beside the graph. Power links do not stand in for independent BUD updates: the shared-clock adapter explicitly supplies sampling. Region ports remain distinct from world-I/O flags. Broader independent sampling and clock composition remain requirements in the [plan](INSTANT_PISTON_IMPLEMENTATION_PLAN.md).
 
-The [separate lever/repeater revision](INSTANT_PISTON_IO_SCHEMATICS.md) establishes ordinary input adapters and standalone BUD data/update sampling, retained state and quiet resampling for two families. Observer-generated updates also demonstrate data-before-sample synchronization. One BUD selection still lacks its saved update control, and XOR reset response depends on the recorded spatial/order context. Selected adder/counter handoff now passes continuation tests; general consumer adapters, unrestricted reuse and broader lifecycle equivalence remain unverified. The supplied nanotick example is a candidate logical normalization case; the illegal-reset counterexample remains excluded. Earlier catalog admission statements record the prior policy; frozen physical observations remain unchanged. CPU analysis stays deferred.
+The [separate lever/repeater revision](INSTANT_PISTON_IO_SCHEMATICS.md) establishes physical ordinary input adapters and standalone BUD data/update sampling, retained state and quiet resampling for two families. Observer-generated updates also demonstrate data-before-sample synchronization. One BUD selection still lacks its saved update control, and XOR reset response depends on the recorded spatial/order context. Selected adder/counter handoff passes continuation tests; general consumer adapters, unrestricted reuse and broader lifecycle equivalence remain unverified. The supplied nanotick example is a candidate logical normalization case; the illegal-reset counterexample remains excluded. Earlier catalog admission statements record the prior policy; frozen physical observations remain unchanged. [ANPU's current admission and 50,000-tick memory/screen checks](ANPU_REDPILER.md) are now measured; general CPU graph lowering remains pending.

@@ -55,14 +55,31 @@ The original [CPU checkpoints](../test_data/cpu-references/anpu_pong.json), [scr
 3. Successful preparation lowers into the Direct backend. The staged backend becomes active only after graph/program compilation succeeds; unsupported builds retain their interpreted state and scheduled work.
 4. ANPU's arbitrary BUD notifications, initially retracted pistons and conducting black-concrete storage are not covered by the current counter protocol. Increasing work budgets does not add these semantics or bypass admission.
 
+## Admission after the FPU/RILAX legalization
+
+The 2026-10-06 check uses production sources at `7f22ae9` (`FPU legalization`) and an expanded admission regression. The downloaded Pong binary and frozen references are unchanged. **ANPU still cannot compile.** The newly supported quartz conductors and stationary furnace reset inventories do not supply its independent sampling protocol.
+
+| Effective budget | Current first compilation failure |
+| --- | --- |
+| 1× | `analysis dependency budget exceeded` at the default 4,194,304-step limit |
+| 2×, 4×, 8× | Ordinary piston at harness world `(85,44,46)`, selection-local **`(77,36,38)`**, is not a ready empty observer-clock generator; independent piston update samplers are not implemented |
+
+All four budgets were tested with ordinary compilation, `--optimize`, `--io-only` and both flags together. The regression also passes the removed `--piston-events` spelling solely to prove that it cannot bypass admission; it is not a supported command or execution mode. All **20 attempts** reject, leave the compiler inactive with no active flags, and preserve the full physical checkpoint, including scheduled work. The reported actor is the first executable blocker, not a list of every remaining CPU requirement or a request to modify that piston.
+
+A separate read-only analysis at 8× completes with 888,832 inspected cells and **4,811,468 dependency steps**, explaining the default-budget failure. It finds the same 2,898 pistons and 64 observers, 2,898 payload groups and 899 retracted actors. No piston locally matches the current instant reset recognizer. The material failures consist of 477 `Air` and 308 `Piston` payload entries on the 785 ordinary actors; the sticky actors' payload materials are supported. The interpreter can move piston blocks in straight payload lines, but the compiled single-payload instant/Counter protocol does not own those mechanics. These counts do not establish that every ordinary actor is a BUD cell or that the saved ANPU geometry is broken.
+
+Retracted or currently unpowered stored mechanisms can be legitimate CPU history. They must not be repaired to satisfy the ready-extended Counter matcher. Nor does zero local reset matches prove that a functioning CPU has no instant logic: a local family matcher is narrower than executable CPU semantics.
+
+The explicit **50,000-game-tick interpreter regression passes** against the unchanged CPU checkpoints, every game-tick screen boundary and complete ordered 896-cell projection: 1,552 nonempty sample ticks and the original 14 screen states. This verifies that the new compiler admission changes preserve the interpreted reference. No compiled netlist was produced, so compiled memory-write or screen equivalence is still untested.
+
 ## Validation and manual reference
 
-The [interpreter BUD regression](../crates/core/src/redstone/piston/tests/bud_reference.rs) runs the saved start-button episode for 50,000 game ticks, verifies all original/migrated physical CPU checkpoints and the complete screen trace, and compares the ordered 896-cell sampling/write projection against its frozen reference. Trace recording exists only in test builds. An enabled regression also verifies that ANPU cannot activate compilation through the removed compatibility flag and that rejection leaves physical state and scheduled work intact.
+The [interpreter BUD regression](../crates/core/src/redstone/piston/tests/bud_reference.rs) runs the saved start-button episode for 50,000 game ticks, verifies all original/migrated physical CPU checkpoints and the complete screen trace, and compares the ordered 896-cell sampling/write projection against its frozen reference. Trace recording exists only in test builds. The enabled admission regression prints the live inventory and each budget/flag failure, verifies that no attempt activates compilation, and checks that rejection leaves physical state and scheduled work intact.
 
 Run the admission regression and full frozen episode with:
 
 ```powershell
-cargo test -p mchprs_core --lib redstone::piston::tests::bud_reference::anpu_cannot_bypass_compiled_graph_admission --locked -- --exact --test-threads=1
+cargo test -p mchprs_core --lib redstone::piston::tests::bud_reference::anpu_cannot_bypass_compiled_graph_admission --locked -- --exact --nocapture --test-threads=1
 cargo test -p mchprs_core --lib redstone::piston::tests::bud_reference::anpu_interpreter_preserves_frozen_bud_updates_and_screen --locked -- --ignored --exact --nocapture --test-threads=1
 ```
 

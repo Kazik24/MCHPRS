@@ -4,7 +4,9 @@ Research and recommendations, 2026-10-06. **Recommended design: one extracted ci
 
 This document extends the [instant/BUD mathematical contract](INSTANT_PISTON_REDPILER_MODEL.md), rather than redefining piston physics or the equations in [REDSTONE_MODEL.md](REDSTONE_MODEL.md). It recommends implementation work; it does not implement an evaluator, certify additional schematic families, or report measured speedups. External sources establish applicable techniques. The design choices below are recommendations for MCHPRS.
 
-## 1. What the current repository provides
+**Current implementation distinction:** the [Direct/Boolean runtime](INSTANT_PISTON_RUNTIME.md) now executes admitted adders, Counter storage and conditional electrical ports, including quartz conductors and fixed furnace overrides. The table in section 1 records the earlier inspection, not the current admission verdict. The two execution plans, full logical-net inspection, LUT mapping and parallel executor proposed here remain future work; disabling `--optimize` does not currently select the proposed full-net plan, and canonical Boolean preparation runs in both flag settings. General BUD and retained-read owners still need implementation. [ANPU's post-legalization checks](ANPU_REDPILER.md#admission-after-the-fpurilax-legalization) reject compilation while preserving its frozen physical memory/screen episode.
+
+## 1. Repository at the original research inspection
 
 Source inspection used HEAD `26025f17d2c732d6f75e4a0041e42a6f20f0187c` and the shared checkout's local modifications. Relevant binary source hashes are recorded below; HEAD alone does not identify this work in progress.
 
@@ -17,7 +19,7 @@ Source inspection used HEAD `26025f17d2c732d6f75e4a0041e42a6f20f0187c` and the s
 | [Direct backend](../crates/core/src/redpiler/backend/direct/mod.rs) mutates downstream input counters and invokes updates through one mutable owner. [Lowering](../crates/core/src/redpiler/backend/direct/compile.rs) rejects instant boundary nodes before converting ordinary nodes. | Add a pure-logic executor alongside the ordinary backend. Concurrent calls into its existing mutation path are not the proposed parallelization. |
 | [Scheduler](../crates/core/src/redpiler/backend/queue.rs) has priority queues and FIFO order within them. [Plot execution](../crates/core/src/plot/mod.rs) already has a thread per running plot. | Preserve ordinary boundary scheduling. Budget any extra workers across plots; do not create a full CPU-sized pool per circuit. |
 
-The [I/O validation report](INSTANT_PISTON_IO_VALIDATION.md) supplies functional and temporal acceptance evidence. It is not a performance benchmark. In particular, fresh adder calculations do not prove unrestricted repeated use, XOR has unresolved reset discrepancies, and the counter has a bounded measured running sequence. Optimization must not convert those limitations into stronger contracts.
+The [I/O validation report](INSTANT_PISTON_IO_VALIDATION.md) supplies functional and temporal acceptance evidence. It is not a performance benchmark. Fresh adder calculations do not prove unrestricted repeated use, and XOR has unresolved reset discrepancies. The original Counter/Java captures cover a bounded sequence; later Rust compiled/interpreter checks cover all 65,536 increments and wrap, without proving clear or stop/restart. Optimization must not convert those limitations into stronger contracts.
 
 ## 2. Two execution plans, one semantic circuit
 
@@ -26,7 +28,7 @@ Keep the physical interpreter available as the execution path for unsupported co
 | Property | Reference plan | Optimized plan |
 | --- | --- | --- |
 | Logical structure | Every extracted primitive and net; preserve net identities, fanout and physical aliases | Equivalent pure logic, possibly shared, pruned, rewritten or LUT-mapped |
-| State and protocol | Explicit BUD bits, sampling transactions, trigger history, readiness and generator/reset state | The same state identities and transition ownership |
+| State and protocol | Explicit BUD bits, retained read state, ordered samples/validated transactions, trigger history, readiness and generator/reset state | The same state identities, acceptance rules and transition ownership |
 | Outputs | The same port adapters and consumer schedule | The same port adapters and consumer schedule |
 | Inspection | Every logical net available at each accepted logical transaction | Boundary/state trace by default; retained provenance and optional reference recomputation for removed nets |
 | Purpose | Run the extracted circuit as-is, diagnose extraction, compare transformations | Reduce execution work and memory traffic |
@@ -58,7 +60,7 @@ The intermediate representation (IR) should separate three objects:
 | --- | --- |
 | `CircuitIR`, immutable | Typed ports/nets, recognized pure operations, fanin/fanout, state read/write boundaries, protocol/adapters, physical aliases and recognition provenance |
 | `ExecutionPlan`, immutable | Dense operations, execution order, scratch-slot assignment, LUT storage, task dependencies and a map back to original nets |
-| `CircuitState`, mutable | Current BUD state, cached input strengths, previous strengths/trigger requests, accepted transaction identity, readiness, generator phase and pending boundary actions |
+| `CircuitState`, mutable | Current BUD/read state, cached input strengths, previous strengths/trigger requests, ordered sample/acceptance records, readiness, generator/read phase and pending boundary actions |
 
 The reference and optimized plans must read equivalent initialized state. A compiled region is a subassembly inside the surrounding graph; its intermediate ports are not automatically world-output nodes. Fuse adjacent pure logic only when their wave and state visibility contracts agree. Region boundaries that carry sampling, validity or timing remain explicit.
 
@@ -66,7 +68,7 @@ The reference and optimized plans must read equivalent initialized state. A comp
 
 1. **Capture and validate entry state.** Snapshot blocks, payload ownership, stationary BUD state and relevant pending work. Admit only the entry phases supported by the family. An unpowered extended BUD can be a legitimate stored bit: initialize from its decoder, not from power alone. Moving payloads require a separately supported entry protocol.
 2. **Establish execution owners.** Every reset, generator, memory update and exposed consumer effect needs an owner. Shared-output OR needs one payload group and closure across all its ownership outcomes before it can become logical OR. Unrecognized feedback remains interpreted.
-3. **Build typed channels.** Keep electrical strengths, prepared bits, accepted event bits and sampling requests distinct. Decode strength after the actual attenuation. Preserve aliases even when an internal wire is removed from the optimized plan.
+3. **Build typed channels.** Keep electrical strengths, prepared bits, accepted event bits, delivered sample notifications and accepted storage transactions distinct. Decode strength after the actual attenuation. A requested movement can be cancelled or blocked; a same-value sample can remain observable without a movement. Preserve aliases even when an internal wire is removed from the optimized plan.
 4. **Split at semantic boundaries.** State reads can be pure inputs and proposed next-state bits pure outputs. State commits, qualifying updates, delays, validity changes and consequential callbacks remain explicit operations outside Boolean cones.
 5. **Check the pure dependency graph.** Find strongly connected components. Reject unsupported pure cycles instead of inventing an iterative fixed-point rule. Feedback through recognized memory/generator state is valid; the complete stateful circuit need not be a DAG.
 6. **Lower into dense arrays.** Use integer IDs, contiguous fanin/fanout storage and topological operation arrays. Keep the mutable build graph out of the hot evaluation loop. Allocate scratch buffers once, and retain origin maps separately from operation payloads.
@@ -89,7 +91,7 @@ plot owner accepts ordered electrical changes and qualifying updates
     -> plot owner commits writes and schedules boundary actions
 ```
 
-The transaction grouping comes from the recognized protocol, not “all changes in this game tick.” Two dependent BUD samples in one tick remain ordered transactions; the second may read the first's committed state. A data-only change is not a sampling request. Sampling the same data can still be a meaningful update even when no output bit changes.
+The transaction grouping comes from the recognized protocol, not “all changes in this game tick.” Two dependent BUD samples in one tick remain ordered transactions; the second may read the first's committed state. A certified atomic bank transaction instead reads one old-bank snapshot before committing every next-state bit; this is the current Counter protocol. A data-only change is not a sampling request. Sampling the same data can still be a meaningful update even when no output bit changes. RILAX's read gates retain a separate sampled result across a later write; liveness and caching must preserve those state identities rather than reconnect the output continuously to the bank.
 
 After this baseline is correct, compare a full sweep with dirty-cone evaluation. A dirty plan follows fanout from changed inputs or state, processes affected operations in dependency order, and caches unaffected pure values. Dirty propagation applies within a finalized transaction; it must not erase boundary events, sampling requests or changes between transactions. A full sweep can win when most of the circuit is active, so select using measured activity and plan size.
 
@@ -208,11 +210,12 @@ If initial state, pure functions/transition intents, and the unchanged adapters 
 Reuse the [existing fixture tests and captures](INSTANT_PISTON_IO_VALIDATION.md). For physically compatible episodes, compare **entire exposed episodes**, including validity, consumer transitions, memory writes, pending deadlines, reset/readiness and callback-dependent effects. For synchronization-normalized episodes, define the intended logical function and adapter projection explicitly and retain the differing physical episode. Specific acceptance cases include:
 
 - Held zero and positive-to-positive changes do not become fresh root computations; legitimate internal periodic responses remain active.
-- BUD data-only changes preserve the bit; qualifying updates sample prepared data, including unchanged data. Two ordered updates read the correct intermediate state.
+- BUD data-only changes preserve the bit; qualifying notifications sample live data, including unchanged data. Validate state-changing writes separately from cancelled requests and no-op samples. Two ordered updates read the correct intermediate state; a certified atomic bank evaluates every bit from one old snapshot.
+- RILAX keeps held-read state across a later write, samples upper data on both updater movement edges and filters the tested short enable pulses. These are future family-acceptance cases, not implemented RAM semantics.
 - Shared OR preserves one group's logical ownership/reset contract. The author-excluded illegal reset remains rejected, even if a first result resembles legal OR.
 - Adder sum consumers remain valid at ticks 3–7 and one-bit carry at 5–9; the common window is 5–7. Jointly computing two bits cannot expose either early.
 - Counter memory and consumer banks retain their distinct measured schedules: stored `n` at `6n`, consumer `n` during `[6n+5, 6n+8]`. Intermediate reset/partial consumer values cannot be replaced with an always-valid count.
-- XOR's unresolved complete reset contract stays outside activated support. A Boolean XOR proof does not resolve the recorded engine discrepancy.
+- XOR's complete reset contract remains uncertified. Current compilation can admit `XOR_Simple`, with a known tick-8 repeater mismatch when both inputs are released; a Boolean XOR proof does not resolve that adapter failure or the separately recorded Java/MCHPRS reset discrepancy.
 - NANOTICK_EXAMPLE is a candidate intentional-divergence regression: once its logical ports/protocol are established, both compiled plans must suppress the activation caused by delayed physical inhibition. No compiled implementation or passing result is claimed yet. An unexplained XOR reset discrepancy is not automatically the same diagnosis.
 - Full-net and optimized net maps remain traceable; mutations invalidate plans; accepted handoff points restore equivalent interpreter state/work.
 

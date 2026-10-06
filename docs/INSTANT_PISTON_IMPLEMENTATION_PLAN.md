@@ -10,14 +10,14 @@ This roadmap implements the [instant and BUD mathematical model](INSTANT_PISTON_
 
 The [supplied lever/repeater revision](INSTANT_PISTON_IO_SCHEMATICS.md) now has exact hashes, reviewed ports, bounded protocols and independent Java captures. It is separate from the original pack. Attaching a repeater or changing an input circuit changes dust shape, loading and notifications; admission remains specific to a validated consumer/protocol rather than a matching filename. [Validation](INSTANT_PISTON_IO_VALIDATION.md) records limits and spatial/order-dependent XOR reset behavior.
 
-| Area | First implementation | Later work |
+| Area | Current scope | Remaining work |
 | --- | --- | --- |
-| Recognition | Observer reset seeds, supplied torch and dust families, shared payload groups and inhibition diagnostics | Additional proven reset constructions |
-| Inputs | Existing lever, torch, repeater and wire nodes; prepared data and falling triggers | Buttons and other adapters after their pulse protocol is tested |
-| Outputs | Connections between instant subassemblies and certified repeater interfaces | Lamps, BUD updates, comparators, observers and other consumers |
+| Recognition | Executable observer/shared-clock families; structural reports for supplied torch/dust families, shared groups and inhibition | Additional executable reset constructions and group protocols |
+| Inputs | Ordinary sources through prepared-data and falling-trigger ports | Broader pulse, sampling and rearm protocols |
+| Outputs | Conditional electrical ports for repeaters, comparators, torches, lamps, trapdoors and note blocks; internal instant connections | Independent BUD notifications, observer-on-payload updates and additional consumer contexts |
 | Computation | Boolean functions for declared logical waves with strength-aware port decoding and ideal internal synchronization | Larger optimizations and additional certified families |
-| State | Previous strengths, accepted wave identity, readiness and externally significant reset deadlines | BUD bits, sampling transactions and counter clock state |
-| Movement | Recognition and restoration of supported single-payload mechanisms and shared groups | Ordinary pistons, longer payload lines and complex mechanics |
+| State | Previous strengths, accepted wave identity, observer phase and one owned Counter BUD bank | Standalone ordered BUD transactions, retained read state and additional clocks |
+| Movement | Supported single-payload mechanisms/shared far groups and one empty ordinary generator; bounded handoff | Independent ordinary update pistons, longer payload lines and complex mechanics |
 | Rendering | Ordinary visible inputs and useful outputs with infrequent updates | Optional additional display ports |
 | Execution | Whole-plot activation only when every relevant execution owner is supported | Hybrid compiled and interpreted regions |
 
@@ -44,7 +44,7 @@ The current pack has 20 basic or diagnostic dossiers and two deferred CPU invent
 | XOR_Simple has reset pulses beyond its first-wave XOR projection | A pure XOR formula needs a certified boundary response |
 | NANOTICK_EXAMPLE accepts activation before delayed inhibition | Retain its physical diagnostic; once logical ports/protocol are certified, test that compiled inhibition suppresses the activation rather than requiring physical equality |
 | Corrected ADDER_11BITS passes current arithmetic and Java projections | Use current hashes/coordinates; general reuse and adapters remain separate |
-| COUNTER_BASIC stores counts 1 through 16 after one generator release | Retain memory/clock state; clear, restart, high carry and wrap remain unverified |
+| Original COUNTER_BASIC capture stores counts 1 through 16 after one generator release | Retain memory/clock state; later I/O Rust regressions cover all 65,536 increments and wrap, while clear/restart remain unverified |
 
 The canonical [ADDER_11BITS.schem](../test_data/instant-pistons/ADDER_11BITS.schem) is 21 by 7 by 46, SHA-256 `41476594941f234f8759c2b4b12dab72641fbda9fb5f0412a2b0089ba964464e`. It has six signs, 11 stages and a separate unlabeled trigger. Its decoded result is available at response boundaries 1 through 3; moving outputs and reset are separate observations. The signless replacement and historical ADDER_GWIEZDNY_TEST are not current expectations. The downloaded edge case also has independent hashes and traces.
 
@@ -99,7 +99,7 @@ Add proposed modules under `crates/core/src/redpiler/analysis/`: `snapshot`, `to
 | PayloadGroup | Members, payload identity, allowed positions, owners and reset closure |
 | RegionPort | Stable ID, role, channel, physical aliases, direction, strength range and decoder |
 | RegionProgram | Ports, expression DAG, optional state transition, protocol and adapter IDs |
-| RegionState | Previous strengths, prepared data, accepted wave, readiness and clock/reset state |
+| RegionState | Previous strengths, prepared data, accepted wave, stored bits, retained read state, acceptance state and clock/reset lifecycle |
 | RestorationDescriptor | Geometry/entities, reconstruction recipe, necessary ownership state and work mapping |
 | AnalysisReport | Classifications, groups, ports, unsupported components and reasons |
 | CompileArtifact | Ordinary graph, programs, alias resolver, initial state, ownership, report and restoration |
@@ -112,7 +112,7 @@ Keep electrical influence, qualifying update influence and mechanical access as 
 
 ### Port channels and graph integration
 
-Distinguish electrical strength, prepared data, wave event and logical sampling update. Strength links retain attenuation. An event carries an accepted occurrence for a wave. A sampling update may change storage when data strength is unchanged. Do not reuse the diode Side link for these different channels.
+Distinguish electrical strength, prepared data, wave event, delivered sampling notification and accepted storage transaction. Strength links retain attenuation. An event carries an accepted occurrence for a wave. A notification samples live data even when no movement is needed; a queued request can fail its later power/state/payload checks. Same-value samples can remain observable without a write. Do not reuse the diode Side link for these different channels.
 
 A subassembly output is a graph connection, not automatically a world-output flag. It may feed another instant or an ordinary component. Merge compatible adjacent instant groups into one function while preserving aliases. Display and pruning flags remain separate.
 
@@ -122,7 +122,7 @@ Recommended initial backend representation: keep expressions and region state in
 
 ### Logical execution and external timing
 
-For a supported wave compute `y = F(prepared_data, accepted_events, visible_memory)`. If state is required apply `z_next = H(z, prepared_data, accepted_events, sampling_updates)`. A pure function has no persistent data memory; readiness or reset deadlines can still require bookkeeping.
+For a supported wave compute `y = F(prepared_data, accepted_events, visible_memory, retained_read_state)`. If state is required apply `z_next = H(z, prepared_data, accepted_events, ordered_protocol_actions)`. Those actions preserve sample data, acceptance/cancellation, adapter deadlines and any proven atomic batch. A pure function can omit storage arguments; readiness, sampled reads and reset deadlines can still require state. RILAX proves that a held read need not continuously expose the latest data bank.
 
 Source updates refresh strengths and prepared conditions. Changes at prepared-data-only ports update cached data without launching computation. Qualifying falling transitions at trigger/event ports create provisional requests under the family's declared update contract; a QC power change without the required recheck is insufficient. At the logical launch checkpoint, validate readiness/current trigger conditions, finalize wave inputs, evaluate the DAG and publish the certified boundary response. This retains cancellation when power is restored before acceptance. An update to already-low data is a separate effect, not a new falling event.
 
@@ -344,7 +344,7 @@ Render useful outputs infrequently without animating internal pistons or trackin
 
 Return explicit success, rejection, cancellation or failure from preparation. Build while the interpreter retains authoritative queues; transfer state once after complete success. Stage the replacement backend rather than modifying the active artifact during preparation. Defer destructive scheduler/history changes until success and return the scoreboard to the actual prior/stopped state on failure. Failure preserves prior world/ownership.
 
-Expand admission through the existing prepared-program path using the complete support report. Update compile feedback/scoreboard from the actual result. Unimplemented BUDs, ordinary pistons, external observers, commands or motions keep the plot interpreted.
+Expand admission through the existing prepared-program path using the complete support report. Update compile feedback/scoreboard from the actual result. Unowned BUD storage, ordinary actuators outside the admitted generator, unsupported observer/consumer contexts and active motions keep the plot interpreted. Ordinary [command-block outputs](REDPILER_COMMAND_OUTPUTS.md) are already supported; the presence of a command block alone is not a rejection rule.
 
 Test queued work, stale scheduled block types, backend failure, cancellation and recompilation. Do not build hybrid fallback by running compiled and interpreted ticks sequentially.
 
@@ -376,7 +376,7 @@ Validate repeated arithmetic with the new rearm protocol, attenuation thresholds
 
 The normal regression covers the captured release; the opt-in full-cycle Rust comparison passed all 65,536 increments, matching each tick's repeater states and checking high carries and wrap against the interpreter. That comparison is separate from the existing Java captures. Standalone BUD data/update adapters, multiple clocks, clear, stop/restart and arbitrary rearm histories remain separate acceptance requirements.
 
-Use a standalone BUD fixture to define initialization, independent power/update ports, polarity, sampling, validity and reuse. Implement `q_next = update ? decoded_data : q`. Data without an update retain storage; ordered samples and old/new memory reads remain explicit dependencies.
+Use a standalone BUD fixture to define initialization, independent power/update ports, polarity, event acceptance, sampling, validity and reuse. At the settled transaction boundary implement `q_next = accepted_transaction ? decoded_data : q`; a raw notification is not sufficient to promise a successful write. Preserve same-value samples separately from accepted movements. Data without a qualifying sample retain storage; ordered samples and old/new memory reads remain explicit dependencies. The Counter already evaluates its next-state functions from one old-bank snapshot and commits the batch in phase 3. General BUD adapters must prove their own ordered or atomic semantics, and RILAX's lower read gates need retained state separate from its upper data bank.
 
 Integrate memory with functions/coordinator and preserve it through optimization/materialization. Recognize the counter generator/bank, then define release and update cadence. Add clear/restart/high carry/wrap only when evidence establishes those contracts.
 
@@ -385,6 +385,8 @@ Integrate memory with functions/coordinator and preserve it through optimization
 ### M12–M14 ANPU memory and screen equivalence
 
 The [ANPU extension](ANPU_REDPILER.md) defines the ordered memory/screen contract and retained interpreter oracle. Compiled BUD support must preserve consequential sampling and accepted-write order. ANPU's 896 note-block BUD cells move black concrete; the counter's redstone-block storage and six-phase macro cannot own them without another representation.
+
+After the FPU/RILAX material/context corrections, ANPU still rejects: 1× exceeds the analysis dependency budget, while 2×, 4× and 8× reach the ordinary piston at selection-local `(77,36,38)`, outside the owned empty-generator protocol. All four optimize/I/O combinations preserve state on rejection. The unchanged 50,000-tick interpreter memory/screen replay passes. M12's frozen-reference work is complete for this no-paddle episode; M13's storage/update owners and CPU lowering remain pending. Increasing budgets does not complete M13.
 
 M12 freezes an ordered BUD trace alongside the unchanged original CPU/screen references and checks the interpreted episode. M13 separates electrical data from notification/sampling events, supports conducting occupancy, retracted entry and event power rechecks, then lowers the CPU while passing these oracles. M14 may optimize only after preserving memory position, sampled value, accepted transaction order and game-tick screen timing. The ordinary interpreter supplies the differential baseline; Redpiler activation requires a supported compiled graph.
 
@@ -441,11 +443,11 @@ Backend propagation/scheduling changes require broader ordinary redstone checks.
 | Falling events confused with held zero | Initialize strengths and emit only accepted wave events |
 | Unrelated roots combined | Specify trigger sampling and finalization |
 | Correct formula but different repeater behavior | Validate loaded fixtures through computation/reset |
-| Boolean computation erases reset behavior | Keep boundary-relevant clock/adapter state explicitly |
+| Boolean computation erases reset or held-read behavior | Keep boundary-relevant clock, read-gate and adapter state explicitly |
 | Mobile sources enter constant folding | Ownership-aware identification and resolver |
 | Conserved payload hides broken reset | Check all supported owner/position outcomes |
 | Boolean strengths erase wire limits | Retain ranges, attenuation and thresholds |
-| Optimizations erase state/update effects | Separate channels and retention roots |
+| Optimizations erase state/update effects | Separate notifications from accepted writes; retain ordered samples and atomic-bank visibility |
 | Excess fan-in/configuration growth | Bound analysis, partition interfaces and use suitable counters |
 | Synthetic pending work lacks physical mapping | Typed deadlines and reconstruction descriptors |
 | Compile fails after queue transfer | Prepare first, commit once and preserve ownership |
@@ -457,16 +459,18 @@ Backend propagation/scheduling changes require broader ordinary redstone checks.
 
 Save consumer variants separately and mark actual connections. Basic geometry is already supplied; requests now concern ordinary interfaces and repeatability.
 
-| Needed example | Minimum purpose | Blocks |
+| Fixture / remaining evidence | Minimum purpose | Blocks |
 | --- | --- | --- |
-| Single instant with lever/repeater | Ready state, polarity, response, rearm and second response | M0/M6 |
-| OR/AND with controls | Allowed individual/both operations and wave grouping | Multi-input M6 |
-| NOT/XOR with repeaters | Both input orders, synchronization, reset and filtering | Their adapters |
-| Torch/dust/downward variants | Family-specific readiness, reuse and supports | Family expansion |
-| Repeater with downstream observation | Retention under io-only and output timing | Optimization |
-| Independent BUD data/update fixture | Initialize, store both bits, data without updates, repeat samples | M11 |
+| Supplied lever/repeater instant; explicit rearm/second response still needed | Ready state, polarity, response and reusable input protocol | Broader M6 |
+| Supplied controlled OR/AND; exposed near-owner transfer variant still useful | Individual/both operations, grouping and shared near outputs | Group expansion |
+| Supplied NOT/XOR; cropped reset-order variants still useful | Both input orders, synchronization, reset and filtering | Complete XOR adapter |
+| Supplied torch/dust/downward variants; reusable episodes still needed | Family-specific readiness, reuse and supports | Family expansion |
+| Supplied consumers; broader notification-sensitive attachments still useful | Retention under io-only and output timing/update effects | Consumer expansion |
+| Supplied independent BUD fixtures and RILAX bank | Store both bits, same-value samples, cancellation, repeated read/write and both saved states | General M11/A2 |
+| RILAX held-read reverse/mixed writes and address changes | Establish how retained gate state combines with live bank geometry; current held-read evidence is zero-to-`0xff` only | General read adapter |
 | Decoder and longer wires/chains | Fan-out, reconvergence, thresholds and outputs | M10 |
-| Counter controls | Defined stop/restart, clear and carry/wrap when wanted | Stateful expansion |
+| Counter stop/restart and clear controls with a declared protocol | Defined control histories beyond the already tested full-cycle carries/wrap | Stateful expansion |
+| Cropped ANPU note-block/concrete cell and two-cell update bus | Data/update/read mapping and same-tick order in both directions | A2/A3 |
 
 No fixture needs to match a proposed result for new external inputs during undefined reset intervals. Keep these diagnostic. Materialization cases can initially be generated from supported fixtures/histories rather than requesting a schematic for every phase.
 

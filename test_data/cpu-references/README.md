@@ -44,6 +44,12 @@ interpreter regression verifies the frozen sampling/write projection, original
 screen frames and physical checkpoints. Redpiler has no interpreter-backed
 compatibility execution path; ANPU compilation remains unsupported.
 
+The post-FPU/RILAX check at production revision `7f22ae9` explicitly passes the
+unchanged 50,000-tick ANPU replay. The expanded admission regression rejects all
+four rank budgets and all four optimize/I/O combinations, plus the removed-flag
+bypass probes, without changing state or queued work. See the linked acceptance
+plan for measured limits, first unsupported actor and pending graph protocols.
+
 Both CPU JSON files also contain stricter SHA-256 checkpoints at ticks 0, 10,
 100, 1,000, 5,000, 10,000, 20,000, 30,000, and 50,000. PM1 includes 50,100 too.
 These cover:

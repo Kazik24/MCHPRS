@@ -267,6 +267,8 @@ Two same-value write episodes also retain the original bank but generate fourtee
 
 Another diagnostic holds READ EN on while writing `0xFF` to the same word. The upper bank changes, but output remains zero until READ EN is released and enabled again. A compiler that directly connects a stored-bit variable to a read output would change this observed behavior. The lower gates need their own sampled state/read episode even when the memory has already settled.
 
+This case proves retained gate state for a zero-to-`0xFF` change, not a complete eight-bit output-latch specification. Reverse changes, mixed patterns and address changes during a held read remain unmeasured. The [mathematical adapter](INSTANT_PISTON_REDPILER_MODEL.md#sampled-read-state) therefore retains both data-bank and read-gate state; those missing cases must be characterized before selecting a general read transition.
+
 ### Short enable pulses
 
 With prepared `0xFF` and address zero, widths of one and two game ticks produce no accepted update-piston movement and no write. Widths of four, six, eight and twelve ticks all write `0xFF`. The shortest threshold is not established because width three was not tested. Ordinary repeater scheduling and pulse filtering must remain in the graph; simplifying the whole decoder to an immediate enable would admit writes the interpreter suppresses.

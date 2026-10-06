@@ -4,6 +4,8 @@ This document defines the redstone simulation implemented by the **world interpr
 
 The specification was reconciled with the working-tree sources on **2026-10-06**. The base revision was `4a2fb767821567ba62c5a63bb9af68fdc19d26e3`; the working tree also contained local changes. Source links below refer to this repository, and the code is authoritative if it subsequently changes.
 
+A follow-up audit against production sources at `7f22ae9` checks the piston sampling/request/acceptance, comparator override and compiled-boundary descriptions against the FPU/RILAX findings. The explicit ANPU 50,000-tick replay still matches the unchanged physical checkpoints, ordered BUD projection and complete screen reference. The compiler admission changes do not change the physical equations below.
+
 The scope is `PlotWorld::tick_interpreted` and the functions it calls. Redpiler's compiled graph executor is a separate model; its graph optimizations are not assumptions of this specification. Network rendering, permissions, and wall-clock pacing are included only where they affect inputs or observable execution results. The current [compiled instant pipeline](INSTANT_PISTON_RUNTIME.md) documents conditional electrical output ports, admission limits and differential tests separately; its phase decisions do not replace the physical transition rules below.
 
 ## Contents
@@ -1175,6 +1177,8 @@ This predicate is evaluated when a callback rechecks the piston. The world does 
 
 A piston update receives a supplied base state $(f,s,e)$, calculates $x=X(p,f)$, and returns if $x=e$.
 
+Calculation of $x$ is a power sample even when $x=e$ and no movement is requested. The test-only BUD trace records this sample before the early return. A delivered notification, a queued event and an accepted movement are distinct observations; an unchanged bit does not prove that no update occurred. Neither a held power level nor idle game ticks cause a global BUD resample.
+
 If $x=1,e=0$, validate the forward payload line in section 14.1. If valid, request an Extend event. If invalid, request nothing.
 
 If $x=0,e=1$, inspect the cell $r=p+2f$. An early-retraction condition holds only when
@@ -1215,6 +1219,8 @@ When $\epsilon$ is popped, read the live block at $p$:
 No additional guard requires the live facing to equal the captured event facing. Extension geometry uses the live facing. Retraction geometry also uses the live facing, but the retracted carried base's facing and the emitted block-action direction use the captured facing. This is the literal behavior for an intervening state mutation.
 
 If validation rejects the event, it has still been consumed. Successful execution emits a piston block action carrying the event action and captured direction.
+
+The abstract storage equation `q_next = accepted_transaction ? decoded_data : q` is a settled, certified-family projection of these rules, not a replacement for validation. A no-op sample can be a logical transaction without an accepted physical movement; a cancelled or blocked movement cannot be counted as a successful state-changing write. Valid BUD history can leave an extended or retracted cell disagreeing with current power until a qualifying recheck. The [compiler model](INSTANT_PISTON_REDPILER_MODEL.md#5-bud-memory-samples-on-an-update) specifies the decoder and separates these records.
 
 ### 13.4 Legacy ticks and heads
 
@@ -1593,7 +1599,7 @@ Redpiler's optimized graph can merge or remove nodes. Equality of ordinary lamp 
 
 For instant-piston compilation, the circuit author's [protocol](INSTANT_REDPILLER.md#clarified-execution-scope) defines logical one as a nonzero-to-zero transition from a ready extended mechanism. It permits internal simplification subject to preservation of non-instant consumer behavior and leaves new external inputs during reset outside initial conformance. These are circuit-specific compiler conditions; the interpreter transition rules continue to determine physical execution for every input sequence. The [implementation plan](INSTANT_PISTON_IMPLEMENTATION_PLAN.md) describes recognition, boundary discovery and validation under that protocol.
 
-The [implemented instant pipeline](INSTANT_PISTON_RUNTIME.md) accepts the lever/repeater 11-bit adder and a counter with one owned observer clock. Extraction shares the interpreter's power and wire-side rules, models conditional far occupancy and treats the moving near payload as nonconducting during the first wave. Clocked storage contributes settled far/near occupancy as old-memory inputs to the next-state functions. A bounded Boolean decision program replaces internal updates; a six-phase observer adapter supplies ordinary graph consumers, whose repeater scheduling remains authoritative. Reset reconstructs owned geometry and work through bounded private interpreter replay, seeding stored state for the clocked path. Tests compare arithmetic, repeater waveforms and continuation after handoff; they do not establish equality of historical callbacks or piston-motion traces. This compiler abstraction does not change the physical rules specified here.
+The [implemented instant pipeline](INSTANT_PISTON_RUNTIME.md) accepts the lever/repeater 11-bit adder and a counter with one owned observer clock. Extraction shares the interpreter's power and wire-side rules, models conditional far occupancy and treats the moving near payload as nonconducting during the first wave. Clocked storage contributes settled far/near occupancy as old-memory inputs to the next-state functions; all functions read the same old bank before the phase-3 commit. A bounded Boolean decision program replaces internal updates; a six-phase observer adapter supplies ordinary graph consumers, whose repeater scheduling remains authoritative. Reset reconstructs owned geometry and work through bounded private interpreter replay, seeding stored state for the clocked path. Tests compare arithmetic, repeater waveforms and continuation after handoff; they do not establish equality of historical callbacks or piston-motion traces. `XOR_Simple` can currently compile but has a documented complete-reset waveform mismatch, so successful admission alone is not universal conformance evidence. This compiler abstraction does not change the physical rules specified here.
 
 ## 19. Worked traces
 
@@ -1673,7 +1679,9 @@ Both stages begin retracting during the first game tick, so this falling computa
 
 The [RILAX memory characterization](FPU_RILAX_REDPILER_RESEARCH.md) provides an eight-word/eight-bit example of the power/update separation in section 13. In its settled data-preparation interval, changing data can make `should_piston_extend` false while an extended memory piston remains unchanged. Idle game ticks do not resample it. Seven ordinary piston heads subsequently notify all eight memory cells in the selected word. Both head placement during extension and head removal during retraction can produce samples; a held enable level is not continuous sampling.
 
-For the saved orientation and tested stable protocol, an enable rise reaches the ordinary generators at tick six, and the required upper-cell movements settle at tick eight. Read selection uses separate lower gray-concrete gates; repeaters expose the sampled word at tick ten. A held read keeps the preceding sampled result across a later write until another read episode. These are fixture-level consequences of ordinary delays, notifications and transport, not universal piston latency constants.
+For the saved orientation and tested stable protocol, an enable rise reaches the ordinary generators at tick six, and the required upper-cell movements settle at tick eight. Read selection uses separate lower gray-concrete gates; repeaters expose the sampled word at tick ten. The measured held-read episode retains its zero result across a later `0xff` write until a new read cycle. This does not establish an independent latched output word for every mixed-bit or overlapping history. These are fixture-level consequences of ordinary delays, notifications and transport, not universal piston latency constants.
+
+The lower read gates therefore add state beyond the upper stored data bank. In the measured case, a held zero read remains zero after the selected word becomes `0xff`; releasing and enabling read again publishes `0xff`. On the write side, releasing a held update enable can sample data prepared while it was held. With prepared `0xff`, one- and two-game-tick enable pulses produce no updater movement or write, while tested widths four, six, eight and twelve do write; width three was not measured. Preserve ordinary decoder/pulse timing rather than inventing one universal rising-edge write rule.
 
 Unchanged power samples do not create accepted storage movements, but remain present in the ordered test trace. The downloaded revision has a missing address-one decoder torch: changing that address can sample/erase its saved bits while update enable is off. Preserve this as the original negative fixture; the normal measured protocol applies to the healthy addresses and a separately identified one-block diagnostic probe. The same report records author-confirmed broken geometry in the FPU snapshot, without treating those imported blocks as legal ready transport states.
 
@@ -1722,4 +1730,4 @@ Existing regression evidence includes:
 
 These tests support their specific assertions. They do not establish exhaustive conformance for every circuit or input history.
 
-The [ANPU interpreter regression](ANPU_REDPILER.md) additionally verifies its frozen 896-cell BUD sampling/write projection through 50,000 game ticks, plus the original complete screen trace and physical checkpoints. The ordered trace includes same-value samples. This is a physical reference for future compiled BUD support; it does not establish compiled CPU equivalence or extend the instant runtime's ideal-synchronization contract.
+The [ANPU interpreter regression](ANPU_REDPILER.md) additionally verifies its frozen 896-cell BUD sampling/write projection through 50,000 game ticks, plus the original complete screen trace and physical checkpoints. Its post-legalization replay passes with 1,552 nonempty sample ticks; the ordered trace includes same-value samples. All twenty budget/flag admission attempts reject without altering the physical checkpoint or queued work. This is a physical reference for future compiled BUD support; it does not establish compiled CPU equivalence or extend the instant runtime's ideal-synchronization contract.

@@ -1,5 +1,7 @@
 # Agent task: document and test the instant-piston schematic pack
 
+**Historical task scope:** this prompt records the original pack-characterization assignment before executable piston support and the standalone BUD revisions. Statements below about missing fixtures or a future parser describe that stage. For new research, use the current [runtime](INSTANT_PISTON_RUNTIME.md), [mathematical contract](INSTANT_PISTON_REDPILER_MODEL.md), [I/O catalog](INSTANT_PISTON_IO_SCHEMATICS.md), [FPU/RILAX findings](FPU_RILAX_REDPILER_RESEARCH.md) and [ANPU acceptance status](ANPU_REDPILER.md). Retain this prompt's trace/provenance requirements, but do not overwrite historical physical evidence with a new compiler expectation.
+
 You are working in the MCHPRS repository at F:\rustrepos\MCHPRS. Your task is to establish reproducible, evidence-backed behavior specifications and tests for the supplied instant-piston examples. Finish the documentation, fixture manifests, trace capture and meaningful regression tests before implementing a Redpiler instant parser.
 
 The result must explain what each circuit does, why it does it, when its output is valid, what reset does, and which update-order assumptions a future compiler must retain. A schematic filename or a final output bit is insufficient evidence.

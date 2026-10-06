@@ -179,30 +179,67 @@ fn capture_anpu_bud_reference_to_new_file() {
 
 #[test]
 fn anpu_cannot_bypass_compiled_graph_admission() {
+    use crate::redpiler::analysis::{self, AnalysisLimits};
     use crate::redpiler::{Compiler, CompilerOptions};
+    use std::collections::BTreeMap;
 
     let world = cpus::load_cpu(cpus::CPUS[1]);
     let before = cpus::checkpoint(&world, 0, &[]);
-    for flags in ["", "--piston-events"] {
-        let mut compiler = Compiler::default();
-        assert!(
-            compiler
+    let ticks = world.scheduler().iter_entries().collect::<Vec<_>>();
+    let report = analysis::analyze(
+        &world,
+        world.get_corners(),
+        &ticks,
+        &Default::default(),
+        AnalysisLimits::for_budget(8),
+    )
+    .unwrap();
+    let mut unsupported = BTreeMap::<_, usize>::new();
+    for actor in &report.recognition {
+        for failure in &actor.failures {
+            if let analysis::families::RecognitionFailure::UnsupportedPayload { block, .. } =
+                failure
+            {
+                *unsupported.entry(block).or_default() += 1;
+            }
+        }
+    }
+    println!(
+        "ANPU live inventory: {}",
+        serde_json::json!({
+            "pistons": report.pistons.len(), "observers": report.observers.len(),
+            "ordinary": report.pistons.iter().filter(|p| !p.piston.sticky).count(),
+            "retracted": report.pistons.iter().filter(|p| !p.piston.extended).count(),
+            "matched_reset_mechanisms": report.recognition.iter().filter(|r| r.is_matched()).count(),
+            "payload_groups": report.payload_groups.len(), "unsupported_payloads": unsupported,
+            "inspected_cells": report.inspected_cells, "dependency_steps": report.dependency_steps,
+        })
+    );
+    for budget_multiplier in [1, 2, 4, 8] {
+        for flags in [
+            "",
+            "--optimize",
+            "--io-only",
+            "--optimize --io-only",
+            "--piston-events",
+        ] {
+            let mut compiler = Compiler::default();
+            let mut options = CompilerOptions::parse(flags);
+            options.budget_multiplier = budget_multiplier;
+            let error = compiler
                 .compile(
                     &world,
                     world.get_corners(),
-                    CompilerOptions::parse(flags),
-                    world.scheduler().iter_entries().collect(),
+                    options,
+                    ticks.clone(),
                     Default::default(),
                 )
-                .is_err(),
-            "ANPU requires compiled BUD support; flags={flags}"
-        );
-        assert!(!compiler.is_active());
-        assert!(compiler.current_flags().is_none());
-        assert_eq!(
-            cpus::checkpoint(&world, 0, &[]),
-            before,
-            "failed admission must preserve physical state and queued work"
-        );
+                .unwrap_err();
+            println!("ANPU admission budget={budget_multiplier}, flags={flags:?}: {error}");
+            assert!(!compiler.is_active());
+            assert!(compiler.current_flags().is_none());
+            assert_eq!(cpus::checkpoint(&world, 0, &[]), before,
+                "failed admission must preserve physical state and queued work; budget={budget_multiplier}, flags={flags}");
+        }
     }
 }
