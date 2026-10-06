@@ -5,7 +5,10 @@ pub use queue::*;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BackendError {
     InstantRuntimeUnavailable,
-    MissingInstantBinding { pos: mchprs_blocks::BlockPos },
+    InvalidInstantProgram,
+    MissingInstantBinding {
+        pos: mchprs_blocks::BlockPos,
+    },
     InvalidStrength {
         pos: Option<mchprs_blocks::BlockPos>,
         strength: u8,
@@ -23,6 +26,7 @@ impl std::fmt::Display for BackendError {
             Self::InstantRuntimeUnavailable => {
                 f.write_str("instant graph boundaries require the region runtime")
             }
+            Self::InvalidInstantProgram => f.write_str("instant program contains unresolved actuator variables"),
             Self::MissingInstantBinding { pos } => write!(f, "instant port at {pos:?} was lost during graph preparation"),
             Self::InvalidStrength { pos, strength } => write!(f, "graph node at {pos:?} has invalid strength {strength}; expected 0..15"),
             Self::TooManyInputs { pos, default_inputs, side_inputs } => write!(f, "graph node at {pos:?} has {default_inputs} main and {side_inputs} side inputs; each channel supports at most 255"),

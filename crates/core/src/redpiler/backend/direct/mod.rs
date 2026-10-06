@@ -1,10 +1,10 @@
 //! The direct backend does not do code generation and operates on the `CompileNode` graph directly
 
 mod compile;
+mod instant;
 pub mod node;
 mod tick;
 mod update;
-mod instant;
 
 use super::{BackendError, JITBackend, TickScheduler};
 use crate::redpiler::compile_graph::CompileGraph;
@@ -41,8 +41,12 @@ pub struct DirectBackend {
 
 impl DirectBackend {
     pub(crate) fn compile_instant(
-        &mut self, graph: CompileGraph, program: crate::redpiler::instant::program::PreparedInstant,
-        ticks: Vec<TickEntry>, options: &CompilerOptions, monitor: Arc<TaskMonitor>,
+        &mut self,
+        graph: CompileGraph,
+        program: crate::redpiler::instant::program::PreparedInstant,
+        ticks: Vec<TickEntry>,
+        options: &CompilerOptions,
+        monitor: Arc<TaskMonitor>,
     ) -> Result<(), BackendError> {
         compile::compile(self, graph, ticks, options, monitor, Some(program))
     }
@@ -106,8 +110,9 @@ impl JITBackend for DirectBackend {
     }
 
     fn reset<W: World>(&mut self, world: &mut W, io_only: bool) {
+        self.flush(world, false);
         if let Some(runtime) = self.instant.take() {
-            runtime.materialize(world, &self.nodes);
+            runtime.materialize(world);
         }
         self.scheduler.reset(world, &self.blocks);
 
@@ -329,6 +334,7 @@ impl fmt::Display for DirectBackend {
                 NodeType::Trapdoor => "Trapdoor".to_string(),
                 NodeType::Wire => "Wire".to_string(),
                 NodeType::Constant => format!("Constant({})", node.output_power),
+                NodeType::InstantSource => format!("InstantSource({})", node.output_power),
                 NodeType::NoteBlock { .. } => "NoteBlock".to_string(),
             };
             let pos = if let Some((pos, _)) = self.blocks[id] {

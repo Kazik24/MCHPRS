@@ -7,7 +7,7 @@ import java.nio.charset.CodingErrorAction;
 import java.nio.charset.StandardCharsets;
 import java.util.UUID;
 
-/** Versioned frames; identity is deliberately absent and comes from the connection. */
+/** Velocity/MROWW frames; player identity comes from the authenticated connection. */
 public final class ChatProtocol {
     public static final String CHANNEL = "redstonefun:chat";
     public static final int VERSION = 1, HELLO = 0, READY = 1, CHAT = 2;

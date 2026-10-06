@@ -117,7 +117,7 @@ fn compile_node(
         CNodeType::Trapdoor => NodeType::Trapdoor,
         CNodeType::Wire => NodeType::Wire,
         CNodeType::Constant => NodeType::Constant,
-        CNodeType::MobileSource { .. } => NodeType::Lever,
+        CNodeType::MobileSource { .. } => NodeType::InstantSource,
         CNodeType::InstantInput { .. } => {
             unreachable!("boundary nodes rejected before lowering")
         }
@@ -156,7 +156,8 @@ pub fn compile(
             crate::redpiler::compile_graph::NodeType::InstantInput { .. }
                 | crate::redpiler::compile_graph::NodeType::MobileSource { .. }
         )
-    }) && instant.is_none() {
+    }) && instant.is_none()
+    {
         return Err(BackendError::InstantRuntimeUnavailable);
     }
     // Validate before filling packed input counters or creating unchecked
@@ -220,11 +221,22 @@ pub fn compile(
         .collect();
     backend.nodes = Nodes::new(nodes);
     if let Some(program) = instant {
-        let bindings = graph.node_indices().filter_map(|idx| match graph[idx].ty {
-            crate::redpiler::compile_graph::NodeType::MobileSource { alias, .. } => Some((alias,backend.nodes.get(nodes_map[&idx]))),
-            _ => graph[idx].block.map(|(pos,_)| (pos,backend.nodes.get(nodes_map[&idx]))),
-        }).collect();
-        backend.instant = Some(super::instant::Runtime::bind(program, bindings, &backend.nodes)?);
+        let bindings = graph
+            .node_indices()
+            .filter_map(|idx| match graph[idx].ty {
+                crate::redpiler::compile_graph::NodeType::MobileSource { alias, .. } => {
+                    Some((alias, backend.nodes.get(nodes_map[&idx])))
+                }
+                _ => graph[idx]
+                    .block
+                    .map(|(pos, _)| (pos, backend.nodes.get(nodes_map[&idx]))),
+            })
+            .collect();
+        backend.instant = Some(super::instant::Runtime::bind(
+            program,
+            bindings,
+            &backend.nodes,
+        )?);
     }
 
     // Create a mapping from block pos to backend NodeId

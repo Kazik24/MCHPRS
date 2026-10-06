@@ -4,11 +4,8 @@
   <parent><groupId>pl.redstonefun</groupId><artifactId>network-chat</artifactId><version>1.0.0</version></parent>
   <artifactId>chat-velocity</artifactId>
   <dependencies>
-    <dependency><groupId>pl.redstonefun</groupId><artifactId>chat-common</artifactId><version>${project.version}</version></dependency>
     <dependency><groupId>com.velocitypowered</groupId><artifactId>velocity-api</artifactId><version>${velocity.version}</version><scope>provided</scope></dependency>
     <dependency><groupId>net.luckperms</groupId><artifactId>api</artifactId><version>5.4</version><scope>provided</scope></dependency>
   </dependencies>
-  <build><finalName>redstonefun-chat-velocity</finalName><plugins>
-    <plugin><groupId>org.apache.maven.plugins</groupId><artifactId>maven-shade-plugin</artifactId></plugin>
-  </plugins></build>
+  <build><finalName>redstonefun-chat-velocity</finalName></build>
 </project>

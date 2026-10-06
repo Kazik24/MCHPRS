@@ -84,7 +84,7 @@ public final class NetworkChat {
             }
         }
         try (var reader = Files.newBufferedReader(file, StandardCharsets.UTF_8)) { config.load(reader); }
-        backends = Set.copyOf(Arrays.stream(config.getProperty("backends", "mchprs,redstonefun").split(","))
+        backends = Set.copyOf(Arrays.stream(config.getProperty("backends", "mroww").split(","))
             .map(String::trim).filter(s -> !s.isEmpty()).toList());
         long cooldown = Long.parseLong(config.getProperty("cooldown-ms", "500"));
         if (cooldown < 0 || cooldown > 60_000) throw new IOException("cooldown-ms must be 0..60000");

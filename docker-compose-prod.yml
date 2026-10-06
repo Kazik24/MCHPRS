@@ -1,19 +1,19 @@
 services:
-  mchprs:
-    image: mchprs-mchprs:velocity
+  mroww:
+    container_name: mroww
+    image: mroww:latest
     build:
       # Cargo/target caches live in the prod server's BuildKit builder.
       context: .
       dockerfile: docker/Dockerfile-plot-scale-5
     restart: unless-stopped
+    ports:
+      - "25578:25565"
     mem_limit: 6g
     memswap_limit: 6g
     cpus: 4.0
     environment:
       MCHPRS_CONFIG: /run/config/Config.toml
-    depends_on:
-      velocity:
-        condition: service_healthy
     stop_grace_period: 60s
     networks:
       - backend
@@ -21,40 +21,13 @@ services:
     volumes:
       - /srv/mchprs/data:/data
       - /srv/mchprs/backend-config:/run/config
-      - /srv/mchprs/velocity:/run/velocity:ro
+      - type: bind
+        source: /home/minecraft-dev/velocity/data/forwarding.secret
+        target: /run/velocity/forwarding.secret
+        read_only: true
+        bind:
+          create_host_path: false
       - /home/minecraft/redstonefun_server/plugins/WorldEdit/schematics:/data/schems/rf:ro
-
-  velocity:
-    image: mchprs-velocity:4.2.0
-    build:
-      context: .
-      dockerfile: docker/Dockerfile-velocity
-    restart: unless-stopped
-    environment:
-      TYPE: CUSTOM
-      CUSTOM_FAMILY: velocity
-      BUNGEE_JAR_FILE: /opt/velocity/velocity.jar
-      MEMORY: 512m
-      # Docker networks on this host have no IPv6 route; keep authentication on IPv4.
-      JVM_OPTS: "-Djava.net.preferIPv4Stack=true"
-      ENABLE_RCON: "false"
-      SERVER_PORT: "25565"
-      SYNC_SKIP_NEWER_IN_DESTINATION: "false"
-      REPLACE_ENV_DURING_SYNC: "false"
-    ports:
-      - "25562:25565"
-    stop_grace_period: 30s
-    networks:
-      - default
-      - backend
-      - redstonefun
-    volumes:
-      - /srv/mchprs/velocity:/server
-    healthcheck:
-      interval: 5s
-      timeout: 3s
-      retries: 12
-      start_period: 5s
 
 networks:
   backend:

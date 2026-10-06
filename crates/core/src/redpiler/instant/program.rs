@@ -3,7 +3,7 @@
 //! currently needs a far redstone supply with a private observer reset.
 use super::boundary::Boundaries;
 use super::logic::{self, WaveLogic};
-use crate::redpiler::analysis::{AnalysisReport, AdmissionIssue};
+use crate::redpiler::analysis::{AdmissionIssue, AnalysisReport};
 use crate::redpiler::compile_graph::CompileGraph;
 use crate::redpiler::{CompilerInput, CompilerOptions, TaskMonitor};
 use crate::world::{for_each_block_optimized, World};
@@ -31,9 +31,21 @@ pub(crate) fn prepare(
     options: &CompilerOptions,
     monitor: Arc<TaskMonitor>,
 ) -> Result<(CompileGraph, PreparedInstant), String> {
-    if options.export { return Err("instant runtime export is not implemented".into()); }
+    if options.export {
+        return Err("instant runtime export is not implemented".into());
+    }
+    let width = crate::plot::PLOT_BLOCK_WIDTH;
+    if report.bounds.0.x.div_euclid(width) != report.bounds.1.x.div_euclid(width)
+        || report.bounds.0.z.div_euclid(width) != report.bounds.1.z.div_euclid(width)
+    {
+        return Err("instant execution requires a selection within one plot".into());
+    }
     for issue in &report.issues {
-        if !matches!(issue, AdmissionIssue::PistonRuntimeUnavailable { .. } | AdmissionIssue::ObserverRuntimeUnavailable { .. }) {
+        if !matches!(
+            issue,
+            AdmissionIssue::PistonRuntimeUnavailable { .. }
+                | AdmissionIssue::ObserverRuntimeUnavailable { .. }
+        ) {
             return Err(issue.to_string());
         }
     }
@@ -41,23 +53,92 @@ pub(crate) fn prepare(
     let mut observer_pistons = FxHashSet::default();
     let mut owned = FxHashSet::default();
     for (id, p) in report.pistons.iter().enumerate() {
-        if !p.piston.sticky || !p.piston.extended || !p.powered || p.piston.facing == BlockFacing::Up {
-            return Err(format!("piston at {:?} needs a ready, powered, extended sticky mechanism", p.pos));
+        if !p.piston.sticky
+            || !p.piston.extended
+            || !p.powered
+            || p.piston.facing == BlockFacing::Up
+        {
+            return Err(format!(
+                "piston at {:?} needs a ready, powered, extended sticky mechanism",
+                p.pos
+            ));
         }
-        if !matches!(world.get_block(p.head), Block::PistonHead { head } if head.sticky && head.facing == p.piston.facing)
-            || world.get_block_entity(p.payload).is_some() {
-            return Err(format!("piston at {:?} has an invalid head or payload entity", p.pos));
+        let payload = world.get_block(p.payload);
+        if !matches!(payload, Block::RedstoneBlock | Block::Wool { .. }) {
+            return Err(format!("unsupported payload minecraft:{} at {:?}, owned by piston {:?}; expected a redstone block or wool",payload.get_name(),p.payload,p.pos));
+        }
+        if !matches!(world.get_block(p.head), Block::PistonHead { head } if head.sticky && head.facing == p.piston.facing && !head.short)
+            || [p.pos, p.head, p.payload]
+                .iter()
+                .any(|&pos| world.get_block_entity(pos).is_some())
+        {
+            return Err(format!(
+                "piston at {:?} has an invalid head or payload entity",
+                p.pos
+            ));
         }
         owned.extend([p.pos, p.head, p.payload]);
+        for alias in [p.head, p.payload] {
+            let dust = alias.offset(BlockFace::Top);
+            if matches!(world.get_block(dust), Block::RedstoneWire { .. }) {
+                return Err(format!("dust at {dust:?} uses moving payload support at {alias:?}; destructive wire updates need another protocol"));
+            }
+        }
+        let ports = &report.ports.pistons[id];
+        if let Some(pos) = ports.outside_bounds.first() {
+            return Err(format!(
+                "piston at {:?} needs update context outside the selection at {pos:?}",
+                p.pos
+            ));
+        }
+        let inputs = &report.recognition[id].inputs;
+        let power_notification = ports.updates.iter().any(|u| {
+            u.source != p.head
+                && (inputs.wires.contains(&u.source)
+                    || matches!(
+                        u.kind,
+                        crate::redpiler::analysis::ports::UpdateKind::AdjacentHeadChange
+                    ))
+        });
+        let adjacent_source = inputs.sources.iter().any(|s| {
+            let d = s.source - p.pos;
+            d.x.abs() + d.y.abs() + d.z.abs() == 1
+        });
+        if !power_notification && !adjacent_source {
+            return Err(format!("piston at {:?} needs a qualifying update coupled to its power input; independent BUD sampling is not implemented",p.pos));
+        }
         let observer_pos = p.pos.offset(BlockFace::Top);
         if let Block::Observer { observer } = world.get_block(observer_pos) {
             let cap = observer_pos.offset(BlockFace::Top);
-            if observer.facing != BlockFacing::Down || observer.powered || !world.get_block(cap).is_solid()
-                || report.payload_groups.iter().any(|g| g.positions.contains(&cap)) {
-                return Err(format!("piston at {:?} has an unsupported observer reset", p.pos));
+            if observer.facing != BlockFacing::Down
+                || observer.powered
+                || !world.get_block(cap).is_solid()
+                || report
+                    .payload_groups
+                    .iter()
+                    .any(|g| g.positions.contains(&cap))
+            {
+                return Err(format!(
+                    "piston at {:?} has an unsupported observer reset",
+                    p.pos
+                ));
             }
-            if report.recognition[id].failures.iter().any(|f| !matches!(f, crate::redpiler::analysis::families::RecognitionFailure::UnsupportedPayload { .. })) {
-                return Err(format!("piston at {:?} has an unverified observer return path: {:?}",p.pos, report.recognition[id].failures));
+            if !report.recognition[id].resets.iter().any(|r| {
+                r.family == crate::redpiler::analysis::families::ResetFamily::ObserverAbove
+                    && r.source == observer_pos
+            }) {
+                return Err(format!(
+                    "piston at {:?} has an unverified observer return path: {:?}",
+                    p.pos, report.recognition[id].failures
+                ));
+            }
+            if report.recognition[id].resets.iter().any(|r| {
+                r.family != crate::redpiler::analysis::families::ResetFamily::ObserverAbove
+            }) {
+                return Err(format!(
+                    "piston at {:?} has multiple reset families and needs a joint reset protocol",
+                    p.pos
+                ));
             }
             reset_owners.insert(observer_pos);
             observer_pistons.insert(id);
@@ -71,40 +152,108 @@ pub(crate) fn prepare(
         return Err("instant entry contains pending reset or movement work".into());
     }
     let logic = logic::extract(world, report, &monitor)?;
-    if logic.evaluate(|pos| crate::redstone::source_strength(world.get_block(pos), world, pos)).iter().any(|&f| f) {
+    for (id, p) in report.pistons.iter().enumerate() {
+        if !observer_pistons.contains(&id) && !logic.follows_payload[id] {
+            return Err(format!("piston at {:?} has neither an observer reset nor a proven payload-following response",p.pos));
+        }
+    }
+    if let Some(exposure) = report
+        .ports
+        .reset_exposures
+        .iter()
+        .find(|e| !report.pistons.iter().any(|p| p.pos == e.consumer))
+    {
+        return Err(format!(
+            "reset signal at {:?} is visible to ordinary consumer at {:?}",
+            exposure.source, exposure.consumer
+        ));
+    }
+    if logic
+        .evaluate(|pos| crate::redstone::source_strength(world.get_block(pos), world, pos))
+        .iter()
+        .any(|&f| f)
+    {
         return Err("instant network is not in its ready electrical state".into());
     }
     let mut aliases = Vec::new();
     for (id, group) in report.payload_groups.iter().enumerate() {
-        // A shared moving payload needs an ownership and reset protocol rather
-        // than arbitrarily choosing which near alias supplies ordinary logic.
-        if group.members.len() != 1 { return Err(format!("shared payload group {id} needs an ownership runtime")); }
+        // The response removes a shared far payload if any owner fires. Near
+        // ownership is deliberately hidden and is restored by physical replay.
         let p = &report.pistons[group.members[0]];
         for &alias in &group.positions {
-            aliases.push((id, alias, alias == p.payload && world.get_block(alias) == Block::RedstoneBlock));
+            aliases.push((
+                id,
+                alias,
+                alias == p.payload && world.get_block(alias) == Block::RedstoneBlock,
+            ));
         }
     }
     for (consumer, positions) in &logic.consumers {
         for &pos in positions {
-            let owner = report.pistons.iter().position(|p| p.payload == pos);
-            if world.get_block(pos) != Block::RedstoneBlock || owner.is_none_or(|id| !observer_pistons.contains(&id)) {
+            let owners: Vec<_> = report
+                .pistons
+                .iter()
+                .enumerate()
+                .filter(|(_, p)| p.payload == pos)
+                .map(|(id, _)| id)
+                .collect();
+            if world.get_block(pos) != Block::RedstoneBlock
+                || owners.is_empty()
+                || owners.iter().any(|id| !observer_pistons.contains(id))
+            {
                 return Err(format!("ordinary consumer at {consumer:?} sees moving conductor, near payload or unverified reset context at {pos:?}"));
             }
         }
     }
     owned.extend(logic.wires.iter().copied());
+    owned.extend(crate::redpiler::analysis::families::reset_internals(
+        &report.recognition,
+    ));
     let boundaries = Boundaries::executable(report, &logic.wires, &logic.sources);
-    let input = CompilerInput { world, bounds: report.bounds, ticks, boundaries: Some(&boundaries) };
-    let graph = crate::redpiler::passes::make_default_pass_manager().run_passes(options, &input, monitor.clone()).map_err(|e| e.to_string())?;
+    let input = CompilerInput {
+        world,
+        bounds: report.bounds,
+        ticks,
+        boundaries: Some(&boundaries),
+    };
+    let graph = crate::redpiler::passes::make_default_pass_manager()
+        .run_passes(options, &input, monitor.clone())
+        .map_err(|e| e.to_string())?;
     let mut template = Vec::new();
-    for_each_block_optimized(world, report.bounds.0, report.bounds.1, |pos| {
+    let (first, last) = logic
+        .context
+        .iter()
+        .chain(owned.iter())
+        .fold((report.bounds.1, report.bounds.0), |(a, b), &p| {
+            (a.min(p), b.max(p))
+        });
+    // Settled near payloads can energize reset paths which never conduct in
+    // the first response. Include their electrical neighborhood for handoff.
+    let first = (first - BlockPos::new(16, 16, 16)).max(report.bounds.0);
+    let last = (last + BlockPos::new(16, 16, 16)).min(report.bounds.1);
+    for_each_block_optimized(world, first, last, |pos| {
         let block = world.get_block(pos);
-        if block != Block::Air { template.push((pos, block, world.get_block_entity(pos).cloned())); }
+        if block != Block::Air {
+            template.push((pos, block, world.get_block_entity(pos).cloned()));
+        }
     });
-    if monitor.cancelled() { return Err("instant compilation cancelled".into()); }
-    Ok((graph, PreparedInstant {
-        logic,
-        groups: report.payload_groups.iter().map(|g|g.members.clone()).collect(),
-        aliases, owned, template, bounds: report.bounds, logical_tick: world.piston_state().logical_tick,
-    }))
+    if monitor.cancelled() {
+        return Err("instant compilation cancelled".into());
+    }
+    Ok((
+        graph,
+        PreparedInstant {
+            logic,
+            groups: report
+                .payload_groups
+                .iter()
+                .map(|g| g.members.clone())
+                .collect(),
+            aliases,
+            owned,
+            template,
+            bounds: report.bounds,
+            logical_tick: world.piston_state().logical_tick,
+        },
+    ))
 }

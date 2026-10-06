@@ -38,11 +38,20 @@ impl<'a> Boundaries<'a> {
         }
     }
 
-    pub fn executable(report: &'a AnalysisReport, wires: &FxHashSet<BlockPos>, sources: &[BlockPos]) -> Self {
+    pub fn executable(
+        report: &'a AnalysisReport,
+        wires: &FxHashSet<BlockPos>,
+        sources: &[BlockPos],
+    ) -> Self {
         let mut result = Self::new(report);
         result.executable = true;
         result.hidden.extend(wires.iter().copied());
-        result.hidden.extend(report.pistons.iter().flat_map(|p| [p.pos, p.head, p.payload]));
+        result.hidden.extend(
+            report
+                .pistons
+                .iter()
+                .flat_map(|p| [p.pos, p.head, p.payload]),
+        );
         result.internals.extend(report.observers.iter().copied());
         result.retained.extend(sources.iter().copied());
         result

@@ -98,7 +98,7 @@ impl fmt::Display for RecognitionFailure {
             Self::RetractedEntry => f.write_str("the current matcher requires a ready, extended piston"),
             Self::UnsupportedDirection => f.write_str("upward-facing instant mechanisms are not supported yet"),
             Self::MismatchedHead => f.write_str("the extended piston has a missing or incompatible stationary head"),
-            Self::UnsupportedPayload { pos, block } => write!(f, "payload minecraft:{block} at {pos:?} is not supported; only redstone block payloads are supported currently"),
+            Self::UnsupportedPayload { pos, block } => write!(f, "payload minecraft:{block} at {pos:?} is not supported; the response extractor supports redstone blocks and wool"),
             Self::BlockEntity { pos } => write!(f, "moving or reset context at {pos:?} contains an unsupported block entity"),
             Self::UnsampledEntry => f.write_str("present power differs from the sampled piston state; this needs a storage protocol"),
             Self::OutsideBounds { pos } => write!(f, "required context at {pos:?} is outside the selection"),
@@ -167,7 +167,7 @@ pub enum GroupFailure {
 impl fmt::Display for GroupFailure {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::PayloadCount { count } => write!(f, "expected one redstone payload, found {count}"),
+            Self::PayloadCount { count } => write!(f, "expected one supported payload, found {count}"),
             Self::UnsupportedMember { piston } => write!(f, "member piston {piston} has no supported ready mechanism"),
             Self::ResetSupplyLost { piston, owner, position } => write!(f, "member piston {piston} loses reset supply when owner {owner} moves the payload to {position:?}"),
         }
@@ -239,7 +239,7 @@ pub(super) fn recognize<W: World>(
             None => result
                 .failures
                 .push(RecognitionFailure::OutsideBounds { pos: p.payload }),
-            Some(Block::RedstoneBlock) => {}
+            Some(Block::RedstoneBlock | Block::Wool { .. }) => {}
             Some(block) => result
                 .failures
                 .push(RecognitionFailure::UnsupportedPayload {
@@ -288,7 +288,10 @@ pub(super) fn recognize<W: World>(
             failures: Vec::new(),
         };
         for &pos in &group.positions {
-            if topology.read(pos)? == Some(Block::RedstoneBlock) {
+            if matches!(
+                topology.read(pos)?,
+                Some(Block::RedstoneBlock | Block::Wool { .. })
+            ) {
                 result.payloads.push(pos);
             }
         }

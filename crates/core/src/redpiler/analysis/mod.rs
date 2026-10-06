@@ -205,7 +205,7 @@ impl AnalysisReport {
     }
 
     pub fn recognition_summary(&self) -> String {
-        format!("{} matched reset mechanisms, {} groups with reset closure, {} ordinary consumer interfaces; runtime activation pending",
+        format!("{} matched reset mechanisms, {} groups with reset closure, {} ordinary consumer interfaces; joint-wave validation runs during compilation",
             self.recognition.iter().filter(|p| p.is_matched()).count(),
             self.group_recognition.iter().filter(|g| g.has_reset_closure()).count(),
             self.ports.outputs.len())
@@ -436,7 +436,10 @@ fn describe(
     if piston.facing == BlockFacing::Up {
         p.diagnostics.push(PistonDiagnostic::UpwardFacing);
     }
-    if world.get_block(payload) != Block::RedstoneBlock {
+    if !matches!(
+        world.get_block(payload),
+        Block::RedstoneBlock | Block::Wool { .. }
+    ) {
         p.diagnostics.push(PistonDiagnostic::UnsupportedPayload);
     }
     if world.get_block_entity(payload).is_some() {

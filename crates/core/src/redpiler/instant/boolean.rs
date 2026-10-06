@@ -3,7 +3,7 @@
 //! threshold or a provisional actuator response.
 use mchprs_blocks::BlockPos;
 use rustc_hash::FxHashMap;
-use std::cmp::{Ordering, Reverse};
+use std::cmp::Ordering;
 
 pub(crate) type Expr = u32;
 pub(crate) const FALSE: Expr = 0;
@@ -11,7 +11,11 @@ pub(crate) const TRUE: Expr = 1;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub(crate) enum Variable {
-    Signal { pos: BlockPos, threshold: u8 },
+    Signal {
+        pos: BlockPos,
+        threshold: u8,
+        order: usize,
+    },
     Actuator(usize),
 }
 
@@ -22,12 +26,14 @@ impl Ord for Variable {
                 Self::Signal {
                     pos: a,
                     threshold: at,
+                    order: ao,
                 },
                 Self::Signal {
                     pos: b,
                     threshold: bt,
+                    order: bo,
                 },
-            ) => (Reverse(a.z), a.y, a.x, at).cmp(&(Reverse(b.z), b.y, b.x, bt)),
+            ) => (ao, at, a.y, a.z, a.x).cmp(&(bo, bt, b.y, b.z, b.x)),
             (Self::Actuator(a), Self::Actuator(b)) => a.cmp(&b),
             (Self::Signal { .. }, Self::Actuator(_)) => Ordering::Less,
             (Self::Actuator(_), Self::Signal { .. }) => Ordering::Greater,
@@ -53,7 +59,10 @@ pub(crate) struct BooleanArena {
     unique: FxHashMap<Decision, Expr>,
     conjunctions: FxHashMap<(Expr, Expr), Expr>,
     inverses: FxHashMap<Expr, Expr>,
+    pub exhausted: bool,
 }
+
+const MAX_DECISIONS: usize = 1_048_576;
 
 impl BooleanArena {
     pub fn decision(&self, id: Expr) -> Option<Decision> {
@@ -72,6 +81,10 @@ impl BooleanArena {
         if let Some(&id) = self.unique.get(&decision) {
             return id;
         }
+        if self.nodes.len() >= MAX_DECISIONS {
+            self.exhausted = true;
+            return FALSE;
+        }
         let id = self.nodes.len() as u32 + 2;
         self.nodes.push(decision);
         self.unique.insert(decision, id);
@@ -83,6 +96,9 @@ impl BooleanArena {
     }
 
     pub fn not(&mut self, value: Expr) -> Expr {
+        if self.exhausted {
+            return FALSE;
+        }
         if value <= TRUE {
             return TRUE - value;
         }
@@ -99,6 +115,10 @@ impl BooleanArena {
     }
 
     pub fn and(&mut self, a: Expr, b: Expr) -> Expr {
+        if self.exhausted || self.conjunctions.len() >= MAX_DECISIONS * 2 {
+            self.exhausted = true;
+            return FALSE;
+        }
         if a == FALSE || b == FALSE {
             return FALSE;
         }
@@ -206,5 +226,88 @@ impl BooleanArena {
         actors.sort_unstable();
         actors.dedup();
         actors
+    }
+
+    /// Discard provisional actuator decisions and apply caches. Only decisions
+    /// reachable from final response roots are kept by the backend.
+    pub fn compact(&self, roots: &mut [Expr]) -> Self {
+        fn visit(
+            old: &BooleanArena,
+            new: &mut BooleanArena,
+            id: Expr,
+            memo: &mut FxHashMap<Expr, Expr>,
+        ) -> Expr {
+            let Some(d) = old.decision(id) else {
+                return id;
+            };
+            if let Some(&result) = memo.get(&id) {
+                return result;
+            }
+            let low = visit(old, new, d.low, memo);
+            let high = visit(old, new, d.high, memo);
+            let result = new.make(d.variable, low, high);
+            memo.insert(id, result);
+            result
+        }
+        let mut result = Self::default();
+        let mut memo = FxHashMap::default();
+        for root in roots {
+            *root = visit(self, &mut result, *root, &mut memo);
+        }
+        result.unique = FxHashMap::default();
+        result
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn signal(order: usize) -> Variable {
+        Variable::Signal {
+            pos: BlockPos::new(order as i32, 0, 0),
+            threshold: 0,
+            order,
+        }
+    }
+
+    #[test]
+    fn complementary_paths_remove_spurious_actuator_dependencies() {
+        let mut arena = BooleanArena::default();
+        let data = arena.variable(signal(0));
+        let actor = arena.variable(Variable::Actuator(0));
+        let inverse = arena.not(actor);
+        let first = arena.and(data, actor);
+        let second = arena.and(data, inverse);
+        let result = arena.or(first, second);
+        assert_eq!(result, data);
+        assert!(arena.actuator_dependencies(result).is_empty());
+    }
+
+    #[test]
+    fn actuator_composition_and_compaction_preserve_truth_tables() {
+        let mut arena = BooleanArena::default();
+        let a = arena.variable(signal(0));
+        let b = arena.variable(signal(1));
+        let actor = arena.variable(Variable::Actuator(0));
+        let inverse = arena.not(a);
+        let root = arena.select(actor, inverse, a);
+        let not_b = arena.not(b);
+        let composed = arena.substitute(root, &[Some(not_b)]);
+        assert!(arena.actuator_dependencies(composed).is_empty());
+        let mut roots = [composed];
+        let compact = arena.compact(&mut roots);
+        assert!(compact.nodes.len() < arena.nodes.len());
+        for av in [false, true] {
+            for bv in [false, true] {
+                let read = |variable| match variable {
+                    Variable::Signal { order: 0, .. } => av,
+                    Variable::Signal { order: 1, .. } => bv,
+                    _ => panic!("unresolved variable"),
+                };
+                assert_eq!(arena.evaluate(composed, read), av ^ !bv);
+                assert_eq!(compact.evaluate(roots[0], read), av ^ !bv);
+            }
+        }
     }
 }

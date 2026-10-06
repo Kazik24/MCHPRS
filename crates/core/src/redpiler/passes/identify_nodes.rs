@@ -48,7 +48,9 @@ impl<W: World> Pass<W> for IdentifyNodes {
                 }
             }
             for piston in 0..boundaries.report.pistons.len() {
-                if boundaries.executable { break; }
+                if boundaries.executable {
+                    break;
+                }
                 let strength = boundaries.report.recognition[piston]
                     .inputs
                     .sources
@@ -85,7 +87,10 @@ impl<W: World> Pass<W> for IdentifyNodes {
 
         if let Some(boundaries) = input.boundaries {
             for node in graph.node_weights_mut() {
-                if node.block.is_some_and(|(pos, _)| boundaries.is_retained(pos)) {
+                if node
+                    .block
+                    .is_some_and(|(pos, _)| boundaries.is_retained(pos))
+                {
                     node.is_input = true;
                 }
                 if node.block.is_some_and(|(pos, _)| boundaries.is_output(pos)) {

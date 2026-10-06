@@ -34,6 +34,7 @@ pub enum GraphPreparationError {
     },
     UnsupportedExport,
     Graph(GraphError),
+    Execution(String),
 }
 
 impl fmt::Display for GraphPreparationError {
@@ -75,6 +76,7 @@ impl fmt::Display for GraphPreparationError {
                 f.write_str("instant candidate graph export is not implemented")
             }
             Self::Graph(error) => error.fmt(f),
+            Self::Execution(error) => f.write_str(error),
         }
     }
 }
@@ -127,6 +129,24 @@ pub fn prepare_candidate_graph(
     }
     let report = super::analyze(world, bounds, ticks, &monitor, Default::default())
         .map_err(GraphPreparationError::Analysis)?;
+    // Conducting movers need conditional geometry, which the older electrical
+    // candidate graph does not encode. Use the same staged program as compile.
+    if report.pistons.iter().any(|p| {
+        matches!(
+            world.get_block(p.payload),
+            mchprs_blocks::blocks::Block::Wool { .. }
+        )
+    }) {
+        let (graph, _) = crate::redpiler::instant::program::prepare(
+            world,
+            &report,
+            ticks,
+            options,
+            monitor.clone(),
+        )
+        .map_err(GraphPreparationError::Execution)?;
+        return Ok(CandidateGraph { graph, report });
+    }
     for issue in &report.issues {
         if !matches!(
             issue,

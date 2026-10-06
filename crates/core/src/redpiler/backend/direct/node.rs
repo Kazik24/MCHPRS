@@ -125,6 +125,7 @@ pub enum NodeType {
     Trapdoor,
     Wire,
     Constant,
+    InstantSource,
     NoteBlock {
         noteblock_id: u16,
     },

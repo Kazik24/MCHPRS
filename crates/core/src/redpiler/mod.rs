@@ -183,9 +183,16 @@ impl Compiler {
         };
         let pass_manager = make_default_pass_manager::<W>();
         let (graph, instant) = if report.pistons.is_empty() {
-            (pass_manager.run_passes(&options, &input, monitor.clone()).map_err(CompileError::Graph)?, None)
+            (
+                pass_manager
+                    .run_passes(&options, &input, monitor.clone())
+                    .map_err(CompileError::Graph)?,
+                None,
+            )
         } else {
-            let (graph, program) = instant::program::prepare(world, &report, &ticks, &options, monitor.clone()).map_err(CompileError::Instant)?;
+            let (graph, program) =
+                instant::program::prepare(world, &report, &ticks, &options, monitor.clone())
+                    .map_err(CompileError::Instant)?;
             (graph, Some(program))
         };
 
@@ -201,9 +208,14 @@ impl Compiler {
         trace!("Compiling backend");
         monitor.set_message("Compiling backend".to_string());
         if let Some(program) = instant {
-            match &mut jit { BackendDispatcher::DirectBackend(backend) => backend.compile_instant(graph, program, ticks, &options, monitor.clone()).map_err(CompileError::Backend)? }
+            match &mut jit {
+                BackendDispatcher::DirectBackend(backend) => backend
+                    .compile_instant(graph, program, ticks, &options, monitor.clone())
+                    .map_err(CompileError::Backend)?,
+            }
         } else {
-            jit.compile(graph, ticks, &options, monitor.clone()).map_err(CompileError::Backend)?;
+            jit.compile(graph, ticks, &options, monitor.clone())
+                .map_err(CompileError::Backend)?;
         }
         if monitor.cancelled() {
             return Err(CompileError::Cancelled);

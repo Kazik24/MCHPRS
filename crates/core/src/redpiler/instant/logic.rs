@@ -19,6 +19,8 @@ pub(crate) struct WaveLogic {
     pub sources: Vec<BlockPos>,
     pub wires: FxHashSet<BlockPos>,
     pub consumers: Vec<(BlockPos, Vec<BlockPos>)>,
+    pub follows_payload: Vec<bool>,
+    pub context: FxHashSet<BlockPos>,
 }
 
 impl WaveLogic {
@@ -27,7 +29,7 @@ impl WaveLogic {
             .iter()
             .map(|&root| {
                 self.arena.evaluate(root, |variable| match variable {
-                    Variable::Signal { pos, threshold } => read(pos) > threshold,
+                    Variable::Signal { pos, threshold, .. } => read(pos) > threshold,
                     Variable::Actuator(_) => {
                         unreachable!("final program has no provisional actuator variables")
                     }
@@ -52,6 +54,9 @@ struct Extractor<'a, W: World> {
     sources: FxHashSet<BlockPos>,
     steps: usize,
     touched: FxHashSet<BlockPos>,
+    signal_order: FxHashMap<BlockPos, usize>,
+    context_only: bool,
+    context: FxHashSet<BlockPos>,
 }
 
 pub(crate) fn extract(
@@ -59,6 +64,9 @@ pub(crate) fn extract(
     report: &AnalysisReport,
     monitor: &TaskMonitor,
 ) -> Result<WaveLogic, String> {
+    if report.pistons.len() > 1024 {
+        return Err("instant actor budget exceeded (1024)".into());
+    }
     let mut extractor = Extractor {
         world,
         report,
@@ -74,6 +82,9 @@ pub(crate) fn extract(
         sources: Default::default(),
         steps: 0,
         touched: Default::default(),
+        signal_order: Default::default(),
+        context_only: false,
+        context: Default::default(),
     };
     for (group, descriptor) in report.payload_groups.iter().enumerate() {
         let payloads: Vec<_> = descriptor
@@ -110,6 +121,11 @@ pub(crate) fn extract(
         responses.push(extractor.arena.not(power));
     }
     let mut waiting = vec![0; responses.len()];
+    let entry = vec![Some(FALSE); responses.len()];
+    let follows_payload: Vec<_> = responses
+        .iter()
+        .map(|&root| extractor.arena.substitute(root, &entry) == FALSE)
+        .collect();
     let mut fanout = vec![Vec::new(); responses.len()];
     for (actor, &response) in responses.iter().enumerate() {
         let dependencies = extractor.arena.actuator_dependencies(response);
@@ -149,19 +165,32 @@ pub(crate) fn extract(
     let mut blocks = Vec::new();
     crate::world::for_each_block_optimized(world, report.bounds.0, report.bounds.1, |pos| {
         let block = world.get_block(pos);
-        if super::super::analysis::ports::is_consumer(block) {
+        if !super::super::analysis::ports::is_consumer(block) {
+            return;
+        }
+        let near_region = report.pistons.iter().any(|p| {
+            let d = pos - p.payload;
+            d.x.abs() <= 17 && d.y.abs() <= 17 && d.z.abs() <= 17
+        });
+        if near_region {
             blocks.push((pos, block));
         }
     });
     let wires = extractor.wires.clone();
     let sources = extractor.sources.clone();
+    let context = extractor.context.clone();
+    extractor.context_only = true;
     for (pos, block) in blocks {
         extractor.touched.clear();
         let mut power = FALSE;
         let mut queue = VecDeque::new();
         let faces: Vec<_> = match block {
             Block::RedstoneRepeater { repeater } => vec![repeater.facing.block_face()],
-            Block::RedstoneComparator { comparator } => vec![comparator.facing.block_face(), comparator.facing.rotate().block_face(), comparator.facing.rotate_ccw().block_face()],
+            Block::RedstoneComparator { comparator } => vec![
+                comparator.facing.block_face(),
+                comparator.facing.rotate().block_face(),
+                comparator.facing.rotate_ccw().block_face(),
+            ],
             Block::RedstoneTorch { .. } => vec![BlockFace::Bottom],
             Block::RedstoneWallTorch { facing, .. } => vec![facing.opposite().block_face()],
             _ => BlockFace::values().to_vec(),
@@ -172,20 +201,25 @@ pub(crate) fn extract(
         extractor.walk_wires(usize::MAX, power, queue)?;
         if !extractor.touched.is_empty() {
             let mut aliases: Vec<_> = extractor.touched.iter().copied().collect();
-            aliases.sort_by_key(|p| (p.y,p.z,p.x));
+            aliases.sort_by_key(|p| (p.y, p.z, p.x));
             consumers.push((pos, aliases));
         }
     }
     extractor.wires = wires;
     extractor.sources = sources;
+    extractor.check()?;
     let mut sources: Vec<_> = extractor.sources.into_iter().collect();
     sources.sort_by_key(|pos| (pos.y, pos.z, pos.x));
+    let mut responses: Vec<_> = resolved.into_iter().map(Option::unwrap).collect();
+    let arena = extractor.arena.compact(&mut responses);
     Ok(WaveLogic {
-        arena: extractor.arena,
-        responses: resolved.into_iter().map(Option::unwrap).collect(),
+        arena,
+        responses,
         sources,
         wires: extractor.wires,
         consumers,
+        follows_payload,
+        context,
     })
 }
 
@@ -198,7 +232,7 @@ impl<W: World> Extractor<'_, W> {
             return Err("instant extraction cancelled".into());
         }
         self.steps += 1;
-        if self.steps > 8_388_608 || self.arena.nodes.len() > 1_048_576 {
+        if self.steps > 8_388_608 || self.arena.exhausted || self.signal_order.len() > 64 {
             return Err("instant conditional geometry budget exceeded".into());
         }
         Ok(())
@@ -218,6 +252,7 @@ impl<W: World> Extractor<'_, W> {
                 "instant context at {pos:?} is outside the selection"
             ));
         }
+        self.context.insert(pos);
         Ok(self.world.get_block(pos))
     }
 
@@ -291,7 +326,10 @@ impl<W: World> Extractor<'_, W> {
 
     fn variants(&mut self, pos: BlockPos, actor: usize) -> Result<Vec<(Block, Expr)>, String> {
         self.read(pos)?;
-        if self.far.contains_key(&pos) || self.near.contains_key(&pos) || self.bases.contains_key(&pos) {
+        if self.far.contains_key(&pos)
+            || self.near.contains_key(&pos)
+            || self.bases.contains_key(&pos)
+        {
             self.touched.insert(pos);
         }
         let actors = self.actors_at(pos, actor);
@@ -374,6 +412,9 @@ impl<W: World> Extractor<'_, W> {
         guard: Expr,
         result: &mut Expr,
     ) {
+        if self.context_only {
+            return;
+        }
         if guard == FALSE || distance >= 15 || matches!(block, Block::Observer { .. }) {
             return;
         }
@@ -390,9 +431,12 @@ impl<W: World> Extractor<'_, W> {
             TRUE
         } else {
             self.sources.insert(pos);
+            let next = self.signal_order.len();
+            let order = *self.signal_order.entry(pos).or_insert(next);
             self.arena.variable(Variable::Signal {
                 pos,
                 threshold: distance,
+                order,
             })
         };
         let value = self.arena.and(guard, value);
@@ -473,7 +517,12 @@ impl<W: World> Extractor<'_, W> {
         self.walk_wires(actor, result, queue)
     }
 
-    fn walk_wires(&mut self, actor: usize, mut result: Expr, mut queue: VecDeque<(BlockPos, u8, Expr)>) -> Result<Expr, String> {
+    fn walk_wires(
+        &mut self,
+        actor: usize,
+        mut result: Expr,
+        mut queue: VecDeque<(BlockPos, u8, Expr)>,
+    ) -> Result<Expr, String> {
         let mut visited: FxHashMap<BlockPos, Expr> = FxHashMap::default();
         while let Some((pos, distance, guard)) = queue.pop_front() {
             if distance >= 15 || guard == FALSE || result == TRUE {
