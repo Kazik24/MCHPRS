@@ -31,6 +31,7 @@ for the affected contract, including rejected admission and interpreter handoff.
 | --- | --- |
 | [Permissions](MCHPRS_PERMISSIONS.md) | Permission evaluation, action gates, configurable limits, and rank metadata. |
 | [Plot Git](PLOT_GIT.md) | Commands, access, storage, checkout, and recovery. |
+| [RedstoneVC client parity](REDSTONEVC_CLIENT_PARITY.md) | Reference plugin commands, presentation, HID, and differences from Plot Git. |
 | [Client synchronization](CLIENT_SYNC.md) | Authoritative state, interaction barriers, rendering, and outgoing queues. |
 | [Minecraft data](../mc_data/README.md) | Pinned registry inputs and generated build assets. |
 
