@@ -58,6 +58,12 @@ pub enum Message {
     /// This message is sent to the server thread when a player runs /tp <name>.
     PlayerTeleportOther(Player, String),
     CompletePlayerNames(PlayerPacketSender, i32, String),
+    ServerInfo {
+        sender: PlayerPacketSender,
+        page: usize,
+        plot: Option<(i32, i32)>,
+        span: tracing::Span,
+    },
     /// This message is sent to the server thread when a player changes their gamemode.
     PlayerUpdateGamemode(u128, Gamemode),
     /// This message is sent to the server thread when a plot unloads itself.
@@ -100,6 +106,7 @@ pub enum BroadcastMessage {
 pub enum PrivMessage {
     PlayerEnterPlot(Player),
     PlayerTeleportOther(Player, String),
+    Diagnostics(PlayerPacketSender, tracing::Span),
 }
 
 /// This is the data that gets sent in the `PlayerJoinedInfo` broadcast message.
@@ -248,6 +255,7 @@ impl MinecraftServer {
 
     /// Removes the plot entry from the `running_plots` list
     fn handle_plot_unload(&mut self, plot_x: i32, plot_z: i32) {
+        info!(plot_x, plot_z, "Plot unloaded");
         let index = self
             .running_plots
             .iter()
@@ -306,6 +314,7 @@ impl MinecraftServer {
                 .send(PrivMessage::PlayerEnterPlot(player));
         } else {
             let (priv_tx, priv_rx) = mpsc::channel();
+            info!(plot_x, plot_z, "Loading plot");
             Plot::load_and_run(
                 plot_x,
                 plot_z,
@@ -517,8 +526,62 @@ impl MinecraftServer {
 
     fn handle_message(&mut self, message: Message) {
         match message {
+            Message::ServerInfo {
+                sender,
+                page,
+                plot,
+                span,
+            } => {
+                let _entered = span.enter();
+                if let Some((x, z)) = plot {
+                    if let Some(plot) = self
+                        .running_plots
+                        .iter()
+                        .find(|p| p.plot_x == x && p.plot_z == z)
+                    {
+                        if let Err(error) = plot
+                            .priv_message_sender
+                            .send(PrivMessage::Diagnostics(sender, tracing::Span::current()))
+                        {
+                            if let PrivMessage::Diagnostics(sender, _) = error.0 {
+                                sender.send_error_message("Plot is not running");
+                            }
+                        }
+                        return;
+                    }
+                    sender.send_error_message("Plot is not running");
+                    return;
+                }
+                let pages = self.running_plots.len().div_ceil(10).max(1);
+                if page == 0 || page > pages {
+                    sender.send_error_message(&format!("Plot page must be between 1 and {pages}"));
+                    return;
+                }
+                let mut text = format!(
+                    "{} online players; {} running plots; page {page}/{pages}",
+                    self.online_players.len(),
+                    self.running_plots.len()
+                );
+                for plot in self.running_plots.iter().skip((page - 1) * 10).take(10) {
+                    let names = self
+                        .online_players
+                        .values()
+                        .filter(|p| p.plot_x == plot.plot_x && p.plot_z == plot.plot_z)
+                        .map(|p| p.username.as_str())
+                        .collect::<Vec<_>>();
+                    text.push_str(&format!(
+                        "\n{},{}: {} players [{}]",
+                        plot.plot_x,
+                        plot.plot_z,
+                        names.len(),
+                        names.join(", ")
+                    ));
+                }
+                info!(details = %text, "Running plots");
+                sender.send_system_message(&text);
+            }
             Message::PlayerJoined(mut player) => {
-                info!("{} joined the game", player.username);
+                info!(player = %player.username, uuid = %format_args!("{:032x}", player.uuid), "Player joined");
                 if permissions::ranked_chat() && !crate::proxy_chat::enabled() {
                     player.send_chat_message(0, &ChatComponent::player_joined(&player.username));
                 }
@@ -542,7 +605,7 @@ impl MinecraftServer {
             }
             Message::PlayerLeft(uuid) => {
                 if let Some((_, player)) = self.online_players.remove_entry(&uuid) {
-                    info!("{} left the game", player.username);
+                    info!(player = %player.username, uuid = %format_args!("{uuid:032x}"), "Player left");
                     if !crate::proxy_chat::enabled() {
                         self.broadcaster.broadcast(BroadcastMessage::Chat(
                             0,
@@ -563,9 +626,13 @@ impl MinecraftServer {
                 self.handle_plot_unload(x, z);
                 let players = initial_player
                     .into_iter()
-                    .chain(queued.try_iter().map(|message| match message {
+                    .chain(queued.try_iter().filter_map(|message| match message {
                         PrivMessage::PlayerEnterPlot(player)
-                        | PrivMessage::PlayerTeleportOther(player, _) => player,
+                        | PrivMessage::PlayerTeleportOther(player, _) => Some(player),
+                        PrivMessage::Diagnostics(sender, _) => {
+                            sender.send_error_message("Plot failed to load");
+                            None
+                        }
                     }));
                 for mut player in players {
                     player.kick(json!({"text": messages::plot_load_failed(x, z)}).to_string());

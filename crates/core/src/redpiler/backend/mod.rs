@@ -35,8 +35,8 @@ impl std::fmt::Display for BackendError {
             }
             Self::InvalidInstantProgram => f.write_str("instant program contains unresolved actuator variables"),
             Self::MissingInstantBinding { pos } => write!(f, "instant port at {pos:?} was lost during graph preparation"),
-            Self::LogicalWireInput { pos } => write!(f, "logical source at {pos:?} remained a wire display; extract its complete electrical input cone before logical execution"),
-            Self::ObserverGeometryBinding { pos, bindings } => write!(f, "observer watches logical geometry at {pos:?} with {bindings} owners; include one complete unambiguous piston region"),
+            Self::LogicalWireInput { pos } => write!(f, "logical input at {pos:?} points to display-only dust instead of a power source"),
+            Self::ObserverGeometryBinding { pos, bindings } => write!(f, "observer target at {pos:?} belongs to {bindings} piston regions; expected exactly one"),
             Self::InvalidStrength { pos, strength } => write!(f, "graph node at {pos:?} has invalid strength {strength}; expected 0..15"),
             Self::TooManyInputs { pos, default_inputs, side_inputs } => write!(f, "graph node at {pos:?} has {default_inputs} main and {side_inputs} side inputs; each channel supports at most 255"),
         }

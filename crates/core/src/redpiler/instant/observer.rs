@@ -220,28 +220,27 @@ pub(super) fn certify<W: World>(
         let face = BlockFace::from(block.facing);
         let watched = pos.offset(face);
         let prefix = || {
-            format!("observer at {pos:?} watches {watched:?} (minecraft:{}) and forms a notification state boundary", world.get_block(watched).get_name())
+            format!(
+                "observer at {pos:?} watches {watched:?} (minecraft:{})",
+                world.get_block(watched).get_name()
+            )
         };
         let fail = |reason: &str| format!("{}: {reason}", prefix());
         if block.powered || pending.contains(&pos) {
-            return Err(fail(
-                "logical reset needs a dormant observer without pending work",
-            ));
+            return Err(fail("reset observer is powered or has pending ticks"));
         }
         let Some(&owner) = actors.get(&watched) else {
-            return Err(fail(
-                "the watched block is not an owned sticky response actor",
-            ));
+            return Err(fail("watched block is not a piston in this region"));
         };
         if !report.pistons[owner].piston.sticky || memory.contains(&owner) {
             return Err(fail(
-                "a sampled memory/clock actor cannot be collapsed into a reset owner",
+                "watched piston is not sticky or stores memory; it cannot act as a reset",
             ));
         }
         let cap = pos.offset(face.opposite());
         if world.get_block_entity(cap).is_some() && !fixed_furnace(world, cap) {
             return Err(fail(&format!(
-                "fixed reset cap at {cap:?} has an unsupported block entity; only a matching stationary furnace inventory is supported"
+                "reset output at {cap:?} has an unsupported block entity; expected a fixed furnace inventory"
             )));
         }
         let lamp_cap = matches!(world.get_block(cap), Block::RedstoneLamp { .. });
@@ -269,7 +268,7 @@ pub(super) fn certify<W: World>(
                 .any(|source| source.source == pos)
         {
             return Err(fail(
-                "the pulse has no proved electrical return to its watched actor",
+                "reset pulse has no verified power path back to the watched piston",
             ));
         }
         if !assume_instant {
@@ -283,7 +282,7 @@ pub(super) fn certify<W: World>(
                     .any(|source| source.source == pos)
             {
                 return Err(fail(
-                    "the output conductor lacks complete observer return context",
+                    "observer return path leaves the selection or misses the observer",
                 ));
             }
         }
@@ -336,7 +335,7 @@ pub(super) fn certify<W: World>(
             let other_watched = other.offset(other_block.facing.into());
             if other_watched == pos {
                 return Err(fail(&format!(
-                    "owned reset observer is watched by observer {other:?}; the omitted reset signal is an observable state boundary"
+                    "reset observer is watched by observer {other:?}; its reset pulse cannot be omitted"
                 )));
             }
             if wires
@@ -373,7 +372,7 @@ pub(super) fn certify<W: World>(
             let support = wire_pos.offset(BlockFace::Bottom);
             if world.get_block_entity(support).is_some() && !fixed_furnace(world, support) {
                 return Err(fail(&format!(
-                    "reset dust support at {support:?} has an unsupported block entity; only a matching stationary furnace inventory is supported"
+                    "reset dust support at {support:?} has an unsupported block entity; expected a fixed furnace inventory"
                 )));
             }
             if mobile.contains_key(&support)
@@ -492,7 +491,7 @@ pub(super) fn certify<W: World>(
                     .any(|source| independent_data(source.kind));
             }
             if !coupled_data {
-                return Err(fail(&format!("reset notification independently samples piston {:?}: no independently coupled data update; explicit sampling is required", piston.pos)));
+                return Err(fail(&format!("reset pulse independently samples piston {:?} without a coupled data update; a separate sampling source is required", piston.pos)));
             }
         }
         if !assume_instant {

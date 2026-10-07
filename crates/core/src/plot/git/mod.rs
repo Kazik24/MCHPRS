@@ -40,6 +40,12 @@ const MAX_WORK_MEMORY_MIB: u64 = 1024;
 const MAX_SNAPSHOT_MIB: u64 = 128;
 
 static USED: AtomicUsize = AtomicUsize::new(0);
+pub(super) fn memory_usage() -> (usize, usize) {
+    (
+        USED.load(Ordering::SeqCst),
+        mib(CONFIG.git_work_memory_mib.min(MAX_WORK_MEMORY_MIB)),
+    )
+}
 pub(super) struct Reservation(usize);
 impl Reservation {
     fn snapshot(bytes: usize) -> Result<Self> {
@@ -121,6 +127,7 @@ type Task = Box<dyn FnOnce() -> Result<Reply> + Send>;
 struct Job {
     task: Task,
     reply: SyncSender<Result<Reply>>,
+    span: tracing::Span,
 }
 static WORKERS: Lazy<SyncSender<Job>> = Lazy::new(|| {
     let (sender, receiver) = mpsc::sync_channel::<Job>(16);
@@ -134,8 +141,19 @@ static WORKERS: Lazy<SyncSender<Job>> = Lazy::new(|| {
                 let Ok(job) = job else {
                     break;
                 };
+                let _entered = job.span.enter();
+                let started = Instant::now();
                 let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(job.task))
                     .unwrap_or_else(|_| Err(anyhow::anyhow!(messages::GIT_WORKER_FAILED)));
+                match &result {
+                    Ok(reply) => {
+                        if let Payload::Text(text) = &reply.payload {
+                            tracing::info!(result = %text, "Git result");
+                        }
+                        tracing::info!(elapsed_ms = started.elapsed().as_millis(), "Git worker completed");
+                    }
+                    Err(error) => tracing::warn!(elapsed_ms = started.elapsed().as_millis(), error = %format_args!("{error:#}"), "Git worker rejected"),
+                }
                 let _ = job.reply.send(result);
             })
             .expect("Cannot start plot Git worker");
@@ -182,6 +200,15 @@ pub(super) struct State {
     sessions: HashMap<u128, Session>,
     names: Vec<String>,
     clicks: HashMap<u128, Instant>,
+}
+
+impl State {
+    pub(super) fn diagnostics(&self) -> String {
+        let (used, limit) = memory_usage();
+        format!("Git head {:?}; pending {}; locked {}; recovery required {}; diff sessions {}; RAM reserved {}/{} MiB",
+            self.head, self.pending.is_some(), self.locked, self.fatal, self.sessions.len(),
+            used / 1048576, limit / 1048576)
+    }
 }
 
 pub(super) fn recover_pending(path: &Path) -> Result<()> {
@@ -312,7 +339,14 @@ impl Plot {
         ensure!(self.git.pending.is_none(), messages::GIT_OPERATION_RUNNING);
         let (reply, receiver) = mpsc::sync_channel(1);
         WORKERS
-            .try_send(Job { task, reply })
+            .try_send(Job {
+                task,
+                reply,
+                span: tracing::info_span!("git",
+                plot_x = self.world.x, plot_z = self.world.z,
+                player = self.players.iter().find(|p| p.uuid == actor).map_or("system", |p| p.username.as_str()),
+                actor = %format_args!("{actor:032x}")),
+            })
             .map_err(|_| anyhow::anyhow!(messages::GIT_WORKER_QUEUE_FULL))?;
         self.git.pending = Some(Pending {
             receiver,
@@ -324,6 +358,7 @@ impl Plot {
 
     pub(super) fn handle_git_command(&mut self, player: usize, args: &[&str]) {
         if let Err(error) = self.git_command(player, args) {
+            tracing::warn!(error = %format_args!("{error:#}"), "Git command rejected");
             self.players[player]
                 .send_error_message(&messages::git_error(format_args!("{error:#}")));
         }
@@ -535,10 +570,15 @@ impl Plot {
                 match reply.payload {
                     Payload::Metadata => {}
                     Payload::Checkout(snapshot, message, _reservation) => {
+                        tracing::info!(actor = %format_args!("{:032x}", pending.actor),
+                            plot_x = self.world.x, plot_z = self.world.z, %message, "Git restore completed");
                         self.apply_git(snapshot);
                         self.broadcast_plot_chat_message(&message);
                     }
                     Payload::CheckoutFailed(error, needs_recovery) => {
+                        tracing::warn!(actor = %format_args!("{:032x}", pending.actor),
+                            plot_x = self.world.x, plot_z = self.world.z, %error, needs_recovery,
+                            "Git restore rejected");
                         if needs_recovery {
                             self.git.locked = true;
                             self.git.fatal = true;

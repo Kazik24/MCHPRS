@@ -10,6 +10,7 @@ mod compass;
 mod containers;
 mod data;
 pub mod database;
+mod diagnostics;
 mod git;
 mod help;
 mod history;
@@ -56,7 +57,7 @@ use std::sync::mpsc::{Receiver, Sender};
 use std::thread;
 use std::time::{Duration, Instant};
 use tokio::runtime::Runtime;
-use tracing::{debug, error, warn};
+use tracing::{debug, error, info, warn};
 
 pub use self::data::empty_plot;
 use self::data::sleep_time_for_tps;
@@ -1161,6 +1162,8 @@ impl Plot {
     }
 
     fn enter_plot(&mut self, player: Player) {
+        info!(player = %player.username, uuid = %format_args!("{:032x}", player.uuid),
+            plot_x = self.world.x, plot_z = self.world.z, "Player entered plot");
         // Another running plot can claim this plot before teleporting here.
         // Refresh the cached owner so permission checks reflect that claim.
         self.owner = database::get_plot_owner(self.world.x, self.world.z)
@@ -1352,7 +1355,13 @@ impl Plot {
     }
 
     fn start_redpiler(&mut self, options: CompilerOptions) {
-        debug!("Starting redpiler");
+        let started = Instant::now();
+        info!(
+            plot_x = self.world.x,
+            plot_z = self.world.z,
+            ?options,
+            "Redpiler started"
+        );
         self.scoreboard
             .set_redpiler_state(&self.players, RedpilerState::Compiling);
         self.scoreboard
@@ -1368,7 +1377,11 @@ impl Plot {
             // Move an exclusive borrow: the world's RefCell caches are Send, not Sync.
             let world = &mut self.world;
             let compiler = &mut self.redpiler;
-            let handle = s.spawn(move || compiler.compile(world, bounds, options, ticks, monitor));
+            let span = tracing::Span::current();
+            let handle = s.spawn(move || {
+                let _entered = span.enter();
+                compiler.compile(world, bounds, options, ticks, monitor)
+            });
             while !handle.is_finished() {
                 // We'll update the players so that they don't time out.
                 for player_idx in 0..self.players.len() {
@@ -1391,6 +1404,12 @@ impl Plot {
 
         match result {
             Ok(Ok(())) => {
+                info!(
+                    plot_x = self.world.x,
+                    plot_z = self.world.z,
+                    elapsed_ms = started.elapsed().as_millis(),
+                    "Redpiler completed"
+                );
                 for warning in self.redpiler.warnings() {
                     for player in &self.players {
                         player.send_system_message(&format!("Redpiler warning: {warning}"));
@@ -1422,7 +1441,8 @@ impl Plot {
                     Err(_) => "compiler worker failed".to_owned(),
                     Ok(Ok(())) => unreachable!(),
                 };
-                warn!("Redpiler compilation rejected: {reason}");
+                warn!(plot_x = self.world.x, plot_z = self.world.z,
+                    elapsed_ms = started.elapsed().as_millis(), %reason, "Redpiler rejected");
                 for player in &self.players {
                     player.send_error_message(&format!(
                         "Redpiler: {reason}. Use /rp analyze for details."
@@ -1677,6 +1697,12 @@ impl Plot {
         // Handle messages from the private message channel
         while let Ok(message) = self.priv_message_receiver.try_recv() {
             match message {
+                PrivMessage::Diagnostics(sender, span) => {
+                    let _entered = span.enter();
+                    let text = self.diagnostics();
+                    info!(details = %text, "Plot diagnostics");
+                    sender.send_system_message(&text);
+                }
                 PrivMessage::PlayerEnterPlot(player) => {
                     self.enter_plot(player);
                 }

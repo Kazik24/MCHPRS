@@ -7,6 +7,11 @@ services:
       context: .
       dockerfile: docker/Dockerfile-plot-scale-5
     restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "16m"
+        max-file: "2"
     ports:
       - "25578:25565"
     mem_limit: 6g

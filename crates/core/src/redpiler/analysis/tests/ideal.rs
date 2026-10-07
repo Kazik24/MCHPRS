@@ -401,9 +401,11 @@ fn ideal_rejects_uncertified_sampling_without_mutating_the_world() {
         "diagnostic must identify the missing state boundary: {error}"
     );
     assert!(
-        error.contains("coupled") || error.contains("unambiguous"),
-        "diagnostic must name an actionable certification requirement: {error}"
+        error.contains("no independent sampling source; data changes alone cannot update memory"),
+        "diagnostic must explain the missing update or sampling source: {error}"
     );
+    assert!(error.contains(&format!("{BASE:?}")), "{error}");
+    assert!(!error.contains("--assume-instant"), "{error}");
     assert!(!compiler.is_active());
     assert_eq!(snapshot(&world, bounds), before);
 }

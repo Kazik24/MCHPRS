@@ -594,12 +594,20 @@ impl Plot {
         command: &str,
         mut args: Vec<&str>,
     ) -> bool {
-        if self.git_checkout_locked() && command != "/git" && command != "/help" {
+        let span = tracing::info_span!("command", player = %self.players[player].username,
+            uuid = %format_args!("{:032x}", self.players[player].uuid),
+            plot_x = self.world.x, plot_z = self.world.z, command,
+            arguments = ?args.join(" ").chars().take(1024).collect::<String>());
+        let _entered = span.enter();
+        info!("Command requested");
+        if self.git_checkout_locked() && !matches!(command, "/git" | "/help" | "/serverinfo") {
+            warn!("Command denied: plot checkout locked");
             let message = self.git_lock_message();
             self.players[player].send_error_message(message);
             return false;
         }
         if !self.players[player].can_use_commands() {
+            warn!("Command denied: command access");
             self.players[player].send_no_permission_message();
             return false;
         }
@@ -610,15 +618,10 @@ impl Plot {
                     && !self.players[player]
                         .can_edit_plot(self.owner, (self.world.x, self.world.z))))
         {
+            warn!("Command denied: permission or plot ownership");
             self.players[player].send_no_permission_message();
             return false;
         }
-        info!(
-            "{} issued command: {} {}",
-            self.players[player].username,
-            command,
-            args.join(" ")
-        );
 
         let admin_permission = match command {
             "/stop" => Some("minecraft.command.stop"),
@@ -632,6 +635,10 @@ impl Plot {
 
         if command == "/git" {
             self.handle_git_command(player, &args);
+            return false;
+        }
+        if command == "/serverinfo" {
+            self.handle_serverinfo(player, &args);
             return false;
         }
         if self.handle_redstone_tools_command(player, command, &args) {
@@ -821,12 +828,21 @@ impl Plot {
                 self.players[player].send_system_message(messages::RTPS_SET);
             }
             "/rhistory" => match self.control_history(player, &args) {
-                Ok(message) => self.players[player].send_system_message(&message),
-                Err(error) => self.players[player].send_error_message(&error),
+                Ok(message) => {
+                    info!(%message, "Tick history command completed");
+                    self.players[player].send_system_message(&message);
+                }
+                Err(error) => {
+                    warn!(%error, "Tick history command rejected");
+                    self.players[player].send_error_message(&error);
+                }
             },
             "/back" => {
                 if let Err(error) = self.rewind_plot(player, &args) {
+                    warn!(%error, "Rewind rejected");
                     self.players[player].send_error_message(&error);
+                } else {
+                    info!("Rewind completed");
                 }
             }
             "/adv" => {
@@ -1177,7 +1193,7 @@ fn declared_command_nodes() -> Vec<Node<'static>> {
             1, 4, 5, 6, 11, 12, 14, 16, 18, 19, 20, 21, 22, 23, 24, 26, 29, 31, 33, 35, 46, 48, 52,
             59, 60, 62, 64, 65, 66, 70, 72, 73, 74, 81, 82, 84, 87, 89, 90, 100, 105, 110, 111,
             112, 113, 114, 115, 117, 119, 120, 123, 130, 134, 135, 142, 143, 144, 145, 146, 150,
-            152,
+            152, 153,
         ]),
         // 1: /teleport
         Node::literal("teleport", &[3, 2]),
@@ -1467,6 +1483,14 @@ fn declared_command_nodes() -> Vec<Node<'static>> {
             .executable()
             .suggestions("minecraft:ask_server"),
         Node::literal("setwarp", &[151]),
+        // 153-159: administrator diagnostics and optional page/plot arguments.
+        Node::literal("serverinfo", &[154, 156, 159]).executable(),
+        Node::literal("plots", &[155]).executable(),
+        Node::argument("page", Parser::Integer(1, i32::MAX), &[]).executable(),
+        Node::literal("plot", &[157]).executable(),
+        Node::argument("x", Parser::Integer(i32::MIN, i32::MAX), &[158]),
+        Node::argument("z", Parser::Integer(i32::MIN, i32::MAX), &[]).executable(),
+        Node::literal("settings", &[]).executable(),
     ]
 }
 
@@ -1510,9 +1534,47 @@ mod security_tests {
         }
     }
     #[test]
+    fn serverinfo_autocomplete_declares_subcommands_and_numeric_arguments() {
+        let nodes = declared_command_nodes();
+        let serverinfo = nodes
+            .iter()
+            .find(|node| node.name == Some("serverinfo"))
+            .unwrap();
+        assert_eq!(
+            serverinfo
+                .children
+                .iter()
+                .map(|&id| nodes[id as usize].name.unwrap())
+                .collect::<Vec<_>>(),
+            ["plots", "plot", "settings"]
+        );
+        for &id in serverinfo.children {
+            let node = &nodes[id as usize];
+            assert_eq!(
+                node.flags & 0x07,
+                0x05,
+                "subcommands must be executable literals"
+            );
+        }
+        let page = &nodes[nodes[154].children[0] as usize];
+        assert_eq!(page.name, Some("page"));
+        assert!(matches!(page.parser, Some(Parser::Integer(1, i32::MAX))));
+        let x = &nodes[nodes[156].children[0] as usize];
+        let z = &nodes[x.children[0] as usize];
+        assert_eq!((x.name, z.name), (Some("x"), Some("z")));
+        for node in [x, z] {
+            assert!(matches!(
+                node.parser,
+                Some(Parser::Integer(i32::MIN, i32::MAX))
+            ));
+        }
+        assert_eq!(x.flags & 0x04, 0);
+        assert_eq!(z.flags & 0x04, 0x04);
+    }
+    #[test]
     fn command_declarations_have_valid_edges_and_no_legacy_tick_aliases() {
         let nodes = declared_command_nodes();
-        assert_eq!(nodes.len(), 153);
+        assert_eq!(nodes.len(), 160);
         for node in &nodes {
             for edge in node.children.iter().copied().chain(node.redirect_node) {
                 assert!(edge >= 0 && (edge as usize) < nodes.len());
@@ -1530,7 +1592,16 @@ mod security_tests {
             assert!(!changes_plot(&command, &["1"]));
         }
         for retained in [
-            "tps", "adv", "back", "rhistory", "redpiler", "rp", "gm", "warp", "setwarp",
+            "tps",
+            "adv",
+            "back",
+            "rhistory",
+            "redpiler",
+            "rp",
+            "gm",
+            "warp",
+            "setwarp",
+            "serverinfo",
         ] {
             assert!(names.contains(&retained), "missing command {retained}");
         }
@@ -1699,7 +1770,8 @@ mod security_tests {
                     lever: Lever::new(LeverFace::Floor, BlockDirection::North, true),
                 },
             );
-            plot.world.set_block(output, Block::RedstoneLamp { lit: true });
+            plot.world
+                .set_block(output, Block::RedstoneLamp { lit: true });
             let before = [plot.world.get_block(control), plot.world.get_block(output)];
             let mut messages = |last: &str| {
                 let mut messages = Vec::new();
@@ -1736,7 +1808,9 @@ mod security_tests {
             ] {
                 plot.handle_redpiler_command(0, "analyze", &args);
                 let lines = messages("Exporting graph [skipped]");
-                assert!(lines.iter().any(|line| line.starts_with("Candidate graph:")));
+                assert!(lines
+                    .iter()
+                    .any(|line| line.starts_with("Candidate graph:")));
                 assert!(lines
                     .iter()
                     .any(|line| line.starts_with("Graph after required preparation:")));

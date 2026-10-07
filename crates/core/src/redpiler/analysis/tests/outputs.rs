@@ -337,7 +337,7 @@ fn destructive_attachments_and_dynamic_overrides_reject_without_mutation() {
             .unwrap_err()
             .to_string();
         let expected = if mutation == "override" {
-            "dynamic override"
+            "analog override through moving blocks"
         } else {
             "moving payload support"
         };
@@ -399,6 +399,8 @@ fn ordinary_source_changes_refresh_logical_ports() {
 #[test]
 fn shared_near_outputs_use_deterministic_first_owner_geometry() {
     let mut saw_near = false;
+    let mut saw_multiple_active = false;
+    let mut recompile_errors = Vec::new();
     for assignment in 0..4 {
         let mut variants = Vec::new();
         for assume_instant in [false, true] {
@@ -464,13 +466,61 @@ fn shared_near_outputs_use_deterministic_first_owner_geometry() {
                 "shared payload must use the deterministic first active owner"
             );
             saw_near |= first_active.is_some();
+            let active_count = group.members.iter().filter(|&&actor| {
+                matches!(world.get_block(report.pistons[actor].pos), Block::Piston { piston } if !piston.extended)
+            }).count();
+            saw_multiple_active |= active_count > 1;
             assert!(world.piston_state().events.is_empty());
             assert!(world.piston_state().motions.is_empty());
-            variants.push(snapshot(&world, bounds));
+            let restored = snapshot(&world, bounds);
+            variants.push(restored.clone());
+            let result = compiler.compile(
+                &world,
+                world.get_corners(),
+                CompilerOptions {
+                    assume_instant,
+                    optimize: true,
+                    ..Default::default()
+                },
+                world.scheduler().iter_entries().collect(),
+                Default::default(),
+            );
+            assert_eq!(
+                snapshot(&world, bounds),
+                restored,
+                "recompilation is read-only"
+            );
+            if let Err(error) = result {
+                assert!(!compiler.is_active());
+                recompile_errors.push(format!(
+                    "assignment={assignment}, active={active_count}, assume_instant={assume_instant}: {error}"
+                ));
+                continue;
+            }
+            for _ in 0..8 {
+                compiler.tick();
+                compiler.flush(&mut world);
+                assert_eq!(world.get_block(output), held);
+            }
+            compiler.reset(&mut world, bounds);
+            let rerecorded = snapshot(&world, bounds);
+            assert_eq!(rerecorded["cells"], restored["cells"]);
+            assert_eq!(rerecorded["ticks"], restored["ticks"]);
+            assert!(world.piston_state().events.is_empty());
+            assert!(world.piston_state().motions.is_empty());
         }
         assert_eq!(variants[0], variants[1], "assignment {assignment}");
     }
     assert!(saw_near, "exercise shared near ownership");
+    assert!(
+        saw_multiple_active,
+        "exercise both active shared-payload branches"
+    );
+    assert!(
+        recompile_errors.is_empty(),
+        "settled shared-payload recompilation failures:\n{}",
+        recompile_errors.join("\n")
+    );
 }
 
 #[test]

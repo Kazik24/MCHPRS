@@ -293,6 +293,9 @@ impl Compiler {
         ticks: Vec<TickEntry>,
         monitor: Arc<TaskMonitor>,
     ) -> Result<(), CompileError> {
+        let span = tracing::info_span!("redpiler", ?bounds, ?options);
+        let _entered = span.enter();
+        tracing::info!("Compiler started");
         debug!("Starting compile");
         let start = Instant::now();
 
@@ -385,6 +388,7 @@ impl Compiler {
             .filter(|p| p.piston.extended && p.diagnostics.contains(&analysis::PistonDiagnostic::MissingOrMismatchedHead))
             .map(|p| format!("Extended piston at {:?} has no matching saved head at {:?}; the runtime starts from its saved geometry.", p.pos, p.head))
             .collect();
+        tracing::info!(stats = ?self.statistics, "Compiler completed");
         for warning in &self.warnings {
             tracing::warn!("Redpiler: {warning}");
         }

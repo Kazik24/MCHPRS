@@ -290,7 +290,7 @@ fn extract_with_options(
             .filter_map(|(id, value)| value.is_none().then_some(report.pistons[id].pos))
             .collect();
         return Err(format!(
-            "instant power dependencies contain a cycle at {unresolved:?}; feedback must cross an explicit independently sampled memory/clock boundary"
+            "power dependency cycle at {unresolved:?}; feedback needs a sampled memory or clock boundary"
         ));
     }
     let mut blocks = Vec::new();
@@ -332,7 +332,7 @@ fn extract_with_options(
                 || extractor.bases.contains_key(&rear))
                 && redstone::comparator::has_override(world.get_block(far))
             {
-                return Err(format!("comparator at {pos:?} reads an analog override through changing geometry; dynamic override reads are not implemented"));
+                return Err(format!("comparator at {pos:?} reads an analog override through moving blocks; this is unsupported"));
             }
         }
         for input in [
@@ -367,7 +367,7 @@ fn extract_with_options(
                     || crate::redstone::comparator::get_far_input(world, pos, comparator.facing)
                         .is_some()
                 {
-                    return Err(format!("comparator at {pos:?} reads an analog override through changing geometry; dynamic override reads are not implemented"));
+                    return Err(format!("comparator at {pos:?} reads an analog override through moving blocks; this is unsupported"));
                 }
             }
             consumer_wires.extend(extractor.wires.iter().copied());
@@ -409,7 +409,7 @@ fn extract_with_options(
             .iter()
             .any(|variable| !matches!(variable, Variable::Signal { .. }))
         {
-            return Err(format!("sampling dust at {pos:?} is not a static single-writer notification net; changing geometry or another writer needs an explicit event protocol"));
+            return Err(format!("sampling dust at {pos:?} depends on moving blocks or another power source; expected one fixed source"));
         }
         extractor.sources.insert(*writer);
         extractor

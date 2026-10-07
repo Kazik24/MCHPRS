@@ -329,7 +329,7 @@ fn logical_conductors_accept_retained_geometry_and_reject_entities_and_bad_heads
         let expected = match mutation {
             "entity" => {
                 world.set_block_entity(payload, furnace_inventory(1));
-                "moving-context entity"
+                "unsupported block entity in its movement area"
             }
             "missing head" => {
                 world.set_block(head_pos, Block::Air);

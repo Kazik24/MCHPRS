@@ -802,16 +802,14 @@ fn fixed_fpu_default_requires_construction_certification_transactionally() {
             .unwrap_err()
             .to_string();
         assert!(
-            error.contains(
-                "neither a certified observer reset nor a proven payload-following response"
-            ),
+            error.contains("no verified observer reset or payload-following response"),
             "{error}"
         );
         assert!(
             error.contains(&format!("{:?}", BASE + BlockPos::new(6, 38, 75))),
             "{error}"
         );
-        assert!(error.contains("--assume-instant"), "{error}");
+        assert!(!error.contains("--assume-instant"), "{error}");
         assert!(!compiler.is_active());
         assert!(compiler.current_flags().is_none());
         assert_eq!(fingerprint(&world), before);
@@ -958,9 +956,7 @@ fn rilax_logical_memory_preserves_data_until_delivered_write_and_read_events() {
             .unwrap_err()
             .to_string();
         assert!(
-            error.contains(
-                "neither a certified observer reset nor a proven payload-following response"
-            ),
+            error.contains("no verified observer reset or payload-following response"),
             "{error}"
         );
         assert!(

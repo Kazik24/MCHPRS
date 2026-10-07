@@ -249,7 +249,7 @@ fn logical_side_observer_rejects_an_exposed_pulse_and_an_independent_sampler_tra
         assert!(error.contains("logical piston admission failed"), "{error}");
         if independent_sampler {
             assert!(
-                (error.contains("independently") || error.contains("independent BUD"))
+                (error.contains("independently") || error.contains("independent sampling"))
                     && (error.contains("samples") || error.contains("sampling")),
                 "{error}"
             );
@@ -541,9 +541,11 @@ fn ordinary_observer_cannot_watch_an_omitted_owned_reset_signal() {
             )
             .unwrap_err()
             .to_string();
-        assert!(error.contains("owned reset observer"), "{error}");
-        assert!(error.contains("omitted reset signal"), "{error}");
-        assert!(error.contains("state boundary"), "{error}");
+        assert!(
+            error.contains("reset observer is watched by observer"),
+            "{error}"
+        );
+        assert!(error.contains("reset pulse cannot be omitted"), "{error}");
         assert!(error.contains(&format!("{reset:?}")), "{error}");
         assert!(error.contains(&format!("{watcher:?}")), "{error}");
         assert!(!compiler.is_active());

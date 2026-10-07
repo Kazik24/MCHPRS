@@ -163,7 +163,10 @@ impl std::fmt::Display for GraphError {
         match self {
             Self::Cancelled => f.write_str("graph preparation cancelled"),
             Self::MissingSource { pos } => {
-                write!(f, "electrical source at {pos:?} has no graph owner")
+                write!(
+                    f,
+                    "power source at {pos:?} is missing from the compiled graph"
+                )
             }
             Self::UnsupportedInstantExport => {
                 f.write_str("instant graph export is not implemented")
@@ -171,13 +174,14 @@ impl std::fmt::Display for GraphError {
             Self::UnsupportedCommandBlockExport => {
                 f.write_str("command-block output export is not implemented")
             }
-            Self::UnsupportedObserverExport => {
-                f.write_str("observer notification links cannot be exported in the electrical graph format")
-            }
-            Self::UnsupportedObserverWatch { observer, watched, reason } => write!(
-                f,
-                "observer at {observer:?} watches {watched:?}: {reason}; split this observation into a supported domain or reset compilation"
+            Self::UnsupportedObserverExport => f.write_str(
+                "observer notification links cannot be exported in the electrical graph format",
             ),
+            Self::UnsupportedObserverWatch {
+                observer,
+                watched,
+                reason,
+            } => write!(f, "observer at {observer:?} watches {watched:?}: {reason}"),
             Self::Export(error) => write!(f, "graph export failed: {error}"),
         }
     }

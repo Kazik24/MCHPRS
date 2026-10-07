@@ -37,7 +37,7 @@ defined in [config.rs](crates/core/src/config.rs); Docker's example is
 | Field | Default | Purpose |
 | --- | --- | --- |
 | `bind_address` | `0.0.0.0:25565` | Listen address and port. |
-| `max_players` | `99999` | Connection limit. |
+| `max_players` | `99999` | Advertised capacity; login does not enforce this limit. |
 | `view_distance` | `8` | Chunk view distance. |
 | `neighbor_update_interval_ms` | `2000` | Neighbor-plot snapshot refresh; zero hides neighbors. |
 | `default_tps` | `20` | Initial game ticks per second for new plots. |
@@ -68,6 +68,36 @@ execution and `/rp reset` hands it back to the interpreter. Read
 [redpiler architecture](docs/Redpiler.md) for flags and lifecycle contracts.
 `/rhistory` and `/back` record and restore interpreter state.
 [Plot Git](docs/PLOT_GIT.md) saves build versions, branches, and comparisons.
+
+## Administration and logging
+
+`/serverinfo` or `/serverinfo plots [page]` lists running plots and their players,
+ten plots per page. `/serverinfo plot` reports the current plot's TPS samples,
+simulation/render settings, pending work, history memory, Git state and last
+compile statistics. `/serverinfo plot <x> <z>` requests the same report from
+another running plot without loading it. `/serverinfo settings` shows resource
+limits and selected server settings, excluding credentials.
+
+Diagnostics require an explicit `mchprs.commands.serverinfo` permission in
+dedicated LuckPerms mode, or `commands.serverinfo` in legacy mode. Standalone
+permission fallback does not grant this administrative command. Reports are
+also written to the terminal and log; remote plot reports wait for that plot's
+thread to handle the request.
+
+At INFO level, command requests include player name, UUID, plot coordinates,
+command and up to 1024 characters of arguments. Denials, history operations,
+Git worker results and duration, compilation statistics, plot loads/unloads and
+player movement between plots are logged. Command spans follow Git and compiler
+workers. `MCHPRS_LOG=debug` enables existing detailed diagnostics in debug builds;
+the current release build compiles out DEBUG and TRACE events. The new activity
+and resource logs use INFO/WARN and remain available in release builds.
+
+New file logs use `logs/mchprs.log` and `logs/mchprs.log.1`, each capped at
+16 MiB. The oldest file is replaced during rotation, keeping at most 32 MiB
+of new logs. Previous daily logs and `old_output.log` are preserved; their
+cleanup remains the operator's responsibility. The production Compose file also
+rotates Docker's stdout logs at 16 MiB with two retained files; other launchers
+must configure their own stdout retention.
 
 ## Development
 

@@ -89,7 +89,7 @@ impl TickHistory {
         self.dictionary.as_ref().map_or(&[], |d| &d.data)
     }
 
-    fn status(&self) -> String {
+    pub(super) fn status(&self) -> String {
         let (used, limit) = self.budget.stats();
         let state = if self.enabled() { "on" } else { "off" };
 
@@ -246,7 +246,7 @@ impl PlotWorld {
             .and_then(|encoded| self.history.push(encoded));
         if let Err(error) = result {
             self.history.disable();
-            tracing::warn!("Tick history stopped: {error}");
+            tracing::warn!(plot_x = self.x, plot_z = self.z, %error, "Tick history stopped");
             let message = serde_json::json!({
                 "text": messages::history_stopped(error),
                 "color": "red",

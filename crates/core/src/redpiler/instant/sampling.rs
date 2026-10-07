@@ -272,7 +272,7 @@ pub(crate) fn recognize(
                 continue;
             }
             if writers.len() != 1 {
-                return Err(format!("BUD at {:?} has ambiguous multiple-writer notification net {:?}; preserve a separately delivered sampling source", piston.pos, update.source));
+                return Err(format!("BUD at {:?} receives updates from multiple writers through {:?}; sampling needs one writer", piston.pos, update.source));
             }
             let writer = writers[0];
             if data.sources.iter().any(|source| source.source == writer) {
@@ -287,7 +287,7 @@ pub(crate) fn recognize(
             }
         }
         if !found {
-            return Err(format!("BUD at {:?} has no qualifying independently delivered sampling source; data changes alone cannot write stored state", piston.pos));
+            return Err(format!("BUD at {:?} has no independent sampling source; data changes alone cannot update memory", piston.pos));
         }
         if report.payload_groups[groups[actor]].members.len() != 1 {
             return Err(format!(
@@ -344,7 +344,7 @@ pub(crate) fn validate(
             }
             if let Some(decision) = logic.arena.decision(root) {
                 match decision.variable {
-                    Variable::Memory(_) => return Err(format!("sampling control at {origin:?} depends on stored memory; sampled-control feedback needs an explicit ordered event protocol")),
+                    Variable::Memory(_) => return Err(format!("sampling control at {origin:?} depends on stored memory; this feedback is unsupported")),
                     Variable::Actuator(actor) => pending.push(logic.responses[actor]),
                     Variable::Signal { .. } => {},
                     _ => return Err(format!("sampling control at {origin:?} retains unsupported physical state")),

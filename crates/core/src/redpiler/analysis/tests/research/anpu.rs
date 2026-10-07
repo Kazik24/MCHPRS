@@ -72,17 +72,16 @@ fn anpu_rejects_mechanisms_without_certified_instant_boundaries() {
             error.contains("BlockPos"),
             "the ambiguous boundary must be located: {error}"
         );
-        let reason = error.split("; use --assume-instant").next().unwrap();
         assert!(
-            reason.contains("sampling")
-                || reason.contains("response")
-                || reason.contains("owner")
-                || reason.contains("cycle"),
+            error.contains("sampling")
+                || error.contains("response")
+                || error.contains("owner")
+                || error.contains("cycle"),
             "{error}"
         );
         assert!(
-            error.contains("unambiguous"),
-            "an actionable boundary diagnostic is required: {error}"
+            !error.contains("--assume-instant"),
+            "unrelated flag advice must not obscure the failure reason: {error}"
         );
         assert!(!compiler.is_active());
         assert!(compiler.current_flags().is_none());

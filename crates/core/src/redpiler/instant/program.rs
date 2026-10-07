@@ -59,7 +59,7 @@ pub(crate) fn prepare(
         if monitor.cancelled() {
             error
         } else {
-            format!("logical piston admission failed: {error}; use --assume-instant only to waive construction certification; data, sampling and feedback must remain unambiguous")
+            format!("logical piston admission failed: {error}")
         }
     };
     let mut programs = Vec::new();
@@ -191,6 +191,7 @@ fn prepare_region(
     };
     let mut actor_groups = vec![0; report.pistons.len()];
     let mut logical_payloads = vec![Block::Air; report.payload_groups.len()];
+    let mut retained_owners = vec![None; report.payload_groups.len()];
     for (group, descriptor) in report.payload_groups.iter().enumerate() {
         for &actor in &descriptor.members {
             actor_groups[actor] = group;
@@ -235,22 +236,20 @@ fn prepare_region(
                 piston.head.offset(piston.piston.facing.into()) != far
             })
         {
-            return Err(format!("logical payload group at {:?} needs one supported material and one unambiguous far destination", first.pos));
+            return Err(format!("pistons sharing a payload at {:?} need exactly one supported block and the same destination", first.pos));
         }
-        let mut retained = descriptor
+        let owner = descriptor
             .members
             .iter()
             .copied()
-            .filter(|&actor| !report.pistons[actor].piston.extended);
-        let owner = retained.next();
-        if retained.next().is_some()
-            || material[0].0 != owner.map_or(far, |actor| report.pistons[actor].head)
-        {
+            .find(|&actor| !report.pistons[actor].piston.extended);
+        if material[0].0 != owner.map_or(far, |actor| report.pistons[actor].head) {
             return Err(format!(
-                "logical payload group at {:?} has ambiguous retained near ownership",
+                "shared payload at {:?} is not in its expected retracted or extended position",
                 first.pos
             ));
         }
+        retained_owners[group] = owner;
         logical_payloads[group] = material[0].1;
     }
     let mut reset_owners = FxHashSet::default();
@@ -266,17 +265,24 @@ fn prepare_region(
                 && !is_memory(id)
                 && !is_generator(id))
         {
-            return Err(format!("piston at {:?} needs a settled stationary sticky logical mechanism or an identified sampling generator", p.pos));
+            return Err(format!("piston at {:?} has unsupported geometry; expected a settled sticky piston or sampling generator", p.pos));
         }
         let payload = logical_payloads[actor_groups[id]];
         if !super::outputs::supported_payload(payload) && !is_generator(id) {
             return Err(format!("unsupported payload minecraft:{} at {:?}, owned by piston {:?}; expected a redstone block or supported fixed conductor",payload.get_name(),p.payload,p.pos));
         }
+        // Shared OR groups can retract several actors while one deterministic
+        // first owner holds their single payload; the other near cells are air.
+        let near_payload = if retained_owners[actor_groups[id]] == Some(id) {
+            payload
+        } else {
+            Block::Air
+        };
         if retained
-            && (world.get_block(p.head) != payload
+            && (world.get_block(p.head) != near_payload
                 || (!is_generator(id) && world.get_block(far) != Block::Air))
         {
-            return Err(format!("retracted logical piston at {:?} needs one settled near payload and an empty far cell at {far:?}", p.pos));
+            return Err(format!("retracted logical piston at {:?} needs minecraft:{} at {:?} and an empty far cell at {far:?}", p.pos, near_payload.get_name(), p.head));
         }
         if !retained
             && !matches!(world.get_block(p.head), Block::PistonHead { head } if head.sticky==p.piston.sticky && head.facing == p.piston.facing && !head.short)
@@ -297,7 +303,7 @@ fn prepare_region(
             .find(|&pos| world.get_block_entity(pos).is_some())
         {
             return Err(format!(
-                "piston at {:?} has an unsupported moving-context entity at {pos:?}",
+                "piston at {:?} has an unsupported block entity in its movement area at {pos:?}",
                 p.pos
             ));
         }
@@ -322,7 +328,7 @@ fn prepare_region(
                     && crate::interaction::attachment_support(block, pos)
                         .is_some_and(|(support, _)| support == alias)
                 {
-                    return Err(format!("attachment at {pos:?} uses moving payload support at {alias:?}; destructive support updates need another protocol"));
+                    return Err(format!("attachment at {pos:?} uses moving payload support at {alias:?}; breaking attached blocks is unsupported"));
                 }
             }
         }
@@ -347,7 +353,7 @@ fn prepare_region(
                 && super::sampling::data_notifies(world, s.source, p.pos)
         });
         if !power_notification && !adjacent_source && !is_memory(id) && !candidates.iter().any(|&pos| matches!(world.get_block(pos), Block::Observer { observer } if pos.offset(observer.facing.into()) == p.pos)) {
-            return Err(format!("piston at {:?} needs a qualifying update coupled to its power input or an explicit independent sampling event",p.pos));
+            return Err(format!("piston at {:?} has no update coupled to its power input or independent sampling source",p.pos));
         }
     }
     if let Some(clocked) = &clocked {
@@ -405,7 +411,10 @@ fn prepare_region(
             && !is_memory(id)
             && !is_generator(id)
         {
-            return Err(format!("piston at {:?} has neither a certified observer reset nor a proven payload-following response; this construction needs certification or --assume-instant", p.pos));
+            return Err(format!(
+                "piston at {:?} has no verified observer reset or payload-following response",
+                p.pos
+            ));
         }
     }
     if let Some(exposure) = report.ports.reset_exposures.iter().find(|e| {

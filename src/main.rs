@@ -6,6 +6,8 @@ use tracing_subscriber::filter::LevelFilter;
 use tracing_subscriber::fmt::writer::MakeWriterExt;
 use tracing_subscriber::EnvFilter;
 
+mod logging;
+
 fn main() {
     if std::env::args()
         .skip(1)
@@ -15,13 +17,16 @@ fn main() {
         return;
     }
     // Setup logging
-    let logfile = tracing_appender::rolling::daily("./logs", "mchprs.log");
+    fs::create_dir_all("./logs").expect("Cannot create log directory");
+    let logfile = logging::Log::open(Path::new("./logs/mchprs.log"), 16 * 1024 * 1024)
+        .expect("Cannot open server log");
     let env_filter = EnvFilter::builder()
         .with_default_directive(LevelFilter::INFO.into())
         .with_env_var("MCHPRS_LOG")
         .from_env_lossy();
     tracing_subscriber::fmt()
         .with_writer(logfile.and(std::io::stdout))
+        .with_thread_names(true)
         .with_env_filter(env_filter)
         .init();
 
