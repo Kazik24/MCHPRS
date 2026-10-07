@@ -128,3 +128,126 @@ repair before use: its `Reference` initializer lacks `ram_trace`, and its button
 helper assumes the original `(8,8,8)` origin. It cannot currently establish a
 complete BubbleSort reference. Existing frozen replay commands remain the
 validation procedure.
+
+## PM1 Sort correction (2026-10-08)
+
+The corrected copy is [`PM1_SORT_FIXED.schem`](../../test_data/PM1_SORT_FIXED.schem).
+The original CPU fixture, its duplicate in `instant-pistons`, `CPUS`, frozen
+expectations, and the existing piston-shape migration remain unchanged.
+The new [measurement file](../../test_data/cpu-references/pm1-sort-correction-results.json)
+records evidence; validation never reads it as an expectation.
+
+The CPU loader verifies the original SHA-256, zeros the clipboard's saved
+offset `(0,1,1)`, and pastes the entire selection at `(8,8,8)`. The integration
+test, CPU benchmark, and old reference capture share this loader. The separate
+instant-piston manifest references the identical original binary, retains its
+offset, and is excluded from the CPU admission acceptance set. Neither path
+was redirected to the corrected copy.
+
+Only these two entries were changed to air:
+
+| Selection-local | CPU world | Saved state |
+| --- | --- | --- |
+| `(198,34,32)` | `(206,42,40)` | `moving_piston[facing=down,type=normal]` |
+| `(198,35,32)` | `(206,43,40)` | `moving_piston[facing=down,type=sticky]` |
+
+These are the fixture's only moving-piston entries. They form an adjacent,
+down-facing orphan pair: no block entity supplies either one's moved state or
+source identity, so identifying base versus head unambiguously is impossible.
+There is no saved stationary base/head at either position; the next cell above
+is gray wool and the cell below the pair is air. Nearby stationary pistons,
+their heads, payloads, wool, dust, and supports were retained. Import creates no
+scheduled ticks, piston events, or motions in this fixture, so no scheduled work
+or entities needed removal. Pasting imports raw geometry before entities; motion
+registration requires a moving-piston entity.
+
+The original-fixture maximum-budget probe reproduces the reported rejection at
+`(206,42,40)` in 0.583918 seconds. Removing only that first entry in memory
+exposes the second moving-piston rejection at `(206,43,40)` in 0.562769 seconds.
+This establishes why both orphan entries must be removed from the corrected copy.
+
+[`fix_pm1_sort.py`](../../tools/fix_pm1_sort.py) preserves the decompressed NBT
+outside the block-data array and its length, replaces exactly two palette
+entries, and checks all decoded cells and entities. Original SHA-256:
+`e338028d50a4400056e25037d1f43d37c08baed079edede6298f78b0a6341654`.
+Corrected SHA-256:
+`ad68a0160990c72612c0105802fade337758de127dcdbd4cc1a195059ad2d893`.
+Dimensions remain `(235,202,182)`; Sponge v2/DataVersion 4325 and all metadata
+and palette entries are preserved.
+
+The [release runner](../../crates/core/examples/pm1_sort_correction.rs) checks
+the full 50,000-tick start episode and 100-tick manual stop tail. Its first
+sample replays original and corrected worlds side by side: command output and
+quiet/nonquiet state agree at every tick, and the original orphan geometry
+remains unchanged throughout. All 1,535 ordered, tick-stamped messages match
+the frozen reference. `shut` occurs at tick 12,051; first empty scheduled/event/
+motion queues occur at 12,055; manual stop output occurs at 50,007; final state
+at 50,100 is quiet.
+
+All ten whole-world checkpoints pass on every replay. The corrected block
+hashes necessarily differ: the runner temporarily restores only these two
+entries directly in chunk storage, verifies the entire checkpoint against the
+original expectation (including the pre-existing shape migration), then removes
+them again. Thus section block counts and state hashes are accounted for
+explicitly. Entities, scheduler, piston state, lamps, chat, and message counts
+retain their original assertions. No expectations were regenerated.
+
+Compilation uses whole-plot bounds, the imported scheduler, and unchanged
+admission checks. Times below are release compiler-call durations, including
+analysis until rejection, excluding fixture loading and verification:
+
+| Flags | Normal budget (1x), seconds | Maximum budget (8x), seconds |
+| --- | ---: | ---: |
+| Default | 0.062295 | 1.658488 |
+| `-O` | 0.059865 | 1.614157 |
+| `--assume-instant` | 0.059883 | 1.706730 |
+| Both | 0.060090 | 1.680619 |
+
+All eight reject without changing the world or publishing an active compiler.
+Normal analysis stops at its 65,536-piston limit: the fixture has 66,021
+stationary bases (65,840 sticky plus 181 ordinary). Inspection in the analyzer's
+chunk/section/cell order locates the 65,537th base at world `(230,62,48)`, local
+`(222,54,40)`; the compiler's budget error itself has no coordinate.
+
+At maximum budget, all four configurations reject with:
+
+```text
+logical piston admission failed: unsupported payload minecraft:gold_block at BlockPos { x: 49, y: 18, z: 60 }, owned by piston BlockPos { x: 49, y: 20, z: 60 }; expected a redstone block or supported fixed conductor
+```
+
+This is local payload `(41,10,52)`, below the matching sticky head at
+`(41,11,52)` and extended, downward sticky base at `(41,12,52)`.
+`instant::outputs::supported_payload` does not admit gold blocks; material
+validation runs before clock/sampling recognition. Neither flag bypasses it.
+This payload was retained. No configuration is admitted, so compiled observable
+equivalence and compiled TPS cannot be measured.
+
+Interpreter reference timings are recorded for ticks 1 through 12,051 in three
+release samples. Only `tick_interpreted` calls are timed: loading, compilation,
+checks, and the manual stop tail are excluded. No runtime visual flushing is
+performed; paste-time flushing is preparation outside timing. Sample 1 also
+interleaves the original-world validation, outside its timed calls. The host is
+Windows x86-64, AMD Ryzen 9 5950X (16 cores/32 threads), Rust 1.98.1, release
+with fat LTO, source commit `a0c5f293039981b365e058eae5c8a6d989104ee4`.
+An unrelated build was running on the shared host, so these are observations,
+not isolated throughput promises. The JSON retains individual seconds and TPS.
+
+| Release sample | Active seconds | Active interpreter TPS |
+| --- | ---: | ---: |
+| 1 (with interleaved original validation) | 63.602189 | 189.47 |
+| 2 | 62.682345 | 192.26 |
+| 3 | 60.816953 | 198.15 |
+
+Median active interpreter throughput is 192.26 TPS. Compiled throughput is
+unavailable because every configuration rejects; no speedup is claimed.
+
+Recommended next step: retain the validated copy and use the interpreter.
+Separately investigate gold-payload support with its electrical/geometry
+semantics and tests, then retry at maximum budget to expose subsequent blockers.
+Do not broaden admission or replace circuit materials solely to admit PM1.
+
+```sh
+py tools/fix_pm1_sort.py
+cargo run -p mchprs_core --release --locked --example pm1_sort_correction
+cargo run -p mchprs_core --release --locked --example pm1_sort_correction -- --probe-original
+```

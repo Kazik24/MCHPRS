@@ -1,0 +1,369 @@
+{
+  "active_window_ticks": 12051,
+  "admission": [
+    {
+      "admitted": false,
+      "budget_multiplier": 1,
+      "compile_seconds": 0.0622954,
+      "error": "analysis piston budget exceeded",
+      "flags": "",
+      "input_unchanged": true
+    },
+    {
+      "admitted": false,
+      "budget_multiplier": 1,
+      "compile_seconds": 0.0598649,
+      "error": "analysis piston budget exceeded",
+      "flags": "-O",
+      "input_unchanged": true
+    },
+    {
+      "admitted": false,
+      "budget_multiplier": 1,
+      "compile_seconds": 0.0598826,
+      "error": "analysis piston budget exceeded",
+      "flags": "--assume-instant",
+      "input_unchanged": true
+    },
+    {
+      "admitted": false,
+      "budget_multiplier": 1,
+      "compile_seconds": 0.0600903,
+      "error": "analysis piston budget exceeded",
+      "flags": "-O --assume-instant",
+      "input_unchanged": true
+    },
+    {
+      "admitted": false,
+      "budget_multiplier": 8,
+      "compile_seconds": 1.6584884,
+      "error": "logical piston admission failed: unsupported payload minecraft:gold_block at BlockPos { x: 49, y: 18, z: 60 }, owned by piston BlockPos { x: 49, y: 20, z: 60 }; expected a redstone block or supported fixed conductor",
+      "flags": "",
+      "input_unchanged": true
+    },
+    {
+      "admitted": false,
+      "budget_multiplier": 8,
+      "compile_seconds": 1.6141573999999999,
+      "error": "logical piston admission failed: unsupported payload minecraft:gold_block at BlockPos { x: 49, y: 18, z: 60 }, owned by piston BlockPos { x: 49, y: 20, z: 60 }; expected a redstone block or supported fixed conductor",
+      "flags": "-O",
+      "input_unchanged": true
+    },
+    {
+      "admitted": false,
+      "budget_multiplier": 8,
+      "compile_seconds": 1.7067302,
+      "error": "logical piston admission failed: unsupported payload minecraft:gold_block at BlockPos { x: 49, y: 18, z: 60 }, owned by piston BlockPos { x: 49, y: 20, z: 60 }; expected a redstone block or supported fixed conductor",
+      "flags": "--assume-instant",
+      "input_unchanged": true
+    },
+    {
+      "admitted": false,
+      "budget_multiplier": 8,
+      "compile_seconds": 1.680619,
+      "error": "logical piston admission failed: unsupported payload minecraft:gold_block at BlockPos { x: 49, y: 18, z: 60 }, owned by piston BlockPos { x: 49, y: 20, z: 60 }; expected a redstone block or supported fixed conductor",
+      "flags": "-O --assume-instant",
+      "input_unchanged": true
+    }
+  ],
+  "arch": "x86_64",
+  "corrected_sha256": "ad68a0160990c72612c0105802fade337758de127dcdbd4cc1a195059ad2d893",
+  "interpreter_flush_interval": 0,
+  "interpreter_flush_timed": false,
+  "interpreter_samples": [
+    {
+      "active_seconds": 63.6021887,
+      "active_tps": 189.47461158675503,
+      "final_quiet": true,
+      "first_quiet_tick": 12055,
+      "geometry_hashes": [
+        {
+          "all_other_fields_equal": true,
+          "corrected_blocks": "6723cb5b4ea309d10f089b68cd8271cb5e72255ae948a9d99da0a2dc90ea54f8",
+          "original_blocks": "ac7ade39a23deb8e62e99d934c77d6979b9a84948ca5bb01c7621bdee967db75",
+          "restored_blocks": "ac7ade39a23deb8e62e99d934c77d6979b9a84948ca5bb01c7621bdee967db75",
+          "tick": 0
+        },
+        {
+          "all_other_fields_equal": true,
+          "corrected_blocks": "6d630d44208a9cb111aa2404718ccb59ea5a14b59415cff1cdd88b899b4379a7",
+          "original_blocks": "e27248b306c875508e0562af69dfcc48b64eb9f64fd40c411e143fde63ebbb1c",
+          "restored_blocks": "e27248b306c875508e0562af69dfcc48b64eb9f64fd40c411e143fde63ebbb1c",
+          "tick": 10
+        },
+        {
+          "all_other_fields_equal": true,
+          "corrected_blocks": "9c5523d19a94db358aa4bb71c09502d4036b2ae82914f234736150b0f756b6a9",
+          "original_blocks": "9968f5bdac0d76250a15586505511ba5ab0c45cfeb01c3df3ebf1d77dcf5f625",
+          "restored_blocks": "9968f5bdac0d76250a15586505511ba5ab0c45cfeb01c3df3ebf1d77dcf5f625",
+          "tick": 100
+        },
+        {
+          "all_other_fields_equal": true,
+          "corrected_blocks": "7d1e735dc364059a6a213e0df2d10e6c3500cae5da5fd479ff2abbb6e465bf4a",
+          "original_blocks": "76dc550c5a49d0b98cd4995fad2989aac3e07da82e879707f3cf693bb681c4ab",
+          "restored_blocks": "76dc550c5a49d0b98cd4995fad2989aac3e07da82e879707f3cf693bb681c4ab",
+          "tick": 1000
+        },
+        {
+          "all_other_fields_equal": true,
+          "corrected_blocks": "1b48542d226af49053adb5f7e84d0843f5f9f0f4c95ef03f6e967a34c50081d5",
+          "original_blocks": "995b7c4dc0f0eb8187cfd956f7313d653b16bfba74b5c016c2a853f2d77695c7",
+          "restored_blocks": "995b7c4dc0f0eb8187cfd956f7313d653b16bfba74b5c016c2a853f2d77695c7",
+          "tick": 5000
+        },
+        {
+          "all_other_fields_equal": true,
+          "corrected_blocks": "a1af8c54306e570f5cde2f96cebd4379d5681268aa442334c7686b9179b406d7",
+          "original_blocks": "5916e53dfea660e01613d5643d30bd585ee9c5964ba8803abb81398f43d7a052",
+          "restored_blocks": "5916e53dfea660e01613d5643d30bd585ee9c5964ba8803abb81398f43d7a052",
+          "tick": 10000
+        },
+        {
+          "all_other_fields_equal": true,
+          "corrected_blocks": "bcb6e435eb6b37af4c157fa9a89c34270fceddd839696bdd7055c15235a1efcb",
+          "original_blocks": "10bc8a3f692d95c898eb3b100dc9d7bb0bb1f1915bebc4f69c435e77e28ed350",
+          "restored_blocks": "10bc8a3f692d95c898eb3b100dc9d7bb0bb1f1915bebc4f69c435e77e28ed350",
+          "tick": 20000
+        },
+        {
+          "all_other_fields_equal": true,
+          "corrected_blocks": "bcb6e435eb6b37af4c157fa9a89c34270fceddd839696bdd7055c15235a1efcb",
+          "original_blocks": "10bc8a3f692d95c898eb3b100dc9d7bb0bb1f1915bebc4f69c435e77e28ed350",
+          "restored_blocks": "10bc8a3f692d95c898eb3b100dc9d7bb0bb1f1915bebc4f69c435e77e28ed350",
+          "tick": 30000
+        },
+        {
+          "all_other_fields_equal": true,
+          "corrected_blocks": "bcb6e435eb6b37af4c157fa9a89c34270fceddd839696bdd7055c15235a1efcb",
+          "original_blocks": "10bc8a3f692d95c898eb3b100dc9d7bb0bb1f1915bebc4f69c435e77e28ed350",
+          "restored_blocks": "10bc8a3f692d95c898eb3b100dc9d7bb0bb1f1915bebc4f69c435e77e28ed350",
+          "tick": 50000
+        },
+        {
+          "all_other_fields_equal": true,
+          "corrected_blocks": "bcb6e435eb6b37af4c157fa9a89c34270fceddd839696bdd7055c15235a1efcb",
+          "original_blocks": "10bc8a3f692d95c898eb3b100dc9d7bb0bb1f1915bebc4f69c435e77e28ed350",
+          "restored_blocks": "10bc8a3f692d95c898eb3b100dc9d7bb0bb1f1915bebc4f69c435e77e28ed350",
+          "tick": 50100
+        }
+      ],
+      "halt_message_tick": 12051,
+      "messages": 1535,
+      "original_lockstep_comparison": true,
+      "sample": 1,
+      "stop_message": [
+        50007,
+        "{\"extra\":[{\"color\":\"dark_gray\",\"text\":\"[\"},{\"color\":\"aqua\",\"text\":\"PM\"},{\"color\":\"white\",\"text\":\"-\"},{\"color\":\"gray\",\"text\":\"1\"},{\"color\":\"dark_gray\",\"text\":\"] \"},{\"color\":\"red\",\"text\":\"Zatrzymanie komputera\"}],\"text\":\"\"}"
+      ]
+    },
+    {
+      "active_seconds": 62.682345,
+      "active_tps": 192.2550919242093,
+      "final_quiet": true,
+      "first_quiet_tick": 12055,
+      "geometry_hashes": [
+        {
+          "all_other_fields_equal": true,
+          "corrected_blocks": "6723cb5b4ea309d10f089b68cd8271cb5e72255ae948a9d99da0a2dc90ea54f8",
+          "original_blocks": "ac7ade39a23deb8e62e99d934c77d6979b9a84948ca5bb01c7621bdee967db75",
+          "restored_blocks": "ac7ade39a23deb8e62e99d934c77d6979b9a84948ca5bb01c7621bdee967db75",
+          "tick": 0
+        },
+        {
+          "all_other_fields_equal": true,
+          "corrected_blocks": "6d630d44208a9cb111aa2404718ccb59ea5a14b59415cff1cdd88b899b4379a7",
+          "original_blocks": "e27248b306c875508e0562af69dfcc48b64eb9f64fd40c411e143fde63ebbb1c",
+          "restored_blocks": "e27248b306c875508e0562af69dfcc48b64eb9f64fd40c411e143fde63ebbb1c",
+          "tick": 10
+        },
+        {
+          "all_other_fields_equal": true,
+          "corrected_blocks": "9c5523d19a94db358aa4bb71c09502d4036b2ae82914f234736150b0f756b6a9",
+          "original_blocks": "9968f5bdac0d76250a15586505511ba5ab0c45cfeb01c3df3ebf1d77dcf5f625",
+          "restored_blocks": "9968f5bdac0d76250a15586505511ba5ab0c45cfeb01c3df3ebf1d77dcf5f625",
+          "tick": 100
+        },
+        {
+          "all_other_fields_equal": true,
+          "corrected_blocks": "7d1e735dc364059a6a213e0df2d10e6c3500cae5da5fd479ff2abbb6e465bf4a",
+          "original_blocks": "76dc550c5a49d0b98cd4995fad2989aac3e07da82e879707f3cf693bb681c4ab",
+          "restored_blocks": "76dc550c5a49d0b98cd4995fad2989aac3e07da82e879707f3cf693bb681c4ab",
+          "tick": 1000
+        },
+        {
+          "all_other_fields_equal": true,
+          "corrected_blocks": "1b48542d226af49053adb5f7e84d0843f5f9f0f4c95ef03f6e967a34c50081d5",
+          "original_blocks": "995b7c4dc0f0eb8187cfd956f7313d653b16bfba74b5c016c2a853f2d77695c7",
+          "restored_blocks": "995b7c4dc0f0eb8187cfd956f7313d653b16bfba74b5c016c2a853f2d77695c7",
+          "tick": 5000
+        },
+        {
+          "all_other_fields_equal": true,
+          "corrected_blocks": "a1af8c54306e570f5cde2f96cebd4379d5681268aa442334c7686b9179b406d7",
+          "original_blocks": "5916e53dfea660e01613d5643d30bd585ee9c5964ba8803abb81398f43d7a052",
+          "restored_blocks": "5916e53dfea660e01613d5643d30bd585ee9c5964ba8803abb81398f43d7a052",
+          "tick": 10000
+        },
+        {
+          "all_other_fields_equal": true,
+          "corrected_blocks": "bcb6e435eb6b37af4c157fa9a89c34270fceddd839696bdd7055c15235a1efcb",
+          "original_blocks": "10bc8a3f692d95c898eb3b100dc9d7bb0bb1f1915bebc4f69c435e77e28ed350",
+          "restored_blocks": "10bc8a3f692d95c898eb3b100dc9d7bb0bb1f1915bebc4f69c435e77e28ed350",
+          "tick": 20000
+        },
+        {
+          "all_other_fields_equal": true,
+          "corrected_blocks": "bcb6e435eb6b37af4c157fa9a89c34270fceddd839696bdd7055c15235a1efcb",
+          "original_blocks": "10bc8a3f692d95c898eb3b100dc9d7bb0bb1f1915bebc4f69c435e77e28ed350",
+          "restored_blocks": "10bc8a3f692d95c898eb3b100dc9d7bb0bb1f1915bebc4f69c435e77e28ed350",
+          "tick": 30000
+        },
+        {
+          "all_other_fields_equal": true,
+          "corrected_blocks": "bcb6e435eb6b37af4c157fa9a89c34270fceddd839696bdd7055c15235a1efcb",
+          "original_blocks": "10bc8a3f692d95c898eb3b100dc9d7bb0bb1f1915bebc4f69c435e77e28ed350",
+          "restored_blocks": "10bc8a3f692d95c898eb3b100dc9d7bb0bb1f1915bebc4f69c435e77e28ed350",
+          "tick": 50000
+        },
+        {
+          "all_other_fields_equal": true,
+          "corrected_blocks": "bcb6e435eb6b37af4c157fa9a89c34270fceddd839696bdd7055c15235a1efcb",
+          "original_blocks": "10bc8a3f692d95c898eb3b100dc9d7bb0bb1f1915bebc4f69c435e77e28ed350",
+          "restored_blocks": "10bc8a3f692d95c898eb3b100dc9d7bb0bb1f1915bebc4f69c435e77e28ed350",
+          "tick": 50100
+        }
+      ],
+      "halt_message_tick": 12051,
+      "messages": 1535,
+      "original_lockstep_comparison": false,
+      "sample": 2,
+      "stop_message": [
+        50007,
+        "{\"extra\":[{\"color\":\"dark_gray\",\"text\":\"[\"},{\"color\":\"aqua\",\"text\":\"PM\"},{\"color\":\"white\",\"text\":\"-\"},{\"color\":\"gray\",\"text\":\"1\"},{\"color\":\"dark_gray\",\"text\":\"] \"},{\"color\":\"red\",\"text\":\"Zatrzymanie komputera\"}],\"text\":\"\"}"
+      ]
+    },
+    {
+      "active_seconds": 60.816953,
+      "active_tps": 198.1519856807032,
+      "final_quiet": true,
+      "first_quiet_tick": 12055,
+      "geometry_hashes": [
+        {
+          "all_other_fields_equal": true,
+          "corrected_blocks": "6723cb5b4ea309d10f089b68cd8271cb5e72255ae948a9d99da0a2dc90ea54f8",
+          "original_blocks": "ac7ade39a23deb8e62e99d934c77d6979b9a84948ca5bb01c7621bdee967db75",
+          "restored_blocks": "ac7ade39a23deb8e62e99d934c77d6979b9a84948ca5bb01c7621bdee967db75",
+          "tick": 0
+        },
+        {
+          "all_other_fields_equal": true,
+          "corrected_blocks": "6d630d44208a9cb111aa2404718ccb59ea5a14b59415cff1cdd88b899b4379a7",
+          "original_blocks": "e27248b306c875508e0562af69dfcc48b64eb9f64fd40c411e143fde63ebbb1c",
+          "restored_blocks": "e27248b306c875508e0562af69dfcc48b64eb9f64fd40c411e143fde63ebbb1c",
+          "tick": 10
+        },
+        {
+          "all_other_fields_equal": true,
+          "corrected_blocks": "9c5523d19a94db358aa4bb71c09502d4036b2ae82914f234736150b0f756b6a9",
+          "original_blocks": "9968f5bdac0d76250a15586505511ba5ab0c45cfeb01c3df3ebf1d77dcf5f625",
+          "restored_blocks": "9968f5bdac0d76250a15586505511ba5ab0c45cfeb01c3df3ebf1d77dcf5f625",
+          "tick": 100
+        },
+        {
+          "all_other_fields_equal": true,
+          "corrected_blocks": "7d1e735dc364059a6a213e0df2d10e6c3500cae5da5fd479ff2abbb6e465bf4a",
+          "original_blocks": "76dc550c5a49d0b98cd4995fad2989aac3e07da82e879707f3cf693bb681c4ab",
+          "restored_blocks": "76dc550c5a49d0b98cd4995fad2989aac3e07da82e879707f3cf693bb681c4ab",
+          "tick": 1000
+        },
+        {
+          "all_other_fields_equal": true,
+          "corrected_blocks": "1b48542d226af49053adb5f7e84d0843f5f9f0f4c95ef03f6e967a34c50081d5",
+          "original_blocks": "995b7c4dc0f0eb8187cfd956f7313d653b16bfba74b5c016c2a853f2d77695c7",
+          "restored_blocks": "995b7c4dc0f0eb8187cfd956f7313d653b16bfba74b5c016c2a853f2d77695c7",
+          "tick": 5000
+        },
+        {
+          "all_other_fields_equal": true,
+          "corrected_blocks": "a1af8c54306e570f5cde2f96cebd4379d5681268aa442334c7686b9179b406d7",
+          "original_blocks": "5916e53dfea660e01613d5643d30bd585ee9c5964ba8803abb81398f43d7a052",
+          "restored_blocks": "5916e53dfea660e01613d5643d30bd585ee9c5964ba8803abb81398f43d7a052",
+          "tick": 10000
+        },
+        {
+          "all_other_fields_equal": true,
+          "corrected_blocks": "bcb6e435eb6b37af4c157fa9a89c34270fceddd839696bdd7055c15235a1efcb",
+          "original_blocks": "10bc8a3f692d95c898eb3b100dc9d7bb0bb1f1915bebc4f69c435e77e28ed350",
+          "restored_blocks": "10bc8a3f692d95c898eb3b100dc9d7bb0bb1f1915bebc4f69c435e77e28ed350",
+          "tick": 20000
+        },
+        {
+          "all_other_fields_equal": true,
+          "corrected_blocks": "bcb6e435eb6b37af4c157fa9a89c34270fceddd839696bdd7055c15235a1efcb",
+          "original_blocks": "10bc8a3f692d95c898eb3b100dc9d7bb0bb1f1915bebc4f69c435e77e28ed350",
+          "restored_blocks": "10bc8a3f692d95c898eb3b100dc9d7bb0bb1f1915bebc4f69c435e77e28ed350",
+          "tick": 30000
+        },
+        {
+          "all_other_fields_equal": true,
+          "corrected_blocks": "bcb6e435eb6b37af4c157fa9a89c34270fceddd839696bdd7055c15235a1efcb",
+          "original_blocks": "10bc8a3f692d95c898eb3b100dc9d7bb0bb1f1915bebc4f69c435e77e28ed350",
+          "restored_blocks": "10bc8a3f692d95c898eb3b100dc9d7bb0bb1f1915bebc4f69c435e77e28ed350",
+          "tick": 50000
+        },
+        {
+          "all_other_fields_equal": true,
+          "corrected_blocks": "bcb6e435eb6b37af4c157fa9a89c34270fceddd839696bdd7055c15235a1efcb",
+          "original_blocks": "10bc8a3f692d95c898eb3b100dc9d7bb0bb1f1915bebc4f69c435e77e28ed350",
+          "restored_blocks": "10bc8a3f692d95c898eb3b100dc9d7bb0bb1f1915bebc4f69c435e77e28ed350",
+          "tick": 50100
+        }
+      ],
+      "halt_message_tick": 12051,
+      "messages": 1535,
+      "original_lockstep_comparison": false,
+      "sample": 3,
+      "stop_message": [
+        50007,
+        "{\"extra\":[{\"color\":\"dark_gray\",\"text\":\"[\"},{\"color\":\"aqua\",\"text\":\"PM\"},{\"color\":\"white\",\"text\":\"-\"},{\"color\":\"gray\",\"text\":\"1\"},{\"color\":\"dark_gray\",\"text\":\"] \"},{\"color\":\"red\",\"text\":\"Zatrzymanie komputera\"}],\"text\":\"\"}"
+      ]
+    }
+  ],
+  "original_sha256": "e338028d50a4400056e25037d1f43d37c08baed079edede6298f78b0a6341654",
+  "os": "windows",
+  "profile": "release",
+  "protocol_ticks": 50100,
+  "schema": 1,
+  "timing_excludes": "loading, preparation, compilation, checks, manual stop tail",
+  "original_maximum_budget_probes": [
+    {
+      "case": "original",
+      "compile_seconds": 0.583918,
+      "error": "moving piston at BlockPos { x: 206, y: 42, z: 40 } requires the interpreter"
+    },
+    {
+      "case": "only first entry removed",
+      "compile_seconds": 0.562769,
+      "error": "moving piston at BlockPos { x: 206, y: 43, z: 40 } requires the interpreter"
+    }
+  ],
+  "machine": {
+    "cpu": "AMD Ryzen 9 5950X",
+    "cores": 16,
+    "logical_processors": 32,
+    "rustc": "1.98.1 (48a229cea 2026-09-01)",
+    "source_commit": "a0c5f293039981b365e058eae5c8a6d989104ee4",
+    "shared_host_unrelated_build_running": true
+  },
+  "stationary_piston_count": 66021,
+  "normal_piston_limit": 65536,
+  "normal_limit_crossing_world": [
+    230,
+    62,
+    48
+  ],
+  "compiled_equivalence": "unavailable: all eight configurations rejected",
+  "compiled_tps": null,
+  "active_interpreter_median_tps": 192.2550919242093
+}
