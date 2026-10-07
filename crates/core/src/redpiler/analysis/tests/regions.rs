@@ -1,6 +1,35 @@
 use super::*;
 
 #[test]
+fn sampled_extension_destination_does_not_resample_quasi_powered_memory() {
+    for assume_instant in [false, true] {
+        let mut world = empty();
+        let source = BASE;
+        let memory = BASE + BlockPos::new(2, -1, 0);
+        let lever = BASE.offset(BlockFace::North);
+        world.set_block(source, Block::Piston { piston: RedstonePiston { facing: BlockFacing::East, sticky: true, extended: false } });
+        world.set_block(source.offset(BlockFace::East), Block::RedstoneBlock);
+        world.set_block(memory, Block::Piston { piston: RedstonePiston { facing: BlockFacing::Down, sticky: true, extended: true } });
+        world.set_block(memory.offset(BlockFace::Bottom), Block::PistonHead { head: RedstonePistonHead { facing: BlockFacing::Down, sticky: true, short: false } });
+        world.set_block(memory + BlockPos::new(0, -2, 0), Block::RedstoneBlock);
+        world.set_block(lever.offset(BlockFace::Bottom), Block::Stone {});
+        world.set_block(lever, Block::Lever { lever: mchprs_blocks::blocks::Lever::new(mchprs_blocks::blocks::LeverFace::Floor, mchprs_blocks::BlockDirection::North, false) });
+        assert!(crate::redstone::piston::should_piston_extend(&world, BlockFacing::Down, memory));
+        let mut compiler = Compiler::default();
+        compiler.compile(&world, world.get_corners(), CompilerOptions { assume_instant, ..Default::default() }, vec![], Default::default()).unwrap();
+        compiler.on_use_block(lever);
+        lever_action(&mut world, lever, true);
+        for tick in 0..6 {
+            compiler.tick();
+            world.tick_interpreted();
+            let actors = compiler.backend.as_ref().unwrap().sampled_pistons();
+            assert_eq!(actors[&memory].0, false, "memory tick {tick}, assume={assume_instant}");
+            assert!(matches!(world.get_block(memory), Block::Piston { piston } if piston.extended));
+        }
+    }
+}
+
+#[test]
 fn independent_adders_and_counters_share_a_plot_with_staggered_waves_and_handoff() {
     for optimize in [false, true] {
         for io_only in [false, true] {
@@ -386,7 +415,9 @@ fn ideal_mode_skips_reset_certification_but_keeps_payload_and_geometry_guards() 
         )
         .unwrap();
     let head = analyze_world(&world).pistons[0].head;
-    world.set_block(head, Block::Air);
+    let Block::PistonHead { head: mut saved_head } = world.get_block(head) else { unreachable!() };
+    saved_head.short = true;
+    world.set_block(head, Block::PistonHead { head: saved_head });
     let options = CompilerOptions {
         assume_instant: true,
         ..Default::default()

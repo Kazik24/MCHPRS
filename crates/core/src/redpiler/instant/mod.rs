@@ -9,4 +9,5 @@ pub mod contract;
 pub(crate) mod logic;
 pub(crate) mod outputs;
 pub(crate) mod program;
-mod regions;
+pub(crate) mod regions;
+pub(crate) mod sequential;

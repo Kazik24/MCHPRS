@@ -301,6 +301,17 @@ fn snapshot(world: &PlotWorld, bounds: (BlockPos, BlockPos)) -> Value {
     json!({ "cells": cells, "pistons": world.piston_state(), "ticks": world.scheduler().iter_entries().collect::<Vec<_>>() })
 }
 
+fn check_sampled_state(compiler: &Compiler, reference: &PlotWorld) {
+    let backend = compiler.backend.as_ref().unwrap();
+    for (pos, block) in backend.sampled_geometry() {
+        let actual = reference.get_block(pos);
+        assert!(block == actual || (matches!(block, Block::MovingPiston { .. }) && matches!(actual, Block::MovingPiston { .. })), "geometry {pos:?}: compiled {block:?}, interpreted {actual:?}");
+    }
+    for (pos, power) in backend.sampled_signals() {
+        assert_eq!(power, crate::redstone::source_strength(reference.get_block(pos), reference, pos), "signal {pos:?}");
+    }
+}
+
 #[test]
 fn all_io_schematics_have_read_only_deterministic_inventories() {
     check_inventories("instant-pistons-io", 22);
@@ -767,7 +778,7 @@ fn extracted_counter_transition_matches_all_sixteen_bit_states() {
             if logic.arena.evaluate(logic.responses[actor], |v| match v {
                 Variable::Signal { .. } => false,
                 Variable::Memory(actor) => bits[actor],
-                Variable::Actuator(_) | Variable::Geometry { .. } => unreachable!(),
+                Variable::Actuator(_) | Variable::Geometry { .. } | Variable::Observer(_) | Variable::WireDot(_) => unreachable!(),
             }) {
                 next |= 1 << bit;
             }
@@ -1230,7 +1241,6 @@ fn unsupported_storage_and_shared_reset_boundaries_fail_transactionally() {
     for name in [
         "and_3",
         "bud_noninstantinputs",
-        "bud_pistonupdate",
         "or_interpreter_illigal",
     ] {
         let (world, bounds, _) = fixture(name);

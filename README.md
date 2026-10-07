@@ -152,6 +152,8 @@ Use `/help` for a quick start and topic list. `/help tps`, `/help we`,
 | `/rhistory [on [ticks]\|off\|status\|limit [MiB]]` | None | Record interpreter history, keeping up to 100 ticks by default; recording stops and clears when the last player leaves the plot; show compressed/uncompressed sizes. Admins can change the shared memory limit (default 2 GiB). |
 | `/back [ticks]` | `/rback` | Rewind one or more recorded game ticks and pause the plot. Restores the entire plot, including later edits, and clears WorldEdit undo/redo. |
 | `/teleport [player]` | `/tp` | Teleports you to `[player]`. |
+| `/setwarp <name>` | None | Saves your exact position and facing direction as a shared server-wide warp. Reusing a name replaces its destination. Names are case-insensitive, using 1-32 letters, digits, underscores or hyphens. |
+| `/warp [name]` | None | Visits a saved warp, or lists warps when no name is given. Both warp commands support Tab completion; `/help warps` explains them. Warps persist across restarts in `world/plots.db`. |
 | `/teleport [x] [y] [z]` | `/tp` | Teleports you to `[x] [y] [z]`. Supports relative coordinates. Floats can be expressed as described [here](https://doc.rust-lang.org/std/primitive.f64.html#grammar). |
 | `/speed [speed]` | None | Sets your flyspeed. |
 | `/gamemode [mode]` | `/gmc`, `/gmsp` | Sets your gamemode. |

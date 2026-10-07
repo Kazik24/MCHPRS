@@ -4,6 +4,8 @@ Research and recommendations, 2026-10-06. **Recommended design: one extracted ci
 
 This document extends the [instant/BUD mathematical contract](INSTANT_PISTON_REDPILER_MODEL.md), rather than redefining piston physics or the equations in [REDSTONE_MODEL.md](REDSTONE_MODEL.md). It recommends implementation work; it does not implement an evaluator, certify additional schematic families, or report measured speedups. External sources establish applicable techniques. The design choices below are recommendations for MCHPRS.
 
+The [isolated optimizer scope and implementation plan](INSTANT_REDSTONE_OPTIMIZER_SCOPE.md) defines the crate boundary, initial passes, validation milestones and future integration with `--optimize`.
+
 **Current implementation distinction:** the [Direct/Boolean runtime](INSTANT_PISTON_RUNTIME.md) now executes admitted adders, Counter storage and conditional electrical ports, including quartz conductors and fixed furnace overrides. The table in section 1 records the earlier inspection, not the current admission verdict. The two execution plans, full logical-net inspection, LUT mapping and parallel executor proposed here remain future work; disabling `--optimize` does not currently select the proposed full-net plan, and canonical Boolean preparation runs in both flag settings. General BUD and retained-read owners still need implementation. [ANPU's post-legalization checks](ANPU_REDPILER.md#admission-after-the-fpurilax-legalization) reject compilation while preserving its frozen physical memory/screen episode.
 
 ## 1. Repository at the original research inspection

@@ -15,6 +15,7 @@ use rustc_hash::FxHashSet;
 use std::sync::Arc;
 
 pub(crate) struct PreparedInstant {
+    pub sequential: Option<super::sequential::PreparedSequential>,
     pub assume_instant: bool,
     pub pistons: Vec<crate::redpiler::analysis::PistonDescriptor>,
     pub output_offset: usize,
@@ -77,7 +78,14 @@ pub(crate) fn prepare(
         program.output_offset = outputs.len();
         outputs.extend(program.logic.outputs.iter().cloned());
     }
-    let boundaries = Boundaries::executable(report, &wires, &sources, &outputs);
+    let mut boundaries = Boundaries::executable(report, &wires, &sources, &outputs);
+    for program in &programs {
+        if let Some(sequential) = &program.sequential {
+            boundaries.retain_sequential_sources(program.logic.sources.iter().copied()
+                .chain(program.logic.outputs.iter().map(|output| output.consumer)));
+            boundaries.own_sampled_wires(sequential.sensors.iter().map(|sensor| sensor.pos));
+        }
+    }
     let input = CompilerInput {
         world,
         bounds: report.bounds,
@@ -125,6 +133,15 @@ fn prepare_region(
     options: &CompilerOptions,
     monitor: Arc<TaskMonitor>,
 ) -> Result<PreparedInstant, String> {
+    let generators: Vec<_> = report.pistons.iter().filter(|p| !p.piston.sticky).collect();
+    if generators.len() > 1 || generators.iter().any(|p| p.piston.facing != BlockFacing::Down)
+        || report.pistons.iter().any(|p| !p.piston.extended)
+        || report.pistons.iter().any(|p| p.diagnostics.contains(&crate::redpiler::analysis::PistonDiagnostic::MissingOrMismatchedHead))
+        || report.recognition.iter().any(|r| r.failures.iter().any(|failure| matches!(failure,
+            crate::redpiler::analysis::families::RecognitionFailure::AdditionalResetWriter { .. })))
+    {
+        return super::sequential::prepare(world, report, ticks, options, &monitor);
+    }
     let clocked = super::clocked::recognize(world, report, &monitor, options.assume_instant)?;
     let is_clock = |id| clocked.as_ref().is_some_and(|c| c.clock == id);
     let is_memory = |id| {
@@ -375,6 +392,7 @@ fn prepare_region(
         return Err("instant compilation cancelled".into());
     }
     Ok(PreparedInstant {
+        sequential: None,
         assume_instant: options.assume_instant,
         pistons: report.pistons.clone(),
         output_offset: 0,

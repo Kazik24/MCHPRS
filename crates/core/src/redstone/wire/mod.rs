@@ -1,5 +1,12 @@
 mod turbo;
 
+pub(crate) const TURBO_ORDER: [[usize; 24]; 4] = [
+    [2, 3, 16, 19, 0, 4, 1, 5, 7, 8, 17, 20, 12, 13, 18, 21, 6, 9, 22, 14, 11, 10, 23, 15],
+    [2, 3, 16, 19, 4, 1, 5, 0, 17, 20, 12, 13, 18, 21, 7, 8, 22, 14, 11, 15, 23, 9, 6, 10],
+    [2, 3, 16, 19, 1, 5, 0, 4, 12, 13, 18, 21, 7, 8, 17, 20, 11, 15, 23, 10, 6, 14, 22, 9],
+    [2, 3, 16, 19, 5, 0, 4, 1, 18, 21, 7, 8, 17, 20, 12, 13, 23, 10, 6, 9, 22, 15, 11, 14],
+];
+
 use crate::interaction::ActionResult;
 use crate::world::World;
 use mchprs_blocks::blocks::{Block, RedstoneWire, RedstoneWireSide};
@@ -33,9 +40,18 @@ pub fn get_state_for_placement(world: &impl World, pos: BlockPos) -> RedstoneWir
 }
 
 pub fn on_neighbor_changed(
-    mut wire: RedstoneWire,
+    wire: RedstoneWire,
     world: &impl World,
     pos: BlockPos,
+    side: BlockFace,
+) -> RedstoneWire {
+    if side == BlockFace::Top { return wire; }
+    on_neighbor_changed_from(wire, get_all_sides(wire, world, pos), side)
+}
+
+pub(crate) fn on_neighbor_changed_from(
+    mut wire: RedstoneWire,
+    raw: RedstoneWire,
     side: BlockFace,
 ) -> RedstoneWire {
     let old_state = wire;
@@ -44,8 +60,6 @@ pub fn on_neighbor_changed(
     }
     // Read the geometry once. The cross guard needs the raw side below, while
     // regulation needs the wire with that one stored side already updated.
-    let raw = get_all_sides(wire, world, pos);
-
     let new_side = match side {
         BlockFace::Top => unreachable!(),
         BlockFace::Bottom => {
@@ -208,16 +222,24 @@ pub(crate) fn get_regulated_sides_from(
     pos: BlockPos,
     read: impl Fn(BlockPos) -> Block,
 ) -> RedstoneWire {
+    regulate_sides(wire, get_raw_sides_from(wire, pos, read))
+}
+
+pub(crate) fn get_raw_sides_from(
+    wire: RedstoneWire,
+    pos: BlockPos,
+    read: impl Fn(BlockPos) -> Block,
+) -> RedstoneWire {
     let mut state = wire;
     let mut above = None;
     state.north = get_side_from(pos, BlockDirection::North, &mut above, &read);
     state.south = get_side_from(pos, BlockDirection::South, &mut above, &read);
     state.east = get_side_from(pos, BlockDirection::East, &mut above, &read);
     state.west = get_side_from(pos, BlockDirection::West, &mut above, &read);
-    regulate_sides(wire, state)
+    state
 }
 
-fn regulate_sides(wire: RedstoneWire, mut state: RedstoneWire) -> RedstoneWire {
+pub(crate) fn regulate_sides(wire: RedstoneWire, mut state: RedstoneWire) -> RedstoneWire {
     if is_dot(wire) && is_dot(state) {
         return state;
     }

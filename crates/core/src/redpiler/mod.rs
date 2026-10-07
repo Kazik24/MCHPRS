@@ -128,9 +128,13 @@ impl CompilerOptions {
 pub struct Compiler {
     backend: Option<DirectBackend>,
     options: CompilerOptions,
+    warnings: Vec<String>,
 }
 
 impl Compiler {
+    pub fn warnings(&self) -> &[String] {
+        &self.warnings
+    }
     pub fn is_active(&self) -> bool {
         self.backend.is_some()
     }
@@ -211,6 +215,13 @@ impl Compiler {
 
         self.backend = Some(backend);
         self.options = options;
+        self.warnings = report.pistons.iter()
+            .filter(|p| p.piston.extended && p.diagnostics.contains(&analysis::PistonDiagnostic::MissingOrMismatchedHead))
+            .map(|p| format!("Extended piston at {:?} has no matching saved head at {:?}; the runtime starts from its saved geometry.", p.pos, p.head))
+            .collect();
+        for warning in &self.warnings {
+            tracing::warn!("Redpiler: {warning}");
+        }
         debug!("Compile completed in {:?}", start.elapsed());
         Ok(())
     }

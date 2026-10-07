@@ -106,6 +106,8 @@ permission as their canonical command.
 | `/help`, `/version`                                | `mchprs.commands.help`, `mchprs.commands.version`                                                |
 | `/git` (all subcommands and sword diff inspection) | `mchprs.commands.git`                                                                            |
 | `/tp`, `/teleport`                                 | `mchprs.commands.teleport`                                                                       |
+| `/warp [name]`                                     | `mchprs.commands.warp` (visit or list shared warps)                                               |
+| `/setwarp <name>`                                  | `mchprs.commands.setwarp` (create or replace any shared warp)                                     |
 | `/speed`                                           | `mchprs.commands.speed`                                                                          |
 | `/gamemode`, `/gm`, `/gmc`, `/gmsp`                | `mchprs.commands.gamemode`, plus `.creative`, `.adventure`, or `.spectator`                       |
 | `/tps`                                   | `mchprs.commands.rtps.view` or `.set`; `timings` uses `.view`                                    |

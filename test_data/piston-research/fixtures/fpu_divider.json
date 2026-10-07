@@ -1,0 +1,1614 @@
+{
+  "schema_version": 1,
+  "fixture": "test_data/piston-research/fpu-divider/FPU_DIVIDER.schem",
+  "sha256": "19097d93d55e1c759ef37bbb261168eb79e51d86666282f9b2b775275211bbdb",
+  "dimensions": [
+    73,
+    26,
+    49
+  ],
+  "loader_offset": [
+    1,
+    23,
+    44
+  ],
+  "origin": [
+    40,
+    30,
+    40
+  ],
+  "observations": {
+    "input_a_msb_first": [
+      [
+        6,
+        23,
+        5
+      ],
+      [
+        6,
+        23,
+        9
+      ],
+      [
+        6,
+        23,
+        13
+      ],
+      [
+        6,
+        23,
+        17
+      ],
+      [
+        6,
+        23,
+        21
+      ],
+      [
+        6,
+        23,
+        25
+      ],
+      [
+        6,
+        23,
+        29
+      ],
+      [
+        6,
+        23,
+        33
+      ],
+      [
+        6,
+        23,
+        37
+      ],
+      [
+        6,
+        23,
+        41
+      ]
+    ],
+    "input_b_msb_first": [
+      [
+        6,
+        23,
+        3
+      ],
+      [
+        6,
+        23,
+        7
+      ],
+      [
+        6,
+        23,
+        11
+      ],
+      [
+        6,
+        23,
+        15
+      ],
+      [
+        6,
+        23,
+        19
+      ],
+      [
+        6,
+        23,
+        23
+      ],
+      [
+        6,
+        23,
+        27
+      ],
+      [
+        6,
+        23,
+        31
+      ],
+      [
+        6,
+        23,
+        35
+      ],
+      [
+        6,
+        23,
+        39
+      ]
+    ],
+    "output_msb_first": [
+      [
+        18,
+        5,
+        48
+      ],
+      [
+        24,
+        5,
+        48
+      ],
+      [
+        30,
+        5,
+        48
+      ],
+      [
+        36,
+        5,
+        48
+      ],
+      [
+        42,
+        5,
+        48
+      ],
+      [
+        48,
+        5,
+        48
+      ],
+      [
+        54,
+        5,
+        48
+      ],
+      [
+        60,
+        5,
+        48
+      ],
+      [
+        66,
+        5,
+        48
+      ],
+      [
+        72,
+        5,
+        48
+      ]
+    ],
+    "enable": [
+      [
+        1,
+        23,
+        44
+      ]
+    ],
+    "headless": [
+      [
+        14,
+        15,
+        12
+      ],
+      [
+        15,
+        15,
+        12
+      ],
+      [
+        14,
+        15,
+        16
+      ],
+      [
+        15,
+        15,
+        16
+      ],
+      [
+        14,
+        15,
+        20
+      ],
+      [
+        15,
+        15,
+        20
+      ],
+      [
+        14,
+        15,
+        24
+      ],
+      [
+        15,
+        15,
+        24
+      ],
+      [
+        14,
+        15,
+        28
+      ],
+      [
+        15,
+        15,
+        28
+      ],
+      [
+        14,
+        15,
+        32
+      ],
+      [
+        15,
+        15,
+        32
+      ],
+      [
+        14,
+        15,
+        36
+      ],
+      [
+        15,
+        15,
+        36
+      ],
+      [
+        14,
+        15,
+        40
+      ],
+      [
+        15,
+        15,
+        40
+      ]
+    ]
+  },
+  "encoding": {
+    "inputs": "Provisional: A red-wool bank z=5+4*i; B blue-wool bank z=3+4*i; OFF represents one; weight 2**(-i). Must verify dynamically.",
+    "output": "Observe repeater falling edges; saved output repeaters are all powered."
+  },
+  "cases": [
+    {
+      "id": "idle",
+      "steps": [
+        {
+          "advance": 32
+        }
+      ]
+    },
+    {
+      "id": "enable-falling",
+      "steps": [
+        {
+          "op": "lever",
+          "pos": [
+            1,
+            23,
+            44
+          ],
+          "powered": false
+        },
+        {
+          "advance": 128
+        },
+        {
+          "diagnose": true
+        }
+      ]
+    },
+    {
+      "id": "enable-cycle",
+      "steps": [
+        {
+          "op": "lever",
+          "pos": [
+            1,
+            23,
+            44
+          ],
+          "powered": false
+        },
+        {
+          "advance": 128
+        },
+        {
+          "op": "lever",
+          "pos": [
+            1,
+            23,
+            44
+          ],
+          "powered": true
+        },
+        {
+          "advance": 128
+        }
+      ]
+    },
+    {
+      "id": "one-over-one",
+      "input_a_q1_9": 512,
+      "input_b_q1_9": 512,
+      "steps": [
+        {
+          "op": "lever",
+          "pos": [
+            6,
+            23,
+            5
+          ],
+          "powered": false
+        },
+        {
+          "op": "lever",
+          "pos": [
+            6,
+            23,
+            9
+          ],
+          "powered": true
+        },
+        {
+          "op": "lever",
+          "pos": [
+            6,
+            23,
+            13
+          ],
+          "powered": true
+        },
+        {
+          "op": "lever",
+          "pos": [
+            6,
+            23,
+            17
+          ],
+          "powered": true
+        },
+        {
+          "op": "lever",
+          "pos": [
+            6,
+            23,
+            21
+          ],
+          "powered": true
+        },
+        {
+          "op": "lever",
+          "pos": [
+            6,
+            23,
+            25
+          ],
+          "powered": true
+        },
+        {
+          "op": "lever",
+          "pos": [
+            6,
+            23,
+            29
+          ],
+          "powered": true
+        },
+        {
+          "op": "lever",
+          "pos": [
+            6,
+            23,
+            33
+          ],
+          "powered": true
+        },
+        {
+          "op": "lever",
+          "pos": [
+            6,
+            23,
+            37
+          ],
+          "powered": true
+        },
+        {
+          "op": "lever",
+          "pos": [
+            6,
+            23,
+            41
+          ],
+          "powered": true
+        },
+        {
+          "op": "lever",
+          "pos": [
+            6,
+            23,
+            3
+          ],
+          "powered": false
+        },
+        {
+          "op": "lever",
+          "pos": [
+            6,
+            23,
+            7
+          ],
+          "powered": true
+        },
+        {
+          "op": "lever",
+          "pos": [
+            6,
+            23,
+            11
+          ],
+          "powered": true
+        },
+        {
+          "op": "lever",
+          "pos": [
+            6,
+            23,
+            15
+          ],
+          "powered": true
+        },
+        {
+          "op": "lever",
+          "pos": [
+            6,
+            23,
+            19
+          ],
+          "powered": true
+        },
+        {
+          "op": "lever",
+          "pos": [
+            6,
+            23,
+            23
+          ],
+          "powered": true
+        },
+        {
+          "op": "lever",
+          "pos": [
+            6,
+            23,
+            27
+          ],
+          "powered": true
+        },
+        {
+          "op": "lever",
+          "pos": [
+            6,
+            23,
+            31
+          ],
+          "powered": true
+        },
+        {
+          "op": "lever",
+          "pos": [
+            6,
+            23,
+            35
+          ],
+          "powered": true
+        },
+        {
+          "op": "lever",
+          "pos": [
+            6,
+            23,
+            39
+          ],
+          "powered": true
+        },
+        {
+          "advance": 64
+        },
+        {
+          "op": "lever",
+          "pos": [
+            1,
+            23,
+            44
+          ],
+          "powered": false
+        },
+        {
+          "advance": 128
+        },
+        {
+          "op": "lever",
+          "pos": [
+            1,
+            23,
+            44
+          ],
+          "powered": true
+        },
+        {
+          "advance": 64
+        }
+      ]
+    },
+    {
+      "id": "one-half-over-one",
+      "input_a_q1_9": 768,
+      "input_b_q1_9": 512,
+      "steps": [
+        {
+          "op": "lever",
+          "pos": [
+            6,
+            23,
+            5
+          ],
+          "powered": false
+        },
+        {
+          "op": "lever",
+          "pos": [
+            6,
+            23,
+            9
+          ],
+          "powered": false
+        },
+        {
+          "op": "lever",
+          "pos": [
+            6,
+            23,
+            13
+          ],
+          "powered": true
+        },
+        {
+          "op": "lever",
+          "pos": [
+            6,
+            23,
+            17
+          ],
+          "powered": true
+        },
+        {
+          "op": "lever",
+          "pos": [
+            6,
+            23,
+            21
+          ],
+          "powered": true
+        },
+        {
+          "op": "lever",
+          "pos": [
+            6,
+            23,
+            25
+          ],
+          "powered": true
+        },
+        {
+          "op": "lever",
+          "pos": [
+            6,
+            23,
+            29
+          ],
+          "powered": true
+        },
+        {
+          "op": "lever",
+          "pos": [
+            6,
+            23,
+            33
+          ],
+          "powered": true
+        },
+        {
+          "op": "lever",
+          "pos": [
+            6,
+            23,
+            37
+          ],
+          "powered": true
+        },
+        {
+          "op": "lever",
+          "pos": [
+            6,
+            23,
+            41
+          ],
+          "powered": true
+        },
+        {
+          "op": "lever",
+          "pos": [
+            6,
+            23,
+            3
+          ],
+          "powered": false
+        },
+        {
+          "op": "lever",
+          "pos": [
+            6,
+            23,
+            7
+          ],
+          "powered": true
+        },
+        {
+          "op": "lever",
+          "pos": [
+            6,
+            23,
+            11
+          ],
+          "powered": true
+        },
+        {
+          "op": "lever",
+          "pos": [
+            6,
+            23,
+            15
+          ],
+          "powered": true
+        },
+        {
+          "op": "lever",
+          "pos": [
+            6,
+            23,
+            19
+          ],
+          "powered": true
+        },
+        {
+          "op": "lever",
+          "pos": [
+            6,
+            23,
+            23
+          ],
+          "powered": true
+        },
+        {
+          "op": "lever",
+          "pos": [
+            6,
+            23,
+            27
+          ],
+          "powered": true
+        },
+        {
+          "op": "lever",
+          "pos": [
+            6,
+            23,
+            31
+          ],
+          "powered": true
+        },
+        {
+          "op": "lever",
+          "pos": [
+            6,
+            23,
+            35
+          ],
+          "powered": true
+        },
+        {
+          "op": "lever",
+          "pos": [
+            6,
+            23,
+            39
+          ],
+          "powered": true
+        },
+        {
+          "advance": 64
+        },
+        {
+          "op": "lever",
+          "pos": [
+            1,
+            23,
+            44
+          ],
+          "powered": false
+        },
+        {
+          "advance": 128
+        },
+        {
+          "op": "lever",
+          "pos": [
+            1,
+            23,
+            44
+          ],
+          "powered": true
+        },
+        {
+          "advance": 64
+        }
+      ]
+    },
+    {
+      "id": "half-over-one",
+      "input_a_q1_9": 256,
+      "input_b_q1_9": 512,
+      "steps": [
+        {
+          "op": "lever",
+          "pos": [
+            6,
+            23,
+            5
+          ],
+          "powered": true
+        },
+        {
+          "op": "lever",
+          "pos": [
+            6,
+            23,
+            9
+          ],
+          "powered": false
+        },
+        {
+          "op": "lever",
+          "pos": [
+            6,
+            23,
+            13
+          ],
+          "powered": true
+        },
+        {
+          "op": "lever",
+          "pos": [
+            6,
+            23,
+            17
+          ],
+          "powered": true
+        },
+        {
+          "op": "lever",
+          "pos": [
+            6,
+            23,
+            21
+          ],
+          "powered": true
+        },
+        {
+          "op": "lever",
+          "pos": [
+            6,
+            23,
+            25
+          ],
+          "powered": true
+        },
+        {
+          "op": "lever",
+          "pos": [
+            6,
+            23,
+            29
+          ],
+          "powered": true
+        },
+        {
+          "op": "lever",
+          "pos": [
+            6,
+            23,
+            33
+          ],
+          "powered": true
+        },
+        {
+          "op": "lever",
+          "pos": [
+            6,
+            23,
+            37
+          ],
+          "powered": true
+        },
+        {
+          "op": "lever",
+          "pos": [
+            6,
+            23,
+            41
+          ],
+          "powered": true
+        },
+        {
+          "op": "lever",
+          "pos": [
+            6,
+            23,
+            3
+          ],
+          "powered": false
+        },
+        {
+          "op": "lever",
+          "pos": [
+            6,
+            23,
+            7
+          ],
+          "powered": true
+        },
+        {
+          "op": "lever",
+          "pos": [
+            6,
+            23,
+            11
+          ],
+          "powered": true
+        },
+        {
+          "op": "lever",
+          "pos": [
+            6,
+            23,
+            15
+          ],
+          "powered": true
+        },
+        {
+          "op": "lever",
+          "pos": [
+            6,
+            23,
+            19
+          ],
+          "powered": true
+        },
+        {
+          "op": "lever",
+          "pos": [
+            6,
+            23,
+            23
+          ],
+          "powered": true
+        },
+        {
+          "op": "lever",
+          "pos": [
+            6,
+            23,
+            27
+          ],
+          "powered": true
+        },
+        {
+          "op": "lever",
+          "pos": [
+            6,
+            23,
+            31
+          ],
+          "powered": true
+        },
+        {
+          "op": "lever",
+          "pos": [
+            6,
+            23,
+            35
+          ],
+          "powered": true
+        },
+        {
+          "op": "lever",
+          "pos": [
+            6,
+            23,
+            39
+          ],
+          "powered": true
+        },
+        {
+          "advance": 64
+        },
+        {
+          "op": "lever",
+          "pos": [
+            1,
+            23,
+            44
+          ],
+          "powered": false
+        },
+        {
+          "advance": 128
+        },
+        {
+          "op": "lever",
+          "pos": [
+            1,
+            23,
+            44
+          ],
+          "powered": true
+        },
+        {
+          "advance": 64
+        }
+      ]
+    },
+    {
+      "id": "zero-over-one",
+      "input_a_q1_9": 0,
+      "input_b_q1_9": 512,
+      "steps": [
+        {
+          "op": "lever",
+          "pos": [
+            6,
+            23,
+            5
+          ],
+          "powered": true
+        },
+        {
+          "op": "lever",
+          "pos": [
+            6,
+            23,
+            9
+          ],
+          "powered": true
+        },
+        {
+          "op": "lever",
+          "pos": [
+            6,
+            23,
+            13
+          ],
+          "powered": true
+        },
+        {
+          "op": "lever",
+          "pos": [
+            6,
+            23,
+            17
+          ],
+          "powered": true
+        },
+        {
+          "op": "lever",
+          "pos": [
+            6,
+            23,
+            21
+          ],
+          "powered": true
+        },
+        {
+          "op": "lever",
+          "pos": [
+            6,
+            23,
+            25
+          ],
+          "powered": true
+        },
+        {
+          "op": "lever",
+          "pos": [
+            6,
+            23,
+            29
+          ],
+          "powered": true
+        },
+        {
+          "op": "lever",
+          "pos": [
+            6,
+            23,
+            33
+          ],
+          "powered": true
+        },
+        {
+          "op": "lever",
+          "pos": [
+            6,
+            23,
+            37
+          ],
+          "powered": true
+        },
+        {
+          "op": "lever",
+          "pos": [
+            6,
+            23,
+            41
+          ],
+          "powered": true
+        },
+        {
+          "op": "lever",
+          "pos": [
+            6,
+            23,
+            3
+          ],
+          "powered": false
+        },
+        {
+          "op": "lever",
+          "pos": [
+            6,
+            23,
+            7
+          ],
+          "powered": true
+        },
+        {
+          "op": "lever",
+          "pos": [
+            6,
+            23,
+            11
+          ],
+          "powered": true
+        },
+        {
+          "op": "lever",
+          "pos": [
+            6,
+            23,
+            15
+          ],
+          "powered": true
+        },
+        {
+          "op": "lever",
+          "pos": [
+            6,
+            23,
+            19
+          ],
+          "powered": true
+        },
+        {
+          "op": "lever",
+          "pos": [
+            6,
+            23,
+            23
+          ],
+          "powered": true
+        },
+        {
+          "op": "lever",
+          "pos": [
+            6,
+            23,
+            27
+          ],
+          "powered": true
+        },
+        {
+          "op": "lever",
+          "pos": [
+            6,
+            23,
+            31
+          ],
+          "powered": true
+        },
+        {
+          "op": "lever",
+          "pos": [
+            6,
+            23,
+            35
+          ],
+          "powered": true
+        },
+        {
+          "op": "lever",
+          "pos": [
+            6,
+            23,
+            39
+          ],
+          "powered": true
+        },
+        {
+          "advance": 64
+        },
+        {
+          "op": "lever",
+          "pos": [
+            1,
+            23,
+            44
+          ],
+          "powered": false
+        },
+        {
+          "advance": 128
+        },
+        {
+          "op": "lever",
+          "pos": [
+            1,
+            23,
+            44
+          ],
+          "powered": true
+        },
+        {
+          "advance": 64
+        }
+      ]
+    },
+    {
+      "id": "one-three-quarters-over-half",
+      "input_a_q1_9": 896,
+      "input_b_q1_9": 256,
+      "steps": [
+        {
+          "op": "lever",
+          "pos": [
+            6,
+            23,
+            5
+          ],
+          "powered": false
+        },
+        {
+          "op": "lever",
+          "pos": [
+            6,
+            23,
+            9
+          ],
+          "powered": false
+        },
+        {
+          "op": "lever",
+          "pos": [
+            6,
+            23,
+            13
+          ],
+          "powered": false
+        },
+        {
+          "op": "lever",
+          "pos": [
+            6,
+            23,
+            17
+          ],
+          "powered": true
+        },
+        {
+          "op": "lever",
+          "pos": [
+            6,
+            23,
+            21
+          ],
+          "powered": true
+        },
+        {
+          "op": "lever",
+          "pos": [
+            6,
+            23,
+            25
+          ],
+          "powered": true
+        },
+        {
+          "op": "lever",
+          "pos": [
+            6,
+            23,
+            29
+          ],
+          "powered": true
+        },
+        {
+          "op": "lever",
+          "pos": [
+            6,
+            23,
+            33
+          ],
+          "powered": true
+        },
+        {
+          "op": "lever",
+          "pos": [
+            6,
+            23,
+            37
+          ],
+          "powered": true
+        },
+        {
+          "op": "lever",
+          "pos": [
+            6,
+            23,
+            41
+          ],
+          "powered": true
+        },
+        {
+          "op": "lever",
+          "pos": [
+            6,
+            23,
+            3
+          ],
+          "powered": true
+        },
+        {
+          "op": "lever",
+          "pos": [
+            6,
+            23,
+            7
+          ],
+          "powered": false
+        },
+        {
+          "op": "lever",
+          "pos": [
+            6,
+            23,
+            11
+          ],
+          "powered": true
+        },
+        {
+          "op": "lever",
+          "pos": [
+            6,
+            23,
+            15
+          ],
+          "powered": true
+        },
+        {
+          "op": "lever",
+          "pos": [
+            6,
+            23,
+            19
+          ],
+          "powered": true
+        },
+        {
+          "op": "lever",
+          "pos": [
+            6,
+            23,
+            23
+          ],
+          "powered": true
+        },
+        {
+          "op": "lever",
+          "pos": [
+            6,
+            23,
+            27
+          ],
+          "powered": true
+        },
+        {
+          "op": "lever",
+          "pos": [
+            6,
+            23,
+            31
+          ],
+          "powered": true
+        },
+        {
+          "op": "lever",
+          "pos": [
+            6,
+            23,
+            35
+          ],
+          "powered": true
+        },
+        {
+          "op": "lever",
+          "pos": [
+            6,
+            23,
+            39
+          ],
+          "powered": true
+        },
+        {
+          "advance": 64
+        },
+        {
+          "op": "lever",
+          "pos": [
+            1,
+            23,
+            44
+          ],
+          "powered": false
+        },
+        {
+          "advance": 128
+        },
+        {
+          "op": "lever",
+          "pos": [
+            1,
+            23,
+            44
+          ],
+          "powered": true
+        },
+        {
+          "advance": 64
+        }
+      ]
+    },
+    {
+      "id": "one-over-zero",
+      "input_a_q1_9": 512,
+      "input_b_q1_9": 0,
+      "steps": [
+        {
+          "op": "lever",
+          "pos": [
+            6,
+            23,
+            5
+          ],
+          "powered": false
+        },
+        {
+          "op": "lever",
+          "pos": [
+            6,
+            23,
+            9
+          ],
+          "powered": true
+        },
+        {
+          "op": "lever",
+          "pos": [
+            6,
+            23,
+            13
+          ],
+          "powered": true
+        },
+        {
+          "op": "lever",
+          "pos": [
+            6,
+            23,
+            17
+          ],
+          "powered": true
+        },
+        {
+          "op": "lever",
+          "pos": [
+            6,
+            23,
+            21
+          ],
+          "powered": true
+        },
+        {
+          "op": "lever",
+          "pos": [
+            6,
+            23,
+            25
+          ],
+          "powered": true
+        },
+        {
+          "op": "lever",
+          "pos": [
+            6,
+            23,
+            29
+          ],
+          "powered": true
+        },
+        {
+          "op": "lever",
+          "pos": [
+            6,
+            23,
+            33
+          ],
+          "powered": true
+        },
+        {
+          "op": "lever",
+          "pos": [
+            6,
+            23,
+            37
+          ],
+          "powered": true
+        },
+        {
+          "op": "lever",
+          "pos": [
+            6,
+            23,
+            41
+          ],
+          "powered": true
+        },
+        {
+          "op": "lever",
+          "pos": [
+            6,
+            23,
+            3
+          ],
+          "powered": true
+        },
+        {
+          "op": "lever",
+          "pos": [
+            6,
+            23,
+            7
+          ],
+          "powered": true
+        },
+        {
+          "op": "lever",
+          "pos": [
+            6,
+            23,
+            11
+          ],
+          "powered": true
+        },
+        {
+          "op": "lever",
+          "pos": [
+            6,
+            23,
+            15
+          ],
+          "powered": true
+        },
+        {
+          "op": "lever",
+          "pos": [
+            6,
+            23,
+            19
+          ],
+          "powered": true
+        },
+        {
+          "op": "lever",
+          "pos": [
+            6,
+            23,
+            23
+          ],
+          "powered": true
+        },
+        {
+          "op": "lever",
+          "pos": [
+            6,
+            23,
+            27
+          ],
+          "powered": true
+        },
+        {
+          "op": "lever",
+          "pos": [
+            6,
+            23,
+            31
+          ],
+          "powered": true
+        },
+        {
+          "op": "lever",
+          "pos": [
+            6,
+            23,
+            35
+          ],
+          "powered": true
+        },
+        {
+          "op": "lever",
+          "pos": [
+            6,
+            23,
+            39
+          ],
+          "powered": true
+        },
+        {
+          "advance": 64
+        },
+        {
+          "op": "lever",
+          "pos": [
+            1,
+            23,
+            44
+          ],
+          "powered": false
+        },
+        {
+          "advance": 128
+        },
+        {
+          "op": "lever",
+          "pos": [
+            1,
+            23,
+            44
+          ],
+          "powered": true
+        },
+        {
+          "advance": 64
+        }
+      ]
+    }
+  ]
+}

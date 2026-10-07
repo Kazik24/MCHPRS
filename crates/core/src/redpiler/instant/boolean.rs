@@ -27,6 +27,8 @@ pub(crate) enum Variable {
     },
     Actuator(usize),
     Memory(usize),
+    Observer(usize),
+    WireDot(BlockPos),
     Geometry {
         actor: usize,
         part: GeometryPart,
@@ -36,6 +38,12 @@ pub(crate) enum Variable {
 impl Ord for Variable {
     fn cmp(&self, other: &Self) -> Ordering {
         match (*self, *other) {
+            (Self::WireDot(a), Self::WireDot(b)) => (a.y, a.z, a.x).cmp(&(b.y, b.z, b.x)),
+            (Self::WireDot(_), _) => Ordering::Greater,
+            (_, Self::WireDot(_)) => Ordering::Less,
+            (Self::Observer(a), Self::Observer(b)) => a.cmp(&b),
+            (Self::Observer(_), _) => Ordering::Greater,
+            (_, Self::Observer(_)) => Ordering::Less,
             (Self::Geometry { actor: a, part: ap }, Self::Geometry { actor: b, part: bp }) => {
                 (a, ap).cmp(&(b, bp))
             }

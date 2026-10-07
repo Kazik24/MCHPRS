@@ -1,4 +1,4 @@
-"""Download the two new author research fixtures using read-only SSH access.
+"""Download author research fixtures using read-only SSH access.
 
 py tools/download_piston_research.py [--output-dir test_data/piston-research]
 Existing binaries must match the remote hashes; revisions require a new directory.
@@ -19,7 +19,10 @@ def main():
     parser.add_argument("--host", default="urmom")
     parser.add_argument("--source", default="/srv/mchprs/data/schems")
     parser.add_argument("--output-dir", type=Path, default=ROOT/"test_data/piston-research")
+    parser.add_argument("--names", nargs="+", default=NAMES, help="schematic filenames to download")
     args = parser.parse_args()
+    if any(Path(name).name != name or not name.endswith(".schem") for name in args.names):
+        parser.error("names must be .schem filenames without directories")
     remote = """import hashlib,json,pathlib
 from datetime import datetime,timezone
 root=pathlib.Path(SOURCE)
@@ -27,7 +30,7 @@ print(json.dumps([dict(name=n,bytes=(root/n).stat().st_size,
 sha256=hashlib.sha256((root/n).read_bytes()).hexdigest(),
 modified_utc=datetime.fromtimestamp((root/n).stat().st_mtime,timezone.utc).isoformat())
 for n in NAMES]))
-""".replace("SOURCE", repr(args.source)).replace("NAMES", repr(NAMES))
+""".replace("SOURCE", repr(args.source)).replace("NAMES", repr(args.names))
     files = json.loads(subprocess.check_output(
         ["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=10", args.host, "python3 -"], input=remote.encode()))
     args.output_dir.mkdir(parents=True, exist_ok=True)

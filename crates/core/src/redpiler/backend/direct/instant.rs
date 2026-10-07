@@ -11,7 +11,10 @@ use mchprs_blocks::blocks::{Block, LeverFace, RedstonePistonHead};
 use mchprs_blocks::{BlockFace, BlockPos};
 use rustc_hash::{FxHashMap, FxHashSet};
 
+mod sequential;
+
 pub(super) struct Runtime {
+    sequential: Option<sequential::State>,
     program: PreparedInstant,
     sources: FxHashMap<BlockPos, NodeId>,
     aliases: Vec<(NodeId, Supply)>,
@@ -51,16 +54,23 @@ struct Output {
 
 struct Term {
     guard: Expr,
-    source: Option<NodeId>,
+    source: Option<Source>,
     attenuation: u8,
 }
 
+#[derive(Clone, Copy)]
+enum Source { Node(NodeId), Wire(usize) }
+
 enum Input {
     Source(NodeId),
+    Wire(usize),
+    WireDot(usize),
     Memory(usize),
+    Observer(usize),
     Geometry { actor: usize, part: GeometryPart },
 }
 enum Supply {
+    Sequential { group: usize, pos: BlockPos },
     Wave {
         group: usize,
         initial: bool,
@@ -95,7 +105,9 @@ impl Runtime {
                     .iter()
                     .find(|m| program.groups[group].contains(&m.actor))
             });
-            let supply = if let Some(cell) = memory {
+            let supply = if program.sequential.is_some() {
+                Supply::Sequential { group, pos }
+            } else if let Some(cell) = memory {
                 Supply::Memory {
                     actor: cell.actor,
                     far: pos == cell.far,
@@ -127,6 +139,7 @@ impl Runtime {
             .iter()
             .map(|(&pos, &id)| (pos, nodes[id].output_power))
             .collect();
+        let wires: FxHashMap<_,_> = program.sequential.as_ref().map(|p| p.sensors.iter().enumerate().map(|(id,s)| (s.pos,id)).collect()).unwrap_or_default();
         let decisions = program
             .logic
             .arena
@@ -135,7 +148,7 @@ impl Runtime {
             .map(|d| {
                 let (input, threshold) = match d.variable {
                     Variable::Signal { pos, threshold, .. } => {
-                        (Input::Source(sources[&pos]), threshold)
+                        (if let Some(&id) = wires.get(&pos) { Input::Wire(id) } else { Input::Source(sources[&pos]) }, threshold)
                     }
                     Variable::Memory(actor)
                         if program
@@ -148,6 +161,8 @@ impl Runtime {
                     Variable::Geometry { actor, part } if actor < program.logic.responses.len() => {
                         (Input::Geometry { actor, part }, 0)
                     }
+                    Variable::Observer(observer) if program.sequential.as_ref().is_some_and(|p| observer < p.observers.len()) => (Input::Observer(observer), 0),
+                    Variable::WireDot(pos) => (Input::WireDot(*wires.get(&pos).ok_or(BackendError::MissingInstantBinding { pos })?), 0),
                     _ => return Err(BackendError::InvalidInstantProgram),
                 };
                 Ok(Decision {
@@ -178,10 +193,8 @@ impl Runtime {
                             source: term
                                 .source
                                 .map(|pos| {
-                                    bindings
-                                        .get(&pos)
-                                        .copied()
-                                        .ok_or(BackendError::MissingInstantBinding { pos })
+                                    if let Some(&id) = wires.get(&pos) { Ok(Source::Wire(id)) }
+                                    else { bindings.get(&pos).copied().map(Source::Node).ok_or(BackendError::MissingInstantBinding { pos }) }
                                 })
                                 .transpose()?,
                             attenuation: term.attenuation,
@@ -199,7 +212,7 @@ impl Runtime {
         }
         let output_sources = outputs
             .iter()
-            .flat_map(|output| output.terms.iter().filter_map(|term| term.source))
+            .flat_map(|output| output.terms.iter().filter_map(|term| match term.source { Some(Source::Node(id)) => Some(id), _ => None }))
             .collect();
         let mut memory_actors = vec![false; program.logic.responses.len()];
         if let Some(clocked) = &program.clocked {
@@ -208,7 +221,8 @@ impl Runtime {
             }
         }
         program.logic.arena = Default::default();
-        Ok(Self {
+        let mut runtime = Self {
+            sequential: None,
             fired: vec![false; program.logic.responses.len()],
             memory: vec![false; program.logic.responses.len()],
             moving_memory: vec![false; program.logic.responses.len()],
@@ -230,7 +244,9 @@ impl Runtime {
             output_sources,
             actor_groups,
             memory_actors,
-        })
+        };
+        runtime.initialize_sequential(nodes)?;
+        Ok(runtime)
     }
 
     pub(super) fn observe_action(&mut self, pos: BlockPos, strength: u8) {
@@ -245,6 +261,7 @@ impl Runtime {
 
     pub(super) fn advance(&mut self, nodes: &Nodes) -> Vec<(NodeId, u8)> {
         self.elapsed += 1;
+        if self.sequential.is_some() { return self.advance_sequential(nodes); }
         if self.program.assume_instant {
             self.advance_ideal(nodes);
             return self.supply_changes(nodes);
@@ -338,6 +355,7 @@ impl Runtime {
             .iter()
             .map(|(id, supply)| {
                 let powered = match *supply {
+                    Supply::Sequential { group, pos } => self.sequential.as_ref().unwrap().payload_at(&self.program, group, pos),
                     Supply::Wave {
                         group,
                         initial,
@@ -366,6 +384,7 @@ impl Runtime {
     }
 
     fn geometry(&self, actor: usize, part: GeometryPart) -> bool {
+        if let Some(state) = &self.sequential { return state.geometry(&self.program, &self.actor_groups, &self.fired, actor, part); }
         if self.memory_actors[actor] {
             return match part {
                 GeometryPart::FarPayload | GeometryPart::Head => {
@@ -413,12 +432,19 @@ impl Runtime {
             let decision = &self.decisions[(root - 2) as usize];
             let high = match decision.input {
                 Input::Source(source) => nodes[source].output_power > decision.threshold,
+                Input::Wire(id) => self.sequential.as_ref().unwrap().wire_power(id) > decision.threshold,
+                Input::WireDot(id) => self.sequential.as_ref().unwrap().wire_dot(id),
                 Input::Memory(actor) => self.memory[actor],
+                Input::Observer(observer) => self.sequential.as_ref().unwrap().observers[observer].powered,
                 Input::Geometry { actor, part } => self.geometry(actor, part),
             };
             root = if high { decision.high } else { decision.low };
         }
         root == TRUE
+    }
+
+    fn source_power(&self, source: Source, nodes: &Nodes) -> u8 {
+        match source { Source::Node(id) => nodes[id].output_power, Source::Wire(id) => self.sequential.as_ref().unwrap().wire_power(id) }
     }
 
     pub(super) fn output_changes(&self, nodes: &Nodes) -> Vec<(NodeId, u8)> {
@@ -431,7 +457,7 @@ impl Runtime {
                     .filter(|term| self.evaluate(term.guard, nodes))
                     .map(|term| {
                         term.source
-                            .map_or(15, |source| nodes[source].output_power)
+                            .map_or(15, |source| self.source_power(source, nodes))
                             .saturating_sub(term.attenuation)
                     })
                     .max()
@@ -442,6 +468,7 @@ impl Runtime {
     }
 
     pub(super) fn materialize<W: World>(self, world: &mut W) {
+        if self.sequential.is_some() { self.materialize_sequential(world); return; }
         if self.program.assume_instant {
             self.materialize_ideal(world);
             return;

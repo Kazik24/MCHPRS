@@ -17,6 +17,7 @@ pub(crate) struct Boundaries<'a> {
     consumers: FxHashSet<BlockPos>,
     hidden: FxHashSet<BlockPos>,
     retained: FxHashSet<BlockPos>,
+    sampled_wires: FxHashSet<BlockPos>,
     pub executable: bool,
     pub outputs: &'a [OutputPort],
     output_channels: FxHashMap<(BlockPos, bool), usize>,
@@ -39,6 +40,7 @@ impl<'a> Boundaries<'a> {
             consumers,
             hidden: Default::default(),
             retained: Default::default(),
+            sampled_wires: Default::default(),
             executable: false,
             outputs: &[],
             output_channels: Default::default(),
@@ -82,6 +84,18 @@ impl<'a> Boundaries<'a> {
     pub fn projects(&self, pos: BlockPos, input: LinkType) -> bool {
         self.output_channels
             .contains_key(&(pos, input == LinkType::Side))
+    }
+
+    pub fn retain_sequential_sources(&mut self, sources: impl IntoIterator<Item = BlockPos>) {
+        for pos in sources { self.internals.remove(&pos); }
+    }
+
+    pub fn own_sampled_wires(&mut self, wires: impl IntoIterator<Item = BlockPos>) {
+        self.sampled_wires.extend(wires);
+    }
+
+    pub fn is_sampled_wire(&self, pos: BlockPos) -> bool {
+        self.sampled_wires.contains(&pos)
     }
 
     pub fn is_retained(&self, pos: BlockPos) -> bool {

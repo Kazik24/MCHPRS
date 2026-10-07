@@ -392,6 +392,43 @@ impl Plot {
         }
     }
 
+    fn complete_warps(&self, player: usize, id: i32, text: &str) -> Option<CTabComplete> {
+        let (command, prefix) = text.split_once(' ')?;
+        let permission = match command {
+            "/warp" => "commands.warp",
+            "/setwarp" => "commands.setwarp",
+            _ => return None,
+        };
+        let mut response = CTabComplete {
+            id,
+            start: (command.encode_utf16().count() + 1) as i32,
+            length: prefix.encode_utf16().count() as i32,
+            matches: Vec::new(),
+        };
+        if (crate::permissions::dedicated_permissions()
+            && !self.players[player].has_permission(permission))
+            || prefix.chars().any(char::is_whitespace)
+        {
+            return Some(response);
+        }
+        match super::database::warp_names() {
+            Ok(names) => {
+                let prefix = prefix.to_ascii_lowercase();
+                response.matches = names
+                    .into_iter()
+                    .filter(|name| name.to_ascii_lowercase().starts_with(&prefix))
+                    .take(100)
+                    .map(|name| CTabCompleteMatch {
+                        match_: name,
+                        tooltip: None,
+                    })
+                    .collect();
+            }
+            Err(error) => error!("Could not complete warp names: {error}"),
+        }
+        Some(response)
+    }
+
     fn complete_plot_members(&self, player: usize, id: i32, text: &str) -> Option<CTabComplete> {
         let (command, tail) = text.split_once(' ')?;
         if !matches!(command, "/p" | "/plot") {
@@ -563,6 +600,12 @@ impl ServerBoundPacketHandler for Plot {
 
     fn handle_tab_complete(&mut self, packet: STabComplete, player_idx: usize) {
         if !self.players[player_idx].can_use_commands() {
+            return;
+        }
+        if let Some(completion) =
+            self.complete_warps(player_idx, packet.transaction_id, &packet.text)
+        {
+            self.players[player_idx].send_packet(&completion.encode());
             return;
         }
         if let Some(completion) =

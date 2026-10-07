@@ -74,6 +74,8 @@ impl<'a, W: World> InputSearchState<'a, W> {
             self.graph
                 .add_edge(node, target, CompileLink::new(ty, distance));
         } else if self.error.is_none() {
+            #[cfg(test)]
+            eprintln!("missing source {source:?}, target {:?}, type {:?}", self.graph[target].block, self.graph[target].ty);
             self.error = Some(super::GraphError::MissingSource { pos: source });
         }
     }
@@ -355,7 +357,9 @@ impl<'a, W: World> InputSearchState<'a, W> {
                 if let Some(boundaries) = self.boundaries {
                     for term in &boundaries.outputs[port].terms {
                         if let Some(source) = term.source {
-                            self.link_source(source, idx, LinkType::Default, 0);
+                            if !boundaries.is_sampled_wire(source) {
+                                self.link_source(source, idx, LinkType::Default, 0);
+                            }
                         }
                     }
                 }

@@ -259,24 +259,9 @@ impl RedstoneWireTurbo {
         }
     }
 
-    const REORDING: [[usize; 24]; 4] = [
-        [
-            2, 3, 16, 19, 0, 4, 1, 5, 7, 8, 17, 20, 12, 13, 18, 21, 6, 9, 22, 14, 11, 10, 23, 15,
-        ],
-        [
-            2, 3, 16, 19, 4, 1, 5, 0, 17, 20, 12, 13, 18, 21, 7, 8, 22, 14, 11, 15, 23, 9, 6, 10,
-        ],
-        [
-            2, 3, 16, 19, 1, 5, 0, 4, 12, 13, 18, 21, 7, 8, 17, 20, 11, 15, 23, 10, 6, 14, 22, 9,
-        ],
-        [
-            2, 3, 16, 19, 5, 0, 4, 1, 18, 21, 7, 8, 17, 20, 12, 13, 23, 10, 6, 9, 22, 15, 11, 14,
-        ],
-    ];
-
     fn orient_neighbors(&mut self, src: &[NodeId; 24], dst_id: NodeId, heading: usize) {
         let dst = &mut self.nodes[dst_id.index()];
-        let re = Self::REORDING[heading];
+        let re = super::TURBO_ORDER[heading];
         dst.neighbors = Some(
             u32::try_from(self.neighbor_lists.len())
                 .ok()

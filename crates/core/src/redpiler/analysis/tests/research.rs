@@ -4,6 +4,9 @@ use crate::redstone::piston::trace;
 use std::collections::BTreeMap;
 use std::time::Instant;
 
+#[path = "research/fpu_divider.rs"]
+mod fpu_divider;
+
 #[path = "../../../../benches/support/cpus.rs"]
 #[allow(dead_code)]
 mod cpus;
@@ -396,6 +399,153 @@ fn bubblesort_import_preserves_full_memory_and_button_protocol() {
 }
 
 #[test]
+#[ignore = "full CPU sorting protocol; opt-in long execution comparison"]
+fn bubblesort_compiled_sampled_protocol() {
+    let cpu = cpus::CPUS[2];
+    for assume_instant in [false, true] {
+        let mut fixture = manifest("cpu_bubblesort");
+        fixture["origin"] = json!([2, 8, 2]);
+        let (world, _) = load(&fixture);
+        let (mut interpreted, _) = load(&fixture);
+        let mut compiler = Compiler::default();
+        compiler.compile(&world, world.get_corners(), CompilerOptions { assume_instant, ..Default::default() }, Vec::new(), Default::default()).unwrap();
+        let words = |compiler: &Compiler| {
+            let actors = compiler.backend.as_ref().unwrap().sampled_pistons();
+            [7,17,27,37].into_iter().flat_map(|y| (0..16).map(move |row| (y,row))).map(|(y,row)| {
+                (0..12).try_fold(0u16, |word, bit| {
+                    let &(retracted, settled) = actors.get(&(cpu.origin + BlockPos::new(175 + 4*bit, y, 62 - 4*row))).unwrap();
+                    settled.then_some(word | (u16::from(retracted) << bit))
+                })
+            }).collect::<Vec<_>>()
+        };
+        let initial = words(&compiler);
+        compiler.on_use_block(cpu.origin + BlockPos::new(150,17,119));
+        lever_action(&mut interpreted, cpu.origin + BlockPos::new(150,17,119), true);
+        for tick in 0..400 {
+            compiler.tick();
+            interpreted.tick_interpreted();
+            let signals: Vec<_> = compiler.backend.as_ref().unwrap().sampled_signals().into_iter().filter_map(|(pos,value)| {
+                let actual = match interpreted.get_block(pos) { Block::RedstoneWire {wire} => wire.power,
+                    Block::Observer {observer} => if observer.powered {15} else {0}, _ => unreachable!() };
+                (value != actual).then_some((pos - cpu.origin, value, actual))
+            }).collect();
+            if !signals.is_empty() { println!("signals tick {tick}: {signals:?}"); }
+            let mut differences: Vec<_> = compiler.backend.as_ref().unwrap().sampled_pistons().into_iter().filter_map(|(pos, (retracted, _))| {
+                let block = match interpreted.get_block(pos) {
+                    Block::MovingPiston { .. } => match interpreted.get_block_entity(pos) { Some(mchprs_blocks::block_entities::BlockEntity::MovingPiston(entity)) => Block::from_id(entity.block_state), _ => unreachable!() },
+                    block => block,
+                };
+                let Block::Piston { piston } = block else { panic!("missing base {pos:?}") };
+                (retracted != !piston.extended).then_some((pos - cpu.origin, retracted, crate::redstone::piston::should_piston_extend(&interpreted, piston.facing, pos)))
+            }).collect();
+            differences.sort_by_key(|(pos, _, _)| (pos.y,pos.z,pos.x));
+            assert!(differences.is_empty(), "tick {tick}: differences {differences:?}");
+        }
+        let loaded = words(&compiler);
+        println!("loaded: {loaded:?}");
+        assert_eq!(&loaded[48..], &(0..16).rev().map(Some).collect::<Vec<_>>());
+        compiler.on_use_block(cpu.origin + BlockPos::new(166,7,158));
+        cpus::click_cpu(&mut interpreted, cpu, BlockPos::new(166,7,158));
+        for tick in 0..100 {
+            compiler.tick(); interpreted.tick_interpreted();
+            check_sampled_actors(&compiler, &interpreted, cpu.origin, tick + 400);
+        }
+        compiler.on_use_block(cpu.origin + cpu.start);
+        cpus::click_cpu(&mut interpreted, cpu, cpu.start);
+        for tick in 0..11000 {
+            compiler.tick();
+            interpreted.tick_interpreted();
+            if std::env::var_os("MCHPRS_CPU_COMPARE_GEOMETRY").is_some() {
+                let signals: Vec<_> = compiler.backend.as_ref().unwrap().sampled_signals().into_iter().filter_map(|(pos, value)| {
+                    let actual = crate::redstone::source_strength(interpreted.get_block(pos), &interpreted, pos);
+                    (value != actual).then_some((pos - cpu.origin, value, actual, interpreted.get_block(pos)))
+                }).take(20).collect();
+                assert!(signals.is_empty(), "signals tick {tick}: {signals:?}");
+                let power: Vec<_> = compiler.backend.as_ref().unwrap().sampled_power().into_iter().filter_map(|(pos, power)| {
+                    let piston = analyze_piston_facing(&interpreted, pos);
+                    let actual = crate::redstone::piston::should_piston_extend(&interpreted, piston, pos);
+                    (power != actual).then_some((pos - cpu.origin, power, actual))
+                }).take(20).collect();
+                assert!(power.is_empty(), "power tick {tick}: {power:?}");
+                let differences: Vec<_> = compiler.backend.as_ref().unwrap().sampled_geometry().into_iter().filter_map(|(pos, block)| {
+                    let actual = interpreted.get_block(pos);
+                    (block != actual && !(matches!(block, Block::MovingPiston { .. }) && matches!(actual, Block::MovingPiston { .. }))).then_some((pos - cpu.origin, block, actual))
+                }).take(20).collect();
+                assert!(differences.is_empty(), "geometry tick {tick}: {differences:?}");
+            }
+            if std::env::var_os("MCHPRS_CPU_COMPARE_EVENTS").is_some() { check_sampled_actors(&compiler, &interpreted, cpu.origin, tick + 500); }
+            if tick % 1000 == 0 { println!("tick {tick}: {:?}", &words(&compiler)[48..]); }
+        }
+        let sorted = words(&compiler);
+        println!("sorted: {sorted:?}");
+        assert_eq!(&sorted[..48], &loaded[..48]);
+        assert_eq!(&sorted[48..], &(0..16).map(Some).collect::<Vec<_>>());
+        assert_eq!(initial.len(), 64);
+    }
+}
+
+fn analyze_piston_facing(world: &PlotWorld, pos: BlockPos) -> mchprs_blocks::BlockFacing {
+    match world.get_block(pos) { Block::Piston { piston } => piston.facing, Block::MovingPiston { moving } => moving.facing, _ => panic!("missing base {pos:?}") }
+}
+
+fn check_sampled_actors(compiler: &Compiler, interpreted: &PlotWorld, origin: BlockPos, tick: usize) {
+    let mut differences: Vec<_> = compiler.backend.as_ref().unwrap().sampled_pistons().into_iter().filter_map(|(pos, (retracted, _))| {
+        let block = match interpreted.get_block(pos) {
+            Block::MovingPiston { .. } => match interpreted.get_block_entity(pos) { Some(mchprs_blocks::block_entities::BlockEntity::MovingPiston(entity)) => Block::from_id(entity.block_state), _ => unreachable!() },
+            block => block,
+        };
+        let Block::Piston { piston } = block else { panic!("missing base {pos:?}") };
+        (retracted != !piston.extended).then_some((pos - origin, retracted, crate::redstone::piston::should_piston_extend(interpreted, piston.facing, pos)))
+    }).collect();
+    differences.sort_by_key(|(pos, _, _)| (pos.y,pos.z,pos.x));
+    if !differences.is_empty() {
+        let sources: Vec<_> = compiler.backend.as_ref().unwrap().sampled_sources().into_iter().filter_map(|(pos,v)| {
+            let actual = crate::redstone::source_strength(interpreted.get_block(pos),interpreted,pos);
+            (v != actual).then_some((pos-origin,v,actual))
+        }).collect();
+        let signals: Vec<_> = compiler.backend.as_ref().unwrap().sampled_signals().into_iter().filter_map(|(pos,v)| {
+            let actual = crate::redstone::source_strength(interpreted.get_block(pos),interpreted,pos);
+            (v != actual).then_some((pos-origin,v,actual))
+        }).collect();
+        println!("sources diff: {sources:?}; signals diff: {signals:?}");
+        let geometry:Vec<_> = compiler.backend.as_ref().unwrap().sampled_geometry().into_iter().filter_map(|(pos,block)| {
+            let actual=interpreted.get_block(pos);
+            (block != actual && !(matches!(block,Block::MovingPiston {..})&&matches!(actual,Block::MovingPiston {..}))).then_some((pos-origin,block,actual))
+        }).collect();
+        println!("geometry diff: {geometry:?}");
+    }
+    assert!(differences.is_empty(), "tick {tick}: differences {differences:?}");
+}
+
+#[test]
+#[ignore = "bounded compiler extraction probe"]
+fn bubblesort_sampled_extraction_probe() {
+    let mut fixture = manifest("cpu_bubblesort");
+    fixture["origin"] = json!([2, 8, 2]);
+    let (world, _) = load(&fixture);
+    let monitor = TaskMonitor::default();
+    monitor.set_budget_multiplier(1);
+    let report = analyze_world(&world);
+    let regions = crate::redpiler::instant::regions::split(&world, &report, &monitor).unwrap();
+    println!("regions: {:?}", regions.iter().map(|r| r.pistons.len()).collect::<Vec<_>>());
+    let start = Instant::now();
+    let extraction = crate::redpiler::instant::logic::sequential::extract(&world, &report, &monitor).unwrap();
+    println!("sampled extraction: {:?}, {} decisions, {} sources, {} sensors, {} outputs", start.elapsed(), extraction.logic.arena.nodes.len(), extraction.logic.sources.len(), extraction.sensors.len(), extraction.logic.outputs.len());
+    for (id, p) in report.pistons.iter().enumerate().filter(|(_, p)| p.diagnostics.contains(&super::super::PistonDiagnostic::MissingOrMismatchedHead)) {
+        let mut pending = vec![extraction.logic.responses[id]];
+        let mut visited = FxHashSet::default();
+        while let Some(root) = pending.pop() {
+            if visited.insert(root) {
+                if let Some(d) = extraction.logic.arena.decision(root) {
+                    println!("malformed {:?}: {root} {d:?}", p.pos);
+                    pending.extend([d.low, d.high]);
+                }
+            }
+        }
+    }
+}
+
+#[test]
 #[ignore = "read-only FPU expression probe, not executable admission; new output file required"]
 fn capture_fpu_response_extraction() {
     let destination = std::env::var("MCHPRS_PISTON_RESEARCH_OUTPUT").unwrap();
@@ -585,7 +735,7 @@ fn fpu_material_legalization_preserves_the_author_confirmed_invalid_entries() {
 }
 
 #[test]
-fn rilax_material_diagnostics_and_sampler_rejection_describe_the_actual_boundary() {
+fn rilax_material_diagnostics_and_compiled_sampling_preserve_memory_transactions() {
     let (world, bounds) = load(&manifest("rilax_memory_bank_bud"));
     let report = analyze_world(&world);
     let unsupported: Vec<_> = report
@@ -601,24 +751,39 @@ fn rilax_material_diagnostics_and_sampler_rejection_describe_the_actual_boundary
         .iter()
         .all(|p| !p.piston.sticky && world.get_block(p.payload) == Block::Air));
     let before = snapshot(&world, bounds);
-    let mut compiler = Compiler::default();
-    let message = compiler
-        .compile(
-            &world,
-            world.get_corners(),
-            Default::default(),
-            vec![],
-            Default::default(),
-        )
-        .unwrap_err()
-        .to_string();
-    assert!(
-        message.contains("ordinary piston at")
-            && message.contains("update samplers are not implemented"),
-        "{message}"
-    );
-    assert!(!compiler.is_active());
-    assert_eq!(snapshot(&world, bounds), before);
+    for assume_instant in [false, true] {
+        let (mut compiled, _) = load(&manifest("rilax_memory_bank_bud"));
+        let (mut reference, _) = load(&manifest("rilax_memory_bank_bud"));
+        let mut compiler = Compiler::default();
+        compiler.compile(&compiled, compiled.get_corners(), CompilerOptions { assume_instant, optimize: true, io_only: true, ..Default::default() }, vec![], Default::default()).unwrap();
+        assert_eq!(snapshot(&compiled, bounds), before);
+        for (selected, value) in [(0u8, 0xa5u8), (2, 0x3c), (7, 0xff)] {
+            let data_controls: Vec<_> = (0..8).map(|bit| (BASE + BlockPos::new(14,14,25-2*bit), value & (1 << bit) != 0)).collect();
+            let write_address: Vec<_> = (0..3).map(|bit| (BASE + BlockPos::new(19,12,3+2*bit), selected & (1 << bit) != 0)).collect();
+            let read_address: Vec<_> = (0..3).map(|bit| (BASE + BlockPos::new(20,7,3+2*bit), selected & (1 << bit) != 0)).collect();
+            for controls in [write_address, data_controls, vec![(BASE + WRITE_ENABLE, true)], vec![(BASE + WRITE_ENABLE, false)], read_address, vec![(BASE + READ_ENABLE, true)], vec![(BASE + READ_ENABLE, false)]] {
+                for (pos, powered) in controls {
+                    let Block::Lever { lever } = reference.get_block(pos) else { unreachable!() };
+                    if lever.powered != powered { compiler.on_use_block(pos); }
+                    lever_action(&mut reference, pos, powered);
+                }
+                for _ in 0..24 {
+                    compiler.tick(); compiler.flush(&mut compiled); reference.tick_interpreted();
+                    check_sampled_state(&compiler, &reference);
+                    assert_eq!(output_word(&compiled), output_word(&reference));
+                }
+            }
+            let actors = compiler.backend.as_ref().unwrap().sampled_pistons();
+            let stored = (0..8).fold(0u8, |word, bit| word | (u8::from(actors[&memory_pos(selected, bit)].0) << bit));
+            assert_eq!(stored, value);
+        }
+        compiler.reset(&mut compiled, reference.get_corners());
+        for _ in 0..24 {
+            compiled.tick_interpreted(); reference.tick_interpreted();
+            assert_eq!(memory_words(&compiled), memory_words(&reference));
+            assert_eq!(output_word(&compiled), output_word(&reference));
+        }
+    }
 }
 
 #[test]

@@ -250,7 +250,6 @@ fn furnace_support_exception_keeps_entity_movement_and_reset_guards() {
         "wrong block",
         "wrong entity",
         "moving support",
-        "writer",
         "pending",
     ] {
         let (mut world, _, base, _, cap) = furnace_reset(4);
@@ -342,7 +341,7 @@ fn furnace_support_exception_keeps_entity_movement_and_reset_guards() {
 }
 
 #[test]
-fn supported_conductors_still_reject_payload_entities_and_broken_entry_geometry() {
+fn sampled_conductors_preserve_saved_geometry_and_reject_entities_and_bad_heads() {
     for mutation in ["entity", "missing head", "short head", "retracted"] {
         let (mut world, bounds, manifest) = fixture("instant_observer");
         let base = local_pos(&manifest["ports"]["observations"]["base"]);
@@ -364,7 +363,7 @@ fn supported_conductors_still_reject_payload_entities_and_broken_entry_geometry(
                 };
                 head.short = true;
                 world.set_block(head_pos, Block::PistonHead { head });
-                "matching stationary head"
+                "incompatible saved head"
             }
             "retracted" => {
                 let Block::Piston { mut piston } = world.get_block(base) else {
@@ -380,6 +379,29 @@ fn supported_conductors_still_reject_payload_entities_and_broken_entry_geometry(
         };
         let before = snapshot(&world, bounds);
         let mut compiler = Compiler::default();
+        if matches!(mutation, "missing head" | "retracted") {
+            let mut reference = empty();
+            crate::world::for_each_block_optimized(&world, bounds.0, bounds.1, |pos| {
+                reference.set_block(pos, world.get_block(pos));
+            });
+            compiler.compile(&world, world.get_corners(), Default::default(), vec![], Default::default()).unwrap();
+            assert_eq!(snapshot(&world, bounds), before);
+            let trigger = local_pos(&manifest["ports"]["inputs"]["trigger"]);
+            compiler.on_use_block(trigger);
+            lever_action(&mut reference, trigger, true);
+            for _ in 0..24 {
+                compiler.tick();
+                reference.tick_interpreted();
+                check_sampled_state(&compiler, &reference);
+            }
+            compiler.reset(&mut world, reference.get_corners());
+            for _ in 0..24 {
+                world.tick_interpreted();
+                reference.tick_interpreted();
+                assert_eq!(snapshot(&world, bounds)["cells"], snapshot(&reference, bounds)["cells"], "handoff {mutation}");
+            }
+            continue;
+        }
         let message = compiler
             .compile(
                 &world,

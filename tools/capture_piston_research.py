@@ -16,7 +16,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--fixture", choices=["fpu_legal", "rilax_memory_bank_bud", "cpu_bubblesort"], required=True)
+    parser.add_argument("--fixture", choices=["fpu_legal", "fpu_divider", "rilax_memory_bank_bud", "cpu_bubblesort"], required=True)
     parser.add_argument("--case")
     parser.add_argument("--probe-logic", action="store_true", help="FPU response extraction only, bypassing executable admission")
     parser.add_argument("--output", type=Path, required=True)

@@ -24,6 +24,12 @@ macro_rules! catalog {
 
 catalog! {
     fixed {
+        USAGE_SETWARP = "Usage: /setwarp <name> (creates or replaces a shared warp)";
+        USAGE_WARP = "Usage: /warp [name] (omit the name to list shared warps)";
+        INVALID_WARP_NAME = "Warp names must be 1-32 letters, digits, underscores or hyphens.";
+        NO_WARPS = "No saved warps. Use /setwarp <name> to save your current position.";
+        WARP_STORAGE_FAILED = "Could not access saved warps. Please try again.";
+        HELP_WARPS = "Shared warps\n/setwarp <name> saves your exact position and facing direction for everyone.\nUsing an existing name replaces its destination.\n/warp <name> visits a saved destination, including on another plot.\n/warp lists destinations; Tab completes their names.\nNames are case-insensitive and use 1-32 letters, digits, underscores or hyphens.";
         USAGE_GIT_REBASE = "Usage: /git rebase <branch>";
         GIT_REBASE_NAMED_BRANCH_REQUIRED = "Name this detached trail first with /git branch <name>, then /git checkout <name> before rebasing, pup.";
         GIT_REBASE_SOURCE_BRANCH_REQUIRED = "These paws need an existing source branch. Use /git branch to sniff out its name :3";
@@ -210,7 +216,7 @@ catalog! {
         HELP_HISTORY = "Tick history\n/rhistory on [ticks] records ticks (default 100); /rhistory off clears it.\n/rhistory shows count and memory. /back [ticks] rewinds; resume with /tps 20.\nRewind clears WorldEdit undo/redo. History needs the interpreter and resets when the plot becomes empty, on compile or restart.\nOld ticks drop at the shared 2 GiB limit. Admins can use /rhistory limit <MiB>.";
         HELP_PISTONS = "Piston animation and updates\n/piston_anim [auto|on|off] controls animations. /bisdon_anim is an alias.\n/wsr [rate|0] shows or sets the update rate; 0 stops periodic updates.\nAbove the server TPS threshold (200 by default), updates cap at 10 Hz. A lower /wsr still applies.";
         HELP_PLOTS = "Plots\n/p auto claims an empty plot; /p claim claims the plot you're in.\n/p info shows the owner; /p middle goes to the centre.\n/p home visits your first plot; /p visit <player> [number] visits a plot.\n/p add <nick> and /p remove <nick> manage plot members.\n/p tp <x> <z> uses plot coordinates.\n/p lock and /p unlock control leaving. /p select selects the plot for WorldEdit.";
-        HELP_QUICK_START = "MROWW — Minecraft Redstone o Wysokiej Wydajności\n/p auto claims a plot.\n/help plots - Claim and visit plots.\n/help tps - Control and step simulation.\n/help we - WorldEdit.\n/help tools - Redstone tools.\n/help schematics - Load and save builds.\n/help screenonly - Reduce visual updates.\n/help pistons - Animations and update rate.\n/help rewind - Tick history.\n/help git - Plot commits, branches and glowing diffs.\n/help chat - Chat and command blocks.\n/help redpiler - Compiled simulation.";
+        HELP_QUICK_START = "MROWW — Minecraft Redstone o Wysokiej Wydajności\n/p auto claims a plot.\n/help plots - Claim and visit plots.\n/help warps - Save and visit shared destinations.\n/help tps - Control and step simulation.\n/help we - WorldEdit.\n/help tools - Redstone tools.\n/help schematics - Load and save builds.\n/help screenonly - Reduce visual updates.\n/help pistons - Animations and update rate.\n/help rewind - Tick history.\n/help git - Plot commits, branches and glowing diffs.\n/help chat - Chat and command blocks.\n/help redpiler - Compiled simulation.";
         HELP_REDPILER = "Compiled simulation\n/rp compile enables compiled mode; /rp reset returns to the interpreter.\nAdd --assume-instant for logical piston behavior without movement delays or reset pulses; memory still updates only when sampled.\n/rp inspect checks the targeted block. /toggleautorp toggles automatic compilation.\n/rp analyze checks whether the plot can compile. It accepts the same flags, including --assume-instant.\n/rp analyze --graph prepares a read-only candidate graph; optional --optimize and --io-only check optimization.\nUse /tps 0 and /adv 1 to step compiled execution. Nano/pico stepping requires /rp reset first.";
         HELP_REDSTONE_TOOLS = "Redstone tools\n//find <block> searches your selection.\n//ss <regex> searches signs; -p <page> shows more.\n//rs [direction] [count] [spacing] stacks copies; -e expands selection; -w includes air.\n/autostack [direction] [count] [spacing] [-e] automatically stacks your placements and removals in the selected region; /autostack off stops it. Leaving the plot stops it.\n/container <type> <0..15> creates a comparator container.\n/cursel toggles the selection sidebar.";
         USAGE_AUTOSTACK = "Usage: /autostack [direction] [count] [spacing] [-e], or /autostack off.";
@@ -412,6 +418,10 @@ catalog! {
         YOU_NOT_WHITELISTED_ON_SERVER = "You are not whitelisted on this server";
     }
     formatted {
+        warp_saved(name: impl Display) = "Saved shared warp '{name}'. Visit it with /warp {name}.";
+        warp_not_found(name: impl Display) = "Warp '{name}' was not found. Use /warp to list destinations.";
+        warp_teleport(name: impl Display) = "Teleporting to warp '{name}'.";
+        warp_list(names: impl Display) = "Shared warps: {names}";
         git_rebased(branch: impl Display, source: impl Display, recovery: impl Display) = "Fetched {source}'s saved plot into {branch}'s working build. Branch tips unchanged; simulation paused. Edit, then /git commit <message> to tuck it away :3{recovery}";
         worldedit_work_limit(limit: u64) = "These WorldEdit paws can handle at most {limit} blocks.";
         advance_progress(advanced: u32, requested: u32, unit: impl Display) = "{advanced} of {requested} {unit}";

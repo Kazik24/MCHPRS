@@ -13,6 +13,8 @@ use rustc_hash::{FxHashMap, FxHashSet};
 use std::cmp::Reverse;
 use std::collections::{BinaryHeap, VecDeque};
 
+pub(crate) mod sequential;
+
 #[derive(Debug)]
 pub(crate) struct WaveLogic {
     pub arena: BooleanArena,
@@ -41,7 +43,7 @@ impl WaveLogic {
             .map(|&root| {
                 self.arena.evaluate(root, |variable| match variable {
                     Variable::Signal { pos, threshold, .. } => read(pos) > threshold,
-                    Variable::Actuator(_) | Variable::Geometry { .. } => {
+                    Variable::Actuator(_) | Variable::Geometry { .. } | Variable::Observer(_) | Variable::WireDot(_) => {
                         unreachable!("final program has no provisional actuator variables")
                     }
                     Variable::Memory(actor) => memory(actor),
@@ -70,6 +72,8 @@ struct Extractor<'a, W: World> {
     terms: Vec<PowerTerm>,
     context: FxHashSet<BlockPos>,
     memory: FxHashSet<usize>,
+    sequential: bool,
+    observers: FxHashMap<BlockPos, usize>,
 }
 
 pub(crate) fn extract(
@@ -110,6 +114,8 @@ pub(crate) fn extract_with_state(
         terms: Vec::new(),
         context: Default::default(),
         memory,
+        sequential: false,
+        observers: Default::default(),
     };
     for (group, descriptor) in report.payload_groups.iter().enumerate() {
         let payloads: Vec<_> = descriptor
@@ -329,11 +335,11 @@ impl<W: World> Extractor<'_, W> {
             return Err("instant extraction cancelled".into());
         }
         self.steps += 1;
-        if self.steps > 8_388_608 * self.monitor.budget_multiplier()
+        if self.steps > (if self.sequential { 33_554_432 } else { 8_388_608 }) * self.monitor.budget_multiplier()
             || self.arena.exhausted
-            || self.signal_order.len() > 64 * self.monitor.budget_multiplier()
+            || self.signal_order.len() > (if self.sequential { 65_536 } else { 64 }) * self.monitor.budget_multiplier()
         {
-            return Err("instant conditional geometry budget exceeded".into());
+            return Err(format!("instant conditional geometry budget exceeded ({} steps, {} sources, {} decisions)", self.steps, self.signal_order.len(), self.arena.nodes.len()));
         }
         Ok(())
     }
@@ -348,6 +354,15 @@ impl<W: World> Extractor<'_, W> {
             || pos.y > hi.y
             || pos.z > hi.z
         {
+            let width = crate::plot::PLOT_BLOCK_WIDTH;
+            if self.sequential && lo.x.rem_euclid(width) == 0 && lo.z.rem_euclid(width) == 0
+                && hi.x - lo.x + 1 == width && hi.z - lo.z + 1 == width
+                && lo.y == 0 && hi.y + 1 == crate::plot::PLOT_BLOCK_HEIGHT
+            {
+                // Full plots are isolated electrical worlds, as in ordinary
+                // graph search. A smaller selection still needs its context.
+                return Ok(Block::Air);
+            }
             return Err(format!(
                 "instant context at {pos:?} is outside the selection"
             ));
@@ -474,7 +489,7 @@ impl<W: World> Extractor<'_, W> {
             let empty = self.arena.not(occupied);
             return vec![
                 (self.payloads[self.group_of[owner]], near),
-                (self.world.get_block(pos), head),
+                (if self.sequential { Block::PistonHead { head: self.report.pistons[owner].piston.into() } } else { self.world.get_block(pos) }, head),
                 (Block::Air, empty),
             ];
         }
@@ -493,7 +508,7 @@ impl<W: World> Extractor<'_, W> {
                     },
                     moving,
                 ),
-                (self.world.get_block(pos), extended),
+                (if self.sequential { Block::Piston { piston: self.report.pistons[owner].piston.extend(true) } } else { self.world.get_block(pos) }, extended),
             ];
         }
         vec![(self.world.get_block(pos), TRUE)]
@@ -504,6 +519,7 @@ impl<W: World> Extractor<'_, W> {
         pos: BlockPos,
         wire: RedstoneWire,
         positions: &[BlockPos],
+        raw: bool,
     ) -> Result<Vec<(Expr, RedstoneWire)>, String> {
         let mut assignments = vec![(FxHashMap::default(), TRUE)];
         for &position in positions {
@@ -535,12 +551,14 @@ impl<W: World> Extractor<'_, W> {
         }
         let mut shapes: Vec<(Expr, RedstoneWire)> = Vec::new();
         for (blocks, guard) in assignments {
-            let shape = redstone::wire::get_regulated_sides_from(wire, pos, |position| {
+            let read = |position| {
                 blocks
                     .get(&position)
                     .copied()
                     .unwrap_or_else(|| self.world.get_block(position))
-            });
+            };
+            let shape = if raw { redstone::wire::get_raw_sides_from(wire, pos, read) }
+                else { redstone::wire::get_regulated_sides_from(wire, pos, read) };
             if let Some((known, _)) = shapes.iter_mut().find(|(_, existing)| *existing == shape) {
                 *known = self.arena.or(*known, guard);
             } else {
@@ -572,7 +590,26 @@ impl<W: World> Extractor<'_, W> {
             ]);
         }
         if self.output_mode {
-            let shapes = self.output_wire_shapes(pos, wire, &positions)?;
+            let shapes = if self.sequential {
+                let raw_shapes = self.output_wire_shapes(pos, wire, &positions, true)?;
+                let mut shapes: Vec<(Expr, RedstoneWire)> = Vec::new();
+                for (guard, raw) in raw_shapes {
+                    let dot = RedstoneWire { power: wire.power, ..Default::default() };
+                    let connected = RedstoneWire { north: mchprs_blocks::blocks::RedstoneWireSide::Side, ..dot };
+                    let dot_shape = redstone::wire::regulate_sides(dot, raw);
+                    let connected_shape = redstone::wire::regulate_sides(connected, raw);
+                    let candidates = if dot_shape == connected_shape { vec![(guard, dot_shape)] } else {
+                        let dot = self.arena.variable(Variable::WireDot(pos));
+                        let not_dot = self.arena.not(dot);
+                        vec![(self.arena.and(guard, dot), dot_shape), (self.arena.and(guard, not_dot), connected_shape)]
+                    };
+                    for (guard, shape) in candidates {
+                        if let Some((known, _)) = shapes.iter_mut().find(|(_, existing)| *existing == shape) { *known = self.arena.or(*known, guard); }
+                        else { shapes.push((guard, shape)); }
+                    }
+                }
+                shapes
+            } else { self.output_wire_shapes(pos, wire, &positions, false)? };
             self.shapes.insert((actor, pos), shapes.clone());
             return Ok(shapes);
         }
@@ -616,11 +653,16 @@ impl<W: World> Extractor<'_, W> {
         guard: Expr,
         result: &mut Expr,
     ) {
-        if guard == FALSE || distance >= 15 || matches!(block, Block::Observer { .. }) {
+        if guard == FALSE || distance >= 15 || (!self.sequential && matches!(block, Block::Observer { .. })) {
             return;
         }
+        if self.sequential && matches!(block, Block::RedstoneWire { .. }) { self.wires.insert(pos); }
         if self.output_mode {
-            let source = (block != Block::RedstoneBlock).then_some(pos);
+            let (source, guard) = if self.sequential && matches!(block, Block::Observer { .. }) {
+                let Some(&observer) = self.observers.get(&pos) else { return };
+                let powered = self.arena.variable(Variable::Observer(observer));
+                (None, self.arena.and(guard, powered))
+            } else { ((block != Block::RedstoneBlock).then_some(pos), guard) };
             if let Some(term) = self
                 .terms
                 .iter_mut()
@@ -679,7 +721,8 @@ impl<W: World> Extractor<'_, W> {
             };
             if reaches {
                 let condition = self.arena.and(guard, shape_guard);
-                roots.push_back((pos, 0, condition));
+                if self.sequential { let mut ignored = FALSE; self.source(actor, pos, Block::RedstoneWire { wire }, 0, condition, &mut ignored); }
+                else { roots.push_back((pos, 0, condition)); }
             }
         }
         Ok(())
@@ -745,7 +788,8 @@ impl<W: World> Extractor<'_, W> {
         if input == ConsumerInput::ComparatorSide {
             for (block, guard) in self.variants(pos, usize::MAX)? {
                 if matches!(block, Block::RedstoneWire { .. }) {
-                    roots.push_back((pos, 0, guard));
+                    if self.sequential { self.source(usize::MAX, pos, block, 0, guard, result); }
+                    else { roots.push_back((pos, 0, guard)); }
                 } else if block == Block::RedstoneBlock
                     || (redstone::is_diode(block)
                         && power::emits_weak_power(block, self.world, pos, side, false))
@@ -756,7 +800,8 @@ impl<W: World> Extractor<'_, W> {
         } else if redstone::is_diode(consumer)
             && matches!(self.read(pos)?, Block::RedstoneWire { .. })
         {
-            roots.push_back((pos, 0, TRUE));
+            if self.sequential { self.source(usize::MAX, pos, self.world.get_block(pos), 0, TRUE, result); }
+            else { roots.push_back((pos, 0, TRUE)); }
         } else {
             self.signal(usize::MAX, pos, side, result, roots)?;
         }
@@ -832,7 +877,8 @@ impl<W: World> Extractor<'_, W> {
                         self.source(actor, neighbor, block, distance, guard, &mut result);
                     }
                     if matches!(block, Block::RedstoneWire { .. }) {
-                        queue.push_back((neighbor, distance + 1, guard));
+                        if self.sequential { self.source(actor, neighbor, block, distance + 1, guard, &mut result); }
+                        else { queue.push_back((neighbor, distance + 1, guard)); }
                     }
                     if side.is_horizontal() {
                         if !block.is_transparent()
@@ -844,11 +890,9 @@ impl<W: World> Extractor<'_, W> {
                             for &(block, above_guard) in &above {
                                 if !block.is_solid() {
                                     let guard = self.arena.and(guard, above_guard);
-                                    queue.push_back((
-                                        neighbor.offset(BlockFace::Top),
-                                        distance + 1,
-                                        guard,
-                                    ));
+                                    let wire_pos = neighbor.offset(BlockFace::Top);
+                                    if self.sequential { self.source(actor, wire_pos, self.world.get_block(wire_pos), distance + 1, guard, &mut result); }
+                                    else { queue.push_back((wire_pos, distance + 1, guard)); }
                                 }
                             }
                         }
@@ -858,11 +902,9 @@ impl<W: World> Extractor<'_, W> {
                                 Block::RedstoneWire { .. }
                             )
                         {
-                            queue.push_back((
-                                neighbor.offset(BlockFace::Bottom),
-                                distance + 1,
-                                guard,
-                            ));
+                            let wire_pos = neighbor.offset(BlockFace::Bottom);
+                            if self.sequential { self.source(actor, wire_pos, self.world.get_block(wire_pos), distance + 1, guard, &mut result); }
+                            else { queue.push_back((wire_pos, distance + 1, guard)); }
                         }
                     }
                 }

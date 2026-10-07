@@ -51,6 +51,20 @@ pub struct DirectBackend {
 }
 
 impl DirectBackend {
+    #[cfg(test)]
+    pub(crate) fn sampled_pistons(&self) -> FxHashMap<BlockPos, (bool, bool)> {
+        self.instant.iter().flat_map(|runtime| runtime.sampled_pistons()).map(|(pos, retracted, settled)| (pos, (retracted, settled))).collect()
+    }
+    #[cfg(test)]
+    pub(crate) fn sampled_signals(&self) -> Vec<(BlockPos, u8)> {
+        self.instant.iter().flat_map(|r| r.sampled_signals()).collect()
+    }
+    #[cfg(test)]
+    pub(crate) fn sampled_sources(&self) -> Vec<(BlockPos,u8)> { self.instant.iter().flat_map(|r|r.sampled_sources(&self.nodes)).collect() }
+    #[cfg(test)]
+    pub(crate) fn sampled_geometry(&self) -> Vec<(BlockPos,Block)> { self.instant.iter().flat_map(|r|r.sampled_geometry()).collect() }
+    #[cfg(test)]
+    pub(crate) fn sampled_power(&self) -> Vec<(BlockPos, bool)> { self.instant.iter().flat_map(|r|r.sampled_power(&self.nodes)).collect() }
     fn process_command_outputs(&mut self, world: &mut impl World) {
         if !self.events.iter().any(|event| {
             matches!(

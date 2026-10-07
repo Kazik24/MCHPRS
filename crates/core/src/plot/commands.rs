@@ -128,6 +128,13 @@ fn parse_teleport_coord(coord: &str, reference: f64, center: bool) -> Result<f64
     }
 }
 
+fn valid_warp_name(name: &str) -> bool {
+    (1..=32).contains(&name.len())
+        && name
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b'-'))
+}
+
 fn advance_bounded(ticks: u32, mut step: impl FnMut()) -> u32 {
     let started = Instant::now();
     let budget = std::time::Duration::from_millis(crate::config::CONFIG.command_work_time_ms);
@@ -175,6 +182,25 @@ impl AdvanceUnit {
 }
 
 impl Plot {
+    /// Transfers immediately so later queued commands cannot affect the old plot.
+    pub(super) fn teleport_to_warp(&mut self, player: usize, warp: database::Warp) -> bool {
+        if !warp.is_valid() {
+            self.players[player].send_error_message(messages::INVALID_TELEPORT_COORDINATES);
+            return false;
+        }
+        self.close_open_container(player);
+        self.players[player].yaw = warp.yaw;
+        self.players[player].pitch = warp.pitch;
+        self.players[player].teleport(warp.pos);
+        if warp.pos.plot_pos() != (self.world.x, self.world.z) {
+            let uuid = self.players[player].uuid;
+            let player = self.leave_plot(uuid);
+            let _ = self.message_sender.send(Message::PlayerLeavePlot(player));
+            return true;
+        }
+        false
+    }
+
     /// Handles a command that starts with `/plot` or `/p`
     fn handle_plot_command(&mut self, player: usize, command: &str, args: &[&str]) {
         let (plot_x, plot_z) = self.players[player].pos.plot_pos();
@@ -805,6 +831,73 @@ impl Plot {
                     self.players[player].send_system_message(messages::REDPILER_AUTO_DISABLED);
                 }
             }
+            "/setwarp" => {
+                let [name] = args.as_slice() else {
+                    self.players[player].send_error_message(messages::USAGE_SETWARP);
+                    return false;
+                };
+                if !valid_warp_name(name) {
+                    self.players[player].send_error_message(messages::INVALID_WARP_NAME);
+                    return false;
+                }
+                let actor = &self.players[player];
+                let warp = database::Warp {
+                    pos: actor.pos,
+                    yaw: actor.yaw,
+                    pitch: actor.pitch,
+                };
+                if !warp.is_valid() {
+                    actor.send_error_message(messages::INVALID_TELEPORT_COORDINATES);
+                    return false;
+                }
+                match database::set_warp(name, warp) {
+                    Ok(()) => actor.send_system_message(&messages::warp_saved(name)),
+                    Err(error) => {
+                        warn!("Could not save warp {name}: {error}");
+                        actor.send_error_message(messages::WARP_STORAGE_FAILED);
+                    }
+                }
+            }
+            "/warp" => {
+                if args.is_empty() {
+                    match database::warp_names() {
+                        Ok(names) if names.is_empty() => {
+                            self.players[player].send_system_message(messages::NO_WARPS)
+                        }
+                        Ok(names) => self.players[player]
+                            .send_system_message(&messages::warp_list(names.join(", "))),
+                        Err(error) => {
+                            warn!("Could not list warps: {error}");
+                            self.players[player].send_error_message(messages::WARP_STORAGE_FAILED);
+                        }
+                    }
+                    return false;
+                }
+                let [name] = args.as_slice() else {
+                    self.players[player].send_error_message(messages::USAGE_WARP);
+                    return false;
+                };
+                if !valid_warp_name(name) {
+                    self.players[player].send_error_message(messages::INVALID_WARP_NAME);
+                    return false;
+                }
+                match database::get_warp(name) {
+                    Ok(Some(warp)) => {
+                        if warp.is_valid() {
+                            self.players[player]
+                                .send_system_message(&messages::warp_teleport(name));
+                        }
+                        return self.teleport_to_warp(player, warp);
+                    }
+                    Ok(None) => {
+                        self.players[player].send_error_message(&messages::warp_not_found(name))
+                    }
+                    Err(error) => {
+                        warn!("Could not read warp {name}: {error}");
+                        self.players[player].send_error_message(messages::WARP_STORAGE_FAILED);
+                    }
+                }
+            }
             "/teleport" | "/tp" => {
                 if args.len() == 3 {
                     let player_pos = self.players[player].pos;
@@ -975,6 +1068,8 @@ fn native_command_permission(command: &str, args: &[&str]) -> Option<String> {
         "/git" => "git".to_owned(),
         "/version" => "version".to_owned(),
         "/teleport" | "/tp" => "teleport".to_owned(),
+        "/warp" => "warp".to_owned(),
+        "/setwarp" => "setwarp".to_owned(),
         "/speed" => "speed".to_owned(),
         "/gmsp" | "/gmc" | "/gamemode" | "/gm" => "gamemode".to_owned(),
         "/stop" => "stop".to_owned(),
@@ -1040,7 +1135,8 @@ fn declared_command_nodes() -> Vec<Node<'static>> {
         Node::root(&[
             1, 4, 5, 6, 11, 12, 14, 16, 18, 19, 20, 21, 22, 23, 24, 26, 29, 31, 33, 35, 46, 48, 52,
             59, 60, 62, 64, 65, 66, 70, 72, 73, 74, 81, 82, 84, 87, 89, 90, 100, 105, 110, 111,
-            112, 113, 114, 115, 117, 119, 120, 123, 130, 134, 135, 142, 143, 144, 145, 146,
+            112, 113, 114, 115, 117, 119, 120, 123, 130, 134, 135, 142, 143, 144, 145, 146, 150,
+            152,
         ]),
         // 1: /teleport
         Node::literal("teleport", &[2, 3]),
@@ -1322,6 +1418,12 @@ fn declared_command_nodes() -> Vec<Node<'static>> {
         Node::redirect("c", 67).executable(),
         Node::redirect("i", 68).executable(),
         Node::redirect("r", 69).executable(),
+        // 150-152: shared, saved destinations.
+        Node::literal("warp", &[151]).executable(),
+        Node::argument("name", Parser::String(0), &[])
+            .executable()
+            .suggestions("minecraft:ask_server"),
+        Node::literal("setwarp", &[151]),
     ]
 }
 
@@ -1339,7 +1441,7 @@ mod security_tests {
     #[test]
     fn command_declarations_have_valid_edges_and_no_legacy_tick_aliases() {
         let nodes = declared_command_nodes();
-        assert_eq!(nodes.len(), 150);
+        assert_eq!(nodes.len(), 153);
         for node in &nodes {
             for edge in node.children.iter().copied().chain(node.redirect_node) {
                 assert!(edge >= 0 && (edge as usize) < nodes.len());
@@ -1356,7 +1458,9 @@ mod security_tests {
             assert!(native_command_permission(&command, &["1"]).is_none());
             assert!(!changes_plot(&command, &["1"]));
         }
-        for retained in ["tps", "adv", "back", "rhistory", "redpiler", "rp", "gm"] {
+        for retained in [
+            "tps", "adv", "back", "rhistory", "redpiler", "rp", "gm", "warp", "setwarp",
+        ] {
             assert!(names.contains(&retained), "missing command {retained}");
         }
         for (alias, target) in [
@@ -1379,6 +1483,32 @@ mod security_tests {
             "4352d88a78aa39750bf70cd6f27bcaa5"
         );
     }
+    #[test]
+    fn warp_names_and_permissions_are_checked() {
+        for name in ["spawn", "CPU-1", "my_plot", &"a".repeat(32)] {
+            assert!(valid_warp_name(name));
+        }
+        for name in ["", "two words", "../spawn", "café", "'", &"a".repeat(33)] {
+            assert!(!valid_warp_name(name));
+        }
+        let nodes = declared_command_nodes();
+        for command in ["warp", "setwarp"] {
+            let node = nodes
+                .iter()
+                .find(|node| node.name == Some(command))
+                .unwrap();
+            assert_eq!(
+                nodes[node.children[0] as usize].suggestions_type,
+                Some("minecraft:ask_server")
+            );
+            assert_eq!(
+                native_command_permission(&format!("/{command}"), &["spawn"]),
+                Some(format!("commands.{command}"))
+            );
+            assert!(!changes_plot(&format!("/{command}"), &["spawn"]));
+        }
+    }
+
     #[test]
     fn advance_arguments_preserve_units_limits_and_error_messages() {
         for (args, expected) in [

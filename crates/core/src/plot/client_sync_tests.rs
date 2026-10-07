@@ -79,6 +79,62 @@ fn placement(pos: BlockPos, sequence: i32) -> SPlayerBlockPlacemnt {
 }
 
 #[test]
+fn warp_restores_exact_position_and_facing_and_transfers_out_of_locked_plots() {
+    for compressed in [false, true] {
+        let (mut plot, mut peer) = fixture(compressed);
+        let (sender, receiver) = std::sync::mpsc::channel();
+        plot.message_sender = sender;
+        let warp = database::Warp {
+            pos: PlayerPos::new(48.125, 22.75, 35.25),
+            yaw: 123.5,
+            pitch: -20.25,
+        };
+        assert!(!plot.teleport_to_warp(0, warp));
+        let (id, mut frame) = read_frame(&mut peer, compressed).unwrap();
+        assert_eq!(id, 0x41);
+        assert!(frame.read_varint().unwrap() > 0);
+        assert_eq!(frame.read_double().unwrap(), warp.pos.x);
+        assert_eq!(frame.read_double().unwrap(), warp.pos.y);
+        assert_eq!(frame.read_double().unwrap(), warp.pos.z);
+        for _ in 0..3 {
+            assert_eq!(frame.read_double().unwrap(), 0.0);
+        }
+        assert_eq!(frame.read_float().unwrap(), warp.yaw);
+        assert_eq!(frame.read_float().unwrap(), warp.pitch);
+        assert!(plot.players[0].awaiting_teleport());
+        assert!(receiver.try_recv().is_err());
+
+        assert!(!plot.teleport_to_warp(
+            0,
+            database::Warp {
+                yaw: f32::NAN,
+                ..warp
+            }
+        ));
+        assert_eq!(plot.players[0].yaw, warp.yaw);
+        assert_eq!(plot.players[0].pos.x, warp.pos.x);
+
+        plot.locked_players.insert(plot.players[0].entity_id);
+        let remote = database::Warp {
+            pos: PlayerPos::new(-512.125, 64.25, 1024.5),
+            ..warp
+        };
+        assert!(plot.teleport_to_warp(0, remote));
+        assert!(plot.players.is_empty());
+        assert!(plot.locked_players.is_empty());
+        let Message::PlayerLeavePlot(player) = receiver.try_recv().unwrap() else {
+            panic!("warp must transfer through the normal plot routing");
+        };
+        assert_eq!(player.pos.plot_pos(), (-3, 4));
+        assert_eq!(
+            (player.pos.x, player.pos.y, player.pos.z),
+            (remote.pos.x, remote.pos.y, remote.pos.z)
+        );
+        assert_eq!((player.yaw, player.pitch), (remote.yaw, remote.pitch));
+    }
+}
+
+#[test]
 fn redpiler_flag_suggestions_reach_the_chat_client() {
     for compressed in [false, true] {
         let (mut plot, mut peer) = fixture(compressed);

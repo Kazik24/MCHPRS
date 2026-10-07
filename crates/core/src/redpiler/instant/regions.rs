@@ -11,7 +11,7 @@ use mchprs_blocks::{BlockFace, BlockPos};
 use petgraph::unionfind::UnionFind;
 use rustc_hash::{FxHashMap, FxHashSet};
 
-pub(super) fn split(
+pub(crate) fn split(
     world: &impl World,
     report: &AnalysisReport,
     monitor: &TaskMonitor,

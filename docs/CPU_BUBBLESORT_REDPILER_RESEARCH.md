@@ -55,14 +55,14 @@ The author specified load → wait → PC reset → wait → start → run until
 
 The native button helper powers the button, schedules release, and notifies both its neighbors and its attachment support. `schedule_tick(...,10,...)` means ten redstone ticks, or twenty game ticks in this world. The import regression checks actual release after those twenty game ticks. No artificially short button pulse was substituted.
 
-The other 50 buttons are not assigned CPU reset semantics merely because they exist. Their physical groups are:
+The author confirmed that the other 50 buttons are a building convention used to direct redstone-wire connections. They are not functional CPU inputs or reset controls. Their physical groups are:
 
 - Twelve floor buttons `(175+4b,10,166)`, `b=0..11`.
 - Fourteen wall buttons `(175,12,192+4r)`, `r=0..13`.
 - Twelve floor buttons `(178+4b,13,168)`.
 - Twelve wall buttons `(177+4b,18,192)`.
 
-They are useful later for operand, register and instruction probes. No separately labeled general-reset control was found. This report's successful sequence uses only the three controls above.
+Preserve these buttons' effect on wire connectivity; do not classify them as operand, register or instruction input probes. They are not the reason this CPU is rejected by Redpiler. No separately labeled general-reset control was found. This report's successful sequence uses only the three controls above.
 
 ## Memory layout and decoding
 
@@ -235,7 +235,7 @@ The saved sticky piston at `(179,6,165)` is extended East. Its expected head pos
 
 In both successful runs, this actor is powered and extended, its head position stays air, its far redstone block remains present, and it receives no recorded samples or accepted events. No repair was made. The CPU still sorts and halts.
 
-That is strong evidence that this defect is noncritical for the supplied sorting episode. It is not a general deadness proof: analysis finds mobile power dependencies from groups 1526 and 1832, plus wire and adjacent-head update inputs. Other opcodes or manual operand controls may exercise it. Its location is near the ALU's NOT-output label; the separate sign saying that a module serves no purpose is elsewhere and does not label this actor.
+That is strong evidence that this defect is noncritical for the supplied sorting episode. It is not a general deadness proof: analysis finds mobile power dependencies from groups 1526 and 1832, plus wire and adjacent-head update inputs. Other opcodes or program data may exercise it; the wire-shaping buttons are not manual operand controls. Its location is near the ALU's NOT-output label; the separate sign saying that a module serves no purpose is elsewhere and does not label this actor.
 
 The required parser policy is role- and effect-based:
 

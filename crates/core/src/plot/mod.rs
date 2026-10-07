@@ -1398,6 +1398,11 @@ impl Plot {
 
         match result {
             Ok(Ok(())) => {
+                for warning in self.redpiler.warnings() {
+                    for player in &self.players {
+                        player.send_system_message(&format!("Redpiler warning: {warning}"));
+                    }
+                }
                 // Transfer scheduled work only after the complete backend exists.
                 self.world.to_be_ticked.clear();
                 self.world.tick_index.invalidate();

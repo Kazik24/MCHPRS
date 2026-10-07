@@ -1,0 +1,14 @@
+{
+  "schema_version": 1,
+  "source_host": "urmom",
+  "source_directory": "/srv/mchprs/data/schems",
+  "verified_utc": "2026-10-07T10:36:49.421067+00:00",
+  "files": [
+    {
+      "name": "FPU_DIVIDER.schem",
+      "bytes": 6701,
+      "sha256": "19097d93d55e1c759ef37bbb261168eb79e51d86666282f9b2b775275211bbdb",
+      "modified_utc": "2026-10-07T10:34:10.648856+00:00"
+    }
+  ]
+}
