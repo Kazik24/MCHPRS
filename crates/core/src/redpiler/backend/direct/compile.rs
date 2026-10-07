@@ -6,7 +6,7 @@ use mchprs_blocks::BlockPos;
 use mchprs_world::TickEntry;
 use petgraph::visit::EdgeRef;
 use petgraph::Direction;
-use rustc_hash::FxHashMap;
+use rustc_hash::{FxHashMap, FxHashSet};
 use smallvec::SmallVec;
 use tracing::trace;
 
@@ -96,6 +96,7 @@ fn compile_node(
             facing_diode: *facing_diode,
         },
         CNodeType::Torch => NodeType::Torch,
+        CNodeType::Observer { .. } => NodeType::Observer,
         CNodeType::Comparator {
             mode,
             far_input,
@@ -154,6 +155,11 @@ pub fn compile(
     options: &CompilerOptions,
     instant: Vec<crate::redpiler::instant::program::PreparedInstant>,
 ) -> Result<(), BackendError> {
+    // Geometry observation reads settled blocks, never electrical alias power.
+    let geometry_positions: FxHashSet<_> = instant.iter().flat_map(|program| {
+        program.pistons.iter().flat_map(|piston| [piston.pos, piston.head, piston.payload])
+            .chain(program.aliases.iter().map(|(_, pos, _)| *pos))
+    }).collect();
     if graph.node_weights().any(|n| {
         matches!(
             n.ty,
@@ -273,6 +279,23 @@ pub fn compile(
         }
     }
 
+    for idx in graph.node_indices() {
+        let crate::redpiler::compile_graph::NodeType::Observer { watched } = graph[idx].ty else {
+            continue;
+        };
+        let observer = backend.nodes.get(nodes_map[&idx]);
+        if geometry_positions.contains(&watched) {
+            backend.instant_observers.entry(watched).or_default().push(observer);
+        } else if let Some(&source) = backend.pos_map.get(&watched) {
+            backend.observer_watchers.entry(source).or_default().push(observer);
+        }
+        // A fixed cell without a node cannot change while compilation is active.
+    }
+    for observers in backend.observer_watchers.values_mut().chain(backend.instant_observers.values_mut()) {
+        observers.sort_unstable_by_key(|id| id.index());
+        observers.dedup();
+    }
+
     // Track command-block overrides read through a comparator's far input.
     for (i, block) in backend.blocks.iter().enumerate() {
         let Some((pos, Block::RedstoneComparator { comparator })) = block else {
@@ -311,6 +334,16 @@ pub fn compile(
                 entry.tick_priority,
             );
             backend.nodes[*node].pending_tick = true;
+        }
+    }
+
+    // A powered saved observer with no surviving off deadline still needs to
+    // finish its pulse. Imported pending deadlines take precedence.
+    for i in 0..backend.nodes.inner().len() {
+        let id = backend.nodes.get(i);
+        let node = &mut backend.nodes[id];
+        if matches!(node.ty, NodeType::Observer) && node.powered && !node.pending_tick {
+            super::schedule_tick(&mut backend.scheduler, id, node, 1, mchprs_world::TickPriority::Normal);
         }
     }
 

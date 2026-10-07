@@ -115,6 +115,7 @@ pub enum NodeType {
         facing_diode: bool,
     },
     Torch,
+    Observer,
     Comparator {
         mode: ComparatorMode,
         far_input: Option<NonMaxU8>,

@@ -15,6 +15,7 @@ use mchprs_network::PlayerPacketSender;
 use mchprs_save_data::plot_data::{Tps, WorldSendRate};
 use once_cell::sync::Lazy;
 use std::str::FromStr;
+use std::sync::Arc;
 use std::time::Instant;
 use tracing::{debug, info, warn};
 
@@ -447,12 +448,13 @@ impl Plot {
                 }
                 options.budget_multiplier = self.players[player].compilation_budget_multiplier();
                 if args.contains(&"--graph") {
+                    let monitor = Arc::new(crate::redpiler::TaskMonitor::default());
                     match crate::redpiler::analysis::graph::prepare_candidate_graph(
                         &self.world,
                         self.world.get_corners(),
                         &ticks,
                         &options,
-                        Default::default(),
+                        monitor.clone(),
                     ) {
                         Ok(candidate) => {
                             let summary = candidate.summary();
@@ -462,6 +464,9 @@ impl Plot {
                             ));
                             self.players[player]
                                 .send_system_message(&candidate.report.recognition_summary());
+                            for line in monitor.graph_statistics().summary_lines() {
+                                self.players[player].send_system_message(&line);
+                            }
                             debug!(report = %serde_json::to_string(&candidate.report).unwrap(), graph = ?candidate.graph, "Redpiler candidate graph");
                         }
                         Err(error) => self.players[player].send_error_message(&error.to_string()),
@@ -485,15 +490,23 @@ impl Plot {
                         debug!(report = %serde_json::to_string(&report).unwrap(), "Redpiler analysis");
                         // Stage the same backend as compile, then drop it without
                         // activating it or transferring any interpreter work.
-                        match crate::redpiler::Compiler::default().compile(
+                        let mut compiler = crate::redpiler::Compiler::default();
+                        match compiler.compile(
                             &self.world,
                             self.world.get_corners(),
                             options,
                             ticks,
                             Default::default(),
                         ) {
-                            Ok(()) => self.players[player]
-                                .send_system_message("This plot can compile with these flags."),
+                            Ok(()) => {
+                                if let Some(stats) = compiler.stats() {
+                                    for line in stats.summary_lines() {
+                                        self.players[player].send_system_message(&line);
+                                    }
+                                }
+                                self.players[player]
+                                    .send_system_message("This plot can compile with these flags.");
+                            }
                             Err(error) => self.players[player]
                                 .send_error_message(&format!("Redpiler: {error}")),
                         }
@@ -1607,6 +1620,84 @@ mod security_tests {
             );
             assert!(!changes_plot(command, &["analyze"]));
             assert!(changes_plot(command, &["compile"]));
+        }
+    }
+
+    #[test]
+    fn redpiler_analysis_reports_graph_passes_and_compile_statistics_to_the_client() {
+        use crate::world::World;
+        use mchprs_blocks::blocks::{Block, Lever, LeverFace};
+        use mchprs_blocks::{BlockDirection, BlockPos};
+        use mchprs_network::packets::PacketDecoderExt;
+        use mchprs_network::test_support::read_frame;
+
+        for compressed in [false, true] {
+            let (mut plot, mut peer) = crate::plot::client_sync_tests::fixture(compressed);
+            let control = BlockPos::new(32, 21, 32);
+            let output = BlockPos::new(33, 21, 32);
+            plot.world.set_block(
+                control,
+                Block::Lever {
+                    lever: Lever::new(LeverFace::Floor, BlockDirection::North, true),
+                },
+            );
+            plot.world.set_block(output, Block::RedstoneLamp { lit: true });
+            let before = [plot.world.get_block(control), plot.world.get_block(output)];
+            let mut messages = |last: &str| {
+                let mut messages = Vec::new();
+                for _ in 0..32 {
+                    let (id, mut frame) = read_frame(&mut peer, compressed).unwrap();
+                    assert_eq!(id, 0x72, "analysis must send system chat");
+                    // Wire text is an unnamed NBT compound; restore its empty
+                    // root name for the storage NBT reader.
+                    assert_eq!(frame.read_unsigned_byte().unwrap(), 10);
+                    let mut named = vec![10, 0, 0];
+                    named.extend(frame.read_to_end().unwrap());
+                    let mut named = std::io::Cursor::new(named);
+                    let component = nbt::Blob::from_reader(&mut named).unwrap();
+                    let nbt::Value::String(text) = &component.content["text"] else {
+                        panic!("system chat is missing its text");
+                    };
+                    assert!(!named.read_bool().unwrap());
+                    assert_eq!(named.position() as usize, named.get_ref().len());
+                    let text = text.clone();
+                    let complete = text.contains(last);
+                    messages.push(text);
+                    if complete {
+                        return messages;
+                    }
+                }
+                panic!("analysis response did not complete");
+            };
+            for (args, folding) in [
+                (vec!["--graph"], "Constant folding [skipped]"),
+                (
+                    vec!["--graph", "--optimize", "--io-only"],
+                    "Constant folding [enabled]",
+                ),
+            ] {
+                plot.handle_redpiler_command(0, "analyze", &args);
+                let lines = messages("Exporting graph [skipped]");
+                assert!(lines.iter().any(|line| line.starts_with("Candidate graph:")));
+                assert!(lines
+                    .iter()
+                    .any(|line| line.starts_with("Graph after required preparation:")));
+                assert!(lines.iter().any(|line| line.contains(folding)
+                    && line.contains("links")
+                    && line.ends_with("ms")));
+                assert!(!plot.redpiler.is_active());
+            }
+            plot.handle_redpiler_command(0, "analyze", &[]);
+            let lines = messages("This plot can compile with these flags.");
+            assert!(lines.iter().any(|line| line.starts_with("0 pistons,")));
+            assert!(lines
+                .iter()
+                .any(|line| line.starts_with("Compile:") && line.contains("backend nodes")));
+            assert!(!plot.redpiler.is_active());
+            assert_eq!(
+                [plot.world.get_block(control), plot.world.get_block(output)],
+                before
+            );
         }
     }
 

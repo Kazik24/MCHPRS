@@ -6,7 +6,7 @@ use mchprs_network::packets::PacketDecoderExt;
 use mchprs_network::test_support::{connection, read_frame};
 use std::net::TcpStream;
 
-fn fixture(compressed: bool) -> (Plot, TcpStream) {
+pub(super) fn fixture(compressed: bool) -> (Plot, TcpStream) {
     let conn = connection(compressed).unwrap();
     let mut player = Player::test_player(conn.player);
     player.pos = PlayerPos::new(32.5, 21.0, 35.5);

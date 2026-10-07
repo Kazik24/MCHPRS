@@ -37,6 +37,19 @@ impl DirectBackend {
                     self.set_node(node_id, should_be_powered, bool_to_ss(should_be_powered));
                 }
             }
+            NodeType::Observer => {
+                let powered = !node.powered;
+                if powered {
+                    schedule_tick(
+                        &mut self.scheduler,
+                        node_id,
+                        node,
+                        1,
+                        TickPriority::Normal,
+                    );
+                }
+                self.set_node(node_id, powered, bool_to_ss(powered));
+            }
             NodeType::Comparator {
                 mode, far_input, ..
             } => {

@@ -80,10 +80,8 @@ pub(crate) fn recognize(
         let above = p.pos.offset(BlockFace::Top);
         if p.piston.facing != BlockFacing::Down
             || (!p.piston.extended
-                && (!assume_instant
-                    || world.get_block(p.head) != Block::Air
+                && (world.get_block(p.head) != Block::Air
                     || world.get_block(p.head.offset(p.piston.facing.into())) != Block::Air))
-            || (!assume_instant && !p.powered)
             || world.get_block(p.payload) != Block::Air
             || !matches!(world.get_block(above),Block::Observer { observer }
                 if observer.facing==BlockFacing::Down && !observer.powered)

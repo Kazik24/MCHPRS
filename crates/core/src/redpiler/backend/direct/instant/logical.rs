@@ -31,6 +31,10 @@ pub(super) struct Plan {
 }
 
 impl Plan {
+    pub(super) fn compile_counts(&self) -> (usize, usize) {
+        (self.decisions.len(), self.inputs.len())
+    }
+
     fn bind(
         decisions: &[Decision],
         roots: Vec<Expr>,
@@ -268,6 +272,7 @@ impl Plan {
 pub(super) struct State {
     pub(super) responses: Plan,
     pub(super) outputs: Plan,
+    pub(super) sampling: Plan,
     pub(super) initialized: bool,
     pub(super) next_sample: Option<u64>,
     #[cfg(test)]
@@ -280,6 +285,7 @@ impl State {
             .inputs
             .iter()
             .chain(&self.outputs.inputs)
+            .chain(&self.sampling.inputs)
             .filter_map(|&(input, _)| {
                 if let Input::Source(node) = input {
                     Some(node)
@@ -294,10 +300,12 @@ impl State {
         responses: Vec<Expr>,
         response_order: &[usize],
         outputs: Vec<Expr>,
+        sampling: Vec<Expr>,
     ) -> Result<Self, BackendError> {
         Ok(Self {
             responses: Plan::bind(decisions, responses, true, response_order)?,
             outputs: Plan::bind(decisions, outputs, false, &[])?,
+            sampling: Plan::bind(decisions, sampling, false, &[])?,
             initialized: false,
             next_sample: None,
             #[cfg(test)]
@@ -378,7 +386,7 @@ mod tests {
     }
 
     #[test]
-    fn rejects_physical_and_feedback_inputs_and_preserves_thresholds() {
+    fn rejects_invalid_geometry_and_feedback_inputs_and_preserves_thresholds() {
         let malformed = [Decision {
             input: source(0),
             threshold: 0,
@@ -386,15 +394,10 @@ mod tests {
             high: 1,
         }];
         assert!(Plan::bind(&malformed, vec![2], true, &[]).is_err());
-        for input in [
-            Input::Wire(0),
-            Input::WireDot(0),
-            Input::Observer(0),
-            Input::Geometry {
-                actor: 0,
-                part: super::super::GeometryPart::Head,
-            },
-        ] {
+        for input in [Input::Geometry {
+            actor: 0,
+            part: super::super::GeometryPart::Head,
+        }] {
             let decisions = [Decision {
                 input,
                 threshold: 0,
@@ -445,7 +448,10 @@ mod tests {
                 high: 3,
             },
             Decision {
-                input: Input::Wire(999),
+                input: Input::Geometry {
+                    actor: 999,
+                    part: super::super::GeometryPart::Head,
+                },
                 threshold: 0,
                 low: 0,
                 high: 1,
@@ -566,7 +572,7 @@ mod tests {
     }
 
     #[test]
-    fn wire_display_binding_is_rejected_only_for_logical_execution() {
+    fn wire_display_binding_is_rejected_for_logical_execution() {
         use super::super::{Nodes, Runtime};
         use crate::redpiler::analysis::ports::ConsumerInput;
         use crate::redpiler::backend::direct::node::{Node, NodeType};
@@ -594,7 +600,7 @@ mod tests {
         );
         let bindings = [(pos, nodes.get(0))].into_iter().collect();
         let outputs = [(0, nodes.get(1))].into_iter().collect();
-        let program = |assume_instant| {
+        let program = || {
             let mut arena = BooleanArena::with_budget(1);
             let guard = arena.variable(Variable::Signal {
                 pos,
@@ -602,8 +608,6 @@ mod tests {
                 order: 0,
             });
             PreparedInstant {
-                sequential: None,
-                assume_instant,
                 pistons: Vec::new(),
                 output_offset: 0,
                 clocked: None,
@@ -612,7 +616,6 @@ mod tests {
                 aliases: Vec::new(),
                 owned: Default::default(),
                 template: Vec::new(),
-                bounds: (pos, pos),
                 logical_tick: 0,
                 logic: WaveLogic {
                     arena,
@@ -639,10 +642,9 @@ mod tests {
             }
         };
         assert!(
-            matches!(Runtime::bind(program(true), &bindings, &outputs, &nodes),
+            matches!(Runtime::bind(program(), &bindings, &outputs, &nodes),
             Err(BackendError::LogicalWireInput { pos: actual }) if actual == pos)
         );
-        assert!(Runtime::bind(program(false), &bindings, &outputs, &nodes).is_ok());
     }
 
     #[test]
@@ -680,7 +682,10 @@ mod tests {
             },
             // Dead physical inspection decisions are still excluded.
             Decision {
-                input: Input::Wire(99),
+                input: Input::Geometry {
+                    actor: 99,
+                    part: super::super::GeometryPart::Head,
+                },
                 threshold: 0,
                 low: 0,
                 high: 1,

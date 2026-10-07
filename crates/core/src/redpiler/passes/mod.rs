@@ -11,7 +11,7 @@ mod prune_orphans;
 mod unreachable_output;
 
 use super::compile_graph::{CompileGraph, GraphError};
-use super::{CompilerInput, CompilerOptions, TaskMonitor};
+use super::{CompilerInput, CompilerOptions, GraphCounts, PassStatistics, TaskMonitor};
 use crate::world::World;
 use std::time::Instant;
 use tracing::trace;
@@ -22,13 +22,16 @@ pub(super) fn run_passes<W: World>(
     monitor: &TaskMonitor,
 ) -> Result<CompileGraph, GraphError> {
     let mut graph = CompileGraph::new();
+    let pipeline_start = Instant::now();
+    monitor.begin_graph_statistics(options.optimize);
     // Ten passes (including skipped ones), followed by backend compilation.
     monitor.set_max_progress(11);
 
-    let mut run = |message: &str,
+    let mut run = |message: &'static str,
                    enabled: bool,
                    pass: &dyn Fn(&mut CompileGraph) -> Result<(), GraphError>| {
-        if enabled {
+        let before = GraphCounts::of(&graph);
+        let duration = if enabled {
             if monitor.cancelled() {
                 return Err(GraphError::Cancelled);
             }
@@ -36,12 +39,22 @@ pub(super) fn run_passes<W: World>(
             monitor.set_message(message.to_string());
             let start = Instant::now();
             pass(&mut graph)?;
-            trace!("Completed pass in {:?}", start.elapsed());
+            let duration = start.elapsed();
+            trace!("Completed pass in {duration:?}");
             trace!("node_count: {}", graph.node_count());
             trace!("edge_count: {}", graph.edge_count());
+            duration
         } else {
             trace!("Skipping pass: {message}");
-        }
+            std::time::Duration::ZERO
+        };
+        monitor.record_pass(PassStatistics {
+            name: message,
+            enabled,
+            before,
+            after: GraphCounts::of(&graph),
+            duration,
+        });
         monitor.inc_progress();
         Ok(())
     };
@@ -80,6 +93,7 @@ pub(super) fn run_passes<W: World>(
         &prune_orphans::run,
     )?;
     run("Exporting graph", options.export, &export_graph::run)?;
+    monitor.finish_graph_statistics(pipeline_start.elapsed());
     Ok(graph)
 }
 
@@ -149,6 +163,19 @@ mod tests {
             );
             assert_eq!(monitor.progress(), 10);
             assert_eq!(monitor.max_progress(), 11);
+            let statistics = monitor.graph_statistics();
+            assert_eq!(statistics.passes.len(), 10);
+            assert_eq!(statistics.wire_nodes_elided, optimize);
+            assert_eq!(statistics.passes[0].before, GraphCounts::default());
+            assert_eq!(
+                statistics.baseline().unwrap().nodes,
+                if optimize { 3 } else { 4 }
+            );
+            assert_eq!(statistics.final_graph().unwrap(), GraphCounts::of(&graph));
+            for pass in statistics.passes.iter().filter(|pass| !pass.enabled) {
+                assert_eq!(pass.before, pass.after);
+                assert!(pass.duration.is_zero());
+            }
         }
         let monitor = TaskMonitor::default();
         monitor.cancel();

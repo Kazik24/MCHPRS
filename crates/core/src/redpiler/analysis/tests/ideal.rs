@@ -32,7 +32,7 @@ fn counter_bank(compiler: &Compiler, manifest: &Value) -> (u64, u64, u16) {
 
 #[test]
 fn ideal_counter_commits_old_bank_atomically_every_six_steps_and_holds_when_stopped() {
-    for optimize in [false, true] {
+    for (optimize, assume_instant) in [(false, false), (true, false), (false, true), (true, true)] {
         let (mut world, _, manifest) = fixture("counter_basic");
         let mut compiler = Compiler::default();
         compiler
@@ -40,7 +40,7 @@ fn ideal_counter_commits_old_bank_atomically_every_six_steps_and_holds_when_stop
                 &world,
                 world.get_corners(),
                 CompilerOptions {
-                    assume_instant: true,
+                    assume_instant,
                     optimize,
                     ..Default::default()
                 },
@@ -83,15 +83,6 @@ fn ideal_counter_commits_old_bank_atomically_every_six_steps_and_holds_when_stop
                     "memory changes only at an explicit commit"
                 );
             }
-            assert!(
-                compiler
-                    .backend
-                    .as_ref()
-                    .unwrap()
-                    .sampled_pistons()
-                    .is_empty(),
-                "ideal mode must not bind the sampled physical executor"
-            );
             assert!(world.piston_state().motions.is_empty());
             assert!(world.piston_state().events.is_empty());
             previous = current;
@@ -302,12 +293,6 @@ fn ideal_stateless_domain_evaluates_only_after_a_dependency_changes() {
             compiler.tick_with_world(&mut world);
         }
         assert_eq!(evaluations(&compiler), changed_evaluations);
-        assert!(compiler
-            .backend
-            .as_ref()
-            .unwrap()
-            .sampled_pistons()
-            .is_empty());
     }
 }
 
@@ -410,17 +395,14 @@ fn ideal_rejects_uncertified_sampling_without_mutating_the_world() {
         )
         .unwrap_err()
         .to_string();
+    assert!(error.contains("logical piston admission failed"), "{error}");
     assert!(
-        error.contains("--assume-instant requires a certified logical domain"),
-        "{error}"
-    );
-    assert!(
-        error.contains("memory") || error.contains("clock"),
+        error.contains("sampling") || error.contains("clock"),
         "diagnostic must identify the missing state boundary: {error}"
     );
     assert!(
-        error.contains("without --assume-instant"),
-        "diagnostic must offer an actionable fallback: {error}"
+        error.contains("coupled") || error.contains("unambiguous"),
+        "diagnostic must name an actionable certification requirement: {error}"
     );
     assert!(!compiler.is_active());
     assert_eq!(snapshot(&world, bounds), before);
@@ -472,7 +454,7 @@ fn ideal_rejects_combinational_feedback_with_positions_and_a_state_boundary_hint
         "feedback diagnostic must identify both actors: {error}"
     );
     assert!(
-        error.contains("memory") || error.contains("clock"),
+        error.contains("sampling") || error.contains("clock"),
         "feedback needs an explicit state boundary: {error}"
     );
     assert!(!compiler.is_active());

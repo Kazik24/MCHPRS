@@ -1,5 +1,5 @@
 //! Compile world blocks into an electrical graph, then execute it with the direct
-//! backend. Piston regions also carry an instant program for moving geometry.
+//! backend. Piston regions execute logical plans and export settled geometry.
 
 pub mod analysis;
 pub(crate) mod backend;
@@ -15,7 +15,7 @@ use mchprs_blocks::blocks::Block;
 use mchprs_blocks::BlockPos;
 use mchprs_world::TickEntry;
 use std::sync::Arc;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 use tracing::{debug, trace};
 
 pub use backend::{Queues, TickScheduler};
@@ -72,8 +72,7 @@ fn block_powered_mut(block: &mut Block) -> Option<&mut bool> {
 
 #[derive(Default, PartialEq, Eq, Debug)]
 pub struct CompilerOptions {
-    /// Compile certified logical piston regions and sampled banks without movement/reset.
-    /// Reject notification-driven regions lacking a logical sampling certificate.
+    /// Trust instant/BUD construction, while validating logical data and sampling roles.
     pub assume_instant: bool,
     /// Set by the server from the initiating player's rank, never from flags.
     /// Zero retains the default 1x budget; values are capped at 8x.
@@ -125,14 +124,154 @@ impl CompilerOptions {
     }
 }
 
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct GraphCounts {
+    pub nodes: usize,
+    pub links: usize,
+}
+
+impl GraphCounts {
+    pub(crate) fn of(graph: &compile_graph::CompileGraph) -> Self {
+        Self {
+            nodes: graph.node_count(),
+            links: graph.edge_count(),
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct PassStatistics {
+    pub name: &'static str,
+    pub enabled: bool,
+    pub before: GraphCounts,
+    pub after: GraphCounts,
+    pub duration: Duration,
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct GraphStatistics {
+    /// Ordinary wire nodes are omitted by identify_nodes when -O is enabled.
+    /// This occurs before the optimization baseline, not in an optional pass.
+    pub wire_nodes_elided: bool,
+    pub passes: Vec<PassStatistics>,
+    pub duration: Duration,
+}
+
+impl GraphStatistics {
+    pub fn baseline(&self) -> Option<GraphCounts> {
+        self.passes.get(2).map(|pass| pass.after)
+    }
+
+    pub fn final_graph(&self) -> Option<GraphCounts> {
+        self.passes.last().map(|pass| pass.after)
+    }
+
+    pub fn summary_lines(&self) -> Vec<String> {
+        let mut lines = Vec::new();
+        if let (Some(before), Some(after)) = (self.baseline(), self.final_graph()) {
+            lines.push(format!(
+                "Graph after required preparation: {} nodes / {} links; after passes: {} nodes / {} links (change {:+} nodes / {:+} links)",
+                before.nodes, before.links, after.nodes, after.links,
+                after.nodes as i128 - before.nodes as i128,
+                after.links as i128 - before.links as i128,
+            ));
+            lines.push(if self.wire_nodes_elided {
+                "Construction: ordinary wire nodes elided before the baseline (-O).".into()
+            } else {
+                "Construction: ordinary wire-node elision disabled; optional optimization passes disabled.".into()
+            });
+        }
+        lines.extend(self.passes.iter().map(|pass| {
+            format!(
+                "{} [{}]: {} -> {} nodes, {} -> {} links, {:.3} ms",
+                pass.name,
+                if pass.enabled { "enabled" } else { "skipped" },
+                pass.before.nodes,
+                pass.after.nodes,
+                pass.before.links,
+                pass.after.links,
+                pass.duration.as_secs_f64() * 1000.0,
+            )
+        }));
+        lines
+    }
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct RegionStatistics {
+    pub logical_regions: usize,
+    pub clocked_regions: usize,
+    pub pistons: usize,
+    pub payload_groups: usize,
+    pub memory_cells: usize,
+    /// Complete bound arena, including restoration-only decisions.
+    pub decisions: usize,
+    pub response_roots: usize,
+    pub output_ports: usize,
+    pub output_terms: usize,
+    pub logical_response_decisions: usize,
+    pub logical_output_decisions: usize,
+    /// Unique bindings per logical plan; response/output plans may overlap.
+    pub logical_input_bindings: usize,
+}
+
+#[derive(Clone, Debug)]
+pub struct CompileStatistics {
+    pub graph: GraphStatistics,
+    pub regions: RegionStatistics,
+    pub backend_nodes: usize,
+    pub analysis_duration: Duration,
+    pub preparation_duration: Duration,
+    pub backend_duration: Duration,
+    pub total_duration: Duration,
+}
+
+impl CompileStatistics {
+    pub fn summary_lines(&self) -> Vec<String> {
+        let ms = |duration: Duration| duration.as_secs_f64() * 1000.0;
+        let mut lines = vec![format!(
+            "Compile: {:.3} ms total; analysis {:.3}, instant preparation {:.3}, graph {:.3}, backend {:.3} ms; {} backend nodes",
+            ms(self.total_duration), ms(self.analysis_duration), ms(self.preparation_duration),
+            ms(self.graph.duration), ms(self.backend_duration), self.backend_nodes,
+        )];
+        lines.extend(self.graph.summary_lines().into_iter().take(2));
+        let regions = &self.regions;
+        if regions.pistons != 0 {
+            lines.push(format!(
+                "Piston executors: {} logical regions; {} clocked; {} pistons / {} payload groups / {} sampled memory cells",
+                regions.logical_regions, regions.clocked_regions, regions.pistons,
+                regions.payload_groups, regions.memory_cells,
+            ));
+            lines.push(format!(
+                "Programs: {} arena decisions (including handoff), {} response roots, {} output ports / {} terms",
+                regions.decisions, regions.response_roots, regions.output_ports, regions.output_terms,
+            ));
+            if regions.logical_regions != 0 {
+                lines.push(format!(
+                    "Logical plans: {} response decisions / {} output decisions / {} input bindings",
+                    regions.logical_response_decisions, regions.logical_output_decisions,
+                    regions.logical_input_bindings,
+                ));
+            }
+        }
+        lines
+    }
+}
+
 #[derive(Default)]
 pub struct Compiler {
     backend: Option<DirectBackend>,
     options: CompilerOptions,
     warnings: Vec<String>,
+    statistics: Option<CompileStatistics>,
 }
 
 impl Compiler {
+    /// Last successful compile; failed attempts never publish partial statistics.
+    pub fn stats(&self) -> Option<&CompileStatistics> {
+        self.statistics.as_ref()
+    }
+
     pub fn warnings(&self) -> &[String] {
         &self.warnings
     }
@@ -159,7 +298,9 @@ impl Compiler {
             return Err(CompileError::AlreadyActive);
         }
         self.warnings.clear();
+        monitor.clear_graph_statistics();
         monitor.set_budget_multiplier(options.budget_multiplier);
+        let analysis_start = Instant::now();
         let report = analysis::analyze(
             world,
             bounds,
@@ -168,6 +309,7 @@ impl Compiler {
             analysis::AnalysisLimits::for_budget(monitor.budget_multiplier()),
         )
         .map_err(CompileError::Analysis)?;
+        let analysis_duration = analysis_start.elapsed();
         if report.pistons.is_empty() && !report.can_compile() {
             return Err(CompileError::Unsupported(Box::new(report)));
         }
@@ -186,6 +328,7 @@ impl Compiler {
             ticks: &ticks,
             boundaries: None,
         };
+        let preparation_start = Instant::now();
         let (graph, instant) = if report.pistons.is_empty() {
             (
                 passes::run_passes(&options, &input, &monitor).map_err(CompileError::Graph)?,
@@ -197,6 +340,13 @@ impl Compiler {
                     .map_err(CompileError::Instant)?;
             (graph, program)
         };
+        let preparation_and_graph_duration = preparation_start.elapsed();
+        let graph_statistics = monitor.graph_statistics();
+        let preparation_duration = if report.pistons.is_empty() {
+            Duration::ZERO
+        } else {
+            preparation_and_graph_duration.saturating_sub(graph_statistics.duration)
+        };
 
         if monitor.cancelled() {
             return Err(CompileError::Cancelled);
@@ -207,15 +357,27 @@ impl Compiler {
         let mut backend = DirectBackend::default();
         trace!("Compiling backend");
         monitor.set_message("Compiling backend".to_string());
+        let backend_start = Instant::now();
         backend
             .compile(graph, ticks, &options, instant)
             .map_err(CompileError::Backend)?;
+        let backend_duration = backend_start.elapsed();
         if monitor.cancelled() {
             return Err(CompileError::Cancelled);
         }
         monitor.inc_progress();
 
+        let statistics = CompileStatistics {
+            graph: graph_statistics,
+            regions: backend.region_statistics(),
+            backend_nodes: backend.node_count(),
+            analysis_duration,
+            preparation_duration,
+            backend_duration,
+            total_duration: start.elapsed(),
+        };
         self.backend = Some(backend);
+        self.statistics = Some(statistics);
         self.options = options;
         self.warnings = report.pistons.iter()
             .filter(|p| p.piston.extended && p.diagnostics.contains(&analysis::PistonDiagnostic::MissingOrMismatchedHead))
@@ -328,5 +490,44 @@ mod tests {
         for flags in ["--assume-instnat", "-ox", "-", "assume-instant"] {
             assert!(CompilerOptions::parse(flags).is_err(), "{flags}");
         }
+    }
+
+    #[test]
+    fn compile_statistics_publish_only_after_success() {
+        use crate::plot::PlotWorld;
+        use crate::world::storage::Chunk;
+        let mut world = PlotWorld::from_chunks(0, 0, vec![Chunk::empty(0, 0)], Default::default());
+        world.set_block(BlockPos::new(4, 30, 4), Block::RedstoneLamp { lit: false });
+        let bounds = (BlockPos::new(0, 0, 0), BlockPos::new(15, 31, 15));
+        let mut compiler = Compiler::default();
+        assert!(compiler.stats().is_none());
+        compiler
+            .compile(
+                &world,
+                bounds,
+                CompilerOptions::default(),
+                Vec::new(),
+                Arc::default(),
+            )
+            .unwrap();
+        let statistics = compiler.stats().unwrap();
+        assert_eq!(statistics.graph.passes.len(), 10);
+        assert_eq!(statistics.graph.baseline(), statistics.graph.final_graph());
+        assert_eq!(statistics.regions.pistons, 0);
+        assert!(statistics.backend_nodes > 0);
+        let total_duration = statistics.total_duration;
+        compiler.reset(&mut world, bounds);
+        let cancelled = Arc::new(TaskMonitor::default());
+        cancelled.cancel();
+        assert!(compiler
+            .compile(
+                &world,
+                bounds,
+                CompilerOptions::default(),
+                Vec::new(),
+                cancelled
+            )
+            .is_err());
+        assert_eq!(compiler.stats().unwrap().total_duration, total_duration);
     }
 }

@@ -1403,6 +1403,13 @@ impl Plot {
                         player.send_system_message(&format!("Redpiler warning: {warning}"));
                     }
                 }
+                if let Some(stats) = self.redpiler.stats() {
+                    for line in stats.summary_lines() {
+                        for player in &self.players {
+                            player.send_system_message(&line);
+                        }
+                    }
+                }
                 // Transfer scheduled work only after the complete backend exists.
                 self.world.to_be_ticked.clear();
                 self.world.tick_index.invalidate();

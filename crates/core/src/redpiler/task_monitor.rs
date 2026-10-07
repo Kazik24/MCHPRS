@@ -1,5 +1,7 @@
+use super::{GraphStatistics, PassStatistics};
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
+use std::time::Duration;
 
 #[derive(Default)]
 pub struct TaskMonitor {
@@ -8,9 +10,33 @@ pub struct TaskMonitor {
     progress: AtomicUsize,
     message: Mutex<Option<Arc<String>>>,
     budget_multiplier: AtomicUsize,
+    graph_statistics: Mutex<GraphStatistics>,
 }
 
 impl TaskMonitor {
+    pub fn graph_statistics(&self) -> GraphStatistics {
+        self.graph_statistics.lock().unwrap().clone()
+    }
+
+    pub(crate) fn clear_graph_statistics(&self) {
+        *self.graph_statistics.lock().unwrap() = GraphStatistics::default();
+    }
+
+    pub(crate) fn begin_graph_statistics(&self, wire_nodes_elided: bool) {
+        *self.graph_statistics.lock().unwrap() = GraphStatistics {
+            wire_nodes_elided,
+            ..Default::default()
+        };
+    }
+
+    pub(crate) fn record_pass(&self, pass: PassStatistics) {
+        self.graph_statistics.lock().unwrap().passes.push(pass);
+    }
+
+    pub(crate) fn finish_graph_statistics(&self, duration: Duration) {
+        self.graph_statistics.lock().unwrap().duration = duration;
+    }
+
     pub fn set_budget_multiplier(&self, multiplier: usize) {
         self.budget_multiplier
             .store(multiplier.clamp(1, 8), Ordering::Relaxed);

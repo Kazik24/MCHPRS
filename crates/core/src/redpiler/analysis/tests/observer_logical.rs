@@ -151,7 +151,7 @@ fn logical_side_observer_return_is_derived_from_rotated_geometry_and_held_data()
                         "the first data response is OR; its observer return is internal reset work"
                     );
                     let backend = compiler.backend.as_ref().unwrap();
-                    assert!(backend.sampled_pistons().is_empty());
+
                     let settled = backend.logical_stats();
                     assert!(!settled.is_empty());
                     assert!(settled
@@ -246,13 +246,10 @@ fn logical_side_observer_rejects_an_exposed_pulse_and_an_independent_sampler_tra
             )
             .unwrap_err()
             .to_string();
-        assert!(
-            error.contains("--assume-instant requires a certified logical domain"),
-            "{error}"
-        );
+        assert!(error.contains("logical piston admission failed"), "{error}");
         if independent_sampler {
             assert!(
-                error.contains("independently")
+                (error.contains("independently") || error.contains("independent BUD"))
                     && (error.contains("samples") || error.contains("sampling")),
                 "{error}"
             );

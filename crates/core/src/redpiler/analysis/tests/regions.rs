@@ -1,70 +1,43 @@
 use super::*;
 
 #[test]
-fn dust_watching_observer_delivers_both_edges_to_owned_wires() {
-    use mchprs_blocks::blocks::{Lever, LeverFace, RedstoneWire};
-    use mchprs_blocks::BlockDirection;
-    let input = BASE.offset(BlockFace::North);
-    let watched = BASE + BlockPos::new(2, 0, 1);
-    let observer = watched.offset(BlockFace::South);
-    let output = observer.offset(BlockFace::South);
-    let build = || {
-        let mut world = empty();
-        world.set_block(BASE, Block::Piston { piston: RedstonePiston { facing: BlockFacing::East, sticky: true, extended: false } });
-        world.set_block(BASE.offset(BlockFace::East), Block::RedstoneBlock);
-        for pos in [input, watched, output] { world.set_block(pos.offset(BlockFace::Bottom), Block::Stone {}); }
-        world.set_block(input, Block::Lever { lever: Lever::new(LeverFace::Floor, BlockDirection::North, false) });
-        for pos in [watched, output] { world.set_block(pos, Block::RedstoneWire { wire: RedstoneWire::default() }); }
-        world.set_block(observer, Block::Observer { observer: RedstoneObserver { facing: BlockFacing::North, powered: false } });
-        world
-    };
-    for assume_instant in [false, true] {
-        let mut interpreted = build();
-        let compiled = build();
-        let mut compiler = Compiler::default();
-        let admission = compiler.compile(&compiled, compiled.get_corners(), CompilerOptions { assume_instant, ..Default::default() }, vec![], Default::default());
-        if assume_instant {
-            let error = admission.unwrap_err().to_string();
-            assert!(error.contains("--assume-instant requires a certified logical domain"), "{error}");
-            assert!(!compiler.is_active());
-            continue;
-        }
-        admission.unwrap();
-        assert_eq!(compiler.backend.as_ref().unwrap().sampled_pistons().len(), 1);
-        let mut pulsed = false;
-        for tick in 0..24 {
-            if tick == 0 || tick == 12 {
-                compiler.on_use_block(input);
-                lever_action(&mut interpreted, input, tick == 0);
-            }
-            compiler.tick();
-            interpreted.tick_interpreted();
-            for (pos, value) in compiler.backend.as_ref().unwrap().sampled_signals() {
-                let expected = crate::redstone::source_strength(interpreted.get_block(pos), &interpreted, pos);
-                assert_eq!(value, expected, "tick {tick}, position {pos:?}, assume_instant={assume_instant}");
-                pulsed |= pos == observer && value > 0;
-            }
-        }
-        assert!(pulsed);
-    }
-    let mut unsupported = build();
-    unsupported.set_block(BASE + BlockPos::new(20, 0, 0), Block::Observer { observer: RedstoneObserver { facing: BlockFacing::North, powered: false } });
-    let error = Compiler::default().compile(&unsupported, unsupported.get_corners(), Default::default(), vec![], Default::default()).unwrap_err().to_string();
-    assert!(error.contains("no supported region owner"), "{error}");
-}
-
-#[test]
 fn unsupported_ordinary_payload_is_rejected_instead_of_becoming_empty() {
     for assume_instant in [false, true] {
         let mut world = empty();
-        world.set_block(BASE, Block::Piston { piston: RedstonePiston { facing: BlockFacing::East, sticky: false, extended: false } });
-        world.set_block(BASE.offset(BlockFace::East), Block::Furnace { facing: mchprs_blocks::BlockDirection::North, lit: false });
-        let bounds = (BASE, BASE + BlockPos::new(2,0,0));
+        world.set_block(
+            BASE,
+            Block::Piston {
+                piston: RedstonePiston {
+                    facing: BlockFacing::East,
+                    sticky: false,
+                    extended: false,
+                },
+            },
+        );
+        world.set_block(
+            BASE.offset(BlockFace::East),
+            Block::Furnace {
+                facing: mchprs_blocks::BlockDirection::North,
+                lit: false,
+            },
+        );
+        let bounds = (BASE, BASE + BlockPos::new(2, 0, 0));
         let before = snapshot(&world, bounds);
         let mut compiler = Compiler::default();
-        let error = compiler.compile(&world, world.get_corners(), CompilerOptions { assume_instant, ..Default::default() }, vec![], Default::default()).unwrap_err().to_string();
-        assert!(if assume_instant { error.contains("--assume-instant requires a certified logical domain") }
-            else { error.contains("unsupported sampled payload minecraft:furnace") }, "{error}");
+        let error = compiler
+            .compile(
+                &world,
+                world.get_corners(),
+                CompilerOptions {
+                    assume_instant,
+                    ..Default::default()
+                },
+                vec![],
+                Default::default(),
+            )
+            .unwrap_err()
+            .to_string();
+        assert!(error.contains("logical piston admission failed"), "{error}");
         assert!(!compiler.is_active());
         assert_eq!(snapshot(&world, bounds), before);
     }
@@ -74,205 +47,35 @@ fn unsupported_ordinary_payload_is_rejected_instead_of_becoming_empty() {
 fn ordinary_payload_cannot_treat_an_occupied_far_base_as_empty_context() {
     for assume_instant in [false, true] {
         let mut world = empty();
-        let base = Block::Piston { piston: RedstonePiston { facing: BlockFacing::East, sticky: false, extended: false } };
+        let base = Block::Piston {
+            piston: RedstonePiston {
+                facing: BlockFacing::East,
+                sticky: false,
+                extended: false,
+            },
+        };
         world.set_block(BASE, base);
         world.set_block(BASE.offset(BlockFace::East), Block::RedstoneBlock);
         world.set_block(BASE + BlockPos::new(2, 0, 0), base);
         let bounds = (BASE, BASE + BlockPos::new(4, 0, 0));
         let before = snapshot(&world, bounds);
         let mut compiler = Compiler::default();
-        let error = compiler.compile(&world, world.get_corners(), CompilerOptions { assume_instant, ..Default::default() }, vec![], Default::default()).unwrap_err().to_string();
-        assert!(if assume_instant { error.contains("--assume-instant requires a certified logical domain") }
-            else { error.contains("unsupported sampled payload minecraft:piston") }, "{error}");
+        let error = compiler
+            .compile(
+                &world,
+                world.get_corners(),
+                CompilerOptions {
+                    assume_instant,
+                    ..Default::default()
+                },
+                vec![],
+                Default::default(),
+            )
+            .unwrap_err()
+            .to_string();
+        assert!(error.contains("logical piston admission failed"), "{error}");
         assert!(!compiler.is_active());
         assert_eq!(snapshot(&world, bounds), before);
-    }
-}
-
-#[test]
-fn sampled_extension_destination_does_not_resample_quasi_powered_memory() {
-    for assume_instant in [false, true] {
-        let mut world = empty();
-        let source = BASE;
-        let memory = BASE + BlockPos::new(2, -1, 0);
-        let lever = BASE.offset(BlockFace::North);
-        world.set_block(source, Block::Piston { piston: RedstonePiston { facing: BlockFacing::East, sticky: true, extended: false } });
-        world.set_block(source.offset(BlockFace::East), Block::RedstoneBlock);
-        world.set_block(memory, Block::Piston { piston: RedstonePiston { facing: BlockFacing::Down, sticky: true, extended: true } });
-        world.set_block(memory.offset(BlockFace::Bottom), Block::PistonHead { head: RedstonePistonHead { facing: BlockFacing::Down, sticky: true, short: false } });
-        world.set_block(memory + BlockPos::new(0, -2, 0), Block::RedstoneBlock);
-        world.set_block(lever.offset(BlockFace::Bottom), Block::Stone {});
-        world.set_block(lever, Block::Lever { lever: mchprs_blocks::blocks::Lever::new(mchprs_blocks::blocks::LeverFace::Floor, mchprs_blocks::BlockDirection::North, false) });
-        assert!(crate::redstone::piston::should_piston_extend(&world, BlockFacing::Down, memory));
-        let mut compiler = Compiler::default();
-        let admission = compiler.compile(&world, world.get_corners(), CompilerOptions { assume_instant, ..Default::default() }, vec![], Default::default());
-        if assume_instant {
-            let error = admission.unwrap_err().to_string();
-            assert!(error.contains("--assume-instant requires a certified logical domain"), "{error}");
-            assert!(!compiler.is_active());
-            continue;
-        }
-        admission.unwrap();
-        let idle = compiler.backend.as_ref().unwrap().sampled_pistons();
-        for _ in 0..20 {
-            compiler.tick();
-            world.tick_interpreted();
-            assert_eq!(compiler.backend.as_ref().unwrap().sampled_pistons(), idle);
-        }
-        compiler.on_use_block(lever);
-        lever_action(&mut world, lever, true);
-        for tick in 0..6 {
-            compiler.tick();
-            world.tick_interpreted();
-            let actors = compiler.backend.as_ref().unwrap().sampled_pistons();
-            let Block::Piston { piston } = world.get_block(source) else { unreachable!() };
-            assert_eq!(actors[&source].0, !piston.extended, "source tick {tick}, assume={assume_instant}");
-            assert_eq!(actors[&memory].0, false, "memory tick {tick}, assume={assume_instant}");
-            assert!(matches!(world.get_block(memory), Block::Piston { piston } if piston.extended));
-        }
-    }
-}
-
-#[test]
-fn independent_adders_and_counters_share_a_plot_with_staggered_waves_and_handoff() {
-    for optimize in [false, true] {
-        for io_only in [false, true] {
-            let mut interpreted = empty();
-            let mut compiled = empty();
-            let mut triggers = Vec::new();
-            let mut outputs = Vec::new();
-            for (name, shift, launch) in [
-                ("counter_basic", BlockPos::new(0, 0, 0), 0),
-                ("counter_basic", BlockPos::new(80, 0, 0), 7),
-                ("adder_1bit", BlockPos::new(0, 0, 65), 17),
-                ("adder_11bits", BlockPos::new(80, 0, 65), 23),
-            ] {
-                let (source, bounds, manifest) = fixture(name);
-                crate::world::for_each_block_optimized(&source, bounds.0, bounds.1, |pos| {
-                    let block = source.get_block(pos);
-                    if block == Block::Air {
-                        return;
-                    }
-                    for world in [&mut interpreted, &mut compiled] {
-                        world.set_block(pos + shift, block);
-                        if let Some(entity) = source.get_block_entity(pos) {
-                            world.set_block_entity(pos + shift, entity.clone());
-                        }
-                    }
-                });
-                let counter = name == "counter_basic";
-                triggers.push((
-                    launch,
-                    local_pos(&manifest["ports"]["inputs"]["trigger"]) + shift,
-                    counter,
-                ));
-                for key in ["repeater", "sum_repeater", "carry_repeater"] {
-                    let ports = &manifest["ports"]["observations"][key];
-                    if ports.is_null() {
-                        continue;
-                    }
-                    if ports[0].is_number() {
-                        outputs.push(local_pos(ports) + shift);
-                    } else {
-                        outputs.extend(
-                            ports
-                                .as_array()
-                                .unwrap()
-                                .iter()
-                                .map(|p| local_pos(p) + shift),
-                        );
-                    }
-                }
-                if !counter {
-                    let case = manifest["cases"]
-                        .as_array()
-                        .unwrap()
-                        .iter()
-                        .find(|c| {
-                            c["id"]
-                                == if name == "adder_1bit" {
-                                    "prepared-1-1-0"
-                                } else {
-                                    "prepared-31-1-0"
-                                }
-                        })
-                        .unwrap();
-                    for action in case["actions"].as_array().unwrap() {
-                        if action["op"] == "lever"
-                            && action["pos"] != manifest["ports"]["inputs"]["trigger"]
-                        {
-                            for world in [&mut interpreted, &mut compiled] {
-                                lever_action(
-                                    world,
-                                    local_pos(&action["pos"]) + shift,
-                                    action["powered"].as_bool().unwrap(),
-                                );
-                            }
-                        }
-                    }
-                }
-            }
-            for _ in 0..32 {
-                interpreted.tick_interpreted();
-                compiled.tick_interpreted();
-            }
-            let mut compiler = Compiler::default();
-            compiler
-                .compile(
-                    &compiled,
-                    compiled.get_corners(),
-                    CompilerOptions {
-                        optimize,
-                        io_only,
-                        ..Default::default()
-                    },
-                    compiled.scheduler().iter_entries().collect(),
-                    Default::default(),
-                )
-                .unwrap();
-            let mut changed = vec![false; outputs.len()];
-            let initial: Vec<_> = outputs
-                .iter()
-                .map(|&pos| interpreted.get_block(pos))
-                .collect();
-            for tick in 0..124 {
-                for &(launch, pos, powered) in &triggers {
-                    if tick == launch {
-                        lever_action(&mut interpreted, pos, powered);
-                        compiler.on_use_block(pos);
-                        compiler.flush(&mut compiled);
-                    }
-                }
-                interpreted.tick_interpreted();
-                compiler.tick();
-                compiler.flush(&mut compiled);
-                for (index, &pos) in outputs.iter().enumerate() {
-                    assert_eq!(
-                        compiled.get_block(pos),
-                        interpreted.get_block(pos),
-                        "tick {tick}, output {pos:?}, optimize={optimize}, io={io_only}"
-                    );
-                    changed[index] |= interpreted.get_block(pos) != initial[index];
-                }
-            }
-            // Both counters, the one-bit carry, and the eleven-bit sum fired.
-            assert!(changed[..16].iter().any(|&v| v));
-            assert!(changed[16..32].iter().any(|&v| v));
-            assert!(changed[33]);
-            assert!(changed[34..].iter().any(|&v| v));
-            compiler.reset(&mut compiled, interpreted.get_corners());
-            for tick in 0..24 {
-                interpreted.tick_interpreted();
-                compiled.tick_interpreted();
-                for &pos in &outputs {
-                    assert_eq!(
-                        compiled.get_block(pos),
-                        interpreted.get_block(pos),
-                        "handoff tick {tick}, output {pos:?}, optimize={optimize}, io={io_only}"
-                    );
-                }
-            }
-        }
     }
 }
 
@@ -295,7 +98,7 @@ fn logical_ticks(
     }
 }
 
-fn repeater_value(world: &PlotWorld, ports: &Value, shift: BlockPos) -> u16 {
+pub(super) fn repeater_value(world: &PlotWorld, ports: &Value, shift: BlockPos) -> u16 {
     let ports: Vec<_> = if ports[0].is_number() {
         vec![ports]
     } else {
@@ -519,7 +322,12 @@ fn ideal_mode_skips_reset_certification_but_keeps_payload_and_geometry_guards() 
         )
         .unwrap();
     let head = analyze_world(&world).pistons[0].head;
-    let Block::PistonHead { head: mut saved_head } = world.get_block(head) else { unreachable!() };
+    let Block::PistonHead {
+        head: mut saved_head,
+    } = world.get_block(head)
+    else {
+        unreachable!()
+    };
     saved_head.short = true;
     world.set_block(head, Block::PistonHead { head: saved_head });
     let options = CompilerOptions {

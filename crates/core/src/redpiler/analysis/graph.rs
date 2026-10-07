@@ -3,7 +3,6 @@
 use super::families::{GroupFailure, RecognitionFailure};
 use super::{AdmissionIssue, AnalysisError, AnalysisReport};
 use crate::redpiler::compile_graph::{CompileGraph, GraphError, NodeType};
-use crate::redpiler::instant::boundary::Boundaries;
 use crate::redpiler::{CompilerInput, CompilerOptions, TaskMonitor};
 use crate::world::World;
 use mchprs_blocks::BlockPos;
@@ -139,90 +138,14 @@ pub fn prepare_candidate_graph(
         super::AnalysisLimits::for_budget(monitor.budget_multiplier()),
     )
     .map_err(GraphPreparationError::Analysis)?;
-    // Logical mode, clocks and conducting movers require executable preparation;
-    // the older electrical candidate graph does not encode their protocol.
-    if options.assume_instant
-        || report.pistons.iter().any(|p| {
-            let payload = world.get_block(p.payload);
-            !p.piston.sticky
-                || payload != mchprs_blocks::blocks::Block::RedstoneBlock
-                    && crate::redpiler::instant::outputs::supported_payload(payload)
-        })
-    {
-        let (graph, _) = crate::redpiler::instant::program::prepare(
-            world,
-            &report,
-            ticks,
-            options,
-            monitor.clone(),
-        )
-        .map_err(GraphPreparationError::Execution)?;
-        return Ok(CandidateGraph { graph, report });
-    }
-    for issue in &report.issues {
-        if !matches!(
-            issue,
-            AdmissionIssue::PistonRuntimeUnavailable { .. }
-                | AdmissionIssue::ObserverRuntimeUnavailable { .. }
-        ) {
-            return Err(GraphPreparationError::Entry(issue.clone()));
-        }
-    }
-    for r in &report.recognition {
-        if !r.is_matched() {
-            return Err(GraphPreparationError::Piston {
-                pos: report.pistons[r.piston].pos,
-                failures: r.failures.clone(),
-            });
-        }
-    }
-    for r in &report.group_recognition {
-        if !r.has_reset_closure() {
-            return Err(GraphPreparationError::PayloadGroup {
-                group: r.group,
-                failures: r.failures.clone(),
-            });
-        }
-    }
-    let boundaries = Boundaries::new(&report);
-    for port in &report.ports.pistons {
-        if let Some(&pos) = port.outside_bounds.first() {
-            return Err(GraphPreparationError::Piston {
-                pos: report.pistons[port.piston].pos,
-                failures: vec![RecognitionFailure::OutsideBounds { pos }],
-            });
-        }
-    }
-    if let Some(exposure) = report.ports.reset_exposures.first() {
-        return Err(GraphPreparationError::ExposedReset {
-            source: exposure.source,
-            consumer: exposure.consumer,
-        });
-    }
-    for output in &report.ports.outputs {
-        if let Some(&pos) = output.dependencies.outside_bounds.first() {
-            return Err(GraphPreparationError::PortOutsideBounds {
-                consumer: output.consumer,
-                pos,
-            });
-        }
-    }
-    // Standalone observers have no region owner, even if every piston matches.
-    for &pos in &report.observers {
-        if !boundaries.is_internal(pos) {
-            return Err(GraphPreparationError::Entry(
-                AdmissionIssue::ObserverRuntimeUnavailable { pos },
-            ));
-        }
-    }
-    let input = CompilerInput {
-        world,
-        bounds: report.bounds,
-        ticks,
-        boundaries: Some(&boundaries),
+    let graph = if report.pistons.is_empty() {
+        let input = CompilerInput { world, bounds: report.bounds, ticks, boundaries: None };
+        crate::redpiler::passes::run_passes(options, &input, &monitor)
+            .map_err(GraphPreparationError::Graph)?
+    } else {
+        crate::redpiler::instant::program::prepare(world, &report, ticks, options, monitor.clone())
+            .map_err(GraphPreparationError::Execution)?.0
     };
-    let graph = crate::redpiler::passes::run_passes(options, &input, &monitor)
-        .map_err(GraphPreparationError::Graph)?;
     if monitor.cancelled() {
         return Err(GraphPreparationError::Analysis(AnalysisError::Cancelled));
     }

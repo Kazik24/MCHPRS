@@ -53,6 +53,9 @@ fn convert_node(
         ty: match node.ty {
             CNodeType::Repeater { delay, .. } => NodeType::Repeater(delay),
             CNodeType::Torch => NodeType::Torch,
+            CNodeType::Observer { .. } => {
+                unreachable!("observer export rejected before lowering")
+            }
             CNodeType::Comparator { mode, .. } => NodeType::Comparator(match mode {
                 CComparatorMode::Compare => ComparatorMode::Compare,
                 CComparatorMode::Subtract => ComparatorMode::Subtract,
@@ -97,6 +100,9 @@ fn convert_node(
 }
 
 pub(super) fn run(graph: &mut CompileGraph) -> Result<(), super::GraphError> {
+    if graph.node_weights().any(|node| matches!(node.ty, CNodeType::Observer { .. })) {
+        return Err(super::GraphError::UnsupportedObserverExport);
+    }
     if graph
         .node_weights()
         .any(|node| matches!(node.ty, CNodeType::CommandBlock { .. }))

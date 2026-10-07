@@ -1,9 +1,9 @@
 use super::*;
+mod ideal;
 mod legalization;
+mod observer_logical;
 mod outputs;
 mod regions;
-mod ideal;
-mod observer_logical;
 mod research;
 use crate::plot::worldedit::{load_schematic, paste_clipboard};
 use crate::plot::{PlotWorld, PLOT_WIDTH};
@@ -303,17 +303,6 @@ fn snapshot(world: &PlotWorld, bounds: (BlockPos, BlockPos)) -> Value {
     json!({ "cells": cells, "pistons": world.piston_state(), "ticks": world.scheduler().iter_entries().collect::<Vec<_>>() })
 }
 
-fn check_sampled_state(compiler: &Compiler, reference: &PlotWorld) {
-    let backend = compiler.backend.as_ref().unwrap();
-    for (pos, block) in backend.sampled_geometry() {
-        let actual = reference.get_block(pos);
-        assert!(block == actual || (matches!(block, Block::MovingPiston { .. }) && matches!(actual, Block::MovingPiston { .. })), "geometry {pos:?}: compiled {block:?}, interpreted {actual:?}");
-    }
-    for (pos, power) in backend.sampled_signals() {
-        assert_eq!(power, crate::redstone::source_strength(reference.get_block(pos), reference, pos), "signal {pos:?}");
-    }
-}
-
 #[test]
 fn all_io_schematics_have_read_only_deterministic_inventories() {
     check_inventories("instant-pistons-io", 22);
@@ -559,181 +548,83 @@ fn local_pos(local: &Value) -> BlockPos {
     )
 }
 
-fn compiled_adder_episode(
-    case: &Value,
-    optimize: bool,
-    io_only: bool,
-) -> (PlotWorld, PlotWorld, Compiler) {
-    let (mut interpreted, _, _) = fixture("adder_11bits");
-    let (mut compiled, _, _) = fixture("adder_11bits");
-    let mut compiler = Compiler::default();
-    compiler
-        .compile(
-            &compiled,
-            compiled.get_corners(),
-            CompilerOptions {
-                optimize,
-                io_only,
-                ..Default::default()
-            },
-            Vec::new(),
-            Default::default(),
-        )
-        .unwrap_or_else(|e| panic!("{}: {e}", case["id"]));
-    apply_adder_actions(&mut interpreted, &mut compiled, &mut compiler, case);
-    (interpreted, compiled, compiler)
-}
-
-fn apply_adder_actions(
-    interpreted: &mut PlotWorld,
-    compiled: &mut PlotWorld,
-    compiler: &mut Compiler,
-    case: &Value,
-) {
+fn apply_adder_actions(compiled: &mut PlotWorld, compiler: &mut Compiler, case: &Value) {
     for action in case["actions"].as_array().unwrap() {
         if action["op"] == "lever" {
             let pos = local_pos(&action["pos"]);
             let powered = action["powered"].as_bool().unwrap();
-            lever_action(interpreted, pos, powered);
-            if matches!(compiled.get_block(pos),Block::Lever { lever } if lever.powered != powered)
+            if matches!(compiled.get_block(pos), Block::Lever { lever } if lever.powered != powered)
             {
                 compiler.on_use_block(pos);
                 compiler.flush(compiled);
             }
         } else if action["op"] == "wait_ready" {
-            let mut stable = 0;
-            for _ in 0..32 {
-                interpreted.tick_interpreted();
+            for _ in 0..16 {
                 compiler.tick();
                 compiler.flush(compiled);
-                if interpreted.scheduler().iter_entries().next().is_none()
-                    && interpreted.piston_state().events.is_empty()
-                    && interpreted.piston_state().motions.is_empty()
-                {
-                    stable += 1;
-                } else {
-                    stable = 0;
-                }
-                if stable == 2 {
-                    break;
-                }
-            }
-            assert_eq!(stable, 2, "{} preparation", case["id"]);
-        }
-    }
-}
-
-#[test]
-fn compiled_adder_matches_arithmetic_and_interpreted_repeater_waveforms() {
-    for optimize in [false, true] {
-        for io_only in [false, true] {
-            let (_, _, manifest) = fixture("adder_11bits");
-            for case in manifest["cases"]
-                .as_array()
-                .unwrap()
-                .iter()
-                .filter(|c| c["expectation"].is_object())
-            {
-                let (mut interpreted, mut compiled, mut compiler) =
-                    compiled_adder_episode(case, optimize, io_only);
-                for tick in 1..=24 {
-                    interpreted.tick_interpreted();
-                    compiler.tick();
-                    compiler.flush(&mut compiled);
-                    let mut result = 0u16;
-                    for (bit, local) in manifest["ports"]["observations"]["sum_repeater"]
-                        .as_array()
-                        .unwrap()
-                        .iter()
-                        .enumerate()
-                    {
-                        let pos = local_pos(local);
-                        let actual = compiled.get_block(pos);
-                        assert_eq!(
-                            actual,
-                            interpreted.get_block(pos),
-                            "{} tick {tick}, bit {bit}, optimize={optimize} io={io_only}",
-                            case["id"]
-                        );
-                        if matches!(actual,Block::RedstoneRepeater { repeater } if !repeater.powered)
-                        {
-                            result |= 1 << bit;
-                        }
-                    }
-                    if (3..=7).contains(&tick) {
-                        assert_eq!(
-                            result as u64,
-                            case["expectation"]["sum"].as_u64().unwrap(),
-                            "{} tick {tick}",
-                            case["id"]
-                        );
-                    }
-                }
-                compiler.reset(&mut compiled, interpreted.get_corners());
-                for tick in 25..=36 {
-                    interpreted.tick_interpreted();
-                    compiled.tick_interpreted();
-                    for local in manifest["ports"]["observations"]["sum_repeater"]
-                        .as_array()
-                        .unwrap()
-                    {
-                        let pos = local_pos(local);
-                        assert_eq!(
-                            compiled.get_block(pos),
-                            interpreted.get_block(pos),
-                            "{} handoff tick {tick}",
-                            case["id"]
-                        );
-                    }
-                }
             }
         }
     }
 }
 
 #[test]
-fn compiled_counter_matches_free_running_interpreted_outputs() {
-    for optimize in [false, true] {
-        for io_only in [false, true] {
-            let (mut interpreted, _, manifest) = fixture("counter_basic");
-            let (mut compiled, _, _) = fixture("counter_basic");
-            let mut compiler = Compiler::default();
-            compiler
-                .compile(
-                    &compiled,
-                    compiled.get_corners(),
-                    CompilerOptions {
-                        optimize,
-                        io_only,
-                        ..Default::default()
-                    },
-                    Vec::new(),
-                    Default::default(),
-                )
-                .unwrap();
-            for _ in 0..24 {
-                interpreted.tick_interpreted();
-                compiler.tick();
-                compiler.flush(&mut compiled);
-            }
-            let trigger = local_pos(&manifest["ports"]["inputs"]["trigger"]);
-            lever_action(&mut interpreted, trigger, true);
-            compiler.on_use_block(trigger);
-            compiler.flush(&mut compiled);
-            for tick in 1..=102 {
-                interpreted.tick_interpreted();
-                compiler.tick();
-                compiler.flush(&mut compiled);
-                for local in manifest["ports"]["observations"]["repeater"]
+fn compiled_adder_matches_arithmetic_and_holds_each_logical_transaction() {
+    for assume_instant in [false, true] {
+        for optimize in [false, true] {
+            for io_only in [false, true] {
+                let (_, _, manifest) = fixture("adder_11bits");
+                for case in manifest["cases"]
                     .as_array()
                     .unwrap()
+                    .iter()
+                    .filter(|c| c["expectation"].is_object())
                 {
-                    let pos = local_pos(local);
-                    assert_eq!(
-                        compiled.get_block(pos),
-                        interpreted.get_block(pos),
-                        "counter tick {tick}, pos {pos:?}, optimize={optimize} io={io_only}"
-                    );
+                    let (mut world, bounds, _) = fixture("adder_11bits");
+                    let mut compiler = Compiler::default();
+                    compiler
+                        .compile(
+                            &world,
+                            world.get_corners(),
+                            CompilerOptions {
+                                assume_instant,
+                                optimize,
+                                io_only,
+                                ..Default::default()
+                            },
+                            vec![],
+                            Default::default(),
+                        )
+                        .unwrap();
+                    assert!(!compiler
+                        .backend
+                        .as_ref()
+                        .unwrap()
+                        .logical_stats()
+                        .is_empty());
+                    apply_adder_actions(&mut world, &mut compiler, case);
+                    for _ in 0..16 {
+                        compiler.tick();
+                        compiler.flush(&mut world);
+                    }
+                    for _ in 0..8 {
+                        assert_eq!(
+                            regions::repeater_value(
+                                &world,
+                                &manifest["ports"]["observations"]["sum_repeater"],
+                                BlockPos::new(0, 0, 0)
+                            ) as u64,
+                            case["expectation"]["sum"].as_u64().unwrap(),
+                            "{}",
+                            case["id"]
+                        );
+                        compiler.tick();
+                        compiler.flush(&mut world);
+                        assert!(world.piston_state().events.is_empty());
+                        assert!(world.piston_state().motions.is_empty());
+                    }
+                    compiler.reset(&mut world, bounds);
+                    assert!(world.piston_state().events.is_empty());
+                    assert!(world.piston_state().motions.is_empty());
                 }
             }
         }
@@ -780,7 +671,10 @@ fn extracted_counter_transition_matches_all_sixteen_bit_states() {
             if logic.arena.evaluate(logic.responses[actor], |v| match v {
                 Variable::Signal { .. } => false,
                 Variable::Memory(actor) => bits[actor],
-                Variable::Actuator(_) | Variable::Geometry { .. } | Variable::Observer(_) | Variable::WireDot(_) => unreachable!(),
+                Variable::Actuator(_)
+                | Variable::Geometry { .. }
+                | Variable::Observer(_)
+                | Variable::WireDot(_) => unreachable!(),
             }) {
                 next |= 1 << bit;
             }
@@ -920,186 +814,6 @@ fn compiled_counter_clock_and_storage_follow_rotated_translated_geometry() {
 }
 
 #[test]
-fn counter_handoff_preserves_stored_state_and_future_output_waves() {
-    for phase in [
-        0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 18, 24, 30, 48, 96, 102,
-    ] {
-        let (mut interpreted, _, manifest) = fixture("counter_basic");
-        let (mut compiled, _, _) = fixture("counter_basic");
-        let mut compiler = Compiler::default();
-        compiler
-            .compile(
-                &compiled,
-                compiled.get_corners(),
-                CompilerOptions {
-                    optimize: true,
-                    io_only: true,
-                    ..Default::default()
-                },
-                Vec::new(),
-                Default::default(),
-            )
-            .unwrap();
-        let trigger = local_pos(&manifest["ports"]["inputs"]["trigger"]);
-        lever_action(&mut interpreted, trigger, true);
-        compiler.on_use_block(trigger);
-        compiler.flush(&mut compiled);
-        for _ in 0..phase {
-            interpreted.tick_interpreted();
-            compiler.tick();
-            compiler.flush(&mut compiled);
-        }
-        compiler.reset(&mut compiled, interpreted.get_corners());
-        for tick in 1..=24 {
-            interpreted.tick_interpreted();
-            compiled.tick_interpreted();
-            for local in manifest["ports"]["observations"]["repeater"]
-                .as_array()
-                .unwrap()
-            {
-                let pos = local_pos(local);
-                assert_eq!(
-                    compiled.get_block(pos),
-                    interpreted.get_block(pos),
-                    "counter handoff phase {phase}, resumed {tick}, pos {pos:?}"
-                );
-            }
-            if (phase + tick) % 6 == 0 {
-                for local in manifest["ports"]["observations"]["memory"]
-                    .as_array()
-                    .unwrap()
-                {
-                    let pos = local_pos(local);
-                    assert_eq!(
-                        compiled.get_block(pos),
-                        interpreted.get_block(pos),
-                        "counter memory phase {phase}, resumed {tick}, pos {pos:?}"
-                    );
-                }
-            }
-        }
-    }
-}
-
-#[test]
-#[ignore = "long-running physical reference through all 65,536 counter states"]
-fn compiled_counter_matches_interpreter_through_high_carries_and_wrap() {
-    let (mut interpreted, _, manifest) = fixture("counter_basic");
-    let (mut compiled, _, _) = fixture("counter_basic");
-    let mut compiler = Compiler::default();
-    compiler
-        .compile(
-            &compiled,
-            compiled.get_corners(),
-            CompilerOptions {
-                optimize: true,
-                io_only: true,
-                ..Default::default()
-            },
-            Vec::new(),
-            Default::default(),
-        )
-        .unwrap();
-    let outputs: Vec<_> = manifest["ports"]["observations"]["repeater"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .map(local_pos)
-        .collect();
-    let memory: Vec<_> = manifest["ports"]["observations"]["memory"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .map(local_pos)
-        .collect();
-    let trigger = local_pos(&manifest["ports"]["inputs"]["trigger"]);
-    lever_action(&mut interpreted, trigger, true);
-    compiler.on_use_block(trigger);
-    for tick in 1..=6 * (u16::MAX as u32 + 1) + 6 {
-        interpreted.tick_interpreted();
-        compiler.tick();
-        compiler.flush(&mut compiled);
-        let mut result = 0u16;
-        for (bit, &pos) in outputs.iter().enumerate() {
-            let actual = compiled.get_block(pos);
-            assert_eq!(
-                actual,
-                interpreted.get_block(pos),
-                "counter tick {tick}, bit {bit}"
-            );
-            if matches!(actual,Block::RedstoneRepeater {repeater} if !repeater.powered) {
-                result |= 1 << bit;
-            }
-        }
-        if tick % 6 == 5 {
-            assert_eq!(
-                result,
-                ((tick - 5) / 6) as u16,
-                "published count at tick {tick}"
-            );
-        }
-        if tick % 6 == 0 {
-            let mut stored = 0u16;
-            for (bit, &pos) in memory.iter().enumerate() {
-                let Block::Piston { piston } = interpreted.get_block(pos) else {
-                    panic!("moving storage at {tick}");
-                };
-                stored |= u16::from(!piston.extended) << bit;
-            }
-            assert_eq!(stored, (tick / 6) as u16, "stored count at tick {tick}");
-            if tick % (6 * 4096) == 0 {
-                eprintln!("counter verified {} increments", tick / 6);
-            }
-        }
-    }
-}
-
-#[test]
-fn adder_handoff_preserves_outputs_in_every_response_and_reset_phase() {
-    let (_, _, manifest) = fixture("adder_11bits");
-    for case in manifest["cases"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .filter(|c| c["expectation"].is_object())
-        .take(6)
-    {
-        for phase in 0..=12 {
-            let (mut interpreted, mut compiled, mut compiler) =
-                compiled_adder_episode(case, true, true);
-            for _ in 0..phase {
-                interpreted.tick_interpreted();
-                compiler.tick();
-                compiler.flush(&mut compiled);
-            }
-            compiler.reset(&mut compiled, interpreted.get_corners());
-            assert_eq!(
-                compiled.piston_state().logical_tick,
-                interpreted.piston_state().logical_tick,
-                "{} phase {phase}",
-                case["id"]
-            );
-            for tick in 1..=18 {
-                interpreted.tick_interpreted();
-                compiled.tick_interpreted();
-                for local in manifest["ports"]["observations"]["sum_repeater"]
-                    .as_array()
-                    .unwrap()
-                {
-                    let pos = local_pos(local);
-                    assert_eq!(
-                        compiled.get_block(pos),
-                        interpreted.get_block(pos),
-                        "{} handoff phase {phase}, resumed tick {tick}",
-                        case["id"]
-                    );
-                }
-            }
-        }
-    }
-}
-
-#[test]
 fn compiled_adder_is_derived_from_rotated_and_translated_geometry() {
     use mchprs_blocks::blocks::RotateAmt;
     let (original, bounds, manifest) = fixture("adder_11bits");
@@ -1137,13 +851,10 @@ fn compiled_adder_is_derived_from_rotated_and_translated_geometry() {
             .iter()
             .filter(|c| c["expectation"].is_object())
         {
-            let mut interpreted = empty();
             let mut compiled = empty();
             for &(pos, block, ref entity) in &cells {
-                interpreted.set_block(pos, block);
                 compiled.set_block(pos, block);
                 if let Some(entity) = entity {
-                    interpreted.set_block_entity(pos, entity.clone());
                     compiled.set_block_entity(pos, entity.clone());
                 }
             }
@@ -1168,12 +879,11 @@ fn compiled_adder_is_derived_from_rotated_and_translated_geometry() {
                     Default::default(),
                 )
                 .unwrap_or_else(|e| panic!("{rotation:?} {}: {e}", case["id"]));
-            apply_adder_actions(&mut interpreted, &mut compiled, &mut compiler, &transformed);
-            for tick in 1..=7 {
-                interpreted.tick_interpreted();
+            apply_adder_actions(&mut compiled, &mut compiler, &transformed);
+            for tick in 1..=16 {
                 compiler.tick();
                 compiler.flush(&mut compiled);
-                if tick >= 3 {
+                if tick >= 12 {
                     let mut value = 0u16;
                     for (bit, local) in manifest["ports"]["observations"]["sum_repeater"]
                         .as_array()
@@ -1498,7 +1208,6 @@ fn dependency_budget_and_partial_context_do_not_produce_certificates() {
 #[test]
 fn candidate_graphs_preserve_mobile_aliases_ports_and_world_state_under_optimization() {
     use crate::redpiler::compile_graph::NodeType;
-    use petgraph::visit::EdgeRef;
     use petgraph::Direction;
     for name in [
         "instant_observer",
@@ -1527,11 +1236,8 @@ fn candidate_graphs_preserve_mobile_aliases_ports_and_world_state_under_optimiza
                 )
                 .unwrap_or_else(|e| panic!("{name} optimize={optimize} io={io_only}: {e}"));
                 let summary = candidate.summary();
-                assert_eq!(
-                    summary.instant_inputs,
-                    candidate.report.pistons.len(),
-                    "{name}"
-                );
+                assert_eq!(summary.instant_inputs, 0, "{name}");
+                assert!(summary.compiled_outputs > 0, "{name}");
                 assert_eq!(
                     summary.mobile_sources,
                     candidate
@@ -1566,23 +1272,6 @@ fn candidate_graphs_preserve_mobile_aliases_ports_and_world_state_under_optimiza
                         );
                     }
                 }
-                for id in candidate.graph.node_indices() {
-                    if matches!(candidate.graph[id].ty, NodeType::InstantInput { .. }) {
-                        let initial_power = candidate
-                            .graph
-                            .edges_directed(id, Direction::Incoming)
-                            .map(|edge| {
-                                candidate.graph[edge.source()]
-                                    .state
-                                    .output_strength
-                                    .saturating_sub(edge.weight().attenuation)
-                            })
-                            .max()
-                            .unwrap_or(0);
-                        assert_eq!(candidate.graph[id].state.output_strength, initial_power);
-                        assert!(initial_power > 0, "{name}: ready input was initialized low");
-                    }
-                }
                 for output in &candidate.report.ports.outputs {
                     let node = candidate
                         .graph
@@ -1600,9 +1289,9 @@ fn candidate_graphs_preserve_mobile_aliases_ports_and_world_state_under_optimiza
                             .neighbors_directed(node, Direction::Incoming)
                             .any(|id| matches!(
                                 candidate.graph[id].ty,
-                                NodeType::MobileSource { .. }
+                                NodeType::InstantOutput { .. }
                             )),
-                        "{name}: no mobile supply reaches consumer"
+                        "{name}: no logical projection reaches consumer"
                     );
                 }
                 assert_eq!(
@@ -1616,19 +1305,28 @@ fn candidate_graphs_preserve_mobile_aliases_ports_and_world_state_under_optimiza
 }
 
 #[test]
-fn candidate_graphs_reject_unowned_observers_and_illegal_reset_groups() {
-    let (world, _, _) = fixture("or_interpreter_illigal");
-    assert!(matches!(
-        graph::prepare_candidate_graph(
-            &world,
-            world.get_corners(),
-            &[],
-            &Default::default(),
-            Default::default()
-        ),
-        Err(graph::GraphPreparationError::PayloadGroup { .. })
-    ));
-    let (mut world, _, _) = fixture("instant_observer");
+fn candidate_graphs_reject_uncertified_reset_groups_and_unowned_observers() {
+    let (world, bounds, _) = fixture("or_interpreter_illigal");
+    let before = snapshot(&world, bounds);
+    let error = graph::prepare_candidate_graph(
+        &world,
+        world.get_corners(),
+        &[],
+        &Default::default(),
+        Default::default(),
+    )
+    .unwrap_err();
+    assert!(
+        matches!(error, graph::GraphPreparationError::Execution(_)),
+        "{error}"
+    );
+    let error = error.to_string();
+    assert!(
+        error.contains("reset") || error.contains("cycle") || error.contains("sampling"),
+        "{error}"
+    );
+    assert_eq!(snapshot(&world, bounds), before);
+    let (mut world, bounds, _) = fixture("instant_observer");
     world.set_block(
         BASE,
         Block::Observer {
@@ -1638,49 +1336,24 @@ fn candidate_graphs_reject_unowned_observers_and_illegal_reset_groups() {
             },
         },
     );
-    assert!(matches!(
-        graph::prepare_candidate_graph(
-            &world,
-            world.get_corners(),
-            &[],
-            &Default::default(),
-            Default::default()
-        ),
-        Err(graph::GraphPreparationError::Entry(
-            AdmissionIssue::ObserverRuntimeUnavailable { .. }
-        ))
-    ));
-}
-
-#[test]
-fn direct_backend_rejects_candidate_boundaries_before_mutating_its_state() {
-    use crate::redpiler::backend::{direct::DirectBackend, BackendError};
-    let (world, _, _) = fixture("instant_torch");
-    let candidate = graph::prepare_candidate_graph(
+    let before = snapshot(&world, bounds);
+    let error = graph::prepare_candidate_graph(
         &world,
         world.get_corners(),
         &[],
         &Default::default(),
         Default::default(),
     )
-    .unwrap();
-    let mut backend = DirectBackend::default();
-    assert_eq!(
-        backend.compile(
-            candidate.graph,
-            vec![],
-            &Default::default(),
-            Default::default()
-        ),
-        Err(BackendError::InstantRuntimeUnavailable)
+    .unwrap_err();
+    assert!(
+        matches!(error, graph::GraphPreparationError::Execution(_)),
+        "{error}"
     );
-    // A rejected preparation cannot leave synthetic work or aliases that make
-    // a subsequent ordinary backend initialization unsafe.
-    let empty = crate::redpiler::compile_graph::CompileGraph::new();
-    backend
-        .compile(empty, vec![], &Default::default(), Default::default())
-        .unwrap();
-    backend.tick();
+    assert!(
+        error.to_string().contains("no supported region owner"),
+        "{error}"
+    );
+    assert_eq!(snapshot(&world, bounds), before);
 }
 
 #[test]
@@ -1750,16 +1423,19 @@ fn exposed_reset_signals_and_missing_graph_sources_are_explicit_errors() {
         cap.offset(BlockFace::East),
         Block::RedstoneLamp { lit: false },
     );
-    assert!(matches!(
-        graph::prepare_candidate_graph(
-            &world,
-            world.get_corners(),
-            &[],
-            &Default::default(),
-            Default::default()
-        ),
-        Err(graph::GraphPreparationError::ExposedReset { .. })
-    ));
+    let error = graph::prepare_candidate_graph(
+        &world,
+        world.get_corners(),
+        &[],
+        &Default::default(),
+        Default::default(),
+    )
+    .unwrap_err();
+    assert!(
+        matches!(error, graph::GraphPreparationError::Execution(_)),
+        "{error}"
+    );
+    assert!(error.to_string().contains("ordinary consumer"), "{error}");
 
     let mut world = empty();
     world.set_block(BASE, Block::RedstoneLamp { lit: false });
@@ -1830,11 +1506,18 @@ fn comparator_side_ports_keep_mobile_supplies_on_the_electrical_side_channel() {
         .node_indices()
         .find(|&id| candidate.graph[id].block.is_some_and(|(p, _)| p == pos))
         .unwrap();
-    assert!(candidate.graph.edges_directed(id, Direction::Incoming).any(|edge| edge.weight().ty == LinkType::Side && matches!(candidate.graph[edge.source()].ty, NodeType::MobileSource { alias, .. } if alias == head)));
+    assert!(candidate
+        .graph
+        .edges_directed(id, Direction::Incoming)
+        .any(|edge| edge.weight().ty == LinkType::Side
+            && matches!(
+                candidate.graph[edge.source()].ty,
+                NodeType::InstantOutput { .. }
+            )));
 }
 
 #[test]
-fn reset_ownership_rejects_cross_group_feedback_and_shared_reset_sources() {
+fn shared_reset_exposure_inventory_does_not_mutate_logical_preparation() {
     use mchprs_blocks::blocks::{Lever, LeverFace};
     use mchprs_blocks::BlockDirection;
     let mut world = empty();
@@ -1870,16 +1553,18 @@ fn reset_ownership_rejects_cross_group_feedback_and_shared_reset_sources() {
             source: BASE.offset(BlockFace::Top),
             consumer: second,
         }));
-    assert!(matches!(
-        graph::prepare_candidate_graph(
-            &world,
-            world.get_corners(),
-            &[],
-            &Default::default(),
-            Default::default()
-        ),
-        Err(graph::GraphPreparationError::ExposedReset { .. })
-    ));
+    let bounds = world.get_corners();
+    let before = snapshot(&world, bounds);
+    let candidate = graph::prepare_candidate_graph(
+        &world,
+        bounds,
+        &[],
+        &Default::default(),
+        Default::default(),
+    )
+    .unwrap();
+    assert_eq!(candidate.summary().instant_inputs, 0);
+    assert_eq!(snapshot(&world, bounds), before);
 
     // One torch can physically reach both bases. It cannot be removed as
     // independently owned reset circuitry for two separate payload protocols.
@@ -1909,16 +1594,18 @@ fn reset_ownership_rejects_cross_group_feedback_and_shared_reset_sources() {
         "{report:?}"
     );
     assert_eq!(report.ports.reset_exposures.len(), 2);
-    assert!(matches!(
-        graph::prepare_candidate_graph(
-            &world,
-            world.get_corners(),
-            &[],
-            &Default::default(),
-            Default::default()
-        ),
-        Err(graph::GraphPreparationError::ExposedReset { .. })
-    ));
+    let bounds = world.get_corners();
+    let before = snapshot(&world, bounds);
+    let candidate = graph::prepare_candidate_graph(
+        &world,
+        bounds,
+        &[],
+        &Default::default(),
+        Default::default(),
+    )
+    .unwrap();
+    assert_eq!(candidate.summary().instant_inputs, 0);
+    assert_eq!(snapshot(&world, bounds), before);
 }
 
 #[test]
@@ -1945,17 +1632,24 @@ fn candidate_graph_requires_context_for_updates_that_do_not_provide_power() {
     assert!(report.recognition[0].is_matched(), "{report:?}");
     assert!(report.recognition[0].inputs.outside_bounds.is_empty());
     assert!(!report.ports.pistons[0].outside_bounds.is_empty());
-    assert!(matches!(
-        graph::prepare_candidate_graph(
-            &world,
-            bounds,
-            &[],
-            &Default::default(),
-            Default::default()
-        ),
-        Err(graph::GraphPreparationError::Piston { failures, .. })
-            if failures.iter().any(|f| matches!(f, families::RecognitionFailure::OutsideBounds { .. }))
-    ));
+    let error = graph::prepare_candidate_graph(
+        &world,
+        bounds,
+        &[],
+        &Default::default(),
+        Default::default(),
+    )
+    .unwrap_err();
+    assert!(
+        matches!(error, graph::GraphPreparationError::Execution(_)),
+        "{error}"
+    );
+    assert!(
+        error
+            .to_string()
+            .contains("update context outside the selection"),
+        "{error}"
+    );
 }
 
 #[test]

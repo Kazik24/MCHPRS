@@ -3,8 +3,43 @@ use mchprs_world::TickPriority;
 use super::node::{NodeId, NodeType};
 use super::*;
 
+/// Only block-state properties are observable; comparator and command-block
+/// entity output strengths do not themselves change the watched block state.
+pub(super) fn observed_state(node: &Node) -> (bool, bool, u8) {
+    (
+        !matches!(node.ty, NodeType::CommandBlock { .. } | NodeType::Constant | NodeType::InstantSource)
+            && node.powered,
+        matches!(node.ty, NodeType::Repeater { .. }) && node.locked,
+        if matches!(node.ty, NodeType::Wire) { node.output_power } else { 0 },
+    )
+}
+
+pub(super) fn notify_observers(
+    scheduler: &mut TickScheduler<NodeId>,
+    nodes: &mut Nodes,
+    observers: &[NodeId],
+) {
+    for &id in observers {
+        let node = &mut nodes[id];
+        if !node.powered && !node.pending_tick {
+            schedule_tick(scheduler, id, node, 1, TickPriority::Normal);
+        }
+    }
+}
+
 #[inline(always)]
 pub(super) fn update_node(
+    scheduler: &mut TickScheduler<NodeId>,
+    events: &mut Vec<Event>,
+    nodes: &mut Nodes,
+    node_id: NodeId,
+) -> bool {
+    let before = observed_state(&nodes[node_id]);
+    update_node_inner(scheduler, events, nodes, node_id);
+    observed_state(&nodes[node_id]) != before
+}
+
+fn update_node_inner(
     scheduler: &mut TickScheduler<NodeId>,
     events: &mut Vec<Event>,
     nodes: &mut Nodes,

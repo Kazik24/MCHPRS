@@ -15,18 +15,19 @@ use rustc_hash::FxHashSet;
 use std::sync::Arc;
 
 pub(crate) struct PreparedInstant {
-    pub sequential: Option<super::sequential::PreparedSequential>,
-    pub assume_instant: bool,
     pub pistons: Vec<crate::redpiler::analysis::PistonDescriptor>,
     pub output_offset: usize,
     pub clocked: Option<super::clocked::ClockedProgram>,
+    pub independent_memory: Vec<super::clocked::MemoryCell>,
+    pub sampling: Vec<super::sampling::SamplingEvent>,
+    pub generators: Vec<usize>,
+    pub payloads: Vec<Block>,
     pub controls: Vec<BlockPos>,
     pub logic: WaveLogic,
     pub groups: Vec<Vec<usize>>,
     pub aliases: Vec<(usize, BlockPos, bool)>,
     pub owned: FxHashSet<BlockPos>,
     pub template: Vec<(BlockPos, Block, Option<BlockEntity>)>,
-    pub bounds: (BlockPos, BlockPos),
     pub logical_tick: u64,
 }
 
@@ -56,10 +57,8 @@ pub(crate) fn prepare(
         }
     }
     let admission_error = |error: String| {
-        if options.assume_instant && !monitor.cancelled() {
-            format!("--assume-instant requires a certified logical domain: {error}; introduce an explicit independently sampled memory/clock boundary, split noncombinational domains, or compile without --assume-instant")
-        } else {
-            error
+        if monitor.cancelled() { error } else {
+            format!("logical piston admission failed: {error}; use --assume-instant only to waive construction certification; data, sampling and feedback must remain unambiguous")
         }
     };
     let mut programs = Vec::new();
@@ -82,20 +81,7 @@ pub(crate) fn prepare(
         program.output_offset = outputs.len();
         outputs.extend(program.logic.outputs.iter().cloned());
     }
-    let mut boundaries = Boundaries::executable(report, &wires, &sources, &outputs);
-    for program in &programs {
-        if let Some(sequential) = &program.sequential {
-            boundaries.retain_sequential_sources(
-                program
-                    .logic
-                    .sources
-                    .iter()
-                    .copied()
-                    .chain(program.logic.outputs.iter().map(|output| output.consumer)),
-            );
-            boundaries.own_sampled_wires(sequential.sensors.iter().map(|sensor| sensor.pos));
-        }
-    }
+    let boundaries = Boundaries::executable(report, &wires, &sources, &outputs);
     let input = CompilerInput {
         world,
         bounds: report.bounds,
@@ -148,24 +134,6 @@ fn prepare_region(
         return Err("instant compilation cancelled".into());
     }
     let generators: Vec<_> = report.pistons.iter().filter(|p| !p.piston.sticky).collect();
-    if !options.assume_instant
-        && (generators.len() > 1
-            || generators
-                .iter()
-                .any(|p| p.piston.facing != BlockFacing::Down)
-            || report.pistons.iter().any(|p| !p.piston.extended)
-            || report.pistons.iter().any(|p| {
-                p.diagnostics
-                    .contains(&crate::redpiler::analysis::PistonDiagnostic::MissingOrMismatchedHead)
-            })
-            || report.recognition.iter().any(|r| {
-                r.failures.iter().any(|failure| {
-                    matches!(failure, crate::redpiler::analysis::families::RecognitionFailure::AdditionalResetWriter { .. })
-                })
-            }))
-    {
-        return super::sequential::prepare(world, report, ticks, options, &monitor);
-    }
     if generators.len() > 1 {
         let positions: Vec<_> = generators.iter().take(8).map(|p| p.pos).collect();
         return Err(format!("{} clock/notification generators, starting at {positions:?}, have no certified common sampling transaction", generators.len()));
@@ -182,9 +150,6 @@ fn prepare_region(
     for (group, descriptor) in report.payload_groups.iter().enumerate() {
         for &actor in &descriptor.members {
             actor_groups[actor] = group;
-        }
-        if !options.assume_instant {
-            continue;
         }
         let first = &report.pistons[descriptor.members[0]];
         let far = first.head.offset(first.piston.facing.into());
@@ -218,28 +183,16 @@ fn prepare_region(
     let mut observer_pistons = FxHashSet::default();
     let mut owned = FxHashSet::default();
     for (id, p) in report.pistons.iter().enumerate() {
-        let retained = options.assume_instant && !p.piston.extended
+        let retained = !p.piston.extended
             && (p.piston.sticky || is_clock(id));
         let far = p.head.offset(p.piston.facing.into());
         if (!p.piston.sticky && !is_clock(id))
             || (!p.piston.extended && !retained)
-            || (!options.assume_instant && !p.powered)
-            || p.piston.facing == BlockFacing::Up
+            || (!options.assume_instant && p.piston.facing == BlockFacing::Up)
         {
-            let requirement = if options.assume_instant {
-                "a settled stationary sticky logical mechanism or a certified observer clock"
-            } else {
-                "a ready, powered, extended sticky mechanism"
-            };
-            return Err(format!(
-                "piston at {:?} needs {requirement}", p.pos
-            ));
+            return Err(format!("piston at {:?} needs a settled stationary sticky logical mechanism or an identified sampling generator", p.pos));
         }
-        let payload = if options.assume_instant {
-            logical_payloads[actor_groups[id]]
-        } else {
-            world.get_block(p.payload)
-        };
+        let payload = logical_payloads[actor_groups[id]];
         if !super::outputs::supported_payload(payload) && !is_clock(id) {
             return Err(format!("unsupported payload minecraft:{} at {:?}, owned by piston {:?}; expected a redstone block or supported fixed conductor",payload.get_name(),p.payload,p.pos));
         }
@@ -304,8 +257,7 @@ fn prepare_region(
         });
         let adjacent_source = inputs.sources.iter().any(|s| {
             let d = s.source - p.pos;
-            (!options.assume_instant
-                || !matches!(s.kind, crate::redpiler::analysis::topology::SourceKind::MobilePayload { group } if group == actor_groups[id]))
+            !matches!(s.kind, crate::redpiler::analysis::topology::SourceKind::MobilePayload { group } if group == actor_groups[id])
                 && d.x.abs() + d.y.abs() + d.z.abs() == 1
         });
         if !power_notification && !adjacent_source && !is_memory(id) {
@@ -364,47 +316,21 @@ fn prepare_region(
         .copied()
         .filter(|pos| !reset_owners.contains(pos))
         .collect();
-    if options.assume_instant {
-        let memory = clocked.as_ref().map_or_else(FxHashSet::default, |clock| {
-            clock.memory.iter().map(|cell| cell.actor).collect()
-        });
-        owned.extend(super::observer::certify(
-            world,
-            report,
-            ticks,
-            &monitor,
-            &unowned_observers,
-            &memory,
-        )?);
-        reset_owners.extend(unowned_observers);
-    } else if let Some(pos) = unowned_observers.first() {
-        return Err(format!("observer at {pos:?} has no certified instant reset owner; ordinary movement/notification mechanisms require another runtime contract"));
-    }
+    let memory = clocked.as_ref().map_or_else(FxHashSet::default, |clock| {
+        clock.memory.iter().map(|cell| cell.actor).collect()
+    });
+    owned.extend(super::observer::certify(
+        world, report, ticks, &monitor, &unowned_observers, &memory,
+    )?);
+    reset_owners.extend(unowned_observers);
     if ticks.iter().any(|t| owned.contains(&t.pos)) {
         return Err("instant entry contains pending reset or movement work".into());
     }
-    let logic = if options.assume_instant {
-        logic::extract_ideal_with_state(
-            world,
-            report,
-            &monitor,
-            clocked.as_ref().map_or_else(FxHashSet::default, |c| {
-                c.memory.iter().map(|m| m.actor).collect()
-            }),
-            clocked.as_ref().map(|c| c.clock),
-            &owned,
-        )?
-    } else if let Some(clocked) = &clocked {
-        logic::extract_with_state(
-            world,
-            report,
-            &monitor,
-            clocked.memory.iter().map(|m| m.actor).collect(),
-            Some(clocked.clock),
-        )?
-    } else {
-        logic::extract(world, report, &monitor)?
-    };
+    let logic = logic::extract_ideal_with_state(
+        world, report, &monitor,
+        clocked.as_ref().map_or_else(FxHashSet::default, |c| c.memory.iter().map(|m| m.actor).collect()),
+        clocked.as_ref().map(|c| c.clock), &owned,
+    )?;
     if let Some(clocked) = &clocked {
         clocked.validate(world, &logic)?;
     }
@@ -427,65 +353,18 @@ fn prepare_region(
             exposure.source, exposure.consumer
         ));
     }
-    if !options.assume_instant
-        && logic
-            .evaluate(|pos| crate::redstone::source_strength(world.get_block(pos), world, pos))
-            .iter()
-            .any(|&f| f)
-    {
-        return Err("instant network is not in its ready electrical state".into());
-    }
     let mut aliases = Vec::new();
     for (id, group) in report.payload_groups.iter().enumerate() {
-        // A shared far payload disappears if any owner fires. Physical mode
-        // hides near ownership; logical mode selects the first firing owner.
+        // A shared payload uses deterministic first-owner near occupancy.
         let p = &report.pistons[group.members[0]];
-        let far = if options.assume_instant {
-            p.head.offset(p.piston.facing.into())
-        } else {
-            p.payload
-        };
-        let redstone = (if options.assume_instant {
-            logical_payloads[id]
-        } else {
-            world.get_block(p.payload)
-        }) == Block::RedstoneBlock;
+        let far = p.head.offset(p.piston.facing.into());
+        let redstone = logical_payloads[id] == Block::RedstoneBlock;
         for &alias in &group.positions {
             aliases.push((
                 id,
                 alias,
                 alias == far && redstone,
             ));
-        }
-    }
-    let mut shared = vec![false; report.pistons.len()];
-    for group in &report.payload_groups {
-        for &actor in &group.members {
-            shared[actor] = group.members.len() > 1;
-        }
-    }
-    for output in &logic.outputs {
-        let mut pending: Vec<_> = output.terms.iter().map(|term| term.guard).collect();
-        let mut seen = FxHashSet::default();
-        while let Some(root) = pending.pop() {
-            if monitor.cancelled() {
-                return Err("instant compilation cancelled".into());
-            }
-            if !seen.insert(root) {
-                continue;
-            }
-            if let Some(decision) = logic.arena.decision(root) {
-                if let super::boolean::Variable::Geometry {
-                    actor,
-                    part: super::boolean::GeometryPart::NearPayload,
-                } = decision.variable
-                {
-                    if shared[actor] && !options.assume_instant {
-                        return Err(format!("consumer at {:?} observes near ownership of a shared payload; only shared far occupancy has a compiled protocol", output.consumer));
-                    }
-                }
-                pending.extend([decision.low, decision.high]);
-            }
         }
     }
     owned.extend(logic.wires.iter().copied());
@@ -515,23 +394,23 @@ fn prepare_region(
         return Err("instant compilation cancelled".into());
     }
     let mut pistons = report.pistons.clone();
-    if options.assume_instant {
-        // Extraction/restoration use canonical near/far addresses; saved pose
-        // remains on each descriptor so runtime can seed retained logical bits.
-        for (actor, piston) in pistons.iter_mut().enumerate() {
-            let far = piston.head.offset(piston.piston.facing.into());
-            if !piston.piston.extended {
-                template.push((far, logical_payloads[actor_groups[actor]], None));
-            }
-            piston.payload = far;
+    // Canonical addresses are independent of saved pose; runtime seeds memory
+    // from the descriptor before exporting a settled logical snapshot.
+    for (actor, piston) in pistons.iter_mut().enumerate() {
+        let far = piston.head.offset(piston.piston.facing.into());
+        if !piston.piston.extended {
+            template.push((far, logical_payloads[actor_groups[actor]], None));
         }
+        piston.payload = far;
     }
     Ok(PreparedInstant {
-        sequential: None,
-        assume_instant: options.assume_instant,
         pistons,
         output_offset: 0,
         clocked,
+        independent_memory: Vec::new(),
+        sampling: Vec::new(),
+        generators: Vec::new(),
+        payloads: logical_payloads,
         controls: Vec::new(),
         logic,
         groups: report
@@ -542,7 +421,6 @@ fn prepare_region(
         aliases,
         owned,
         template,
-        bounds: report.bounds,
         logical_tick: world.piston_state().logical_tick,
     })
 }

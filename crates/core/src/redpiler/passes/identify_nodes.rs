@@ -14,7 +14,7 @@ use crate::world::{for_each_block_optimized, World};
 use mchprs_blocks::block_entities::BlockEntity;
 use mchprs_blocks::blocks::Block;
 use mchprs_blocks::BlockPos;
-use rustc_hash::FxHashMap;
+use rustc_hash::{FxHashMap, FxHashSet};
 
 pub(super) fn run<W: World>(
     graph: &mut CompileGraph,
@@ -25,6 +25,14 @@ pub(super) fn run<W: World>(
     let plot = input.world;
 
     let mut nodes_by_position = FxHashMap::default();
+    let mut watched = FxHashSet::default();
+    for_each_block_optimized(plot, input.bounds.0, input.bounds.1, |pos| {
+        if !input.boundaries.is_some_and(|boundaries| boundaries.is_owned(pos)) {
+            if let Block::Observer { observer } = plot.get_block(pos) {
+                watched.insert(pos.offset(observer.facing.into()));
+            }
+        }
+    });
 
     if let Some(boundaries) = input.boundaries {
         for (group, payload) in boundaries.report.payload_groups.iter().enumerate() {
@@ -75,8 +83,34 @@ pub(super) fn run<W: World>(
         if input.boundaries.is_some_and(|b| b.is_owned(pos)) {
             return;
         }
-        for_pos(graph, &mut nodes_by_position, ignore_wires, plot, pos);
+        for_pos(graph, &mut nodes_by_position, ignore_wires && !watched.contains(&pos), plot, pos);
     });
+
+    for pos in &watched {
+        if let Some(&id) = nodes_by_position.get(pos) {
+            graph[id].is_output = true;
+        }
+    }
+    for node in graph.node_weights() {
+        let NodeType::Observer { watched } = node.ty else { continue };
+        let observer = node.block.unwrap().0;
+        let (min, max) = input.bounds;
+        if watched.x < min.x || watched.x > max.x
+            || watched.y < min.y || watched.y > max.y
+            || watched.z < min.z || watched.z > max.z
+        {
+            return Err(super::GraphError::UnsupportedObserverWatch {
+                observer, watched, reason: "the watched cell is outside the compiled selection",
+            });
+        }
+        if input.boundaries.is_some_and(|boundaries| boundaries.is_owned(watched))
+            && matches!(plot.get_block(watched), Block::RedstoneWire { .. })
+        {
+            return Err(super::GraphError::UnsupportedObserverWatch {
+                observer, watched, reason: "conditional logical dust needs an explicit compiled observation of its strength and shape",
+            });
+        }
+    }
 
     if let Some(boundaries) = input.boundaries {
         for node in graph.node_weights_mut() {
@@ -159,6 +193,7 @@ fn for_pos<W: World>(
                 | NodeType::Lamp
                 | NodeType::NoteBlock { .. }
                 | NodeType::CommandBlock { .. }
+                | NodeType::Observer { .. }
         );
     if ignore_wires && ty == NodeType::Wire && !(is_input | is_output) {
         return;
@@ -212,6 +247,10 @@ fn identify_block<W: World>(
         Block::RedstoneTorch { lit, .. } | Block::RedstoneWallTorch { lit, .. } => {
             (NodeType::Torch, NodeState::simple(lit))
         }
+        Block::Observer { observer } => (
+            NodeType::Observer { watched: pos.offset(observer.facing.into()) },
+            NodeState::simple(observer.powered),
+        ),
         Block::RedstoneWire { wire } => (NodeType::Wire, NodeState::with_strength(wire.power)),
         Block::StoneButton { button } => (NodeType::Button, NodeState::simple(button.powered)),
         Block::RedstoneLamp { lit } => (NodeType::Lamp, NodeState::simple(lit)),

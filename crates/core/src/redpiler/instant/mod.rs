@@ -11,4 +11,5 @@ pub(crate) mod outputs;
 pub(crate) mod observer;
 pub(crate) mod program;
 pub(crate) mod regions;
+pub(crate) mod sampling;
 pub(crate) mod sequential;

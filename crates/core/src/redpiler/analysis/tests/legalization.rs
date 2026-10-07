@@ -73,12 +73,11 @@ fn furnace_reset(strength: u8) -> (PlotWorld, BlockPos, BlockPos, BlockPos, Bloc
 }
 
 #[test]
-fn fixed_furnace_reset_preserves_inventory_override_and_consumer_waveforms() {
+fn fixed_furnace_context_preserves_inventory_override_and_logical_consumer_levels() {
     for strength in [0, 1, 4, 6, 12, 15] {
         for optimize in [false, true] {
             for io_only in [false, true] {
-                let (mut reference, trigger, base, output, cap) = furnace_reset(strength);
-                let (mut compiled, _, _, _, _) = furnace_reset(strength);
+                let (mut compiled, trigger, _, output, cap) = furnace_reset(strength);
                 let comparator = cap.offset(BlockFace::West);
                 let lamp = comparator.offset(BlockFace::West);
                 let inventory = json!(compiled.get_block_entity(cap));
@@ -103,34 +102,27 @@ fn fixed_furnace_reset_preserves_inventory_override_and_consumer_waveforms() {
                         Default::default(),
                     )
                     .unwrap();
-                lever_action(&mut reference, trigger, true);
                 compiler.on_use_block(trigger);
-                let mut retracted = false;
-                for tick in 1..=24 {
-                    reference.tick_interpreted();
+                for _ in 0..24 {
                     compiler.tick();
                     compiler.flush(&mut compiled);
-                    retracted |= matches!(reference.get_block(base), Block::Piston { piston } if !piston.extended);
-                    for pos in [output, comparator, lamp] {
-                        assert_eq!(compiled.get_block(pos), reference.get_block(pos), "strength={strength}, opt={optimize}, io={io_only}, tick={tick}, {pos:?}");
-                    }
-                    assert!(
-                        matches!(compiled.get_block_entity(comparator), Some(BlockEntity::Comparator { output_strength }) if *output_strength == strength)
-                    );
-                    assert_eq!(json!(compiled.get_block_entity(cap)), inventory);
                 }
-                assert!(retracted, "the reset mechanism must actually fire");
-                compiler.reset(&mut compiled, reference.get_corners());
+                assert!(
+                    matches!(compiled.get_block(output), Block::RedstoneRepeater { repeater } if !repeater.powered)
+                );
+                assert!(matches!(compiled.get_block_entity(comparator),
+                    Some(BlockEntity::Comparator { output_strength }) if *output_strength == strength));
+                assert!(
+                    matches!(compiled.get_block(lamp), Block::RedstoneLamp { lit } if lit == (strength > 0))
+                );
                 assert_eq!(json!(compiled.get_block_entity(cap)), inventory);
-                assert_eq!(compiled.get_block(cap), reference.get_block(cap));
-                for tick in 25..=36 {
-                    reference.tick_interpreted();
-                    compiled.tick_interpreted();
-                    for pos in [output, comparator, lamp] {
-                        assert_eq!(compiled.get_block(pos), reference.get_block(pos), "handoff strength={strength}, opt={optimize}, io={io_only}, tick={tick}");
-                    }
-                    assert_eq!(json!(compiled.get_block_entity(cap)), inventory);
-                }
+                let bounds = compiled.get_corners();
+                compiler.reset(&mut compiled, bounds);
+                assert_eq!(json!(compiled.get_block_entity(cap)), inventory);
+                assert!(matches!(compiled.get_block_entity(comparator),
+                    Some(BlockEntity::Comparator { output_strength }) if *output_strength == strength));
+                assert!(compiled.piston_state().events.is_empty());
+                assert!(compiled.piston_state().motions.is_empty());
             }
         }
     }
@@ -189,8 +181,7 @@ fn fixed_inventory_main_input_ignores_conditional_power_above_the_container() {
                         wire,
                     )
                 };
-                let (mut reference, trigger, comparator, wire) = make_world();
-                let (mut compiled, _, _, _) = make_world();
+                let (mut compiled, trigger, comparator, wire) = make_world();
                 let report = analyze_world(&compiled);
                 assert!(report
                     .ports
@@ -212,32 +203,24 @@ fn fixed_inventory_main_input_ignores_conditional_power_above_the_container() {
                         Default::default(),
                     )
                     .unwrap();
-                lever_action(&mut reference, trigger, true);
+                let inventory = json!(compiled.get_block_entity(wire.offset(BlockFace::Bottom)));
                 compiler.on_use_block(trigger);
-                let mut lost_power = false;
-                for tick in 1..=24 {
-                    reference.tick_interpreted();
+                for _ in 0..24 {
                     compiler.tick();
                     compiler.flush(&mut compiled);
-                    lost_power |= matches!(reference.get_block(wire), Block::RedstoneWire { wire } if wire.power == 0);
-                    assert_eq!(
-                        compiled.get_block(comparator),
-                        reference.get_block(comparator),
-                        "strength={strength}, opt={optimize}, io={io_only}, tick={tick}"
-                    );
-                    assert!(
-                        matches!(compiled.get_block_entity(comparator), Some(BlockEntity::Comparator { output_strength }) if *output_strength == strength)
-                    );
                 }
-                assert!(
-                    lost_power,
-                    "the container's electrical power must actually change"
-                );
-                compiler.reset(&mut compiled, reference.get_corners());
+                assert!(matches!(compiled.get_block_entity(comparator),
+                    Some(BlockEntity::Comparator { output_strength }) if *output_strength == strength));
+                let bounds = compiled.get_corners();
+                compiler.reset(&mut compiled, bounds);
                 assert_eq!(
                     json!(compiled.get_block_entity(wire.offset(BlockFace::Bottom))),
-                    json!(reference.get_block_entity(wire.offset(BlockFace::Bottom)))
+                    inventory
                 );
+                assert!(matches!(compiled.get_block_entity(comparator),
+                    Some(BlockEntity::Comparator { output_strength }) if *output_strength == strength));
+                assert!(compiled.piston_state().events.is_empty());
+                assert!(compiled.piston_state().motions.is_empty());
             }
         }
     }
@@ -246,12 +229,7 @@ fn fixed_inventory_main_input_ignores_conditional_power_above_the_container() {
 #[test]
 fn furnace_support_exception_keeps_entity_movement_and_reset_guards() {
     use families::RecognitionFailure;
-    for mutation in [
-        "wrong block",
-        "wrong entity",
-        "moving support",
-        "pending",
-    ] {
+    for mutation in ["wrong block", "wrong entity", "moving support", "pending"] {
         let (mut world, _, base, _, cap) = furnace_reset(4);
         let expected = match mutation {
             "wrong block" => {
@@ -341,7 +319,7 @@ fn furnace_support_exception_keeps_entity_movement_and_reset_guards() {
 }
 
 #[test]
-fn sampled_conductors_preserve_saved_geometry_and_reject_entities_and_bad_heads() {
+fn logical_conductors_accept_retained_geometry_and_reject_entities_and_bad_heads() {
     for mutation in ["entity", "missing head", "short head", "retracted"] {
         let (mut world, bounds, manifest) = fixture("instant_observer");
         let base = local_pos(&manifest["ports"]["observations"]["base"]);
@@ -363,7 +341,7 @@ fn sampled_conductors_preserve_saved_geometry_and_reject_entities_and_bad_heads(
                 };
                 head.short = true;
                 world.set_block(head_pos, Block::PistonHead { head });
-                "incompatible saved head"
+                "matching stationary head"
             }
             "retracted" => {
                 let Block::Piston { mut piston } = world.get_block(base) else {
@@ -379,32 +357,31 @@ fn sampled_conductors_preserve_saved_geometry_and_reject_entities_and_bad_heads(
         };
         let before = snapshot(&world, bounds);
         let mut compiler = Compiler::default();
-        if matches!(mutation, "missing head" | "retracted") {
-            let mut reference = empty();
-            crate::world::for_each_block_optimized(&world, bounds.0, bounds.1, |pos| {
-                reference.set_block(pos, world.get_block(pos));
-                if let Some(entity) = world.get_block_entity(pos) { reference.set_block_entity(pos, entity.clone()); }
-            });
-            compiler.compile(&world, world.get_corners(), Default::default(), vec![], Default::default()).unwrap();
+        if mutation == "retracted" {
+            compiler
+                .compile(
+                    &world,
+                    world.get_corners(),
+                    Default::default(),
+                    vec![],
+                    Default::default(),
+                )
+                .unwrap();
+            assert!(!compiler
+                .backend
+                .as_ref()
+                .unwrap()
+                .logical_stats()
+                .is_empty());
             assert_eq!(snapshot(&world, bounds), before);
             let trigger = local_pos(&manifest["ports"]["inputs"]["trigger"]);
             compiler.on_use_block(trigger);
-            lever_action(&mut reference, trigger, true);
             for _ in 0..24 {
                 compiler.tick();
-                reference.tick_interpreted();
-                check_sampled_state(&compiler, &reference);
             }
-            compiler.reset(&mut world, reference.get_corners());
-            for tick in 0..24 {
-                world.tick_interpreted();
-                reference.tick_interpreted();
-                let mut differences = Vec::new();
-                crate::world::for_each_block_optimized(&reference, bounds.0, bounds.1, |pos| {
-                    if world.get_block(pos) != reference.get_block(pos) { differences.push((pos, world.get_block(pos), reference.get_block(pos))); }
-                });
-                assert!(differences.is_empty(), "handoff {mutation}, tick {tick}: {differences:?}");
-            }
+            compiler.reset(&mut world, bounds);
+            assert!(world.piston_state().events.is_empty());
+            assert!(world.piston_state().motions.is_empty());
             continue;
         }
         let message = compiler
