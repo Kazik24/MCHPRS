@@ -24,16 +24,32 @@ pub(crate) fn extract(
         steps: 0, signal_order: Default::default(), output_mode: true,
         terms: Vec::new(), context: Default::default(), memory: Default::default(),
         sequential: true,
+        ideal: false,
         observers: report.observers.iter().enumerate().map(|(i, &pos)| (pos, i)).collect(),
     };
+    extractor.bases.extend(report.pistons.iter().enumerate().map(|(actor, p)| (p.pos, actor)));
     for (group, descriptor) in report.payload_groups.iter().enumerate() {
+        let empty = descriptor.members.iter().all(|&actor| !report.pistons[actor].piston.sticky);
+        let empty_near = empty && descriptor.members.iter().all(|&actor| {
+            let p = &report.pistons[actor];
+            match world.get_block(p.head) {
+                Block::Air => true,
+                Block::PistonHead { head } => p.piston.extended && head.facing == p.piston.facing && !head.sticky && !head.short,
+                _ => false,
+            }
+        });
         for &pos in &descriptor.positions {
             let block = world.get_block(pos);
             let saved_head = descriptor.members.iter().any(|&actor| {
                 let p = &report.pistons[actor];
                 p.head == pos && matches!(block, Block::PistonHead { .. })
             });
-            if block != Block::Air && !supported_payload(block) && !saved_head {
+            // An ordinary empty head does not pull or reach the next base.
+            // Keep that separately owned base as context, rather than material.
+            let stationary_base = empty_near && matches!(block, Block::Piston { .. })
+                && extractor.bases.contains_key(&pos)
+                && !descriptor.members.iter().any(|&actor| report.pistons[actor].head == pos);
+            if block != Block::Air && !supported_payload(block) && !saved_head && !stationary_base {
                 return Err(format!("unsupported sampled payload minecraft:{} at {pos:?}, group {group}", block.get_name()));
             }
         }
@@ -41,9 +57,9 @@ pub(crate) fn extract(
             let block = world.get_block(pos);
             supported_payload(block).then_some(block)
         }).collect();
-        let empty = descriptor.members.iter().all(|&actor| !report.pistons[actor].piston.sticky);
         if payloads.len() != 1 && !(empty && payloads.is_empty()) {
-            return Err(format!("sampled payload group {group} needs one supported payload or an empty ordinary generator; found {}", payloads.len()));
+            let actor = &report.pistons[descriptor.members[0]];
+            return Err(format!("sampled payload group {group} at {:?} needs one supported payload or an empty ordinary generator; found {}", actor.pos, payloads.len()));
         }
         let payload = payloads.first().copied().unwrap_or(Block::Air);
         extractor.payloads.push(payload);
@@ -54,7 +70,6 @@ pub(crate) fn extract(
             if far != home { return Err(format!("sampled payload group at {:?} has multiple far destinations", p.pos)); }
             if payload != Block::Air { extractor.far.insert(far, group); }
             extractor.near.insert(p.head, actor);
-            extractor.bases.insert(p.pos, actor);
             extractor.group_of[actor] = group;
         }
     }
@@ -161,6 +176,7 @@ pub(crate) fn extract(
     let response_count = roots.len();
     roots.extend(outputs.iter().flat_map(|o| o.terms.iter().map(|t| t.guard)));
     roots.extend(sensors.iter().flat_map(|(_, terms, _, shapes)| terms.iter().map(|t| t.guard).chain(shapes.iter().map(|&(guard, _)| guard))));
+    extractor.check()?;
     let arena = extractor.arena.compact(&mut roots);
     let mut guards = roots[response_count..].iter().copied();
     for output in &mut outputs { for term in &mut output.terms { term.guard = guards.next().unwrap(); } }
@@ -172,8 +188,8 @@ pub(crate) fn extract(
     let mut sources: Vec<_> = extractor.sources.into_iter().filter(|pos| !indexed.contains(pos)).collect();
     sources.sort_by_key(|p| (p.y, p.z, p.x));
     Ok(Extraction { payloads: extractor.payloads, sensors,
-        logic: WaveLogic { arena, responses: roots, response_sources: sources.clone(), sources,
-            wires: indexed, consumer_wires: Default::default(), outputs,
+        logic: WaveLogic { arena, responses: roots, response_order: Vec::new(), response_sources: sources.clone(), sources,
+            wires: indexed, consumer_wires: Default::default(), outputs, handoff_wires: Vec::new(),
             follows_payload: vec![false; report.pistons.len()], context: extractor.context },
     })
 }
@@ -183,8 +199,8 @@ fn entry_strength<W: World>(extractor: &Extractor<'_, W>, terms: &[PowerTerm]) -
         Variable::Geometry { actor, part } => {
             let p = &extractor.report.pistons[actor];
             match part {
-                GeometryPart::FarPayload => extractor.world.get_block(p.head.offset(p.piston.facing.into())) == extractor.payloads[extractor.group_of[actor]],
-                GeometryPart::NearPayload => !p.piston.extended && extractor.world.get_block(p.head) == extractor.payloads[extractor.group_of[actor]],
+                GeometryPart::FarPayload => extractor.payloads[extractor.group_of[actor]] != Block::Air && extractor.world.get_block(p.head.offset(p.piston.facing.into())) == extractor.payloads[extractor.group_of[actor]],
+                GeometryPart::NearPayload => extractor.payloads[extractor.group_of[actor]] != Block::Air && !p.piston.extended && extractor.world.get_block(p.head) == extractor.payloads[extractor.group_of[actor]],
                 GeometryPart::Head => matches!(extractor.world.get_block(p.head), Block::PistonHead { .. }),
                 GeometryPart::RetractedBase => !p.piston.extended,
                 GeometryPart::MovingBase => false,

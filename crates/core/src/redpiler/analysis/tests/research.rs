@@ -5,6 +5,7 @@ use std::collections::BTreeMap;
 use std::time::Instant;
 
 mod anpu;
+mod anpu_motion_scope;
 
 #[path = "research/fpu_divider.rs"]
 mod fpu_divider;
@@ -404,13 +405,14 @@ fn bubblesort_import_preserves_full_memory_and_button_protocol() {
 #[ignore = "full CPU sorting protocol; opt-in long execution comparison"]
 fn bubblesort_compiled_sampled_protocol() {
     let cpu = cpus::CPUS[2];
-    for assume_instant in [false, true] {
+    for assume_instant in [false] {
         let mut fixture = manifest("cpu_bubblesort");
         fixture["origin"] = json!([2, 8, 2]);
         let (world, _) = load(&fixture);
         let (mut interpreted, _) = load(&fixture);
         let mut compiler = Compiler::default();
-        compiler.compile(&world, world.get_corners(), CompilerOptions { assume_instant, ..Default::default() }, Vec::new(), Default::default()).unwrap();
+        compiler.compile(&world, world.get_corners(), CompilerOptions { assume_instant, ..Default::default() }, Vec::new(), Default::default(),
+            ).unwrap();
         let words = |compiler: &Compiler| {
             let actors = compiler.backend.as_ref().unwrap().sampled_pistons();
             [7,17,27,37].into_iter().flat_map(|y| (0..16).map(move |row| (y,row))).map(|(y,row)| {
@@ -422,23 +424,31 @@ fn bubblesort_compiled_sampled_protocol() {
         };
         let initial = words(&compiler);
         compiler.on_use_block(cpu.origin + BlockPos::new(150,17,119));
-        lever_action(&mut interpreted, cpu.origin + BlockPos::new(150,17,119), true);
+        lever_action(&mut interpreted, cpu.origin + BlockPos::new(150,17,119), true,
+        );
         for tick in 0..400 {
             compiler.tick();
             interpreted.tick_interpreted();
             let signals: Vec<_> = compiler.backend.as_ref().unwrap().sampled_signals().into_iter().filter_map(|(pos,value)| {
                 let actual = match interpreted.get_block(pos) { Block::RedstoneWire {wire} => wire.power,
-                    Block::Observer {observer} => if observer.powered {15} else {0}, _ => unreachable!() };
+                    Block::Observer {observer} => {
+                            if observer.powered {15} else {0}}
+                        _ => unreachable!() ,
+                    };
                 (value != actual).then_some((pos - cpu.origin, value, actual))
             }).collect();
             if !signals.is_empty() { println!("signals tick {tick}: {signals:?}"); }
             let mut differences: Vec<_> = compiler.backend.as_ref().unwrap().sampled_pistons().into_iter().filter_map(|(pos, (retracted, _))| {
                 let block = match interpreted.get_block(pos) {
-                    Block::MovingPiston { .. } => match interpreted.get_block_entity(pos) { Some(mchprs_blocks::block_entities::BlockEntity::MovingPiston(entity)) => Block::from_id(entity.block_state), _ => unreachable!() },
+                    Block::MovingPiston { .. } => match interpreted.get_block_entity(pos) { Some(mchprs_blocks::block_entities::BlockEntity::MovingPiston(entity,
+                            )) => Block::from_id(entity.block_state), _ => unreachable!() ,
+                        },
                     block => block,
                 };
                 let Block::Piston { piston } = block else { panic!("missing base {pos:?}") };
-                (retracted != !piston.extended).then_some((pos - cpu.origin, retracted, crate::redstone::piston::should_piston_extend(&interpreted, piston.facing, pos)))
+                (retracted != !piston.extended).then_some((pos - cpu.origin, retracted, crate::redstone::piston::should_piston_extend(&interpreted, piston.facing, pos,
+                        ),
+                    ))
             }).collect();
             differences.sort_by_key(|(pos, _, _)| (pos.y,pos.z,pos.x));
             assert!(differences.is_empty(), "tick {tick}: differences {differences:?}");
@@ -459,13 +469,16 @@ fn bubblesort_compiled_sampled_protocol() {
             interpreted.tick_interpreted();
             if std::env::var_os("MCHPRS_CPU_COMPARE_GEOMETRY").is_some() {
                 let signals: Vec<_> = compiler.backend.as_ref().unwrap().sampled_signals().into_iter().filter_map(|(pos, value)| {
-                    let actual = crate::redstone::source_strength(interpreted.get_block(pos), &interpreted, pos);
-                    (value != actual).then_some((pos - cpu.origin, value, actual, interpreted.get_block(pos)))
+                    let actual = crate::redstone::source_strength(interpreted.get_block(pos), &interpreted, pos,
+                        );
+                    (value != actual).then_some((pos - cpu.origin, value, actual, interpreted.get_block(pos),
+                        ))
                 }).take(20).collect();
                 assert!(signals.is_empty(), "signals tick {tick}: {signals:?}");
                 let power: Vec<_> = compiler.backend.as_ref().unwrap().sampled_power().into_iter().filter_map(|(pos, power)| {
                     let piston = analyze_piston_facing(&interpreted, pos);
-                    let actual = crate::redstone::piston::should_piston_extend(&interpreted, piston, pos);
+                    let actual = crate::redstone::piston::should_piston_extend(&interpreted, piston, pos,
+                        );
                     (power != actual).then_some((pos - cpu.origin, power, actual))
                 }).take(20).collect();
                 assert!(power.is_empty(), "power tick {tick}: {power:?}");
@@ -486,18 +499,72 @@ fn bubblesort_compiled_sampled_protocol() {
     }
 }
 
-fn analyze_piston_facing(world: &PlotWorld, pos: BlockPos) -> mchprs_blocks::BlockFacing {
-    match world.get_block(pos) { Block::Piston { piston } => piston.facing, Block::MovingPiston { moving } => moving.facing, _ => panic!("missing base {pos:?}") }
+#[test]
+#[ignore = "large CPU ideal admission diagnostic; does not run the CPU"]
+fn bubblesort_ideal_requires_explicit_sampling_contract() {
+    let mut fixture = manifest("cpu_bubblesort");
+    fixture["origin"] = json!([2, 8, 2]);
+    let (world, _) = load(&fixture);
+    let before = cpus::checkpoint(&world, 0, &[]);
+    let mut compiler = Compiler::default();
+    let error = compiler
+        .compile(
+            &world,
+            world.get_corners(),
+            CompilerOptions {
+                assume_instant: true,
+                ..Default::default()
+            },
+            Vec::new(),
+            Default::default(),
+        )
+        .unwrap_err()
+        .to_string();
+    assert!(
+        error.contains("--assume-instant requires a certified logical domain"),
+        "{error}"
+    );
+    assert!(!compiler.is_active());
+    assert_eq!(cpus::checkpoint(&world, 0, &[]), before);
 }
 
-fn check_sampled_actors(compiler: &Compiler, interpreted: &PlotWorld, origin: BlockPos, tick: usize) {
+fn analyze_piston_facing(world: &PlotWorld, pos: BlockPos) -> mchprs_blocks::BlockFacing {
+    match world.get_block(pos) { Block::Piston { piston } => piston.facing, Block::MovingPiston { moving } => moving.facing, _ => panic!("missing base {pos:?}") ,
+    }
+}
+
+pub(super) fn check_sampled_actors(compiler: &Compiler, interpreted: &PlotWorld, origin: BlockPos, tick: usize,
+) {
+    if std::env::var_os("MCHPRS_CPU_COMPARE_EVENTS").is_some() {
+        let mut sources: Vec<_> = compiler
+            .backend
+            .as_ref()
+            .unwrap()
+            .ordinary_sources()
+            .into_iter()
+            .filter_map(|(pos, value)| {
+                let expected =
+                    crate::redstone::source_strength(interpreted.get_block(pos), interpreted, pos);
+                (value != expected).then_some((pos - origin, value, expected))
+            })
+            .collect();
+        sources.sort_by_key(|(pos, _, _)| (pos.y, pos.z, pos.x));
+        assert!(
+            sources.is_empty(),
+            "ordinary source differences at tick {tick}: {sources:?}"
+        );
+    }
     let mut differences: Vec<_> = compiler.backend.as_ref().unwrap().sampled_pistons().into_iter().filter_map(|(pos, (retracted, _))| {
         let block = match interpreted.get_block(pos) {
-            Block::MovingPiston { .. } => match interpreted.get_block_entity(pos) { Some(mchprs_blocks::block_entities::BlockEntity::MovingPiston(entity)) => Block::from_id(entity.block_state), _ => unreachable!() },
+            Block::MovingPiston { .. } => match interpreted.get_block_entity(pos) { Some(mchprs_blocks::block_entities::BlockEntity::MovingPiston(entity)) => {
+                        Block::from_id(entity.block_state)}
+                    _ => unreachable!() ,
+                },
             block => block,
         };
         let Block::Piston { piston } = block else { panic!("missing base {pos:?}") };
-        (retracted != !piston.extended).then_some((pos - origin, retracted, crate::redstone::piston::should_piston_extend(interpreted, piston.facing, pos)))
+        (retracted != !piston.extended).then_some((pos - origin, retracted, crate::redstone::piston::should_piston_extend(interpreted, piston.facing, pos),
+            ))
     }).collect();
     differences.sort_by_key(|(pos, _, _)| (pos.y,pos.z,pos.x));
     if !differences.is_empty() {
@@ -530,10 +597,47 @@ fn bubblesort_sampled_extraction_probe() {
     let report = analyze_world(&world);
     let regions = crate::redpiler::instant::regions::split(&world, &report, &monitor).unwrap();
     println!("regions: {:?}", regions.iter().map(|r| r.pistons.len()).collect::<Vec<_>>());
+    println!("BubbleSort saved fixture: {}", report.summary());
+    for (region, report) in regions.iter().enumerate() {
+        let empty_sticky: Vec<_> = report
+            .payload_groups
+            .iter()
+            .enumerate()
+            .filter(|(_, group)| {
+                group
+                    .members
+                    .iter()
+                    .any(|&actor| report.pistons[actor].piston.sticky)
+                    && !group.positions.iter().any(|&pos| {
+                        crate::redpiler::instant::outputs::supported_payload(world.get_block(pos))
+                    })
+            })
+            .collect();
+        println!(
+            "BubbleSort region {region}: {} empty groups containing sticky actors",
+            empty_sticky.len()
+        );
+        for &(group, descriptor) in empty_sticky.iter().take(8) {
+            println!(
+                "empty sticky group {group}: actors {:?}, cells {:?}",
+                descriptor
+                    .members
+                    .iter()
+                    .map(|&actor| report.pistons[actor].pos)
+                    .collect::<Vec<_>>(),
+                descriptor
+                    .positions
+                    .iter()
+                    .map(|&pos| (pos, world.get_block(pos)))
+                    .collect::<Vec<_>>()
+            );
+        }
+    }
     let start = Instant::now();
     let extraction = crate::redpiler::instant::logic::sequential::extract(&world, &report, &monitor).unwrap();
     println!("sampled extraction: {:?}, {} decisions, {} sources, {} sensors, {} outputs", start.elapsed(), extraction.logic.arena.nodes.len(), extraction.logic.sources.len(), extraction.sensors.len(), extraction.logic.outputs.len());
-    for (id, p) in report.pistons.iter().enumerate().filter(|(_, p)| p.diagnostics.contains(&super::super::PistonDiagnostic::MissingOrMismatchedHead)) {
+    for (id, p) in report.pistons.iter().enumerate().filter(|(_, p)| {
+        p.diagnostics.contains(&super::super::PistonDiagnostic::MissingOrMismatchedHead)}) {
         let mut pending = vec![extraction.logic.responses[id]];
         let mut visited = FxHashSet::default();
         while let Some(root) = pending.pop() {
@@ -551,7 +655,9 @@ fn bubblesort_sampled_extraction_probe() {
 #[ignore = "read-only FPU expression probe, not executable admission; new output file required"]
 fn capture_fpu_response_extraction() {
     let destination = std::env::var("MCHPRS_PISTON_RESEARCH_OUTPUT").unwrap();
-    let fixture = manifest("fpu_legal");
+    let fixture_name =
+        std::env::var("MCHPRS_PISTON_RESEARCH_FIXTURE").unwrap_or_else(|_| "fpu_legal".into());
+    let fixture = manifest(&fixture_name);
     let (world, _) = load(&fixture);
     let report = analyze_world(&world);
     let mut probes = Vec::new();
@@ -576,8 +682,150 @@ fn capture_fpu_response_extraction() {
         .open(destination)
         .unwrap();
     serde_json::to_writer(std::io::BufWriter::new(file), &json!({"schema_version": 1,
-        "fixture_sha256": fixture["sha256"], "scope": "expression extraction only; entry, ownership and reset admission are bypassed, no backend is activated",
+        "fixture": fixture_name, "fixture_sha256": fixture["sha256"], "scope": "expression extraction only; entry, ownership and reset admission are bypassed, no backend is activated",
         "probes": probes})).unwrap();
+}
+
+#[test]
+#[ignore = "logical source delta diagnostic; explicit new output file required"]
+fn capture_divider_logical_sources() {
+    use crate::redpiler::instant::boolean::Variable;
+    use rustc_hash::{FxHashMap, FxHashSet};
+
+    let destination = std::env::var("MCHPRS_PISTON_RESEARCH_OUTPUT").unwrap();
+    let fixture = manifest("fpu_divider");
+    let (mut world, _) = load(&fixture);
+    let first = origin(&fixture);
+    let report = analyze_world(&world);
+    let options = CompilerOptions {
+        assume_instant: true,
+        ..Default::default()
+    };
+    let (_, programs) = crate::redpiler::instant::program::prepare(
+        &world,
+        &report,
+        &[],
+        &options,
+        Default::default(),
+    )
+    .unwrap();
+    let mut live = FxHashSet::default();
+    let mut regions = Vec::new();
+    for program in &programs {
+        let mut pending = program.logic.responses.clone();
+        let mut visited = FxHashSet::default();
+        for output in &program.logic.outputs {
+            pending.extend(output.terms.iter().map(|term| term.guard));
+            live.extend(output.terms.iter().filter_map(|term| term.source));
+        }
+        while let Some(root) = pending.pop() {
+            if !visited.insert(root) {
+                continue;
+            }
+            if let Some(decision) = program.logic.arena.decision(root) {
+                if let Variable::Signal { pos, .. } = decision.variable {
+                    live.insert(pos);
+                }
+                pending.extend([decision.low, decision.high]);
+            }
+        }
+        regions.push(json!({"responses": program.logic.responses.len(),
+            "response_sources": program.logic.response_sources, "all_sources_including_handoff": program.logic.sources}));
+    }
+    let torch = first + BlockPos::new(3, 22, 44);
+    let owner = first + BlockPos::new(3, 21, 43);
+    let support = torch.offset(BlockFace::Bottom);
+    let monitor = crate::redpiler::TaskMonitor::default();
+    let mobile = report
+        .payload_groups
+        .iter()
+        .enumerate()
+        .flat_map(|(id, group)| group.positions.iter().map(move |&pos| (pos, id)))
+        .collect();
+    let mut topology = crate::redpiler::analysis::topology::Topology::new(
+        &world,
+        report.bounds,
+        &monitor,
+        1_000_000,
+        mobile,
+    );
+    let support_inputs = topology.signal_inputs(support, BlockFace::Top).unwrap();
+    let owner_id = report
+        .pistons
+        .iter()
+        .position(|piston| piston.pos == owner)
+        .unwrap();
+    let structure = json!({"torch": block_state(&world, torch, first),
+        "support": block_state(&world, support, first), "owner": block_state(&world, owner, first),
+        "owner_recognition": report.recognition[owner_id], "support_inputs": support_inputs});
+    drop(programs);
+    let mut compiler = Compiler::default();
+    compiler
+        .compile(
+            &world,
+            world.get_corners(),
+            options,
+            vec![],
+            Default::default(),
+        )
+        .unwrap();
+    let trigger = first + local_pos(&fixture["protocol"]["trigger"]) - BASE;
+    let sources = |compiler: &Compiler| -> FxHashMap<BlockPos, u8> {
+        compiler
+            .backend
+            .as_ref()
+            .unwrap()
+            .ordinary_sources()
+            .into_iter()
+            .filter(|(pos, _)| live.contains(pos))
+            .collect()
+    };
+    let mut previous = sources(&compiler);
+    let mut samples = Vec::new();
+    let mut tick = 0;
+    for (phase, count, toggle) in [
+        ("initialize_on", 24, false),
+        ("active_off", 128, true),
+        ("held_off", 64, false),
+        ("reset_on", 64, true),
+    ] {
+        if toggle {
+            compiler.on_use_block(trigger);
+        }
+        for _ in 0..count {
+            compiler.tick_with_world(&mut world);
+            tick += 1;
+            let current = sources(&compiler);
+            let mut changes: Vec<_> = current
+                .iter()
+                .filter_map(|(&pos, &power)| {
+                    let old = previous.get(&pos).copied();
+                    (old != Some(power)).then_some((pos, old, power))
+                })
+                .collect();
+            changes.sort_by_key(|(pos, _, _)| (pos.y, pos.z, pos.x));
+            if !changes.is_empty() {
+                samples.push(json!({"phase": phase, "tick": tick, "changes": changes,
+                    "logical_stats": compiler.backend.as_ref().unwrap().logical_stats()}));
+            }
+            previous = current;
+        }
+        compiler.flush(&mut world);
+        samples.push(json!({"phase": phase, "tick": tick, "boundary": true,
+            "observations": observations(&world, &fixture),
+            "logical_stats": compiler.backend.as_ref().unwrap().logical_stats()}));
+    }
+    let mut live: Vec<_> = live.into_iter().collect();
+    live.sort_by_key(|pos| (pos.y, pos.z, pos.x));
+    let file = std::fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(destination)
+        .unwrap();
+    serde_json::to_writer(std::io::BufWriter::new(file), &json!({"schema_version": 1,
+        "fixture": "fpu_divider", "fixture_sha256": fixture["sha256"],
+        "scope": "compiled logical response/output source deltas; handoff-only and unrelated ordinary sources excluded",
+        "structure": structure, "regions": regions, "live_sources": live, "samples": samples})).unwrap();
 }
 
 fn memory_pos(address: u8, bit: u8) -> BlockPos {
@@ -666,9 +914,49 @@ fn fpu_strict_import_preserves_the_947_analog_reference_values() {
 }
 
 #[test]
+fn fixed_fpu_compiles_with_and_without_optimization() {
+    let fixture = manifest("fpu_legal");
+    let (world, _) = load(&fixture);
+    for assume_instant in [false, true] {
+        for optimize in [false, true] {
+            let mut compiler = Compiler::default();
+            compiler
+                .compile(
+                    &world,
+                    world.get_corners(),
+                    CompilerOptions {
+                        optimize,
+                        assume_instant,
+                        ..Default::default()
+                    },
+                    vec![],
+                    Default::default(),
+                )
+                .unwrap();
+            assert!(compiler.is_active());
+            assert!(compiler.warnings().is_empty());
+            if assume_instant {
+                assert!(!compiler
+                    .backend
+                    .as_ref()
+                    .unwrap()
+                    .logical_stats()
+                    .is_empty());
+                assert!(compiler
+                    .backend
+                    .as_ref()
+                    .unwrap()
+                    .sampled_pistons()
+                    .is_empty());
+            }
+        }
+    }
+}
+
+#[test]
 fn fpu_material_legalization_preserves_the_author_confirmed_invalid_entries() {
     use families::RecognitionFailure;
-    let (world, _) = load(&manifest("fpu_legal"));
+    let (world, _) = load(&manifest("fpu_legal_legacy"));
     let report = analyze_world(&world);
     let base = BASE + BlockPos::new(123, 8, 41);
     let actor = report.pistons.iter().position(|p| p.pos == base).unwrap();
@@ -757,13 +1045,32 @@ fn rilax_material_diagnostics_and_compiled_sampling_preserve_memory_transactions
         let (mut compiled, _) = load(&manifest("rilax_memory_bank_bud"));
         let (mut reference, _) = load(&manifest("rilax_memory_bank_bud"));
         let mut compiler = Compiler::default();
-        compiler.compile(&compiled, compiled.get_corners(), CompilerOptions { assume_instant, optimize: true, io_only: true, ..Default::default() }, vec![], Default::default()).unwrap();
+        let admission = compiler.compile(&compiled, compiled.get_corners(), CompilerOptions { assume_instant, optimize: true, io_only: true, ..Default::default() }, vec![], Default::default(),
+        );
+        if assume_instant {
+            let error = admission.unwrap_err().to_string();
+            assert!(
+                error.contains("--assume-instant requires a certified logical domain"),
+                "{error}"
+            );
+            assert!(!compiler.is_active());
+            assert_eq!(snapshot(&compiled, bounds), before);
+            continue;
+        }
+        admission.unwrap();
         assert_eq!(snapshot(&compiled, bounds), before);
         for (selected, value) in [(0u8, 0xa5u8), (2, 0x3c), (7, 0xff)] {
-            let data_controls: Vec<_> = (0..8).map(|bit| (BASE + BlockPos::new(14,14,25-2*bit), value & (1 << bit) != 0)).collect();
-            let write_address: Vec<_> = (0..3).map(|bit| (BASE + BlockPos::new(19,12,3+2*bit), selected & (1 << bit) != 0)).collect();
-            let read_address: Vec<_> = (0..3).map(|bit| (BASE + BlockPos::new(20,7,3+2*bit), selected & (1 << bit) != 0)).collect();
-            for controls in [write_address, data_controls, vec![(BASE + WRITE_ENABLE, true)], vec![(BASE + WRITE_ENABLE, false)], read_address, vec![(BASE + READ_ENABLE, true)], vec![(BASE + READ_ENABLE, false)]] {
+            let data_controls: Vec<_> = (0..8).map(|bit| {
+                    (BASE + BlockPos::new(14,14,25-2*bit), value & (1 << bit) != 0,
+                    )}).collect();
+            let write_address: Vec<_> = (0..3).map(|bit| {
+                    (BASE + BlockPos::new(19,12,3+2*bit), selected & (1 << bit) != 0,
+                    )}).collect();
+            let read_address: Vec<_> = (0..3).map(|bit| {
+                    (BASE + BlockPos::new(20,7,3+2*bit), selected & (1 << bit) != 0,
+                    )}).collect();
+            for controls in [write_address, data_controls, vec![(BASE + WRITE_ENABLE, true)], vec![(BASE + WRITE_ENABLE, false)], read_address, vec![(BASE + READ_ENABLE, true)], vec![(BASE + READ_ENABLE, false)],
+            ] {
                 for (pos, powered) in controls {
                     let Block::Lever { lever } = reference.get_block(pos) else { unreachable!() };
                     if lever.powered != powered { compiler.on_use_block(pos); }
@@ -776,7 +1083,8 @@ fn rilax_material_diagnostics_and_compiled_sampling_preserve_memory_transactions
                 }
             }
             let actors = compiler.backend.as_ref().unwrap().sampled_pistons();
-            let stored = (0..8).fold(0u8, |word, bit| word | (u8::from(actors[&memory_pos(selected, bit)].0) << bit));
+            let stored = (0..8).fold(0u8, |word, bit| {
+                word | (u8::from(actors[&memory_pos(selected, bit)].0) << bit)});
             assert_eq!(stored, value);
         }
         compiler.reset(&mut compiled, reference.get_corners());
@@ -1062,5 +1370,235 @@ fn rilax_pico_and_game_steps_agree_at_completed_tick_boundaries() {
             observations(&game, &fixture),
             "aligned tick {tick}"
         );
+    }
+}
+#[test]
+#[ignore = "BubbleSort compilation, idle and active performance probe; run with --release"]
+fn bubblesort_compiled_performance_probe() {
+    let cpu = cpus::CPUS[2];
+    let mut fixture = manifest("cpu_bubblesort");
+    fixture["origin"] = json!([2, 8, 2]);
+    let (mut world, _) = load(&fixture);
+    let mut compiler = Compiler::default();
+    let start = Instant::now();
+    compiler
+        .compile(
+            &world,
+            world.get_corners(),
+            Default::default(),
+            Vec::new(),
+            Default::default(),
+        )
+        .unwrap();
+    let compile_time = start.elapsed();
+    assert!(compiler.is_active());
+    compiler.flush(&mut world);
+    let idle_actors = compiler.backend.as_ref().unwrap().sampled_pistons();
+    let idle_signals = compiler.backend.as_ref().unwrap().sampled_signals();
+    let start = Instant::now();
+    for _ in 0..10_000 {
+        compiler.tick_with_world(&mut world);
+    }
+    let idle_time = start.elapsed();
+    assert_eq!(
+        compiler.backend.as_ref().unwrap().sampled_pistons(),
+        idle_actors
+    );
+    assert_eq!(
+        compiler.backend.as_ref().unwrap().sampled_signals(),
+        idle_signals
+    );
+    compiler.flush(&mut world);
+    let start = Instant::now();
+    for _ in 0..100 {
+        compiler.flush(&mut world);
+    }
+    let flush_time = start.elapsed();
+
+    let load = cpu.origin + BlockPos::new(150, 17, 119);
+    let reset = cpu.origin + BlockPos::new(166, 7, 158);
+    let run = cpu.origin + cpu.start;
+    compiler.on_use_block(load);
+    for _ in 0..400 {
+        compiler.tick_with_world(&mut world);
+    }
+    compiler.on_use_block(reset);
+    for _ in 0..100 {
+        compiler.tick_with_world(&mut world);
+    }
+    compiler.on_use_block(run);
+    let start = Instant::now();
+    for _ in 0..1_000 {
+        compiler.tick_with_world(&mut world);
+    }
+    let active_time = start.elapsed();
+
+    // Observation and hashing are deliberately outside measured execution.
+    compiler.flush(&mut world);
+    assert!(matches!(world.get_block(load), Block::Lever { lever } if lever.powered));
+    for pos in [reset, run] {
+        assert!(matches!(world.get_block(pos), Block::StoneButton { button } if !button.powered));
+    }
+    let backend = compiler.backend.as_ref().unwrap();
+    let mut actors: Vec<_> = backend.sampled_pistons().into_iter().collect();
+    let mut signals = backend.sampled_signals();
+    assert_eq!(actors.len(), 16_561);
+    actors.sort_by_key(|(pos, _)| (pos.y, pos.z, pos.x));
+    signals.sort_by_key(|(pos, _)| (pos.y, pos.z, pos.x));
+    println!(
+        "BubbleSort performance: {}",
+        json!({
+            "compile_ms": compile_time.as_secs_f64() * 1000.0,
+            "idle_ns_per_tick": idle_time.as_secs_f64() * 1e9 / 10_000.0,
+            "idle_tps": 10_000.0 / idle_time.as_secs_f64(),
+            "stable_flush_ns_per_call": flush_time.as_secs_f64() * 1e9 / 100.0,
+            "active_ns_per_tick": active_time.as_secs_f64() * 1e9 / 1_000.0,
+            "active_tps": 1_000.0 / active_time.as_secs_f64(),
+            "actors": actors.len(), "signals": signals.len(),
+            "actor_sha256": format!("{:x}", Sha256::digest(serde_json::to_vec(&actors).unwrap())),
+            "signal_sha256": format!("{:x}", Sha256::digest(serde_json::to_vec(&signals).unwrap())),
+        })
+    );
+}
+
+#[test]
+#[ignore = "small build compilation, idle and triggered performance probe; run with --release"]
+fn small_builds_compiled_performance_probe() {
+    for name in ["adder_1bit", "adder_11bits", "counter_basic", "fpu_divider"] {
+        for assume_instant in [false, true] {
+            let (mut world, descriptor) = if name == "fpu_divider" {
+                let descriptor = manifest(name);
+                (load(&descriptor).0, descriptor)
+            } else {
+                let (world, _, descriptor) = fixture(name);
+                (world, descriptor)
+            };
+            let mut compiler = Compiler::default();
+            let start = Instant::now();
+            compiler
+                .compile(
+                    &world,
+                    world.get_corners(),
+                    CompilerOptions {
+                        assume_instant,
+                        ..Default::default()
+                    },
+                    Vec::new(),
+                    Default::default(),
+                )
+                .unwrap();
+            let compile_time = start.elapsed();
+            assert!(compiler.is_active());
+            compiler.flush(&mut world);
+            let sampled = compiler.backend.as_ref().unwrap().sampled_pistons().len();
+            let start = Instant::now();
+            for _ in 0..100_000 {
+                compiler.tick_with_world(&mut world);
+            }
+            let idle_time = start.elapsed();
+            compiler.flush(&mut world);
+            let start = Instant::now();
+            for _ in 0..100 {
+                compiler.flush(&mut world);
+            }
+            let flush_time = start.elapsed();
+
+            let operations = if name == "fpu_divider" {
+                &descriptor["cases"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .find(|case| case["id"] == "enable-cycle")
+                    .unwrap()["steps"]
+            } else {
+                &descriptor["cases"].as_array().unwrap().last().unwrap()["actions"]
+            }
+            .as_array()
+            .unwrap();
+            let launch = if name == "fpu_divider" {
+                operations
+                    .iter()
+                    .position(|op| op["op"] == "lever")
+                    .unwrap()
+            } else {
+                operations
+                    .iter()
+                    .rposition(|op| op["op"] == "lever")
+                    .unwrap()
+            };
+            // Divider's falling edge runs its clock; the later rising edge stops it.
+            for operation in &operations[..=launch] {
+                if operation["op"] == "lever" {
+                    let pos = local_pos(&operation["pos"]) - BASE + origin(&descriptor);
+                    let Block::Lever { lever } = world.get_block(pos) else {
+                        panic!("missing {name} control at {pos:?}");
+                    };
+                    if lever.powered != operation["powered"].as_bool().unwrap() {
+                        compiler.on_use_block(pos);
+                        compiler.flush(&mut world);
+                    }
+                } else if let Some(ticks) = operation["advance"]
+                    .as_u64()
+                    .or_else(|| operation["ticks"].as_u64())
+                {
+                    for _ in 0..ticks {
+                        compiler.tick_with_world(&mut world);
+                    }
+                    compiler.flush(&mut world);
+                }
+            }
+            let start = Instant::now();
+            for _ in 0..20_000 {
+                compiler.tick_with_world(&mut world);
+            }
+            let triggered_time = start.elapsed();
+
+            // Publication and output inspection are outside both execution timings.
+            compiler.flush(&mut world);
+            let ports = if name == "fpu_divider" {
+                &descriptor["observations"]
+            } else {
+                &descriptor["ports"]["observations"]
+            };
+            let output_blocks: BTreeMap<_, _> = ports
+                .as_object()
+                .unwrap()
+                .iter()
+                .map(|(port, positions)| {
+                    let positions: Vec<_> = if positions[0].is_number() {
+                        vec![positions]
+                    } else {
+                        positions.as_array().unwrap().iter().collect()
+                    };
+                    (
+                        port,
+                        positions
+                            .into_iter()
+                            .map(|pos| {
+                                world.get_block_raw(local_pos(pos) - BASE + origin(&descriptor))
+                            })
+                            .collect::<Vec<_>>(),
+                    )
+                })
+                .collect();
+            let backend = compiler.backend.as_ref().unwrap();
+            let mut actors: Vec<_> = backend.sampled_pistons().into_iter().collect();
+            let mut signals = backend.sampled_signals();
+            actors.sort_by_key(|(pos, _)| (pos.y, pos.z, pos.x));
+            signals.sort_by_key(|(pos, _)| (pos.y, pos.z, pos.x));
+            println!(
+                "small build performance: {}",
+                json!({
+                    "fixture": name, "assume_instant": assume_instant,
+                    "adapter": if sampled > 0 { "sampled" } else { "wave_or_clock" },
+                    "compile_ms": compile_time.as_secs_f64() * 1000.0,
+                    "idle_tps": 100_000.0 / idle_time.as_secs_f64(),
+                    "stable_flush_ns_per_call": flush_time.as_secs_f64() * 1e9 / 100.0,
+                    "triggered_window_tps": 20_000.0 / triggered_time.as_secs_f64(),
+                    "actors": actors.len(), "signals": signals.len(), "output_blocks": output_blocks,
+                    "state_sha256": format!("{:x}", Sha256::digest(serde_json::to_vec(&(&output_blocks, actors, signals)).unwrap())),
+                })
+            );
+        }
     }
 }

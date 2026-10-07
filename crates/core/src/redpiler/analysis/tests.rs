@@ -2,6 +2,8 @@ use super::*;
 mod legalization;
 mod outputs;
 mod regions;
+mod ideal;
+mod observer_logical;
 mod research;
 use crate::plot::worldedit::{load_schematic, paste_clipboard};
 use crate::plot::{PlotWorld, PLOT_WIDTH};
@@ -1237,12 +1239,8 @@ fn unrelated_ordinary_nodes_keep_working_in_a_compiled_piston_plot() {
 }
 
 #[test]
-fn unsupported_storage_and_shared_reset_boundaries_fail_transactionally() {
-    for name in [
-        "and_3",
-        "bud_noninstantinputs",
-        "or_interpreter_illigal",
-    ] {
+fn uncertified_instant_boundaries_fail_transactionally() {
+    for name in ["and_3", "or_interpreter_illigal", "bud_noninstantinputs"] {
         let (world, bounds, _) = fixture(name);
         let before = snapshot(&world, bounds);
         let mut compiler = Compiler::default();
@@ -1253,11 +1251,13 @@ fn unsupported_storage_and_shared_reset_boundaries_fail_transactionally() {
             Vec::new(),
             Default::default(),
         );
-        assert!(
-            result.is_err(),
-            "{name} needs an additional runtime contract"
-        );
+        let error = result.unwrap_err().to_string();
+        if name != "bud_noninstantinputs" {
+            assert!(error.contains("certified instant reset owner")
+                || error.contains("neither a certified observer reset nor a proven payload-following response"), "{name}: {error}");
+        }
         assert!(!compiler.is_active());
+        assert!(compiler.current_flags().is_none());
         assert_eq!(snapshot(&world, bounds), before, "{name}");
     }
 }

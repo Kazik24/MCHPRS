@@ -78,6 +78,9 @@ impl<'a> Boundaries<'a> {
         );
         result.internals.extend(report.observers.iter().copied());
         result.retained.extend(sources.iter().copied());
+        // Extracted live sources outrank a provisional reset-family label.
+        // Otherwise identify_nodes removes a source that the plan must bind.
+        result.internals.retain(|pos| !result.retained.contains(pos));
         result
     }
 

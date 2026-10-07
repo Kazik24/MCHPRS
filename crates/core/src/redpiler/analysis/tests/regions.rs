@@ -1,6 +1,59 @@
 use super::*;
 
 #[test]
+fn dust_watching_observer_delivers_both_edges_to_owned_wires() {
+    use mchprs_blocks::blocks::{Lever, LeverFace, RedstoneWire};
+    use mchprs_blocks::BlockDirection;
+    let input = BASE.offset(BlockFace::North);
+    let watched = BASE + BlockPos::new(2, 0, 1);
+    let observer = watched.offset(BlockFace::South);
+    let output = observer.offset(BlockFace::South);
+    let build = || {
+        let mut world = empty();
+        world.set_block(BASE, Block::Piston { piston: RedstonePiston { facing: BlockFacing::East, sticky: true, extended: false } });
+        world.set_block(BASE.offset(BlockFace::East), Block::RedstoneBlock);
+        for pos in [input, watched, output] { world.set_block(pos.offset(BlockFace::Bottom), Block::Stone {}); }
+        world.set_block(input, Block::Lever { lever: Lever::new(LeverFace::Floor, BlockDirection::North, false) });
+        for pos in [watched, output] { world.set_block(pos, Block::RedstoneWire { wire: RedstoneWire::default() }); }
+        world.set_block(observer, Block::Observer { observer: RedstoneObserver { facing: BlockFacing::North, powered: false } });
+        world
+    };
+    for assume_instant in [false, true] {
+        let mut interpreted = build();
+        let compiled = build();
+        let mut compiler = Compiler::default();
+        let admission = compiler.compile(&compiled, compiled.get_corners(), CompilerOptions { assume_instant, ..Default::default() }, vec![], Default::default());
+        if assume_instant {
+            let error = admission.unwrap_err().to_string();
+            assert!(error.contains("--assume-instant requires a certified logical domain"), "{error}");
+            assert!(!compiler.is_active());
+            continue;
+        }
+        admission.unwrap();
+        assert_eq!(compiler.backend.as_ref().unwrap().sampled_pistons().len(), 1);
+        let mut pulsed = false;
+        for tick in 0..24 {
+            if tick == 0 || tick == 12 {
+                compiler.on_use_block(input);
+                lever_action(&mut interpreted, input, tick == 0);
+            }
+            compiler.tick();
+            interpreted.tick_interpreted();
+            for (pos, value) in compiler.backend.as_ref().unwrap().sampled_signals() {
+                let expected = crate::redstone::source_strength(interpreted.get_block(pos), &interpreted, pos);
+                assert_eq!(value, expected, "tick {tick}, position {pos:?}, assume_instant={assume_instant}");
+                pulsed |= pos == observer && value > 0;
+            }
+        }
+        assert!(pulsed);
+    }
+    let mut unsupported = build();
+    unsupported.set_block(BASE + BlockPos::new(20, 0, 0), Block::Observer { observer: RedstoneObserver { facing: BlockFacing::North, powered: false } });
+    let error = Compiler::default().compile(&unsupported, unsupported.get_corners(), Default::default(), vec![], Default::default()).unwrap_err().to_string();
+    assert!(error.contains("no supported region owner"), "{error}");
+}
+
+#[test]
 fn unsupported_ordinary_payload_is_rejected_instead_of_becoming_empty() {
     for assume_instant in [false, true] {
         let mut world = empty();
@@ -10,7 +63,27 @@ fn unsupported_ordinary_payload_is_rejected_instead_of_becoming_empty() {
         let before = snapshot(&world, bounds);
         let mut compiler = Compiler::default();
         let error = compiler.compile(&world, world.get_corners(), CompilerOptions { assume_instant, ..Default::default() }, vec![], Default::default()).unwrap_err().to_string();
-        assert!(error.contains("unsupported sampled payload minecraft:furnace"), "{error}");
+        assert!(if assume_instant { error.contains("--assume-instant requires a certified logical domain") }
+            else { error.contains("unsupported sampled payload minecraft:furnace") }, "{error}");
+        assert!(!compiler.is_active());
+        assert_eq!(snapshot(&world, bounds), before);
+    }
+}
+
+#[test]
+fn ordinary_payload_cannot_treat_an_occupied_far_base_as_empty_context() {
+    for assume_instant in [false, true] {
+        let mut world = empty();
+        let base = Block::Piston { piston: RedstonePiston { facing: BlockFacing::East, sticky: false, extended: false } };
+        world.set_block(BASE, base);
+        world.set_block(BASE.offset(BlockFace::East), Block::RedstoneBlock);
+        world.set_block(BASE + BlockPos::new(2, 0, 0), base);
+        let bounds = (BASE, BASE + BlockPos::new(4, 0, 0));
+        let before = snapshot(&world, bounds);
+        let mut compiler = Compiler::default();
+        let error = compiler.compile(&world, world.get_corners(), CompilerOptions { assume_instant, ..Default::default() }, vec![], Default::default()).unwrap_err().to_string();
+        assert!(if assume_instant { error.contains("--assume-instant requires a certified logical domain") }
+            else { error.contains("unsupported sampled payload minecraft:piston") }, "{error}");
         assert!(!compiler.is_active());
         assert_eq!(snapshot(&world, bounds), before);
     }
@@ -32,13 +105,28 @@ fn sampled_extension_destination_does_not_resample_quasi_powered_memory() {
         world.set_block(lever, Block::Lever { lever: mchprs_blocks::blocks::Lever::new(mchprs_blocks::blocks::LeverFace::Floor, mchprs_blocks::BlockDirection::North, false) });
         assert!(crate::redstone::piston::should_piston_extend(&world, BlockFacing::Down, memory));
         let mut compiler = Compiler::default();
-        compiler.compile(&world, world.get_corners(), CompilerOptions { assume_instant, ..Default::default() }, vec![], Default::default()).unwrap();
+        let admission = compiler.compile(&world, world.get_corners(), CompilerOptions { assume_instant, ..Default::default() }, vec![], Default::default());
+        if assume_instant {
+            let error = admission.unwrap_err().to_string();
+            assert!(error.contains("--assume-instant requires a certified logical domain"), "{error}");
+            assert!(!compiler.is_active());
+            continue;
+        }
+        admission.unwrap();
+        let idle = compiler.backend.as_ref().unwrap().sampled_pistons();
+        for _ in 0..20 {
+            compiler.tick();
+            world.tick_interpreted();
+            assert_eq!(compiler.backend.as_ref().unwrap().sampled_pistons(), idle);
+        }
         compiler.on_use_block(lever);
         lever_action(&mut world, lever, true);
         for tick in 0..6 {
             compiler.tick();
             world.tick_interpreted();
             let actors = compiler.backend.as_ref().unwrap().sampled_pistons();
+            let Block::Piston { piston } = world.get_block(source) else { unreachable!() };
+            assert_eq!(actors[&source].0, !piston.extended, "source tick {tick}, assume={assume_instant}");
             assert_eq!(actors[&memory].0, false, "memory tick {tick}, assume={assume_instant}");
             assert!(matches!(world.get_block(memory), Block::Piston { piston } if piston.extended));
         }

@@ -148,20 +148,23 @@ Each region then selects a representation before extraction:
 
 | Condition | Preparation path |
 | --- | --- |
-| More than one ordinary generator, an ordinary generator not facing down, any retracted actor, missing/mismatched saved head, or an additional reset writer | Sampled sequential |
+| More than one ordinary generator, an ordinary generator not facing down, any retracted actor, missing/mismatched saved head, or an additional reset writer | Sampled sequential without `--assume-instant`; otherwise require a logical certificate or reject |
 | Other supported ready geometry | Acyclic response, optionally recognized clock and memory |
 
 This is the dispatch in
 [`program::prepare_region`](../crates/core/src/redpiler/instant/program.rs),
-not a general try-all-compilers fallback. An acyclic extraction error remains
-an error. Within each path, moving-context entities and destructive moving
+which falls back from failed wave preparation to the sequential adapter in
+physical mode. Logical mode never publishes that fallback. Within each path,
+moving-context entities and destructive moving
 attachments are rejected; smaller selections must provide dependency context.
 For a full isolated plot, sequential extraction permits outside reads as air.
 
 The ready path additionally checks supported reset ownership, required
 notifications, pending owned work and visible reset effects. Physical mode
 requires the ready electrical response and appropriate return protocol;
-logical mode deliberately relaxes physical reset requirements. Specialized
+logical mode certifies a pure response domain rather than its physical reset
+pulse. It still validates heads, payloads, electrical/update coupling, owned
+storage boundaries and acyclic dependencies. Specialized
 clock recognition keeps memory actors explicit instead of treating stored data
 as an acyclic feedback edge. Use current code and the
 [compiled model](REDPILER_MODEL.md) for branch-specific behavior rather than
@@ -204,7 +207,9 @@ ordered binary decisions with false/true terminal IDs 0/1. Equal branches
 collapse, identical decisions share an ID, conjunction and inverse results are
 cached, and actuator substitution rebuilds through conditional selection to
 retain ordering. Final compaction keeps only decisions reachable from response
-roots and output guards, dropping temporary decisions and construction caches.
+roots, output guards and requested logical restoration paths, dropping temporary
+decisions and construction caches. Ideal preparation also extracts guarded
+dust strengths for deterministic handoff without electrical update propagation.
 This simplifies equivalent Boolean functions; it does not prove physical
 timing, update order or safe materialization.
 

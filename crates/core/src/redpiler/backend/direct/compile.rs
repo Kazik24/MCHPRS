@@ -254,6 +254,16 @@ pub fn compile(
                 &backend.nodes,
             )?);
         }
+        backend.instant_dirty = vec![true; backend.instant.len()];
+        for (region, runtime) in backend.instant.iter().enumerate() {
+            for source in runtime.source_nodes() {
+                backend.instant_dependencies.entry(source).or_default().push(region);
+            }
+        }
+        for regions in backend.instant_dependencies.values_mut() {
+            regions.sort_unstable();
+            regions.dedup();
+        }
     }
 
     // Create a mapping from block pos to backend NodeId

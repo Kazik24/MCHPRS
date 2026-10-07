@@ -144,9 +144,11 @@ runtime, a recognized clock/memory runtime, or a sampled sequential runtime:
   heads, or additional reset writers. It can represent state and feedback
   without expanding an entire circuit into one acyclic function.
 
-`--assume-instant` changes the acyclic response and clock/memory adapters. The
-sequential adapter is selected first and retains notification ordering and
-availability deadlines with either flag setting.
+`--assume-instant` selects a separate logical executor for certified acyclic
+responses and clock/memory banks. It caches compiled decisions by input
+dependency, holds memory until an explicit sampling event and commits a bank
+atomically. Regions requiring the sequential adapter are rejected with a
+boundary diagnostic; the logical flag never silently runs physical movement.
 
 The physical response-wave adapter assumes prepared inputs and a declared
 launch/reset protocol, including stable inputs during its reset episode.
@@ -158,9 +160,9 @@ delivered samples and local transition state.
 These are admission and execution algorithms, not fixture-name recognizers.
 Both restrict payloads and moving attachments to what their representation can
 preserve. An unsupported arrangement returns a diagnostic rather than silently
-running physical piston code inside the compiled tick loop. The branch is
-selected before extraction; rejection of an acyclic dependency cycle does not
-automatically retry the sequential path.
+running physical piston code inside the compiled tick loop. Without the logical
+flag, a failed wave preparation can fall back to the sequential adapter.
+With the logical flag, ambiguous feedback remains an error.
 
 [`Boundaries`](../crates/core/src/redpiler/instant/boundary.rs) removes region
 internals from ordinary identification, retains graph sources required for
@@ -193,8 +195,9 @@ the world, and restores comparator entities. This has path-specific behavior:
   private interpreter world from saved context, launch inputs, memory and
   bounded launch actions. Replay is confined to handoff, and ordinary live
   graph values remain owned by the backend.
-- Logical acyclic regions write current stationary geometry and stored bits
-  directly, with dormant reset observers.
+- Logical acyclic regions write stationary geometry and committed bits directly,
+  with dormant reset observers and compiled settled dust values. This creates
+  no movement, reset callbacks or electrical update propagation.
 - Sampled sequential regions write their actual wire, observer, actor and
   payload state and reconstruct incomplete motions, deferred piston events
   and scheduled observer callbacks.
@@ -243,7 +246,7 @@ success is therefore not a substitute for `/rp analyze`'s staged compilation.
 
 | Flag | Meaning |
 | --- | --- |
-| `--assume-instant` | Remove movement/reset timing in acyclic response and clock/memory adapters; sequential and ordinary timing remain |
+| `--assume-instant` | Compile certified logical piston regions and sampled banks; reject unsupported sequential boundaries; preserve ordinary timing |
 | `--optimize`, `-o` | Enable optional graph rewrites and omit ordinary wire displays |
 | `--io-only`, `-i` | Restrict display writes; with optimization, prune removable nodes unrelated to retained interfaces |
 | `--update`, `-u` | Update the world region after reset |

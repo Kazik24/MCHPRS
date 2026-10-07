@@ -1,16 +1,16 @@
 {
   "schema_version": 1,
-  "fixture": "test_data/piston-research/fpu-fixed/fpu_fixed_compilation.schem",
-  "sha256": "7a652a52729fa8850f98dd2f46d8c2cc23171ace0d78670f47212e12763b76cf",
+  "fixture": "test_data/piston-research/FPU_LEGAL.schem",
+  "sha256": "2f8ceb38c0c2092592bd32e83aa3a3ae80fd090d73865f90c9123b8091fad2b3",
   "dimensions": [
     171,
     43,
     107
   ],
   "loader_offset": [
-    2,
+    5,
     38,
-    76
+    74
   ],
   "observations": {
     "output": [
@@ -276,9 +276,9 @@
     ],
     "trigger": [
       [
-        2,
+        1,
         38,
-        81
+        80
       ]
     ]
   },
@@ -658,6 +658,5 @@
         95
       ]
     ]
-  },
-  "supersedes": "test_data/piston-research/fixtures/fpu_legal_legacy.json"
+  }
 }

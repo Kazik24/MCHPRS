@@ -8,6 +8,7 @@ pub(crate) mod clocked;
 pub mod contract;
 pub(crate) mod logic;
 pub(crate) mod outputs;
+pub(crate) mod observer;
 pub(crate) mod program;
 pub(crate) mod regions;
 pub(crate) mod sequential;

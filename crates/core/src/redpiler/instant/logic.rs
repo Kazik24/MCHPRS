@@ -19,11 +19,15 @@ pub(crate) mod sequential;
 pub(crate) struct WaveLogic {
     pub arena: BooleanArena,
     pub responses: Vec<Expr>,
+    /// Dependency order for local logical responses; roots keep actor order.
+    pub response_order: Vec<usize>,
     pub sources: Vec<BlockPos>,
     pub response_sources: Vec<BlockPos>,
     pub wires: FxHashSet<BlockPos>,
     pub consumer_wires: FxHashSet<BlockPos>,
     pub outputs: Vec<OutputPort>,
+    /// Settled logical dust strengths used only when exporting a snapshot.
+    pub handoff_wires: Vec<(BlockPos, Vec<PowerTerm>)>,
     pub follows_payload: Vec<bool>,
     pub context: FxHashSet<BlockPos>,
 }
@@ -38,18 +42,19 @@ impl WaveLogic {
         read: impl Fn(BlockPos) -> u8,
         memory: impl Fn(usize) -> bool,
     ) -> Vec<bool> {
-        self.responses
-            .iter()
-            .map(|&root| {
-                self.arena.evaluate(root, |variable| match variable {
-                    Variable::Signal { pos, threshold, .. } => read(pos) > threshold,
-                    Variable::Actuator(_) | Variable::Geometry { .. } | Variable::Observer(_) | Variable::WireDot(_) => {
-                        unreachable!("final program has no provisional actuator variables")
-                    }
-                    Variable::Memory(actor) => memory(actor),
-                })
-            })
-            .collect()
+        let mut values = vec![false; self.responses.len()];
+        for index in 0..self.responses.len() {
+            let actor = self.response_order.get(index).copied().unwrap_or(index);
+            values[actor] = self.arena.evaluate(self.responses[actor], |variable| match variable {
+                Variable::Signal { pos, threshold, .. } => read(pos) > threshold,
+                Variable::Actuator(actor) => values[actor],
+                Variable::Geometry { .. } | Variable::Observer(_) | Variable::WireDot(_) => {
+                    unreachable!("response contains unsupported physical state variables")
+                }
+                Variable::Memory(actor) => memory(actor),
+            });
+        }
+        values
     }
 }
 
@@ -73,6 +78,7 @@ struct Extractor<'a, W: World> {
     context: FxHashSet<BlockPos>,
     memory: FxHashSet<usize>,
     sequential: bool,
+    ideal: bool,
     observers: FxHashMap<BlockPos, usize>,
 }
 
@@ -91,7 +97,34 @@ pub(crate) fn extract_with_state(
     memory: FxHashSet<usize>,
     clock: Option<usize>,
 ) -> Result<WaveLogic, String> {
-    let actor_limit = 1024 * monitor.budget_multiplier();
+    extract_with_options(world, report, monitor, memory, clock, None)
+}
+
+pub(crate) fn extract_ideal_with_state(
+    world: &impl World,
+    report: &AnalysisReport,
+    monitor: &TaskMonitor,
+    memory: FxHashSet<usize>,
+    clock: Option<usize>,
+    owned_handoff: &FxHashSet<BlockPos>,
+) -> Result<WaveLogic, String> {
+    extract_with_options(world, report, monitor, memory, clock, Some(owned_handoff))
+}
+
+fn extract_with_options(
+    world: &impl World,
+    report: &AnalysisReport,
+    monitor: &TaskMonitor,
+    memory: FxHashSet<usize>,
+    clock: Option<usize>,
+    owned_handoff: Option<&FxHashSet<BlockPos>>,
+) -> Result<WaveLogic, String> {
+    let handoff = owned_handoff.is_some();
+    let actor_limit = if handoff {
+        crate::redpiler::analysis::AnalysisLimits::for_budget(monitor.budget_multiplier()).max_pistons
+    } else {
+        1024 * monitor.budget_multiplier()
+    };
     if report.pistons.len() > actor_limit {
         return Err(format!("instant actor budget exceeded ({actor_limit})"));
     }
@@ -115,6 +148,7 @@ pub(crate) fn extract_with_state(
         context: Default::default(),
         memory,
         sequential: false,
+        ideal: handoff,
         observers: Default::default(),
     };
     for (group, descriptor) in report.payload_groups.iter().enumerate() {
@@ -138,9 +172,9 @@ pub(crate) fn extract_with_state(
         extractor.payloads.push(payload);
         for &member in &descriptor.members {
             let p = &report.pistons[member];
-            if !p.piston.extended
+            if (!p.piston.extended && !handoff)
                 || (!p.piston.sticky && Some(member) != clock)
-                || world.get_block(p.payload) != payload
+                || (!handoff && world.get_block(p.payload) != payload)
             {
                 return Err(format!(
                     "piston at {:?} is not a ready single-payload mechanism",
@@ -148,7 +182,10 @@ pub(crate) fn extract_with_state(
                 ));
             }
             if !empty_clock {
-                extractor.far.insert(p.payload, group);
+                let far = if handoff {
+                    p.head.offset(p.piston.facing.into())
+                } else { p.payload };
+                extractor.far.insert(far, group);
             }
             extractor.near.insert(p.head, member);
             extractor.bases.insert(p.pos, member);
@@ -180,9 +217,15 @@ pub(crate) fn extract_with_state(
         .filter_map(|(id, &count)| (count == 0).then_some(Reverse(id)))
         .collect();
     let mut resolved = vec![None; responses.len()];
+    let mut response_order = Vec::with_capacity(responses.len());
     while let Some(Reverse(actor)) = ready.pop() {
-        let root = extractor.arena.substitute(responses[actor], &resolved);
+        // Logical execution follows DAG edges instead of expanding every
+        // dependency into a global BDD, whose width can grow exponentially.
+        let root = if handoff { responses[actor] } else {
+            extractor.arena.substitute(responses[actor], &resolved)
+        };
         resolved[actor] = Some(root);
+        response_order.push(actor);
         for &target in &fanout[actor] {
             waiting[target] -= 1;
             if waiting[target] == 0 {
@@ -198,7 +241,7 @@ pub(crate) fn extract_with_state(
             .filter_map(|(id, value)| value.is_none().then_some(report.pistons[id].pos))
             .collect();
         return Err(format!(
-            "instant power dependencies contain a cycle at {unresolved:?}"
+            "instant power dependencies contain a cycle at {unresolved:?}; feedback must cross an explicit independently sampled memory/clock boundary"
         ));
     }
     let mut blocks = Vec::new();
@@ -294,6 +337,41 @@ pub(crate) fn extract_with_state(
             outputs.push(output);
         }
     }
+    let mut handoff_wires = Vec::new();
+    if handoff {
+        let mut internals = crate::redpiler::analysis::families::reset_internals(&report.recognition);
+        internals.extend(owned_handoff.unwrap().iter().copied());
+        let mut positions: Vec<_> = wires
+            .iter()
+            .chain(&consumer_wires)
+            .chain(&internals)
+            .copied()
+            .filter(|&pos| matches!(world.get_block(pos), Block::RedstoneWire { .. }))
+            .collect();
+        positions.sort_by_key(|pos| (pos.y, pos.z, pos.x));
+        positions.dedup();
+        for pos in positions {
+            extractor.terms.clear();
+            extractor.walk_wires(usize::MAX, FALSE, VecDeque::from([(pos, 0, TRUE)]))?;
+            let mut terms = std::mem::take(&mut extractor.terms);
+            for term in &mut terms {
+                if let Some(source) = term.source.filter(|source| internals.contains(source)) {
+                    // Ideal execution does not run the reset protocol. Its
+                    // internal sources retain their saved presentation only
+                    // for handoff; this never specializes a live response.
+                    let strength =
+                        redstone::source_strength(world.get_block(source), world, source).min(15);
+                    term.source = None;
+                    term.attenuation = term.attenuation.saturating_add(15 - strength);
+                }
+            }
+            terms.retain(|term| term.attenuation < 15 && term.guard != FALSE);
+            extractor
+                .sources
+                .extend(terms.iter().filter_map(|term| term.source));
+            handoff_wires.push((pos, terms));
+        }
+    }
     extractor.wires = wires;
     extractor.check()?;
     let mut sources: Vec<_> = extractor.sources.into_iter().collect();
@@ -305,6 +383,11 @@ pub(crate) fn extract_with_state(
             .iter()
             .flat_map(|output| output.terms.iter().map(|term| term.guard)),
     );
+    responses.extend(
+        handoff_wires
+            .iter()
+            .flat_map(|(_, terms)| terms.iter().map(|term| term.guard)),
+    );
     let arena = extractor.arena.compact(&mut responses);
     let mut guards = responses[response_count..].iter().copied();
     for output in &mut outputs {
@@ -312,15 +395,22 @@ pub(crate) fn extract_with_state(
             term.guard = guards.next().unwrap();
         }
     }
+    for (_, terms) in &mut handoff_wires {
+        for term in terms {
+            term.guard = guards.next().unwrap();
+        }
+    }
     responses.truncate(response_count);
     Ok(WaveLogic {
         arena,
         responses,
+        response_order,
         sources,
         response_sources,
         wires: extractor.wires,
         consumer_wires,
         outputs,
+        handoff_wires,
         follows_payload,
         context: extractor.context,
     })
@@ -337,7 +427,7 @@ impl<W: World> Extractor<'_, W> {
         self.steps += 1;
         if self.steps > (if self.sequential { 33_554_432 } else { 8_388_608 }) * self.monitor.budget_multiplier()
             || self.arena.exhausted
-            || self.signal_order.len() > (if self.sequential { 65_536 } else { 64 }) * self.monitor.budget_multiplier()
+            || self.signal_order.len() > (if self.sequential || self.ideal { 65_536 } else { 64 }) * self.monitor.budget_multiplier()
         {
             return Err(format!("instant conditional geometry budget exceeded ({} steps, {} sources, {} decisions)", self.steps, self.signal_order.len(), self.arena.nodes.len()));
         }
@@ -407,6 +497,9 @@ impl<W: World> Extractor<'_, W> {
             {
                 return Block::Air;
             }
+            if self.ideal {
+                return self.payloads[group];
+            }
         }
         if let Some(&owner) = self.near.get(&pos) {
             let group = self.group_of[owner];
@@ -419,12 +512,22 @@ impl<W: World> Extractor<'_, W> {
                 // the response wave; settled near occupancy belongs to reset.
                 return Block::Air;
             }
+            if self.ideal {
+                return Block::PistonHead {
+                    head: self.report.pistons[owner].piston.extend(true).into(),
+                };
+            }
         }
         if let Some(&owner) = self.bases.get(&pos) {
             if self.group_of[owner] != self.own_group(actor) && fired(owner) {
                 let mut piston = self.report.pistons[owner].piston;
                 piston.extended = false;
                 return Block::Piston { piston };
+            }
+            if self.ideal {
+                return Block::Piston {
+                    piston: self.report.pistons[owner].piston.extend(true),
+                };
             }
         }
         self.world.get_block(pos)
@@ -489,7 +592,7 @@ impl<W: World> Extractor<'_, W> {
             let empty = self.arena.not(occupied);
             return vec![
                 (self.payloads[self.group_of[owner]], near),
-                (if self.sequential { Block::PistonHead { head: self.report.pistons[owner].piston.into() } } else { self.world.get_block(pos) }, head),
+                (if self.sequential || self.ideal { Block::PistonHead { head: self.report.pistons[owner].piston.extend(true).into() } } else { self.world.get_block(pos) }, head),
                 (Block::Air, empty),
             ];
         }
@@ -508,7 +611,7 @@ impl<W: World> Extractor<'_, W> {
                     },
                     moving,
                 ),
-                (if self.sequential { Block::Piston { piston: self.report.pistons[owner].piston.extend(true) } } else { self.world.get_block(pos) }, extended),
+                (if self.sequential || self.ideal { Block::Piston { piston: self.report.pistons[owner].piston.extend(true) } } else { self.world.get_block(pos) }, extended),
             ];
         }
         vec![(self.world.get_block(pos), TRUE)]

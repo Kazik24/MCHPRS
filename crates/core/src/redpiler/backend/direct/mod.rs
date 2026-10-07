@@ -48,9 +48,15 @@ pub struct DirectBackend {
     noteblock_info: Vec<(BlockPos, Instrument, u32)>,
     command_far_comparators: FxHashMap<NodeId, Vec<NodeId>>,
     instant: Vec<instant::Runtime>,
+    instant_dependencies: FxHashMap<NodeId, Vec<usize>>,
+    instant_dirty: Vec<bool>,
 }
 
 impl DirectBackend {
+    #[cfg(test)]
+    pub(crate) fn logical_stats(&self) -> Vec<(u64, u64, Vec<(BlockPos, bool)>)> {
+        self.instant.iter().filter_map(|runtime| runtime.logical_stats()).collect()
+    }
     #[cfg(test)]
     pub(crate) fn sampled_pistons(&self) -> FxHashMap<BlockPos, (bool, bool)> {
         self.instant.iter().flat_map(|runtime| runtime.sampled_pistons()).map(|(pos, retracted, settled)| (pos, (retracted, settled))).collect()
@@ -61,6 +67,15 @@ impl DirectBackend {
     }
     #[cfg(test)]
     pub(crate) fn sampled_sources(&self) -> Vec<(BlockPos,u8)> { self.instant.iter().flat_map(|r|r.sampled_sources(&self.nodes)).collect() }
+    #[cfg(test)]
+    pub(crate) fn ordinary_sources(&self) -> Vec<(BlockPos, u8)> {
+        self.blocks.iter().enumerate().filter_map(|(id, entry)| {
+            let (pos, block) = (*entry)?;
+            matches!(block, Block::RedstoneTorch { .. } | Block::RedstoneWallTorch { .. }
+                | Block::RedstoneRepeater { .. } | Block::RedstoneComparator { .. })
+                .then_some((pos, self.nodes[self.nodes.get(id)].output_power))
+        }).collect()
+    }
     #[cfg(test)]
     pub(crate) fn sampled_geometry(&self) -> Vec<(BlockPos,Block)> { self.instant.iter().flat_map(|r|r.sampled_geometry()).collect() }
     #[cfg(test)]
@@ -159,15 +174,17 @@ impl DirectBackend {
         {
             return;
         }
-        let runtimes = std::mem::take(&mut self.instant);
-        for runtime in &runtimes {
+        let mut runtimes = std::mem::take(&mut self.instant);
+        let mut changes = Vec::new();
+        for runtime in &mut runtimes {
             if runtime.output_depends_on(source) {
-                for (node, strength) in runtime.output_changes(&self.nodes) {
-                    self.set_node(node, strength != 0, strength);
-                }
+                changes.extend(runtime.output_changes(&self.nodes));
             }
         }
         self.instant = runtimes;
+        for (node, strength) in changes {
+            if self.nodes[node].output_power != strength { self.set_node(node, strength != 0, strength); }
+        }
     }
 
     fn set_node(&mut self, node_id: NodeId, powered: bool, new_power: u8) {
@@ -177,7 +194,14 @@ impl DirectBackend {
         node.changed = true;
         node.powered = powered;
         node.output_power = new_power;
-        for i in 0..node.updates.len() {
+        let update_count = node.updates.len();
+        let mut runtimes = std::mem::take(&mut self.instant);
+        let mut instant_changes = Vec::new();
+        for &region in self.instant_dependencies.get(&node_id).into_iter().flatten() {
+            instant_changes.extend(runtimes[region].notify_sequential_source(node_id, &self.nodes));
+        }
+        self.instant = runtimes;
+        for i in 0..update_count {
             let node = &self.nodes[node_id];
             let update_link = unsafe { *node.updates.get_unchecked(i) };
             let side = update_link.side();
@@ -212,6 +236,9 @@ impl DirectBackend {
             );
         }
         if old_power != new_power {
+            for &region in self.instant_dependencies.get(&node_id).into_iter().flatten() {
+                self.instant_dirty[region] = true;
+            }
             for &comparator in self
                 .command_far_comparators
                 .get(&node_id)
@@ -230,12 +257,17 @@ impl DirectBackend {
             }
             self.refresh_outputs(node_id);
         }
+        for (id, strength) in instant_changes {
+            if self.nodes[id].output_power != strength {
+                self.set_node(id, strength != 0, strength);
+            }
+        }
     }
 
     pub(crate) fn tick_with_world<W: World>(&mut self, world: &mut W) {
         self.process_command_outputs(world);
         world.piston_state_mut().logical_tick += 1;
-        self.tick();
+        self.tick_after_callbacks(|backend| backend.process_command_outputs(world));
         self.process_command_outputs(world);
     }
 
@@ -287,6 +319,8 @@ impl DirectBackend {
         self.pos_map.clear();
         self.noteblock_info.clear();
         self.command_far_comparators.clear();
+        self.instant_dependencies.clear();
+        self.instant_dirty.clear();
         self.events.clear();
     }
 
@@ -323,23 +357,29 @@ impl DirectBackend {
     }
 
     pub(crate) fn tick(&mut self) {
+        self.tick_after_callbacks(|_| {});
+    }
+
+    fn tick_after_callbacks(&mut self, mut after_callback: impl FnMut(&mut Self)) {
+        for runtime in &mut self.instant { runtime.begin_tick(); }
         let mut queues = self.scheduler.queues_this_tick_move_next();
 
         for node_id in queues.drain_iter() {
             self.tick_node(node_id);
+            after_callback(self);
         }
 
         self.scheduler.end_tick(queues);
         let mut runtimes = std::mem::take(&mut self.instant);
-        for runtime in &mut runtimes {
-            let changes = runtime.advance(&self.nodes);
-            for (id, strength) in changes {
-                if self.nodes[id].output_power != strength {
-                    self.set_node(id, strength != 0, strength);
-                }
-            }
+        let mut changes = Vec::new();
+        for (region, runtime) in runtimes.iter_mut().enumerate() {
+            let sources_changed = std::mem::replace(&mut self.instant_dirty[region], false);
+            changes.extend(runtime.advance(&self.nodes, sources_changed));
         }
         self.instant = runtimes;
+        for (id, strength) in changes {
+            if self.nodes[id].output_power != strength { self.set_node(id, strength != 0, strength); }
+        }
     }
 
     pub(crate) fn flush<W: World>(&mut self, world: &mut W, io_only: bool) {

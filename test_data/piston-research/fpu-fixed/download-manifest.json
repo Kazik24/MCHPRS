@@ -1,0 +1,14 @@
+{
+  "schema_version": 1,
+  "source_host": "urmom",
+  "source_directory": "/srv/mchprs/data/schems",
+  "verified_utc": "2026-10-07T14:41:05.772599+00:00",
+  "files": [
+    {
+      "name": "fpu_fixed_compilation.schem",
+      "bytes": 77983,
+      "sha256": "7a652a52729fa8850f98dd2f46d8c2cc23171ace0d78670f47212e12763b76cf",
+      "modified_utc": "2026-10-07T14:38:59.106615+00:00"
+    }
+  ]
+}

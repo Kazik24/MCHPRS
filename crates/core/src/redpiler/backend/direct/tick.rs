@@ -48,7 +48,7 @@ impl DirectBackend {
                 }
                 let old_strength = node.output_power;
                 let new_strength = calculate_comparator_output(mode, input_power, side_input_power);
-                if new_strength != old_strength {
+                if new_strength != old_strength || mode == ComparatorMode::Compare {
                     self.set_node(node_id, new_strength > 0, new_strength);
                 }
             }

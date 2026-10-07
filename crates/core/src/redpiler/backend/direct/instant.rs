@@ -11,10 +11,12 @@ use mchprs_blocks::blocks::{Block, LeverFace, RedstonePistonHead};
 use mchprs_blocks::{BlockFace, BlockPos};
 use rustc_hash::{FxHashMap, FxHashSet};
 
+mod logical;
 mod sequential;
 
 pub(super) struct Runtime {
     sequential: Option<sequential::State>,
+    logical: Option<logical::State>,
     program: PreparedInstant,
     sources: FxHashMap<BlockPos, NodeId>,
     aliases: Vec<(NodeId, Supply)>,
@@ -25,6 +27,7 @@ pub(super) struct Runtime {
     repeated: bool,
     elapsed: u64,
     ready_inputs: FxHashMap<BlockPos, u8>,
+    idle_initialized: bool,
     launch_inputs: FxHashMap<BlockPos, u8>,
     actions: Vec<(BlockPos, u8)>,
     launch_actions: Vec<(BlockPos, u8)>,
@@ -61,11 +64,13 @@ struct Term {
 #[derive(Clone, Copy)]
 enum Source { Node(NodeId), Wire(usize) }
 
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
 enum Input {
     Source(NodeId),
     Wire(usize),
     WireDot(usize),
     Memory(usize),
+    Response(usize),
     Observer(usize),
     Geometry { actor: usize, part: GeometryPart },
 }
@@ -135,10 +140,9 @@ impl Runtime {
                 supply,
             ));
         }
-        let ready_inputs = sources
-            .iter()
-            .map(|(&pos, &id)| (pos, nodes[id].output_power))
-            .collect();
+        let ready_inputs = if program.assume_instant { FxHashMap::default() } else {
+            sources.iter().map(|(&pos, &id)| (pos, nodes[id].output_power)).collect()
+        };
         let wires: FxHashMap<_,_> = program.sequential.as_ref().map(|p| p.sensors.iter().enumerate().map(|(id,s)| (s.pos,id)).collect()).unwrap_or_default();
         let decisions = program
             .logic
@@ -158,6 +162,7 @@ impl Runtime {
                     {
                         (Input::Memory(actor), 0)
                     }
+                    Variable::Actuator(actor) if program.assume_instant && actor < program.logic.responses.len() => (Input::Response(actor), 0),
                     Variable::Geometry { actor, part } if actor < program.logic.responses.len() => {
                         (Input::Geometry { actor, part }, 0)
                     }
@@ -210,7 +215,7 @@ impl Runtime {
                 actor_groups[actor] = group;
             }
         }
-        let output_sources = outputs
+        let output_sources: FxHashSet<NodeId> = outputs
             .iter()
             .flat_map(|output| output.terms.iter().filter_map(|term| match term.source { Some(Source::Node(id)) => Some(id), _ => None }))
             .collect();
@@ -220,15 +225,44 @@ impl Runtime {
                 memory_actors[cell.actor] = true;
             }
         }
-        program.logic.arena = Default::default();
+        let logical = if program.assume_instant {
+            if program.sequential.is_some() { return Err(BackendError::InvalidInstantProgram); }
+            Some(logical::State::bind(&decisions, program.logic.responses.clone(), &program.logic.response_order,
+                outputs.iter().flat_map(|output| output.terms.iter().map(|term| term.guard)).collect())?)
+        } else { None };
+        if let Some(state) = &logical {
+            if let Some(source) = state.source_nodes().chain(output_sources.iter().copied())
+                .find(|&source| matches!(nodes[source].ty, super::node::NodeType::Wire))
+            {
+                let pos = bindings.iter().find_map(|(&pos, &node)| (node == source).then_some(pos))
+                    .ok_or(BackendError::InvalidInstantProgram)?;
+                return Err(BackendError::LogicalWireInput { pos });
+            }
+        }
+        let physical_actors = if logical.is_some() { 0 } else { program.logic.responses.len() };
+        let fired: Vec<_> = program.pistons.iter()
+            .map(|piston| program.assume_instant && !piston.piston.extended)
+            .collect();
+        let mut memory = vec![false; program.logic.responses.len()];
+        if let Some(clock) = &program.clocked {
+            for cell in &clock.memory {
+                memory[cell.actor] = cell.initial;
+            }
+        }
+        let mut group_fired = vec![false; program.groups.len()];
+        for (actor, &value) in fired.iter().enumerate() {
+            group_fired[actor_groups[actor]] |= value;
+        }
+        if !program.assume_instant { program.logic.arena = Default::default(); }
         let mut runtime = Self {
             sequential: None,
-            fired: vec![false; program.logic.responses.len()],
-            memory: vec![false; program.logic.responses.len()],
-            moving_memory: vec![false; program.logic.responses.len()],
-            replay_memory: vec![false; program.logic.responses.len()],
-            previous_wave_memory: vec![false; program.logic.responses.len()],
-            group_fired: vec![false; program.groups.len()],
+            logical,
+            fired,
+            memory,
+            moving_memory: vec![false; physical_actors],
+            replay_memory: vec![false; physical_actors],
+            previous_wave_memory: vec![false; physical_actors],
+            group_fired,
             program,
             sources,
             aliases,
@@ -237,6 +271,7 @@ impl Runtime {
             elapsed: 0,
             launch_inputs: FxHashMap::default(),
             ready_inputs,
+            idle_initialized: false,
             actions: Vec::new(),
             launch_actions: Vec::new(),
             decisions,
@@ -250,6 +285,7 @@ impl Runtime {
     }
 
     pub(super) fn observe_action(&mut self, pos: BlockPos, strength: u8) {
+        if self.logical.is_some() { return; }
         if !self.sources.contains_key(&pos) {
             return;
         }
@@ -259,12 +295,33 @@ impl Runtime {
         self.actions.push((pos, strength));
     }
 
-    pub(super) fn advance(&mut self, nodes: &Nodes) -> Vec<(NodeId, u8)> {
+    pub(super) fn begin_tick(&mut self) {
         self.elapsed += 1;
+    }
+
+    pub(super) fn source_nodes(&self) -> impl Iterator<Item = NodeId> + '_ {
+        self.logical.iter().flat_map(|state|
+            state.source_nodes().chain(self.output_sources.iter().copied()))
+            .chain(self.sequential.iter().flat_map(|_| self.sources.values().copied()))
+    }
+
+    #[cfg(test)]
+    pub(crate) fn logical_stats(&self) -> Option<(u64, u64, Vec<(BlockPos, bool)>)> {
+        self.logical.as_ref().map(|state| (
+            state.responses.evaluations() + state.outputs.evaluations(), state.samples,
+            self.program.clocked.as_ref().map(|clock| clock.memory.iter()
+                .map(|cell| (cell.base, self.memory[cell.actor])).collect()).unwrap_or_default(),
+        ))
+    }
+
+    pub(super) fn advance(&mut self, nodes: &Nodes, sources_changed: bool) -> Vec<(NodeId, u8)> {
+        if self.logical.is_some() { return self.advance_logical(nodes, sources_changed); }
         if self.sequential.is_some() { return self.advance_sequential(nodes); }
-        if self.program.assume_instant {
-            self.advance_ideal(nodes);
-            return self.supply_changes(nodes);
+        if self.phase == 0 && self.idle_initialized
+            && self.sources.iter().all(|(pos, &id)| self.ready_inputs[pos] == nodes[id].output_power)
+        {
+            if !self.program.assume_instant { self.actions.clear(); }
+            return Vec::new();
         }
         if self.phase == 0 || self.phase == 6 {
             self.sample_responses(nodes);
@@ -292,11 +349,7 @@ impl Runtime {
                 self.phase = 1;
             } else {
                 self.phase = 0;
-                self.ready_inputs = self
-                    .sources
-                    .iter()
-                    .map(|(&pos, &id)| (pos, nodes[id].output_power))
-                    .collect();
+                self.remember_ready_inputs(nodes);
                 self.actions.clear();
             }
         } else {
@@ -317,6 +370,11 @@ impl Runtime {
         self.supply_changes(nodes)
     }
 
+    fn remember_ready_inputs(&mut self, nodes: &Nodes) {
+        for (&pos, &id) in &self.sources { self.ready_inputs.insert(pos, nodes[id].output_power); }
+        self.idle_initialized = true;
+    }
+
     fn sample_responses(&mut self, nodes: &Nodes) {
         for actor in 0..self.fired.len() {
             self.fired[actor] = self.evaluate(self.program.logic.responses[actor], nodes);
@@ -327,33 +385,61 @@ impl Runtime {
         }
     }
 
-    fn advance_ideal(&mut self, nodes: &Nodes) {
-        if let Some(clock) = self.program.clocked.as_ref().map(|c| c.clock) {
-            if !self.evaluate(self.program.logic.responses[clock], nodes) {
-                self.phase = 0;
-                return; // Stored data and the last sampled output remain held.
-            }
-            // Keep the observer clock's six-tick cadence, without movement or
-            // reset pulses. Every cell reads the old bank before atomic commit.
-            if self.phase == 0 || self.phase == 6 {
-                self.sample_responses(nodes);
-                for cell in &self.program.clocked.as_ref().unwrap().memory {
-                    self.memory[cell.actor] = self.fired[cell.actor];
-                }
-                self.phase = 1;
-            } else {
-                self.phase += 1;
-            }
-        } else {
-            self.sample_responses(nodes);
+    fn read_input(&self, input: Input, threshold: u8, nodes: &Nodes) -> bool {
+        match input {
+            Input::Source(source) => nodes[source].output_power > threshold,
+            Input::Wire(id) => self.sequential.as_ref().unwrap().wire_power(id) > threshold,
+            Input::WireDot(id) => self.sequential.as_ref().unwrap().wire_dot(id),
+            Input::Memory(actor) => self.memory[actor],
+            Input::Response(actor) => self.fired[actor],
+            Input::Observer(observer) => self.sequential.as_ref().unwrap().observers[observer].powered,
+            Input::Geometry { actor, part } => self.geometry(actor, part),
         }
     }
 
-    fn supply_changes(&self, nodes: &Nodes) -> Vec<(NodeId, u8)> {
+    fn advance_logical(&mut self, nodes: &Nodes, sources_changed: bool) -> Vec<(NodeId, u8)> {
+        let state = self.logical.as_ref().unwrap();
+        let due = state.next_sample.is_some_and(|deadline| deadline <= self.elapsed);
+        if state.initialized && !sources_changed && !due {
+            return Vec::new();
+        }
+        let mut state = self.logical.take().unwrap();
+        state.responses.capture(|input, threshold| self.read_input(input, threshold, nodes));
+        let sample = if let Some(clock) = self.program.clocked.as_ref().map(|clock| clock.clock) {
+            // Control pose follows the source independently of bank sampling;
+            // stopping the clock preserves memory and the last data response.
+            let active = state.responses.evaluate(clock);
+            self.fired[clock] = active;
+            self.group_fired[self.actor_groups[clock]] = active;
+            if !active {
+                state.next_sample = None;
+                false
+            } else { state.next_sample.is_none() || due }
+        } else { !state.initialized || sources_changed };
+        if sample {
+            // Every response reads the same frozen old bank before any write.
+            for actor in 0..self.fired.len() { self.fired[actor] = state.responses.evaluate(actor); }
+            self.group_fired.fill(false);
+            for (actor, &fired) in self.fired.iter().enumerate() {
+                self.group_fired[self.actor_groups[actor]] |= fired;
+            }
+            if let Some(clock) = &self.program.clocked {
+                for cell in &clock.memory { self.memory[cell.actor] = self.fired[cell.actor]; }
+                #[cfg(test)]
+                { state.samples += 1; }
+                state.next_sample = Some(self.elapsed + 6);
+            }
+        }
+        state.initialized = true;
+        self.logical = Some(state);
+        self.supply_changes(nodes)
+    }
+
+    fn supply_changes(&mut self, nodes: &Nodes) -> Vec<(NodeId, u8)> {
         let mut changes: Vec<_> = self
             .aliases
             .iter()
-            .map(|(id, supply)| {
+            .filter_map(|(id, supply)| {
                 let powered = match *supply {
                     Supply::Sequential { group, pos } => self.sequential.as_ref().unwrap().payload_at(&self.program, group, pos),
                     Supply::Wave {
@@ -372,11 +458,11 @@ impl Runtime {
                             initial && !low
                         }
                     }
-                    Supply::Memory { actor, far } => {
-                        !self.moving_memory[actor] && self.memory[actor] != far
-                    }
+                    Supply::Memory { actor, far } => self.memory[actor] != far
+                        && (self.program.assume_instant || !self.moving_memory[actor]),
                 };
-                (*id, if powered { 15 } else { 0 })
+                let strength = if powered { 15 } else { 0 };
+                (nodes[*id].output_power != strength).then_some((*id, strength))
             })
             .collect();
         changes.extend(self.output_changes(nodes));
@@ -386,6 +472,13 @@ impl Runtime {
     fn geometry(&self, actor: usize, part: GeometryPart) -> bool {
         if let Some(state) = &self.sequential { return state.geometry(&self.program, &self.actor_groups, &self.fired, actor, part); }
         if self.memory_actors[actor] {
+            if self.program.assume_instant {
+                return match part {
+                    GeometryPart::FarPayload | GeometryPart::Head => !self.memory[actor],
+                    GeometryPart::NearPayload | GeometryPart::RetractedBase => self.memory[actor],
+                    GeometryPart::MovingBase => false,
+                };
+            }
             return match part {
                 GeometryPart::FarPayload | GeometryPart::Head => {
                     !self.memory[actor] && !self.moving_memory[actor]
@@ -430,14 +523,7 @@ impl Runtime {
     fn evaluate(&self, mut root: Expr, nodes: &Nodes) -> bool {
         while root > TRUE {
             let decision = &self.decisions[(root - 2) as usize];
-            let high = match decision.input {
-                Input::Source(source) => nodes[source].output_power > decision.threshold,
-                Input::Wire(id) => self.sequential.as_ref().unwrap().wire_power(id) > decision.threshold,
-                Input::WireDot(id) => self.sequential.as_ref().unwrap().wire_dot(id),
-                Input::Memory(actor) => self.memory[actor],
-                Input::Observer(observer) => self.sequential.as_ref().unwrap().observers[observer].powered,
-                Input::Geometry { actor, part } => self.geometry(actor, part),
-            };
+            let high = self.read_input(decision.input, decision.threshold, nodes);
             root = if high { decision.high } else { decision.low };
         }
         root == TRUE
@@ -447,7 +533,23 @@ impl Runtime {
         match source { Source::Node(id) => nodes[id].output_power, Source::Wire(id) => self.sequential.as_ref().unwrap().wire_power(id) }
     }
 
-    pub(super) fn output_changes(&self, nodes: &Nodes) -> Vec<(NodeId, u8)> {
+    pub(super) fn output_changes(&mut self, nodes: &Nodes) -> Vec<(NodeId, u8)> {
+        if let Some(mut state) = self.logical.take() {
+            state.outputs.capture(|input, threshold| self.read_input(input, threshold, nodes));
+            let mut root = 0;
+            let changes = self.outputs.iter().filter_map(|output| {
+                let mut strength = 0;
+                for term in &output.terms {
+                    let guard = root; root += 1;
+                    let candidate = term.source.map_or(15, |source| self.source_power(source, nodes))
+                        .saturating_sub(term.attenuation);
+                    if candidate > strength && state.outputs.evaluate(guard) { strength = candidate; }
+                }
+                (strength != nodes[output.node].output_power).then_some((output.node, strength))
+            }).collect();
+            self.logical = Some(state);
+            return changes;
+        }
         self.outputs
             .iter()
             .filter_map(|output| {
@@ -649,33 +751,42 @@ impl Runtime {
         }
         // Internal reset observers are dormant in the logical snapshot.
         for &(pos, block, _) in &self.program.template {
-            if self.program.owned.contains(&pos) && matches!(block, Block::Observer { .. }) {
-                world.set_block(pos, block);
+            if self.program.owned.contains(&pos) {
+                if let Block::Observer { mut observer } = block {
+                    observer.powered = false;
+                    world.set_block(pos, Block::Observer { observer });
+                }
             }
         }
         world.piston_state_mut().logical_tick =
             self.program.logical_tick.wrapping_add(self.elapsed);
-        for &pos in self
-            .program
-            .logic
-            .wires
-            .iter()
-            .chain(&self.program.logic.consumer_wires)
-        {
+        // All paths were extracted against settled geometry at compilation.
+        // Write their values directly: invoking update() here would create a
+        // physical reset episode which the logical executor never performed.
+        let mut wires = Vec::with_capacity(self.program.logic.handoff_wires.len());
+        for (pos, terms) in &self.program.logic.handoff_wires {
+            let pos = *pos;
             if let Block::RedstoneWire { mut wire } = world.get_block(pos) {
-                wire.power = 0;
-                world.set_block(pos, Block::RedstoneWire { wire });
+                wire = crate::redstone::wire::get_regulated_sides(wire, world, pos);
+                wire.power = terms.iter().filter(|term| {
+                    self.program.logic.arena.evaluate(term.guard, |variable| match variable {
+                        Variable::Geometry { actor, part } => self.geometry(actor, part),
+                        Variable::Memory(actor) => self.memory[actor],
+                        Variable::Signal { pos, threshold, .. } => {
+                            crate::redstone::source_strength(world.get_block(pos), world, pos) > threshold
+                        }
+                        _ => unreachable!("validated logical handoff has no sampled local inputs"),
+                    })
+                }).map(|term| {
+                    term.source.map_or(15, |source| {
+                        crate::redstone::source_strength(world.get_block(source), world, source)
+                    }).saturating_sub(term.attenuation)
+                }).max().unwrap_or(0);
+                wires.push((pos, wire));
             }
         }
-        for &pos in self
-            .program
-            .logic
-            .wires
-            .iter()
-            .chain(&self.program.logic.consumer_wires)
-        {
-            let block = world.get_block(pos);
-            crate::redstone::update(block, world, pos, None);
+        for (pos, wire) in wires {
+            world.set_block(pos, Block::RedstoneWire { wire });
         }
     }
 }

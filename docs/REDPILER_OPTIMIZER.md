@@ -229,6 +229,16 @@ physical aliases and required graph ports from ordinary removal. Timing,
 notifications, memory and reset materialization remain additional contracts;
 decision reduction alone does not validate them.
 
+The certified `--assume-instant` executor lowers these decisions into separately
+cached response and output programs. Input changes invalidate dependent
+decisions; needed branches and shared subexpressions are evaluated once, while
+unchanged regions are skipped using the backend's source dependency index.
+Memory changes only at a recognized sample event, with old-bank reads preceding
+atomic commit. This runtime preparation is independent of `--optimize`, which
+still controls ordinary graph passes. The isolated `mchprs_redpiler_opt` crate
+is not connected to the server, and these decision programs are not a retained
+full-net reference representation.
+
 ## Maintaining correctness
 
 The reusable optimization criterion is observable transition equivalence under

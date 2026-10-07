@@ -1,16 +1,16 @@
 {
   "schema_version": 1,
-  "fixture": "test_data/piston-research/divider-fixed/divider_fpu_fixed.schem",
-  "sha256": "c6f04b0f948a3dc5b05e42e7b1a450edefed522159f421a6dd25f891b6e5297b",
+  "fixture": "test_data/piston-research/fpu-divider/FPU_DIVIDER.schem",
+  "sha256": "19097d93d55e1c759ef37bbb261168eb79e51d86666282f9b2b775275211bbdb",
   "dimensions": [
     73,
     26,
     49
   ],
   "loader_offset": [
-    72,
     1,
-    0
+    23,
+    44
   ],
   "origin": [
     40,
@@ -174,93 +174,93 @@
         48
       ]
     ],
+    "headless": [
+      [
+        14,
+        15,
+        12
+      ],
+      [
+        15,
+        15,
+        12
+      ],
+      [
+        14,
+        15,
+        16
+      ],
+      [
+        15,
+        15,
+        16
+      ],
+      [
+        14,
+        15,
+        20
+      ],
+      [
+        15,
+        15,
+        20
+      ],
+      [
+        14,
+        15,
+        24
+      ],
+      [
+        15,
+        15,
+        24
+      ],
+      [
+        14,
+        15,
+        28
+      ],
+      [
+        15,
+        15,
+        28
+      ],
+      [
+        14,
+        15,
+        32
+      ],
+      [
+        15,
+        15,
+        32
+      ],
+      [
+        14,
+        15,
+        36
+      ],
+      [
+        15,
+        15,
+        36
+      ],
+      [
+        14,
+        15,
+        40
+      ],
+      [
+        15,
+        15,
+        40
+      ]
+    ],
     "trigger": [
       [
         1,
         23,
         44
-      ]
-    ],
-    "restored_heads": [
-      [
-        14,
-        14,
-        12
-      ],
-      [
-        14,
-        14,
-        16
-      ],
-      [
-        14,
-        14,
-        20
-      ],
-      [
-        14,
-        14,
-        24
-      ],
-      [
-        14,
-        14,
-        28
-      ],
-      [
-        14,
-        14,
-        32
-      ],
-      [
-        14,
-        14,
-        36
-      ],
-      [
-        14,
-        14,
-        40
-      ],
-      [
-        15,
-        14,
-        12
-      ],
-      [
-        15,
-        14,
-        16
-      ],
-      [
-        15,
-        14,
-        20
-      ],
-      [
-        15,
-        14,
-        24
-      ],
-      [
-        15,
-        14,
-        28
-      ],
-      [
-        15,
-        14,
-        32
-      ],
-      [
-        15,
-        14,
-        36
-      ],
-      [
-        15,
-        14,
-        40
       ]
     ]
   },
@@ -1704,6 +1704,5 @@
     "prepare": "keep trigger ON while setting A/B, then advance 64 ticks",
     "single_response": "trigger OFF for 4 ticks, then ON and wait 64 ticks",
     "boundary": "all repeaters powered is reset, not a retained arithmetic zero"
-  },
-  "supersedes": "test_data/piston-research/fixtures/fpu_divider_legacy.json"
+  }
 }

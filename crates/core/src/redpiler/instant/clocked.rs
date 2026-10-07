@@ -14,6 +14,7 @@ pub(crate) struct MemoryCell {
     pub base: BlockPos,
     pub near: BlockPos,
     pub far: BlockPos,
+    pub initial: bool,
 }
 
 pub(crate) struct ClockedProgram {
@@ -39,8 +40,12 @@ impl ClockedProgram {
                 continue;
             }
             if let Some(decision) = logic.arena.decision(root) {
-                if !matches!(decision.variable, Variable::Signal { .. }) {
-                    return Err("clock control depends on stored data".into());
+                match decision.variable {
+                    Variable::Signal { .. } => {}
+                    // Ideal extraction retains shared pure response DAG edges;
+                    // validate their inputs rather than treating them as storage.
+                    Variable::Actuator(actor) => pending.push(logic.responses[actor]),
+                    _ => return Err("clock control depends on stored data".into()),
                 }
                 pending.extend([decision.low, decision.high]);
             }
@@ -74,7 +79,10 @@ pub(crate) fn recognize(
         let p = &report.pistons[actor];
         let above = p.pos.offset(BlockFace::Top);
         if p.piston.facing != BlockFacing::Down
-            || !p.piston.extended
+            || (!p.piston.extended
+                && (!assume_instant
+                    || world.get_block(p.head) != Block::Air
+                    || world.get_block(p.head.offset(p.piston.facing.into())) != Block::Air))
             || (!assume_instant && !p.powered)
             || world.get_block(p.payload) != Block::Air
             || !matches!(world.get_block(above),Block::Observer { observer }
@@ -205,7 +213,8 @@ pub(crate) fn recognize(
             actor,
             base: p.pos,
             near: p.head,
-            far: p.payload,
+            far: p.head.offset(p.piston.facing.into()),
+            initial: !p.piston.extended,
         });
     }
     if memory.is_empty() || memory.len() > 64 {

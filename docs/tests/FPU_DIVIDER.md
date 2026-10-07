@@ -1,16 +1,19 @@
 # FPU divider regression
 
 The [regression](../../crates/core/src/redpiler/analysis/tests/research/fpu_divider.rs)
-compares the exact [divider schematic](../../test_data/piston-research/fpu-divider/FPU_DIVIDER.schem)
+compares the active [fixed divider schematic](../../test_data/piston-research/divider-fixed/divider_fpu_fixed.schem)
 under the [versioned protocol](../../test_data/piston-research/fixtures/fpu_divider.json).
-It exercises the general sampled runtime, shared geometry, missing-head entry,
+It exercises the general sampled runtime, shared geometry,
 ordinary output consumers, and interpreter handoff. The compiler identifies these
 properties from geometry; the fixture is not a special runtime instruction.
+The original missing-head schematic remains a separate legacy regression under
+`fpu_divider_legacy`. The author-provided fixed revision restores sixteen heads
+without changing the input/output ports or other block states.
 
 ## Inputs and observations
 
 The schematic hash, dimensions, placement, cases, and observation coordinates
-are declared in the manifest and [download record](../../test_data/piston-research/fpu-divider/download-manifest.json).
+are declared in the manifest and [download record](../../test_data/piston-research/divider-fixed/download-manifest.json).
 The test imports through the production loader without synthesizing heads or
 implicitly settling the saved circuit. Coordinates below are selection-local;
 the manifest places the selection minimum at `(40,30,40)`.
@@ -38,13 +41,26 @@ established by this regression.
 For each declared case, the test imports independent interpreted and compiled
 worlds. It compiles without `--assume-instant`, both with default options and with
 `--optimize --io-only`, using full-plot context. Assertions require active
-compilation and sixteen missing-head warnings for this exact saved entry.
+compilation and no warnings for the fixed entry. The legacy regression requires
+sixteen missing-head warnings for its original saved entry.
 
-The saved missing heads are at local `(x,14,z)` for `x` in `{14,15}` and `z` in
+The legacy missing heads are at local `(x,14,z)` for `x` in `{14,15}` and `z` in
 `{12,16,20,24,28,32,36,40}`. They remain actual absent geometry at import. The
 runtime must preserve its supported saved-state contract, including later
 movement; treating every headless actor as permanently inert is not a general
 rule.
+
+The fixed divider also compiles with `--assume-instant`, with and without
+`--optimize`. Its side reset observers have guarded electrical certificates,
+and local response functions execute as a shared DAG without piston movement
+or reset phases. The logical test observes the saved-input response 170 and
+rearm word zero, checks that no physical executor is bound, and verifies cached
+evaluation after the ordinary clock stops.
+
+Holding the trigger OFF runs an ordinary diode/torch clock. Its changing outputs
+are new inputs to the logical domain, so active evaluation continues even though
+the external levers remain held. ON stops that clock; unchanged finalized domain
+inputs then reuse cached decisions. Logical mode preserves those ordinary delays.
 
 The compared output is the **ordered sequence of changed words**. Consecutive
 equal words collapse, and timestamps are not compared. This establishes the
@@ -59,7 +75,7 @@ motion entity.
 ## Run and capture
 
 ```sh
-cargo test -p mchprs_core --lib --locked divider_compiles_without_assumptions_and_preserves_triggered_output
+cargo test -p mchprs_core --lib --locked divider_compiles
 ```
 
 Fresh characterization requires a new output file and evidence ID:

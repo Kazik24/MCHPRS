@@ -112,6 +112,24 @@ sampling, output ports, budget/admission failures, ordinary graph consumers, and
 reset/handoff. Optimization and I/O-only flags change the observed representation
 and must not silently waive boundary behavior.
 
+The logical executor has focused checks for dependency caching, old-bank atomic
+sampling, memory hold, ambiguous feedback rejection and settled restoration:
+
+```sh
+cargo test -p mchprs_core --lib ideal
+cargo test -p mchprs_core --lib instant::logical::tests
+cargo bench -p mchprs_core --bench instant -- --iterations 3
+```
+
+The benchmark runs compiled Counter evaluations after initialization and warmup.
+Add `--optimize` to compare ordinary graph passes or `--flush-every 1` to include
+display writes. Compilation is outside the timed window. `--component
+cpu_bubblesort` tests logical admission only. `--component fpu_divider` measures
+warmed repeated saved-input response/reset episodes and reports episodes per
+second, including stimulus handling and publication. Use `--episodes` to choose
+the count; this is a bounded saved-input protocol, not an arithmetic proof.
+Physical sampled throughput does not measure logical-plan performance.
+
 One ignored test records an unresolved complete-reset waveform discrepancy:
 
 ```sh
@@ -140,3 +158,18 @@ read-only FPU expression probe which bypasses admission and requires a fresh
 output file. Download manifests and sidecars retain original binaries,
 legalization history, and capture identities. Do not rename a derived fixture
 into an original reference or alter a source binary to make it pass.
+
+The active `fpu_legal` manifest uses the author's
+[fpu_fixed_compilation.schem](../../test_data/piston-research/fpu-fixed/fpu_fixed_compilation.schem)
+revision, verified against the server download hash. Its trigger is selection-local
+`(2,38,81)` and its loader offset is `(2,38,76)`. The previous full-FPU manifest is
+retained as `fpu_legal_legacy` for historical negative admission assertions;
+`fpu_divider` remains a separate smaller extraction. The fixed full FPU compiles
+with default options, `--optimize`, `--assume-instant`, and both flags together.
+The logical certificate admits guarded side reset observers, shared electrical
+reset targets and data-coupled combinational rechecks. It continues to reject
+independent storage samples and observable reset pulses without their own protocol.
+
+```sh
+cargo test -p mchprs_core --lib --locked fixed_fpu_compiles_with_and_without_optimization
+```

@@ -125,6 +125,13 @@ pub(crate) fn prepare(
         }
     }
     let wires: FxHashMap<_, _> = sensors.iter().enumerate().map(|(id, sensor)| (sensor.pos, id)).collect();
+    for observer in &mut observers {
+        let Block::Observer { observer: block } = world.get_block(observer.pos) else { unreachable!() };
+        let front = observer.pos.offset(BlockFace::from(block.facing).opposite());
+        observer.samples = std::iter::once(front).chain(BlockFace::values().into_iter()
+            .filter(|&face| face != block.facing.into()).map(|face| front.offset(face)))
+            .filter_map(|pos| wires.get(&pos).copied().map(WireUpdate::Wire).or_else(|| sample_at(pos))).collect();
+    }
     for (&pos, samples) in &mut notifications {
         *samples = neighbors.into_iter().filter_map(|face| {
             let neighbor = pos.offset(face);

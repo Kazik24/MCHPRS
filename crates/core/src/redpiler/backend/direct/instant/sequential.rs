@@ -25,6 +25,11 @@ pub(super) struct State {
     dirty_set: Vec<bool>,
     completions: VecDeque<(u64, Completion)>,
     observer_ticks: VecDeque<(u64, usize)>,
+    boundary_initialized: bool,
+    boundary_levels: FxHashMap<NodeId, u8>,
+    wire_visits: FxHashMap<usize, WireVisit>,
+    wire_queues: [VecDeque<usize>; 3],
+    source_positions: FxHashMap<NodeId, BlockPos>,
 }
 
 impl State {
@@ -38,8 +43,8 @@ impl State {
         let p = &program.pistons[actor];
         let payload = &self.payloads[groups[actor]];
         match part {
-            GeometryPart::FarPayload => payload.due == 0 && payload.pos == p.head.offset(p.piston.facing.into()),
-            GeometryPart::NearPayload => payload.due == 0 && payload.pos == p.head,
+            GeometryPart::FarPayload => program.sequential.as_ref().unwrap().payloads[groups[actor]] != Block::Air && payload.due == 0 && payload.pos == p.head.offset(p.piston.facing.into()),
+            GeometryPart::NearPayload => program.sequential.as_ref().unwrap().payloads[groups[actor]] != Block::Air && payload.due == 0 && payload.pos == p.head,
             GeometryPart::Head => self.actors[actor].head,
             GeometryPart::RetractedBase => fired[actor] && !self.actors[actor].moving_base,
             GeometryPart::MovingBase => self.actors[actor].moving_base,
@@ -62,6 +67,25 @@ impl State {
 }
 
 impl Runtime {
+    pub(in crate::redpiler::backend::direct) fn notify_sequential_source(&mut self, source: NodeId, nodes: &Nodes) -> Vec<(NodeId, u8)> {
+        let Some(state) = &mut self.sequential else { return Vec::new() };
+        let Some(&pos) = state.source_positions.get(&source) else { return Vec::new() };
+        let strength = nodes[source].output_power;
+        let changed = self.ready_inputs.insert(pos, strength) != Some(strength);
+        let program = self.program.sequential.as_ref().unwrap();
+        if let Some(sensors) = program.source_sensors.get(&pos) {
+            for &sensor in sensors { state.dirty(sensor); }
+        }
+        if changed {
+            if let Some(observers) = program.watched.get(&pos) {
+                for &observer in observers { state.schedule_observer(observer, self.elapsed + 2); }
+            }
+        }
+        let samples = program.source_samples.get(&pos).cloned().unwrap_or_default();
+        self.sequential_settle_wires(nodes, false);
+        for sample in samples { self.sequential_sample_update(sample, false, nodes); }
+        self.output_changes(nodes)
+    }
     #[cfg(test)]
     pub(crate) fn sampled_power(&self, nodes: &Nodes) -> Vec<(BlockPos, bool)> {
         if self.sequential.is_none() { return Vec::new(); }
@@ -130,6 +154,11 @@ impl Runtime {
             dirty: Default::default(), dirty_set: vec![false; program.sensors.len()],
             completions: Default::default(),
             observer_ticks: Default::default(),
+            boundary_initialized: false,
+            boundary_levels: Default::default(),
+            wire_visits: Default::default(),
+            wire_queues: Default::default(),
+            source_positions: self.sources.iter().map(|(&pos, &id)| (id, pos)).collect(),
         });
         let _ = nodes;
         Ok(())
@@ -204,9 +233,12 @@ impl Runtime {
             let strength = self.sequential_strength(&self.sequential.as_ref().unwrap().sensors[id].terms, nodes);
             if strength != self.sequential.as_ref().unwrap().sensors[id].value {
                 self.sequential.as_mut().unwrap().sensors[id].value = strength;
-                let mut visits: FxHashMap<usize, WireVisit> = FxHashMap::default();
+                let state = self.sequential.as_mut().unwrap();
+                let mut visits = std::mem::take(&mut state.wire_visits);
+                visits.clear();
                 visits.entry(id).or_default().visited = true;
-                let mut queues: [VecDeque<usize>; 3] = Default::default();
+                let mut queues = std::mem::take(&mut state.wire_queues);
+                for queue in &mut queues { queue.clear(); }
                 self.sequential_propagate_wire(id, 0, &mut visits, &mut queues);
                 queues.rotate_left(1);
                 let mut layer = 1;
@@ -230,6 +262,9 @@ impl Runtime {
                     }
                     queues.rotate_left(1); layer += 1;
                 }
+                let state = self.sequential.as_mut().unwrap();
+                state.wire_visits = visits;
+                state.wire_queues = queues;
             }
         }
     }
@@ -269,6 +304,7 @@ impl Runtime {
     }
     pub(super) fn advance_sequential(&mut self, nodes: &Nodes) -> Vec<(NodeId, u8)> {
         let mut samples = Vec::new();
+        let mut source_changed = false;
         {
             let state = self.sequential.as_mut().unwrap();
             state.samples.append(&mut state.deferred);
@@ -277,6 +313,7 @@ impl Runtime {
                 let strength = nodes[id].output_power;
                 let previous = self.ready_inputs.insert(pos, strength).unwrap();
                 if previous != strength {
+                    source_changed = true;
                     if let Some(sensors) = program.source_sensors.get(&pos) { for &sensor in sensors { state.dirty(sensor); } }
                     if let Some(actors) = program.source_samples.get(&pos) { samples.extend(actors); }
                     if let Some(observers) = program.watched.get(&pos) { for &observer in observers {
@@ -284,9 +321,19 @@ impl Runtime {
                     }}
                 }
             }
+            // Retain the first publication and wake on input changes or due work.
+            // Future deadlines remain relative to the elapsed tick advanced above.
+            if state.boundary_initialized && !source_changed && state.samples.is_empty() && state.dirty.is_empty()
+                && state.observer_ticks.front().is_none_or(|(due, _)| *due > self.elapsed)
+                && state.completions.front().is_none_or(|(due, _)| *due > self.elapsed)
+            { return Vec::new(); }
         }
+        let mut changes = Vec::new();
+        let mut levels = std::mem::take(&mut self.sequential.as_mut().unwrap().boundary_levels);
+        levels.clear();
         for sample in samples { self.sequential_sample_update(sample, false, nodes); }
         self.sequential_settle_wires(nodes, false);
+        self.sequential_boundary(nodes, &mut levels, &mut changes);
         while self.sequential.as_ref().unwrap().observer_ticks.front().is_some_and(|(due, _)| *due <= self.elapsed) {
             let (due, id) = self.sequential.as_mut().unwrap().observer_ticks.pop_front().unwrap();
             let state = self.sequential.as_mut().unwrap();
@@ -300,6 +347,7 @@ impl Runtime {
             let samples = program.observers[id].samples.clone();
             self.sequential_settle_wires(nodes, false);
             for sample in samples { self.sequential_sample_update(sample, false, nodes); }
+            self.sequential_boundary(nodes, &mut levels, &mut changes);
         }
         loop {
             self.sequential_settle_wires(nodes, false);
@@ -329,7 +377,7 @@ impl Runtime {
             if retracted {
                 if payload.pos == home && payload.due == 0 && p.piston.sticky && action == PistonAction::Retract { payload.pos = head; payload.due = self.elapsed + 2; positions.push(home); moved = true; }
                 else if payload.pos == home && payload.due != 0 && p.piston.sticky && payload.extending && self.program.pistons[payload.owner].piston.facing == p.piston.facing { payload.due = 0; positions.push(home); }
-            } else if payload.pos == head {
+            } else if self.program.sequential.as_ref().unwrap().payloads[group] != Block::Air && payload.pos == head {
                 payload.pos = home; payload.due = self.elapsed + 2; positions.push(home); moved = true;
             }
             if moved { payload.owner = actor; payload.extending = !retracted; }
@@ -347,9 +395,8 @@ impl Runtime {
             self.sequential_notify(head, false, nodes);
             self.fired[actor] = retracted;
             if !retracted { self.sequential_notify(base, false, nodes); }
+            self.sequential_boundary(nodes, &mut levels, &mut changes);
         }
-        let mut changes = Vec::new();
-        let mut levels = FxHashMap::default();
         self.sequential_boundary(nodes, &mut levels, &mut changes);
         while self.sequential.as_ref().unwrap().completions.front().is_some_and(|(due,_)| *due <= self.elapsed) {
             let (due, completion) = self.sequential.as_mut().unwrap().completions.pop_front().unwrap();
@@ -375,9 +422,13 @@ impl Runtime {
                     self.sequential_notify(pos, true, nodes);
                 }
             }
+            self.sequential_boundary(nodes, &mut levels, &mut changes);
         }
         self.sequential_settle_wires(nodes, true);
         self.sequential_boundary(nodes, &mut levels, &mut changes);
+        let state = self.sequential.as_mut().unwrap();
+        state.boundary_levels = levels;
+        state.boundary_initialized = true;
         changes
     }
 

@@ -25,6 +25,10 @@ harness = false
 name = "cpus"
 harness = false
 
+[[bench]]
+name = "instant"
+harness = false
+
 [dependencies]
 hmac = "0.12"
 sha2 = "0.10"

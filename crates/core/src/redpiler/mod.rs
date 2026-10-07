@@ -72,7 +72,8 @@ fn block_powered_mut(block: &mut Block) -> Option<&mut bool> {
 
 #[derive(Default, PartialEq, Eq, Debug)]
 pub struct CompilerOptions {
-    /// Evaluate logical piston state without movement or reset pulses.
+    /// Compile certified logical piston regions and sampled banks without movement/reset.
+    /// Reject notification-driven regions lacking a logical sampling certificate.
     pub assume_instant: bool,
     /// Set by the server from the initiating player's rank, never from flags.
     /// Zero retains the default 1x budget; values are capped at 8x.

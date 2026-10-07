@@ -11,8 +11,9 @@ Runnable evidence and fixture protocols are in [tests/README.md](tests/README.md
 Redpiler has an ordinary electrical graph and three region execution paths:
 an acyclic response-wave adapter, a recognized shared-clock adapter, and a
 notification-driven sequential adapter. Their temporal semantics differ.
-`--assume-instant` changes the first two paths; the sequential path retains its
-notification ordering and availability deadlines with either flag setting.
+`--assume-instant` selects a certified logical executor for the first two paths.
+It rejects regions needing the notification-driven sequential adapter, rather
+than executing movement and reset bookkeeping under the logical flag.
 Compilation success establishes that the implementation can represent a region;
 it does not establish universal equivalence to every physical input history.
 
@@ -243,8 +244,8 @@ power. This exclusion is valid only with the associated ready/reset protocol.
 It is not a statement that those sources cease to exist physically.
 
 The actuator dependency graph has edge $b\to a$ whenever $x_b$ survives in
-$R_a$. After Boolean simplification it must be acyclic. In topological order,
-substitution produces functions
+$R_a$. After Boolean simplification it must be acyclic. The physical wave
+adapter substitutes dependencies in topological order to produce functions
 
 $$
 F_a(\mathbf s,\mathbf q)=R_a\bigl(\mathbf s,
@@ -252,7 +253,10 @@ F_a(\mathbf s,\mathbf q)=R_a\bigl(\mathbf s,
 $$
 
 Stored bits break combinational dependency cycles; they are not substituted by
-their next values. The sequential path instead keeps local current-geometry,
+their next values. The logical adapter retains each local $R_a$ and connects
+actuator decisions to the corresponding response root. It computes the same
+acyclic functions without expanding them into global decision diagrams.
+The sequential path instead keeps local current-geometry,
 wire and observer variables and supplies a temporal transition system.
 It does not expand a complete memory-bearing network into one acyclic formula.
 
@@ -386,8 +390,10 @@ See [clocked.rs](../crates/core/src/redpiler/instant/clocked.rs) and
 
 ## 8. Ideal acyclic and clocked mode
 
-With `--assume-instant`, an unclocked acyclic region evaluates $F$ once per step
-from current ordinary sources. It has no reset waveform. Its geometry is
+With `--assume-instant`, an unclocked acyclic region evaluates $F$ when its bound
+ordinary inputs change. External inputs are held between a stimulus and its
+settled output. Ordinary delayed graph nodes remain separate dynamic inputs.
+It has no movement phase or reset waveform. Its geometry is
 
 $$
 \mathrm{Far}_B=\neg f_B,\quad
@@ -398,22 +404,47 @@ $$
 For a shared group, choose the first firing actor in the group's stored order
 as the logical near owner; only that actor has near occupancy. This is a
 deterministic logical convention, not a universal physical ownership law.
-Input changes during a held activation are supported by this mode; ordinary
-diodes, torches and output events retain their existing timing.
+Each new stimulus starts another logical evaluation; ordinary diodes, torches
+and output events retain their existing timing.
 
-In ideal clocked mode, if the clock function is false, set phase zero and hold
-the stored bank and last sampled response. If true at phase zero or six, sample
-all $F_a$ from the old bank, commit memory immediately, and set phase one.
-Otherwise increment the phase. Successive active samples are six steps apart.
+In ideal clocked mode, an inactive clock holds the stored bank and last sampled
+response. An active clock starts a sampling deadline immediately, then samples
+again every six steps. At a sampling event, freeze inputs and the old bank,
+evaluate all $F_a$, and only then commit every proposed memory bit together.
+Changing data alone does not sample a cell. Successive active samples are six steps apart.
 Stopping and restarting holds memory and begins a fresh cadence; there is no
 movement state or physical reset pulse. Output terms that depend on ordinary
 sources remain electrical functions and can still react to those sources.
 
-This mode relaxes physical power/reset certification, but does not remove the
-acyclic extractor's extended-entry and matching-head requirements, material
-support rules, conditional connectivity or cycle checks. It is an ideal
-geometry projection. After `/rp reset`, the interpreter resumes physical
-semantics; it need not continue this ideal transition system.
+Compilation validates a logical certificate: settled stationary entry,
+matching extended heads or an unambiguous retained near payload, supported materials, coupled combinational notifications,
+explicit independently sampled storage, and acyclic responses after cutting
+those storage boundaries. Reset timing and reset caps are unnecessary for a
+certified logical gate; this does not authorize unrecognized BUDs or feedback.
+Rejection identifies the boundary and suggests explicit sampling or physical mode.
+
+Compilation reads each certified storage bit from its saved extended/retracted
+pose. Canonical near/far addresses describe both values without modifying the
+world during preparation. A stopped bank can therefore be recompiled with
+nonzero data; binding and inactive evaluation do not sample or clear it.
+
+A side-mounted observer can be owned as logical reset work only after guarded
+electrical extraction proves its pulse resets its pure response targets for
+every data and payload-geometry assignment. Shared reset targets require the
+same proof. The certificate checks notification recipients separately: a reset
+must not become an independent memory sample or reach an ordinary data consumer.
+Explicit storage and clocks retain their existing sampling owners.
+
+The executable decision program binds Boolean input identities and thresholds
+once. Response and output domains have separate snapshots and caches. Changed
+inputs invalidate dependent decisions; evaluation walks needed branches and
+shares cached subexpressions, including computed actuator conditions in the
+local response DAG. The backend indexes ordinary source dependencies,
+so unchanged unclocked regions and intervals between clock samples perform no
+Boolean evaluation. Output guards read the committed bank and settled geometry,
+never a response-domain cache from before commit. This is a decision-program
+adapter, not a retained full-net reference plan. After `/rp reset`, the
+interpreter resumes physical semantics; it need not continue this ideal model.
 
 ## 9. Notification-driven sequential adapter
 
@@ -531,9 +562,9 @@ reset-writer recognition failure. The fallback then performs its own checks.
 Some unsupported acyclic cases simply fail rather than being retried here;
 representational capability and dispatch coverage are separate.
 
-`Runtime::advance` checks `sequential` before `assume_instant`. Therefore both
-flag values execute this same ordered temporal adapter. Do not assume that an
-accepted sequential network has had its delays or BUD sampling removed.
+The sequential adapter is available without `--assume-instant`. Logical
+compilation rejects regions requiring these local notifications, availability
+deadlines or retained-read protocols until they have a logical sampling certificate.
 Execution uses compiled decisions and indices, with no runtime block search or
 interpreter callback invocation. It nevertheless retains selected physical
 ordering because these updates affect observable memory state.
@@ -611,9 +642,15 @@ values so this cost does not grow with elapsed counting. Only owned work is
 transferred; the live graph scheduler remains authoritative for ordinary
 deadlines.
 
-Ideal acyclic/clocked handoff writes the current stationary logical occupancy
-and stored bank directly, resets the owned observer presentation, and recomputes
-owned dust. It has no historical physical reset wave to replay.
+Ideal acyclic/clocked handoff writes stationary logical occupancy and the last
+committed bank. Shared payload ownership uses the first firing actor in stored
+group order. Owned reset observers are off; other owned reset components retain
+their saved presentation. Owned dust receives settled shape and strength from
+compiled guarded paths; saved reset-source strengths are fixed only for this
+restoration. Handoff creates no movement entities, piston events or reset
+callbacks and invokes no electrical update propagation. The ordinary scheduler
+retains its pending work. This is a deterministic settled snapshot, not replay
+of a historical physical reset wave.
 
 Sequential handoff writes retained actor/head/payload geometry, sensor shape and
 power, observer state, remaining observer work, and queued sample requests.

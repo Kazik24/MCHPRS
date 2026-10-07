@@ -19,31 +19,17 @@ pub(crate) fn split(
     let mut regions = UnionFind::new(report.pistons.len());
     let mut owners: FxHashMap<BlockPos, usize> = FxHashMap::default();
     let mut reads: FxHashMap<BlockPos, Vec<usize>> = FxHashMap::default();
+    let mut bases = FxHashMap::default();
     for (actor, piston) in report.pistons.iter().enumerate() {
+        bases.entry(piston.pos).or_insert(actor);
         for pos in [piston.pos, piston.head, piston.payload]
             .into_iter()
+            .chain(piston.piston.sticky.then_some(piston.head.offset(piston.piston.facing.into())))
             .chain(families::reset_positions(&report.recognition[actor]))
         {
             if let Some(other) = owners.insert(pos, actor) {
                 regions.union(actor, other);
             }
-        }
-    }
-    for &pos in &report.observers {
-        let Block::Observer { observer } = world.get_block(pos) else {
-            unreachable!()
-        };
-        let target = pos.offset(BlockFace::from(observer.facing));
-        if let Some(actor) = report
-            .pistons
-            .iter()
-            .position(|p| p.pos == target || p.pos.offset(BlockFace::Top) == pos)
-        {
-            if let Some(other) = owners.insert(pos, actor) {
-                regions.union(actor, other);
-            }
-        } else {
-            return Err(format!("observer at {pos:?} has no supported region owner"));
         }
     }
     let mobile = report
@@ -111,6 +97,35 @@ pub(crate) fn split(
         {
             reads.entry(pos).or_default().push(actor);
         }
+    }
+    // Observers belong to the state they watch and the notification net they
+    // drive, including dust watchers that are not mounted on a piston base.
+    for &pos in &report.observers {
+        let Block::Observer { observer } = world.get_block(pos) else { unreachable!() };
+        let target = pos.offset(observer.facing.into());
+        let front = pos.offset(BlockFace::from(observer.facing).opposite());
+        let mut dependencies = vec![target, pos, pos.offset(BlockFace::Bottom)];
+        if matches!(world.get_block(target), Block::RedstoneWire { .. }) {
+            dependencies.extend(BlockFace::values().into_iter().map(|face| target.offset(face)));
+            if !update_inputs.contains_key(&target) {
+                update_inputs.insert(target, topology.wire_inputs(target).map_err(|e| e.to_string())?);
+            }
+            dependencies.extend(update_inputs[&target].wires.iter().copied());
+            dependencies.extend(update_inputs[&target].sources.iter().map(|d| d.source));
+        }
+        dependencies.extend(std::iter::once(front).chain(BlockFace::values().into_iter()
+            .filter(|&face| face != observer.facing.into()).map(|face| front.offset(face))));
+        let mut actors: Vec<_> = dependencies.iter().flat_map(|p|
+            owners.get(p).copied().into_iter().chain(reads.get(p).into_iter().flatten().copied())
+        ).collect();
+        actors.sort_unstable();
+        actors.dedup();
+        let Some(&actor) = actors.first() else {
+            return Err(format!("observer at {pos:?} has no supported region owner"));
+        };
+        for &other in &actors[1..] { regions.union(actor, other); }
+        owners.insert(pos, actor);
+        for dependency in dependencies { reads.entry(dependency).or_default().push(actor); }
     }
     for (&pos, &owner) in &owners {
         if let Some(actors) = reads.get(&pos) {
