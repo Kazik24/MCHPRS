@@ -24,15 +24,19 @@ pub struct Cpu {
     pub sha256: &'static str,
     pub start: BlockPos,
     pub stop: Option<BlockPos>,
+    pub origin: BlockPos,
+    pub active_ticks: u32,
 }
 
-pub const CPUS: [Cpu; 2] = [
+pub const CPUS: [Cpu; 3] = [
     Cpu {
         name: "pm1_sort",
         schematic: "PM1_SORT.schem",
         sha256: "e338028d50a4400056e25037d1f43d37c08baed079edede6298f78b0a6341654",
         start: BlockPos::new(187, 35, 72),
         stop: Some(BlockPos::new(187, 32, 72)),
+        origin: BlockPos::new(8, 8, 8),
+        active_ticks: 12_051,
     },
     Cpu {
         name: "anpu_pong",
@@ -40,6 +44,17 @@ pub const CPUS: [Cpu; 2] = [
         sha256: "f4068257797399531ce31d56c972af32d0f73f7d8d496ce1b7b8cd1c178decec",
         start: BlockPos::new(122, 68, 56),
         stop: None,
+        origin: BlockPos::new(8, 8, 8),
+        active_ticks: 5_000,
+    },
+    Cpu {
+        name: "cpu_bubblesort",
+        schematic: "piston-research/cpu-bubblesort/CPU_BubbleSort.schem",
+        sha256: "907e74d6c4882d4c7065d55e0f8ec4cca8885a34f7af90ca51c060953badaf2c",
+        start: BlockPos::new(166, 7, 156),
+        stop: None,
+        origin: BlockPos::new(2, 8, 2),
+        active_ticks: 10_035,
     },
 ];
 
@@ -63,6 +78,8 @@ pub struct Reference {
     pub schematic_sha256: String,
     pub checkpoints: Vec<Checkpoint>,
     pub chat_trace: Vec<(u32, String)>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub ram_trace: Vec<(u32, Vec<Option<u16>>)>,
 }
 
 #[derive(Debug, Serialize, Deserialize, PartialEq, Eq)]
@@ -195,11 +212,78 @@ pub fn load_cpu(cpu: Cpu) -> PlotWorld {
         cpu.sha256,
         "frozen schematic changed"
     );
-    let mut world = load(cpu.schematic);
+    let mut world = load_at(cpu.schematic, cpu.origin);
     // Frozen traces measure simulated execution, independent of wall-clock speed
     // and the live client's bounded chat queue. Retain every emitted message.
     world.disable_command_output_limits_for_replay();
+    if cpu.name == "cpu_bubblesort" {
+        let pos = cpu.origin + BlockPos::new(150, 17, 119);
+        let Block::Lever { mut lever } = world.get_block(pos) else {
+            panic!("missing load lever")
+        };
+        assert!(!lever.powered);
+        lever.powered = true;
+        world.set_block(pos, Block::Lever { lever });
+        redstone::update_surrounding_blocks(&mut world, pos);
+        redstone::update_surrounding_blocks(&mut world, pos.offset(BlockFace::Bottom));
+        wait_quiet(&mut world);
+        click_cpu(&mut world, cpu, BlockPos::new(166, 7, 158));
+        wait_quiet(&mut world);
+        assert_eq!(
+            world.piston_state().logical_tick,
+            364,
+            "frozen load/reset protocol"
+        );
+    }
     world
+}
+
+fn quiet(world: &PlotWorld) -> bool {
+    world.scheduler().iter_entries().next().is_none()
+        && world.piston_state().events.is_empty()
+        && world.piston_state().motions.is_empty()
+}
+
+fn wait_quiet(world: &mut PlotWorld) {
+    let mut consecutive = 0;
+    for _ in 0..4096 {
+        world.tick_interpreted();
+        consecutive = if quiet(world) { consecutive + 1 } else { 0 };
+        if consecutive == 20 {
+            return;
+        }
+    }
+    panic!("CPU preparation did not settle within 4096 ticks");
+}
+
+pub fn click_cpu(world: &mut PlotWorld, cpu: Cpu, local: BlockPos) {
+    click(world, local + cpu.origin - BlockPos::new(8, 8, 8));
+}
+
+pub fn collect_ram(
+    world: &PlotWorld,
+    cpu: Cpu,
+    tick: u32,
+    trace: &mut Vec<(u32, Vec<Option<u16>>)>,
+) {
+    if cpu.name != "cpu_bubblesort" {
+        return;
+    }
+    let words = [7, 17, 27, 37]
+        .into_iter()
+        .flat_map(|y| (0..16).map(move |row| (y, row)))
+        .map(|(y, row)| {
+            (0..12).try_fold(0, |word, bit| {
+                match world.get_block(cpu.origin + BlockPos::new(175 + 4 * bit, y, 62 - 4 * row)) {
+                    Block::Piston { piston } => Some(word | (u16::from(!piston.extended) << bit)),
+                    _ => None,
+                }
+            })
+        })
+        .collect::<Vec<_>>();
+    if trace.last().is_none_or(|(_, previous)| *previous != words) {
+        trace.push((tick, words));
+    }
 }
 
 pub fn collect_chat(world: &PlotWorld, tick: u32, trace: &mut Vec<(u32, String)>) {
@@ -246,7 +330,7 @@ pub fn reference(cpu: Cpu) -> Reference {
     ))
     .unwrap();
     assert_eq!(migration.schema, 1);
-    for patch in &migration.cpus[cpu.name] {
+    for patch in migration.cpus.get(cpu.name).into_iter().flatten() {
         let checkpoint = reference
             .checkpoints
             .iter_mut()
@@ -285,6 +369,8 @@ pub fn replay_with_visuals(
     let initial_visual_counts = world.visual_update_counts();
     let mut trace = Vec::new();
     let mut screen_trace = Vec::new();
+    let mut ram_trace = Vec::new();
+    collect_ram(&world, cpu, 0, &mut ram_trace);
     if cpu.name == "anpu_pong" {
         collect_screen(&world, 0, &mut screen_trace);
     }
@@ -294,13 +380,9 @@ pub fn replay_with_visuals(
         "{} initial state",
         cpu.name
     );
-    click(&mut world, cpu.start);
+    click_cpu(&mut world, cpu, cpu.start);
     let mut elapsed = Duration::ZERO;
-    let active_ticks = if cpu.name == "pm1_sort" {
-        12_051
-    } else {
-        5_000
-    };
+    let active_ticks = cpu.active_ticks;
     let mut active = Duration::ZERO;
     let mut next_checkpoint = 1;
     for tick in 1..=50_000 {
@@ -315,6 +397,14 @@ pub fn replay_with_visuals(
             active += tick_elapsed;
         }
         collect_chat(&world, tick, &mut trace);
+        collect_ram(&world, cpu, tick, &mut ram_trace);
+        if cpu.name == "cpu_bubblesort" && tick >= active_ticks {
+            assert_eq!(
+                quiet(&world),
+                tick > active_ticks,
+                "BubbleSort stop boundary at {tick}"
+            );
+        }
         if cpu.name == "anpu_pong" {
             collect_screen(&world, tick, &mut screen_trace);
         }
@@ -329,7 +419,7 @@ pub fn replay_with_visuals(
         }
     }
     if let Some(stop) = cpu.stop {
-        click(&mut world, stop);
+        click_cpu(&mut world, cpu, stop);
         for tick in 50_001..=50_100 {
             world.tick_interpreted();
             collect_chat(&world, tick, &mut trace);
@@ -343,6 +433,21 @@ pub fn replay_with_visuals(
         next_checkpoint += 1;
     }
     assert_eq!(next_checkpoint, expected.checkpoints.len());
+    assert_eq!(
+        ram_trace, expected.ram_trace,
+        "{} per-tick RAM transitions",
+        cpu.name
+    );
+    if cpu.name == "cpu_bubblesort" {
+        let initial = &ram_trace[0].1;
+        let final_words = &ram_trace.last().unwrap().1;
+        assert_eq!(
+            &initial[..48],
+            &final_words[..48],
+            "program and unused banks"
+        );
+        assert_eq!(&final_words[48..], (0..16).map(Some).collect::<Vec<_>>());
+    }
     assert_eq!(
         trace, expected.chat_trace,
         "{} ordered, tick-stamped command output",
@@ -389,21 +494,26 @@ pub fn replay_with_visuals(
     }
 }
 
-pub fn load(name: &str) -> PlotWorld {
+fn load_at(name: &str, origin: BlockPos) -> PlotWorld {
     let path = Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../../test_data")
         .join(name);
     let mut clip = load_schematic(File::open(path).unwrap()).unwrap();
-    // Place the entire selection at (8, 8, 8), independent of WorldEdit's player origin.
+    // Place the entire selection independent of WorldEdit's player origin.
     clip.offset_x = 0;
     clip.offset_y = 0;
     clip.offset_z = 0;
-    assert!(clip.size_x + 16 <= 256 && clip.size_z + 16 <= 256 && clip.size_y + 16 <= 256);
+    assert!(origin.x >= 0 && origin.y >= 0 && origin.z >= 0);
+    assert!(
+        clip.size_x as i32 + origin.x <= 256
+            && clip.size_z as i32 + origin.z <= 256
+            && clip.size_y as i32 + origin.y <= 256
+    );
     let chunks = (0..PLOT_WIDTH)
         .flat_map(|x| (0..PLOT_WIDTH).map(move |z| Chunk::empty(x, z)))
         .collect();
     let mut world = PlotWorld::from_chunks(0, 0, chunks, Default::default());
-    paste_clipboard(&mut world, &clip, BlockPos::new(8, 8, 8), false);
+    paste_clipboard(&mut world, &clip, origin, false);
     world
 }
 

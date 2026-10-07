@@ -20,11 +20,68 @@ def position(pos):
     return tuple(pos[k] for k in ("x", "y", "z"))
 
 
+def cpu_episode(capture, case, samples):
+    origin = capture["origin"]
+    previous = None
+    transitions, boundaries, actions, broken, diagnostics = [], [], [], [], []
+    counts = Counter()
+    accepted = Counter()
+    for sample in samples:
+        state = sample.get("state", {})
+        tick = sample.get("tick", state.get("tick", 0))
+        words = sample.get("words")
+        if words is None:
+            words = {}
+            for name, blocks in state.get("ports", {}).items():
+                if not name.startswith(("ram_", "register")):
+                    continue
+                words[name] = [None if any(b["name"] not in ("piston", "sticky_piston") for b in blocks[i:i+12]) else
+                               sum(1 << bit for bit, b in enumerate(blocks[i:i+12]) if b["properties"]["extended"] == "false")
+                               for i in range(0, len(blocks), 12)]
+        if words != previous:
+            transitions.append(dict(tick=tick, step=sample.get("step"), words=words))
+            previous = words
+        if sample["label"] == "boundary":
+            boundaries.append(dict(tick=tick, step=sample["step"], quiet_ticks=sample["quiet_ticks"], words=words,
+                                   pending=len(state["pending_ticks"]), motions=len(state["motions"]), checkpoint=sample["checkpoint"]))
+        if sample["label"] == "action":
+            actions.append(dict(tick=tick, **sample["action"]))
+        if "diagnostics" in sample:
+            diagnostics.append(dict(tick=tick, **summarize(dict(fixture=capture["fixture"], fixture_sha256=capture["fixture_sha256"],
+                                                               origin=origin, diagnostics=sample["diagnostics"], episodes=[]))))
+        for entry in sample.get("operations", []):
+            operation = entry["operation"]
+            kind = next(iter(operation))
+            event = operation[kind]
+            pos = tuple(a-b for a, b in zip(position(event["pos"]), origin))
+            role = "internal_or_register"
+            if pos[0] in range(175, 220, 4) and pos[1] in (7, 17, 27, 37) and pos[2] in range(2, 63, 4):
+                role = "ram"
+            elif (pos[0] == 219 and pos[1] in (7, 17, 27, 37) and pos[2] in range(3, 64, 4)) or pos == (220, 13, 156):
+                role = "empty_ordinary"
+            counts[role+"_"+kind] += 1
+            if kind == "Applied":
+                accepted[str(pos)] += 1
+            else:
+                counts[role+("_unchanged_sample" if event["extended"] == event["powered"] else "_changed_sample")] += 1
+            if pos == (179, 6, 165):
+                broken.append(entry)
+    return dict(case_id=case["id"], completed_ticks=sum(s["label"] == "tick" for s in samples), actions=actions,
+                boundaries=boundaries, transitions=transitions, operation_counts=dict(counts), accepted_by_position=dict(accepted),
+                suspected_broken_actor_trace=broken, diagnostics=diagnostics, final_words=previous,
+                full_operation_count=sum(s.get("operation_count", len(s.get("operations", []))) for s in samples))
+
+
 def summarize(capture):
+    if "samples" in capture:
+        return dict(schema_version=1, fixture=capture["fixture"], fixture_sha256=capture["fixture_sha256"],
+                    coordinates="selection-local; RAM row 0 at z=62, bit 0 at x=175; physical layers, not proven global addresses",
+                    moving_word="null means moving or missing base, not stored zero",
+                    trace_scope=capture["trace_scope"], episodes=[cpu_episode(capture, capture["case"], capture["samples"])])
     origin = capture["origin"]
     local = lambda p: [a-b for a, b in zip(position(p), origin)]
     analyses = []
-    for attempt in capture["diagnostics"]["analysis"]:
+    for attempt in (capture.get("diagnostics") or {}).get("analysis", []):
         if "error" in attempt:
             analyses.append(attempt)
             continue
@@ -47,6 +104,9 @@ def summarize(capture):
                             output_interfaces=len(report["ports"]["outputs"]), reset_exposures=len(report["ports"]["reset_exposures"])))
     episodes = []
     for episode in capture["episodes"]:
+        if "CPU_BubbleSort" in capture["fixture"]:
+            episodes.append(cpu_episode(capture, episode["case"], episode["samples"]))
+            continue
         transitions = []
         actions = []
         applied = []
@@ -82,9 +142,9 @@ def summarize(capture):
                              completed_ticks=sum(s["label"] == "tick" for s in episode["samples"])))
     return dict(schema_version=1, fixture=capture["fixture"], fixture_sha256=capture["fixture_sha256"],
                 coordinates="selection-local in summaries; full captures retain absolute operation/work positions",
-                memory_word_order="increasing x; logical address is 7-index; bit 0 at z=24",
+                memory_word_order="physical layers; row 0 at z=62, bit 0 at x=175" if "CPU_BubbleSort" in capture["fixture"] else "increasing x; logical address is 7-index; bit 0 at z=24",
                 moving_word="null marks a moving base; it is not a stored zero",
-                analysis=analyses, compile=capture["diagnostics"]["compile"], episodes=episodes)
+                analysis=analyses, compile=(capture.get("diagnostics") or {}).get("compile", []), episodes=episodes)
 
 
 def main():
@@ -118,9 +178,12 @@ def main():
             assert json.loads(summary.read_text()) == summarize(capture), summary
             manifest = json.loads((PACK/"fixtures"/(fixture.stem.lower()+".json")).read_text())
             cases = {c["id"]: c for c in manifest["cases"]}
-            for episode in capture["episodes"]:
+            for episode in capture.get("episodes", []):
                 assert episode["case"] == cases[episode["case"]["id"]], path
                 assert all(s["state"]["phase"] == "BetweenTicks" for s in episode["samples"] if s["label"] == "tick"), path
+            if "samples" in capture:
+                assert capture["case"] == cases[capture["case"]["id"]], path
+                assert all(s["state"]["phase"] == "BetweenTicks" for s in capture["samples"] if s["label"] == "boundary"), path
             source = path.with_suffix("").with_suffix(".source.json")
             assert json.loads(source.read_text())["revision"], source
             print("Verified", path.name)

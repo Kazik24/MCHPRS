@@ -82,7 +82,7 @@ fn main() {
             "active_samples_seconds":active_times.iter().map(|time| time.as_secs_f64()).collect::<Vec<_>>(),
             "active_median_seconds":active_times[active_times.len()/2].as_secs_f64(),
             "active_median_tps":f64::from(active_ticks)/active_times[active_times.len()/2].as_secs_f64(),
-            "assertions":"whole-world checkpoints, ordered chat, per-tick Pong screen",
+            "assertions":"whole-world checkpoints, ordered chat, per-tick Pong screen and BubbleSort RAM, BubbleSort halt boundary",
             "visual_mode":if screen_only { "screen" } else { "all" },
             "visual_flush_every_game_ticks":flush_every,
             "visual_counts":visual_counts,

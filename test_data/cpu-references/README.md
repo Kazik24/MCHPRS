@@ -1,25 +1,41 @@
 # Mixed piston/redstone CPU references
 
-These fixtures freeze interpreted execution of the two original, unmodified
-schematic files. They are regression references for interpreter optimizations, not
+These fixtures freeze interpreted execution of PM1 SORT, ANPU Pong and
+CPU_BubbleSort, using their unmodified schematic files. They are regression references for interpreter optimizations, not
 independent proofs that the CPUs implement their instruction sets correctly.
 
 | CPU | Schematic | Start button (selection-local) | Stop button |
 | --- | --- | --- | --- |
 | PM1 SORT | `../PM1_SORT.schem` | `(187, 35, 72)` | `(187, 32, 72)` |
 | ANPU Pong | `../Q2CK@Q2CK_Anpu1_Pong_KBTV.schem` | `(122, 68, 56)` | — |
+| CPU BubbleSort | `../piston-research/cpu-bubblesort/CPU_BubbleSort.schem` | `(166,7,156)` | Automatic stop |
 
-The selection minimum is placed at `(8, 8, 8)` in an empty plot, ignoring the
+For PM1 and ANPU, selection minimum is placed at `(8, 8, 8)` in an empty plot, ignoring the
 saved WorldEdit player origin. The harness presses the actual stone buttons with
 the same support notifications and release scheduling as player interaction.
 All tick counts are **game ticks**, not redstone ticks. No compilation, manual
 paddle inputs, or initial whole-build settling is performed.
 
-Both runs advance 50,000 game ticks from the start press. PM1 then receives a
+All three runs advance 50,000 game ticks from the start press. PM1 then receives a
 manual stop press and another 100 ticks. PM1 emits 1,534 messages during the
 program, including `shut` at tick 12,051; the manual stop adds a message at
 tick 50,007. ANPU finishes quickly without paddle input. Its 32×32 lamp display
 is selection-local `x = 140`, `y = 58..89`, `z = 38..69`.
+
+CPU BubbleSort uses selection minimum `(2,8,2)` so its 254-block depth fits
+without clipping and contains all potential piston update positions. Before the
+measured run, the harness enables Load program at `(150,17,119)`, waits for twenty
+consecutive quiet game ticks, presses Reset PC at `(166,7,158)`, and waits again.
+The load lever remains ON. Preparation ends at world logical tick 364;
+benchmark/checkpoint tick zero is that prepared state. The CPU's last active
+execution tick is 10,035 relative to Start. Preparation, hashing and per-tick RAM
+comparison are outside benchmark timing.
+
+The [CPU research report](../../docs/CPU_BUBBLESORT_REDPILER_RESEARCH.md) records
+two complete interpreted sorts, compilation errors, observed BUD/update roles
+and the required fail-safe parser policy. This benchmark does not imply Redpiler
+acceptance: horizontal generators and general retained-state protocols remain
+unsupported.
 
 ## What is compared
 
@@ -50,7 +66,7 @@ four rank budgets and all four optimize/I/O combinations, plus the removed-flag
 bypass probes, without changing state or queued work. See the linked acceptance
 plan for measured limits, first unsupported actor and pending graph protocols.
 
-Both CPU JSON files also contain stricter SHA-256 checkpoints at ticks 0, 10,
+All three CPU JSON files also contain stricter SHA-256 checkpoints at ticks 0, 10,
 100, 1,000, 5,000, 10,000, 20,000, 30,000, and 50,000. PM1 includes 50,100 too.
 These cover:
 
@@ -68,6 +84,19 @@ piston timing, queued callback, or output difference is silently tolerated.
 An optimization that intentionally changes internal states should introduce a
 specific, reviewed normalization while retaining the chat and screen checks;
 it should not replace these frozen outputs with newly generated expectations.
+
+`cpu_bubblesort.json` additionally retains every change in the 64 physical RAM
+words at completed game-tick boundaries. Words are ordered by layers
+`y=7,17,27,37`, then rows with decreasing Z; twelve bits have increasing X.
+Moving/missing bases produce a null word. Replay compares the complete transient
+RAM trace, the exact transition to no queued work/motion, the ascending final
+top bank `0..15`, and unchanged final lower banks. The source sidecar identifies
+the capture revision and sources. No PM1/ANPU baseline or migration was replaced.
+
+This physical reference is for interpreter correctness. A future ideal compiled
+CPU needs a reviewed logical memory/update projection; it is not required to
+reproduce moving-base nulls or internal animation. The separate research capture
+retains ordered RAM samples and accepted piston events for that analysis.
 
 Schematic imports simplify custom inventory stacks to plain items. ANPU's five
 Charge Capsule stacks consequently lose their names, enchantments and HideFlags;
@@ -131,14 +160,24 @@ Java piston traces and existing compiler/interpreter handoff tests.
 ## Run
 
 ```powershell
-cargo test -p mchprs_core --test cpu_references --release -- --include-ignored --test-threads=1
+cargo test -p mchprs_core --test cpu_references --release -- --include-ignored --skip capture_bubblesort_reference --test-threads=1
 cargo bench -p mchprs_core --bench cpus
 cargo bench -p mchprs_core --bench cpus -- --cpu anpu_pong --iterations 3
+cargo bench -p mchprs_core --bench cpus -- --cpu cpu_bubblesort --iterations 3
+cargo test -p mchprs_core --test cpu_references --release bubblesort_frozen_reference -- --ignored --exact
 cargo bench -p mchprs_core --bench cpus -- --iterations 3 --label current --output target/cpu-performance.json
 ```
 
+The explicit new-file capture test also uses the same preparation; it is not a
+regression test and should not be included when running all frozen replays:
+
+```powershell
+cargo test -p mchprs_core --test cpu_references --release -- --include-ignored --skip capture_bubblesort_reference --test-threads=1
+py tools/capture_piston_research.py --fixture cpu_bubblesort --case benchmark --output E:/cpu-bubblesort-new-reference.json
+```
+
 Full CPU regression tests are explicitly ignored in ordinary `cargo test`
-because they simulate large builds. The ordinary input test checks both frozen
+because they simulate large builds. The ordinary input test checks all three frozen
 schematics and initial worlds. The benchmark always runs all correctness
 assertions, and defaults to one fresh run per CPU. Each sample excludes loading,
 button activation, checkpoint hashing, chat/screen comparison, and teardown;
@@ -148,8 +187,9 @@ overhead matters for idle ticks but is negligible next to the active execution.
 
 TPS is game ticks divided by timed interpreter seconds. The 50,000-tick average
 includes the long idle tail. The benchmark additionally reports an active window:
-PM1 ticks 1 through 12,051 (startup through its `shut` output), and ANPU ticks 1
-through 5,000 (startup, screen animation, and settling). These are fixed windows,
+PM1 ticks 1 through 12,051 (startup through its `shut` output), ANPU ticks 1
+through 5,000 (startup, screen animation, and settling), and BubbleSort ticks 1
+through 10,035 (execution until ticking stops). These are fixed windows,
 not adaptive early exits, and all remaining ticks and outputs are still checked.
 
 `baseline-performance.json` records repeated pre-optimization samples.

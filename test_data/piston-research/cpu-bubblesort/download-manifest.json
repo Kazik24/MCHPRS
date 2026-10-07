@@ -1,0 +1,14 @@
+{
+  "schema_version": 1,
+  "source_host": "urmom",
+  "source_directory": "/srv/mchprs/data/schems",
+  "verified_utc": "2026-10-07T08:58:10.366090+00:00",
+  "files": [
+    {
+      "name": "CPU_BubbleSort.schem",
+      "bytes": 59872,
+      "sha256": "907e74d6c4882d4c7065d55e0f8ec4cca8885a34f7af90ca51c060953badaf2c",
+      "modified_utc": "2026-10-07T08:54:00.041128+00:00"
+    }
+  ]
+}

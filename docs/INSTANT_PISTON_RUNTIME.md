@@ -1,5 +1,13 @@
 # Implemented instant-piston pipeline
 
+The next CPU benchmark/correctness target beside PM1 and ANPU is
+[CPU_BubbleSort](CPU_BUBBLESORT_REDPILER_RESEARCH.md). Its unchanged save sorts
+the labeled descending RAM bank and stops in the interpreter; compiled admission
+currently rejects its horizontal empty ordinary update pistons, including in
+`--assume-instant` mode. The author requires role/effect-based failure tolerance:
+an irrelevant defective piston must not force a whole-build rejection. That
+exclusion proof is pending; the current extended-head guard remains strict.
+
 ## Independent builds and ideal timing (2026-10-07)
 
 Independent instant regions share the ordinary electrical graph but have separate

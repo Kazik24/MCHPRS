@@ -78,6 +78,32 @@ fn placement(pos: BlockPos, sequence: i32) -> SPlayerBlockPlacemnt {
     }
 }
 
+#[test]
+fn redpiler_flag_suggestions_reach_the_chat_client() {
+    for compressed in [false, true] {
+        let (mut plot, mut peer) = fixture(compressed);
+        let text = "/rp c --optimize --ass";
+        plot.handle_tab_complete(
+            STabComplete {
+                transaction_id: 42,
+                text: text.into(),
+            },
+            0,
+        );
+        let (id, mut frame) = read_frame(&mut peer, compressed).unwrap();
+        assert_eq!(id, 0x0f);
+        assert_eq!(frame.read_varint().unwrap(), 42);
+        assert_eq!(
+            frame.read_varint().unwrap(),
+            text.rfind(' ').unwrap() as i32 + 1
+        );
+        assert_eq!(frame.read_varint().unwrap(), 5);
+        assert_eq!(frame.read_varint().unwrap(), 1);
+        assert_eq!(frame.read_string().unwrap(), "--assume-instant");
+        assert!(!frame.read_bool().unwrap());
+    }
+}
+
 fn digging(pos: BlockPos, status: i32, sequence: i32) -> SPlayerDigging {
     SPlayerDigging {
         status,

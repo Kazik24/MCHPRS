@@ -8,6 +8,17 @@ This roadmap implements the [instant and BUD mathematical model](INSTANT_PISTON_
 
 ## Scope and assumptions
 
+CPU_BubbleSort is now the next benchmark/correctness fixture beside PM1 and ANPU.
+The [CPU research report](CPU_BUBBLESORT_REDPILER_RESEARCH.md) records a completed
+interpreted sort, actual admission errors and sequential work for horizontal
+notification generators, retained-state entry and coupled writers. It also adds
+the author's failure-tolerance requirement: inventory all mechanisms, but apply
+executable guards to live roles after proving observable electrical, memory and
+update effects. Preserve irrelevant malformed geometry statically where proved
+safe; a missing head must not be a blanket whole-build failure. This proof and
+general BUD legalization remain pending. Supporting Counter clock pause/restart
+does not establish these CPU protocols.
+
 The [supplied lever/repeater revision](INSTANT_PISTON_IO_SCHEMATICS.md) now has exact hashes, reviewed ports, bounded protocols and independent Java captures. It is separate from the original pack. Attaching a repeater or changing an input circuit changes dust shape, loading and notifications; admission remains specific to a validated consumer/protocol rather than a matching filename. [Validation](INSTANT_PISTON_IO_VALIDATION.md) records limits and spatial/order-dependent XOR reset behavior.
 
 | Area | Current scope | Remaining work |

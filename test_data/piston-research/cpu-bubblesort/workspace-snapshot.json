@@ -1,0 +1,8 @@
+{
+  "revision": "938111269e1a5496b8ce77194b4b6456de3c7072",
+  "original_workspace": "F:\\rustrepos\\MCHPRS",
+  "original_status": [
+    " M crates/core/src/plot/client_sync_tests.rs",
+    "?? test_data/piston-research/cpu-bubblesort/"
+  ]
+}

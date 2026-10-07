@@ -1,0 +1,772 @@
+{
+  "schema_version": 1,
+  "fixture": "test_data/piston-research/cpu-bubblesort/CPU_BubbleSort.schem",
+  "fixture_sha256": "907e74d6c4882d4c7065d55e0f8ec4cca8885a34f7af90ca51c060953badaf2c",
+  "coordinates": "selection-local in summaries; full captures retain absolute operation/work positions",
+  "memory_word_order": "physical layers; row 0 at z=62, bit 0 at x=175",
+  "moving_word": "null marks a moving base; it is not a stored zero",
+  "analysis": [
+    {
+      "budget": 1,
+      "elapsed_ms": 137,
+      "inspected_cells": 1339392,
+      "nonair_blocks": 160429,
+      "dependency_steps": 3218953,
+      "pistons": 16561,
+      "observers": 11229,
+      "payload_groups": 13183,
+      "group_sizes": {
+        "1": 9837,
+        "2": 3314,
+        "3": 32
+      },
+      "matched_reset_mechanisms": 10149,
+      "diagnostic_counts": {
+        "NoResetSeed": 1552,
+        "ContextOutsideBounds": 23,
+        "MissingOrMismatchedHead": 1,
+        "RetractedEntry": 171,
+        "EntryPowerMismatch": 171,
+        "OrdinaryPiston": 65,
+        "UnsupportedPayload": 65,
+        "PoweredObserverCap": 602,
+        "NonconductingObserverCap": 602
+      },
+      "recognition_failure_counts": {
+        "NonconductingSupport": 3899,
+        "NoResetPath": 6174,
+        "NoReturnPath": 132,
+        "ForcedPower": 671,
+        "MismatchedHead": 66,
+        "ActiveReset": 9,
+        "RetractedEntry": 171,
+        "UnsampledEntry": 171,
+        "NonSticky": 65,
+        "UnsupportedPayload": 65,
+        "AdditionalResetWriter": 24
+      },
+      "examples": {
+        "NonconductingSupport": {
+          "base": [
+            182,
+            1,
+            228
+          ],
+          "failure": {
+            "NonconductingSupport": {
+              "pos": {
+                "x": 182,
+                "y": 8,
+                "z": 230
+              }
+            }
+          }
+        },
+        "NoResetPath": {
+          "base": [
+            182,
+            1,
+            228
+          ],
+          "failure": "NoResetPath"
+        },
+        "NoReturnPath": {
+          "base": [
+            171,
+            5,
+            1
+          ],
+          "failure": {
+            "NoReturnPath": {
+              "source": {
+                "x": 172,
+                "y": 12,
+                "z": 3
+              }
+            }
+          }
+        },
+        "ForcedPower": {
+          "base": [
+            179,
+            5,
+            186
+          ],
+          "failure": {
+            "ForcedPower": {
+              "source": {
+                "x": 180,
+                "y": 14,
+                "z": 187
+              }
+            }
+          }
+        },
+        "MismatchedHead": {
+          "base": [
+            179,
+            6,
+            165
+          ],
+          "failure": "MismatchedHead"
+        },
+        "ActiveReset": {
+          "base": [
+            201,
+            6,
+            216
+          ],
+          "failure": {
+            "ActiveReset": {
+              "pos": {
+                "x": 202,
+                "y": 13,
+                "z": 218
+              }
+            }
+          }
+        },
+        "RetractedEntry": {
+          "base": [
+            175,
+            7,
+            2
+          ],
+          "failure": "RetractedEntry"
+        },
+        "UnsampledEntry": {
+          "base": [
+            175,
+            7,
+            2
+          ],
+          "failure": "UnsampledEntry"
+        },
+        "NonSticky": {
+          "base": [
+            219,
+            7,
+            3
+          ],
+          "failure": "NonSticky"
+        },
+        "UnsupportedPayload": {
+          "base": [
+            219,
+            7,
+            3
+          ],
+          "failure": {
+            "UnsupportedPayload": {
+              "block": "air",
+              "pos": {
+                "x": 222,
+                "y": 15,
+                "z": 4
+              }
+            }
+          }
+        },
+        "AdditionalResetWriter": {
+          "base": [
+            176,
+            10,
+            163
+          ],
+          "failure": {
+            "AdditionalResetWriter": {
+              "pos": {
+                "x": 177,
+                "y": 20,
+                "z": 165
+              }
+            }
+          }
+        }
+      },
+      "output_interfaces": 124,
+      "reset_exposures": 1169
+    },
+    {
+      "budget": 2,
+      "elapsed_ms": 132,
+      "inspected_cells": 1339392,
+      "nonair_blocks": 160429,
+      "dependency_steps": 3218953,
+      "pistons": 16561,
+      "observers": 11229,
+      "payload_groups": 13183,
+      "group_sizes": {
+        "1": 9837,
+        "2": 3314,
+        "3": 32
+      },
+      "matched_reset_mechanisms": 10149,
+      "diagnostic_counts": {
+        "NoResetSeed": 1552,
+        "ContextOutsideBounds": 23,
+        "MissingOrMismatchedHead": 1,
+        "RetractedEntry": 171,
+        "EntryPowerMismatch": 171,
+        "OrdinaryPiston": 65,
+        "UnsupportedPayload": 65,
+        "PoweredObserverCap": 602,
+        "NonconductingObserverCap": 602
+      },
+      "recognition_failure_counts": {
+        "NonconductingSupport": 3899,
+        "NoResetPath": 6174,
+        "NoReturnPath": 132,
+        "ForcedPower": 671,
+        "MismatchedHead": 66,
+        "ActiveReset": 9,
+        "RetractedEntry": 171,
+        "UnsampledEntry": 171,
+        "NonSticky": 65,
+        "UnsupportedPayload": 65,
+        "AdditionalResetWriter": 24
+      },
+      "examples": {
+        "NonconductingSupport": {
+          "base": [
+            182,
+            1,
+            228
+          ],
+          "failure": {
+            "NonconductingSupport": {
+              "pos": {
+                "x": 182,
+                "y": 8,
+                "z": 230
+              }
+            }
+          }
+        },
+        "NoResetPath": {
+          "base": [
+            182,
+            1,
+            228
+          ],
+          "failure": "NoResetPath"
+        },
+        "NoReturnPath": {
+          "base": [
+            171,
+            5,
+            1
+          ],
+          "failure": {
+            "NoReturnPath": {
+              "source": {
+                "x": 172,
+                "y": 12,
+                "z": 3
+              }
+            }
+          }
+        },
+        "ForcedPower": {
+          "base": [
+            179,
+            5,
+            186
+          ],
+          "failure": {
+            "ForcedPower": {
+              "source": {
+                "x": 180,
+                "y": 14,
+                "z": 187
+              }
+            }
+          }
+        },
+        "MismatchedHead": {
+          "base": [
+            179,
+            6,
+            165
+          ],
+          "failure": "MismatchedHead"
+        },
+        "ActiveReset": {
+          "base": [
+            201,
+            6,
+            216
+          ],
+          "failure": {
+            "ActiveReset": {
+              "pos": {
+                "x": 202,
+                "y": 13,
+                "z": 218
+              }
+            }
+          }
+        },
+        "RetractedEntry": {
+          "base": [
+            175,
+            7,
+            2
+          ],
+          "failure": "RetractedEntry"
+        },
+        "UnsampledEntry": {
+          "base": [
+            175,
+            7,
+            2
+          ],
+          "failure": "UnsampledEntry"
+        },
+        "NonSticky": {
+          "base": [
+            219,
+            7,
+            3
+          ],
+          "failure": "NonSticky"
+        },
+        "UnsupportedPayload": {
+          "base": [
+            219,
+            7,
+            3
+          ],
+          "failure": {
+            "UnsupportedPayload": {
+              "block": "air",
+              "pos": {
+                "x": 222,
+                "y": 15,
+                "z": 4
+              }
+            }
+          }
+        },
+        "AdditionalResetWriter": {
+          "base": [
+            176,
+            10,
+            163
+          ],
+          "failure": {
+            "AdditionalResetWriter": {
+              "pos": {
+                "x": 177,
+                "y": 20,
+                "z": 165
+              }
+            }
+          }
+        }
+      },
+      "output_interfaces": 124,
+      "reset_exposures": 1169
+    },
+    {
+      "budget": 4,
+      "elapsed_ms": 133,
+      "inspected_cells": 1339392,
+      "nonair_blocks": 160429,
+      "dependency_steps": 3218953,
+      "pistons": 16561,
+      "observers": 11229,
+      "payload_groups": 13183,
+      "group_sizes": {
+        "1": 9837,
+        "2": 3314,
+        "3": 32
+      },
+      "matched_reset_mechanisms": 10149,
+      "diagnostic_counts": {
+        "NoResetSeed": 1552,
+        "ContextOutsideBounds": 23,
+        "MissingOrMismatchedHead": 1,
+        "RetractedEntry": 171,
+        "EntryPowerMismatch": 171,
+        "OrdinaryPiston": 65,
+        "UnsupportedPayload": 65,
+        "PoweredObserverCap": 602,
+        "NonconductingObserverCap": 602
+      },
+      "recognition_failure_counts": {
+        "NonconductingSupport": 3899,
+        "NoResetPath": 6174,
+        "NoReturnPath": 132,
+        "ForcedPower": 671,
+        "MismatchedHead": 66,
+        "ActiveReset": 9,
+        "RetractedEntry": 171,
+        "UnsampledEntry": 171,
+        "NonSticky": 65,
+        "UnsupportedPayload": 65,
+        "AdditionalResetWriter": 24
+      },
+      "examples": {
+        "NonconductingSupport": {
+          "base": [
+            182,
+            1,
+            228
+          ],
+          "failure": {
+            "NonconductingSupport": {
+              "pos": {
+                "x": 182,
+                "y": 8,
+                "z": 230
+              }
+            }
+          }
+        },
+        "NoResetPath": {
+          "base": [
+            182,
+            1,
+            228
+          ],
+          "failure": "NoResetPath"
+        },
+        "NoReturnPath": {
+          "base": [
+            171,
+            5,
+            1
+          ],
+          "failure": {
+            "NoReturnPath": {
+              "source": {
+                "x": 172,
+                "y": 12,
+                "z": 3
+              }
+            }
+          }
+        },
+        "ForcedPower": {
+          "base": [
+            179,
+            5,
+            186
+          ],
+          "failure": {
+            "ForcedPower": {
+              "source": {
+                "x": 180,
+                "y": 14,
+                "z": 187
+              }
+            }
+          }
+        },
+        "MismatchedHead": {
+          "base": [
+            179,
+            6,
+            165
+          ],
+          "failure": "MismatchedHead"
+        },
+        "ActiveReset": {
+          "base": [
+            201,
+            6,
+            216
+          ],
+          "failure": {
+            "ActiveReset": {
+              "pos": {
+                "x": 202,
+                "y": 13,
+                "z": 218
+              }
+            }
+          }
+        },
+        "RetractedEntry": {
+          "base": [
+            175,
+            7,
+            2
+          ],
+          "failure": "RetractedEntry"
+        },
+        "UnsampledEntry": {
+          "base": [
+            175,
+            7,
+            2
+          ],
+          "failure": "UnsampledEntry"
+        },
+        "NonSticky": {
+          "base": [
+            219,
+            7,
+            3
+          ],
+          "failure": "NonSticky"
+        },
+        "UnsupportedPayload": {
+          "base": [
+            219,
+            7,
+            3
+          ],
+          "failure": {
+            "UnsupportedPayload": {
+              "block": "air",
+              "pos": {
+                "x": 222,
+                "y": 15,
+                "z": 4
+              }
+            }
+          }
+        },
+        "AdditionalResetWriter": {
+          "base": [
+            176,
+            10,
+            163
+          ],
+          "failure": {
+            "AdditionalResetWriter": {
+              "pos": {
+                "x": 177,
+                "y": 20,
+                "z": 165
+              }
+            }
+          }
+        }
+      },
+      "output_interfaces": 124,
+      "reset_exposures": 1169
+    },
+    {
+      "budget": 8,
+      "elapsed_ms": 132,
+      "inspected_cells": 1339392,
+      "nonair_blocks": 160429,
+      "dependency_steps": 3218953,
+      "pistons": 16561,
+      "observers": 11229,
+      "payload_groups": 13183,
+      "group_sizes": {
+        "1": 9837,
+        "2": 3314,
+        "3": 32
+      },
+      "matched_reset_mechanisms": 10149,
+      "diagnostic_counts": {
+        "NoResetSeed": 1552,
+        "ContextOutsideBounds": 23,
+        "MissingOrMismatchedHead": 1,
+        "RetractedEntry": 171,
+        "EntryPowerMismatch": 171,
+        "OrdinaryPiston": 65,
+        "UnsupportedPayload": 65,
+        "PoweredObserverCap": 602,
+        "NonconductingObserverCap": 602
+      },
+      "recognition_failure_counts": {
+        "NonconductingSupport": 3899,
+        "NoResetPath": 6174,
+        "NoReturnPath": 132,
+        "ForcedPower": 671,
+        "MismatchedHead": 66,
+        "ActiveReset": 9,
+        "RetractedEntry": 171,
+        "UnsampledEntry": 171,
+        "NonSticky": 65,
+        "UnsupportedPayload": 65,
+        "AdditionalResetWriter": 24
+      },
+      "examples": {
+        "NonconductingSupport": {
+          "base": [
+            182,
+            1,
+            228
+          ],
+          "failure": {
+            "NonconductingSupport": {
+              "pos": {
+                "x": 182,
+                "y": 8,
+                "z": 230
+              }
+            }
+          }
+        },
+        "NoResetPath": {
+          "base": [
+            182,
+            1,
+            228
+          ],
+          "failure": "NoResetPath"
+        },
+        "NoReturnPath": {
+          "base": [
+            171,
+            5,
+            1
+          ],
+          "failure": {
+            "NoReturnPath": {
+              "source": {
+                "x": 172,
+                "y": 12,
+                "z": 3
+              }
+            }
+          }
+        },
+        "ForcedPower": {
+          "base": [
+            179,
+            5,
+            186
+          ],
+          "failure": {
+            "ForcedPower": {
+              "source": {
+                "x": 180,
+                "y": 14,
+                "z": 187
+              }
+            }
+          }
+        },
+        "MismatchedHead": {
+          "base": [
+            179,
+            6,
+            165
+          ],
+          "failure": "MismatchedHead"
+        },
+        "ActiveReset": {
+          "base": [
+            201,
+            6,
+            216
+          ],
+          "failure": {
+            "ActiveReset": {
+              "pos": {
+                "x": 202,
+                "y": 13,
+                "z": 218
+              }
+            }
+          }
+        },
+        "RetractedEntry": {
+          "base": [
+            175,
+            7,
+            2
+          ],
+          "failure": "RetractedEntry"
+        },
+        "UnsampledEntry": {
+          "base": [
+            175,
+            7,
+            2
+          ],
+          "failure": "UnsampledEntry"
+        },
+        "NonSticky": {
+          "base": [
+            219,
+            7,
+            3
+          ],
+          "failure": "NonSticky"
+        },
+        "UnsupportedPayload": {
+          "base": [
+            219,
+            7,
+            3
+          ],
+          "failure": {
+            "UnsupportedPayload": {
+              "block": "air",
+              "pos": {
+                "x": 222,
+                "y": 15,
+                "z": 4
+              }
+            }
+          }
+        },
+        "AdditionalResetWriter": {
+          "base": [
+            176,
+            10,
+            163
+          ],
+          "failure": {
+            "AdditionalResetWriter": {
+              "pos": {
+                "x": 177,
+                "y": 20,
+                "z": 165
+              }
+            }
+          }
+        }
+      },
+      "output_interfaces": 124,
+      "reset_exposures": 1169
+    }
+  ],
+  "compile": [
+    {
+      "active": false,
+      "assume_instant": false,
+      "budget": 1,
+      "elapsed_ms": 589,
+      "error": "ordinary piston at BlockPos { x: 220, y: 15, z: 4 } is not a ready empty observer-clock generator; independent piston update samplers are not implemented"
+    },
+    {
+      "active": false,
+      "assume_instant": false,
+      "budget": 2,
+      "elapsed_ms": 586,
+      "error": "ordinary piston at BlockPos { x: 220, y: 15, z: 4 } is not a ready empty observer-clock generator; independent piston update samplers are not implemented"
+    },
+    {
+      "active": false,
+      "assume_instant": false,
+      "budget": 4,
+      "elapsed_ms": 591,
+      "error": "ordinary piston at BlockPos { x: 220, y: 15, z: 4 } is not a ready empty observer-clock generator; independent piston update samplers are not implemented"
+    },
+    {
+      "active": false,
+      "assume_instant": false,
+      "budget": 8,
+      "elapsed_ms": 550,
+      "error": "ordinary piston at BlockPos { x: 220, y: 15, z: 4 } is not a ready empty observer-clock generator; independent piston update samplers are not implemented"
+    },
+    {
+      "active": false,
+      "assume_instant": true,
+      "budget": 8,
+      "elapsed_ms": 553,
+      "error": "ordinary piston at BlockPos { x: 220, y: 15, z: 4 } is not a ready empty observer-clock generator; independent piston update samplers are not implemented"
+    }
+  ],
+  "episodes": []
+}

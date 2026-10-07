@@ -4,6 +4,14 @@ use crate::redstone::piston::trace;
 use std::collections::BTreeMap;
 use std::time::Instant;
 
+#[path = "../../../../benches/support/cpus.rs"]
+#[allow(dead_code)]
+mod cpus;
+
+fn origin(manifest: &Value) -> BlockPos {
+    manifest.get("origin").map_or(BASE, |p| local_pos(p) - BASE)
+}
+
 fn manifest(name: &str) -> Value {
     serde_json::from_slice(
         &std::fs::read(
@@ -29,24 +37,28 @@ fn load(manifest: &Value) -> (PlotWorld, (BlockPos, BlockPos)) {
         json!([clipboard.offset_x, clipboard.offset_y, clipboard.offset_z])
     );
     let mut world = empty();
-    paste_clipboard(
-        &mut world,
-        &clipboard,
-        BASE + BlockPos::new(clipboard.offset_x, clipboard.offset_y, clipboard.offset_z),
-        false,
-    );
-    let last = BASE
+    let first = origin(manifest);
+    let last = first
         + BlockPos::new(
             clipboard.size_x as i32 - 1,
             clipboard.size_y as i32 - 1,
             clipboard.size_z as i32 - 1,
         );
-    (world, (BASE, last))
+    let (world_first, world_last) = world.get_corners();
+    assert_eq!(first.max(world_first), first, "fixture must fit the plot");
+    assert_eq!(last.min(world_last), last, "fixture must fit the plot");
+    paste_clipboard(
+        &mut world,
+        &clipboard,
+        first + BlockPos::new(clipboard.offset_x, clipboard.offset_y, clipboard.offset_z),
+        false,
+    );
+    (world, (first, last))
 }
 
-fn block_state(world: &PlotWorld, pos: BlockPos) -> Value {
+fn block_state(world: &PlotWorld, pos: BlockPos, first: BlockPos) -> Value {
     let block = world.get_block(pos);
-    json!({"pos": pos - BASE, "name": block.get_name(), "properties": block.properties(),
+    json!({"pos": pos - first, "name": block.get_name(), "properties": block.properties(),
     "entity": world.get_block_entity(pos), "power": match block {
         Block::Piston { piston } => Some(crate::redstone::piston::should_piston_extend(world, piston.facing, pos)),
         _ => None,
@@ -65,7 +77,13 @@ fn observations(world: &PlotWorld, manifest: &Value) -> Value {
                     .as_array()
                     .unwrap()
                     .iter()
-                    .map(|p| block_state(world, local_pos(p)))
+                    .map(|p| {
+                        block_state(
+                            world,
+                            local_pos(p) - BASE + origin(manifest),
+                            origin(manifest),
+                        )
+                    })
                     .collect::<Vec<_>>(),
             )
         })
@@ -75,10 +93,144 @@ fn observations(world: &PlotWorld, manifest: &Value) -> Value {
         "piston_events": world.piston_state().events, "motions": world.piston_state().motions})
 }
 
+fn cpu_words(world: &PlotWorld, fixture: &Value) -> Value {
+    let words: BTreeMap<_, _> = fixture["observations"]
+        .as_object()
+        .unwrap()
+        .iter()
+        .filter(|(name, _)| name.starts_with("ram_") || name.starts_with("register"))
+        .map(|(name, positions)| {
+            let words: Vec<Option<u16>> = positions
+                .as_array()
+                .unwrap()
+                .chunks(12)
+                .map(|bits| {
+                    bits.iter().enumerate().try_fold(0, |word, (bit, p)| {
+                        match world.get_block(local_pos(p) - BASE + origin(fixture)) {
+                            Block::Piston { piston } => {
+                                Some(word | (u16::from(!piston.extended) << bit))
+                            }
+                            _ => None,
+                        }
+                    })
+                })
+                .collect();
+            (name, words)
+        })
+        .collect();
+    json!(words)
+}
+
+#[test]
+#[ignore = "bounded CPU protocol capture; explicit new output file required"]
+fn capture_bubblesort_execution() {
+    let output = std::env::var("MCHPRS_PISTON_RESEARCH_OUTPUT").unwrap();
+    let fixture = manifest("cpu_bubblesort");
+    let selected = std::env::var("MCHPRS_PISTON_RESEARCH_CASE").unwrap();
+    let case = fixture["cases"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|c| c["id"] == selected)
+        .unwrap();
+    let (mut world, _) = load(&fixture);
+    let watched: rustc_hash::FxHashSet<_> = fixture["observations"]
+        .as_object()
+        .unwrap()
+        .values()
+        .flat_map(|p| p.as_array().unwrap())
+        .map(|p| local_pos(p) - BASE + origin(&fixture))
+        .collect();
+    let mut samples =
+        vec![json!({"label":"import", "tick":0, "words":cpu_words(&world, &fixture)})];
+    for (index, step) in case["steps"].as_array().unwrap().iter().enumerate() {
+        let count = step["advance"]
+            .as_u64()
+            .or_else(|| step["wait_quiet"].as_u64());
+        if let Some(count) = count {
+            assert!(count <= 50_000, "bounded CPU research run");
+            let mut quiet = 0;
+            for elapsed in 1..=count {
+                let entries = trace::capture(|| world.tick_interpreted());
+                let total = entries.len();
+                let sha256 = format!(
+                    "{:x}",
+                    Sha256::digest(serde_json::to_vec(&entries).unwrap())
+                );
+                let entries: Vec<_> = entries
+                    .into_iter()
+                    .filter(|entry| {
+                        watched.contains(&match entry.operation {
+                            trace::Operation::Sample { pos, .. } => pos,
+                            trace::Operation::Applied(event) => event.pos,
+                        })
+                    })
+                    .collect();
+                let pending = world.scheduler().iter_entries().count();
+                let motions = world.piston_state().motions.len();
+                let events = world.piston_state().events.len();
+                quiet = if pending == 0 && motions == 0 && events == 0 {
+                    quiet + 1
+                } else {
+                    0
+                };
+                let words = cpu_words(&world, &fixture);
+                samples.push(
+                    json!({"label":"tick", "step":index, "tick":world.piston_state().logical_tick,
+                    "words":words, "pending":pending, "motions":motions, "events":events,
+                    "operation_count":total, "operation_sha256":sha256, "operations":entries}),
+                );
+                if elapsed % 500 == 0 {
+                    println!("{selected}: step {index}, {elapsed} ticks, pending {pending}, motions {motions}");
+                }
+                if step.get("wait_quiet").is_some() && quiet >= 20 {
+                    break;
+                }
+            }
+            samples.push(json!({"label":"boundary", "step":index, "tick":world.piston_state().logical_tick,
+                "quiet_ticks":quiet, "state":observations(&world, &fixture), "checkpoint":cpus::checkpoint(&world, world.piston_state().logical_tick as u32, &[])}));
+            println!(
+                "{selected}: boundary {index}, tick {}, quiet {quiet}, RAM {}",
+                world.piston_state().logical_tick,
+                cpu_words(&world, &fixture)["ram_y37"]
+            );
+        } else if step.get("diagnose").is_some() {
+            samples.push(json!({"label":"diagnostics", "step":index, "tick":world.piston_state().logical_tick,
+                "words":cpu_words(&world, &fixture), "diagnostics":diagnose(&world)}));
+        } else {
+            let entries = trace::capture(|| action(&mut world, &fixture, step));
+            samples.push(
+                json!({"label":"action", "step":index, "tick":world.piston_state().logical_tick,
+                "action":step, "words":cpu_words(&world, &fixture), "operations":entries}),
+            );
+        }
+    }
+    if let Some(expected) = case.get("expected_final_ram_y37") {
+        assert_eq!(
+            &cpu_words(&world, &fixture)["ram_y37"],
+            expected,
+            "completed CPU sort"
+        );
+        assert_eq!(world.scheduler().iter_entries().count(), 0);
+        assert!(world.piston_state().motions.is_empty());
+        assert!(world.piston_state().events.is_empty());
+    }
+    let file = std::fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(output)
+        .unwrap();
+    serde_json::to_writer(std::io::BufWriter::new(file), &json!({"schema_version":1, "engine":"MCHPRS interpreter",
+        "fixture":fixture["fixture"], "fixture_sha256":fixture["sha256"], "origin":fixture["origin"], "case":case,
+        "coordinates":"words selection-local; operations absolute; null word means moving or missing base",
+        "trace_scope":"full ordered operations SHA-256 each tick; explicit ordered entries only at manifest observation positions", "samples":samples})).unwrap();
+}
+
 fn diagnose(world: &PlotWorld) -> Value {
     let ticks: Vec<_> = world.scheduler().iter_entries().collect();
     let mut reports = Vec::new();
-    for budget in [1, 8] {
+    let before = cpus::checkpoint(world, world.piston_state().logical_tick as u32, &[]);
+    for budget in [1, 2, 4, 8] {
         let start = Instant::now();
         let result = analyze(
             world,
@@ -93,7 +245,7 @@ fn diagnose(world: &PlotWorld) -> Value {
         });
     }
     let mut attempts = Vec::new();
-    for budget in [1, 8] {
+    for (budget, assume_instant) in [(1, false), (2, false), (4, false), (8, false), (8, true)] {
         let mut compiler = Compiler::default();
         let start = Instant::now();
         let result = compiler.compile(
@@ -101,6 +253,7 @@ fn diagnose(world: &PlotWorld) -> Value {
             world.get_corners(),
             CompilerOptions {
                 budget_multiplier: budget,
+                assume_instant,
                 optimize: true,
                 io_only: true,
                 ..Default::default()
@@ -108,16 +261,22 @@ fn diagnose(world: &PlotWorld) -> Value {
             ticks.clone(),
             Default::default(),
         );
-        attempts.push(json!({"budget": budget, "elapsed_ms": start.elapsed().as_millis(), "active": compiler.is_active(),
+        assert_eq!(
+            cpus::checkpoint(world, world.piston_state().logical_tick as u32, &[]),
+            before,
+            "read-only admission must preserve physical state and work"
+        );
+        attempts.push(json!({"budget": budget, "assume_instant": assume_instant, "elapsed_ms": start.elapsed().as_millis(), "active": compiler.is_active(),
             "error": result.err().map(|error| error.to_string())}));
     }
     json!({"analysis": reports, "compile": attempts})
 }
 
-fn action(world: &mut PlotWorld, operation: &Value) {
-    let pos = local_pos(&operation["pos"]);
+fn action(world: &mut PlotWorld, manifest: &Value, operation: &Value) {
+    let pos = local_pos(&operation["pos"]) - BASE + origin(manifest);
     match operation["op"].as_str().unwrap() {
         "lever" => lever_action(world, pos, operation["powered"].as_bool().unwrap()),
+        "button" => cpus::click(world, pos - BlockPos::new(8, 8, 8)),
         "notify" => crate::redstone::update_surrounding_blocks(world, pos),
         "sample" => {
             let block = world.get_block(pos);
@@ -169,8 +328,10 @@ fn capture_author_research_fixtures() {
                     let operations = trace::capture(|| world.tick_interpreted());
                     samples.push(json!({"label": "tick", "step": index, "state": observations(&world, &manifest), "operations": operations}));
                 }
+            } else if step.get("diagnose").is_some() {
+                samples.push(json!({"label": "diagnostics", "step": index, "state": observations(&world, &manifest), "operations": [], "diagnostics": diagnose(&world)}));
             } else {
-                let operations = trace::capture(|| action(&mut world, step));
+                let operations = trace::capture(|| action(&mut world, &manifest, step));
                 samples.push(json!({"label": "action", "step": index, "action": step, "state": observations(&world, &manifest), "operations": operations}));
             }
         }
@@ -188,9 +349,50 @@ fn capture_author_research_fixtures() {
         .unwrap();
     serde_json::to_writer(std::io::BufWriter::new(file), &json!({"schema_version": 1, "engine": "MCHPRS interpreter",
         "fixture_sha256": manifest["sha256"], "fixture": manifest["fixture"],
-        "origin": [BASE.x, BASE.y, BASE.z], "setup": "strict paste, no notifications or implicit settling",
+        "origin": [origin(&manifest).x, origin(&manifest).y, origin(&manifest).z], "setup": "strict paste, no notifications or implicit settling",
         "coordinates": "observations selection-local; operation entries and queued work absolute",
         "diagnostics": diagnostics, "episodes": episodes})).unwrap();
+}
+
+#[test]
+fn bubblesort_import_preserves_full_memory_and_button_protocol() {
+    let fixture = manifest("cpu_bubblesort");
+    let (mut world, bounds) = load(&fixture);
+    assert_eq!(
+        bounds,
+        (BlockPos::new(1, 8, 1), BlockPos::new(225, 49, 254))
+    );
+    for row in 0..16 {
+        let mut word = 0u16;
+        for bit in 0..12 {
+            let pos = bounds.0 + BlockPos::new(175 + 4 * bit, 37, 62 - 4 * row);
+            let Block::Piston { piston } = world.get_block(pos) else {
+                panic!("missing saved RAM cell at {pos}");
+            };
+            word |= u16::from(!piston.extended) << bit;
+        }
+        assert_eq!(word, 15 - row as u16);
+    }
+    action(
+        &mut world,
+        &fixture,
+        &json!({"op": "button", "pos": [166,7,158]}),
+    );
+    let pos = bounds.0 + BlockPos::new(166, 7, 158);
+    assert!(matches!(world.get_block(pos), Block::StoneButton { button } if button.powered));
+    assert!(world.pending_tick_at(pos));
+    advance(&mut world, 20);
+    assert!(matches!(world.get_block(pos), Block::StoneButton { button } if !button.powered));
+    // A second cell of margin contains all potential notification positions.
+    let mut relocated = fixture;
+    relocated["origin"] = json!([2, 8, 2]);
+    let (world, _) = load(&relocated);
+    let report = analyze_world(&world);
+    assert!(report
+        .ports
+        .pistons
+        .iter()
+        .all(|p| p.outside_bounds.is_empty()));
 }
 
 #[test]
