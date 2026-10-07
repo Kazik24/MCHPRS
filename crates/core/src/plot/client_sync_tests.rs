@@ -235,6 +235,71 @@ fn actual_placement_and_break_handlers_publish_edits_in_screen_mode() {
 }
 
 #[test]
+fn swords_inspect_without_a_diff_and_never_break_blocks() {
+    for compressed in [false, true] {
+        for hand in [0, 1] {
+            let (mut plot, mut peer) = fixture(compressed);
+            let support = BlockPos::new(32, 20, 32);
+            for (index, material) in ["wooden", "stone", "iron", "golden", "diamond", "netherite"]
+                .into_iter()
+                .enumerate()
+            {
+                plot.players[0].inventory[36] = Some(ItemStack {
+                    item_type: Item::from_name(&format!("{material}_sword")).unwrap(),
+                    count: 1,
+                    nbt: None,
+                });
+                let sequence = index as i32 + 1;
+                plot.handle_player_digging(digging(support, 0, sequence), 0);
+                assert_eq!(plot.world.get_block(support), Block::Sandstone {});
+                let (ids, blocks) = episode(&mut peer, compressed, sequence);
+                assert_eq!(ids, [0x08, 0x04]);
+                assert_eq!(blocks, [(support, Block::Sandstone {}.get_id())]);
+            }
+            if hand == 1 {
+                plot.players[0].inventory[45] = plot.players[0].inventory[36].take();
+            }
+            // Aim into empty space: inspect must report its own target error,
+            // without requiring a diff or starting a repository worker.
+            plot.handle_use_item(
+                SUseItem {
+                    hand,
+                    sequence: 7,
+                    yaw: 0.0,
+                    pitch: 0.0,
+                },
+                0,
+            );
+            let (id, frame) = read_frame(&mut peer, compressed).unwrap();
+            assert_eq!(id, 0x72);
+            let payload = &frame.get_ref()[frame.position() as usize..];
+            let mut named = vec![payload[0], 0, 0];
+            named.extend_from_slice(&payload[1..]);
+            let component = nbt::Blob::from_reader(&mut std::io::Cursor::new(named)).unwrap();
+            let text = mchprs_network::text::to_json(&nbt::Value::Compound(component.content));
+            assert!(text.contains(messages::GIT_INSPECT_TARGET_REQUIRED));
+            read_ack(&mut peer, compressed, 7);
+            // A duplicate use-on-block packet must not interact with the block.
+            let mut duplicate = placement(support, 8);
+            duplicate.hand = hand;
+            plot.handle_player_block_placement(duplicate, 0);
+            let (ids, _) = episode(&mut peer, compressed, 8);
+            assert!(!ids.contains(&0x72));
+            let mut fallback = placement(support, 9);
+            fallback.hand = 1 - hand;
+            plot.handle_player_block_placement(fallback, 0);
+            let (ids, _) = episode(&mut peer, compressed, 9);
+            assert!(!ids.contains(&0x72));
+            assert_eq!(plot.world.get_block(support), Block::Sandstone {});
+            assert_eq!(
+                plot.world.get_block(support.offset(BlockFace::Top)),
+                Block::Air
+            );
+        }
+    }
+}
+
+#[test]
 fn rejected_placement_and_dig_abort_finish_correct_prediction_before_ack() {
     for compressed in [false, true] {
         let (mut plot, mut peer) = fixture(compressed);

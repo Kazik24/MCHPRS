@@ -3,8 +3,8 @@
 
 use anyhow::{bail, ensure, Context, Result};
 use mchprs_blocks::{
-    blocks::{Block, LeverFace},
-    BlockFace, BlockPos,
+    blocks::{Block, LeverFace, RedstoneRepeater},
+    BlockDirection, BlockFace, BlockPos,
 };
 use mchprs_core::{
     plot::{
@@ -438,7 +438,7 @@ fn main() -> Result<()> {
         "seed": changing_inputs.then_some(seed),
         "input_every_game_ticks": (changing_inputs && component == "fpu_legal").then_some(input_every),
         "changing_input_protocol": changing_inputs.then_some(if component == "fpu_legal" {
-            "continuous OFF raw-port stream: trigger set OFF once before warmup and held OFF; 1024 initial ticks and untimed workload warmup (128 vectors for sequence, 32 otherwise); each measured vector delivers ordered changed-lever updates then input-every native game ticks; no arithmetic or readiness oracle"
+            "continuous OFF raw-port stream: trigger ensured OFF before warmup and held OFF; 1024 initial ticks and untimed workload warmup (128 vectors for sequence, 32 otherwise); each measured vector delivers ordered changed-lever updates then input-every native game ticks; no arithmetic or readiness oracle"
         } else {
             "fixed-window raw-port benchmark: 64 initial ON ticks; untimed workload warmup (128 vectors for sequence, eight otherwise); ordered lever updates set operand port masks while ON, then hold all inputs ON64, OFF128, ON64; no arithmetic or readiness oracle"
         }),
@@ -633,6 +633,23 @@ fn divider_phase(
 
 fn fpu_probes(world: &mut PlotWorld, descriptor: &Value) -> Result<Vec<BlockPos>> {
     let origin = origin(descriptor);
+    if let Some(outputs) = descriptor["observations"]["output_repeaters"].as_array() {
+        ensure!(
+            outputs.len() == 16,
+            "full FPU must have sixteen native output repeaters"
+        );
+        return outputs
+            .iter()
+            .map(|output| {
+                let pos = origin + position(output);
+                ensure!(
+                    matches!(world.get_block(pos), Block::RedstoneRepeater { .. }),
+                    "missing full-FPU output repeater at {pos:?}"
+                );
+                Ok(pos)
+            })
+            .collect();
+    }
     if let Some(outputs) = descriptor["observations"]["output_msb_first"].as_array() {
         ensure!(
             outputs.len() == 10,
@@ -666,12 +683,23 @@ fn fpu_probes(world: &mut PlotWorld, descriptor: &Value) -> Result<Vec<BlockPos>
         let probe = pos.offset(BlockFace::East);
         ensure!(
             world.get_block(probe) == Block::Air,
-            "full-FPU Lamp probe position {probe:?} must be air"
+            "full-FPU repeater probe position {probe:?} must be air"
         );
+        let support = probe.offset(BlockFace::Bottom);
+        ensure!(
+            world.get_block(support) == Block::Air,
+            "full-FPU repeater support {support:?} must be air"
+        );
+        world.set_block(support, Block::Stone {});
         world.set_block(
             probe,
-            Block::RedstoneLamp {
-                lit: wire.power > 0,
+            Block::RedstoneRepeater {
+                repeater: RedstoneRepeater {
+                    delay: 1,
+                    facing: BlockDirection::East,
+                    locked: false,
+                    powered: wire.power > 0,
+                },
             },
         );
         probes.push(probe);
@@ -706,9 +734,15 @@ fn fpu_changing_inputs(
     let operand_bits = if full_fpu { 16 } else { 10 };
     let opcode_bits = if full_fpu { 3 } else { 0 };
     let trigger = origin + position(&descriptor["observations"]["trigger"][0]);
+    let Block::Lever {
+        lever: trigger_lever,
+    } = world.get_block(trigger)
+    else {
+        bail!("missing FPU trigger lever at {trigger:?}");
+    };
     ensure!(
-        matches!(world.get_block(trigger), Block::Lever { lever } if lever.powered),
-        "saved full-FPU trigger must be an ON lever at {trigger:?}"
+        full_fpu || trigger_lever.powered,
+        "saved divider trigger must be ON at {trigger:?}"
     );
     let mut inputs = Vec::with_capacity(operand_bits * 2 + opcode_bits);
     let banks: &[(&str, usize)] = if full_fpu {
@@ -746,7 +780,7 @@ fn fpu_changing_inputs(
     let read_output = |world: &PlotWorld| -> Result<u16> {
         probes.iter().try_fold(0, |word, &pos| {
             let active = match (world.get_block(pos), full_fpu) {
-                (Block::RedstoneLamp { lit }, true) => lit,
+                (Block::RedstoneRepeater { repeater }, true) => repeater.powered,
                 (Block::RedstoneRepeater { repeater }, false) => !repeater.powered,
                 _ => bail!("missing FPU output at {pos:?}"),
             };
@@ -764,7 +798,7 @@ fn fpu_changing_inputs(
         seed,
         warm_episodes + episodes,
     );
-    if full_fpu {
+    if full_fpu && trigger_lever.powered {
         use_lever(compiler, world, trigger);
     }
     for _ in 0..initial_ticks {
@@ -946,10 +980,11 @@ fn fpu_changing_inputs(
         }).collect::<Vec<_>>(),
         "input_lever_positions": inputs.iter().map(|pos| [pos.x, pos.y, pos.z]).collect::<Vec<_>>(),
         "trigger_position": [trigger.x, trigger.y, trigger.z],
-        "output_adapters": if full_fpu { "sixteen derived fixed RedstoneLamp probes east of existing output dust; saved dust connection shape unchanged" } else { "none; ten existing published output repeaters" },
+        "output_adapters": if full_fpu && descriptor["observations"]["output_repeaters"].is_array() { "none; sixteen existing post-adder output repeaters" } else if full_fpu { "sixteen derived east-facing delay-one repeater consumers with stone supports east of existing output dust; saved dust connection shape unchanged" } else { "none; ten existing published output repeaters" },
+        "output_scope": descriptor["ports"]["output_repeaters_scope"],
         "output_positions": probes.iter().map(|pos| [pos.x, pos.y, pos.z]).collect::<Vec<_>>(),
         "output_local_positions": probes.iter().map(|pos| { let local = *pos - origin; [local.x, local.y, local.z] }).collect::<Vec<_>>(),
-        "output_encoding": if full_fpu { "manifest output order bit15..0; lit Lamp=1; raw presentation mask" } else { "manifest MSB-first output order; unpowered Repeater=1; raw presentation mask" },
+        "output_encoding": if full_fpu { "manifest output order bit15..0; powered Repeater=1; raw presentation mask" } else { "manifest MSB-first output order; unpowered Repeater=1; raw presentation mask" },
         "phase_boundary_words": boundaries, "phase_boundary_sha256": format!("{:x}", boundary_hash.finalize()),
         "output_trace_sha256": format!("{:x}", trace_hash.finalize()),
         "output_trace_sha256_scope": if capture_trace { "actual untimed per-game-tick validation trace" } else { "validated reference trace; actual timed observations are the separate phase-boundary checksum" },

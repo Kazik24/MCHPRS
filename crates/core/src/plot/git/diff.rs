@@ -226,8 +226,7 @@ impl Diff {
                 messages::GIT_INVALID_DETAILS_SIDE
             );
         }
-        // Sword inspection passes no side: include both saved versions on the
-        // first click. Keep explicit sides for existing coordinate commands.
+        // Include both saved versions unless a coordinate command requests one side.
         if ae != be || side.is_some() {
             for (label, value, selected) in [
                 (messages::GIT_FROM_LABEL, &ae, "from"),
@@ -281,50 +280,4 @@ pub(super) fn description(block: Block) -> String {
             format!("[{}]", props.join(","))
         }
     )
-}
-
-pub(super) fn aimed(
-    eye: PlayerPos,
-    yaw: f32,
-    pitch: f32,
-    markers: impl Iterator<Item = Marker>,
-    radius: f64,
-) -> Option<BlockPos> {
-    if !eye.is_valid() || !yaw.is_finite() || !pitch.is_finite() {
-        return None;
-    }
-    let (yaw, pitch) = (f64::from(yaw).to_radians(), f64::from(pitch).to_radians());
-    let direction = [
-        -yaw.sin() * pitch.cos(),
-        -pitch.sin(),
-        yaw.cos() * pitch.cos(),
-    ];
-    let origin = [eye.x, eye.y, eye.z];
-    let mut best = None;
-    let mut closest = radius;
-    for marker in markers {
-        let start = [marker.pos.x, marker.pos.y, marker.pos.z];
-        let mut near: f64 = 0.0;
-        let mut far = radius;
-        for axis in 0..3 {
-            let min = start[axis] as f64;
-            let max = min + 1.0;
-            if direction[axis].abs() < 1e-12 {
-                if origin[axis] < min || origin[axis] > max {
-                    far = -1.0;
-                    break;
-                }
-            } else {
-                let a = (min - origin[axis]) / direction[axis];
-                let b = (max - origin[axis]) / direction[axis];
-                near = near.max(a.min(b));
-                far = far.min(a.max(b));
-            }
-        }
-        if near <= far && near < closest {
-            closest = near;
-            best = Some(marker.pos);
-        }
-    }
-    best
 }

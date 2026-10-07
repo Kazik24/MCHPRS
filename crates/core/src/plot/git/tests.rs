@@ -521,12 +521,6 @@ fn nearby_markers_are_capped_sorted_and_include_deleted_blocks() {
     );
     assert_eq!(nearby[7].pos, pos(8, 64, 7));
     assert!(diff.near(center, 20.0, 0).unwrap().is_empty());
-    let eye = PlayerPos::new(-247.5, 64.5, 510.5);
-    assert_eq!(
-        diff::aimed(eye, 0.0, 0.0, nearby.into_iter(), 64.0),
-        Some(pos(8, 64, 0))
-    );
-    assert!(diff::aimed(eye, f32::NAN, 0.0, std::iter::empty(), 64.0).is_none());
 }
 
 #[test]

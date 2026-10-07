@@ -664,8 +664,125 @@ const WRITE_ENABLE: BlockPos = BlockPos::new(19, 12, 1);
 const READ_ENABLE: BlockPos = BlockPos::new(18, 7, 1);
 
 #[test]
+#[ignore = "compiled FPU input propagation diagnostic; explicit new output file required"]
+fn capture_corrected_fpu_input_propagation() {
+    let output = std::env::var("MCHPRS_FPU_SIGNAL_OUTPUT").expect("MCHPRS_FPU_SIGNAL_OUTPUT");
+    let fixture = manifest("fpu_legal");
+    let (mut world, _) = load(&fixture);
+    let first = origin(&fixture);
+    let mut compiler = Compiler::default();
+    compiler
+        .compile(
+            &world,
+            world.get_corners(),
+            CompilerOptions::default(),
+            vec![],
+            Default::default(),
+        )
+        .unwrap();
+    let trigger = first + local_pos(&fixture["observations"]["trigger"][0]) - BASE;
+    assert!(matches!(
+        world.get_block(trigger.offset(BlockFace::North)),
+        Block::Wool {
+            color: mchprs_blocks::BlockColorVariant::Green
+        }
+    ));
+    let mut inputs = Vec::new();
+    for key in [
+        "light_blue_operand_inputs",
+        "red_operand_inputs",
+        "opcode_levers_by_sign_weight_4_2_1",
+    ] {
+        inputs.extend(
+            fixture["ports"][key]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|pos| first + local_pos(pos) - BASE),
+        );
+    }
+    let mut previous: FxHashMap<_, _> = compiler
+        .backend
+        .as_ref()
+        .unwrap()
+        .ordinary_sources()
+        .into_iter()
+        .collect();
+    let mut samples = Vec::new();
+    for (phase, mask) in [
+        ("green_off_saved_data", None),
+        ("all_inputs_off", Some(0u64)),
+        ("all_inputs_on", Some((1u64 << inputs.len()) - 1)),
+        ("all_inputs_off_again", Some(0)),
+    ] {
+        if phase == "green_off_saved_data" {
+            let Block::Lever { lever } = world.get_block(trigger) else {
+                panic!("green control is not a lever")
+            };
+            if lever.powered {
+                compiler.on_use_block(trigger);
+            }
+        }
+        if let Some(mask) = mask {
+            compiler.flush(&mut world);
+            for (bit, &pos) in inputs.iter().enumerate() {
+                let Block::Lever { lever } = world.get_block(pos) else {
+                    panic!("missing input lever")
+                };
+                if lever.powered != (mask >> bit & 1 != 0) {
+                    compiler.on_use_block(pos);
+                }
+            }
+        }
+        for tick in 1..=128 {
+            compiler.tick_with_world(&mut world);
+            compiler.flush(&mut world);
+            let current: FxHashMap<_, _> = compiler
+                .backend
+                .as_ref()
+                .unwrap()
+                .ordinary_sources()
+                .into_iter()
+                .collect();
+            let mut changes: Vec<_> = current
+                .iter()
+                .filter_map(|(&pos, &power)| {
+                    (previous.get(&pos) != Some(&power)).then_some((
+                        pos - first,
+                        previous.get(&pos).copied(),
+                        power,
+                    ))
+                })
+                .collect();
+            changes.sort_by_key(|(pos, _, _)| (pos.y, pos.z, pos.x));
+            for (&pos, &power) in &current {
+                if let Block::RedstoneRepeater { repeater } = world.get_block(pos) {
+                    assert_eq!(
+                        power > 0,
+                        repeater.powered,
+                        "backend/published repeater mismatch at {pos:?}"
+                    );
+                }
+            }
+            if !changes.is_empty() || tick == 128 {
+                samples.push(json!({"phase": phase, "tick": tick, "changes": changes,
+                    "outputs": observations(&world, &fixture),
+                    "logical_stats": compiler.backend.as_ref().unwrap().logical_stats()}));
+            }
+            previous = current;
+        }
+    }
+    let file = std::fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(output)
+        .unwrap();
+    serde_json::to_writer_pretty(file, &json!({"scope": "compiled source propagation and backend/publication agreement; no arithmetic oracle", "samples": samples})).unwrap();
+}
+
+#[test]
 fn fpu_strict_import_preserves_the_947_analog_reference_values() {
-    let (world, bounds) = load(&manifest("fpu_legal"));
+    let (world, bounds) = load(&manifest("fpu_fixed_compilation"));
     let mut strengths = BTreeMap::<u8, usize>::new();
     crate::world::for_each_block_optimized(&world, bounds.0, bounds.1, |pos| {
         let block = world.get_block(pos);
@@ -690,10 +807,10 @@ fn fpu_strict_import_preserves_the_947_analog_reference_values() {
 }
 
 #[test]
-fn fixed_fpu_compiles_with_and_without_optimization() {
+fn corrected_fpu_compiles_in_both_admission_policies_with_and_without_optimization() {
     let fixture = manifest("fpu_legal");
     let mut errors = Vec::new();
-    for optimize in [true, false] {
+    for (assume_instant, optimize) in [(false, true), (false, false), (true, true), (true, false)] {
         let (mut world, _) = load(&fixture);
         let bounds = world.get_corners();
         let mut compiler = Compiler::default();
@@ -702,7 +819,7 @@ fn fixed_fpu_compiles_with_and_without_optimization() {
             bounds,
             CompilerOptions {
                 optimize,
-                assume_instant: true,
+                assume_instant,
                 ..Default::default()
             },
             vec![],
@@ -755,7 +872,9 @@ fn fixed_fpu_compiles_with_and_without_optimization() {
             }
             Err(error) => {
                 assert!(!compiler.is_active());
-                errors.push(format!("assume_instant=true, optimize={optimize}: {error}"));
+                errors.push(format!(
+                    "assume_instant={assume_instant}, optimize={optimize}: {error}"
+                ));
             }
         }
     }
@@ -767,8 +886,8 @@ fn fixed_fpu_compiles_with_and_without_optimization() {
 }
 
 #[test]
-fn fixed_fpu_default_requires_construction_certification_transactionally() {
-    let fixture = manifest("fpu_legal");
+fn previous_fpu_default_requires_construction_certification_transactionally() {
+    let fixture = manifest("fpu_fixed_compilation");
     for optimize in [true, false] {
         let (world, bounds) = load(&fixture);
         let fingerprint = |world: &PlotWorld| {

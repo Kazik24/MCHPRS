@@ -85,7 +85,6 @@ catalog! {
         GIT_OPERATION_STARTED = "Git helper on the trail :3";
         GIT_WORKER_DISCONNECTED = "The Git helper lost the trail: worker disconnected.";
         GIT_WORKER_DISCONNECTED_SHUTDOWN = "The Git helper lost the trail during shutdown: worker disconnected.";
-        GIT_INSPECTION_BUSY = "The Git helper has busy paws. Try inspecting again in a moment.";
         USAGE_GIT_LOG = "Usage: /git log [--all] [n] or /git log [--all] --page <page>";
         GIT_MISSING_PAGE = "Which page should this snoot fetch? Add a page number after --page.";
         GIT_SEARCH_TEXT_LIMIT = "This snoot needs 1..128 characters of search text.";

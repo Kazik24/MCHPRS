@@ -373,6 +373,21 @@ impl Plot {
     }
 
     fn git_command(&mut self, player: usize, args: &[&str]) -> Result<()> {
+        self.git_command_with_aim(
+            player,
+            args,
+            self.players[player].yaw,
+            self.players[player].pitch,
+        )
+    }
+
+    fn git_command_with_aim(
+        &mut self,
+        player: usize,
+        args: &[&str],
+        yaw: f32,
+        pitch: f32,
+    ) -> Result<()> {
         let action = match args.first().copied() {
             Some("commit") => "commit",
             Some("branch") if args.len() > 1 => "branch",
@@ -431,8 +446,8 @@ impl Plot {
             let pos = super::worldedit::ray_trace_block(
                 &self.world,
                 eye_base,
-                f64::from(viewer.pitch),
-                f64::from(viewer.yaw),
+                f64::from(pitch),
+                f64::from(yaw),
                 10.0,
             )
             .context(messages::GIT_INSPECT_TARGET_REQUIRED)?;
@@ -914,7 +929,9 @@ impl Plot {
     }
 
     pub(super) fn sword_git(&mut self, player: usize, hand: i32, yaw: f32, pitch: f32) -> bool {
-        let uuid = self.players[player].uuid;
+        let viewer = &self.players[player];
+        let uuid = viewer.uuid;
+        // Consume Java's duplicate use-item and offhand fallback packets too.
         if self
             .git
             .clicks
@@ -923,60 +940,25 @@ impl Plot {
         {
             return true;
         }
-        if !self.git_access(player, "visual") {
-            return false;
-        }
         let slot = match hand {
-            0 => 36 + self.players[player].selected_slot as usize,
+            0 => 36 + viewer.selected_slot as usize,
             1 => 45,
             _ => return false,
         };
-        if !self.players[player]
+        if !viewer
             .inventory
             .get(slot)
             .and_then(Option::as_ref)
-            .is_some_and(|i| i.item_type.get_name().ends_with("_sword"))
+            .is_some_and(|item| item.item_type.get_name().ends_with("_sword"))
         {
             return false;
         }
-        let Some(session) = self.git.sessions.get(&uuid).filter(|s| s.enabled) else {
-            return false;
-        };
-        let data = &self.players[player];
-        let eye = PlayerPos::new(
-            data.pos.x,
-            data.pos.y + if data.crouching { 1.27 } else { 1.62 },
-            data.pos.z,
-        );
-        let Some(pos) = diff::aimed(
-            eye,
-            yaw,
-            pitch,
-            session
-                .markers
-                .iter()
-                .map(|(&pos, &(_, kind))| Marker { pos, kind }),
-            CONFIG.git_marker_radius.clamp(1, 128) as f64,
-        ) else {
-            return false;
-        };
-        let diff = session.diff.clone();
+        if viewer.awaiting_teleport() || !yaw.is_finite() || !pitch.is_finite() {
+            return true;
+        }
         self.git.clicks.insert(uuid, Instant::now());
-        if self.git.pending.is_none() {
-            let _ = self.start_git(
-                uuid,
-                None,
-                Box::new(move || {
-                    Ok(Reply {
-                        payload: Payload::Chat(diff.inspect(pos, None)?),
-                        names: Vec::new(),
-                        commits: Vec::new(),
-                        head: None,
-                    })
-                }),
-            );
-        } else {
-            self.players[player].send_system_message(messages::GIT_INSPECTION_BUSY);
+        if let Err(error) = self.git_command_with_aim(player, &["inspect"], yaw, pitch) {
+            send_git_error(&self.players[player], &error);
         }
         true
     }

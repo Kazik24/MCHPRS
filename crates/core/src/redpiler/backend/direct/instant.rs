@@ -145,12 +145,23 @@ impl Runtime {
                     near,
                 }
             };
-            aliases.push((
-                *bindings
-                    .get(&pos)
-                    .ok_or(BackendError::MissingInstantBinding { pos })?,
+            let node = *bindings
+                .get(&pos)
+                .ok_or(BackendError::MissingInstantBinding { pos })?;
+            // These electrical supplies can never change. Their graph nodes and
+            // the program's full geometry/restoration aliases remain intact.
+            if matches!(
                 supply,
-            ));
+                Supply::Wave {
+                    initial: false,
+                    near: None,
+                    ..
+                }
+            ) && nodes[node].output_power == 0
+            {
+                continue;
+            }
+            aliases.push((node, supply));
         }
         let decisions = program
             .logic

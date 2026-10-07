@@ -322,6 +322,9 @@ impl Plot {
                 [self.players[player].selected_slot as usize + 36]
                 .clone();
             if let Some(item) = item_in_hand {
+                if item.item_type.get_name().ends_with("_sword") {
+                    return;
+                }
                 let has_permission = self.players[player].has_permission("worldedit.selection.pos");
                 if item.item_type == (Item::WEWand {}) && has_permission {
                     self.send_block_change(block_pos, block.get_id());

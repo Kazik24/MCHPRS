@@ -1,16 +1,16 @@
 {
   "schema_version": 1,
-  "fixture": "test_data/piston-research/fpu-piston-correct/fpu_pistion_correct.schem",
-  "sha256": "704016b6900ec22ff0d37184de480a5c9965fd390b7bcf7c3f23d7677048c391",
+  "fixture": "test_data/piston-research/fpu-fixed/fpu_fixed_compilation.schem",
+  "sha256": "7a652a52729fa8850f98dd2f46d8c2cc23171ace0d78670f47212e12763b76cf",
   "dimensions": [
     171,
     43,
     107
   ],
   "loader_offset": [
-    6,
-    37,
-    75
+    2,
+    38,
+    76
   ],
   "observations": {
     "output": [
@@ -276,95 +276,6 @@
     ],
     "trigger": [
       [
-        6,
-        36,
-        76
-      ]
-    ],
-    "output_repeaters": [
-      [
-        109,
-        30,
-        33
-      ],
-      [
-        109,
-        30,
-        37
-      ],
-      [
-        109,
-        30,
-        41
-      ],
-      [
-        109,
-        30,
-        45
-      ],
-      [
-        109,
-        30,
-        49
-      ],
-      [
-        109,
-        30,
-        53
-      ],
-      [
-        109,
-        30,
-        57
-      ],
-      [
-        109,
-        30,
-        61
-      ],
-      [
-        109,
-        30,
-        65
-      ],
-      [
-        109,
-        30,
-        69
-      ],
-      [
-        109,
-        30,
-        73
-      ],
-      [
-        109,
-        30,
-        77
-      ],
-      [
-        109,
-        30,
-        81
-      ],
-      [
-        109,
-        30,
-        85
-      ],
-      [
-        109,
-        30,
-        89
-      ],
-      [
-        109,
-        30,
-        93
-      ]
-    ],
-    "other_control": [
-      [
         2,
         38,
         81
@@ -376,9 +287,9 @@
   "coordinate_convention": "Selection-local relative to saved minimum; capture origin (40,30,40).",
   "ports": {
     "trigger": [
-      6,
-      36,
-      76
+      1,
+      38,
+      80
     ],
     "opcode_levers_by_sign_weight_4_2_1": [
       [
@@ -642,17 +553,111 @@
         5,
         92
       ]
-    ],
-    "output_repeaters_scope": "Author identifies the far-end repeater bank as the FPU output: sixteen existing repeaters at local x=109,y=30,z=33..93. Numerical interpretation is not certified; auxiliary converted output dust remains under observations.output.",
-    "trigger_scope": "Author identifies the lever attached to green wool as the control held OFF during input changes; the other saved lever remains OFF."
+    ]
   },
   "unresolved": {
     "operand_bit_order": "Not numerically certified; levers are interleaved, not two adjacent 16-lever banks",
-    "final_ports": "Final ports are dust; benchmark attaches sixteen native repeater consumers east of this bank."
+    "saved_entry": "Resolved by author: these are illegal/broken; FPU should contain none. Corrected positive snapshot needed.",
+    "final_ports": "Saved output and flag nets are dust; consumer or declared-net contract still needed"
   },
-  "supersedes": "test_data/piston-research/fixtures/fpu_legal_legacy.json",
-  "previous_revision": {
-    "fixture": "test_data/piston-research/fpu-fixed/fpu_fixed_compilation.schem",
-    "sha256": "7a652a52729fa8850f98dd2f46d8c2cc23171ace0d78670f47212e12763b76cf"
-  }
+  "known_invalid_entry": {
+    "missing_heads_extended_count": 16,
+    "retracted_orange_wool_bases": [
+      [
+        161,
+        9,
+        39
+      ],
+      [
+        161,
+        9,
+        51
+      ]
+    ],
+    "author_confirmation": "These are illegal, broken ones. FPU should not have any.",
+    "action": "Preserve original binary, reject these states, and use a corrected revision for positive acceptance.",
+    "missing_head_bases": [
+      [
+        155,
+        28,
+        19
+      ],
+      [
+        158,
+        28,
+        19
+      ],
+      [
+        125,
+        28,
+        23
+      ],
+      [
+        128,
+        28,
+        23
+      ],
+      [
+        137,
+        28,
+        23
+      ],
+      [
+        140,
+        28,
+        23
+      ],
+      [
+        149,
+        28,
+        23
+      ],
+      [
+        152,
+        28,
+        23
+      ],
+      [
+        122,
+        28,
+        25
+      ],
+      [
+        128,
+        28,
+        25
+      ],
+      [
+        134,
+        28,
+        25
+      ],
+      [
+        140,
+        28,
+        25
+      ],
+      [
+        146,
+        28,
+        25
+      ],
+      [
+        152,
+        28,
+        25
+      ],
+      [
+        158,
+        28,
+        25
+      ],
+      [
+        58,
+        34,
+        95
+      ]
+    ]
+  },
+  "supersedes": "test_data/piston-research/fixtures/fpu_legal_legacy.json"
 }
