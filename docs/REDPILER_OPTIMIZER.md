@@ -16,9 +16,9 @@ mistake the intended optimization for a general theorem.
 
 An electrical edge `e = (u,v,c,w)` contributes
 
-\[
+$$
 a_e(t)=\max(0,s_u(t)-w)
-\]
+$$
 
 to receiving channel `c`, where strengths range from 0 to 15. The channel value
 is the maximum of its incoming contributions. Equivalence must preserve the
@@ -81,9 +81,9 @@ links never deduplicate against each other.
 
 For `w_1 <= w_2`,
 
-\[
+$$
 \max(0,s-w_1)\geq\max(0,s-w_2)
-\]
+$$
 
 at every valid strength, so the larger weight cannot change a channel's maximum.
 The implementation scans parallel incoming links rather than maintaining a
@@ -99,14 +99,14 @@ The main and side strengths include edge attenuation.
 
 Its candidate output is:
 
-\[
+$$
 \begin{aligned}
 \operatorname{torch}(m)&=\begin{cases}15&m=0\\0&m>0\end{cases},\\
 \operatorname{repeater}(m,L,s)&=\begin{cases}s&L\\15&\neg L\land m>0\\0&\text{otherwise}\end{cases},\\
 \operatorname{compare}(m,d)&=\begin{cases}m&m\geq d\\0&m<d\end{cases},\\
 \operatorname{subtract}(m,d)&=\max(0,m-d).
 \end{aligned}
-\]
+$$
 
 A comparator's saved far override replaces `m` when `m < 15`. A repeater uses
 its saved lock flag. Folding occurs only if the candidate equals the current
@@ -130,9 +130,9 @@ outgoing links with attenuation at least `M`.
 
 The universal bound for a side edge of attenuation `w_s` would instead be
 
-\[
+$$
 d=\max(0,k-w_s),\qquad M=\max(0,15-d).
-\]
+$$
 
 The current pass does **not** subtract `w_s` and does **not** check that it is
 zero. For example, a constant 15 reaching the side with attenuation 1 supplies
@@ -182,7 +182,9 @@ input attenuations 0 and 1 receive different values; equal initial states do
 not make their future transitions equivalent. A universal merge criterion must
 establish equal receiving functions and timing, not only equal type and state.
 The present pass's guards do not establish that for arbitrary analog sources
-or differing incoming channels.
+or differing incoming channels. A binary source can also drive one repeater's
+main input and a sibling's locking input: equal initial type/state then leads
+to different future behavior despite full-strength source power.
 
 ## Orphan pruning
 

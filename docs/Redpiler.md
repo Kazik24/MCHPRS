@@ -148,6 +148,13 @@ runtime, a recognized clock/memory runtime, or a sampled sequential runtime:
 sequential adapter is selected first and retains notification ordering and
 availability deadlines with either flag setting.
 
+The physical response-wave adapter assumes prepared inputs and a declared
+launch/reset protocol, including stable inputs during its reset episode.
+Compilation checks entry geometry and representability; it does not enforce
+every future input history. Its result-validity window and physical electrical
+waveform are separate observations. The sequential adapter instead retains
+delivered samples and local transition state.
+
 These are admission and execution algorithms, not fixture-name recognizers.
 Both restrict payloads and moving attachments to what their representation can
 preserve. An unsupported arrangement returns a diagnostic rather than silently
@@ -173,8 +180,8 @@ sampling and memory equations are in the [compiled model](REDPILER_MODEL.md).
 advance and increments the world's logical half-tick counter. Plot tick batches
 then call `flush`. `flush` emits queued note/button effects, processes command
 outputs, and writes dirty visible blocks. Note-block playback checks whether
-the position is currently unblocked before emitting sound. `--io-only` writes only nodes marked
-as inputs or outputs during display flushing; it does not erase their upstream
+the position is currently unblocked before emitting sound. `--io-only` writes
+only nodes marked as inputs or outputs during display flushing; it does not erase their upstream
 electrical dependencies. With `--optimize`, removed wire displays cannot be
 updated because they have no runtime node.
 

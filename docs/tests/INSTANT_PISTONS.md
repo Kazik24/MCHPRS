@@ -126,8 +126,13 @@ the current test body if its status changes.
 
 ```sh
 python tools/capture_piston_research.py --fixture rilax_memory_bank_bud --output target/rilax-new.json
+python tools/summarize_piston_research.py --ingest target/rilax-new.json --id rilax-new
 python tools/summarize_piston_research.py --check
 ```
+
+Ingestion requires a fresh ID and adds a compressed trace plus versioned
+provenance/summary files. `--check` checks existing ingested research evidence;
+it does not inspect an un-ingested capture in `target/`.
 
 Use the manifest's case IDs with `--case` to select an episode. Other supported
 fixtures are `fpu_legal`, `fpu_divider`, and `cpu_bubblesort`. `--probe-logic` is a

@@ -220,8 +220,8 @@ local power expressions.
 Wire discovery follows power dependencies, independent notification nets,
 observer-watched dust, and wires adjacent to changing base/head/payload cells.
 The last set can lose saved power through geometry notifications even without
-a mobile power dependency. Discovery expands sensor dependencies until all required wire
-sources and output terms have owners. Each sensor stores initial strength,
+a mobile power dependency. Discovery expands sensor dependencies until all
+required wire sources and output terms have owners. Each sensor stores initial strength,
 initial shape, and guarded alternative shapes. Each payload group requires one
 supported payload or an empty ordinary generator, and shared actors must agree
 on a common far destination. Unsupported nonair occupancy in possible payload
