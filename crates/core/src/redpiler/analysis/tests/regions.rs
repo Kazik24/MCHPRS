@@ -1,6 +1,79 @@
 use super::*;
 
 #[test]
+fn empty_ordinary_clock_preserves_stationary_far_context() {
+    for assume_instant in [false, true] {
+        for optimize in [false, true] {
+            let (mut compiled, bounds, manifest) = fixture("counter_basic");
+            let clock = analyze_world(&compiled)
+                .pistons
+                .iter()
+                .find(|p| !p.piston.sticky)
+                .unwrap()
+                .pos;
+            let far = clock + BlockPos::new(0, -2, 0);
+            assert_eq!(compiled.get_block(far), Block::Air);
+            compiled.set_block(far, Block::Glowstone {});
+            let (mut native, _, _) = fixture("counter_basic");
+            native.set_block(far, Block::Glowstone {});
+            let trigger = local_pos(&manifest["ports"]["inputs"]["trigger"]);
+            let mut compiler = Compiler::default();
+            compiler
+                .compile(
+                    &compiled,
+                    compiled.get_corners(),
+                    CompilerOptions {
+                        assume_instant,
+                        optimize,
+                        ..Default::default()
+                    },
+                    vec![],
+                    Default::default(),
+                )
+                .unwrap();
+            compiler.on_use_block(trigger);
+            lever_action(&mut native, trigger, true);
+            let mut poses = [false; 2];
+            for tick in 1..=64 {
+                native.tick_interpreted();
+                compiler.tick_with_world(&mut compiled);
+                compiler.flush(&mut compiled);
+                assert_eq!(
+                    native.get_block(far),
+                    Block::Glowstone {},
+                    "native tick {tick}"
+                );
+                assert_eq!(
+                    compiled.get_block(far),
+                    Block::Glowstone {},
+                    "compiled tick {tick}"
+                );
+                if let Block::Piston { piston } = native.get_block(clock) {
+                    poses[usize::from(piston.extended)] = true;
+                }
+                if tick % 6 == 5 {
+                    assert_eq!(
+                        repeater_value(
+                            &compiled,
+                            &manifest["ports"]["observations"]["repeater"],
+                            BlockPos::new(0, 0, 0)
+                        ),
+                        (tick - 5) / 6
+                    );
+                }
+            }
+            assert_eq!(
+                poses,
+                [true, true],
+                "exercise native extension and retraction"
+            );
+            compiler.reset(&mut compiled, bounds);
+            assert_eq!(compiled.get_block(far), Block::Glowstone {});
+        }
+    }
+}
+
+#[test]
 fn unsupported_ordinary_payload_is_rejected_instead_of_becoming_empty() {
     for assume_instant in [false, true] {
         let mut world = empty();

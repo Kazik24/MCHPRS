@@ -169,6 +169,35 @@ fn save(report: &Value) {
 }
 
 fn main() {
+    if std::env::args().any(|arg| arg == "--probe-fixed") {
+        let world = load_cpu(FIXED);
+        let before = checkpoint(&world, 0, &[]);
+        for budget in [1, 8] {
+            for flags in ["", "-O", "--assume-instant", "-O --assume-instant"] {
+                let mut compiler = Compiler::default();
+                let mut options = CompilerOptions::parse(flags).unwrap();
+                options.budget_multiplier = budget;
+                let now = Instant::now();
+                let result = compiler.compile(
+                    &world,
+                    world.get_corners(),
+                    options,
+                    world.scheduler().iter_entries().collect(),
+                    Default::default(),
+                );
+                println!(
+                    "corrected, budget {budget}, flags {flags:?}, {:.6}s: {}",
+                    now.elapsed().as_secs_f64(),
+                    result
+                        .as_ref()
+                        .map_or_else(|error| error.to_string(), |_| "admitted".into())
+                );
+                assert_eq!(checkpoint(&world, 0, &[]), before);
+                assert_eq!(compiler.is_active(), result.is_ok());
+            }
+        }
+        return;
+    }
     if std::env::args().any(|arg| arg == "--probe-original") {
         let mut world = load_cpu(CPUS[0]);
         let before = checkpoint(&world, 0, &[]);

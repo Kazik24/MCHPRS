@@ -513,14 +513,13 @@ fn payload_groups(world: &impl World, pistons: &[PistonDescriptor]) -> Vec<Paylo
     // O(pistons^2) pairwise search on adders and long chains.
     let mut parent: Vec<_> = (0..pistons.len()).collect();
     let mut rank = vec![0u8; pistons.len()];
-    // An empty ordinary generator only occupies its head. Its far cell can
-    // be a stationary base/head belonging to a different logical mechanism.
+    // An ordinary piston with an empty head slot changes only its base/head.
+    // Retraction does not pull Far; extension stops at the empty head slot.
     let aliases = |p: &PistonDescriptor| {
         let far = p.head.offset(p.piston.facing.into());
         let empty = !p.piston.sticky
             && (world.get_block(p.head) == Block::Air
-                || matches!(world.get_block(p.head), Block::PistonHead { head } if p.piston.extended && !head.sticky && !head.short && head.facing == p.piston.facing))
-            && !crate::redpiler::instant::outputs::supported_payload(world.get_block(far));
+                || matches!(world.get_block(p.head), Block::PistonHead { head } if p.piston.extended && !head.sticky && !head.short && head.facing == p.piston.facing));
         [Some(p.head), (!empty).then_some(far)]
             .into_iter()
             .flatten()

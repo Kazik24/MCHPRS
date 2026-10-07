@@ -198,7 +198,7 @@ fn diode_get_input_strength(world: &impl World, pos: BlockPos, facing: BlockDire
 /// Whether `update` can do any work for this cached block state. Wire walks use
 /// this to omit inert callback queue entries without pruning the power/heading graph.
 /// Keep this classification in sync with the dispatcher below (tested over all states).
-pub(super) fn has_neighbor_update(block: Block) -> bool {
+pub(crate) fn has_neighbor_update(block: Block) -> bool {
     match block {
         Block::RedstoneWire { .. }
         | Block::RedstoneTorch { .. }

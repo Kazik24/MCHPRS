@@ -1,0 +1,116 @@
+{
+  "source_base_commit": "74aead766ce8a92a93ac65acf2a2c8d4505b6880",
+  "source_working_tree_changes": true,
+  "fixture_sha256": {
+    "test_data/PM1_SORT.schem": "e338028d50a4400056e25037d1f43d37c08baed079edede6298f78b0a6341654",
+    "test_data/instant-pistons/PM1_SORT.schem": "e338028d50a4400056e25037d1f43d37c08baed079edede6298f78b0a6341654",
+    "test_data/PM1_SORT_FIXED.schem": "ad68a0160990c72612c0105802fade337758de127dcdbd4cc1a195059ad2d893"
+  },
+  "admission": [
+    {
+      "budget_multiplier": 1,
+      "flags": "",
+      "compile_seconds": 0.060968,
+      "admitted": false,
+      "error": "analysis piston budget exceeded",
+      "input_unchanged": true
+    },
+    {
+      "budget_multiplier": 1,
+      "flags": "-O",
+      "compile_seconds": 0.059923,
+      "admitted": false,
+      "error": "analysis piston budget exceeded",
+      "input_unchanged": true
+    },
+    {
+      "budget_multiplier": 1,
+      "flags": "--assume-instant",
+      "compile_seconds": 0.059964,
+      "admitted": false,
+      "error": "analysis piston budget exceeded",
+      "input_unchanged": true
+    },
+    {
+      "budget_multiplier": 1,
+      "flags": "-O --assume-instant",
+      "compile_seconds": 0.060449,
+      "admitted": false,
+      "error": "analysis piston budget exceeded",
+      "input_unchanged": true
+    },
+    {
+      "budget_multiplier": 8,
+      "flags": "",
+      "compile_seconds": 1.604379,
+      "admitted": false,
+      "error": "logical piston admission failed: clocked instant execution needs one owned generator; found 66 (first two at BlockPos { x: 20, y: 25, z: 44 } and BlockPos { x: 184, y: 28, z: 90 })",
+      "input_unchanged": true
+    },
+    {
+      "budget_multiplier": 8,
+      "flags": "-O",
+      "compile_seconds": 1.563935,
+      "admitted": false,
+      "error": "logical piston admission failed: clocked instant execution needs one owned generator; found 66 (first two at BlockPos { x: 20, y: 25, z: 44 } and BlockPos { x: 184, y: 28, z: 90 })",
+      "input_unchanged": true
+    },
+    {
+      "budget_multiplier": 8,
+      "flags": "--assume-instant",
+      "compile_seconds": 1.569873,
+      "admitted": false,
+      "error": "logical piston admission failed: clocked instant execution needs one owned generator; found 66 (first two at BlockPos { x: 20, y: 25, z: 44 } and BlockPos { x: 184, y: 28, z: 90 })",
+      "input_unchanged": true
+    },
+    {
+      "budget_multiplier": 8,
+      "flags": "-O --assume-instant",
+      "compile_seconds": 1.571598,
+      "admitted": false,
+      "error": "logical piston admission failed: clocked instant execution needs one owned generator; found 66 (first two at BlockPos { x: 20, y: 25, z: 44 } and BlockPos { x: 184, y: 28, z: 90 })",
+      "input_unchanged": true
+    }
+  ],
+  "compiler_timing": "Release compiler calls only; fixture loading, verification, and build excluded.",
+  "regression": {
+    "command": "cargo test -p mchprs_core --lib --locked redpiler::analysis::tests:: -- --test-threads=1",
+    "passed": 86,
+    "failed": 0,
+    "ignored": 8,
+    "elapsed_seconds": 68.62
+  },
+  "remaining_blocker": {
+    "candidate_count": 66,
+    "candidate_roles_unverified": true,
+    "first_two_world_positions": [
+      [
+        20,
+        25,
+        44
+      ],
+      [
+        184,
+        28,
+        90
+      ]
+    ],
+    "first_two_selection_local_positions": [
+      [
+        12,
+        17,
+        36
+      ],
+      [
+        176,
+        20,
+        82
+      ]
+    ],
+    "cause": "One connected region has multiple observer-clock candidates; ClockedProgram and the direct executor model one owned clock and shared six-tick bank sampling."
+  },
+  "compiled_observable_equivalence": null,
+  "compiled_tps": null,
+  "interpreter_measurements": "pm1-sort-correction-results.json (prior full protocol replay and three release samples; not rerun for this follow-up)",
+  "frozen_expectations_regenerated": false
+}

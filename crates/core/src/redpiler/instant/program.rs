@@ -98,6 +98,7 @@ pub(crate) fn prepare(
                         .then(|| program.pistons[actors[0]].payload)
                 })
         })
+        .filter(|pos| world.get_block(*pos) == Block::Air)
         .filter(|pos| !report.pistons.iter().any(|piston| piston.head == *pos))
         .collect();
     let boundaries = Boundaries::executable(report, &wires, &sources, &outputs, &owned, &empty_far);

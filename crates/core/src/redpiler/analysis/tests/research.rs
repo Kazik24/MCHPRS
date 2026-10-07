@@ -964,8 +964,8 @@ fn fpu_material_legalization_preserves_the_author_confirmed_invalid_entries() {
     };
     assert_eq!(
         failures(|f| matches!(f, RecognitionFailure::UnsupportedPayload { .. })),
-        1,
-        "only the moving target still needs material behavior"
+        0,
+        "zero-power targets use the shared conditional dust-shape rules"
     );
     assert_eq!(
         failures(|f| matches!(f, RecognitionFailure::MismatchedHead)),

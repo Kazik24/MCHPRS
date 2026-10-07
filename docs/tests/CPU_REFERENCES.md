@@ -251,3 +251,72 @@ py tools/fix_pm1_sort.py
 cargo run -p mchprs_core --release --locked --example pm1_sort_correction
 cargo run -p mchprs_core --release --locked --example pm1_sort_correction -- --probe-original
 ```
+
+### PM1 compiler generalization follow-up
+
+The preceding correction measurements are historical. With the subsequent
+compiler changes, gold is admitted and compilation reaches a clock-model
+boundary. The corrected schematic and original frozen expectations are unchanged.
+The new [measurement record](../../test_data/cpu-references/pm1-sort-generalization-results.json)
+contains all eight release compiler-call results.
+
+`instant::outputs::supported_payload` now admits modeled, opaque solid cubes
+whose material is inert: no block entity, neighbor-update handler, or comparator
+override. Redstone blocks retain their explicit support. Unknown registry states
+remain excluded because their geometry uses fallback properties. Zero-power
+targets retain their identity and use the existing shared conditional dust-shape
+rules; powered target states remain excluded. This supports gold, iron, planks,
+clay, and other qualifying modeled materials without replacing fixture blocks.
+
+An ordinary piston with an empty head slot does not transport the block two
+cells ahead: extension stops at the empty slot and retraction does not pull.
+Recognition now permits that stationary context, including the glowstone below
+PM1's ordinary generator at world `(20,25,44)`. Executable boundaries preserve
+occupied stationary cells instead of treating them as empty aliases. Actual
+moving payload and occupied-head guards remain intact.
+
+The redpiler analysis regression suite passed **86 tests**, with **8 ignored**
+and no failures. Added coverage exercises the material guards, conductor outputs,
+and stationary context through native extension/retraction and compiled counter
+sampling, optimization, flush, and reset. Existing invalid-head and unsupported
+ordinary-payload rejection tests also pass. No frozen expectation was regenerated.
+
+| Flags | Normal budget (1x), seconds | Maximum budget (8x), seconds |
+| --- | ---: | ---: |
+| Default | 0.060968 | 1.604379 |
+| `-O` | 0.059923 | 1.563935 |
+| `--assume-instant` | 0.059964 | 1.569873 |
+| Both | 0.060449 | 1.571598 |
+
+Loading, verification, and the release build are excluded from these durations.
+All attempts leave the input world unchanged and the compiler inactive. Normal
+budget still rejects at the 65,536-piston limit described above. At maximum
+budget, all four configurations now reject with:
+
+```text
+logical piston admission failed: clocked instant execution needs one owned generator; found 66 (first two at BlockPos { x: 20, y: 25, z: 44 } and BlockPos { x: 184, y: 28, z: 90 })
+```
+
+These positions are selection-local `(12,17,36)` and `(176,20,82)`. The count
+is 66 **candidates** in one connected region, identified by an ordinary downward
+piston with a downward observer above it. It does not establish that all 66
+are independent clocks. `ClockedProgram` stores one owned clock and one sampled
+memory bank; the direct executor uses one shared sampling deadline, advanced
+in six-tick steps. Relaxing the count check would therefore require execution
+semantics, not just broader geometry admission. The check remains intact.
+
+No PM1 configuration is admitted, so compiled observable equivalence and
+compiled TPS remain unavailable. The earlier three interpreter measurements
+and full 50,100-tick fixture comparison remain the interpreter evidence; they
+were not rerun or relabeled as compiled results for this follow-up.
+
+Recommended next step: trace these candidates in the interpreter to distinguish
+clock generators from notification/sampling roles, capture their update and
+sampling order, and check whether the region can safely partition. Use that
+evidence to decide whether independent sampling domains are needed before
+changing the single-clock executor. Continue using the interpreter for PM1.
+
+```sh
+cargo test -p mchprs_core --lib --locked redpiler::analysis::tests:: -- --test-threads=1
+cargo run -p mchprs_core --release --locked --example pm1_sort_correction -- --probe-fixed
+```

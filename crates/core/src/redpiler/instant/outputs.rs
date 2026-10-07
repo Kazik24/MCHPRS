@@ -45,14 +45,13 @@ impl OutputPort {
 /// update behavior. These payloads have fixed material properties.
 pub(crate) fn supported_payload(block: mchprs_blocks::blocks::Block) -> bool {
     use mchprs_blocks::blocks::Block;
-    matches!(
-        block,
-        Block::RedstoneBlock
-            | Block::Wool { .. }
-            | Block::Concrete { .. }
-            | Block::Stone {}
-            | Block::Sandstone {}
-            | Block::Quartz
-            | Block::SmoothQuartz
-    )
+    block == Block::RedstoneBlock
+        || (block.is_solid()
+            && block.is_cube()
+            && !block.is_transparent()
+            && !block.has_block_entity()
+            && !crate::redstone::has_neighbor_update(block)
+            && !crate::redstone::comparator::has_override(block)
+            // Unknown states (including powered targets) use fallback geometry.
+            && !matches!(block, Block::Unknown { .. }))
 }

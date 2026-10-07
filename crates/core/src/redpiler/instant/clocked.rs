@@ -79,10 +79,7 @@ pub(crate) fn recognize(
         let p = &report.pistons[actor];
         let above = p.pos.offset(BlockFace::Top);
         if p.piston.facing != BlockFacing::Down
-            || (!p.piston.extended
-                && (world.get_block(p.head) != Block::Air
-                    || world.get_block(p.head.offset(p.piston.facing.into())) != Block::Air))
-            || world.get_block(p.payload) != Block::Air
+            || (!p.piston.extended && world.get_block(p.head) != Block::Air)
             || !matches!(world.get_block(above),Block::Observer { observer }
                 if observer.facing==BlockFacing::Down && !observer.powered)
             || (!assume_instant && !world.get_block(above.offset(BlockFace::Top)).is_solid())
@@ -94,7 +91,10 @@ pub(crate) fn recognize(
         }
     }
     if clocks.len() != 1 {
-        return Err("clocked instant execution needs one owned generator".into());
+        return Err(format!(
+            "clocked instant execution needs one owned generator; found {} (first two at {:?} and {:?})",
+            clocks.len(), report.pistons[clocks[0]].pos, report.pistons[clocks[1]].pos,
+        ));
     }
     let clock = clocks[0];
     let p = &report.pistons[clock];

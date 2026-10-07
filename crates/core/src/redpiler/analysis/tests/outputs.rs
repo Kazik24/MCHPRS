@@ -6,6 +6,37 @@ use mchprs_blocks::blocks::{
 use mchprs_blocks::{BlockColorVariant, BlockDirection};
 
 #[test]
+fn fixed_payloads_retain_dynamic_and_unknown_state_guards() {
+    for name in [
+        "glass",
+        "redstone_lamp",
+        "note_block",
+        "composter",
+        "furnace",
+        "barrel",
+        "observer",
+        "sticky_piston",
+        "command_block",
+        "end_portal_frame",
+    ] {
+        assert!(
+            !crate::redpiler::instant::outputs::supported_payload(Block::from_name(name).unwrap()),
+            "{name}"
+        );
+    }
+    assert!(!crate::redpiler::instant::outputs::supported_payload(
+        Block::Unknown {
+            id: Block::GoldBlock {}.get_id(),
+        }
+    ));
+    let powered_target = Block::from_id(Block::Target.get_id() + 1);
+    assert_eq!(powered_target.property("power"), Some("1"));
+    assert!(!crate::redpiler::instant::outputs::supported_payload(
+        powered_target
+    ));
+}
+
+#[test]
 fn conditional_geometry_drives_command_outputs_without_replaying_chat_on_reset() {
     for optimize in [false, true] {
         let (mut world, trigger, _, output) = conductor_output(Block::Stone {}, true, false);
@@ -536,6 +567,11 @@ fn logical_conductor_outputs_preserve_material_and_fixed_contributors() {
         Block::Sandstone {},
         Block::Quartz,
         Block::SmoothQuartz,
+        Block::GoldBlock {},
+        Block::IronBlock {},
+        Block::OakPlanks {},
+        Block::Clay {},
+        Block::Target,
     ] {
         for (near, fixed_source) in [(false, false), (false, true), (true, false)] {
             for optimize in [false, true] {
