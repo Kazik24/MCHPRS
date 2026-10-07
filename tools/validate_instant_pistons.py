@@ -9,10 +9,9 @@ import gzip
 import hashlib
 import json
 from pathlib import Path
-import re
 import subprocess
-from urllib.parse import unquote
 from inspect_instant_pistons import ROOT, PACK
+from validate_docs import check_links
 
 
 def load(path):
@@ -32,20 +31,6 @@ def download_manifest():
     binary=subprocess.check_output(["git","show",revision+":test_data/instant-pistons/download-manifest.json"],cwd=ROOT)
     print("Download manifest absent; verifying against Git revision",revision,"blob SHA-256",hashlib.sha256(binary).hexdigest())
     return json.loads(binary)
-
-
-def check_links(path):
-    content=path.read_text(encoding="utf-8")
-    for target in re.findall(r"\[[^\]\n]+\]\(([^)\n]+)\)",content):
-        if "://" in target or target.startswith("mailto:"):
-            continue
-        name,_,anchor=target.partition("#")
-        linked=(path.parent/unquote(name)).resolve() if name else path
-        assert linked.exists(),(path,target)
-        if anchor and linked.suffix==".md":
-            headings=re.findall(r"^#+\s+(.+)$",linked.read_text(encoding="utf-8"),re.M)
-            slugs={re.sub(r"[^\w\- ]","",h.lower()).replace(" ","-") for h in headings}
-            assert anchor in slugs,(path,target,"missing heading")
 
 
 def main():
@@ -102,8 +87,7 @@ def main():
         else:
             assert "defer" in str(m["unknowns"]).lower(),fid
     assert all(c["status"]=="match" for c in index["comparisons"]),"Java projection mismatch"
-    for name in ("INSTANT_PISTON_SCHEMATICS.md","INSTANT_PISTON_VALIDATION.md",
-                 "INSTANT_PISTON_IMPLEMENTATION_PLAN.md","INSTANT_REDPILLER.md","ANSWERS.md","REDSTONE_MODEL.md"):
+    for name in ("tests/INSTANT_PISTONS.md", "PISTON_MODEL.md", "REDSTONE_MODEL.md"):
         check_links(ROOT/"docs"/name)
     reproduced=0
     if args.recapture_dir:

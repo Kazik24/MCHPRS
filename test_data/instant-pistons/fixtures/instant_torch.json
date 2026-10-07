@@ -246,7 +246,6 @@
       }
     }
   ],
-  "dossier": "docs/INSTANT_PISTON_SCHEMATICS.md#instant-torch",
   "purpose": "Horizontal torch reset with a single output pulse and a stable powered reset.",
   "mechanism": "Base/head/payload and input/output positions match INSTANT_OBSERVER. The observer/cap are absent; an initially unlit floor torch is at (0,2,2) on the input conduction block. Falling input turns that torch on through a two-game-tick scheduled transition. Its power and notifications reset the base. Output is low at boundaries 1 through 5 and high again at 6; the torch then holds the extended mechanism powered with no continuing oscillator.",
   "reset_and_next_use": "By tick 6 the response is quiescent and extended, with payload restored. The recorded reuse diagnostic waits to tick 12, restores the source, waits 20 ticks (with 18 unchanged quiet boundaries), then destroys it; it reproduces the pulse. Acceptance can use the measured quiescent extended/head/payload/torch condition, not the literal wait lengths.",

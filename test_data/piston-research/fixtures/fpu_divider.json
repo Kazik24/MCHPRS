@@ -174,13 +174,6 @@
         48
       ]
     ],
-    "enable": [
-      [
-        1,
-        23,
-        44
-      ]
-    ],
     "headless": [
       [
         14,
@@ -262,11 +255,18 @@
         15,
         40
       ]
+    ],
+    "trigger": [
+      [
+        1,
+        23,
+        44
+      ]
     ]
   },
   "encoding": {
-    "inputs": "Provisional: A red-wool bank z=5+4*i; B blue-wool bank z=3+4*i; OFF represents one; weight 2**(-i). Must verify dynamically.",
-    "output": "Observe repeater falling edges; saved output repeaters are all powered."
+    "inputs": "A red-wool bank z=5+4*i; B blue-wool bank z=3+4*i. OFF is one; bit i has weight 2**(-i), i=0..9. Author describes mantissa inputs; exact legal range is not yet certified.",
+    "output": "Negative pulses at 10 repeaters x=18+6*i. Raw bit order is increasing x; output binary point/status-bit interpretation is not independently established. Original response: 0010101010, including repeating fraction pattern 10101010."
   },
   "cases": [
     {
@@ -1609,6 +1609,100 @@
           "advance": 64
         }
       ]
+    },
+    {
+      "id": "single-trigger",
+      "steps": [
+        {
+          "op": "lever",
+          "pos": [
+            1,
+            23,
+            44
+          ],
+          "powered": false
+        },
+        {
+          "advance": 4
+        },
+        {
+          "op": "lever",
+          "pos": [
+            1,
+            23,
+            44
+          ],
+          "powered": true
+        },
+        {
+          "advance": 64
+        }
+      ]
+    },
+    {
+      "id": "retrigger",
+      "steps": [
+        {
+          "op": "lever",
+          "pos": [
+            1,
+            23,
+            44
+          ],
+          "powered": false
+        },
+        {
+          "advance": 12
+        },
+        {
+          "op": "lever",
+          "pos": [
+            1,
+            23,
+            44
+          ],
+          "powered": true
+        },
+        {
+          "advance": 64
+        },
+        {
+          "op": "lever",
+          "pos": [
+            1,
+            23,
+            44
+          ],
+          "powered": false
+        },
+        {
+          "advance": 12
+        },
+        {
+          "op": "lever",
+          "pos": [
+            1,
+            23,
+            44
+          ],
+          "powered": true
+        },
+        {
+          "advance": 64
+        }
+      ]
     }
-  ]
+  ],
+  "protocol": {
+    "trigger": [
+      1,
+      23,
+      44
+    ],
+    "idle": "trigger lever ON",
+    "fire": "trigger lever ON to OFF; OFF held produces repeated responses",
+    "prepare": "keep trigger ON while setting A/B, then advance 64 ticks",
+    "single_response": "trigger OFF for 4 ticks, then ON and wait 64 ticks",
+    "boundary": "all repeaters powered is reset, not a retained arithmetic zero"
+  }
 }

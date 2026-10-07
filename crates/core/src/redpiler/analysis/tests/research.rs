@@ -4,6 +4,8 @@ use crate::redstone::piston::trace;
 use std::collections::BTreeMap;
 use std::time::Instant;
 
+mod anpu;
+
 #[path = "research/fpu_divider.rs"]
 mod fpu_divider;
 

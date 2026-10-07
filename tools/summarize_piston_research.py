@@ -72,6 +72,33 @@ def cpu_episode(capture, case, samples):
                 full_operation_count=sum(s.get("operation_count", len(s.get("operations", []))) for s in samples))
 
 
+def divider_episode(capture, episode):
+    transitions, actions = [], []
+    previous = None
+    counts, headless = Counter(), Counter()
+    for sample in episode["samples"]:
+        state = sample["state"]
+        bits = "".join("0" if b["properties"]["powered"] == "true" else "1"
+                       for b in state["ports"]["output_msb_first"])
+        if bits != previous:
+            transitions.append(dict(tick=state["tick"], step=sample.get("step"),
+                                    label=sample["label"], negative_bits=bits, raw=int(bits, 2)))
+            previous = bits
+        if sample["label"] == "action":
+            actions.append(dict(tick=state["tick"], **sample["action"]))
+        for entry in sample["operations"]:
+            kind = next(iter(entry["operation"]))
+            counts[kind] += 1
+            pos = tuple(a-b for a, b in zip(position(entry["operation"][kind]["pos"]), capture["origin"]))
+            if pos[0] in (14, 15) and pos[1] == 15 and pos[2] in range(12, 41, 4):
+                headless[kind] += 1
+    return dict(case_id=episode["case"]["id"], actions=actions, transitions=transitions,
+                operation_counts=dict(counts), headless_operation_counts=dict(headless),
+                completed_ticks=sum(s["label"] == "tick" for s in episode["samples"]),
+                final_pending=len(state["pending_ticks"]), final_motions=len(state["motions"]),
+                final_events=len(state["piston_events"]))
+
+
 def summarize(capture):
     if "samples" in capture:
         return dict(schema_version=1, fixture=capture["fixture"], fixture_sha256=capture["fixture_sha256"],
@@ -104,6 +131,9 @@ def summarize(capture):
                             output_interfaces=len(report["ports"]["outputs"]), reset_exposures=len(report["ports"]["reset_exposures"])))
     episodes = []
     for episode in capture["episodes"]:
+        if "FPU_DIVIDER" in capture["fixture"]:
+            episodes.append(divider_episode(capture, episode))
+            continue
         if "CPU_BubbleSort" in capture["fixture"]:
             episodes.append(cpu_episode(capture, episode["case"], episode["samples"]))
             continue
@@ -140,6 +170,10 @@ def summarize(capture):
         episodes.append(dict(case_id=episode["case"]["id"], actions=actions, transitions=transitions,
                              accepted_events=applied, sample_counts=dict(sample_counts),
                              completed_ticks=sum(s["label"] == "tick" for s in episode["samples"])))
+    if "FPU_DIVIDER" in capture["fixture"]:
+        return dict(schema_version=1, fixture=capture["fixture"], fixture_sha256=capture["fixture_sha256"],
+                    coordinates="selection-local; negative output bits in increasing x order; reset is all powered",
+                    analysis=analyses, compile=(capture.get("diagnostics") or {}).get("compile", []), episodes=episodes)
     return dict(schema_version=1, fixture=capture["fixture"], fixture_sha256=capture["fixture_sha256"],
                 coordinates="selection-local in summaries; full captures retain absolute operation/work positions",
                 memory_word_order="physical layers; row 0 at z=62, bit 0 at x=175" if "CPU_BubbleSort" in capture["fixture"] else "increasing x; logical address is 7-index; bit 0 at z=24",
@@ -158,10 +192,12 @@ def main():
     if args.ingest:
         if not args.id or not args.id.replace("-", "").isalnum():
             parser.error("supply an alphanumeric/hyphen --id")
-        destination = references/(args.id+".json.gz")
+        traces = PACK/"traces"
+        traces.mkdir(exist_ok=True)
+        destination = traces/(args.id+".json.gz")
         source = references/(args.id+".source.json")
         summary = references/(args.id+".summary.json")
-        if any(p.exists() for p in (destination, source, summary)):
+        if any(p.exists() for p in (destination, references/(args.id+".json.gz"), source, summary)):
             parser.error("frozen evidence requires a new id")
         raw = args.ingest.read_bytes()
         capture = json.loads(raw)
@@ -170,11 +206,12 @@ def main():
         summary.write_text(json.dumps(summarize(capture), indent=2)+"\n", encoding="utf-8", newline="\n")
         print(destination, destination.stat().st_size, "bytes")
     if args.check:
-        for path in references.glob("*.json.gz"):
+        for path in [*references.glob("*.json.gz"), *(PACK/"traces").glob("*.json.gz")]:
             capture = json.loads(gzip.decompress(path.read_bytes()))
             fixture = ROOT/capture["fixture"]
             assert hashlib.sha256(fixture.read_bytes()).hexdigest() == capture["fixture_sha256"], path
-            summary = path.with_suffix("").with_suffix(".summary.json")
+            stem = path.name.removesuffix(".json.gz")
+            summary = references/(stem+".summary.json")
             assert json.loads(summary.read_text()) == summarize(capture), summary
             manifest = json.loads((PACK/"fixtures"/(fixture.stem.lower()+".json")).read_text())
             cases = {c["id"]: c for c in manifest["cases"]}
@@ -184,7 +221,7 @@ def main():
             if "samples" in capture:
                 assert capture["case"] == cases[capture["case"]["id"]], path
                 assert all(s["state"]["phase"] == "BetweenTicks" for s in capture["samples"] if s["label"] == "boundary"), path
-            source = path.with_suffix("").with_suffix(".source.json")
+            source = references/(stem+".source.json")
             assert json.loads(source.read_text())["revision"], source
             print("Verified", path.name)
 

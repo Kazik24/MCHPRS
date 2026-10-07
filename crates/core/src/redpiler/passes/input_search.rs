@@ -74,8 +74,6 @@ impl<'a, W: World> InputSearchState<'a, W> {
             self.graph
                 .add_edge(node, target, CompileLink::new(ty, distance));
         } else if self.error.is_none() {
-            #[cfg(test)]
-            eprintln!("missing source {source:?}, target {:?}, type {:?}", self.graph[target].block, self.graph[target].ty);
             self.error = Some(super::GraphError::MissingSource { pos: source });
         }
     }

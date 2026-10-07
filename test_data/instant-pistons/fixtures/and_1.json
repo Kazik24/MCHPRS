@@ -312,7 +312,6 @@
       }
     }
   ],
-  "dossier": "docs/INSTANT_PISTON_SCHEMATICS.md#and-1",
   "purpose": "Conjunction from two independently moved sources feeding one dust net.",
   "mechanism": "Sources A/B are (2,2,9)/(0,2,9); North-facing bases (2,2,7)/(0,2,7) move payloads at (2,2,5)/(0,2,5). Both payloads power dust (1,2,5), leading to labeled endpoint (1,2,1), initially 11. One payload remaining keeps the net nonzero; only both falling events remove both sources. Both AB and BA produce zero in tick 1. The conjunction arises from falling-event decoding of an electrical maximum, not from treating a static dust join as a positive AND.",
   "reset_and_next_use": "Independent observer/cap resets restore both payloads at 6; the both-event response repeats every six ticks. Single-event episodes can move internally without a terminal falling edge. No external consumer is attached to the labeled net.",

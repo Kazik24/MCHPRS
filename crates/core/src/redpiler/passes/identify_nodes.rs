@@ -229,7 +229,7 @@ fn identify_block<W: World>(
             instrument: _,
             note,
             powered,
-        } if noteblock::is_noteblock_unblocked(world, pos) => {
+        } => {
             let instrument = noteblock::get_noteblock_instrument(world, pos);
             (
                 NodeType::NoteBlock { instrument, note },

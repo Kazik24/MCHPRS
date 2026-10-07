@@ -1,35 +1,10 @@
-# Mathematical specification of the MCHPRS interpreter redstone model
+# Redstone interpreter model
 
-This document defines the redstone simulation implemented by the **world interpreter** in this checkout. It describes a discrete, spatial, ordered transition system, including the event queues needed to reproduce its timing. The Boolean gate interpretation of redstone is a useful consequence of these rules, but does not specify the interpreter completely.
+This document specifies the electrical and scheduling semantics implemented by MCHPRS. Its rules apply to arbitrary supported geometry and ordered input histories; schematic names, saved coordinates and particular output traces are not semantic inputs. The implementation is authoritative when it changes.
 
-The specification was reconciled with the working-tree sources on **2026-10-06**. The base revision was `4a2fb767821567ba62c5a63bb9af68fdc19d26e3`; the working tree also contained local changes. Source links below refer to this repository, and the code is authoritative if it subsequently changes.
+The scope is `PlotWorld::tick_interpreted` and its immediate callbacks. [PISTON_MODEL.md](PISTON_MODEL.md) adds piston transport, quasi-connectivity, BUD storage and instant ordering to the same transition system. [REDPILER_MODEL.md](REDPILER_MODEL.md) defines the compiler abstraction; [Redpiler.md](Redpiler.md) maps that abstraction to the implementation. Regression protocols belong in [tests/README.md](tests/README.md).
 
-A follow-up audit against production sources at `7f22ae9` checks the piston sampling/request/acceptance, comparator override and compiled-boundary descriptions against the FPU/RILAX findings. The explicit ANPU 50,000-tick replay still matches the unchanged physical checkpoints, ordered BUD projection and complete screen reference. The compiler admission changes do not change the physical equations below.
-
-The scope is `PlotWorld::tick_interpreted` and the functions it calls. Redpiler's compiled graph executor is a separate model; its graph optimizations are not assumptions of this specification. Network rendering, permissions, and wall-clock pacing are included only where they affect inputs or observable execution results. The current [compiled instant pipeline](INSTANT_PISTON_RUNTIME.md) documents conditional electrical output ports, admission limits and differential tests separately; its phase decisions do not replace the physical transition rules below.
-
-## Contents
-
-1. [Mathematical conventions and spatial domain](#1-mathematical-conventions-and-spatial-domain)
-2. [Block states, metadata, and complete simulator state](#2-block-states-metadata-and-complete-simulator-state)
-3. [Directional signal functions](#3-directional-signal-functions)
-4. [Immediate callbacks and ordered notification procedures](#4-immediate-callbacks-and-ordered-notification-procedures)
-5. [Scheduled ticks and the game-tick transition](#5-scheduled-ticks-and-the-game-tick-transition)
-6. [Dust geometry and the initial dust update](#6-dust-geometry-and-the-initial-dust-update)
-7. [The exact Wire Turbo propagation procedure](#7-the-exact-wire-turbo-propagation-procedure)
-8. [Torches](#8-torches)
-9. [Repeaters](#9-repeaters)
-10. [Comparators and analog overrides](#10-comparators-and-analog-overrides)
-11. [Sources, immediate consumers, and note blocks](#11-sources-immediate-consumers-and-note-blocks)
-12. [Observers](#12-observers)
-13. [Piston power, requests, and event validation](#13-piston-power-requests-and-event-validation)
-14. [Piston payload transport and completion](#14-piston-payload-transport-and-completion)
-15. [Support geometry, placement, destruction, and use](#15-support-geometry-placement-destruction-and-use)
-16. [Command blocks](#16-command-blocks)
-17. [Initialization, persistence, and stepping](#17-initialization-persistence-and-stepping)
-18. [Derived properties and limits of simpler models](#18-derived-properties-and-limits-of-simpler-models)
-19. [Worked traces](#19-worked-traces)
-20. [Implementation and regression-test index](#20-implementation-and-regression-test-index)
+All equations describe repository behavior. They are not an exhaustive specification of every Minecraft mechanic. A derived equilibrium or Boolean formula states its assumptions explicitly and does not replace the ordered callback procedures.
 
 ## 1. Mathematical conventions and spatial domain
 
@@ -187,7 +162,7 @@ Here
 - $M$ is the ordered list of exact piston-motion records.
 - $I$ is the next motion-identity counter.
 - $L$ and $j$ are the movement-phase identity snapshot and its cursor.
-- $K$ is configuration and effective world-hook values relevant to rules, including the support-check hook discussed in section 15.
+- $K$ is configuration and effective world-hook values relevant to rules, including the support-check hook discussed in section 13.
 - $O$ is the ordered observable output stream, including sound, piston actions, and command results.
 
 During an immediate callback, the call stack and any active Wire Turbo walk state are additional operational state. They are exhausted before that callback returns; pico stepping does not pause inside them.
@@ -310,7 +285,7 @@ There is also a **shape/support callback**, `interaction::change`, which checks 
 
 Write $U(b,p,d)$ for a redstone neighbor update with $d\in F\cup\{\bot\}$, where $\bot$ is Rust `None`. Write $T(b,p)$ for a scheduled callback and $G(b,p,d)$ for a shape callback. These are sequential state-transforming procedures, not pure functions on a frozen world.
 
-The direction arguments of $U$ and $G$ are distinct operational inputs. In the immediate-neighbor shape notifiers below, $G$ receives the face from the changed cell toward its neighbor, while the corresponding observer update receives the opposite face. Do not normalize both callbacks to the same direction. The general shape notifier's additional vertical-diagonal calls retain their literal face argument, as specified in section 15.2.
+The direction arguments of $U$ and $G$ are distinct operational inputs. In the immediate-neighbor shape notifiers below, $G$ receives the face from the changed cell toward its neighbor, while the corresponding observer update receives the opposite face. Do not normalize both callbacks to the same direction. The general shape notifier's additional vertical-diagonal calls retain their literal face argument, as specified in section 13.2.
 
 Unless a rule explicitly specifies a cached argument, every notification below reads $B$ immediately before calling $U$ or $G$. Any nested work completes before the next notification is invoked. Repeated positions are not eliminated.
 
@@ -1153,236 +1128,9 @@ A moving observer is represented by a moving-piston state, not by an active obse
 
 A matching observer request already at the destination is retained and can execute after restoration. Requests at the old source cell remain position-bound and do not accompany the carried observer.
 
-## 13. Piston power, requests, and event validation
+## 13. Support geometry, placement, destruction, and use
 
-### 13.1 Power predicate and quasi-connectivity
-
-For piston facing $f$, define the extension predicate
-
-$$
-\begin{aligned}
-X(p,f)={}&\bigvee_{g\in F_{\mathrm{piston}},\ g\ne f}
-[R_1(B(p+g),p+g,g)>0]\\
-&\lor[R_1(B(p),p,D)>0]\\
-&\lor\bigvee_{g\in F_{\mathrm{piston}},\ g\ne D}
-[R_1(B(p+U+g),p+U+g,g)>0].
-\end{aligned}
-$$
-
-The first term excludes direct power from the piston-front cell. The second is the literal query from the above-cell position toward its bottom neighbor; for an ordinary piston base it returns zero. The final term checks the five non-bottom neighbors around the cell above the piston, giving the implemented quasi-connectivity neighborhood.
-
-This predicate is evaluated when a callback rechecks the piston. The world does not globally poll every quasi-connected piston after every remote power change. Whether a recheck is delivered depends on the notification procedures, including their diagonal-piston exclusions.
-
-### 13.2 Requests are not scheduled block ticks
-
-A piston update receives a supplied base state $(f,s,e)$, calculates $x=X(p,f)$, and returns if $x=e$.
-
-Calculation of $x$ is a power sample even when $x=e$ and no movement is requested. The test-only BUD trace records this sample before the early return. A delivered notification, a queued event and an accepted movement are distinct observations; an unchanged bit does not prove that no update occurred. Neither a held power level nor idle game ticks cause a global BUD resample.
-
-If $x=1,e=0$, validate the forward payload line in section 14.1. If valid, request an Extend event. If invalid, request nothing.
-
-If $x=0,e=1$, inspect the cell $r=p+2f$. An early-retraction condition holds only when
-
-1. $E(r)$ is a moving-piston entity extending along $f$;
-2. a motion record at $r$ exists; and
-3. that record satisfies
-
-$$
-\mathrm{previous\_progress}<\tfrac12
-\quad\lor\quad\mathrm{last\_tick}=t
-\quad\lor\quad
-\phi\in\{\mathrm{ScheduledTicks},\mathrm{PistonEvents}\}.
-$$
-
-Request RetractWithoutPull if this condition holds; otherwise request Retract.
-
-An event is
-
-$$
-\epsilon=(p,s,f,\alpha),\qquad
-\alpha\in\{\mathrm{Extend},\mathrm{Retract},\mathrm{RetractWithoutPull}\}.
-$$
-
-Append it to $A$ unless an identical full tuple is already pending. Equality includes action and captured facing. Different actions at one base can therefore coexist in the event queue. Requests do not use `pending_tick_at` and do not wait on an unrelated future base tick.
-
-### 13.3 Event validation
-
-When $\epsilon$ is popped, read the live block at $p$:
-
-- It must be a piston base.
-- Its sticky flag must equal the captured sticky flag.
-- Recompute $X$ using the **live facing**.
-- Extend executes only when currently powered and unextended.
-- Either retract action executes only when currently unpowered and extended.
-- Extension also rescans the live payload line and can fail.
-
-No additional guard requires the live facing to equal the captured event facing. Extension geometry uses the live facing. Retraction geometry also uses the live facing, but the retracted carried base's facing and the emitted block-action direction use the captured facing. This is the literal behavior for an intervening state mutation.
-
-If validation rejects the event, it has still been consumed. Successful execution emits a piston block action carrying the event action and captured direction.
-
-The abstract storage equation `q_next = accepted_transaction ? decoded_data : q` is a settled, certified-family projection of these rules, not a replacement for validation. A no-op sample can be a logical transaction without an accepted physical movement; a cancelled or blocked movement cannot be counted as a successful state-changing write. Valid BUD history can leave an extended or retracted cell disagreeing with current power until a qualifying recheck. The [compiler model](INSTANT_PISTON_REDPILER_MODEL.md#5-bud-memory-samples-on-an-update) specifies the decoder and separates these records.
-
-### 13.4 Legacy ticks and heads
-
-A scheduled callback on a piston base simply calls the state-request procedure above. It is not a movement-completion callback or a cooldown.
-
-A neighbor update on a piston head looks one cell opposite its facing; if that cell is a piston base, it rechecks that base. Ordinary moving-piston states have no redstone tick or update action. Their progress is advanced through the movement phase.
-
-## 14. Piston payload transport and completion
-
-### 14.1 Forward payload line
-
-For extension, scan the ordered cells
-
-$$
-p+f,p+2f,p+3f,\ldots
-$$
-
-until one of the following cases occurs:
-
-| Encounter | Result |
-| --- | --- |
-| Out-of-height or unavailable chunk | Reject extension |
-| Recognized container block | Reject extension |
-| Air | Accept; air terminates the line and is not a payload |
-| Moving piston or piston head | Reject extension |
-| Any other block | Append it to the line and continue |
-
-Let the accepted payload positions be $(q_1,\ldots,q_n)$ from nearest to farthest, ending before the terminating air cell.
-
-The scan has **no twelve-block limit** in this checkout. It also does not consult a general Minecraft push-reaction table. Bedrock, obsidian, unsupported variants, and extended bases are not rejected merely by their names or hardness. Slime/honey adhesion and branching payload sets are not implemented here. The model is the literal straight-line scan above.
-
-### 14.2 Creating a moving cell
-
-Define $\operatorname{MoveCell}(r,b,f,s,e,u,E_b)$, where $b$ is a carried state, $e$ indicates extension, $u$ indicates a source head/base, and $E_b$ is an optional carried entity. It performs, in order:
-
-1. Delete the destination's existing block entity and motion record.
-2. Write a moving-piston block at $r$, with facing $f$ and sticky flag $s$.
-3. Install a moving-piston entity storing $b$'s raw state ID, direction $f$, extending flag $e$, source flag $u$, and serialized progress $0$.
-4. Register a new exact motion record at $r$ with a fresh identity.
-5. Attach a clone of $E_b$, if present, to that motion record's carried-entity field.
-
-Registration removes any previous motion at $r$, increments $I$, and appends to $M$. The new record is
-
-$$
-\mu=(r,I,0,0,t,E_b),
-$$
-
-with fields $(\mathrm{pos},\mathrm{identity},\mathrm{progress},\mathrm{previous\_progress},\mathrm{last\_tick},\mathrm{carried\_entity})$.
-
-The carried state does not contribute its original redstone power while the cell is moving. Queries see a non-solid, transparent moving-piston block with zero primitive weak/strong power.
-
-### 14.3 Extension mutation order
-
-A successful extension snapshots every $(q_i,B(q_i),E(q_i))$ **before writing overlapping cells**. Then:
-
-1. For $i=n,n-1,\ldots,1$, create an extending, nonsource moving payload at $q_i+f$.
-2. Create an extending source moving head at $p+f$, carrying a nonshort head matching the current base's direction and sticky flag.
-3. For $i=n,\ldots,1$, run $\operatorname{Shape}(q_i+f)$.
-4. For $i=n,\ldots,1$, run $\operatorname{Notify}(q_i)$.
-5. Run $\operatorname{Notify}(p+f)$.
-6. Write the base with `extended=true`.
-7. Run $\operatorname{Notify}(p)$.
-
-Each old source cell is overwritten by the preceding payload's destination; the first source cell is replaced by the moving head. Payloads are moved farthest first so that the complete pre-move snapshot is preserved.
-
-At the end of the event, the base is already extended even though the moving head and payloads have not finished. There is no separate scheduled base lock keeping it unextended until movement completion.
-
-Motion registration order is farthest payload first, nearest payload last, then the head. This order is later reflected in the movement snapshot unless subsequent mutations remove or append records.
-
-### 14.4 Retraction mutation order
-
-Let $f$ be the live base facing, $h=p+f$, and $r=p+2f$. Let $f_c$ be the event's captured facing.
-
-1. If $B(h)$ is moving, interrupt-complete it using section 14.7.
-2. Replace the base at $p$ by a retracting source moving cell carrying an unextended base with facing $f_c$ and the current sticky flag. The moving cell itself travels along $f$.
-3. Run $\operatorname{Notify}(p)$.
-4. Determine whether $r$ is a moving-piston cell with an extending entity whose direction is $f$.
-5. Delete the entity at $h$ and write air at $h$.
-6. If the base is sticky and $r$ is that matching in-flight extension, interrupt-complete $r$ and do not pull it. This applies even to an ordinary Retract event.
-7. Otherwise, if the base is sticky and the action is Retract, inspect $B(r)$. If it is nonair, not moving, and not a recognized container, snapshot its entity, create a retracting nonsource moving payload at $h$, clear $r$ and its entity, and notify $r$.
-8. Run $\operatorname{Notify}(h)$.
-
-A nonsticky base does not pull. RetractWithoutPull suppresses the ordinary stationary-payload pull branch. The pull branch has no separate full extension-scan validation and does not reject every block excluded by Minecraft's general piston rules.
-
-### 14.5 Movement snapshot and identity
-
-After all currently queued piston events are consumed, the game tick snapshots
-
-$$
-L=((\mu_1.\mathrm{pos},\mu_1.\mathrm{identity}),\ldots,
-(\mu_k.\mathrm{pos},\mu_k.\mathrm{identity}))
-$$
-
-in $M$'s current order.
-
-When an entry $(r,i)$ is consumed, it acts only if the matching identity still exists at $r$. A replacement moving entity at the same position receives a new identity and is not advanced by stale work. If the block or entity at $r$ is no longer a moving piston, remove the old motion record and do nothing further.
-
-Motions created or replaced after $L$ was taken wait until a later movement snapshot. Motions created in the preceding piston-event phase are included in the current tick's movement snapshot.
-
-### 14.6 Exact progress recurrence
-
-For a valid motion with current progress $g$, each movement operation first sets
-
-$$
-\mathrm{last\_tick}:=t,\qquad
-g_{\mathrm{previous}}:=g.
-$$
-
-If $g\ge1$, complete the motion immediately. Otherwise set
-
-$$
-g':=\min(1,g+\tfrac12)
-$$
-
-and store the **old** value $g_{\mathrm{previous}}$ in the moving entity's serialized progress field.
-
-An uninterrupted motion created at progress zero therefore evolves as
-
-| Movement operation | Exact progress after operation | Serialized/interpolated progress | Cell state |
-| --- | --- | --- | --- |
-| Creation | $0$ | $0$ | Moving piston |
-| First | $1/2$ | $0$ | Moving piston |
-| Second | $1$ | $1/2$ | Moving piston |
-| Third | Removed | Entity removed | Restored carried block, subject to validity |
-
-Completion checks the progress **before** incrementing. Reaching progress $1$ at the second operation does not itself restore the block.
-
-The legacy byte conversion is
-
-$$
-\operatorname{enc}(g)=\left\lfloor\operatorname{clamp}(255g,0,255)\right\rfloor.
-$$
-
-Decoding byte $127$ returns exactly $1/2$; other bytes return $b/255$ in `f32`. Exact current and previous progress for active simulation live in $M$, not only in this byte field.
-
-### 14.7 Normal and interrupted completion
-
-Completion requires both a moving-piston block and a moving-piston entity at the destination. It then performs:
-
-1. Choose restored state $b$ as the carried block, except that **interrupted source** motions restore air.
-2. For normal completion only, clear waterlogging while preserving other state properties.
-3. Retrieve the optional carried entity from the motion record.
-4. Delete the moving entity/motion, write $b$, and restore the carried entity if present.
-5. If $b$ is a piston head, retain it only when its opposite-facing neighbor is an extended base with matching facing and sticky flag; otherwise write air.
-6. If $b$ is a powered observer and no observer-type request is pending at this position, reset it to unpowered and issue observer-output notifications.
-7. If the restored state is invalid under the support predicate, delete its entity and write air.
-8. Read the resulting live block. Invoke $U(B(r),r,\bot)$ once unless it is an observer or piston head.
-9. Run $\operatorname{Notify}(r)$.
-
-Interrupted nonsource payloads restore their carried state immediately and preserve waterlogging. Interrupted source heads or source bases disappear. Normal completion restores the carried source state, subject to the head and support checks.
-
-The explicit head-ownership check in step 5 remains even if a custom world's support-check hook bypasses the generic support check.
-
-### 14.8 Removing owned piston parts
-
-Destroying an extended base also removes its owned stationary head or owned extending source moving head. Ownership requires matching direction and sticky flag. Destroying a stationary head removes its matching extended base. Destroying an extending source moving head can remove that base as well.
-
-Transported nonsource payloads are independent. Removing the base/head does not retroactively erase unrelated payload motions, which may finish later. Deleting a source motion removes its identity, so its old completion cannot recreate a destroyed base or head.
-
-## 15. Support geometry, placement, destruction, and use
-
-### 15.1 Attachment support and validity
+### 13.1 Attachment support and validity
 
 For support block $b$ and attachment face $f$, define
 
@@ -1416,7 +1164,7 @@ For the extended-base head case, both facing and sticky flag must match. The alt
 
 `interaction::is_valid_position` first returns true if the trait method `World::is_cursed()` returns true. **In this checkout, `PlotWorld` does not override that method, whose default is false.** The separate `PlotWorld.is_cursed` field changed by `/curse` is therefore not a support bypass in these interpreter calls. A custom `World` can supply the bypass.
 
-### 15.2 Shape callbacks
+### 13.2 Shape callbacks
 
 The shape callback $G(b,p,d)$ first checks validity. If invalid, destroy the component and return. If valid and the block is dust, apply section 6.4's shape transition; if the write changes the state, invoke `update_wire_neighbors(p)`. Other valid block types have no further shape action.
 
@@ -1430,7 +1178,7 @@ $$
 
 It passes $f$ directly, including to the vertical-diagonal calls. The piston shape notifier also passes $f$ to $G$, but visits only the six immediate neighbors in $F_{\mathrm{shape}}$ order. It then separately sends observer updates with $\bar f$, as defined in section 4.6.
 
-### 15.3 Placement
+### 13.3 Placement
 
 Relevant ordinary item-placement defaults are:
 
@@ -1448,7 +1196,7 @@ Ordinary diode placement facing is opposite the player's horizontal direction. P
 
 The routine does not generally call $U$ directly on the placed component itself. Self-rechecks can nevertheless occur through its notification neighborhood, and some placement defaults already sample input.
 
-### 15.4 Storage housekeeping and destruction
+### 13.4 Storage housekeeping and destruction
 
 `set_block_raw` removes an old entity when a recognized container is replaced by a noncontainer, or when a moving-piston state is replaced by a different state ID. It also removes an existing sign entity when an ordinary sign block is replaced by a nonsign. A new recognized container receives an empty entity if an entity of the required container type is absent. A new ordinary sign receives a default sign entity if the current entity is absent or is not a sign entity; an existing sign entity and its text are retained across sign-state changes. The ordinary-sign predicate excludes hanging signs. This is not universal deletion of every incompatible entity on every raw write.
 
@@ -1462,9 +1210,9 @@ Explicit destruction first removes owned piston counterparts and deletes the ent
 
 Any removed piston counterpart receives $\operatorname{Notify}$ afterward. Cake use increments bites and notifies around the cake until final consumption destroys it. Barrel opening/closing changes its open state and issues surrounding power callbacks. These explicit actions can matter to callback-sensitive circuits even when primitive output is unchanged.
 
-## 16. Command blocks
+## 14. Command blocks
 
-### 16.1 Activation and condition
+### 14.1 Activation and condition
 
 Command blocks use registry-backed states named `command_block`, `repeating_command_block`, and `chain_command_block`. Their entity stores command text, custom name, success count $s$, powered state $q$, automatic flag $a$, latched condition $k$, last execution $\ell$, and flags controlling output and execution-time tracking.
 
@@ -1489,7 +1237,7 @@ $$
 
 If not chain mode, Start or Repeat holds, and no matching request is pending, latch $k:=\operatorname{Condition}(p)$ and schedule game delay $1$, Normal priority. This is one game tick, not one redstone tick.
 
-### 16.2 Execution and chains
+### 14.2 Execution and chains
 
 Let $t_c=\min(t,\mathrm{i64::MAX})$. Execution returns “not attempted” if the entity is missing or if execution-time tracking is enabled and $\ell=t_c$. Otherwise:
 
@@ -1505,7 +1253,7 @@ A scheduled chain-block tick does nothing. A queued impulse/repeating activation
 
 Otherwise traverse at most **256** following cells, each time using the current block's facing. Stop at a nonchain block or missing command entity. Execute a powered or automatic chain block; stop if its attempt is suppressed. Skip an inactive chain block while continuing traversal from its position. A failed command with a true condition does not automatically stop traversal; a following conditional block can observe its zero success count. After traversal, a repeating source rechecks activation.
 
-### 16.3 Host interface
+### 14.3 Host interface
 
 The current `PlotWorld` command executor accepts supported `say` and `tellraw` commands through the repository's chat parser. It does not dispatch arbitrary world-editing commands.
 
@@ -1513,9 +1261,9 @@ Live output limits are $64$ queued outputs, $64$ accepted outputs per one-second
 
 For complete reproduction of command success counts, extend $\Sigma$ with the output queue, window timestamp, counters, and elapsed-time observations. Without that host state, command-bearing traces are not solely a function of electrical state and logical ticks. Offline replay can disable output rate/queue limits; length restrictions and supported-command parsing remain.
 
-## 17. Initialization, persistence, and stepping
+## 15. Initialization, persistence, and stepping
 
-### 17.1 Initialization and saved state
+### 15.1 Initialization and saved state
 
 `Chunk::load` repairs missing entities for loaded ordinary sign blocks by inserting default sign entities. Existing entries at those positions are retained. This can make the loaded entity map differ from a legacy save that contained sign states without entities; it does not replay placement or redstone notifications. Chunk instance and revision counters used by neighboring-plot snapshots track storage changes, not electrical connections across plot boundaries.
 
@@ -1529,9 +1277,9 @@ History snapshots capture chunks/entities, scheduled entries, and `PistonState`.
 
 Identical block maps with different requests, piston events, motion identities, or phases can have different futures. A simulation snapshot must preserve those fields.
 
-Schematic import is a different initialization operation from notified placement. `load_schematic` decodes v2/v3 block states/entities and negates the saved displacement; v2 WEOffset metadata takes precedence when present and must contain all three coordinates. The actual [paste routine](../crates/core/src/plot/worldedit/mod.rs) sets minimum = anchor − clipboard offset, writes x-fastest/z-next/y-last block cells through storage, then installs entities. It does not replay placement, shape or redstone notifications. Strict saved states can therefore remain quiescent although a notified reconstruction has different work or behavior. The [instant pack protocols](INSTANT_PISTON_SCHEMATICS.md#reproduction-and-coordinate-contract) record minimum, offset, anchor and each later notification separately.
+Schematic import is a different initialization operation from notified placement. `load_schematic` decodes v2/v3 block states/entities and negates the saved displacement; v2 WEOffset metadata takes precedence when present and must contain all three coordinates. The actual [paste routine](../crates/core/src/plot/worldedit/mod.rs) sets minimum = anchor − clipboard offset, writes x-fastest/z-next/y-last block cells through storage, then installs entities. It does not replay placement, shape or redstone notifications. Strict saved states can therefore remain quiescent although a notified reconstruction has different work or behavior. Regression setup must record import, settling and later notified operations separately; see [test protocols](tests/README.md).
 
-### 17.2 Pico and nano stepping
+### 15.2 Pico and nano stepping
 
 `picotick_advance(n)` calls `advance_operation` $n$ times. Each call can execute one scheduled request, piston event, or motion item, with nested immediate callbacks completed. A call that administratively finishes an exhausted tick consumes an iteration without executing another component operation.
 
@@ -1541,15 +1289,15 @@ The snapshot is a **count**, not a selected operation list. Newly inserted immed
 
 Nano stepping does not denote one priority, one dust-walk layer, or a fixed fraction of a game tick. Both fine-stepping APIs return without advancing when history recording is enabled.
 
-The circuit author's use of “nanoticks” also describes relative update synchronization. In the supplied [NANOTICK_EXAMPLE](INSTANT_PISTON_SCHEMATICS.md#nanotick-example), downstream event validation precedes a delayed inhibit even though both execute in the same logical game tick. This physical ordering failure is preserved by game, nano and pico execution at aligned boundaries. Pico snapshots return after nested callbacks; the pack's cfg(test) recorder measures callback entry/enqueue/execution order inside those operations. It compiles out of normal server execution.
+“Nanotick” also describes causal ordering within a game tick. A consumer can accept an activation before a later inhibit reaches it, even when both operations have the same logical tick. [PISTON_MODEL.md](PISTON_MODEL.md#5-instant-computation-and-nanotick-order) defines that ordering without assigning artificial elapsed time to callbacks. Pico snapshots return after nested callbacks. The test recorder can additionally record callback entry, event enqueue and execution inside an operation; it compiles out of normal server execution.
 
-### 17.3 Rendering
+### 15.3 Rendering
 
 Static-piston and screen-only rendering can suppress or project client animation packets. They do not substitute static payload states into the electrical world or change motion progress. Simulation observations and rendered client observations are different projections of the execution.
 
-## 18. Derived properties and limits of simpler models
+## 16. Derived properties and limits of simpler models
 
-### 18.1 Conditional determinism and boundedness
+### 16.1 Conditional determinism and boundedness
 
 For fixed valid initial state, metadata, external-input order, and host outcomes, the procedures define an ordered trace
 
@@ -1561,7 +1309,7 @@ Scheduled work has FIFO/priority order, events have FIFO order, movement uses an
 
 Assuming strengths and overrides begin in $\mathcal S$, primitive emitters, maximum, saturating subtraction, and valid comparator arithmetic preserve $\mathcal S$. Generated dust/comparator outputs therefore stay in $\mathcal S$. This is a conditional invariant, not validation of every arbitrary raw entity write.
 
-### 18.2 Dust equilibrium under frozen conditions
+### 16.2 Dust equilibrium under frozen conditions
 
 Freeze geometry, nondust outputs, comparator entities, and callback side effects. Choose one dust-neighborhood relation, such as $\mathcal N_{\mathrm{turbo}}$, and suppose every wire is evaluated with that relation until stable. Let wire vertices be $V$, with edge $u\to v$ when $u$ is an eligible predecessor of $v$.
 
@@ -1583,7 +1331,7 @@ Consequently, a strength-$15$ wire injection remains positive across at most $14
 
 These results concern frozen equilibrium equations. They neither replace the seed/Turbo distinction nor prove that mixed callbacks are confluent or give every full circuit a unique stable state.
 
-### 18.3 Boolean abstraction, quiescence, and termination
+### 16.3 Boolean abstraction, quiescence, and termination
 
 Mapping strength to $[P>0]$ helps describe threshold consumers but loses attenuation, analog comparison/subtraction, override values, and directionality. Even a strength-valued connectivity graph omits pending-event history: an off repeater with a queued activation can later produce a pulse while an otherwise identical off repeater does not.
 
@@ -1591,143 +1339,40 @@ Satisfying desired-state equations does not imply quiescence if queued callbacks
 
 A quiescent state has no scheduled work, events, active motions, or immediate callbacks. With a fixed external environment, further ticks preserve its electrical state. No universal termination claim is made for arbitrary raw states or circuits. Oscillators deliberately generate future work, and bounded strength alone does not prove termination of compound callback/event sequences within a tick.
 
-### 18.4 Scope of equivalence
+### 16.4 Scope of equivalence
 
 This model does not assume Minecraft's general push reactions, twelve-block piston limit, adhesion, torch burnout, dynamic tripwire/projectile behavior, autonomous hopper transport, or general furnace processing.
 
 Redpiler's optimized graph can merge or remove nodes. Equality of ordinary lamp outputs alone does not establish equality of observer callbacks, transient dust states, analog overrides, piston motions, or pending-request traces. Compiled execution needs a separate equivalence argument for the selected observables.
 
-For instant-piston compilation, the circuit author's [protocol](INSTANT_REDPILLER.md#clarified-execution-scope) defines logical one as a nonzero-to-zero transition from a ready extended mechanism. It permits internal simplification subject to preservation of non-instant consumer behavior and leaves new external inputs during reset outside initial conformance. These are circuit-specific compiler conditions; the interpreter transition rules continue to determine physical execution for every input sequence. The [implementation plan](INSTANT_PISTON_IMPLEMENTATION_PLAN.md) describes recognition, boundary discovery and validation under that protocol.
+For instant-piston compilation, event values, retained storage and electrical boundary strengths need separate decoders. An internal falling event does not impose inverted polarity on every ordinary consumer. The [Redpiler model](REDPILER_MODEL.md) states the abstraction and supported execution modes; [Redpiler architecture](Redpiler.md) explains their admission and runtime paths. Those compiler choices do not alter the physical rules specified here.
 
-The [implemented instant pipeline](INSTANT_PISTON_RUNTIME.md) accepts the lever/repeater 11-bit adder and a counter with one owned observer clock. Extraction shares the interpreter's power and wire-side rules, models conditional far occupancy and treats the moving near payload as nonconducting during the first wave. Clocked storage contributes settled far/near occupancy as old-memory inputs to the next-state functions; all functions read the same old bank before the phase-3 commit. A bounded Boolean decision program replaces internal updates; a six-phase observer adapter supplies ordinary graph consumers, whose repeater scheduling remains authoritative. Reset reconstructs owned geometry and work through bounded private interpreter replay, seeding stored state for the clocked path. Tests compare arithmetic, repeater waveforms and continuation after handoff; they do not establish equality of historical callbacks or piston-motion traces. `XOR_Simple` can currently compile but has a documented complete-reset waveform mismatch, so successful admission alone is not universal conformance evidence. This compiler abstraction does not change the physical rules specified here.
+### 16.5 Implementation distinctions to preserve
 
-## 19. Worked traces
+Several rules can be expressed more generally, but the current implementation has observable boundaries that a refactor must account for:
 
-### 19.1 Short repeater pulse
+- Emission is source strength multiplied by a directional connectivity predicate. [power.rs](../crates/core/src/redstone/power.rs) shares those predicates with compiler analysis; connection possibility and current nonzero strength are separate quantities.
+- Shape/state notifications and indirect power rechecks are different events. Observer exclusions in surrounding and wire notifications enforce that distinction at the callers. The observer handler itself has no previous-state comparison; combining all notification helpers into one loop would change it.
+- Wire Turbo stores per-walk block snapshots. Its non-wire callbacks can receive an old state. The note-block handler rereads its live powered bit, while other handlers generally use the supplied state. Equations over a simultaneous live snapshot cannot replace this procedure without an equivalence argument.
+- Initial dust evaluation and Turbo dust evaluation use different eligible neighborhoods. The attenuation equilibrium is common to them under its stated assumptions, but does not erase the difference in transient callbacks.
+- Repeater and comparator output helpers pass different first-callback directions. Shape callbacks and observer callbacks also use different direction conventions. These are literal interface choices, not one universal orientation rule.
 
-Take an unlocked, initially off repeater with $d=2$ and no diode at its output. At a clean boundary, deliver a nonzero input and update, then remove the input and update before advancing. The existing delay-$4$ activation request is retained.
-
-| Completed game tick | Output | Action |
-| --- | --- | --- |
-| Initial boundary | $0$ | Activation queued at High priority |
-| 1, 2, 3 | $0$ | Await callback |
-| 4 | $15$ | Power despite absent input; request delay $4$, Higher |
-| 5, 6, 7 | $15$ | Await falling callback |
-| 8 | $0$ | Recheck absent input and turn off |
-
-The output lasts four game-tick intervals despite the brief input. The trace assumes no intervening lock, replacement, delay change, or feedback.
-
-### 19.2 Comparator examples
-
-For rear $a=9$ and side maximum $s=9$, Compare outputs $9$ and desires powered true; Subtract outputs $0$ and desires powered false. For $a=12,s=5$, Compare outputs $12$ and Subtract outputs $7$.
-
-If ordinary rear strength through a solid neighbor is $10$ and the far container override is $3$, actual rear strength is $3$: the far override replaces the base value. At ordinary strength $15$, the far override is ignored.
-
-### 19.3 Dust line
-
-A frozen straight line injected at its first wire with strength $15$ has settled strengths
-
-$$
-P_k=\max(0,15-k),\qquad k=0,1,2,\ldots.
-$$
-
-The injected wire has $15$, its successor $14$, wire $14$ has $1$, and wire $15$ has $0$. Attenuation is per wire edge, not per elapsed tick. Removing the source causes an ordered immediate callback walk, not a simultaneous all-wire reset.
-
-### 19.4 Observer pulse
-
-An idle observer receiving $d=f$ at a clean boundary requests rise after game delay $2$. After completed tick $1$ it remains off; after tick $2$ it is on and has requested fall after delay $2$; after tick $3$ it remains on; after tick $4$ it is off.
-
-A directionless notification while off does not trigger this pulse. A raw storage write to its watched neighbor need not trigger it unless the operation sends a qualifying callback.
-
-### 19.5 Moving payload
-
-An East-facing piston with one stone at $p+E$ and air at $p+2E$ queues Extend when powered and rechecked. The event creates a moving payload at $p+2E$, a moving head at $p+E$, and an extended base. That tick's movement phase advances the new motions to exact $1/2$, reporting serialized progress $0$. The next tick advances them to exact $1$, reporting $1/2$. The following movement phase restores stone/head.
-
-An electrical-source payload emits no original source power while represented as moving. Its restoration can generate new work through self-update and notifications; work requested during movement follows the later-phase rules in section 5.
-
-### 19.6 Different stale-work guards
-
-A queued observer callback is discarded if its position contains stone when due. It can apply to a replacement observer of the same type, even with another facing. A stale movement item $(p,i)$ cannot apply to replacement identity $i'\ne i$ at that same position.
-
-### 19.7 Dust shape observation versus an indirect power recheck
-
-Place powered North-South dust at $p$ on stone, a redstone source at $p+N$, and an unchanged stone cell at $p+S$. Place one idle observer at $p+E$ facing West, so it watches the dust, and another at $p+S+U$ facing Down, so it watches the unchanged stone.
-
-Destroy the source through the ordinary interaction path. The resulting dust shape change invokes `update_wire_neighbors(p)`. Its first-neighbor callback can schedule the observer watching the dust; its second-neighbor loop skips the observer watching the stone. The source's surrounding-update procedure also skips observers in its additional vertical-diagonal calls.
-
-After destruction, the first observer has a pending rise request and the second has none. After two completed game ticks, the first is powered and the second remains unpowered. The observer dispatcher itself has not acquired state-change detection: the difference comes from which notifications the callers send. [observer_tests.rs](../crates/core/src/redstone/observer_tests.rs) constructs this case explicitly.
-
-### 19.8 Two instant piston stages and their physical reset cycle
-
-[EDGECASE_PISTION.schem](../test_data/EDGECASE_PISTION.schem) contains two initially extended South-facing sticky pistons. Each has a redstone-block payload two cells ahead, an observer immediately above the base facing Down, and a wool cap above the observer. The first output feeds the second stage through dust. Facing Down means the observer watches the base and emits upward through the cap, providing a quasi-connectivity reset path.
-
-The [Java 1.21.5 reference](../test_data/piston-repair/java-piston-oscillator-trace.json) pastes the fixture strictly, settles eight game ticks, removes its external redstone source, and samples completed game-tick boundaries. Its first cycle is:
-
-| Tick after source removal | Both piston bases | Both observers | Second-stage input dust |
-| --- | --- | --- | --- |
-| 0 | Extended | Unpowered | $15$ |
-| 1 and 2 | Moving source bases | Unpowered | $0$ |
-| 3 | Retracted | Powered | $0$ |
-| 4 | Extended | Powered | $0$ |
-| 5 | Extended | Unpowered | $0$ |
-| 6 | Extended | Unpowered | $15$ |
-| 7 and 8 | Moving source bases | Unpowered | $0$ |
-
-Both stages begin retracting during the first game tick, so this falling computation wave does not add a game tick per stage. The reset and payload restoration span subsequent phases and ticks, and the fixture keeps cycling after source removal. Its valid computational abstraction therefore needs an observation point or input protocol; a permanently settled Boolean wire value does not describe its physical trace. The interpreter regression in [piston/tests.rs](../crates/core/src/redstone/piston/tests.rs) compares this reference using game, nano and pico stepping.
-
-### 19.9 RILAX memory samples on head notifications
-
-The [RILAX memory characterization](FPU_RILAX_REDPILER_RESEARCH.md) provides an eight-word/eight-bit example of the power/update separation in section 13. In its settled data-preparation interval, changing data can make `should_piston_extend` false while an extended memory piston remains unchanged. Idle game ticks do not resample it. Seven ordinary piston heads subsequently notify all eight memory cells in the selected word. Both head placement during extension and head removal during retraction can produce samples; a held enable level is not continuous sampling.
-
-For the saved orientation and tested stable protocol, an enable rise reaches the ordinary generators at tick six, and the required upper-cell movements settle at tick eight. Read selection uses separate lower gray-concrete gates; repeaters expose the sampled word at tick ten. The measured held-read episode retains its zero result across a later `0xff` write until a new read cycle. This does not establish an independent latched output word for every mixed-bit or overlapping history. These are fixture-level consequences of ordinary delays, notifications and transport, not universal piston latency constants.
-
-The lower read gates therefore add state beyond the upper stored data bank. In the measured case, a held zero read remains zero after the selected word becomes `0xff`; releasing and enabling read again publishes `0xff`. On the write side, releasing a held update enable can sample data prepared while it was held. With prepared `0xff`, one- and two-game-tick enable pulses produce no updater movement or write, while tested widths four, six, eight and twelve do write; width three was not measured. Preserve ordinary decoder/pulse timing rather than inventing one universal rising-edge write rule.
-
-Unchanged power samples do not create accepted storage movements, but remain present in the ordered test trace. The downloaded revision has a missing address-one decoder torch: changing that address can sample/erase its saved bits while update enable is off. Preserve this as the original negative fixture; the normal measured protocol applies to the healthy addresses and a separately identified one-block diagnostic probe. The same report records author-confirmed broken geometry in the FPU snapshot, without treating those imported blocks as legal ready transport states.
-
-The subsequent compiler corrections do not change these physical rules. Quartz and smooth quartz use the same conditional conductor path as the earlier fixed materials. A fixed furnace inventory does not stop its block from conducting observer reset power, but its direct comparator rear override replaces that electrical input. Main-input port discovery must therefore retain the inventory value rather than expose the observer pulse as the comparator input. The [repair table](FPU_RILAX_REDPILER_RESEARCH.md#locations-that-need-schematic-repair) gives the missing RILAX torch and all eighteen author-confirmed broken FPU entries; RILAX's unsampled saved memory is preserved.
-
-## 20. Implementation and regression-test index
+## 17. Source and verification index
 
 | Subject | Source |
 | --- | --- |
-| Positions, offsets, face order, rotations | [blocks/lib.rs](../crates/blocks/src/lib.rs) |
-| State/type IDs and geometry predicates | [blocks/mod.rs](../crates/blocks/src/blocks/mod.rs) |
-| Component properties and instruments | [blocks/props.rs](../crates/blocks/src/blocks/props.rs) |
-| Comparator/container/moving/command entities | [block_entities.rs](../crates/blocks/src/block_entities.rs) |
-| World interface and hooks | [world/mod.rs](../crates/core/src/world/mod.rs) |
-| Chunk storage and boundary reads | [world/storage.rs](../crates/core/src/world/storage.rs) |
-| Signals, dispatch, notification helpers | [redstone/mod.rs](../crates/core/src/redstone/mod.rs) |
-| Initial dust power and side regulation | [wire/mod.rs](../crates/core/src/redstone/wire/mod.rs) |
-| Turbo snapshots, orientation, queues | [wire/turbo.rs](../crates/core/src/redstone/wire/turbo.rs) |
-| Canonical geometry and cached facts | [world/wire_cache.rs](../crates/core/src/world/wire_cache.rs) |
-| Walk lookup generations | [wire/turbo_cache.rs](../crates/core/src/redstone/wire/turbo_cache.rs) |
-| Repeater state transitions | [repeater.rs](../crates/core/src/redstone/repeater.rs) |
-| Comparator calculations | [comparator.rs](../crates/core/src/redstone/comparator.rs) |
-| Piston events, transport, completion | [piston.rs](../crates/core/src/redstone/piston.rs) |
-| Phase/event/motion types and priorities | [world/lib.rs](../crates/world/src/lib.rs) |
-| Ring scheduler and priority FIFO queues | [backend/queue.rs](../crates/core/src/redpiler/backend/queue.rs) |
-| Interpreter phases, stepping, loading | [plot/mod.rs](../crates/core/src/plot/mod.rs) |
-| Placement, validity, destruction, use | [interaction.rs](../crates/core/src/interaction.rs) |
-| Note sound and pitch table | [noteblock.rs](../crates/core/src/redstone/noteblock.rs) |
-| Fullness and cake/barrel actions | [container.rs](../crates/core/src/container.rs) |
-| Inventory-change notifications | [plot/containers.rs](../crates/core/src/plot/containers.rs) |
-| Command lifecycle and chains | [command_block.rs](../crates/core/src/redstone/command_block.rs) |
-| Host command parsing | [chat_commands.rs](../crates/core/src/chat_commands.rs) |
-| History capture/restore | [history/codec.rs](../crates/core/src/plot/history/codec.rs) |
+| Positions, face order and rotations | [blocks/lib.rs](../crates/blocks/src/lib.rs) |
+| State IDs, type IDs and geometry | [blocks/mod.rs](../crates/blocks/src/blocks/mod.rs) |
+| Electrical emission and update/tick dispatch | [redstone/mod.rs](../crates/core/src/redstone/mod.rs), [power.rs](../crates/core/src/redstone/power.rs) |
+| Dust shape and seed evaluation | [wire/mod.rs](../crates/core/src/redstone/wire/mod.rs) |
+| Dust snapshots, queue order and headings | [wire/turbo.rs](../crates/core/src/redstone/wire/turbo.rs), [world/wire_cache.rs](../crates/core/src/world/wire_cache.rs) |
+| Delayed diode transitions | [repeater.rs](../crates/core/src/redstone/repeater.rs), [comparator.rs](../crates/core/src/redstone/comparator.rs) |
+| Scheduler ring and priority FIFOs | [backend/queue.rs](../crates/core/src/redpiler/backend/queue.rs) |
+| Interpreter phases, stepping and typed request binding | [plot/mod.rs](../crates/core/src/plot/mod.rs) |
+| Support, placement, destruction and use | [interaction.rs](../crates/core/src/interaction.rs) |
+| Piston transitions and motion state | [PISTON_MODEL.md](PISTON_MODEL.md) |
+| Container analog data | [container.rs](../crates/core/src/container.rs), [block_entities.rs](../crates/blocks/src/block_entities.rs) |
+| Command activation and chains | [command_block.rs](../crates/core/src/redstone/command_block.rs) |
+| Snapshot state restoration | [history/codec.rs](../crates/core/src/plot/history/codec.rs) |
 
-Existing regression evidence includes:
-
-- The in-module tests in [redstone/mod.rs](../crates/core/src/redstone/mod.rs): Java output-pulse traces, the four UpdateTester wire traces, and the memory-cell piston-state trace.
-- [redstone/master_tests.rs](../crates/core/src/redstone/master_tests.rs): repeater short pulses, torch direction, analog overrides, plate primitives, slab support, and stepped dust.
-- [redstone/adder_tests.rs](../crates/core/src/redstone/adder_tests.rs): the replacement 11-stage adder's sign-defined banks, separate trigger source, stored and prepared arithmetic, carry combinations at every bit, overflow cases, moving-output observations and schematic-hash checks. The refreshed schematic fixes the previous changed-input and maximum-input discrepancies.
-- [redstone/observer_tests.rs](../crates/core/src/redstone/observer_tests.rs): observer emission and conduction direction, and direct dust-shape observation without an indirect observer pulse.
-- [redstone/piston/tests.rs](../crates/core/src/redstone/piston/tests.rs): six-direction movement, event cancellation, short pulses, long payloads, waterlogging, owned-part removal, progress, identities, and Java reference traces for observer feedback, periodic instant resets and dropped-payload recapture.
-- [plot/piston_tests.rs](../crates/core/src/plot/piston_tests.rs): restart/partial-step state, cache clearing, stale work, and rendering independence.
-- [plot/sign_tests.rs](../crates/core/src/plot/sign_tests.rs) and [world/storage.rs](../crates/core/src/world/storage.rs): sign-entity creation, replacement, persistence and repair of legacy loaded signs.
-- [wire/turbo_tests.rs](../crates/core/src/redstone/wire/turbo_tests.rs): walk structure and traversal regressions.
-- [plot/command_block_tests.rs](../crates/core/src/plot/command_block_tests.rs): activation, stale requests, conditional chains, bounded loops, and restart behavior.
-
-These tests support their specific assertions. They do not establish exhaustive conformance for every circuit or input history.
-
-The [ANPU interpreter regression](ANPU_REDPILER.md) additionally verifies its frozen 896-cell BUD sampling/write projection through 50,000 game ticks, plus the original complete screen trace and physical checkpoints. Its post-legalization replay passes with 1,552 nonempty sample ticks; the ordered trace includes same-value samples. All twenty budget/flag admission attempts reject without altering the physical checkpoint or queued work. This is a physical reference for future compiled BUD support; it does not establish compiled CPU equivalence or extend the instant runtime's ideal-synchronization contract.
+Use [tests/README.md](tests/README.md) for runnable checks and frozen reference protocols. Tests establish their asserted observations and input histories; neither a saved trace nor a successful compilation is a proof for every circuit.

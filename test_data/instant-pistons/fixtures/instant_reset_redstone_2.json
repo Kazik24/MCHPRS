@@ -246,7 +246,6 @@
       }
     }
   ],
-  "dossier": "docs/INSTANT_PISTON_SCHEMATICS.md#instant-reset-redstone-2",
   "purpose": "Dust feedback reset activated by the retracted redstone payload.",
   "mechanism": "Base (0,2,3), head (0,2,4), payload (0,2,5), input dust (0,2,1..2). Reset dust (0,1,4), on sandstone (0,0,4), is beneath the head. Retraction pulls the redstone block above that dust; on stationary restoration it powers the dust, whose side power enters sandstone beneath the base (0,1,3). The resulting recheck extends the base. Moving payloads emit no source power; this accounts for the delay between computation and restored output. Output is low 1..5 and restored at 6, then repeats with period six.",
   "reset_and_next_use": "Held-low response is periodic. The source-restoration diagnostic closes the oscillator, but is outside initial reset-time conformance. Fresh imports are the supported independent-case protocol; recurring internal work belongs to the original root event.",

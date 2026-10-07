@@ -383,6 +383,7 @@ fn sampled_conductors_preserve_saved_geometry_and_reject_entities_and_bad_heads(
             let mut reference = empty();
             crate::world::for_each_block_optimized(&world, bounds.0, bounds.1, |pos| {
                 reference.set_block(pos, world.get_block(pos));
+                if let Some(entity) = world.get_block_entity(pos) { reference.set_block_entity(pos, entity.clone()); }
             });
             compiler.compile(&world, world.get_corners(), Default::default(), vec![], Default::default()).unwrap();
             assert_eq!(snapshot(&world, bounds), before);
@@ -395,10 +396,14 @@ fn sampled_conductors_preserve_saved_geometry_and_reject_entities_and_bad_heads(
                 check_sampled_state(&compiler, &reference);
             }
             compiler.reset(&mut world, reference.get_corners());
-            for _ in 0..24 {
+            for tick in 0..24 {
                 world.tick_interpreted();
                 reference.tick_interpreted();
-                assert_eq!(snapshot(&world, bounds)["cells"], snapshot(&reference, bounds)["cells"], "handoff {mutation}");
+                let mut differences = Vec::new();
+                crate::world::for_each_block_optimized(&reference, bounds.0, bounds.1, |pos| {
+                    if world.get_block(pos) != reference.get_block(pos) { differences.push((pos, world.get_block(pos), reference.get_block(pos))); }
+                });
+                assert!(differences.is_empty(), "handoff {mutation}, tick {tick}: {differences:?}");
             }
             continue;
         }

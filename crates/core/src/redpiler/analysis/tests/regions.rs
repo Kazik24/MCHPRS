@@ -1,6 +1,22 @@
 use super::*;
 
 #[test]
+fn unsupported_ordinary_payload_is_rejected_instead_of_becoming_empty() {
+    for assume_instant in [false, true] {
+        let mut world = empty();
+        world.set_block(BASE, Block::Piston { piston: RedstonePiston { facing: BlockFacing::East, sticky: false, extended: false } });
+        world.set_block(BASE.offset(BlockFace::East), Block::Furnace { facing: mchprs_blocks::BlockDirection::North, lit: false });
+        let bounds = (BASE, BASE + BlockPos::new(2,0,0));
+        let before = snapshot(&world, bounds);
+        let mut compiler = Compiler::default();
+        let error = compiler.compile(&world, world.get_corners(), CompilerOptions { assume_instant, ..Default::default() }, vec![], Default::default()).unwrap_err().to_string();
+        assert!(error.contains("unsupported sampled payload minecraft:furnace"), "{error}");
+        assert!(!compiler.is_active());
+        assert_eq!(snapshot(&world, bounds), before);
+    }
+}
+
+#[test]
 fn sampled_extension_destination_does_not_resample_quasi_powered_memory() {
     for assume_instant in [false, true] {
         let mut world = empty();

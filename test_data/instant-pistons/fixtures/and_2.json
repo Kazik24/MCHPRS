@@ -312,7 +312,6 @@
       }
     }
   ],
-  "dossier": "docs/INSTANT_PISTON_SCHEMATICS.md#and-2",
   "purpose": "Conjunction from two power paths controlling one actuator.",
   "mechanism": "North-facing base (0,2,7) moves one payload at (0,2,5). B (0,2,9) powers its rear wire (0,2,8); A (2,2,9) powers the side branch through (2,2,8), (2,2,7), (1,2,7). Either remaining path keeps the base powered. Both input removal orders allow retraction and the endpoint (0,2,1), initially 12, falls in tick 1. One observer/cap performs reset.",
   "reset_and_next_use": "Both-event output is low 1..5 and restored at 6, with six-tick cycles under held zero. Independent input cases start from the same saved extended snapshot.",

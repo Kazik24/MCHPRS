@@ -246,7 +246,6 @@
       }
     }
   ],
-  "dossier": "docs/INSTANT_PISTON_SCHEMATICS.md#instant-down-torch-reset",
   "purpose": "Downward torch/dust reset with a quiescent endpoint.",
   "mechanism": "Base/head/payload and output match INSTANT_DOWN. Reset is a wall torch at (0,4,4), facing South, attached to sandstone (0,4,3), plus dust (0,3,4) on sandstone (0,2,4). Falling input removes power from the attachment path, scheduled torch power provides reset, and output returns at tick 6. It remains powered after reset rather than entering the observer oscillator.",
   "reset_and_next_use": "The endpoint at 6 is quiet and extended. The source-restoration/retrigger diagnostic reproduces the pulse after the torch has switched back off and queues drain. Observe the full geometry and quiet condition before next use.",

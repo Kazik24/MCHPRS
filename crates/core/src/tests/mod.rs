@@ -81,7 +81,7 @@ fn run_mandelbrot_chungus() {
     let hash = calculate_world_hash(&plot);
     // Full hopper/furnace state semantics and hopper lock updates change the old
     // checksum. Restoring the former Unknown classification reproduces the old
-    // circuit checksum; the new one includes the corrected states (CONTAINERS.md).
+    // circuit checksum; the new one includes the corrected container states.
     assert_eq!(hash.as_ref(),b"\xd2\x56\x77\x9f\xe2\x5a\x9c\x0b\x70\x61\xd3\xea\x64\xf2\x0e\x58\xd3\x9e\x01\x42\x7a\xbb\x44\x72\xbc\x69\xf3\x0e\x36\x85\xd9\x15");
 }
 

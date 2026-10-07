@@ -133,10 +133,6 @@ is **100 MiB**; grant **1 GiB** to selected ranks with numeric permission nodes:
 /lp group engineer permission set mchprs.git.storage.1024 true server=mchprs
 ```
 
-The deployed RedstoneFun policy grants Git to Expert `[E]` and higher. Expert
-gets 100 MiB per plot; Engineer `[I]`, Moderator, and Admin get 1 GiB. Lower
-ranks have no Git grant. Explicit user overrides still apply.
-
 These are configuration examples; apply them to your chosen groups. Values are
 MiB, and the largest effective positive grant wins. Exact denials and expiry
 apply. Storage grants do not grant `/git` access, and wildcard grants alone do

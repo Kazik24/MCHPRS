@@ -1,8 +1,0 @@
-
-
-
-
-1) jeżeli pistion jest zasilany na stałe, to nie musi mieć instant runtime.
-
-
-

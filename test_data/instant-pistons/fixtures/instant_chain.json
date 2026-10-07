@@ -261,7 +261,6 @@
       }
     }
   ],
-  "dossier": "docs/INSTANT_PISTON_SCHEMATICS.md#instant-chain",
   "purpose": "Two instant stages propagate in one game tick through ordered callbacks.",
   "mechanism": "Bases (0,1,3) and (0,1,6) face South, with heads one step ahead and redstone payloads two steps ahead. The first payload (0,1,5) directly powers the second base from behind; final output dust is (0,1,9). Removing (0,1,0) queues the first Retract. In tick 1 operation 1, its payload removal notifies base (0,1,6), measuring piston_power=false; nested callback depth 1 enqueues the second Retract. Event FIFO executes the second at operation 2, before movement completion. Both observers then perform their separate resets.",
   "reset_and_next_use": "Depth is two actuator events, not two game ticks or simultaneous motion. Both output paths repeat with a six-tick physical cycle. Initial conformance uses fresh imports; the recorded source-restoration episode is a reset-time diagnostic.",

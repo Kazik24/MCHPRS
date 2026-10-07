@@ -200,9 +200,8 @@
   ],
   "evidence": {
     "schema_version": 1,
-    "catalog": "docs/INSTANT_PISTON_IO_SCHEMATICS.md#and-1",
     "authority": {
-      "author_intent": "ANSWERS.md plus supplied Data/Update/port signs",
+      "author_intent": "Supplied author declarations and Data/Update/port signs",
       "imported_state": "test_data/instant-pistons-io/inspection/and_1.json",
       "observed_mchprs": "frozen traces, not independent Minecraft oracles",
       "observed_java": "SHA-pinned vanilla 1.21.5 captures with real lever interactions",

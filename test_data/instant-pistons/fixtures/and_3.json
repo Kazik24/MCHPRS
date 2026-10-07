@@ -379,7 +379,6 @@
       }
     }
   ],
-  "dossier": "docs/INSTANT_PISTON_SCHEMATICS.md#and-3",
   "purpose": "Conjunction with a remote QC power input and BUD-like update dependence.",
   "mechanism": "North-facing base (0,2,4), payload (0,2,2), output dust (0,2,1). A (0,2,6) delivers power and updates through (0,2,5). B (0,5,6) powers upper dust (0,5,5..4) and sandstone (0,4,4), contributing QC. B's removal changes power without delivering a base callback. A's callback must see B already low. BA retracts in tick 1; AB leaves the base extended and output 15 despite both sources gone. This is a supported synchronization guard and an update-history witness, not a Boolean-table failure under the BA protocol.",
   "reset_and_next_use": "The sign at (0,3,4) explicitly says this is also a BUD switch but reset. Dust (0,1,3) beneath the head closes feedback when the pulled redstone block becomes stationary. Reset does not make a late B callback appear: the AB episode retains its saved history until an independent recheck. The BA response has six-tick cycles; no repeated external calculation is certified.",

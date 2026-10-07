@@ -348,7 +348,9 @@ impl DirectBackend {
             match event {
                 Event::NoteBlockPlay { noteblock_id } => {
                     let (pos, instrument, note) = self.noteblock_info[noteblock_id as usize];
-                    noteblock::play_note(world, pos, instrument, note);
+                    if noteblock::is_noteblock_unblocked(world, pos) {
+                        noteblock::play_note(world, pos, instrument, note);
+                    }
                 }
                 Event::ButtonRelease { pos } => world.play_sound(
                     pos,

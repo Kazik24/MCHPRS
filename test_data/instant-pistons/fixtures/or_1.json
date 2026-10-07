@@ -317,7 +317,6 @@
       }
     }
   ],
-  "dossier": "docs/INSTANT_PISTON_SCHEMATICS.md#or-1",
   "purpose": "Legal shared-output OR at the first-wave observation window.",
   "mechanism": "A source (2,2,9) feeds West-facing base (2,2,4); B source (0,2,9) feeds North-facing base (0,2,6). Heads (1,2,4) and (0,2,5) share payload (0,2,4); output dust (0,2,1) begins at strength 13. No events leaves 13 unchanged. A-only, B-only and both input orders remove the shared source from its extended position, making output zero in tick 1. Motion/entity traces conserve one payload across the shared position and either head position. Ownership is a group property; the first event can capture while another retracts without that block.",
   "reset_and_next_use": "Output is zero at boundaries 1..5 and 13 at 6; nonzero cases repeat every six ticks. Each base has its own observer and solid cap, so reset power does not require possession of the payload. All cases use fresh snapshots; no held-zero observation is counted as another external computation.",

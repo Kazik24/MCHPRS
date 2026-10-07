@@ -1,334 +1,135 @@
-# MROWW ranks and permissions
+# Permissions and rank metadata
 
-MROWW is based on MCHPRS. Its existing `mchprs.*` permission nodes and
-`server=mchprs` context remain compatible with the deployed LuckPerms data.
+Permission evaluation is implemented in
+[permissions/mod.rs](../crates/core/src/permissions/mod.rs). The server reads
+LuckPerms data; it does not provision groups or write permission tables. Database
+policy belongs to the deployment, so rank names alone do not grant actions.
 
-## Active configuration
+## Configuration and evaluation
+
+Example configuration, with deployment-specific credentials supplied locally:
 
 ```toml
 [luckperms]
-# Existing connection settings omitted.
+storage = "postgres" # "postgresql" alias, or "mysql" for MySQL/MariaDB
+host = "localhost"
+db_name = "permissions"
+username = "reader"
+password = "replace-locally"
 server_context = "mchprs"
 world_context = "redstoneplots"
+table_prefix = "luckperms_"
 mchprs_permissions = true
-redstonefun_ranks = true
+redstonefun_ranks = false
+plotsquared_compat = false
 ```
 
-`mchprs_permissions` isolates handler permission checks under `mchprs.*` and
-disables the shared PlotSquared permission-pack fallback. Missing permissions
-deny access. The reader still supports user overrides, group inheritance,
-explicit denials, wildcard nodes and configured server/world contexts.
-`redstonefun_ranks` enables rank prefixes and the RedstoneFun join/chat format;
-it grants no permissions by itself. Both settings default to false.
+Use a read-only database account. The optional port defaults to 5432 for
+PostgreSQL or 3306 for MySQL. `mchprs_permissions=true` maps handler nodes into
+`mchprs.*`, including `minecraft.command.<name>` into `mchprs.commands.<name>`,
+and disables PlotSquared fallback. Missing permissions deny access in this mode.
+Legacy mode checks the original nodes and optionally the supported PlotSquared
+permission-pack mappings. Standalone behavior is defined by
+[Player::has_permission](../crates/core/src/player.rs).
 
-Permissions refresh during sessions within 30 seconds; an expired cache denies access if the database cannot refresh it. Rank display and command suggestions fully refresh on reconnect. The server
-reads LuckPerms using its existing read-only database login. Manage later
-changes through the existing LuckPerms plugin; MROWW does not write the tables.
-Supported contexts are static `server` and `world`; other dynamic contexts do
-not apply. This reader is not the complete LuckPerms engine.
+Evaluation supports user nodes, inherited groups, explicit denials, wildcards,
+expiry, and configured static `server`/`world` contexts. Other dynamic contexts
+are outside this reader. Matching nodes have an implementation-defined priority
+from user/group depth, specificity, and scope; a denial wins an equal-priority
+tie. The applicable cache expires after 30 seconds and stale data cannot keep
+granting access when refresh fails. This is a subset of the LuckPerms engine.
 
-## Rank policy
+`redstonefun_ranks` selects rank metadata and styled messages; it does not assign
+group permissions. Login identity is a UUID, not a current display name. Database
+records must use the UUID established by the configured authentication/forwarding
+path; stale nickname records do not transfer ownership or membership.
 
-| Database group | Display          | Current MROWW access                                                |
-| -------------- | ---------------- | ------------------------------------------------------------------- |
-| `admin`        | Bold red `[A]`   | All permissions, including other/unowned plots and administration   |
-| `moderator`    | Bold green `[M]` | All permissions, including other/unowned plots and administration   |
-| `engineer`     | Cyan `[I]`       | Edit own plots and use ordinary commands                            |
-| `expert`       | Purple `[E]`     | Edit own plots and use ordinary commands                            |
-| `advanced`     | Orange `[Z]`     | Edit own plots and use ordinary commands                            |
-| `builder`      | Yellow `[B]`     | Own-plot building and ordinary features; history disabled           |
-| `default`      | Gray `[G]`       | Join, chat and `/speed`; spectator mode, no edits or other commands |
+## Action gates
 
-The existing database prefixes supply the exact tag and nickname colors. All
-seven database groups currently have equal weights, so the display rank is the
-highest applicable known group in the order above. Parent groups contribute
-permissions without replacing a higher rank's prefix. The selected group's
-highest applicable prefix priority is used; built-in colors are a fallback if
-that group has no prefix. No rank-name check grants access to an action.
+In dedicated mode, ordinary commands require `mchprs.access.commands` as well as
+their individual permission. Editing additionally requires base build access,
+the action permission, and plot ownership/membership or the applicable override.
 
-Join: `[+] Nick`, with bold dark-gray brackets, bold dark-green `+`, and a gray
-nickname. Chat: `[Rank] Nick » message`, with the database prefix/nickname colors,
-dark-gray `»`, and gray literal message text. Player text cannot inject prefix
-formatting. These are global messages, including players on different plots.
+| Permission | Gate |
+| --- | --- |
+| `mchprs.access.join` | Admission after authentication. |
+| `mchprs.access.chat` | Ordinary public chat. |
+| `mchprs.access.commands` | Backend command access. |
+| `mchprs.build` | Base plot editing access. |
+| `mchprs.build.place`, `.break`, `.interact` | Placement, destruction, and circuit interaction. |
+| `mchprs.build.sign`, `.container`, `.commandblock` | Sign/container/command-block changes. |
+| `mchprs.commands.commandblock.edit` | Additional command-block editor gate. |
+| `mchprs.inventory.creative` | Creative inventory edits and picking. |
+| `mchprs.plots.admin.interact.other`, `.unowned` | Extend edits to other/unowned plots. |
 
-The baseline has `mchprs.* = false` plus join/chat, command access and
-`mchprs.commands.speed` grants on `default`. Every rank can use `/speed <0–10>`;
-the command access gate still requires a separate permission for each command.
-`advanced` has explicit ordinary-command and own-plot editing grants, and
-explicit denials for administration. `expert` and `engineer` inherit `advanced`
-through their existing memberships. `builder` inherits the default baseline, with dedicated own-plot grants and explicit denials for history. /curse and /bless are denied to builder, advanced, expert and engineer.
-`admin` and `moderator` have `mchprs.* = true`.
-All new baseline nodes use `server=mchprs`; Paper's existing nodes and group
-inheritance were retained. User overrides can deliberately change this policy.
+Check [player.rs](../crates/core/src/player.rs),
+[packet_handlers.rs](../crates/core/src/plot/packet_handlers.rs), and
+[commands.rs](../crates/core/src/plot/commands.rs) for the complete gate at each
+trust boundary. Possession of an item or permission to run a command does not
+waive its plot or packet validation.
 
-## Access, ownership and direct actions
+## Simulation and build commands
 
-| Permission                            | Controls                                                                                               |
-| ------------------------------------- | ------------------------------------------------------------------------------------------------------ |
-| `mchprs.access.join`                  | Join MROWW after authentication                                                                        |
-| `mchprs.access.chat`                  | Send ordinary chat                                                                                     |
-| `mchprs.access.commands`              | Run any backend command; command-specific grants are also required                                     |
-| `mchprs.build`                        | Base permission to edit an owned plot                                                                  |
-| `mchprs.plots.admin.interact.other`   | Extend editing to someone else's plot                                                                  |
-| `mchprs.plots.admin.interact.unowned` | Extend editing to unclaimed plots                                                                      |
-| `mchprs.build.place`                  | Place blocks                                                                                           |
-| `mchprs.build.break`                  | Break blocks                                                                                           |
-| `mchprs.build.interact`               | Change repeaters/comparators, use levers/buttons, trigger pressure plates and other block interactions |
-| `mchprs.build.sign`                   | Update sign text                                                                                       |
-| `mchprs.build.container`              | Open/change container contents                                                                         |
-| `mchprs.build.commandblock`           | Open/update command blocks; also requires the command-block editing node below                         |
-| `mchprs.inventory.creative`           | Creative inventory changes and block picking                                                           |
-| `mchprs.plots.limit.<count>`          | Maximum owned plots; default is one                                                                    |
-| `mchprs.plots.limit.unlimited`        | Remove the ownership limit; granted only to Admin/Moderator                                            |
+| Command | Dedicated permission |
+| --- | --- |
+| `/help`, `/version` | `mchprs.commands.help`, `.version` |
+| `/tp`, `/warp`, `/setwarp`, `/speed` | `mchprs.commands.teleport`, `.warp`, `.setwarp`, `.speed` |
+| `/tps` | `mchprs.commands.rtps.view` or `.set` |
+| `/adv` | `mchprs.commands.radvance` |
+| `/wsr` | `mchprs.commands.worldsendrate.view` or `.set` |
+| `/screenonly` | `mchprs.commands.screenonly` plus `.view` or `.set` |
+| `/piston_anim` | `mchprs.commands.piston_anim` plus `.view` or `.set` |
+| `/rp`, `/redpiler` | `mchprs.commands.redpiler.analyze`, `.compile`, `.reset`, `.inspect`, or `.help` |
+| `/toggleautorp` | `mchprs.commands.toggleautorp` |
+| `/rhistory` | `mchprs.commands.rhistory` plus the requested subcommand node |
+| `/back` | `mchprs.commands.rback` |
+| `/git` | `mchprs.commands.git`; see [Plot Git](PLOT_GIT.md) for ownership/admin rules |
 
-Direct world actions require the base build permission, the action permission,
-and ownership, plot membership or the corresponding other/unowned permission. WorldEdit and
-mutating plot commands use the same ownership rule. Inventory and command access
-are independent of building. A player without `mchprs.build` starts in spectator
-mode; spectators do not trigger pressure plates. Ordinary ranks cannot bypass
-ownership by carrying a command-block item or sending a sign/container packet.
+Command spelling and permission spelling are separate: `/tps`, `/adv`, and
+`/back` retain the legacy permission-node names above. `/rtps`, `/radv`,
+`/radvance`, and `/rback` are removed command aliases. Read-only `/rp analyze`
+has its own permission and does not require plot edit access.
 
-All ordinary ranks inherit `mchprs.plots.limit.1` and a denial of
-`mchprs.plots.limit.unlimited` from `default`. Admin and Moderator have explicit
-unlimited grants. The cap does not grant claim access: Gracz remains read-only.
-`/plot claim` and `/plot auto` count UUID ownership and enforce the limit inside
-the same database transaction as the claim, including plots that are not loaded.
-The largest effective positive numeric limit applies; missing limits default to
-one. Paper's existing `plots.plot.*` nodes are not used in dedicated MCHPRS mode.
+WorldEdit gates retain the `mchprs.worldedit.*` namespace for navigation,
+selection, region, clipboard, history, and analysis commands. Native additions
+use `mchprs.we.update`, `.invalidatecaches`, and `.replacecontainer`. Redstone tools
+use `mchprs.redstonetools.find`, `.signsearch`, `.rstack`, `.autostack`, `.container`,
+and `.cursel`. Mutating commands still validate current-plot access and bounds.
 
-## Native commands
+## Numeric limits and rank budgets
 
-All commands also require `mchprs.access.commands`. Aliases use the same
-permission as their canonical command.
+`numeric_limit(prefix)` considers explicit numeric nodes whose effective value
+is positive and chooses the largest value. Denials and expiry apply. A wildcard
+grant does not itself supply a number; deny larger inherited values when
+configuring a smaller cap.
 
-| Command                                            | Permission(s)                                                                                    |
-| -------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
-| `/help`, `/version`                                | `mchprs.commands.help`, `mchprs.commands.version`                                                |
-| `/git` (all subcommands and sword diff inspection) | `mchprs.commands.git`                                                                            |
-| `/tp`, `/teleport`                                 | `mchprs.commands.teleport`                                                                       |
-| `/warp [name]`                                     | `mchprs.commands.warp` (visit or list shared warps)                                               |
-| `/setwarp <name>`                                  | `mchprs.commands.setwarp` (create or replace any shared warp)                                     |
-| `/speed`                                           | `mchprs.commands.speed`                                                                          |
-| `/gamemode`, `/gm`, `/gmc`, `/gmsp`                | `mchprs.commands.gamemode`, plus `.creative`, `.adventure`, or `.spectator`                       |
-| `/tps`                                   | `mchprs.commands.rtps.view` or `.set`; `timings` uses `.view`                                    |
-| `/wsr`, `/worldsendrate`                           | `mchprs.commands.worldsendrate.view` or `.set`                                                   |
-| `/screenonly`                                      | `mchprs.commands.screenonly`, plus `.view` or `.set`                                             |
-| `/piston_anim`, `/bisdon_anim`                     | `mchprs.commands.piston_anim`, plus `.view` or `.set`                                            |
-| `/rp`, `/redpiler`                                 | `mchprs.commands.redpiler.compile`, `.reset`, `.inspect` or `.help`                              |
-| `/adv`                      | `mchprs.commands.radvance`                                                                       |
-| `/toggleautorp`                                    | `mchprs.commands.toggleautorp`                                                                   |
-| `/curse`, `/bless`                                 | `mchprs.commands.curse`, `mchprs.commands.bless`; granted only to Admin/Moderator                |
-| `/rhistory`                                        | `mchprs.commands.rhistory`, plus `.status`, `.enable`, `.disable`, `.limit.view` or `.limit.set` |
-| `/back`                                 | `mchprs.commands.rback`                                                                          |
-| `/say`, `/tellraw`                                 | `mchprs.commands.say`, `mchprs.commands.tellraw`                                                 |
-| `/stop`, `/whitelist`                              | `mchprs.commands.stop`, `mchprs.commands.whitelist`                                              |
-| Command-block editor                               | `mchprs.commands.commandblock.edit`                                                              |
+| Node | Meaning |
+| --- | --- |
+| `mchprs.plots.limit.<count>` | Owned-plot cap; missing numeric grants default to one. |
+| `mchprs.plots.limit.unlimited` | Remove that ownership cap; claim permission remains separate. |
+| `mchprs.history.limit.<ticks>` | History buffer/rewind cap in dedicated mode. |
+| `mchprs.plots.admin.rewind.unlimited` | Remove the permission-based history tick ceiling. |
+| `mchprs.plots.admin.rewind.memory` | Change the shared history memory limit. |
+| `mchprs.git.storage.<MiB>` | Plot owner's disk allowance, bounded by server Git limits. |
 
-Changing plot timing, render settings, redpiler state, history or curse state
-also requires permission to edit the current plot. Viewing settings does not
-change a plot. Changing the shared history memory limit additionally requires
-`mchprs.plots.admin.rewind.memory`; exceeding the ordinary history tick limit
-requires `mchprs.plots.admin.rewind.unlimited`.
+Resource validation, work budgets, and allocation failures still apply to
+unlimited permission holders. History recording clears when the last player
+leaves the plot. The Git allowance follows the plot owner even when a member
+operates on the plot.
 
-### Plot Git access
+[Rank](../crates/core/src/permissions/rank.rs) also selects a compilation-budget
+multiplier when valid rank metadata is enabled:
 
-Expert `[E]` and higher have Git access in `server=mchprs`. Expert has a
-100 MiB plot disk allowance; Engineer `[I]`, Moderator, and Admin have 1 GiB.
-Lower ranks retain no Git grant. The shared RAM budget remains separate.
+| Groups | Multiplier |
+| --- | --- |
+| `default`, `builder` | 1 |
+| `advanced` | 2 |
+| `expert` | 4 |
+| `engineer`, `moderator`, `admin` | 8 |
 
-`mchprs.commands.git` is a single allow/deny permission for Git commands,
-completion, glow and sword inspection. Missing nodes deny access. An exact
-denial overrides inherited wildcards and is enforced even when the player has
-`mchprs.plots.admin.git`.
-
-Owners and plot members can read their repository; creating commits or branches
-also requires ordinary plot edit access. Checkout, recovery, and rebase require ownership
-and plot edit access.
-`mchprs.plots.admin.git` explicitly overrides plot restrictions. Git still
-requires `mchprs.access.commands`. Use `/lp group <group> permission set
-mchprs.commands.git true server=mchprs` to allow it, or `false` to deny it; no
-rank-name grants are implicit. See [Plot Git](PLOT_GIT.md).
-
-The plot owner's largest effective positive `mchprs.git.storage.<MiB>` node sets
-the plot's disk history allowance. For example, `.100` grants 100 MiB and `.1024`
-grants 1 GiB. Denials and expiry apply; wildcard grants alone do not assign a
-number. This allowance applies to members and staff operating on that plot too.
-Missing numeric grants use `git_default_plot_storage_mib` (100 MiB); all grants
-are bounded by `git_plot_storage_mib` (1024 MiB). Downgrades preserve history and
-limit new growth. Grant these nodes through LuckPerms to your chosen groups;
-they do not independently grant Git command access. The shared Git RAM budget
-is separate and defaults to 1 GiB.
-
-### History capacity limits
-
-| Rank                              | Maximum history buffer / rewind request |
-| --------------------------------- | --------------------------------------- |
-| Zaawansowany `[Z]`, Ekspert `[E]` | 200 game ticks                          |
-| Inżynier `[I]`                    | 1,000 game ticks                        |
-| Moderator `[M]`, Admin `[A]`      | No permission-based tick-count ceiling  |
-| Budowniczy `[B]`, Gracz `[G]`     | No history commands                     |
-
-The maximum effective positive `mchprs.history.limit.<ticks>` node controls the
-finite limit. `advanced` has `mchprs.history.limit.200`; `expert` inherits it.
-`engineer` additionally has `mchprs.history.limit.1000`. Exact denials and node
-expiry apply when resolving the numeric nodes. If no numeric node applies, a
-non-unlimited player has no history allowance. The command's default buffer is
-still 100 ticks; users can request a larger allowed buffer explicitly.
-
-`admin` and `moderator` have an explicit
-`mchprs.plots.admin.rewind.unlimited` grant. This removes the tick-count ceiling,
-while the shared history memory budget, work budget and allocation checks still
-apply. Limits are checked before allocation and before a rewind changes a plot.
-Standalone servers retain the previous 1,000-tick/unlimited permission behavior.
-
-Recording stops and its buffer is cleared when the last player leaves the plot,
-including disconnections and transfers. It continues while any player remains.
-Returning players must enable `/rhistory` again. New plots start at
-`default_tps = 20`, including plots copied from the template; saved plot speeds
-and explicit `/tps` settings remain per plot. Old command names remain aliases,
-and existing permission node names are retained for compatibility.
-
-For a custom cap, deny any larger inherited numeric nodes and grant the desired
-node in `server=mchprs`. To give a finite cap to staff, also deny their unlimited
-node. As with other permission changes, the cache refreshes within 30 seconds.
-
-| `/plot` subcommands                         | Permission            |
-| ------------------------------------------- | --------------------- |
-| `info`, `i`                                 | `mchprs.plots.info`   |
-| `claim`, `c`, `add`, `remove`               | `mchprs.plots.claim`  |
-| `auto`, `a`                                 | `mchprs.plots.auto`   |
-| `visit`, `v`, `teleport`, `tp`, `home`, `h` | `mchprs.plots.visit`  |
-| `middle`                                    | `mchprs.plots.middle` |
-| `lock`, `unlock`                            | `mchprs.plots.lock`   |
-| `select`, `sel`                             | `mchprs.plots.select` |
-
-`/p home` (or `/p h`) visits your first claimed plot, ordered by claim ID.
-`/p add <nick>` and `/p remove <nick>` manage members of the current plot. They
-reuse the claim permission; only the owner or a player with the other-plot admin
-permission can change membership. A member cannot delegate access or remove the
-owner. Names are matched case-insensitively against players who have joined this
-server; members retain their normal build and command permission requirements.
-Membership persists in `world/plots.db` and grants access only to the named plot.
-
-Accepted logins refresh the current name-to-UUID binding. Conflicting cached
-names from older UUIDs are excluded from name resolution, including plot visits
-and member completion. Existing UUID records, ownership and memberships remain
-intact. A target rejoining repairs a legacy nickname collision without requiring
-the other account to return. This handles stale names and old identity records;
-it does not merge accounts or transfer access. `/p add` and `/p remove` also
-accept full UUIDs. Remove completion shows UUIDs for members whose names are
-stale, so those memberships can still be revoked.
-
-## WorldEdit and redstone tools
-
-WorldEdit uses the existing per-command nodes with the `mchprs.` prefix:
-
-| Commands                                                               | Permission suffix after `mchprs.worldedit.`                              |
-| ---------------------------------------------------------------------- | ------------------------------------------------------------------------ |
-| `/up`, `/ascend`, `/descend`                                           | `navigation.up`, `.ascend`, `.descend`                                   |
-| `//pos1`, `//pos2`                                                     | `selection.pos`                                                          |
-| `//hpos1`, `//hpos2`                                                   | `selection.hpos`                                                         |
-| `//sel`                                                                | `selection.sel`                                                          |
-| `//expand`, `//contract`, `//shift`                                    | `selection.expand`, `.contract`, `.shift`                                |
-| `//set`, `//replace`, `//stack`, `//move`                              | `region.set`, `.replace`, `.stack`, `.move`                              |
-| `//copy`, `//cut`, `//paste`, `//load`, `//save`, `//flip`, `//rotate` | `clipboard.copy`, `.cut`, `.paste`, `.load`, `.save`, `.flip`, `.rotate` |
-| `//undo`, `//redo`                                                     | `history.undo`, `.redo`                                                  |
-| `//count`                                                              | `analysis.count`                                                         |
-| `//help`, `//wand`                                                     | `help`, `wand`                                                           |
-
-The MROWW-specific commands retain their existing native nodes:
-`mchprs.we.update`, `mchprs.we.invalidatecaches`, and
-`mchprs.we.replacecontainer`. Redstone tools use
-`mchprs.redstonetools.find`, `.signsearch`, `.rstack`, `.autostack`, `.container`, and `.cursel`.
-WorldEdit commands and plot searches/stacking require editing access to the
-current plot. Selection bounds still stay inside that plot, even for staff.
-
-## Changing individual permissions
-
-Use the existing LuckPerms plugin's standard permission commands with a context.
-For example, disable tick-rate changes for Zaawansowany and its inheriting ranks,
-or deny only Lord225's stop command:
-
-```text
-/lp group advanced permission set mchprs.commands.rtps.set false server=mchprs
-/lp user Lord225 permission set mchprs.commands.stop false server=mchprs
-```
-
-To reverse an override, use `permission unset` with the same context. Explicit
-user nodes take precedence over inherited group nodes. More specific scoped
-nodes can override wildcard grants or denials; an equal-priority denial wins.
-The standard syntax is documented in the
-[LuckPerms permission command reference](https://luckperms.net/wiki/Permission-Commands).
-Reconnect affected MROWW players after saving a change. Deployment does not
-reapply the baseline or overwrite later permission edits.
-
-## Provisioning record: 2026-10-05
-
-Initial rank provisioning added 44 group permission rows in the `mchprs` server scope. Lord225's
-authenticated UUID is `ec223c83-35a1-4838-9429-76de03eb2fb8`. His permanent global
-`group.engineer` membership was replaced with `group.moderator`, and
-`luckperms_players.primary_group` was set to `moderator`. The two existing
-`rf2.pcmd.*` user permissions were preserved. No existing group nodes, prefixes,
-table definitions, Paper files or Paper processes were changed.
-
-The validated pre-change database dump and private backend configuration are in
-`/srv/mchprs/deploy-backups/ranks-20261005T125500Z/`. The old backend image is
-tagged `mchprs-mchprs:before-ranks-20261005` for rollback. World/player ownership
-was not migrated; old offline UUIDs still require verified linking.
-
-The release build succeeded and was deployed with the standard Compose command.
-Backend image:
-`sha256:045065a44377b152c50889c2c436c411bc354c033e44c472156e9608cb41cfdd`.
-An authenticated Lord225 session and plot commands were observed after startup.
-No automated tests were added or run for this change; in-game visual styling has
-not been confirmed. Paper's existing process and configuration hashes were
-unchanged.
-
-## Requested plot cleanup: 2026-10-05
-
-With MROWW stopped, the whole `world/` directory was archived and its compressed
-backup validated at
-`/srv/mchprs/deploy-backups/plot-cleanup-20261005T132052Z/world.tar.gz`.
-The saved plots `p-1,0`, `p0,-1`, `p1,-1` and `p1,0`, plus `p1,0.bak`, were removed.
-The central `p0,0` file and its two backups were retained; its SHA-256 was
-identical before and after cleanup. Plot database ownership/visual rows outside
-`(0,0)` were removed, and the SQLite integrity check passed. The central plot's
-Lord225 ownership and all player files were preserved. MROWW was restarted;
-Paper remained running. Exploring other coordinates can generate fresh empty
-plots normally.
-
-## History limit record: 2026-10-05
-
-Four additional scoped nodes establish the 200/1,000/unlimited limits above.
-The validated database backup immediately before this change is
-`/srv/mchprs/deploy-backups/history-limits-20261005T132510Z/rf.dump`.
-The history-limit build deployed successfully as
-`sha256:1fde895df857c50bda2b0bf06507894713fae48625fcb5e013fb79e0007a0006`.
-
-## Latest rank and security changes
-
-See [the complete rank list](MCHPRS_RANKS.md) and [the security audit](SECURITY_AUDIT.md). Builder now has own-plot features with history disabled. Expert and Engineer have explicit history command grants to preserve their access despite parallel inheritance from Builder. Dedicated changes affect only server=mchprs nodes.
-
-## Git rank grants: 2026-10-06
-
-LuckPerms console commands added eight scoped nodes: `mchprs.commands.git`
-for `expert`, `engineer`, `moderator`, and `admin`; `mchprs.git.storage.100`
-for `expert`; and `mchprs.git.storage.1024` for the other three groups.
-Each node is permanent, `true`, and scoped to `server=mchprs`; existing
-inheritance, user overrides, and other permissions were preserved.
-
-The permission database was backed up and validated before the commands at
-`/srv/mchprs/deploy-backups/git-ranks-20261006T104938Z/rf.dump`. The saved rows
-were verified after each command. Permission refresh uses the existing cache.
-
-The backend was built from committed source `e5285c6` and deployed as
-`sha256:5217f37faf2b9336e80da43bdcff1e0a64bb69567556156f99b4b407ed7b96f4`
-so rank disk quotas are enforced. Active configuration sets shared Git RAM to
-1024 MiB, fallback plot disk storage to 100 MiB, and the plot ceiling to 1024 MiB.
-The same backup directory contains the saved world archive, previous config,
-and deployment record. Rollback image:
-`mchprs-mchprs:before-git-ranks-20261006T104938Z`.
-
-Only MCHPRS was restarted. Its 1.21.5 status response and plot database integrity
-passed, with no startup errors. The local rank-policy test verifies all seven
-groups against the live inheritance shape, including explicit user denials.
+Expiry/stale metadata falls back to multiplier 1. These multipliers raise
+bounded compiler work limits; they do not permit unsupported semantics. Display
+rank priority follows the same group order from default through admin; database
+prefixes may override fallback colors. Configure inheritance and action grants
+through the deployment's LuckPerms installation and preserve the selected
+server/world contexts when changing them.

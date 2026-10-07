@@ -1,0 +1,2481 @@
+{
+  "schema_version": 1,
+  "fixture": "test_data/piston-research/fpu-divider/FPU_DIVIDER.schem",
+  "fixture_sha256": "19097d93d55e1c759ef37bbb261168eb79e51d86666282f9b2b775275211bbdb",
+  "coordinates": "selection-local; negative output bits in increasing x order; reset is all powered",
+  "analysis": [
+    {
+      "budget": 1,
+      "elapsed_ms": 21,
+      "inspected_cells": 200704,
+      "nonair_blocks": 25455,
+      "dependency_steps": 592973,
+      "pistons": 2055,
+      "observers": 1827,
+      "payload_groups": 1566,
+      "group_sizes": {
+        "2": 489,
+        "1": 1077
+      },
+      "matched_reset_mechanisms": 1203,
+      "diagnostic_counts": {
+        "NoResetSeed": 45,
+        "MissingOrMismatchedHead": 16
+      },
+      "recognition_failure_counts": {
+        "NoResetPath": 835,
+        "AdditionalResetWriter": 289,
+        "ActiveReset": 100,
+        "NonconductingSupport": 108,
+        "MismatchedHead": 16
+      },
+      "examples": {
+        "NoResetPath": {
+          "base": [
+            16,
+            2,
+            42
+          ],
+          "failure": "NoResetPath"
+        },
+        "AdditionalResetWriter": {
+          "base": [
+            16,
+            8,
+            8
+          ],
+          "failure": {
+            "AdditionalResetWriter": {
+              "pos": {
+                "x": 56,
+                "y": 40,
+                "z": 47
+              }
+            }
+          }
+        },
+        "ActiveReset": {
+          "base": [
+            14,
+            10,
+            6
+          ],
+          "failure": {
+            "ActiveReset": {
+              "pos": {
+                "x": 55,
+                "y": 40,
+                "z": 45
+              }
+            }
+          }
+        },
+        "NonconductingSupport": {
+          "base": [
+            14,
+            14,
+            46
+          ],
+          "failure": {
+            "NonconductingSupport": {
+              "pos": {
+                "x": 55,
+                "y": 42,
+                "z": 86
+              }
+            }
+          }
+        },
+        "MismatchedHead": {
+          "base": [
+            14,
+            15,
+            12
+          ],
+          "failure": "MismatchedHead"
+        }
+      },
+      "output_interfaces": 110,
+      "reset_exposures": 0
+    },
+    {
+      "budget": 2,
+      "elapsed_ms": 19,
+      "inspected_cells": 200704,
+      "nonair_blocks": 25455,
+      "dependency_steps": 592973,
+      "pistons": 2055,
+      "observers": 1827,
+      "payload_groups": 1566,
+      "group_sizes": {
+        "2": 489,
+        "1": 1077
+      },
+      "matched_reset_mechanisms": 1203,
+      "diagnostic_counts": {
+        "NoResetSeed": 45,
+        "MissingOrMismatchedHead": 16
+      },
+      "recognition_failure_counts": {
+        "NoResetPath": 835,
+        "AdditionalResetWriter": 289,
+        "ActiveReset": 100,
+        "NonconductingSupport": 108,
+        "MismatchedHead": 16
+      },
+      "examples": {
+        "NoResetPath": {
+          "base": [
+            16,
+            2,
+            42
+          ],
+          "failure": "NoResetPath"
+        },
+        "AdditionalResetWriter": {
+          "base": [
+            16,
+            8,
+            8
+          ],
+          "failure": {
+            "AdditionalResetWriter": {
+              "pos": {
+                "x": 56,
+                "y": 40,
+                "z": 47
+              }
+            }
+          }
+        },
+        "ActiveReset": {
+          "base": [
+            14,
+            10,
+            6
+          ],
+          "failure": {
+            "ActiveReset": {
+              "pos": {
+                "x": 55,
+                "y": 40,
+                "z": 45
+              }
+            }
+          }
+        },
+        "NonconductingSupport": {
+          "base": [
+            14,
+            14,
+            46
+          ],
+          "failure": {
+            "NonconductingSupport": {
+              "pos": {
+                "x": 55,
+                "y": 42,
+                "z": 86
+              }
+            }
+          }
+        },
+        "MismatchedHead": {
+          "base": [
+            14,
+            15,
+            12
+          ],
+          "failure": "MismatchedHead"
+        }
+      },
+      "output_interfaces": 110,
+      "reset_exposures": 0
+    },
+    {
+      "budget": 4,
+      "elapsed_ms": 22,
+      "inspected_cells": 200704,
+      "nonair_blocks": 25455,
+      "dependency_steps": 592973,
+      "pistons": 2055,
+      "observers": 1827,
+      "payload_groups": 1566,
+      "group_sizes": {
+        "2": 489,
+        "1": 1077
+      },
+      "matched_reset_mechanisms": 1203,
+      "diagnostic_counts": {
+        "NoResetSeed": 45,
+        "MissingOrMismatchedHead": 16
+      },
+      "recognition_failure_counts": {
+        "NoResetPath": 835,
+        "AdditionalResetWriter": 289,
+        "ActiveReset": 100,
+        "NonconductingSupport": 108,
+        "MismatchedHead": 16
+      },
+      "examples": {
+        "NoResetPath": {
+          "base": [
+            16,
+            2,
+            42
+          ],
+          "failure": "NoResetPath"
+        },
+        "AdditionalResetWriter": {
+          "base": [
+            16,
+            8,
+            8
+          ],
+          "failure": {
+            "AdditionalResetWriter": {
+              "pos": {
+                "x": 56,
+                "y": 40,
+                "z": 47
+              }
+            }
+          }
+        },
+        "ActiveReset": {
+          "base": [
+            14,
+            10,
+            6
+          ],
+          "failure": {
+            "ActiveReset": {
+              "pos": {
+                "x": 55,
+                "y": 40,
+                "z": 45
+              }
+            }
+          }
+        },
+        "NonconductingSupport": {
+          "base": [
+            14,
+            14,
+            46
+          ],
+          "failure": {
+            "NonconductingSupport": {
+              "pos": {
+                "x": 55,
+                "y": 42,
+                "z": 86
+              }
+            }
+          }
+        },
+        "MismatchedHead": {
+          "base": [
+            14,
+            15,
+            12
+          ],
+          "failure": "MismatchedHead"
+        }
+      },
+      "output_interfaces": 110,
+      "reset_exposures": 0
+    },
+    {
+      "budget": 8,
+      "elapsed_ms": 19,
+      "inspected_cells": 200704,
+      "nonair_blocks": 25455,
+      "dependency_steps": 592973,
+      "pistons": 2055,
+      "observers": 1827,
+      "payload_groups": 1566,
+      "group_sizes": {
+        "2": 489,
+        "1": 1077
+      },
+      "matched_reset_mechanisms": 1203,
+      "diagnostic_counts": {
+        "NoResetSeed": 45,
+        "MissingOrMismatchedHead": 16
+      },
+      "recognition_failure_counts": {
+        "NoResetPath": 835,
+        "AdditionalResetWriter": 289,
+        "ActiveReset": 100,
+        "NonconductingSupport": 108,
+        "MismatchedHead": 16
+      },
+      "examples": {
+        "NoResetPath": {
+          "base": [
+            16,
+            2,
+            42
+          ],
+          "failure": "NoResetPath"
+        },
+        "AdditionalResetWriter": {
+          "base": [
+            16,
+            8,
+            8
+          ],
+          "failure": {
+            "AdditionalResetWriter": {
+              "pos": {
+                "x": 56,
+                "y": 40,
+                "z": 47
+              }
+            }
+          }
+        },
+        "ActiveReset": {
+          "base": [
+            14,
+            10,
+            6
+          ],
+          "failure": {
+            "ActiveReset": {
+              "pos": {
+                "x": 55,
+                "y": 40,
+                "z": 45
+              }
+            }
+          }
+        },
+        "NonconductingSupport": {
+          "base": [
+            14,
+            14,
+            46
+          ],
+          "failure": {
+            "NonconductingSupport": {
+              "pos": {
+                "x": 55,
+                "y": 42,
+                "z": 86
+              }
+            }
+          }
+        },
+        "MismatchedHead": {
+          "base": [
+            14,
+            15,
+            12
+          ],
+          "failure": "MismatchedHead"
+        }
+      },
+      "output_interfaces": 110,
+      "reset_exposures": 0
+    }
+  ],
+  "compile": [
+    {
+      "active": true,
+      "assume_instant": false,
+      "budget": 1,
+      "elapsed_ms": 257,
+      "error": null
+    },
+    {
+      "active": true,
+      "assume_instant": false,
+      "budget": 2,
+      "elapsed_ms": 229,
+      "error": null
+    },
+    {
+      "active": true,
+      "assume_instant": false,
+      "budget": 4,
+      "elapsed_ms": 235,
+      "error": null
+    },
+    {
+      "active": true,
+      "assume_instant": false,
+      "budget": 8,
+      "elapsed_ms": 233,
+      "error": null
+    },
+    {
+      "active": true,
+      "assume_instant": true,
+      "budget": 8,
+      "elapsed_ms": 227,
+      "error": null
+    }
+  ],
+  "episodes": [
+    {
+      "case_id": "idle",
+      "actions": [],
+      "transitions": [
+        {
+          "tick": 0,
+          "step": null,
+          "label": "import",
+          "negative_bits": "0000000000",
+          "raw": 0
+        }
+      ],
+      "operation_counts": {},
+      "headless_operation_counts": {},
+      "completed_ticks": 32,
+      "final_pending": 0,
+      "final_motions": 0,
+      "final_events": 0
+    },
+    {
+      "case_id": "enable-falling",
+      "actions": [
+        {
+          "tick": 0,
+          "op": "lever",
+          "pos": [
+            1,
+            23,
+            44
+          ],
+          "powered": false
+        }
+      ],
+      "transitions": [
+        {
+          "tick": 0,
+          "step": null,
+          "label": "import",
+          "negative_bits": "0000000000",
+          "raw": 0
+        },
+        {
+          "tick": 3,
+          "step": 1,
+          "label": "tick",
+          "negative_bits": "0010101010",
+          "raw": 170
+        },
+        {
+          "tick": 8,
+          "step": 1,
+          "label": "tick",
+          "negative_bits": "0000000000",
+          "raw": 0
+        },
+        {
+          "tick": 46,
+          "step": 1,
+          "label": "tick",
+          "negative_bits": "0010101010",
+          "raw": 170
+        },
+        {
+          "tick": 51,
+          "step": 1,
+          "label": "tick",
+          "negative_bits": "0000000000",
+          "raw": 0
+        },
+        {
+          "tick": 90,
+          "step": 1,
+          "label": "tick",
+          "negative_bits": "0010101010",
+          "raw": 170
+        },
+        {
+          "tick": 95,
+          "step": 1,
+          "label": "tick",
+          "negative_bits": "0000000000",
+          "raw": 0
+        }
+      ],
+      "operation_counts": {
+        "Sample": 123189,
+        "Applied": 6786
+      },
+      "headless_operation_counts": {
+        "Sample": 600
+      },
+      "completed_ticks": 128,
+      "final_pending": 1,
+      "final_motions": 0,
+      "final_events": 0
+    },
+    {
+      "case_id": "enable-cycle",
+      "actions": [
+        {
+          "tick": 0,
+          "op": "lever",
+          "pos": [
+            1,
+            23,
+            44
+          ],
+          "powered": false
+        },
+        {
+          "tick": 128,
+          "op": "lever",
+          "pos": [
+            1,
+            23,
+            44
+          ],
+          "powered": true
+        }
+      ],
+      "transitions": [
+        {
+          "tick": 0,
+          "step": null,
+          "label": "import",
+          "negative_bits": "0000000000",
+          "raw": 0
+        },
+        {
+          "tick": 3,
+          "step": 1,
+          "label": "tick",
+          "negative_bits": "0010101010",
+          "raw": 170
+        },
+        {
+          "tick": 8,
+          "step": 1,
+          "label": "tick",
+          "negative_bits": "0000000000",
+          "raw": 0
+        },
+        {
+          "tick": 46,
+          "step": 1,
+          "label": "tick",
+          "negative_bits": "0010101010",
+          "raw": 170
+        },
+        {
+          "tick": 51,
+          "step": 1,
+          "label": "tick",
+          "negative_bits": "0000000000",
+          "raw": 0
+        },
+        {
+          "tick": 90,
+          "step": 1,
+          "label": "tick",
+          "negative_bits": "0010101010",
+          "raw": 170
+        },
+        {
+          "tick": 95,
+          "step": 1,
+          "label": "tick",
+          "negative_bits": "0000000000",
+          "raw": 0
+        }
+      ],
+      "operation_counts": {
+        "Sample": 123190,
+        "Applied": 6786
+      },
+      "headless_operation_counts": {
+        "Sample": 600
+      },
+      "completed_ticks": 256,
+      "final_pending": 0,
+      "final_motions": 0,
+      "final_events": 0
+    },
+    {
+      "case_id": "one-over-one",
+      "actions": [
+        {
+          "tick": 0,
+          "op": "lever",
+          "pos": [
+            6,
+            23,
+            5
+          ],
+          "powered": false
+        },
+        {
+          "tick": 0,
+          "op": "lever",
+          "pos": [
+            6,
+            23,
+            9
+          ],
+          "powered": true
+        },
+        {
+          "tick": 0,
+          "op": "lever",
+          "pos": [
+            6,
+            23,
+            13
+          ],
+          "powered": true
+        },
+        {
+          "tick": 0,
+          "op": "lever",
+          "pos": [
+            6,
+            23,
+            17
+          ],
+          "powered": true
+        },
+        {
+          "tick": 0,
+          "op": "lever",
+          "pos": [
+            6,
+            23,
+            21
+          ],
+          "powered": true
+        },
+        {
+          "tick": 0,
+          "op": "lever",
+          "pos": [
+            6,
+            23,
+            25
+          ],
+          "powered": true
+        },
+        {
+          "tick": 0,
+          "op": "lever",
+          "pos": [
+            6,
+            23,
+            29
+          ],
+          "powered": true
+        },
+        {
+          "tick": 0,
+          "op": "lever",
+          "pos": [
+            6,
+            23,
+            33
+          ],
+          "powered": true
+        },
+        {
+          "tick": 0,
+          "op": "lever",
+          "pos": [
+            6,
+            23,
+            37
+          ],
+          "powered": true
+        },
+        {
+          "tick": 0,
+          "op": "lever",
+          "pos": [
+            6,
+            23,
+            41
+          ],
+          "powered": true
+        },
+        {
+          "tick": 0,
+          "op": "lever",
+          "pos": [
+            6,
+            23,
+            3
+          ],
+          "powered": false
+        },
+        {
+          "tick": 0,
+          "op": "lever",
+          "pos": [
+            6,
+            23,
+            7
+          ],
+          "powered": true
+        },
+        {
+          "tick": 0,
+          "op": "lever",
+          "pos": [
+            6,
+            23,
+            11
+          ],
+          "powered": true
+        },
+        {
+          "tick": 0,
+          "op": "lever",
+          "pos": [
+            6,
+            23,
+            15
+          ],
+          "powered": true
+        },
+        {
+          "tick": 0,
+          "op": "lever",
+          "pos": [
+            6,
+            23,
+            19
+          ],
+          "powered": true
+        },
+        {
+          "tick": 0,
+          "op": "lever",
+          "pos": [
+            6,
+            23,
+            23
+          ],
+          "powered": true
+        },
+        {
+          "tick": 0,
+          "op": "lever",
+          "pos": [
+            6,
+            23,
+            27
+          ],
+          "powered": true
+        },
+        {
+          "tick": 0,
+          "op": "lever",
+          "pos": [
+            6,
+            23,
+            31
+          ],
+          "powered": true
+        },
+        {
+          "tick": 0,
+          "op": "lever",
+          "pos": [
+            6,
+            23,
+            35
+          ],
+          "powered": true
+        },
+        {
+          "tick": 0,
+          "op": "lever",
+          "pos": [
+            6,
+            23,
+            39
+          ],
+          "powered": true
+        },
+        {
+          "tick": 64,
+          "op": "lever",
+          "pos": [
+            1,
+            23,
+            44
+          ],
+          "powered": false
+        },
+        {
+          "tick": 192,
+          "op": "lever",
+          "pos": [
+            1,
+            23,
+            44
+          ],
+          "powered": true
+        }
+      ],
+      "transitions": [
+        {
+          "tick": 0,
+          "step": null,
+          "label": "import",
+          "negative_bits": "0000000000",
+          "raw": 0
+        },
+        {
+          "tick": 67,
+          "step": 22,
+          "label": "tick",
+          "negative_bits": "1000000000",
+          "raw": 512
+        },
+        {
+          "tick": 72,
+          "step": 22,
+          "label": "tick",
+          "negative_bits": "0000000000",
+          "raw": 0
+        },
+        {
+          "tick": 110,
+          "step": 22,
+          "label": "tick",
+          "negative_bits": "1000000000",
+          "raw": 512
+        },
+        {
+          "tick": 115,
+          "step": 22,
+          "label": "tick",
+          "negative_bits": "0000000000",
+          "raw": 0
+        },
+        {
+          "tick": 154,
+          "step": 22,
+          "label": "tick",
+          "negative_bits": "1000000000",
+          "raw": 512
+        },
+        {
+          "tick": 159,
+          "step": 22,
+          "label": "tick",
+          "negative_bits": "0000000000",
+          "raw": 0
+        }
+      ],
+      "operation_counts": {
+        "Sample": 100813,
+        "Applied": 5832
+      },
+      "headless_operation_counts": {
+        "Sample": 600
+      },
+      "completed_ticks": 256,
+      "final_pending": 0,
+      "final_motions": 0,
+      "final_events": 0
+    },
+    {
+      "case_id": "one-half-over-one",
+      "actions": [
+        {
+          "tick": 0,
+          "op": "lever",
+          "pos": [
+            6,
+            23,
+            5
+          ],
+          "powered": false
+        },
+        {
+          "tick": 0,
+          "op": "lever",
+          "pos": [
+            6,
+            23,
+            9
+          ],
+          "powered": false
+        },
+        {
+          "tick": 0,
+          "op": "lever",
+          "pos": [
+            6,
+            23,
+            13
+          ],
+          "powered": true
+        },
+        {
+          "tick": 0,
+          "op": "lever",
+          "pos": [
+            6,
+            23,
+            17
+          ],
+          "powered": true
+        },
+        {
+          "tick": 0,
+          "op": "lever",
+          "pos": [
+            6,
+            23,
+            21
+          ],
+          "powered": true
+        },
+        {
+          "tick": 0,
+          "op": "lever",
+          "pos": [
+            6,
+            23,
+            25
+          ],
+          "powered": true
+        },
+        {
+          "tick": 0,
+          "op": "lever",
+          "pos": [
+            6,
+            23,
+            29
+          ],
+          "powered": true
+        },
+        {
+          "tick": 0,
+          "op": "lever",
+          "pos": [
+            6,
+            23,
+            33
+          ],
+          "powered": true
+        },
+        {
+          "tick": 0,
+          "op": "lever",
+          "pos": [
+            6,
+            23,
+            37
+          ],
+          "powered": true
+        },
+        {
+          "tick": 0,
+          "op": "lever",
+          "pos": [
+            6,
+            23,
+            41
+          ],
+          "powered": true
+        },
+        {
+          "tick": 0,
+          "op": "lever",
+          "pos": [
+            6,
+            23,
+            3
+          ],
+          "powered": false
+        },
+        {
+          "tick": 0,
+          "op": "lever",
+          "pos": [
+            6,
+            23,
+            7
+          ],
+          "powered": true
+        },
+        {
+          "tick": 0,
+          "op": "lever",
+          "pos": [
+            6,
+            23,
+            11
+          ],
+          "powered": true
+        },
+        {
+          "tick": 0,
+          "op": "lever",
+          "pos": [
+            6,
+            23,
+            15
+          ],
+          "powered": true
+        },
+        {
+          "tick": 0,
+          "op": "lever",
+          "pos": [
+            6,
+            23,
+            19
+          ],
+          "powered": true
+        },
+        {
+          "tick": 0,
+          "op": "lever",
+          "pos": [
+            6,
+            23,
+            23
+          ],
+          "powered": true
+        },
+        {
+          "tick": 0,
+          "op": "lever",
+          "pos": [
+            6,
+            23,
+            27
+          ],
+          "powered": true
+        },
+        {
+          "tick": 0,
+          "op": "lever",
+          "pos": [
+            6,
+            23,
+            31
+          ],
+          "powered": true
+        },
+        {
+          "tick": 0,
+          "op": "lever",
+          "pos": [
+            6,
+            23,
+            35
+          ],
+          "powered": true
+        },
+        {
+          "tick": 0,
+          "op": "lever",
+          "pos": [
+            6,
+            23,
+            39
+          ],
+          "powered": true
+        },
+        {
+          "tick": 64,
+          "op": "lever",
+          "pos": [
+            1,
+            23,
+            44
+          ],
+          "powered": false
+        },
+        {
+          "tick": 192,
+          "op": "lever",
+          "pos": [
+            1,
+            23,
+            44
+          ],
+          "powered": true
+        }
+      ],
+      "transitions": [
+        {
+          "tick": 0,
+          "step": null,
+          "label": "import",
+          "negative_bits": "0000000000",
+          "raw": 0
+        },
+        {
+          "tick": 67,
+          "step": 22,
+          "label": "tick",
+          "negative_bits": "1100000000",
+          "raw": 768
+        },
+        {
+          "tick": 72,
+          "step": 22,
+          "label": "tick",
+          "negative_bits": "0000000000",
+          "raw": 0
+        },
+        {
+          "tick": 110,
+          "step": 22,
+          "label": "tick",
+          "negative_bits": "1100000000",
+          "raw": 768
+        },
+        {
+          "tick": 115,
+          "step": 22,
+          "label": "tick",
+          "negative_bits": "0000000000",
+          "raw": 0
+        },
+        {
+          "tick": 154,
+          "step": 22,
+          "label": "tick",
+          "negative_bits": "1100000000",
+          "raw": 768
+        },
+        {
+          "tick": 159,
+          "step": 22,
+          "label": "tick",
+          "negative_bits": "0000000000",
+          "raw": 0
+        }
+      ],
+      "operation_counts": {
+        "Sample": 102358,
+        "Applied": 5910
+      },
+      "headless_operation_counts": {
+        "Sample": 600
+      },
+      "completed_ticks": 256,
+      "final_pending": 0,
+      "final_motions": 0,
+      "final_events": 0
+    },
+    {
+      "case_id": "half-over-one",
+      "actions": [
+        {
+          "tick": 0,
+          "op": "lever",
+          "pos": [
+            6,
+            23,
+            5
+          ],
+          "powered": true
+        },
+        {
+          "tick": 0,
+          "op": "lever",
+          "pos": [
+            6,
+            23,
+            9
+          ],
+          "powered": false
+        },
+        {
+          "tick": 0,
+          "op": "lever",
+          "pos": [
+            6,
+            23,
+            13
+          ],
+          "powered": true
+        },
+        {
+          "tick": 0,
+          "op": "lever",
+          "pos": [
+            6,
+            23,
+            17
+          ],
+          "powered": true
+        },
+        {
+          "tick": 0,
+          "op": "lever",
+          "pos": [
+            6,
+            23,
+            21
+          ],
+          "powered": true
+        },
+        {
+          "tick": 0,
+          "op": "lever",
+          "pos": [
+            6,
+            23,
+            25
+          ],
+          "powered": true
+        },
+        {
+          "tick": 0,
+          "op": "lever",
+          "pos": [
+            6,
+            23,
+            29
+          ],
+          "powered": true
+        },
+        {
+          "tick": 0,
+          "op": "lever",
+          "pos": [
+            6,
+            23,
+            33
+          ],
+          "powered": true
+        },
+        {
+          "tick": 0,
+          "op": "lever",
+          "pos": [
+            6,
+            23,
+            37
+          ],
+          "powered": true
+        },
+        {
+          "tick": 0,
+          "op": "lever",
+          "pos": [
+            6,
+            23,
+            41
+          ],
+          "powered": true
+        },
+        {
+          "tick": 0,
+          "op": "lever",
+          "pos": [
+            6,
+            23,
+            3
+          ],
+          "powered": false
+        },
+        {
+          "tick": 0,
+          "op": "lever",
+          "pos": [
+            6,
+            23,
+            7
+          ],
+          "powered": true
+        },
+        {
+          "tick": 0,
+          "op": "lever",
+          "pos": [
+            6,
+            23,
+            11
+          ],
+          "powered": true
+        },
+        {
+          "tick": 0,
+          "op": "lever",
+          "pos": [
+            6,
+            23,
+            15
+          ],
+          "powered": true
+        },
+        {
+          "tick": 0,
+          "op": "lever",
+          "pos": [
+            6,
+            23,
+            19
+          ],
+          "powered": true
+        },
+        {
+          "tick": 0,
+          "op": "lever",
+          "pos": [
+            6,
+            23,
+            23
+          ],
+          "powered": true
+        },
+        {
+          "tick": 0,
+          "op": "lever",
+          "pos": [
+            6,
+            23,
+            27
+          ],
+          "powered": true
+        },
+        {
+          "tick": 0,
+          "op": "lever",
+          "pos": [
+            6,
+            23,
+            31
+          ],
+          "powered": true
+        },
+        {
+          "tick": 0,
+          "op": "lever",
+          "pos": [
+            6,
+            23,
+            35
+          ],
+          "powered": true
+        },
+        {
+          "tick": 0,
+          "op": "lever",
+          "pos": [
+            6,
+            23,
+            39
+          ],
+          "powered": true
+        },
+        {
+          "tick": 64,
+          "op": "lever",
+          "pos": [
+            1,
+            23,
+            44
+          ],
+          "powered": false
+        },
+        {
+          "tick": 192,
+          "op": "lever",
+          "pos": [
+            1,
+            23,
+            44
+          ],
+          "powered": true
+        }
+      ],
+      "transitions": [
+        {
+          "tick": 0,
+          "step": null,
+          "label": "import",
+          "negative_bits": "0000000000",
+          "raw": 0
+        },
+        {
+          "tick": 67,
+          "step": 22,
+          "label": "tick",
+          "negative_bits": "0111111111",
+          "raw": 511
+        },
+        {
+          "tick": 72,
+          "step": 22,
+          "label": "tick",
+          "negative_bits": "0000000000",
+          "raw": 0
+        },
+        {
+          "tick": 110,
+          "step": 22,
+          "label": "tick",
+          "negative_bits": "0111111111",
+          "raw": 511
+        },
+        {
+          "tick": 115,
+          "step": 22,
+          "label": "tick",
+          "negative_bits": "0000000000",
+          "raw": 0
+        },
+        {
+          "tick": 154,
+          "step": 22,
+          "label": "tick",
+          "negative_bits": "0111111111",
+          "raw": 511
+        },
+        {
+          "tick": 159,
+          "step": 22,
+          "label": "tick",
+          "negative_bits": "0000000000",
+          "raw": 0
+        }
+      ],
+      "operation_counts": {
+        "Sample": 140869,
+        "Applied": 7476
+      },
+      "headless_operation_counts": {
+        "Sample": 600
+      },
+      "completed_ticks": 256,
+      "final_pending": 0,
+      "final_motions": 0,
+      "final_events": 0
+    },
+    {
+      "case_id": "zero-over-one",
+      "actions": [
+        {
+          "tick": 0,
+          "op": "lever",
+          "pos": [
+            6,
+            23,
+            5
+          ],
+          "powered": true
+        },
+        {
+          "tick": 0,
+          "op": "lever",
+          "pos": [
+            6,
+            23,
+            9
+          ],
+          "powered": true
+        },
+        {
+          "tick": 0,
+          "op": "lever",
+          "pos": [
+            6,
+            23,
+            13
+          ],
+          "powered": true
+        },
+        {
+          "tick": 0,
+          "op": "lever",
+          "pos": [
+            6,
+            23,
+            17
+          ],
+          "powered": true
+        },
+        {
+          "tick": 0,
+          "op": "lever",
+          "pos": [
+            6,
+            23,
+            21
+          ],
+          "powered": true
+        },
+        {
+          "tick": 0,
+          "op": "lever",
+          "pos": [
+            6,
+            23,
+            25
+          ],
+          "powered": true
+        },
+        {
+          "tick": 0,
+          "op": "lever",
+          "pos": [
+            6,
+            23,
+            29
+          ],
+          "powered": true
+        },
+        {
+          "tick": 0,
+          "op": "lever",
+          "pos": [
+            6,
+            23,
+            33
+          ],
+          "powered": true
+        },
+        {
+          "tick": 0,
+          "op": "lever",
+          "pos": [
+            6,
+            23,
+            37
+          ],
+          "powered": true
+        },
+        {
+          "tick": 0,
+          "op": "lever",
+          "pos": [
+            6,
+            23,
+            41
+          ],
+          "powered": true
+        },
+        {
+          "tick": 0,
+          "op": "lever",
+          "pos": [
+            6,
+            23,
+            3
+          ],
+          "powered": false
+        },
+        {
+          "tick": 0,
+          "op": "lever",
+          "pos": [
+            6,
+            23,
+            7
+          ],
+          "powered": true
+        },
+        {
+          "tick": 0,
+          "op": "lever",
+          "pos": [
+            6,
+            23,
+            11
+          ],
+          "powered": true
+        },
+        {
+          "tick": 0,
+          "op": "lever",
+          "pos": [
+            6,
+            23,
+            15
+          ],
+          "powered": true
+        },
+        {
+          "tick": 0,
+          "op": "lever",
+          "pos": [
+            6,
+            23,
+            19
+          ],
+          "powered": true
+        },
+        {
+          "tick": 0,
+          "op": "lever",
+          "pos": [
+            6,
+            23,
+            23
+          ],
+          "powered": true
+        },
+        {
+          "tick": 0,
+          "op": "lever",
+          "pos": [
+            6,
+            23,
+            27
+          ],
+          "powered": true
+        },
+        {
+          "tick": 0,
+          "op": "lever",
+          "pos": [
+            6,
+            23,
+            31
+          ],
+          "powered": true
+        },
+        {
+          "tick": 0,
+          "op": "lever",
+          "pos": [
+            6,
+            23,
+            35
+          ],
+          "powered": true
+        },
+        {
+          "tick": 0,
+          "op": "lever",
+          "pos": [
+            6,
+            23,
+            39
+          ],
+          "powered": true
+        },
+        {
+          "tick": 64,
+          "op": "lever",
+          "pos": [
+            1,
+            23,
+            44
+          ],
+          "powered": false
+        },
+        {
+          "tick": 192,
+          "op": "lever",
+          "pos": [
+            1,
+            23,
+            44
+          ],
+          "powered": true
+        }
+      ],
+      "transitions": [
+        {
+          "tick": 0,
+          "step": null,
+          "label": "import",
+          "negative_bits": "0000000000",
+          "raw": 0
+        },
+        {
+          "tick": 67,
+          "step": 22,
+          "label": "tick",
+          "negative_bits": "0111111111",
+          "raw": 511
+        },
+        {
+          "tick": 72,
+          "step": 22,
+          "label": "tick",
+          "negative_bits": "0000000000",
+          "raw": 0
+        },
+        {
+          "tick": 110,
+          "step": 22,
+          "label": "tick",
+          "negative_bits": "0111111111",
+          "raw": 511
+        },
+        {
+          "tick": 115,
+          "step": 22,
+          "label": "tick",
+          "negative_bits": "0000000000",
+          "raw": 0
+        },
+        {
+          "tick": 154,
+          "step": 22,
+          "label": "tick",
+          "negative_bits": "0111111111",
+          "raw": 511
+        },
+        {
+          "tick": 159,
+          "step": 22,
+          "label": "tick",
+          "negative_bits": "0000000000",
+          "raw": 0
+        }
+      ],
+      "operation_counts": {
+        "Sample": 140590,
+        "Applied": 7434
+      },
+      "headless_operation_counts": {
+        "Sample": 600
+      },
+      "completed_ticks": 256,
+      "final_pending": 0,
+      "final_motions": 0,
+      "final_events": 0
+    },
+    {
+      "case_id": "one-three-quarters-over-half",
+      "actions": [
+        {
+          "tick": 0,
+          "op": "lever",
+          "pos": [
+            6,
+            23,
+            5
+          ],
+          "powered": false
+        },
+        {
+          "tick": 0,
+          "op": "lever",
+          "pos": [
+            6,
+            23,
+            9
+          ],
+          "powered": false
+        },
+        {
+          "tick": 0,
+          "op": "lever",
+          "pos": [
+            6,
+            23,
+            13
+          ],
+          "powered": false
+        },
+        {
+          "tick": 0,
+          "op": "lever",
+          "pos": [
+            6,
+            23,
+            17
+          ],
+          "powered": true
+        },
+        {
+          "tick": 0,
+          "op": "lever",
+          "pos": [
+            6,
+            23,
+            21
+          ],
+          "powered": true
+        },
+        {
+          "tick": 0,
+          "op": "lever",
+          "pos": [
+            6,
+            23,
+            25
+          ],
+          "powered": true
+        },
+        {
+          "tick": 0,
+          "op": "lever",
+          "pos": [
+            6,
+            23,
+            29
+          ],
+          "powered": true
+        },
+        {
+          "tick": 0,
+          "op": "lever",
+          "pos": [
+            6,
+            23,
+            33
+          ],
+          "powered": true
+        },
+        {
+          "tick": 0,
+          "op": "lever",
+          "pos": [
+            6,
+            23,
+            37
+          ],
+          "powered": true
+        },
+        {
+          "tick": 0,
+          "op": "lever",
+          "pos": [
+            6,
+            23,
+            41
+          ],
+          "powered": true
+        },
+        {
+          "tick": 0,
+          "op": "lever",
+          "pos": [
+            6,
+            23,
+            3
+          ],
+          "powered": true
+        },
+        {
+          "tick": 0,
+          "op": "lever",
+          "pos": [
+            6,
+            23,
+            7
+          ],
+          "powered": false
+        },
+        {
+          "tick": 0,
+          "op": "lever",
+          "pos": [
+            6,
+            23,
+            11
+          ],
+          "powered": true
+        },
+        {
+          "tick": 0,
+          "op": "lever",
+          "pos": [
+            6,
+            23,
+            15
+          ],
+          "powered": true
+        },
+        {
+          "tick": 0,
+          "op": "lever",
+          "pos": [
+            6,
+            23,
+            19
+          ],
+          "powered": true
+        },
+        {
+          "tick": 0,
+          "op": "lever",
+          "pos": [
+            6,
+            23,
+            23
+          ],
+          "powered": true
+        },
+        {
+          "tick": 0,
+          "op": "lever",
+          "pos": [
+            6,
+            23,
+            27
+          ],
+          "powered": true
+        },
+        {
+          "tick": 0,
+          "op": "lever",
+          "pos": [
+            6,
+            23,
+            31
+          ],
+          "powered": true
+        },
+        {
+          "tick": 0,
+          "op": "lever",
+          "pos": [
+            6,
+            23,
+            35
+          ],
+          "powered": true
+        },
+        {
+          "tick": 0,
+          "op": "lever",
+          "pos": [
+            6,
+            23,
+            39
+          ],
+          "powered": true
+        },
+        {
+          "tick": 64,
+          "op": "lever",
+          "pos": [
+            1,
+            23,
+            44
+          ],
+          "powered": false
+        },
+        {
+          "tick": 192,
+          "op": "lever",
+          "pos": [
+            1,
+            23,
+            44
+          ],
+          "powered": true
+        }
+      ],
+      "transitions": [
+        {
+          "tick": 0,
+          "step": null,
+          "label": "import",
+          "negative_bits": "0000000000",
+          "raw": 0
+        },
+        {
+          "tick": 67,
+          "step": 22,
+          "label": "tick",
+          "negative_bits": "1111111111",
+          "raw": 1023
+        },
+        {
+          "tick": 72,
+          "step": 22,
+          "label": "tick",
+          "negative_bits": "0000000000",
+          "raw": 0
+        },
+        {
+          "tick": 110,
+          "step": 22,
+          "label": "tick",
+          "negative_bits": "1111111111",
+          "raw": 1023
+        },
+        {
+          "tick": 115,
+          "step": 22,
+          "label": "tick",
+          "negative_bits": "0000000000",
+          "raw": 0
+        },
+        {
+          "tick": 154,
+          "step": 22,
+          "label": "tick",
+          "negative_bits": "1111111111",
+          "raw": 1023
+        },
+        {
+          "tick": 159,
+          "step": 22,
+          "label": "tick",
+          "negative_bits": "0000000000",
+          "raw": 0
+        }
+      ],
+      "operation_counts": {
+        "Sample": 127366,
+        "Applied": 6936
+      },
+      "headless_operation_counts": {
+        "Sample": 714,
+        "Applied": 12
+      },
+      "completed_ticks": 256,
+      "final_pending": 0,
+      "final_motions": 0,
+      "final_events": 0
+    },
+    {
+      "case_id": "one-over-zero",
+      "actions": [
+        {
+          "tick": 0,
+          "op": "lever",
+          "pos": [
+            6,
+            23,
+            5
+          ],
+          "powered": false
+        },
+        {
+          "tick": 0,
+          "op": "lever",
+          "pos": [
+            6,
+            23,
+            9
+          ],
+          "powered": true
+        },
+        {
+          "tick": 0,
+          "op": "lever",
+          "pos": [
+            6,
+            23,
+            13
+          ],
+          "powered": true
+        },
+        {
+          "tick": 0,
+          "op": "lever",
+          "pos": [
+            6,
+            23,
+            17
+          ],
+          "powered": true
+        },
+        {
+          "tick": 0,
+          "op": "lever",
+          "pos": [
+            6,
+            23,
+            21
+          ],
+          "powered": true
+        },
+        {
+          "tick": 0,
+          "op": "lever",
+          "pos": [
+            6,
+            23,
+            25
+          ],
+          "powered": true
+        },
+        {
+          "tick": 0,
+          "op": "lever",
+          "pos": [
+            6,
+            23,
+            29
+          ],
+          "powered": true
+        },
+        {
+          "tick": 0,
+          "op": "lever",
+          "pos": [
+            6,
+            23,
+            33
+          ],
+          "powered": true
+        },
+        {
+          "tick": 0,
+          "op": "lever",
+          "pos": [
+            6,
+            23,
+            37
+          ],
+          "powered": true
+        },
+        {
+          "tick": 0,
+          "op": "lever",
+          "pos": [
+            6,
+            23,
+            41
+          ],
+          "powered": true
+        },
+        {
+          "tick": 0,
+          "op": "lever",
+          "pos": [
+            6,
+            23,
+            3
+          ],
+          "powered": true
+        },
+        {
+          "tick": 0,
+          "op": "lever",
+          "pos": [
+            6,
+            23,
+            7
+          ],
+          "powered": true
+        },
+        {
+          "tick": 0,
+          "op": "lever",
+          "pos": [
+            6,
+            23,
+            11
+          ],
+          "powered": true
+        },
+        {
+          "tick": 0,
+          "op": "lever",
+          "pos": [
+            6,
+            23,
+            15
+          ],
+          "powered": true
+        },
+        {
+          "tick": 0,
+          "op": "lever",
+          "pos": [
+            6,
+            23,
+            19
+          ],
+          "powered": true
+        },
+        {
+          "tick": 0,
+          "op": "lever",
+          "pos": [
+            6,
+            23,
+            23
+          ],
+          "powered": true
+        },
+        {
+          "tick": 0,
+          "op": "lever",
+          "pos": [
+            6,
+            23,
+            27
+          ],
+          "powered": true
+        },
+        {
+          "tick": 0,
+          "op": "lever",
+          "pos": [
+            6,
+            23,
+            31
+          ],
+          "powered": true
+        },
+        {
+          "tick": 0,
+          "op": "lever",
+          "pos": [
+            6,
+            23,
+            35
+          ],
+          "powered": true
+        },
+        {
+          "tick": 0,
+          "op": "lever",
+          "pos": [
+            6,
+            23,
+            39
+          ],
+          "powered": true
+        },
+        {
+          "tick": 64,
+          "op": "lever",
+          "pos": [
+            1,
+            23,
+            44
+          ],
+          "powered": false
+        },
+        {
+          "tick": 192,
+          "op": "lever",
+          "pos": [
+            1,
+            23,
+            44
+          ],
+          "powered": true
+        }
+      ],
+      "transitions": [
+        {
+          "tick": 0,
+          "step": null,
+          "label": "import",
+          "negative_bits": "0000000000",
+          "raw": 0
+        },
+        {
+          "tick": 67,
+          "step": 22,
+          "label": "tick",
+          "negative_bits": "1111111111",
+          "raw": 1023
+        },
+        {
+          "tick": 72,
+          "step": 22,
+          "label": "tick",
+          "negative_bits": "0000000000",
+          "raw": 0
+        },
+        {
+          "tick": 110,
+          "step": 22,
+          "label": "tick",
+          "negative_bits": "1111111111",
+          "raw": 1023
+        },
+        {
+          "tick": 115,
+          "step": 22,
+          "label": "tick",
+          "negative_bits": "0000000000",
+          "raw": 0
+        },
+        {
+          "tick": 154,
+          "step": 22,
+          "label": "tick",
+          "negative_bits": "1111111111",
+          "raw": 1023
+        },
+        {
+          "tick": 159,
+          "step": 22,
+          "label": "tick",
+          "negative_bits": "0000000000",
+          "raw": 0
+        }
+      ],
+      "operation_counts": {
+        "Sample": 126442,
+        "Applied": 6624
+      },
+      "headless_operation_counts": {
+        "Sample": 600
+      },
+      "completed_ticks": 256,
+      "final_pending": 0,
+      "final_motions": 0,
+      "final_events": 0
+    },
+    {
+      "case_id": "single-trigger",
+      "actions": [
+        {
+          "tick": 0,
+          "op": "lever",
+          "pos": [
+            1,
+            23,
+            44
+          ],
+          "powered": false
+        },
+        {
+          "tick": 4,
+          "op": "lever",
+          "pos": [
+            1,
+            23,
+            44
+          ],
+          "powered": true
+        }
+      ],
+      "transitions": [
+        {
+          "tick": 0,
+          "step": null,
+          "label": "import",
+          "negative_bits": "0000000000",
+          "raw": 0
+        },
+        {
+          "tick": 3,
+          "step": 1,
+          "label": "tick",
+          "negative_bits": "0010101010",
+          "raw": 170
+        },
+        {
+          "tick": 8,
+          "step": 3,
+          "label": "tick",
+          "negative_bits": "0000000000",
+          "raw": 0
+        }
+      ],
+      "operation_counts": {
+        "Sample": 41063,
+        "Applied": 2262
+      },
+      "headless_operation_counts": {
+        "Sample": 200
+      },
+      "completed_ticks": 68,
+      "final_pending": 0,
+      "final_motions": 0,
+      "final_events": 0
+    },
+    {
+      "case_id": "retrigger",
+      "actions": [
+        {
+          "tick": 0,
+          "op": "lever",
+          "pos": [
+            1,
+            23,
+            44
+          ],
+          "powered": false
+        },
+        {
+          "tick": 12,
+          "op": "lever",
+          "pos": [
+            1,
+            23,
+            44
+          ],
+          "powered": true
+        },
+        {
+          "tick": 76,
+          "op": "lever",
+          "pos": [
+            1,
+            23,
+            44
+          ],
+          "powered": false
+        },
+        {
+          "tick": 88,
+          "op": "lever",
+          "pos": [
+            1,
+            23,
+            44
+          ],
+          "powered": true
+        }
+      ],
+      "transitions": [
+        {
+          "tick": 0,
+          "step": null,
+          "label": "import",
+          "negative_bits": "0000000000",
+          "raw": 0
+        },
+        {
+          "tick": 3,
+          "step": 1,
+          "label": "tick",
+          "negative_bits": "0010101010",
+          "raw": 170
+        },
+        {
+          "tick": 8,
+          "step": 1,
+          "label": "tick",
+          "negative_bits": "0000000000",
+          "raw": 0
+        },
+        {
+          "tick": 79,
+          "step": 5,
+          "label": "tick",
+          "negative_bits": "0010101010",
+          "raw": 170
+        },
+        {
+          "tick": 84,
+          "step": 5,
+          "label": "tick",
+          "negative_bits": "0000000000",
+          "raw": 0
+        }
+      ],
+      "operation_counts": {
+        "Sample": 82126,
+        "Applied": 4524
+      },
+      "headless_operation_counts": {
+        "Sample": 400
+      },
+      "completed_ticks": 152,
+      "final_pending": 0,
+      "final_motions": 0,
+      "final_events": 0
+    }
+  ]
+}

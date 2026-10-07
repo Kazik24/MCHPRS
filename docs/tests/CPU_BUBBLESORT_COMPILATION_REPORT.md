@@ -4,11 +4,11 @@ Date: 2026-10-07. Status: implementation and regression validation in progress.
 
 The unchanged CPU now compiles and completes its load/reset/sort protocol in the development checkout, both with and without `--assume-instant`. The top RAM bank finishes at `0,1,...,15`; the other three banks preserve their data. This is a passing comparison against the MCHPRS interpreter, not a completed release, a certification of arbitrary CPU programs, or independent Java conformance. Two broader regressions remain unresolved at the time of this report.
 
-This report follows the [original interpreter/admission research](CPU_BUBBLESORT_REDPILER_RESEARCH.md). That earlier report records the compiler before the sampled runtime work described here.
+This report follows the [original interpreter/admission research](CPU_REFERENCES.md). That earlier report records the compiler before the sampled runtime work described here.
 
 ## Fixture and test protocol
 
-The original [CPU_BubbleSort.schem](../test_data/piston-research/cpu-bubblesort/CPU_BubbleSort.schem) was used without schematic repairs or precomputed sorting behavior.
+The original [CPU_BubbleSort.schem](../../test_data/piston-research/cpu-bubblesort/CPU_BubbleSort.schem) was used without schematic repairs or precomputed sorting behavior.
 
 | Item | Value |
 | --- | --- |
@@ -78,11 +78,11 @@ A small regression, `sampled_extension_destination_does_not_resample_quasi_power
 
 Relevant implementation:
 
-- [Native extension and notification rules](../crates/core/src/redstone/piston.rs).
-- [Compiled sampled runtime](../crates/core/src/redpiler/backend/direct/instant/sequential.rs).
-- [Preparation of notification and conductor relationships](../crates/core/src/redpiler/instant/sequential.rs).
-- [Local electrical extraction](../crates/core/src/redpiler/instant/logic/sequential.rs).
-- [Small destination-notification regression](../crates/core/src/redpiler/analysis/tests/regions.rs).
+- [Native extension and notification rules](../../crates/core/src/redstone/piston.rs).
+- [Compiled sampled runtime](../../crates/core/src/redpiler/backend/direct/instant/sequential.rs).
+- [Preparation of notification and conductor relationships](../../crates/core/src/redpiler/instant/sequential.rs).
+- [Local electrical extraction](../../crates/core/src/redpiler/instant/logic/sequential.rs).
+- [Small destination-notification regression](../../crates/core/src/redpiler/analysis/tests/regions.rs).
 
 ## Validation completed
 
@@ -109,7 +109,7 @@ cargo test -p mchprs_core --lib bubblesort_compiled_sampled_protocol --locked --
 Remove-Item Env:MCHPRS_CPU_COMPARE_GEOMETRY
 ```
 
-The [test harness](../crates/core/src/redpiler/analysis/tests/research.rs) keeps fixture hash verification and compares actual compiled execution with a separately interpreted import.
+The [test harness](../../crates/core/src/redpiler/analysis/tests/research.rs) keeps fixture hash verification and compares actual compiled execution with a separately interpreted import.
 
 ## Broader observations and remaining work
 
@@ -127,3 +127,4 @@ The known XOR tick-8 reset waveform discrepancy was reproduced separately. The u
 Still pending: CPU plus other builds in one mixed plot, sampled-runtime handoff at active phases, the optimization/I/O matrix for the CPU path, the final full-core/workspace checks, and release compilation. Existing mixed-adder/counter tests do not establish arbitrary mixed-CPU correctness.
 
 The changes are in the development checkout and have not been released. Successful CPU sorting does not by itself prove every supported input history, every instruction/program, every saved malformed entry, or independent Java behavior.
+

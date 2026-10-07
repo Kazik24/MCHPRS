@@ -27,6 +27,16 @@ pub(crate) fn extract(
         observers: report.observers.iter().enumerate().map(|(i, &pos)| (pos, i)).collect(),
     };
     for (group, descriptor) in report.payload_groups.iter().enumerate() {
+        for &pos in &descriptor.positions {
+            let block = world.get_block(pos);
+            let saved_head = descriptor.members.iter().any(|&actor| {
+                let p = &report.pistons[actor];
+                p.head == pos && matches!(block, Block::PistonHead { .. })
+            });
+            if block != Block::Air && !supported_payload(block) && !saved_head {
+                return Err(format!("unsupported sampled payload minecraft:{} at {pos:?}, group {group}", block.get_name()));
+            }
+        }
         let payloads: Vec<_> = descriptor.positions.iter().filter_map(|&pos| {
             let block = world.get_block(pos);
             supported_payload(block).then_some(block)
@@ -91,6 +101,14 @@ pub(crate) fn extract(
     wires.extend(report.ports.pistons.iter().flat_map(|p| p.updates.iter().filter_map(|u| {
         matches!(world.get_block(u.source), Block::RedstoneWire { .. }).then_some(u.source)
     })));
+    // Geometry notifications can clear saved wire power even when no power
+    // dependency passes through the moving payload (for example, quartz).
+    for p in &report.pistons {
+        for pos in [p.pos, p.head, p.head.offset(p.piston.facing.into())] {
+            wires.extend(BlockFace::values().into_iter().map(|face| pos.offset(face))
+                .filter(|&pos| matches!(world.get_block(pos), Block::RedstoneWire { .. })));
+        }
+    }
     for &pos in &report.observers {
         let Block::Observer { observer } = world.get_block(pos) else { unreachable!() };
         let watched = pos.offset(observer.facing.into());

@@ -87,8 +87,7 @@ def main():
     assert matches(projection(a,manifests["xor_simple"]),projection(b,manifests["xor_simple"]))
     for previous in downloads["previous_revisions"]:
         assert sha(ROOT/previous["path"])==previous["sha256"]
-    for name in ("INSTANT_PISTON_IO_SCHEMATICS.md","INSTANT_PISTON_IO_VALIDATION.md",
-                 "INSTANT_PISTON_REDPILER_MODEL.md","INSTANT_PISTON_IMPLEMENTATION_PLAN.md"):
+    for name in ("tests/INSTANT_PISTONS.md", "REDPILER_MODEL.md", "PISTON_MODEL.md"):
         check_links(ROOT/"docs"/name)
     check_links(ROOT/"tools/README.md")
     reproduced=0

@@ -343,7 +343,6 @@
       }
     }
   ],
-  "dossier": "docs/INSTANT_PISTON_SCHEMATICS.md#instant-blocked",
   "purpose": "An instant held powered by a constant quasi-connectivity source.",
   "mechanism": "Base (0,1,3), observer (0,2,3), head/payload (0,1,4..5), and output dust (0,1,6). The explanatory sign at (0,4,3) refers to redstone block (0,3,3): that cap directly satisfies QC and keeps the base extended when the external input (0,1,0) is removed. The output remains strength 15, with no retraction event. The sign's 'const 1' describes the author's physical convention; it is not a newly generated falling-event one.",
   "reset_and_next_use": "Removing the cap first allows retraction but also removes the observer's conducting reset path: the recorded 'unblocked' case ends retracted. The separate derived conducting-cap case replaces the redstone cap with stone, waits for measured readiness, and restores observer-reset behavior. Original and derived geometry remain separate cases.",

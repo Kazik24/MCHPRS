@@ -157,6 +157,7 @@ impl Compiler {
         if self.is_active() {
             return Err(CompileError::AlreadyActive);
         }
+        self.warnings.clear();
         monitor.set_budget_multiplier(options.budget_multiplier);
         let report = analysis::analyze(
             world,
@@ -227,6 +228,7 @@ impl Compiler {
     }
 
     pub fn reset<W: World>(&mut self, world: &mut W, bounds: (BlockPos, BlockPos)) {
+        self.warnings.clear();
         if let Some(mut backend) = self.backend.take() {
             backend.reset(world, self.options.io_only);
         }
