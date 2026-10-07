@@ -41,14 +41,16 @@ pub(super) fn metadata(entity_id: i32, kind: u8) -> CEntityMetadata {
             // Center the enlarged glass around the block to avoid overlapping faces.
             entry(11, 33, vector(-0.005)),
             entry(12, 33, vector(1.01)),
+            entry(16, 1, varint((15 << 4) | (15 << 20))), // Full block/sky brightness.
             entry(17, 3, 2.0f32.to_be_bytes().to_vec()),
             entry(
                 22,
                 1,
                 varint(match kind {
-                    0 => 0x55ff55,
-                    1 => 0xff5555,
-                    _ => 0xffff55,
+                    0 => 0x39ff14,
+                    1 => 0xff2d2d,
+                    4 => 0xffffff,
+                    _ => 0xffe23d,
                 }),
             ),
             entry(
@@ -59,6 +61,7 @@ pub(super) fn metadata(entity_id: i32, kind: u8) -> CEntityMetadata {
                         color: match kind {
                             0 => BlockColorVariant::Lime,
                             1 => BlockColorVariant::Red,
+                            4 => BlockColorVariant::White,
                             _ => BlockColorVariant::Yellow,
                         },
                     }
@@ -70,7 +73,36 @@ pub(super) fn metadata(entity_id: i32, kind: u8) -> CEntityMetadata {
 }
 
 impl Plot {
+    pub(super) fn clear_git_inspection(&mut self, player: usize) {
+        if let Some((_, entity_id, _)) = self.git.inspections.remove(&self.players[player].uuid) {
+            self.players[player].send_packet(
+                &CDestroyEntities {
+                    entity_ids: vec![entity_id],
+                }
+                .encode(),
+            );
+        }
+    }
+
+    pub(super) fn show_git_inspection(&mut self, player: usize, pos: mchprs_blocks::BlockPos) {
+        self.clear_git_inspection(player);
+        let viewer = &self.players[player];
+        let entity_id = spawn_marker(viewer, Marker { pos, kind: 4 });
+        self.git.inspections.insert(
+            viewer.uuid,
+            (pos, entity_id, Instant::now() + Duration::from_secs(3)),
+        );
+    }
+
     pub(in crate::plot) fn unload_git_chunk(&mut self, player: usize, chunk_x: i32, chunk_z: i32) {
+        if self
+            .git
+            .inspections
+            .get(&self.players[player].uuid)
+            .is_some_and(|(pos, _, _)| pos.x >> 4 == chunk_x && pos.z >> 4 == chunk_z)
+        {
+            self.clear_git_inspection(player);
+        }
         let viewer = &self.players[player];
         let Some(session) = self.git.sessions.get_mut(&viewer.uuid) else {
             return;
@@ -138,25 +170,7 @@ impl Plot {
             .take(32 - removed.len())
             .collect::<Vec<_>>()
         {
-            let entity_id = allocate_entity_id() as i32;
-            viewer.send_packet(
-                &CSpawnEntity {
-                    entity_id,
-                    object_uuid: rand::random(),
-                    entity_type: 15,
-                    x: pos.x as f64,
-                    y: pos.y as f64,
-                    z: pos.z as f64,
-                    pitch: 0.0,
-                    yaw: 0.0,
-                    data: 0,
-                    velocity_x: 0,
-                    velocity_y: 0,
-                    velocity_z: 0,
-                }
-                .encode(),
-            );
-            viewer.send_packet(&metadata(entity_id, kind).encode());
+            let entity_id = spawn_marker(viewer, Marker { pos, kind });
             session.markers.insert(pos, (entity_id, kind));
         }
         // A stationary player still gets subsequent batches until the overlay is complete.
@@ -164,9 +178,35 @@ impl Plot {
             && session.markers.keys().all(|p| wanted.contains_key(p));
         if complete && session.last_pos.is_none() {
             let total: u64 = session.diff.counts.iter().sum();
-            viewer.send_system_message(&messages::git_glow_status(session.markers.len(), total));
+            viewer.send_color_message(
+                crate::chat::ColorCode::Gray,
+                messages::git_glow_status(session.markers.len(), total),
+            );
         }
         session.last_pos = complete.then_some(center);
         session.next_update = Instant::now() + Duration::from_secs(1);
     }
+}
+
+fn spawn_marker(viewer: &impl PacketSender, marker: Marker) -> i32 {
+    let entity_id = allocate_entity_id() as i32;
+    viewer.send_packet(
+        &CSpawnEntity {
+            entity_id,
+            object_uuid: rand::random(),
+            entity_type: 15,
+            x: marker.pos.x as f64,
+            y: marker.pos.y as f64,
+            z: marker.pos.z as f64,
+            pitch: 0.0,
+            yaw: 0.0,
+            data: 0,
+            velocity_x: 0,
+            velocity_y: 0,
+            velocity_z: 0,
+        }
+        .encode(),
+    );
+    viewer.send_packet(&metadata(entity_id, marker.kind).encode());
+    entity_id
 }

@@ -13,12 +13,13 @@ repository; no Git executable is required.
 /git checkout experiment
 # Edit the build.
 /git commit Smaller carry circuit
-/git diff main experiment
-/git checkout main
+/git diff master experiment
+/git checkout master
 ```
 
-The first commit creates `main`. Creating a branch does not switch branches.
-The active branch and working build are shared by everyone on the plot.
+The first commit creates `master`. Empty repositories using the old default
+are updated automatically; saved branch names are preserved. Creating a branch
+does not switch branches. The active branch and working build are shared by everyone on the plot.
 
 The sidebar footer shows piston animation mode/effective state, screen-only
 on/off, and your current Git branch or `@<commit>` when detached. Long names
@@ -33,10 +34,10 @@ survives restarts, interrupted checkout recovery, and automatic work recovery.
 To copy another branch's saved plot into your current branch, use:
 
 ```text
-/git checkout main
+/git checkout master
 /git rebase revisit
 # Edit the copied build if needed.
-/git commit Bring revisit into main
+/git commit Bring revisit into master
 ```
 
 Rebase replaces the whole working plot with the source branch's tip, including
@@ -56,20 +57,28 @@ Rebase uses the same restoration behavior and leaves simulation paused.
 | Command | Purpose |
 | --- | --- |
 | `/git`, `/git help`, `/help git` | Usage. |
-| `/git status` | Active branch, build/execution changes and storage usage. |
+| `/git status` | Active branch and colored added/removed/modified totals against the working build, plus execution changes and storage usage. |
 | `/git commit <message>` | Save a complete snapshot and advance the active branch. |
-| `/git log [--all] [page]` | Current ancestry, or all commits; ten entries per page. |
+| `/git log [--all] [n]` | Current ancestry, or all commits; defaults to ten entries, up to 1000 per response. Hover for author/date/full ID; click to copy the full ID. |
+| `/git log [--all] --page <page>` | Ten entries per page with Previous/Next controls. |
 | `/git search [--all] [--page n] <text>` | Search commit messages. |
 | `/git show <ref>` | Commit ID, author, UTC date, message and parent. |
 | `/git branch` | List branches and their tips. |
 | `/git branch <name> [ref]` | Create a branch, defaulting to `HEAD`. |
 | `/git checkout <branch\|commit>` | Restore a branch tip or commit ID/prefix, preserving unfinished work. |
 | `/git rebase <branch>` | Copy that branch's saved plot into the current working plot; edit, then commit. |
-| `/git diff <from> <to>` | Prepare a comparison and show its summary. |
+| `/git diff [ref] [ref]` | Compare HEAD to working build, one saved ref to working build, or two saved refs; show totals and glow automatically. |
+| `/git inspect` | Inspect the non-air block under the crosshair within ten blocks: current state and up to 200 ancestor commits of state history. |
+| `/git restore <ref>` | Restore saved contents as working changes, preserving branch and HEAD, recovering unfinished work and pausing simulation. |
 | `/git diff show`, `/git diff hide` | Enable/disable the prepared glow overlay. |
 | `/git diff inspect <x> <y> <z> [from\|to]` | Show a changed coordinate's states and data immediately; optionally restrict data to one side. |
 | `/git recoveries [page]` | List automatically saved unfinished work. |
 | `/git recover <id> <new-branch>` | Put a recovery on a new branch and check it out. |
+
+Success messages are green, help and neutral feedback gray, and failures red.
+History IDs are yellow, HEAD decorations aqua, branch names green and commit
+messages white. The Git prefix and paw wording remain. Git covers the current
+plot; there are no init, use, list or Git teleport commands.
 
 References are branch names, `HEAD`, full commit IDs or unique prefixes of at
 least eight characters. Messages are limited to 256 characters, searches to 128,
@@ -79,14 +88,16 @@ repository supports up to 128 branches.
 
 ## Inspect changes in the world
 
-A comparison shows only added/removed/changed totals and **Show glow / Hide glow**
-buttons in chat. Execution changes are reported separately. It never lists all
-changed blocks in chat.
+A comparison shows colored **+added -removed ~modified** totals and secondary
+reference links and **Show glow / Hide glow** buttons in chat. Nonempty comparisons
+show private glow automatically; empty comparisons give gray feedback. Execution
+changes are reported separately. It never lists all changed blocks in chat.
 
-Click **Show glow**, then **right-click a marker with any sword in either hand**
+**Right-click a marker with any sword in either hand**
 to see that position's **From / To** block states and changed saved block data
 immediately. No additional detail clicks are needed. Green means added, red
-means removed, yellow means changed.
+means removed, yellow means changed. Markers use full brightness and the reference
+colors `#39FF14`, `#FF2D2D` and `#FFE23D`.
 Removed positions can be inspected even when the current world is air there.
 The nearest glowing marker along the aim line is selected, including through
 obstructions. A successful inspection consumes the interaction and its duplicate
@@ -96,8 +107,21 @@ Markers are private to the viewer and never become actual world blocks/entities.
 They follow the player, showing the nearest changes in loaded chunks. Defaults
 are 128 markers within 64 blocks, with 32 changes per update. The comparison
 counts remain exact when fewer markers are visible. Comparisons expire after
-five minutes and are removed on plot exit, checkout or permission loss. Hide
-retains the prepared comparison until expiry so Show can restore it.
+45 seconds by default (existing `git_session_seconds` settings are respected) and
+are removed on plot exit, checkout, restore, rebase or permission loss. Hide
+retains the prepared comparison until expiry so Show can restore it. An ordinary
+Git command hides only that player's glow; show/hide and comparison inspection
+keep the comparison usable. Other players' commands never steal or clear it.
+
+`/git inspect` needs no sword or prepared comparison. It briefly marks the targeted
+block with private white glow and prints aqua headings, a gray current state, and
+yellow revision IDs/dates/authors with pale-red old states and pale-green new
+states. Root placement is omitted, matching the reference history flow. The white
+marker lasts three seconds and is removed on plot exit or permission loss.
+
+`/git restore HEAD` restores the saved working contents without changing HEAD,
+unlike checkout of the already-current destination. Restore preserves dirty work
+in a recovery first and uses the same safe restoration path as checkout/rebase.
 
 ## Permissions
 
@@ -106,7 +130,7 @@ node for the whole feature, including completion, glow and sword inspection.
 Backend command access (`mchprs.access.commands`) is also required.
 
 Ownership or membership is required for reading history. Commit and branch
-creation additionally require existing plot edit access. Checkout/recovery/rebase are
+creation additionally require existing plot edit access. Checkout/restore/recovery/rebase are
 restricted to the plot owner with plot edit access. `mchprs.plots.admin.git` explicitly overrides these
 plot restrictions, while the Git allow/deny node still applies.
 
@@ -160,7 +184,7 @@ layout, inventory order or NBT compound ordering; identical snapshots share an
 object. Execution order remains significant. Version and checksum validation
 reject corrupt or incompatible snapshots.
 
-Checkout and rebase save unfinished work before replacing the plot. `/git recoveries`
+Checkout, restore and rebase save unfinished work before replacing the plot. `/git recoveries`
 shows the recovery IDs. A durable checkout record reconciles the atomic ordinary
 plot save with the active branch on restart. Recoverable failures roll back;
 if rollback cannot finish, the plot stays paused and locked until startup recovery.
@@ -182,7 +206,7 @@ git_work_memory_mib = 1024
 git_snapshot_max_mib = 128
 git_marker_limit = 128
 git_marker_radius = 64
-git_session_seconds = 300
+git_session_seconds = 45
 ```
 
 Quotas count the complete persistent SQLite files, including compressed objects,

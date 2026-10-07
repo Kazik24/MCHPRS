@@ -118,7 +118,7 @@ gen_config! {
     git_snapshot_max_mib: u64 = 128,
     git_marker_limit: u32 = 128,
     git_marker_radius: u32 = 64,
-    git_session_seconds: u64 = 300,
+    git_session_seconds: u64 = 45,
     max_command_ticks: u32 = 10_000,
     command_work_time_ms: u64 = 250,
     worldedit_max_blocks: u64 = 4_194_304,

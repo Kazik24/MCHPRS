@@ -1,4 +1,6 @@
 //! Counter/divider throughput and raw changing-input full-FPU workloads.
+#![recursion_limit = "256"]
+
 use anyhow::{bail, ensure, Context, Result};
 use mchprs_blocks::{
     blocks::{Block, LeverFace},
@@ -20,6 +22,118 @@ use std::{
     time::{Duration, Instant},
 };
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Workload {
+    Random,
+    RandomWalk,
+    Sequence,
+}
+
+impl Workload {
+    fn name(self) -> &'static str {
+        match self {
+            Self::Random => "random",
+            Self::RandomWalk => "random-walk",
+            Self::Sequence => "sequence",
+        }
+    }
+
+    fn description(self) -> &'static str {
+        match self {
+            Self::Random => "independent xorshift64 raw port masks; resample identical consecutive masks by flipping bit zero",
+            Self::RandomWalk => "xorshift64 chooses one input bit to flip per vector, including opcode bits",
+            Self::Sequence => "cycle 128 fixed raw port pairs (i, 127-i), i=0..127; opcode mask zero; seed independent",
+        }
+    }
+}
+
+fn input_stimuli(
+    workload: Workload,
+    initial: u64,
+    operand_bits: usize,
+    opcode_bits: usize,
+    seed: u64,
+    count: usize,
+) -> Vec<u64> {
+    let width = operand_bits * 2 + opcode_bits;
+    assert!((7..=31).contains(&operand_bits) && width < 64 && seed != 0);
+    let mask = (1u64 << width) - 1;
+    let mut state = seed;
+    let mut previous = initial & mask;
+    (0..count)
+        .map(|index| {
+            state ^= state << 13;
+            state ^= state >> 7;
+            state ^= state << 17;
+            let word = match workload {
+                Workload::Random => {
+                    let word = state & mask;
+                    if word == previous {
+                        word ^ 1
+                    } else {
+                        word
+                    }
+                }
+                Workload::RandomWalk => previous ^ (1 << (state % width as u64)),
+                Workload::Sequence => {
+                    let value = (index % 128) as u64;
+                    value | ((127 - value) << operand_bits)
+                }
+            };
+            previous = word;
+            word
+        })
+        .collect()
+}
+
+fn check_workloads() {
+    for (bits, opcode_bits) in [(10, 0), (16, 3)] {
+        for workload in [Workload::Random, Workload::RandomWalk, Workload::Sequence] {
+            let initial = 3;
+            let words = input_stimuli(workload, initial, bits, opcode_bits, 7, 384);
+            assert_eq!(
+                words,
+                input_stimuli(workload, initial, bits, opcode_bits, 7, 384)
+            );
+            assert!(words
+                .iter()
+                .all(|word| word >> (bits * 2 + opcode_bits) == 0));
+            if workload == Workload::Sequence {
+                assert_eq!(&words[..128], &words[128..256]);
+                assert_eq!(
+                    words,
+                    input_stimuli(workload, 999, bits, opcode_bits, 11, 384)
+                );
+                let mut unique = words[..128].to_vec();
+                unique.sort_unstable();
+                unique.dedup();
+                assert_eq!(unique.len(), 128);
+                for (index, word) in words.iter().enumerate() {
+                    assert_eq!(word & ((1 << bits) - 1), (index % 128) as u64);
+                    assert_eq!(word >> bits, (127 - index % 128) as u64);
+                }
+            } else {
+                assert_ne!(
+                    words,
+                    input_stimuli(workload, initial, bits, opcode_bits, 11, 384)
+                );
+                let mut previous = initial;
+                for word in words {
+                    let flips = (previous ^ word).count_ones();
+                    assert!(flips > 0);
+                    if workload == Workload::RandomWalk {
+                        assert_eq!(flips, 1);
+                    }
+                    previous = word;
+                }
+            }
+        }
+    }
+    println!(
+        "workload checks passed: deterministic random, one-bit random walk, 128-vector sequence"
+    );
+}
+
 fn main() -> Result<()> {
     let mut component = String::from("counter_basic");
     let mut iterations = 3usize;
@@ -29,6 +143,7 @@ fn main() -> Result<()> {
     let mut optimize = false;
     let mut interpreted = false;
     let mut changing_inputs = false;
+    let mut workload = Workload::Random;
     let mut seed = 0x4d43_4850_5253_2026u64;
     let mut input_every = 1usize;
     let mut output = None;
@@ -48,8 +163,12 @@ fn main() -> Result<()> {
                 changing_inputs = true;
                 continue;
             }
+            "--check-workloads" => {
+                check_workloads();
+                return Ok(());
+            }
             "--help" => {
-                println!("instant [--component counter_basic|cpu_bubblesort|fpu_divider|fpu_legal] [--changing-inputs] [--seed integer] [--input-every ticks] [--interpreted | --optimize] [--iterations 3] [--episodes 32] [--ticks 60000] [--flush-every 0|1] [--output path.json]");
+                println!("instant [--component counter_basic|cpu_bubblesort|fpu_divider|fpu_legal] [--changing-inputs | --workload random|random-walk|sequence] [--seed integer] [--input-every ticks] [--interpreted | --optimize] [--iterations 3] [--episodes 32] [--ticks 60000] [--flush-every 0|1] [--output path.json]\n--workload implies --changing-inputs. Sequence repeats 128 fixed raw port pairs with opcode zero.\n--check-workloads verifies generators without loading a schematic.");
                 return Ok(());
             }
             _ => {}
@@ -66,6 +185,15 @@ fn main() -> Result<()> {
             "--output" => output = Some(value),
             "--seed" => seed = value.parse()?,
             "--input-every" => input_every = value.parse()?,
+            "--workload" => {
+                workload = match value.as_str() {
+                    "random" => Workload::Random,
+                    "random-walk" => Workload::RandomWalk,
+                    "sequence" => Workload::Sequence,
+                    _ => bail!("unknown workload {value}; use random, random-walk or sequence"),
+                };
+                changing_inputs = true;
+            }
             _ => bail!("unknown argument {arg}"),
         }
     }
@@ -141,6 +269,7 @@ fn main() -> Result<()> {
                 &probes,
                 episodes,
                 seed,
+                workload,
                 input_every,
                 flush_every,
                 true,
@@ -210,6 +339,7 @@ fn main() -> Result<()> {
                         &probes,
                         episodes,
                         seed,
+                        workload,
                         input_every,
                         flush_every,
                         false,
@@ -270,6 +400,12 @@ fn main() -> Result<()> {
         .collect();
     elapsed.sort_by(f64::total_cmp);
     let median = elapsed.get(elapsed.len() / 2).copied();
+    let mut input_elapsed: Vec<_> = samples
+        .iter()
+        .filter_map(|sample| sample["raw_seconds"].as_f64())
+        .collect();
+    input_elapsed.sort_by(f64::total_cmp);
+    let input_median = input_elapsed.get(input_elapsed.len() / 2).copied();
     let changing_game_ticks = episodes as u64
         * if component == "fpu_legal" {
             input_every as u64
@@ -296,12 +432,15 @@ fn main() -> Result<()> {
         "divider_protocol": (component == "fpu_divider" && !changing_inputs).then_some("saved A/B held; 64 ON initialization ticks; one untimed OFF128/ON128 warm episode; repeated held OFF128/ON128 complete episodes preserving ordinary clock timing; observe response170 during OFF and verify final reset0 after ON"),
         "episodes": (component == "fpu_divider" || changing_inputs).then_some(episodes),
         "changing_inputs": changing_inputs,
+        "workload": changing_inputs.then_some(workload.name()),
+        "workload_description": changing_inputs.then_some(workload.description()),
+        "sequence_period": (changing_inputs && workload == Workload::Sequence).then_some(128),
         "seed": changing_inputs.then_some(seed),
         "input_every_game_ticks": (changing_inputs && component == "fpu_legal").then_some(input_every),
         "changing_input_protocol": changing_inputs.then_some(if component == "fpu_legal" {
-            "continuous OFF random raw-port stream: trigger set OFF once before warmup and held OFF; 1024 initial ticks and 32 untimed random vectors; each measured vector delivers ordered changed-lever updates then input-every native game ticks; no arithmetic or readiness oracle"
+            "continuous OFF raw-port stream: trigger set OFF once before warmup and held OFF; 1024 initial ticks and untimed workload warmup (128 vectors for sequence, 32 otherwise); each measured vector delivers ordered changed-lever updates then input-every native game ticks; no arithmetic or readiness oracle"
         } else {
-            "fixed-window random raw-port benchmark: 64 initial ON ticks; eight untimed warm episodes; ordered lever updates set seeded random operand port masks while ON, then hold all inputs ON64, OFF128, ON64; no arithmetic or readiness oracle"
+            "fixed-window raw-port benchmark: 64 initial ON ticks; untimed workload warmup (128 vectors for sequence, eight otherwise); ordered lever updates set operand port masks while ON, then hold all inputs ON64, OFF128, ON64; no arithmetic or readiness oracle"
         }),
         "trace_validation": validation.as_ref().map(|report| json!({
             "reference": "independent unoptimized --assume-instant compiler with identical output ports/adapters and workload",
@@ -315,6 +454,10 @@ fn main() -> Result<()> {
         "median_tps": median.filter(|_| component == "counter_basic" || changing_inputs).map(|seconds| if changing_inputs { changing_game_ticks as f64 / seconds } else { f64::from(ticks) / seconds }),
         "median_ns_per_tick": median.filter(|_| component == "counter_basic" || changing_inputs).map(|seconds| seconds * 1e9 / if changing_inputs { changing_game_ticks as f64 } else { f64::from(ticks) }),
         "median_episodes_per_second": median.filter(|_| component == "fpu_divider" || changing_inputs).map(|seconds| episodes as f64 / seconds),
+        "median_input_processing_seconds": input_median,
+        "median_input_processing_tps": input_median.map(|seconds| changing_game_ticks as f64 / seconds),
+        "median_input_sets_per_second": input_median.map(|seconds| episodes as f64 / seconds),
+        "input_processing_scope": changing_inputs.then_some("stimulus and compiled tick cost; reported even when outputs stay constant; not completed arithmetic throughput"),
         "samples": samples,
     });
     if let Some(path) = output {
@@ -543,6 +686,7 @@ fn fpu_changing_inputs(
     probes: &[BlockPos],
     episodes: usize,
     seed: u64,
+    workload: Workload,
     input_every: usize,
     flush_every: u32,
     capture_trace: bool,
@@ -550,7 +694,13 @@ fn fpu_changing_inputs(
 ) -> Result<(Value, Vec<Vec<u16>>)> {
     let origin = origin(descriptor);
     let full_fpu = descriptor["ports"]["light_blue_operand_inputs"].is_array();
-    let warm_episodes = if full_fpu { 32 } else { 8 };
+    let warm_episodes = if workload == Workload::Sequence {
+        128
+    } else if full_fpu {
+        32
+    } else {
+        8
+    };
     let initial_ticks = if full_fpu { 1024 } else { 64 };
     let episode_ticks = if full_fpu { input_every } else { 256 };
     let operand_bits = if full_fpu { 16 } else { 10 };
@@ -606,21 +756,14 @@ fn fpu_changing_inputs(
     let mut current_inputs = read_inputs(world)?;
     // Generate all raw stimuli before the phase timers. Bit indices follow
     // manifest array order; this does not assert an IEEE operand representation.
-    let mut state = seed;
-    let mut previous = current_inputs;
-    let stimuli: Vec<_> = (0..warm_episodes + episodes)
-        .map(|_| {
-            state ^= state << 13;
-            state ^= state >> 7;
-            state ^= state << 17;
-            let mut word = state & ((1u64 << inputs.len()) - 1);
-            if word == previous {
-                word ^= 1;
-            }
-            previous = word;
-            word
-        })
-        .collect();
+    let stimuli = input_stimuli(
+        workload,
+        current_inputs,
+        operand_bits,
+        opcode_bits,
+        seed,
+        warm_episodes + episodes,
+    );
     if full_fpu {
         use_lever(compiler, world, trigger);
     }
@@ -645,10 +788,6 @@ fn fpu_changing_inputs(
         let episode = index.saturating_sub(warm_episodes);
         let recording = measured && capture_trace;
         let flips = (current_inputs ^ stimulus).count_ones();
-        ensure!(
-            flips != 0,
-            "full-FPU stimulus must change at least one input"
-        );
         let mut trace = Vec::new();
         let mut phase_words = Vec::with_capacity(3);
         let mut boundary_tick = 0;
@@ -765,21 +904,38 @@ fn fpu_changing_inputs(
         trace_hash.update(word.to_le_bytes());
     }
     let seconds = phase_times.iter().sum::<Duration>().as_secs_f64();
+    let measured_stimuli = &stimuli[warm_episodes..];
+    let mut unique_inputs = measured_stimuli.to_vec();
+    unique_inputs.sort_unstable();
+    unique_inputs.dedup();
+    let mut input_hash = Sha256::new();
+    for word in measured_stimuli {
+        input_hash.update(word.to_le_bytes());
+    }
     let report = json!({
         "measurement_kind": if !varied { "fpu_unverified_stimulus_diagnostic" } else if full_fpu { "full_fpu_raw_changing_inputs" } else { "divider_raw_changing_inputs" }, "activity_confirmed": varied,
         "seconds": varied.then_some(seconds), "raw_seconds": seconds, "episodes": episodes, "game_ticks": episodes * episode_ticks,
+        "input_processing_tps": episodes as f64 * episode_ticks as f64 / seconds,
+        "input_sets_per_second": episodes as f64 / seconds,
+        "changed_input_bits_per_second": input_flips as f64 / seconds,
         "tps": varied.then_some(episodes as f64 * episode_ticks as f64 / seconds), "input_episodes_per_second": varied.then_some(episodes as f64 / seconds),
         "no_throughput_reason": (!varied).then_some("no visible output transitions in validation; this input/trigger window is not a confirmed active FPU workload"),
         "unique_output_words": unique_words,
         "unique_output_words_scope": "separate untimed per-game-tick validation; actual timed outputs are the phase-boundary words",
         "phase_seconds": if full_fpu { json!({"continuous_off": phase_times[0].as_secs_f64()}) } else { json!({"held_on_prepare64": phase_times[0].as_secs_f64(), "off_compute128": phase_times[1].as_secs_f64(), "on_reset64": phase_times[2].as_secs_f64()}) },
         "warmup_game_ticks": initial_ticks + warm_episodes * episode_ticks,
+        "warmup_input_sets": warm_episodes,
         "input_lever_bit_flips": input_flips, "trigger_edges": if full_fpu { 0 } else { episodes * 2 },
+        "mean_changed_bits_per_input_set": input_flips as f64 / episodes as f64,
+        "unique_input_sets": unique_inputs.len(), "repeated_input_sets": episodes - unique_inputs.len(),
+        "input_stream_sha256": format!("{:x}", input_hash.finalize()),
+        "workload": workload.name(), "workload_description": workload.description(),
+        "sequence_period": (workload == Workload::Sequence).then_some(128),
         "explicit_stimulus_calls": input_flips + if full_fpu { 0 } else { episodes as u64 * 2 },
         "input_updates": if full_fpu { "ordered changed-lever callbacks while trigger remains OFF; inputs held during each native tick interval; no atomic multi-input API" } else { "ordered changed-lever callbacks while ON; all input/opcode levers held for ON64/OFF128/ON64; no atomic multi-input API" },
         "input_every_game_ticks": full_fpu.then_some(input_every),
         "operand_bank_bits": operand_bits, "opcode_bits": opcode_bits, "input_lever_count": inputs.len(),
-        "random_generator": "stdlib xorshift64(13,7,17)", "seed": seed,
+        "random_generator": (workload != Workload::Sequence).then_some("xorshift64(13,7,17)"), "seed": seed,
         "raw_mask_order": "LSB first in each manifest port array; raw lever states, not certified numerical operands",
         "raw_vector_columns": if full_fpu { json!(["blue_port_mask", "red_port_mask", "opcode_port_mask"]) } else { json!(["input_a_port_mask", "input_b_port_mask"]) },
         "raw_vectors": stimuli[warm_episodes..].iter().map(|&word| {
@@ -801,7 +957,7 @@ fn fpu_changing_inputs(
         "timed_phase_boundaries_compared": !capture_trace && expected.is_some(),
         "first_output_change_game_ticks": latencies,
         "flush_policy": if flush_every == 1 { "inside every timed tick" } else { "phase boundaries only outside timers; untimed validation publishes every tick" },
-        "arithmetic_validity": "random raw-input plan equivalence only; no floating-point arithmetic or ready-result oracle",
+        "arithmetic_validity": "raw-input plan equivalence only; no floating-point arithmetic or ready-result oracle",
     });
     Ok((report, traces))
 }

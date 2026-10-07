@@ -11,6 +11,7 @@ use self::diff::{Diff, Marker};
 use self::repository::{Limits, Repository};
 use self::snapshot::Snapshot;
 use super::{Plot, PLOT_SCALE, PLOT_WIDTH};
+use crate::chat::ColorCode;
 use crate::config::CONFIG;
 use crate::messages;
 use crate::permissions;
@@ -147,7 +148,7 @@ static WORKERS: Lazy<SyncSender<Job>> = Lazy::new(|| {
                     .unwrap_or_else(|_| Err(anyhow::anyhow!(messages::GIT_WORKER_FAILED)));
                 match &result {
                     Ok(reply) => {
-                        if let Payload::Text(text) = &reply.payload {
+                        if let Payload::Text(text, _) = &reply.payload {
                             tracing::info!(result = %text, "Git result");
                         }
                         tracing::info!(elapsed_ms = started.elapsed().as_millis(), "Git worker completed");
@@ -169,11 +170,12 @@ struct Pending {
 struct Reply {
     payload: Payload,
     names: Vec<String>,
+    commits: Vec<String>,
     head: Option<String>,
 }
 enum Payload {
     Metadata,
-    Text(String),
+    Text(String, ColorCode),
     Chat(Value),
     Diff(Arc<Diff>),
     Checkout(Snapshot, String, Reservation),
@@ -199,6 +201,8 @@ pub(super) struct State {
     metadata_retry_at: Option<Instant>,
     sessions: HashMap<u128, Session>,
     names: Vec<String>,
+    commits: Vec<String>,
+    inspections: HashMap<u128, (BlockPos, i32, Instant)>,
     clicks: HashMap<u128, Instant>,
 }
 
@@ -357,10 +361,14 @@ impl Plot {
     }
 
     pub(super) fn handle_git_command(&mut self, player: usize, args: &[&str]) {
-        if let Err(error) = self.git_command(player, args) {
+        let mut normalized: Vec<String> = args.iter().map(|arg| (*arg).to_owned()).collect();
+        if let Some(command) = normalized.first_mut() {
+            command.make_ascii_lowercase();
+        }
+        let args: Vec<&str> = normalized.iter().map(String::as_str).collect();
+        if let Err(error) = self.git_command(player, &args) {
             tracing::warn!(error = %format_args!("{error:#}"), "Git command rejected");
-            self.players[player]
-                .send_error_message(&messages::git_error(format_args!("{error:#}")));
+            send_git_error(&self.players[player], &error);
         }
     }
 
@@ -368,7 +376,7 @@ impl Plot {
         let action = match args.first().copied() {
             Some("commit") => "commit",
             Some("branch") if args.len() > 1 => "branch",
-            Some("checkout" | "recover" | "rebase") => "checkout",
+            Some("checkout" | "restore" | "recover" | "rebase") => "checkout",
             Some("diff") if args.get(1) == Some(&"show") => "visual",
             _ => "read",
         };
@@ -377,13 +385,21 @@ impl Plot {
             messages::GIT_PERMISSION_DENIED
         );
         let actor = self.players[player].uuid;
+        if args.first() != Some(&"diff")
+            || !matches!(args.get(1), Some(&"show" | &"hide" | &"inspect"))
+        {
+            self.hide_git(player, false);
+        }
         if args.is_empty() || args == ["help"] {
-            self.players[player].send_system_message(messages::HELP_GIT);
+            for line in messages::HELP_GIT.lines() {
+                self.players[player].send_color_message(ColorCode::Gray, line);
+            }
             return Ok(());
         }
         if args == ["diff", "hide"] {
             self.hide_git(player, false);
-            self.players[player].send_system_message(messages::GIT_DIFF_GLOW_HIDDEN);
+            self.players[player]
+                .send_color_message(ColorCode::Gray, messages::GIT_DIFF_GLOW_HIDDEN);
             return Ok(());
         }
         if args == ["diff", "show"] {
@@ -397,7 +413,8 @@ impl Plot {
             session.next_update = Instant::now();
             session.expires =
                 Instant::now() + Duration::from_secs(CONFIG.git_session_seconds.clamp(10, 3600));
-            self.players[player].send_system_message(messages::GIT_DIFF_INSPECT_HINT);
+            self.players[player]
+                .send_color_message(ColorCode::Gray, messages::GIT_DIFF_INSPECT_HINT);
             return Ok(());
         }
         ensure!(!self.git.locked, messages::GIT_CHECKOUT_LOCKED);
@@ -423,11 +440,33 @@ impl Plot {
                     Ok(Reply {
                         payload: Payload::Chat(diff.inspect(pos, side.as_deref())?),
                         names: Vec::new(),
+                        commits: Vec::new(),
                         head: None,
                     })
                 }),
             );
         }
+        let inspection = if args == ["inspect"] {
+            self.reset_redpiler();
+            let viewer = &self.players[player];
+            let mut eye_base = viewer.pos;
+            eye_base.y -= if viewer.crouching { 0.38 } else { 0.03 };
+            let pos = super::worldedit::ray_trace_block(
+                &self.world,
+                eye_base,
+                f64::from(viewer.pitch),
+                f64::from(viewer.yaw),
+                10.0,
+            )
+            .context(messages::GIT_INSPECT_TARGET_REQUIRED)?;
+            ensure!(
+                Plot::in_plot_bounds(self.world.x, self.world.z, pos.x, pos.z),
+                messages::GIT_POSITION_OUTSIDE_PLOT
+            );
+            Some((pos, self.world.get_block(pos)))
+        } else {
+            None
+        };
         let plot = (self.world.x, self.world.z);
         let owner = self.owner;
         let cached_storage = owner.and_then(|uuid| {
@@ -438,11 +477,15 @@ impl Plot {
         });
         let name = self.players[player].username.clone();
         let owned: Vec<String> = args.iter().map(|s| s.to_string()).collect();
-        let checkout = matches!(args.first(), Some(&"checkout" | &"recover" | &"rebase"));
+        let checkout = matches!(
+            args.first(),
+            Some(&"checkout" | &"restore" | &"recover" | &"rebase")
+        );
         let captured = if matches!(
             args.first(),
-            Some(&"commit" | &"status" | &"checkout" | &"recover" | &"rebase")
-        ) {
+            Some(&"commit" | &"status" | &"checkout" | &"restore" | &"recover" | &"rebase")
+        ) || (args.first() == Some(&"diff") && args.len() <= 2)
+        {
             Some(self.capture_git()?)
         } else {
             None
@@ -453,43 +496,67 @@ impl Plot {
                 Repository::open(Path::new(ROOT), plot, owner_limits(owner, cached_storage)?)?;
             let words: Vec<&str> = owned.iter().map(String::as_str).collect();
             let payload = match words.as_slice() {
-                ["status"] => Payload::Text(repo.status(&captured.as_ref().unwrap().0)?),
-                ["commit", message @ ..] if !message.is_empty() => Payload::Text(repo.commit(
-                    &captured.as_ref().unwrap().0,
-                    actor,
-                    &name,
-                    &message.join(" "),
-                )?),
-                ["branch"] => Payload::Text(repo.branches()?),
-                ["branch", branch] => Payload::Text(repo.branch(branch, "HEAD")?),
-                ["branch", branch, reference] => Payload::Text(repo.branch(branch, reference)?),
-                ["show", reference] => Payload::Text(repo.show(reference)?),
+                ["status"] => Payload::Chat(repo.status_chat(&captured.as_ref().unwrap().0)?),
+                ["commit", message @ ..] if !message.is_empty() => Payload::Text(
+                    repo.commit(
+                        &captured.as_ref().unwrap().0,
+                        actor,
+                        &name,
+                        &message.join(" "),
+                    )?,
+                    ColorCode::Green,
+                ),
+                ["branch"] => Payload::Chat(repo.branches()?),
+                ["branch", branch] => Payload::Text(repo.branch(branch, "HEAD")?, ColorCode::Green),
+                ["branch", branch, reference] => {
+                    Payload::Text(repo.branch(branch, reference)?, ColorCode::Green)
+                }
+                ["show", reference] => Payload::Text(repo.show(reference)?, ColorCode::Gray),
                 ["recoveries"] => Payload::Chat(repo.recoveries(1)?),
                 ["recoveries", page] => Payload::Chat(repo.recoveries(page.parse()?)?),
                 ["log", rest @ ..] => {
-                    let (all, page) = parse_log(rest)?;
-                    Payload::Chat(repo.log(all, None, page)?)
+                    let (all, count, page) = parse_log(rest)?;
+                    Payload::Chat(match page {
+                        Some(page) => repo.log(all, None, page)?,
+                        None => repo.log_count(all, count)?,
+                    })
                 }
                 ["search", rest @ ..] => {
                     let (all, page, query) = parse_search(rest)?;
                     Payload::Chat(repo.log(all, Some(&query), page)?)
                 }
-                ["diff", a, b] => {
-                    let (from_label, to_label) = ((*a).to_owned(), (*b).to_owned());
-                    let a = repo.resolve(a)?;
-                    let b = repo.resolve(b)?;
-                    let size = repo.raw_size(&a)?.saturating_add(repo.raw_size(&b)?);
-                    let reservation = Reservation::snapshot(size)?;
-                    let mut diff = Diff::new(
-                        a.clone(),
-                        b.clone(),
-                        repo.load(&a)?,
-                        repo.load(&b)?,
-                        reservation,
-                    )?;
-                    diff.from_label = from_label;
-                    diff.to_label = to_label;
-                    Payload::Diff(Arc::new(diff))
+                ["diff"] => Payload::Diff(Arc::new(repo.comparison(
+                    "HEAD",
+                    None,
+                    captured.as_ref().map(|(s, _)| s),
+                )?)),
+                ["diff", reference] => Payload::Diff(Arc::new(repo.comparison(
+                    reference,
+                    None,
+                    captured.as_ref().map(|(s, _)| s),
+                )?)),
+                ["diff", a, b] => Payload::Diff(Arc::new(repo.comparison(a, Some(b), None)?)),
+                ["inspect"] => {
+                    let (pos, current) = inspection.unwrap();
+                    Payload::Chat(repo.block_history(pos, current)?)
+                }
+                ["restore", reference] => {
+                    let save = PathBuf::from(format!("./world/plots/p{},{}", plot.0, plot.1));
+                    match repo.restore_working(
+                        reference,
+                        &captured.as_ref().unwrap().0,
+                        actor,
+                        &name,
+                        &save,
+                    ) {
+                        Ok((snapshot, message, reservation)) => {
+                            Payload::Checkout(snapshot, message, reservation)
+                        }
+                        Err(error) => Payload::CheckoutFailed(
+                            format!("{error:#}"),
+                            repo.has_pending().unwrap_or(true),
+                        ),
+                    }
                 }
                 ["checkout", branch] => checkout_payload(
                     &mut repo,
@@ -527,12 +594,13 @@ impl Plot {
                         &name,
                     )
                 }
-                _ => bail!(messages::git_unknown_arguments(messages::HELP_GIT)),
+                _ => bail!(messages::GIT_UNKNOWN_ARGUMENTS),
             };
             // Completion caching must never discard an already durable checkout result.
             Ok(Reply {
                 payload,
                 names: repo.names().unwrap_or_default(),
+                commits: repo.recent_commits().unwrap_or_default(),
                 head: repo.sidebar_head().ok(),
             })
         });
@@ -542,7 +610,10 @@ impl Plot {
             self.close_all_containers();
             self.set_git_tps(Tps::Limited(0));
         }
-        self.players[player].send_system_message(messages::GIT_OPERATION_STARTED);
+        if let Some((pos, _)) = inspection {
+            self.show_git_inspection(player, pos);
+        }
+        self.players[player].send_color_message(ColorCode::Gray, messages::GIT_OPERATION_STARTED);
         Ok(())
     }
 
@@ -567,13 +638,18 @@ impl Plot {
                 if !reply.names.is_empty() {
                     self.git.names = reply.names;
                 }
+                if !reply.commits.is_empty() {
+                    self.git.commits = reply.commits;
+                }
                 match reply.payload {
                     Payload::Metadata => {}
                     Payload::Checkout(snapshot, message, _reservation) => {
                         tracing::info!(actor = %format_args!("{:032x}", pending.actor),
                             plot_x = self.world.x, plot_z = self.world.z, %message, "Git restore completed");
                         self.apply_git(snapshot);
-                        self.broadcast_plot_chat_message(&message);
+                        for viewer in &self.players {
+                            viewer.send_color_message(ColorCode::Green, &message);
+                        }
                     }
                     Payload::CheckoutFailed(error, needs_recovery) => {
                         tracing::warn!(actor = %format_args!("{:032x}", pending.actor),
@@ -596,8 +672,8 @@ impl Plot {
                                 return;
                             }
                             match payload {
-                                Payload::Text(text) => {
-                                    self.players[player].send_system_message(&text)
+                                Payload::Text(text, color) => {
+                                    self.players[player].send_color_message(color, &text)
                                 }
                                 Payload::Chat(json) => {
                                     self.players[player].send_raw_system_message(json.to_string())
@@ -606,12 +682,15 @@ impl Plot {
                                     self.hide_git(player, true);
                                     self.players[player]
                                         .send_raw_system_message(diff.summary().to_string());
+                                    if diff.counts.iter().sum::<u64>() == 0 {
+                                        return;
+                                    }
                                     let now = Instant::now();
                                     self.git.sessions.insert(
                                         pending.actor,
                                         Session {
                                             diff,
-                                            enabled: false,
+                                            enabled: true,
                                             expires: now
                                                 + Duration::from_secs(
                                                     CONFIG.git_session_seconds.clamp(10, 3600),
@@ -655,8 +734,7 @@ impl Plot {
                     }
                 }
                 if let Some(player) = actor {
-                    self.players[player]
-                        .send_error_message(&messages::git_error(format_args!("{error:#}")));
+                    send_git_error(&self.players[player], &error);
                 }
             }
         }
@@ -693,6 +771,7 @@ impl Plot {
                 Ok(Reply {
                     payload: Payload::Metadata,
                     names: repo.names().unwrap_or_default(),
+                    commits: repo.recent_commits().unwrap_or_default(),
                     head: Some(repo.sidebar_head()?),
                 })
             }),
@@ -710,6 +789,19 @@ impl Plot {
                     Err(anyhow::anyhow!(messages::GIT_WORKER_DISCONNECTED)),
                 ),
             }
+        }
+        let inspection_viewers: Vec<_> = (0..self.players.len())
+            .filter(|&player| {
+                self.git
+                    .inspections
+                    .get(&self.players[player].uuid)
+                    .is_some_and(|(_, _, expires)| {
+                        *expires <= Instant::now() || !self.git_access(player, "read")
+                    })
+            })
+            .collect();
+        for player in inspection_viewers {
+            self.clear_git_inspection(player);
         }
         let now = Instant::now();
         let expired: Vec<_> = self
@@ -762,6 +854,7 @@ impl Plot {
                 Ok(Reply {
                     payload: Payload::Markers(diff.near(center, radius.min(view), limit)?, center),
                     names: Vec::new(),
+                    commits: Vec::new(),
                     head: None,
                 })
             });
@@ -900,6 +993,7 @@ impl Plot {
                     Ok(Reply {
                         payload: Payload::Chat(diff.inspect(pos, None)?),
                         names: Vec::new(),
+                        commits: Vec::new(),
                         head: None,
                     })
                 }),
@@ -917,35 +1011,11 @@ impl Plot {
         let start = text.rfind(' ')? + 1;
         let prefix = &text[start..];
         let words: Vec<_> = text[..start].split_whitespace().collect();
-        let values: Vec<&str> = if words.len() == 1 {
-            vec![
-                "status",
-                "commit",
-                "log",
-                "search",
-                "branch",
-                "checkout",
-                "rebase",
-                "diff",
-                "recoveries",
-                "recover",
-                "help",
-            ]
-        } else if words.get(1) == Some(&"diff") && words.len() == 2 {
-            vec!["show", "hide", "inspect", "HEAD"]
-        } else if words.get(1) == Some(&"rebase") {
-            vec![]
-        } else {
-            vec!["HEAD"]
-        };
         let matches = if self.git_access(player, "read") {
-            values
+            completion(&words, prefix, &self.git.names, &self.git.commits)
                 .into_iter()
-                .chain(self.git.names.iter().map(String::as_str))
-                .filter(|s| s.starts_with(prefix))
-                .take(100)
-                .map(|s| CTabCompleteMatch {
-                    match_: s.to_owned(),
+                .map(|match_| CTabCompleteMatch {
+                    match_,
                     tooltip: None,
                 })
                 .collect()
@@ -977,6 +1047,21 @@ impl Plot {
         }
         if remove {
             self.git.sessions.remove(&uuid);
+            self.clear_git_inspection(player);
+        }
+    }
+}
+
+fn send_git_error(viewer: &impl PacketSender, error: &anyhow::Error) {
+    let cause = error.root_cause().to_string();
+    if cause == messages::GIT_NOTHING_CHANGED {
+        viewer.send_color_message(ColorCode::Gray, messages::GIT_NOTHING_CHANGED);
+    } else {
+        viewer.send_error_message(&messages::git_error(format_args!("{error:#}")));
+    }
+    if cause == messages::GIT_UNKNOWN_ARGUMENTS {
+        for line in messages::HELP_GIT.lines() {
+            viewer.send_color_message(ColorCode::Gray, line);
         }
     }
 }
@@ -989,22 +1074,107 @@ fn checkout_payload(
     name: &str,
 ) -> Payload {
     let save = PathBuf::from(format!("./world/plots/p{},{}", repo.plot.0, repo.plot.1));
+    let (active, _) = match repo.head() {
+        Ok(head) => head,
+        Err(error) => return Payload::CheckoutFailed(format!("{error:#}"), false),
+    };
+    let already_current = messages::git_already_on_branch(if active.starts_with('@') {
+        messages::GIT_DETACHED_LABEL
+    } else {
+        &active
+    });
     match repo.checkout(branch, before, actor, name, &save) {
         Ok((snapshot, message, reservation)) => Payload::Checkout(snapshot, message, reservation),
+        Err(error) if error.root_cause().to_string() == already_current => {
+            Payload::Text(already_current, ColorCode::Gray)
+        }
         Err(error) => {
             Payload::CheckoutFailed(format!("{error:#}"), repo.has_pending().unwrap_or(true))
         }
     }
 }
 
-fn parse_log(args: &[&str]) -> Result<(bool, usize)> {
-    match args {
-        [] => Ok((false, 1)),
-        ["--all"] => Ok((true, 1)),
-        [page] => Ok((false, page.parse()?)),
-        ["--all", page] => Ok((true, page.parse()?)),
-        _ => bail!(messages::USAGE_GIT_LOG),
+fn completion(
+    words: &[&str],
+    prefix: &str,
+    branches: &[String],
+    commits: &[String],
+) -> Vec<String> {
+    let command = words.get(1).copied().unwrap_or("").to_ascii_lowercase();
+    let argument = words.len().saturating_sub(1);
+    let mut values: Vec<&str> = match (command.as_str(), argument) {
+        (_, 0) => vec![
+            "commit",
+            "log",
+            "status",
+            "diff",
+            "restore",
+            "inspect",
+            "branch",
+            "checkout",
+            "rebase",
+            "help",
+            "show",
+            "search",
+            "recoveries",
+            "recover",
+        ],
+        ("diff", 1) => vec!["show", "hide", "inspect", "HEAD"],
+        ("diff", 2) if !matches!(words.get(2), Some(&"show" | &"hide" | &"inspect")) => {
+            vec!["HEAD"]
+        }
+        ("checkout" | "restore" | "show", 1) | ("branch", 2) => vec!["HEAD"],
+        ("log" | "search", 1) => vec!["--all", "--page"],
+        _ => Vec::new(),
+    };
+    let refs = matches!(
+        (command.as_str(), argument),
+        ("diff", 1) | ("checkout" | "restore" | "show", 1) | ("branch", 2)
+    ) || (command == "diff"
+        && argument == 2
+        && !matches!(words.get(2), Some(&"show" | &"hide" | &"inspect")));
+    if refs || (command == "rebase" && argument == 1) {
+        values.extend(branches.iter().map(String::as_str));
     }
+    if refs {
+        values.extend(commits.iter().map(String::as_str));
+    }
+    if command == "diff" && argument == 5 && words.get(2) == Some(&"inspect") {
+        values.extend(["from", "to"]);
+    }
+    let prefix = prefix.to_ascii_lowercase();
+    values
+        .into_iter()
+        .filter(|value| value.to_ascii_lowercase().starts_with(&prefix))
+        .take(100)
+        .map(str::to_owned)
+        .collect()
+}
+
+fn parse_log(args: &[&str]) -> Result<(bool, usize, Option<usize>)> {
+    let mut all = false;
+    let mut count = 10;
+    let mut page = None;
+    let mut index = 0;
+    while let Some(arg) = args.get(index) {
+        match *arg {
+            "--all" => all = true,
+            "--page" => {
+                index += 1;
+                page = Some(
+                    args.get(index)
+                        .context(messages::GIT_MISSING_PAGE)?
+                        .parse()?,
+                );
+            }
+            value if index + 1 == args.len() && page.is_none() => {
+                count = value.parse::<i64>().unwrap_or(10).clamp(1, 1000) as usize
+            }
+            _ => bail!(messages::USAGE_GIT_LOG),
+        }
+        index += 1;
+    }
+    Ok((all, count, page))
 }
 fn parse_search(args: &[&str]) -> Result<(bool, usize, String)> {
     let mut index = 0;

@@ -5,9 +5,10 @@ markers to present version control. MROWW already has Plot Git, but its chat
 layout and interaction flow differ. The target is to bring those surfaces into
 alignment while retaining MROWW's plot repository and existing safeguards.
 
-This is a command-by-command presentation reference and comparison, not an
-implementation change. Backend changes are relevant only where needed to support
-the described HID or command behavior.
+This is the presentation reference and comparison against MROWW before the parity
+changes. The implementation now follows the agreed styling and interactions;
+[Plot Git](PLOT_GIT.md) describes the current commands. Backend adaptations support
+working diffs, status counts, clipboard history, block history and safe restore.
 
 ## Agreed scope
 
@@ -16,6 +17,7 @@ the described HID or command behavior.
 - Omit `init`, `use`, `list` and `tp`. One repository covers the whole current plot.
 - Keep MROWW's hash lengths: eight-character display IDs and full 64-character IDs
   where the existing backend uses them. Do not adopt the plugin's 12-character IDs.
+- Use `master` as the default branch.
 - Keep `/git rebase` and its current working-build copy behavior.
 - Keep MROWW's Git prefix and paw/snoot wording, including `:3`. Match visual
   structure, colors and interactions without requiring verbatim plugin prose.
@@ -54,7 +56,7 @@ Sources: [reference commands](https://github.com/Brzechuu/RedstoneVC/blob/ad4733
 
 ## Command summary
 
-| MROWW command | Reference presentation and interaction | Current MROWW difference |
+| MROWW command | Reference presentation and interaction | MROWW before parity changes |
 | --- | --- | --- |
 | `/git` | Separate gray usage lines, no click actions. | Yellow descriptive help with additional features. |
 | `/git commit <message>` | Green ID/branch/message confirmation; gray unchanged feedback. | Yellow result with a pawprint line; unchanged feedback is a red Git error. |
@@ -104,13 +106,12 @@ red usage feedback. Committing advances the active branch; there is no staging U
 MROWW should keep its eight-character visible ID and current snapshot behavior.
 Present its confirmation in green, retaining paw wording where desired; treat
 an unchanged commit as gray neutral feedback. Its validation and saved data can
-stay as they are. MROWW currently starts on `main`; changing that to the plugin's
-`master` is unnecessary for the requested presentation work.
+stay as they are. The agreed default branch is `master`, matching the plugin.
 
 Example layout, with each color applied to the complete line:
 
 ```text
-[green] Git: Committed a12b34cd on main: Working adder :3
+[green] Git: Committed a12b34cd on master: Working adder :3
 [gray]  Git: No new pawprints; nothing to commit.
 [red]   Git: Usage: /git commit <message>
 ```
@@ -131,7 +132,7 @@ An empty history produces gray feedback.
 Target row structure with MROWW IDs:
 
 ```text
-[yellow] a12b34cd ([aqua] HEAD[yellow] -> [green] main[yellow])  [white] Working adder
+[yellow] a12b34cd ([aqua] HEAD[yellow] -> [green] master[yellow])  [white] Working adder
 ```
 
 Use MROWW's full commit ID as the clipboard payload, while displaying eight
@@ -238,7 +239,7 @@ and yellow arrows/IDs. Rows have no click or hover actions.
 
 ```text
 [gray]  Branches:
-[green] * main[yellow] -> a12b34cd
+[green] * master[yellow] -> a12b34cd
 [green]   [white] experiment[yellow] -> e56f78ab
 ```
 
@@ -291,7 +292,7 @@ MROWW Git help, completion or hints.
 
 ## World markers and HID
 
-| Property | Reference | Current MROWW | Presentation target |
+| Property | Reference | MROWW before parity changes | Presentation target |
 | --- | --- | --- | --- |
 | Material | Lime/red/yellow stained glass; inspect uses white. | Lime/red/yellow stained glass. | Match materials and add private white inspect highlight. |
 | Shape | Scale 1.01, centered offset -0.005. | Same scale and offset. | Already aligned. |

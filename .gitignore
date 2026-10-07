@@ -12,6 +12,7 @@ tools/node_modules/
 __pycache__/
 *.pyc
 *.pyo
+scraps/
 
 # Generated analysis outputs; retain schematics, fixture protocols and frozen baselines.
 /test_data/**/traces/

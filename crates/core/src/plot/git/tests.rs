@@ -104,15 +104,15 @@ fn persistent_commits_branch_divergence_and_ordered_search() {
     assert!(repo.resolve("HEAD").is_err());
     assert_eq!(repo.sidebar_head().unwrap(), "");
     repo.commit(&snapshot, 42, "Alice", "root build").unwrap();
-    assert_eq!(repo.sidebar_head().unwrap(), "main");
+    assert_eq!(repo.sidebar_head().unwrap(), "master");
     let first = repo.resolve("HEAD").unwrap();
     repo.branch("experiment", "HEAD").unwrap();
-    assert_eq!(repo.head().unwrap().0, "main");
+    assert_eq!(repo.head().unwrap().0, "master");
     set(&mut snapshot, 3, 64, 5, Block::Stone {}, None);
-    repo.commit(&snapshot, 42, "Alice", "improved main")
+    repo.commit(&snapshot, 42, "Alice", "improved master")
         .unwrap();
-    let main = repo.resolve("main").unwrap();
-    assert_ne!(main, first);
+    let master = repo.resolve("master").unwrap();
+    assert_ne!(master, first);
     assert_eq!(repo.resolve(&first[..8]).unwrap(), first);
     let (mut branch, _, _reservation) = repo
         .checkout("experiment", &snapshot, 42, "Alice", &root.0.join("plot"))
@@ -122,15 +122,15 @@ fn persistent_commits_branch_divergence_and_ordered_search() {
     repo.commit(&branch, 99, "Bob", "divergent experiment")
         .unwrap();
     let experiment = repo.resolve("HEAD").unwrap();
-    assert_eq!(repo.resolve("main").unwrap(), main);
+    assert_eq!(repo.resolve("master").unwrap(), master);
     let log = repo.log(false, None, 1).unwrap().to_string();
     assert!(log.contains("divergent experiment") && log.contains("root build"));
-    assert!(!log.contains("improved main"));
+    assert!(!log.contains("improved master"));
     assert!(repo
         .log(true, Some("IMPROVED"), 1)
         .unwrap()
         .to_string()
-        .contains("improved main"));
+        .contains("improved master"));
     assert!(repo.show(&experiment).unwrap().contains("Bob"));
     drop(repo);
     let repo = root.repo();
@@ -210,7 +210,7 @@ fn failed_checkout_restores_save_and_branch_after_target_write() {
     assert!(repo
         .checkout("other", &snapshot, 1, "Alice", &save)
         .is_err());
-    assert_eq!(repo.head().unwrap().0, "main");
+    assert_eq!(repo.head().unwrap().0, "master");
     assert!(!repo.has_pending().unwrap());
     let loaded = PlotData::<{ super::super::PLOT_SECTIONS }>::load_from_file(&save, false).unwrap();
     assert_eq!(
@@ -230,7 +230,7 @@ fn interrupted_checkout_completes_on_reopen_before_or_after_target_save() {
         repo.branch("other", "HEAD").unwrap();
         let mut snapshot = base.clone();
         set(&mut snapshot, 2, 60, 2, Block::Stone {}, None);
-        repo.commit(&snapshot, 1, "Alice", "main").unwrap();
+        repo.commit(&snapshot, 1, "Alice", "master").unwrap();
         let save = root.0.join("plot");
         if target_written {
             base.data.save_to_file(&save).unwrap();
@@ -272,7 +272,7 @@ fn rollback_io_failure_keeps_durable_checkout_record() {
         .checkout("other", &snapshot, 1, "Alice", &root.0.join("blocked/plot"))
         .is_err());
     assert!(repo.has_pending().unwrap());
-    assert_eq!(repo.head().unwrap().0, "main");
+    assert_eq!(repo.head().unwrap().0, "master");
     drop(repo);
     let mut repo = root.repo();
     repo.finish_checkout(&root.0.join("plot")).unwrap();
@@ -474,10 +474,15 @@ fn diff_classifies_add_remove_state_and_data_and_inspects_removed_positions() {
     let diff = compare(a, b);
     assert_eq!(diff.counts, [1, 1, 1, 1]);
     let summary = diff.summary().to_string();
-    assert!(summary.contains("2 changed") && summary.contains("execution changed"));
+    assert!(summary.contains("~2") && summary.contains("execution changed"));
     assert!(!summary.contains("Page"));
     assert_eq!(
-        diff.summary()["extra"][4]["click_event"]["command"],
+        diff.summary()["extra"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|part| part["text"] == " [Show glow]")
+            .unwrap()["click_event"]["command"],
         "/git diff show"
     );
     let removed = diff.inspect(pos(2, 64, 3), None).unwrap().to_string();
@@ -794,7 +799,10 @@ fn logs_paginate_with_literal_search_and_modern_clicks() {
     }
     let page = repo.log(false, None, 1).unwrap();
     assert_eq!(page["extra"].as_array().unwrap().len(), 11);
-    assert_eq!(page["extra"][10]["click_event"]["command"], "/git log 2");
+    assert_eq!(
+        page["extra"][10]["click_event"]["command"],
+        "/git log --page 2"
+    );
     assert_eq!(
         repo.log(false, None, 2).unwrap()["extra"]
             .as_array()
@@ -881,7 +889,7 @@ fn no_op_commits_branch_validation_and_memory_limit() {
     ] {
         assert!(!repository::valid_branch(name));
     }
-    for name in ["main", "experiment-1", "trial_2", "branch-name-length20"] {
+    for name in ["master", "experiment-1", "trial_2", "branch-name-length20"] {
         assert!(repository::valid_branch(name));
     }
     let longest = "b".repeat(19) + "z";
@@ -908,18 +916,28 @@ fn display_metadata_matches_checked_in_protocol_and_ids_are_unique() {
     assert_eq!(display["id"], 15);
     assert_eq!(display["metadataKeys"][11], "translation");
     assert_eq!(display["metadataKeys"][12], "scale");
+    assert_eq!(display["metadataKeys"][16], "brightness_override");
     assert_eq!(display["metadataKeys"][22], "glow_color_override");
     assert_eq!(display["metadataKeys"][23], "block_state");
     for (kind, color, glass) in [
-        (0, 0x55ff55, "lime_stained_glass"),
-        (1, 0xff5555, "red_stained_glass"),
-        (2, 0xffff55, "yellow_stained_glass"),
-        (3, 0xffff55, "yellow_stained_glass"),
+        (0, 0x39ff14, "lime_stained_glass"),
+        (1, 0xff2d2d, "red_stained_glass"),
+        (2, 0xffe23d, "yellow_stained_glass"),
+        (3, 0xffe23d, "yellow_stained_glass"),
+        (4, 0xffffff, "white_stained_glass"),
     ] {
         let packet = visuals::metadata(7, kind);
         assert_eq!(packet.metadata[0].value, [0x40]);
-        let glow = packet.metadata.iter().find(|m| m.index == 22).unwrap();
+        let brightness = packet.metadata.iter().find(|m| m.index == 16).unwrap();
+        assert_eq!(brightness.metadata_type, 1);
         use mchprs_network::packets::PacketDecoderExt;
+        assert_eq!(
+            std::io::Cursor::new(&brightness.value)
+                .read_varint()
+                .unwrap(),
+            (15 << 4) | (15 << 20)
+        );
+        let glow = packet.metadata.iter().find(|m| m.index == 22).unwrap();
         for (index, expected) in [(11, -0.005f32), (12, 1.01f32)] {
             let transform = packet.metadata.iter().find(|m| m.index == index).unwrap();
             assert_eq!(transform.metadata_type, 33);
@@ -954,7 +972,7 @@ fn commit_checkout_detaches_head_and_keeps_branch_tips_and_dirty_work() {
     let mut latest = base.clone();
     set(&mut latest, 2, 64, 2, Block::Stone {}, None);
     repo.commit(&latest, 1, "Alice", "latest").unwrap();
-    let main = repo.resolve("main").unwrap();
+    let master = repo.resolve("master").unwrap();
     let mut dirty = latest.clone();
     set(&mut dirty, 3, 64, 3, Block::Stone {}, None);
     let save = root.0.join("plot");
@@ -965,10 +983,14 @@ fn commit_checkout_detaches_head_and_keeps_branch_tips_and_dirty_work() {
     assert!(message.contains("detached HEAD") && message.contains("Recovery:"));
     assert_eq!(restored.block(pos(2, 64, 2)), 0);
     assert_eq!(repo.resolve("HEAD").unwrap(), first);
-    assert_eq!(repo.resolve("main").unwrap(), main);
+    assert_eq!(repo.resolve("master").unwrap(), master);
     assert!(repo.status(&restored).unwrap().contains("detached HEAD"));
     assert_eq!(repo.sidebar_head().unwrap(), format!("@{first}"));
-    assert!(repo.branches().unwrap().contains("detached HEAD"));
+    assert!(repo
+        .branches()
+        .unwrap()
+        .to_string()
+        .contains("detached HEAD"));
     let recovery: String = root
         .db()
         .query_row("SELECT id FROM recoveries", [], |r| r.get(0))
@@ -986,7 +1008,7 @@ fn commit_checkout_detaches_head_and_keeps_branch_tips_and_dirty_work() {
     let detached = repo.resolve("HEAD").unwrap();
     assert_eq!(repo.sidebar_head().unwrap(), format!("@{detached}"));
     assert_ne!(detached, first);
-    assert_eq!(repo.resolve("main").unwrap(), main);
+    assert_eq!(repo.resolve("master").unwrap(), master);
     repo.branch("experiment", "HEAD").unwrap();
     let (_, _, reservation) = repo
         .checkout("experiment", &experiment, 1, "Alice", &save)
@@ -1016,13 +1038,13 @@ fn interrupted_commit_checkout_restores_detached_head_on_restart() {
     let mut latest = base.clone();
     set(&mut latest, 2, 64, 2, Block::Stone {}, None);
     repo.commit(&latest, 1, "Alice", "latest").unwrap();
-    let main = repo.resolve("main").unwrap();
+    let master = repo.resolve("master").unwrap();
     let save = root.0.join("plot");
     latest.data.save_to_file(&save).unwrap();
     root.db()
         .execute(
             "INSERT INTO checkout SELECT 1,?1,?2,snapshot FROM commits WHERE id=?3",
-            rusqlite::params![format!("@{first}"), first, main],
+            rusqlite::params![format!("@{first}"), first, master],
         )
         .unwrap();
     drop(repo);
@@ -1032,7 +1054,7 @@ fn interrupted_commit_checkout_restores_detached_head_on_restart() {
     let restored = repo.finish_checkout(&save).unwrap();
     assert_eq!(restored.block(pos(2, 64, 2)), 0);
     assert_eq!(repo.resolve("HEAD").unwrap(), first);
-    assert_eq!(repo.resolve("main").unwrap(), main);
+    assert_eq!(repo.resolve("master").unwrap(), master);
     assert!(!repo.has_pending().unwrap());
 }
 
@@ -1167,7 +1189,7 @@ fn rebase_branches(
     drop(repo.checkout("revisit", ours, 1, "Alice", save).unwrap());
     repo.commit(theirs, 2, "Bob", "source changes").unwrap();
     let theirs_id = repo.resolve("HEAD").unwrap();
-    drop(repo.checkout("main", theirs, 1, "Alice", save).unwrap());
+    drop(repo.checkout("master", theirs, 1, "Alice", save).unwrap());
     (ours_id, theirs_id)
 }
 
@@ -1201,7 +1223,7 @@ fn rebase_copies_whole_plot_uncommitted_then_commit_advances_current_branch() {
     let (mut copied, message, reservation) =
         repo.rebase("revisit", &dirty, 1, "Alice", &save).unwrap();
     assert!(
-        message.contains("revisit") && message.contains("main") && message.contains("Recovery:")
+        message.contains("revisit") && message.contains("master") && message.contains("Recovery:")
     );
     assert_eq!(copied.block(pos(1, 64, 1)), 0);
     assert_eq!(copied.block(pos(4, 64, 4)), 0);
@@ -1215,7 +1237,7 @@ fn rebase_copies_whole_plot_uncommitted_then_commit_advances_current_branch() {
     assert_eq!(copied.data.world_send_rate, WorldSendRate(7));
     assert_eq!(
         repo.head().unwrap(),
-        ("main".into(), Some(old_head.clone()))
+        ("master".into(), Some(old_head.clone()))
     );
     assert_eq!(repo.resolve("revisit").unwrap(), source_head);
     assert_eq!(
@@ -1234,7 +1256,7 @@ fn rebase_copies_whole_plot_uncommitted_then_commit_advances_current_branch() {
     let mut repo = root.repo();
     assert_eq!(
         repo.head().unwrap(),
-        ("main".into(), Some(old_head.clone()))
+        ("master".into(), Some(old_head.clone()))
     );
     let saved = Snapshot {
         data: PlotData::load_from_file(&save, false).unwrap(),
@@ -1245,7 +1267,7 @@ fn rebase_copies_whole_plot_uncommitted_then_commit_advances_current_branch() {
         copied.fingerprints().unwrap().full
     );
     set(&mut copied, 3, 64, 3, Block::Glass, None);
-    repo.commit(&copied, 1, "Alice", "Bring revisit into main")
+    repo.commit(&copied, 1, "Alice", "Bring revisit into master")
         .unwrap();
     let new_head = repo.resolve("HEAD").unwrap();
     assert_ne!(new_head, old_head);
@@ -1297,25 +1319,25 @@ fn rebase_requires_named_branches_and_allows_copying_same_branch() {
             error.to_string(),
             messages::GIT_REBASE_SOURCE_BRANCH_REQUIRED
         );
-        assert_eq!(repo.resolve("main").unwrap(), old_head);
+        assert_eq!(repo.resolve("master").unwrap(), old_head);
         assert_eq!(fs::read(&save).unwrap(), bytes);
         assert!(!repo.has_pending().unwrap());
     }
     let mut dirty = ours.clone();
     set(&mut dirty, 3, 64, 3, Block::Glass, None);
-    let (restored, _, reservation) = repo.rebase("main", &dirty, 1, "Alice", &save).unwrap();
+    let (restored, _, reservation) = repo.rebase("master", &dirty, 1, "Alice", &save).unwrap();
     assert_eq!(
         restored.fingerprints().unwrap().full,
         ours.fingerprints().unwrap().full
     );
-    assert_eq!(repo.resolve("main").unwrap(), old_head);
+    assert_eq!(repo.resolve("master").unwrap(), old_head);
     drop(reservation);
     drop(
         repo.checkout(&source_head[..8], &restored, 1, "Alice", &save)
             .unwrap(),
     );
     let error = repo
-        .rebase("main", &theirs, 1, "Alice", &save)
+        .rebase("master", &theirs, 1, "Alice", &save)
         .err()
         .unwrap();
     assert_eq!(
@@ -1326,7 +1348,7 @@ fn rebase_requires_named_branches_and_allows_copying_same_branch() {
         repo.head().unwrap(),
         (format!("@{source_head}"), Some(source_head))
     );
-    assert_eq!(repo.resolve("main").unwrap(), old_head);
+    assert_eq!(repo.resolve("master").unwrap(), old_head);
     assert!(!repo.has_pending().unwrap());
 }
 
@@ -1358,7 +1380,7 @@ fn rebase_recovery_quota_failure_preserves_work_and_history() {
         .err()
         .unwrap();
     assert_eq!(error.to_string(), messages::GIT_PLOT_STORAGE_FULL);
-    assert_eq!(repo.head().unwrap(), ("main".into(), Some(old_head)));
+    assert_eq!(repo.head().unwrap(), ("master".into(), Some(old_head)));
     assert_eq!(repo.resolve("revisit").unwrap(), source_head);
     assert_eq!(fs::read(&save).unwrap(), bytes);
     assert_eq!(
@@ -1394,7 +1416,7 @@ fn rebase_interrupted_save_resumes_copy_without_moving_branch_tips() {
         .is_err());
     assert_eq!(
         repo.head().unwrap(),
-        ("main".into(), Some(old_head.clone()))
+        ("master".into(), Some(old_head.clone()))
     );
     assert!(repo.has_pending().unwrap());
     drop(repo);
@@ -1406,7 +1428,7 @@ fn rebase_interrupted_save_resumes_copy_without_moving_branch_tips() {
         theirs.fingerprints().unwrap().full
     );
     assert_eq!(restored.data.tps, Tps::Limited(0));
-    assert_eq!(repo.head().unwrap(), ("main".into(), Some(old_head)));
+    assert_eq!(repo.head().unwrap(), ("master".into(), Some(old_head)));
     assert_eq!(repo.resolve("revisit").unwrap(), source_head);
     assert_eq!(
         root.db()
@@ -1415,4 +1437,293 @@ fn rebase_interrupted_save_resumes_copy_without_moving_branch_tips() {
         3
     );
     assert!(!repo.has_pending().unwrap());
+}
+
+#[test]
+fn reference_chat_layout_clipboard_counts_and_contextual_completion() {
+    #[derive(Default)]
+    struct Chat(std::cell::RefCell<Vec<Value>>);
+    impl PacketSender for Chat {
+        fn send_packet(&self, _: &mchprs_network::packets::PacketEncoder) {
+            unreachable!();
+        }
+        fn send_raw_system_message(&self, message: String) {
+            self.0
+                .borrow_mut()
+                .push(serde_json::from_str(&message).unwrap());
+        }
+    }
+    let chat = Chat::default();
+    send_git_error(&chat, &anyhow::anyhow!(messages::GIT_NOTHING_CHANGED));
+    assert_eq!(chat.0.borrow()[0]["color"], "gray");
+    chat.0.borrow_mut().clear();
+    send_git_error(&chat, &anyhow::anyhow!(messages::GIT_UNKNOWN_ARGUMENTS));
+    let lines = chat.0.borrow();
+    assert_eq!(lines.len(), 1 + messages::HELP_GIT.lines().count());
+    assert_eq!(lines[0]["color"], "red");
+    assert!(lines[1..].iter().all(|line| line["color"] == "gray"));
+    let root = TempRoot::new();
+    let mut repo = root.repo();
+    let mut a = empty();
+    set(&mut a, 1, 64, 1, Block::Stone {}, None);
+    repo.commit(&a, 1, "Alice", "initial").unwrap();
+    let initial = repo.resolve("HEAD").unwrap();
+    repo.branch("experiment", "HEAD").unwrap();
+    let mut b = a.clone();
+    set(&mut b, 1, 64, 1, Block::Air, None);
+    set(&mut b, 2, 64, 1, Block::Glass, None);
+    repo.commit(&b, 2, "Bob", "changed").unwrap();
+    let head = repo.resolve("HEAD").unwrap();
+    let log = repo.log_count(false, 20).unwrap();
+    let row = &log["extra"][0];
+    assert_eq!(row["text"], format!("\n{}", &head[..8]));
+    assert_eq!(row["color"], "yellow");
+    assert_eq!(
+        row["click_event"],
+        json!({"action": "copy_to_clipboard", "value": head})
+    );
+    assert!(row["hover_event"]["value"]["text"]
+        .as_str()
+        .unwrap()
+        .contains("Author: Bob\nDate: "));
+    assert!(row["extra"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|part| part["text"] == "HEAD" && part["color"] == "aqua"));
+    assert!(row["extra"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|part| part["text"] == "master" && part["color"] == "green"));
+    assert_eq!(
+        row["extra"].as_array().unwrap().last().unwrap()["color"],
+        "white"
+    );
+    assert_eq!(
+        repo.recent_commits().unwrap(),
+        vec![head.clone(), initial.clone()]
+    );
+    use mchprs_network::packets::clientbound::CChatMessage;
+    let packet = CChatMessage {
+        message: log.to_string(),
+        sender: 0,
+        position: 1,
+    }
+    .encode();
+    let mut named = vec![packet.buffer[0], 0, 0];
+    named.extend_from_slice(&packet.buffer[1..]);
+    let component = nbt::Blob::from_reader(&mut std::io::Cursor::new(named)).unwrap();
+    let decoded: Value = serde_json::from_str(&mchprs_network::text::to_json(
+        &nbt::Value::Compound(component.content),
+    ))
+    .unwrap();
+    assert_eq!(decoded, log);
+    let working = repo.comparison(&initial, None, Some(&b)).unwrap();
+    assert_eq!(working.counts, [1, 1, 0, 0]);
+    assert!(working.to_id.is_empty());
+    assert_eq!(working.summary()["extra"][0]["color"], "green");
+    assert_eq!(working.summary()["extra"][1]["color"], "red");
+    assert_eq!(working.summary()["extra"][2]["color"], "yellow");
+    assert_eq!(
+        repo.comparison("HEAD", None, Some(&b)).unwrap().summary()["color"],
+        "gray"
+    );
+    let status = repo.status_chat(&a).unwrap();
+    assert_eq!(status["color"], "gray");
+    assert!(status.to_string().contains("+1"));
+    let branches = repo.branches().unwrap();
+    assert_eq!(branches["color"], "gray");
+    assert_eq!(branches["extra"][0]["extra"][0]["color"], "white");
+    assert_eq!(branches["extra"][1]["extra"][0]["color"], "green");
+    assert_eq!(parse_log(&["20"]).unwrap(), (false, 20, None));
+    assert_eq!(
+        parse_log(&["--all", "--page", "2"]).unwrap(),
+        (true, 10, Some(2))
+    );
+    assert_eq!(parse_log(&["-1"]).unwrap(), (false, 1, None));
+    assert_eq!(parse_log(&["nonsense"]).unwrap(), (false, 10, None));
+    assert!(parse_log(&["--page"]).is_err());
+    let names = repo.names().unwrap();
+    let ids = repo.recent_commits().unwrap();
+    assert!(completion(&["/git"], "", &names, &ids).contains(&"rebase".into()));
+    for omitted in ["init", "list", "use", "tp"] {
+        assert!(!completion(&["/git"], "", &names, &ids).contains(&omitted.into()));
+    }
+    assert!(completion(&["/git"], "", &names, &ids)
+        .iter()
+        .all(|item| !names.contains(item)));
+    assert!(completion(&["/git", "commit"], "", &names, &ids).is_empty());
+    assert_eq!(
+        completion(&["/git", "checkout"], "MA", &names, &ids),
+        vec!["master"]
+    );
+    assert!(completion(&["/git", "diff", "HEAD"], &head[..8], &names, &ids).contains(&head));
+    assert_eq!(completion(&["/git", "rebase"], "", &names, &ids), names);
+    assert!(completion(&["/git", "diff", "inspect"], "", &names, &ids).is_empty());
+}
+
+#[test]
+fn inspect_history_and_restore_preserve_named_and_detached_heads_and_dirty_work() {
+    let root = TempRoot::new();
+    let mut repo = root.repo();
+    let mut initial = empty();
+    set(&mut initial, 1, 64, 1, Block::Stone {}, None);
+    repo.commit(&initial, 1, "Alice", "initial placement")
+        .unwrap();
+    let first = repo.resolve("HEAD").unwrap();
+    let mut latest = initial.clone();
+    set(&mut latest, 1, 64, 1, Block::Glass, None);
+    repo.commit(&latest, 2, "Bob", "replace block").unwrap();
+    let current_head = repo.head().unwrap();
+    let history = repo.block_history(pos(1, 64, 1), Block::Glass).unwrap();
+    assert_eq!(history["color"], "aqua");
+    let revision = &history["extra"][1]["extra"][0];
+    assert!(revision["text"].as_str().unwrap().contains("Bob"));
+    assert_eq!(
+        revision["extra"][1],
+        json!({"text": "stone", "color": "#FF9C9C"})
+    );
+    assert_eq!(
+        revision["extra"][3],
+        json!({"text": "glass", "color": "#9CFF9C"})
+    );
+    assert_eq!(history["extra"][1]["extra"].as_array().unwrap().len(), 1);
+    let mut dirty = latest.clone();
+    set(&mut dirty, 2, 64, 1, Block::Stone {}, None);
+    let save = root.0.join("plot");
+    let (restored, message, reservation) = repo
+        .restore_working(&first, &dirty, 1, "Alice", &save)
+        .unwrap();
+    assert_eq!(repo.head().unwrap(), current_head);
+    assert_eq!(restored.block(pos(1, 64, 1)), Block::Stone {}.get_id());
+    assert_eq!(restored.block(pos(2, 64, 1)), 0);
+    assert!(message.contains("HEAD untouched") && message.contains("Recovery:"));
+    assert!(!repo.has_pending().unwrap());
+    let recovery_id: String = root
+        .db()
+        .query_row("SELECT id FROM recoveries", [], |r| r.get(0))
+        .unwrap();
+    repo.recover_branch(&recovery_id, "unfinished", 1, "Alice")
+        .unwrap();
+    assert_eq!(
+        repo.load(&repo.resolve("unfinished").unwrap())
+            .unwrap()
+            .block(pos(2, 64, 1)),
+        Block::Stone {}.get_id()
+    );
+    drop(reservation);
+    let (detached, _, reservation) = repo.checkout(&first, &restored, 1, "Alice", &save).unwrap();
+    let detached_head = repo.head().unwrap();
+    let latest_id = current_head.1.unwrap();
+    let (restored, _, second) = repo
+        .restore_working(&latest_id, &detached, 1, "Alice", &save)
+        .unwrap();
+    assert_eq!(repo.head().unwrap(), detached_head);
+    assert_eq!(restored.block(pos(1, 64, 1)), Block::Glass.get_id());
+    drop((reservation, second));
+    repo.branch("attach", &first).unwrap();
+    let (_, _, reservation) = repo
+        .checkout("attach", &restored, 1, "Alice", &save)
+        .unwrap();
+    assert_eq!(repo.head().unwrap().0, "attach");
+    assert!(matches!(
+        checkout_payload(&mut repo, "attach", &restored, 1, "Alice"),
+        Payload::Text(_, ColorCode::Gray)
+    ));
+    drop(reservation);
+}
+
+#[test]
+fn another_players_commands_and_diff_never_steal_viewer_markers() {
+    use crate::player::Player;
+    use mchprs_network::test_support::{connection, read_frame};
+    let (mut plot, mut alice_peer) = super::super::client_sync_tests::fixture(false);
+    let conn = connection(false).unwrap();
+    let mut bob_peer = conn.peer;
+    let mut bob = Player::test_player(conn.player);
+    bob.uuid = 2;
+    bob.last_chunk_x = 2;
+    bob.last_chunk_z = 2;
+    plot.players.push(bob);
+    let mut a = empty();
+    a.plot = (0, 0);
+    let mut b = a.clone();
+    set(&mut b, 1, 64, 1, Block::Stone {}, None);
+    let diff = Arc::new(compare(a.clone(), b.clone()));
+    set(&mut b, 2, 64, 1, Block::Glass, None);
+    let bob_diff = Arc::new(compare(a, b));
+    let reply = |diff: Arc<Diff>| Reply {
+        payload: Payload::Diff(diff),
+        names: Vec::new(),
+        commits: Vec::new(),
+        head: None,
+    };
+    let pending = |actor| {
+        let (_, receiver) = mpsc::sync_channel(1);
+        Pending {
+            receiver,
+            actor,
+            checkout: None,
+        }
+    };
+    plot.accept_git(pending(1), Ok(reply(diff.clone())));
+    assert!(plot.git.sessions[&1].enabled);
+    assert_eq!(read_frame(&mut alice_peer, false).unwrap().0, 0x72);
+    plot.replace_git_markers(
+        0,
+        vec![Marker {
+            pos: BlockPos::new(32, 21, 35),
+            kind: 0,
+        }],
+        plot.players[0].pos,
+    );
+    assert_eq!(read_frame(&mut alice_peer, false).unwrap().0, 0x01);
+    assert_eq!(read_frame(&mut alice_peer, false).unwrap().0, 0x5c);
+    assert_eq!(read_frame(&mut alice_peer, false).unwrap().0, 0x72);
+    let alice_markers = plot.git.sessions[&1].markers.clone();
+    plot.owner = Some(2);
+    plot.accept_git(pending(2), Ok(reply(bob_diff.clone())));
+    assert!(Arc::ptr_eq(&plot.git.sessions[&2].diff, &bob_diff));
+    assert_eq!(read_frame(&mut bob_peer, false).unwrap().0, 0x72);
+    plot.git_command(1, &["help"]).unwrap();
+    plot.git_command(1, &["diff", "hide"]).unwrap();
+    plot.git.pending = Some(pending(0));
+    assert!(plot.git_command(1, &["status"]).is_err());
+    assert!(plot.git_command(1, &["unknown"]).is_err());
+    plot.git.pending = None;
+    assert!(Arc::ptr_eq(&plot.git.sessions[&1].diff, &diff));
+    assert_eq!(plot.git.sessions[&1].markers, alice_markers);
+    assert!(plot.git.sessions[&1].enabled);
+    plot.hide_git(1, true);
+    assert!(!plot.git.sessions.contains_key(&2));
+    assert!(plot.git.sessions.contains_key(&1));
+    plot.show_git_inspection(1, BlockPos::new(32, 21, 35));
+    assert!(plot.git.inspections.contains_key(&2));
+    assert!(!plot.git.inspections.contains_key(&1));
+    plot.hide_git(1, true);
+    assert!(plot.git.inspections.is_empty());
+    assert_eq!(plot.git.sessions[&1].markers, alice_markers);
+}
+
+#[test]
+fn default_master_updates_unborn_repositories_without_renaming_saved_branches() {
+    let root = TempRoot::new();
+    let repo = root.repo();
+    assert_eq!(repo.head().unwrap(), ("master".into(), None));
+    drop(repo);
+    root.db()
+        .execute("UPDATE meta SET value='main' WHERE key='active'", [])
+        .unwrap();
+    let mut repo = root.repo();
+    assert_eq!(repo.head().unwrap(), ("master".into(), None));
+    repo.commit(&empty(), 1, "Alice", "first pawprint").unwrap();
+    repo.branch("main", "HEAD").unwrap();
+    let head = repo.resolve("HEAD").unwrap();
+    drop(repo);
+    root.db()
+        .execute("UPDATE meta SET value='main' WHERE key='active'", [])
+        .unwrap();
+    let repo = root.repo();
+    assert_eq!(repo.head().unwrap(), ("main".into(), Some(head)));
 }

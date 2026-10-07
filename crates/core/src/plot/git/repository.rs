@@ -1,9 +1,11 @@
+use super::diff::{self, Diff};
 use super::snapshot::{compressed_bound, hex, Fingerprints, Snapshot};
 use crate::messages;
 use anyhow::{bail, ensure, Context, Result};
 use chrono::TimeZone;
+use mchprs_blocks::{blocks::Block, BlockPos};
 use rusqlite::{params, Connection, OptionalExtension};
-use serde_json::Value;
+use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
@@ -78,7 +80,8 @@ impl Repository {
                 "SELECT value FROM meta WHERE key='identity'", [], |r| r.get(0),
             )?;
             ensure!(identity == stored, messages::GIT_REPOSITORY_IDENTITY_MISMATCH);
-            repo.conn.execute("INSERT OR IGNORE INTO meta VALUES('active','main')", [])?;
+            repo.conn.execute("INSERT OR IGNORE INTO meta VALUES('active','master')", [])?;
+            repo.conn.execute("UPDATE meta SET value='master' WHERE key='active' AND value='main' AND NOT EXISTS (SELECT 1 FROM commits)", [])?;
             Ok(())
         })?;
         Ok(repo)
@@ -378,34 +381,42 @@ impl Repository {
             .collect::<rusqlite::Result<_>>()?)
     }
 
-    pub fn branches(&self) -> Result<String> {
+    pub fn branches(&self) -> Result<Value> {
         let active = self.head()?.0;
-        let rows = self
+        let mut extra = Vec::new();
+        if let Some(id) = active.strip_prefix('@') {
+            extra.push(json!({"text": format!("\n{}", messages::git_detached_head(&id[..8])), "color": "gray"}));
+        }
+        for (name, id) in self.branch_tips()? {
+            let current = name == active;
+            extra.push(
+                json!({"text": if current { "\n* " } else { "\n  " }, "color": "green", "extra": [
+                    {"text": name, "color": if current { "green" } else { "white" }},
+                    {"text": format!(" -> {}", &id[..8]), "color": "yellow"}
+                ]}),
+            );
+        }
+        if extra.is_empty() {
+            extra.push(
+                json!({"text": format!("\n{}", messages::GIT_NO_BRANCHES_HINT), "color": "gray"}),
+            );
+        }
+        Ok(json!({"text": messages::GIT_BRANCHES_HEADING, "color": "gray", "extra": extra}))
+    }
+
+    fn branch_tips(&self) -> Result<Vec<(String, String)>> {
+        Ok(self
             .conn
             .prepare("SELECT name,tip FROM branches ORDER BY name")?
-            .query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)))?
-            .collect::<rusqlite::Result<Vec<_>>>()?;
-        let mut text = if rows.is_empty() {
-            messages::GIT_NO_BRANCHES_HINT.into()
-        } else {
-            rows.into_iter()
-                .map(|(name, id)| {
-                    messages::git_branch_row(if name == active { "*" } else { " " }, name, &id[..8])
-                })
-                .collect::<Vec<_>>()
-                .join("\n")
-        };
-        if let Some(id) = active.strip_prefix('@') {
-            text = format!("{}\n{text}", messages::git_detached_head(&id[..8]));
-        }
-        Ok(text)
+            .query_map([], |r| Ok((r.get(0)?, r.get(1)?)))?
+            .collect::<rusqlite::Result<_>>()?)
     }
 
     pub fn status(&self, snapshot: &Snapshot) -> Result<String> {
         let (branch, tip) = self.head()?;
         let usage = self.database_bytes()?;
         let Some(tip) = tip else {
-            return Ok(messages::GIT_CREATE_MAIN_HINT.into());
+            return Ok(messages::GIT_CREATE_MASTER_HINT.into());
         };
         let saved: (String, String) = self.conn.query_row(
             "SELECT content,execution FROM objects WHERE id=?1",
@@ -423,23 +434,85 @@ impl Repository {
         ))
     }
 
-    pub fn log(&self, all: bool, query: Option<&str>, page: usize) -> Result<Value> {
-        ensure!((1..=100_000).contains(&page), messages::GIT_INVALID_PAGE);
-        let tip = self.head()?.1.context(messages::GIT_NO_COMMITS)?;
-        let sql = if all {
-            "SELECT id,date,name,message FROM commits WHERE instr(message_fold,?2)>0 ORDER BY seq DESC LIMIT 11 OFFSET ?3"
-        } else {
-            "WITH RECURSIVE history(id,parent,date,name,message,message_fold,depth) AS (SELECT id,parent,date,name,message,message_fold,0 FROM commits WHERE id=?1 UNION ALL SELECT c.id,c.parent,c.date,c.name,c.message,c.message_fold,h.depth+1 FROM commits c JOIN history h ON c.id=h.parent ORDER BY 7) SELECT id,date,name,message FROM history WHERE instr(message_fold,?2)>0 LIMIT 11 OFFSET ?3"
+    pub fn comparison(
+        &self,
+        from: &str,
+        to: Option<&str>,
+        working: Option<&Snapshot>,
+    ) -> Result<Diff> {
+        let a = self.resolve(from)?;
+        let b = to.map(|reference| self.resolve(reference)).transpose()?;
+        let size = self.raw_size(&a)?.saturating_add(match &b {
+            Some(b) => self.raw_size(b)?,
+            None => usize::try_from(bincode::serialized_size(
+                working.context(messages::GIT_NO_COMPARISON)?,
+            )?)?,
+        });
+        let reservation = super::Reservation::snapshot(size)?;
+        let mut comparison = Diff::new(
+            a.clone(),
+            b.clone().unwrap_or_default(),
+            self.load(&a)?,
+            match b {
+                Some(b) => self.load(&b)?,
+                None => working.unwrap().clone(),
+            },
+            reservation,
+        )?;
+        comparison.from_label = from.to_owned();
+        comparison.to_label = to.unwrap_or(messages::GIT_WORKING_BUILD).to_owned();
+        Ok(comparison)
+    }
+
+    pub fn status_chat(&self, snapshot: &Snapshot) -> Result<Value> {
+        let (branch, tip) = self.head()?;
+        let Some(tip) = tip else {
+            return Ok(json!({"text": messages::GIT_CREATE_MASTER_HINT, "color": "gray"}));
         };
-        // Order the recursive queue, not a materialized result containing the
-        // entire history. Pages/searches retain only their eleven result rows.
-        let mut statement = self.conn.prepare(sql)?;
-        let rows = statement
+        let comparison = self.comparison("HEAD", None, Some(snapshot))?;
+        let details = self.status(snapshot)?;
+        let secondary = details.split_once('\n').map_or("", |(_, text)| text);
+        Ok(
+            json!({"text": messages::git_status_heading(head_label(&branch), &tip[..8]), "color": "gray", "extra": [
+                {"text": "\n"}, diff::change_summary(comparison.counts),
+                {"text": format!("\n{secondary}"), "color": "gray"}
+            ]}),
+        )
+    }
+
+    pub fn recent_commits(&self) -> Result<Vec<String>> {
+        Ok(self
+            .history_rows(false, None, 0, 50)?
+            .into_iter()
+            .filter_map(|row| row["click_event"]["value"].as_str().map(str::to_owned))
+            .collect())
+    }
+
+    fn history_rows(
+        &self,
+        all: bool,
+        query: Option<&str>,
+        offset: usize,
+        limit: usize,
+    ) -> Result<Vec<Value>> {
+        let (active, tip) = self.head()?;
+        let Some(tip) = tip else {
+            return Ok(Vec::new());
+        };
+        let sql = if all {
+            "SELECT id,date,name,message FROM commits WHERE instr(message_fold,?2)>0 ORDER BY seq DESC LIMIT ?4 OFFSET ?3"
+        } else {
+            "WITH RECURSIVE history(id,parent,date,name,message,message_fold,depth) AS (SELECT id,parent,date,name,message,message_fold,0 FROM commits WHERE id=?1 UNION ALL SELECT c.id,c.parent,c.date,c.name,c.message,c.message_fold,h.depth+1 FROM commits c JOIN history h ON c.id=h.parent ORDER BY 7) SELECT id,date,name,message FROM history WHERE instr(message_fold,?2)>0 LIMIT ?4 OFFSET ?3"
+        };
+        let rows = self
+            .conn
+            .prepare(sql)?
             .query_map(
                 params![
                     tip,
                     query.unwrap_or("").to_lowercase(),
-                    ((page - 1) * 10) as i64
+                    offset as i64,
+                    limit as i64
                 ],
                 |r| {
                     Ok((
@@ -451,36 +524,130 @@ impl Repository {
                 },
             )?
             .collect::<rusqlite::Result<Vec<_>>>()?;
-        let mut extra = Vec::new();
-        for (id, date, name, message) in rows.iter().take(10) {
-            let date = chrono::Utc
-                .timestamp_opt(*date, 0)
-                .single()
-                .map(|d| d.format("%Y-%m-%d %H:%M UTC").to_string())
-                .unwrap_or_default();
-            extra.push(serde_json::json!({"text":messages::git_history_row(&id[..8], date, name, message),"color":"aqua","click_event":{"action":"run_command","command":format!("/git show {id}")}}));
-        }
+        let branches = self.branch_tips()?;
+        Ok(rows.into_iter().map(|(id, timestamp, author, message)| {
+            let date = chrono::Local.timestamp_opt(timestamp, 0).single()
+                .map(|d| d.format("%Y-%m-%d %H:%M").to_string()).unwrap_or_default();
+            let mut extra = Vec::new();
+            let tips: Vec<_> = branches.iter().filter(|(_, tip)| tip == &id).collect();
+            if !tips.is_empty() || (active.starts_with('@') && active[1..] == id) {
+                extra.push(json!({"text": " (", "color": "yellow"}));
+                if active.starts_with('@') && active[1..] == id {
+                    extra.push(json!({"text": "HEAD", "color": "aqua"}));
+                    if !tips.is_empty() { extra.push(json!({"text": ", ", "color": "yellow"})); }
+                }
+                for (index, (branch, _)) in tips.iter().enumerate() {
+                    if index > 0 { extra.push(json!({"text": ", ", "color": "yellow"})); }
+                    if branch == &active {
+                        extra.push(json!({"text": "HEAD", "color": "aqua"}));
+                        extra.push(json!({"text": " -> ", "color": "yellow"}));
+                    }
+                    extra.push(json!({"text": branch, "color": "green"}));
+                }
+                extra.push(json!({"text": ")", "color": "yellow"}));
+            }
+            extra.push(json!({"text": format!("  {message}"), "color": "white"}));
+            json!({"text": format!("\n{}", &id[..8]), "color": "yellow", "extra": extra,
+                "hover_event": {"action": "show_text", "value": {"text": format!("Author: {author}\nDate: {date}\n{id}")}},
+                "click_event": {"action": "copy_to_clipboard", "value": id}})
+        }).collect())
+    }
+
+    pub fn log_count(&self, all: bool, count: usize) -> Result<Value> {
+        // ponytail: cap one chat response at 1000 rows; use --page for longer trails.
+        let rows = self.history_rows(all, None, 0, count.clamp(1, 1000))?;
+        Ok(
+            json!({"text": if rows.is_empty() { messages::GIT_NO_COMMITS } else { messages::GIT_HISTORY_TITLE }, "color": "gray", "extra": rows}),
+        )
+    }
+
+    pub fn log(&self, all: bool, query: Option<&str>, page: usize) -> Result<Value> {
+        ensure!((1..=100_000).contains(&page), messages::GIT_INVALID_PAGE);
+        let mut rows = self.history_rows(all, query, (page - 1) * 10, 11)?;
+        let more = rows.len() > 10;
+        rows.truncate(10);
         let command = if let Some(query) = query {
             format!(
                 "/git search {}--page {{page}} {query}",
                 if all { "--all " } else { "" }
             )
         } else {
-            format!("/git log {}{{page}}", if all { "--all " } else { "" })
+            format!(
+                "/git log {}--page {{page}}",
+                if all { "--all " } else { "" }
+            )
         };
         if page > 1 {
-            extra.push(button(
+            rows.push(button(
                 messages::GIT_PREVIOUS_PAGE,
                 &command.replace("{page}", &(page - 1).to_string()),
             ));
         }
-        if rows.len() > 10 {
-            extra.push(button(
+        if more {
+            rows.push(button(
                 messages::GIT_NEXT_PAGE,
                 &command.replace("{page}", &(page + 1).to_string()),
             ));
         }
-        Ok(serde_json::json!({"text":messages::git_history_heading(page),"extra":extra}))
+        Ok(json!({"text": messages::git_history_heading(page), "color": "gray", "extra": rows}))
+    }
+
+    pub fn block_history(&self, pos: BlockPos, current: Block) -> Result<Value> {
+        let mut revisions = Vec::new();
+        // ponytail: stream full snapshots, index block history if inspection latency matters.
+        let mut cache = std::collections::HashMap::new();
+        let mut id = self.head()?.1;
+        for _ in 0..200 {
+            let Some(commit) = id else {
+                break;
+            };
+            let (parent, timestamp, author): (Option<String>, i64, String) = self.conn.query_row(
+                "SELECT parent,date,name FROM commits WHERE id=?1",
+                [&commit],
+                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+            )?;
+            let Some(parent) = parent else {
+                break;
+            };
+            let mut states = [0; 2];
+            for (index, reference) in [&parent, &commit].into_iter().enumerate() {
+                let object = self.snapshot_id(reference)?;
+                let state = if let Some(state) = cache.get(&object) {
+                    *state
+                } else {
+                    let _reservation = super::Reservation::snapshot(self.raw_size(reference)?)?;
+                    let state = self.load(reference)?.block(pos);
+                    cache.insert(object, state);
+                    state
+                };
+                states[index] = state;
+            }
+            if states[0] != states[1] {
+                let date = chrono::Local
+                    .timestamp_opt(timestamp, 0)
+                    .single()
+                    .map(|d| d.format("%Y-%m-%d %H:%M").to_string())
+                    .unwrap_or_default();
+                revisions.push(json!({"text": format!("\n{}  {date}  {author}", &commit[..8]), "color": "yellow", "extra": [
+                    {"text": "\n  - ", "color": "red"},
+                    {"text": diff::description(Block::from_id(states[0])), "color": "#FF9C9C"},
+                    {"text": "\n  + ", "color": "green"},
+                    {"text": diff::description(Block::from_id(states[1])), "color": "#9CFF9C"}
+                ]}));
+            }
+            id = Some(parent);
+        }
+        let heading = if revisions.is_empty() {
+            messages::GIT_NO_BLOCK_HISTORY.to_owned()
+        } else {
+            messages::git_block_history_heading(revisions.len())
+        };
+        Ok(
+            json!({"text": messages::git_block_heading(pos.x, pos.y, pos.z), "color": "aqua", "extra": [
+                {"text": format!("\n{}", diff::description(current)), "color": "gray"},
+                {"text": format!("\n{heading}"), "color": "aqua", "extra": revisions}
+            ]}),
+        )
     }
 
     pub fn show(&self, reference: &str) -> Result<String> {
@@ -644,6 +811,25 @@ impl Repository {
         Ok((
             snapshot,
             messages::git_rebased(&branch, source, recovery),
+            reservation,
+        ))
+    }
+
+    pub fn restore_working(
+        &mut self,
+        reference: &str,
+        before: &Snapshot,
+        author: u128,
+        name: &str,
+        save: &Path,
+    ) -> Result<(Snapshot, String, super::Reservation)> {
+        let target = self.resolve(reference)?;
+        let branch = self.head()?.0;
+        let (snapshot, recovery, reservation) =
+            self.restore(&target, &branch, before, author, name, save)?;
+        Ok((
+            snapshot,
+            messages::git_restored(&target[..8], recovery),
             reservation,
         ))
     }

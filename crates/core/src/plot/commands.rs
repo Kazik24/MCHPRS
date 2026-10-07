@@ -692,7 +692,14 @@ impl Plot {
                 if args.len() > 1 {
                     self.players[player].send_error_message(messages::USAGE_HELP_TOPIC);
                 } else if let Some(page) = super::help::page(args.first().copied()) {
-                    self.players[player].send_system_message(page);
+                    if page == messages::HELP_GIT {
+                        for line in page.lines() {
+                            self.players[player]
+                                .send_color_message(crate::chat::ColorCode::Gray, line);
+                        }
+                    } else {
+                        self.players[player].send_system_message(page);
+                    }
                 } else {
                     self.players[player]
                         .send_error_message(messages::UNKNOWN_HELP_TOPIC_USE_HELP_TOPICS);

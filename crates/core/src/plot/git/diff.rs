@@ -24,7 +24,7 @@ pub(super) struct Diff {
     to: Snapshot,
     sections: Vec<usize>,
     pub counts: [u64; 4],
-    runtime_changed: bool,
+    pub runtime_changed: bool,
     pub _reservation: super::Reservation,
 }
 
@@ -109,13 +109,33 @@ impl Diff {
     }
 
     pub fn summary(&self) -> Value {
-        json!({"text":"","extra":[
-            button(&messages::git_diff_reference(&self.from_label, &self.from_id[..8]),&format!("/git show {}",self.from_id)),
-            json!({"text":" -> "}),
-            button(&messages::git_diff_reference(&self.to_label, &self.to_id[..8]),&format!("/git show {}",self.to_id)),
-            json!({"text":messages::git_diff_counts(self.counts[0], self.counts[1], self.counts[2]+self.counts[3], if self.runtime_changed {messages::GIT_EXECUTION_CHANGED_SUFFIX} else {""})}),
-            button(messages::GIT_SHOW_GLOW,"/git diff show"), button(messages::GIT_HIDE_GLOW,"/git diff hide")
-        ]})
+        if self.counts.iter().sum::<u64>() == 0 && !self.runtime_changed {
+            return json!({"text": messages::GIT_NO_CHANGES, "color": "gray"});
+        }
+        let mut summary = change_summary(self.counts);
+        let extra = summary["extra"].as_array_mut().unwrap();
+        if self.runtime_changed {
+            extra.push(json!({"text": messages::GIT_EXECUTION_CHANGED_SUFFIX, "color": "gray"}));
+        }
+        extra.push(json!({"text": "\n", "color": "gray"}));
+        for (label, id) in [
+            (&self.from_label, &self.from_id),
+            (&self.to_label, &self.to_id),
+        ] {
+            if !id.is_empty() {
+                extra.push(button(
+                    &messages::git_diff_reference(label, &id[..8]),
+                    &format!("/git show {id}"),
+                ));
+            } else {
+                extra.push(json!({"text": format!(" [{label}]"), "color": "gray"}));
+            }
+        }
+        if self.counts.iter().sum::<u64>() != 0 {
+            extra.push(button(messages::GIT_SHOW_GLOW, "/git diff show"));
+            extra.push(button(messages::GIT_HIDE_GLOW, "/git diff hide"));
+        }
+        summary
     }
 
     pub fn near(&self, center: PlayerPos, radius: f64, limit: usize) -> Result<Vec<Marker>> {
@@ -197,23 +217,6 @@ impl Diff {
         ensure!(self.kind(pos)?.is_some(), messages::GIT_POSITION_UNCHANGED);
         let a = Block::from_id(self.from.block(pos));
         let b = Block::from_id(self.to.block(pos));
-        let description = |block: Block| {
-            let mut props: Vec<_> = block
-                .properties()
-                .into_iter()
-                .map(|(k, v)| format!("{k}={v}"))
-                .collect();
-            props.sort();
-            format!(
-                "{}{}",
-                block.get_name(),
-                if props.is_empty() {
-                    String::new()
-                } else {
-                    format!(" [{}]", props.join(", "))
-                }
-            )
-        };
         let mut text =
             messages::git_block_diff(pos.x, pos.y, pos.z, description(a), description(b));
         let ae = self.from.entity(pos)?;
@@ -256,6 +259,32 @@ impl Diff {
         }
         Ok(json!({"text": text}))
     }
+}
+
+pub(super) fn change_summary(counts: [u64; 4]) -> Value {
+    json!({"text": messages::GIT_CHANGES, "color": "gray", "extra": [
+        {"text": format!("+{}", counts[0]), "color": "green"},
+        {"text": format!(" -{}", counts[1]), "color": "red"},
+        {"text": format!(" ~{}", counts[2] + counts[3]), "color": "yellow"}
+    ]})
+}
+
+pub(super) fn description(block: Block) -> String {
+    let mut props: Vec<_> = block
+        .properties()
+        .into_iter()
+        .map(|(k, v)| format!("{k}={v}"))
+        .collect();
+    props.sort();
+    format!(
+        "{}{}",
+        block.get_name(),
+        if props.is_empty() {
+            String::new()
+        } else {
+            format!("[{}]", props.join(","))
+        }
+    )
 }
 
 pub(super) fn aimed(
