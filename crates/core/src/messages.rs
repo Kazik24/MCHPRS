@@ -77,9 +77,6 @@ catalog! {
         GIT_OPERATION_RUNNING = "A Git helper is already busy on this plot. Give those paws a moment.";
         GIT_WORKER_QUEUE_FULL = "The Git helpers have full paws. Try again in a moment.";
         GIT_PERMISSION_DENIED = "These paws need permission to use Git on this plot.";
-        GIT_DIFF_GLOW_HIDDEN = "Diff glow tucked away :3";
-        GIT_PREPARE_COMPARISON = "Sniff out a comparison first with /git diff <from> <to>.";
-        GIT_DIFF_INSPECT_HINT = "Point your sword at a glowing change and right-click to sniff out its states and changed data in one boop.";
         GIT_CHECKOUT_LOCKED = "Plot changes are locked, pup: checkout is in progress or needs recovery.";
         USAGE_GIT_DIFF_INSPECT = "Usage: /git diff inspect <x> <y> <z> [from|to]";
         GIT_NO_COMPARISON = "No comparison for this snoot yet. Use /git diff <from> <to>.";
@@ -139,14 +136,12 @@ catalog! {
         GIT_HISTORY_TITLE = "Git pawprint history :3";
         GIT_NO_BLOCK_HISTORY = "No changes recorded for this block, pup.";
         GIT_INSPECT_TARGET_REQUIRED = "Look at a block within 10 blocks so this snoot can inspect its history.";
-        GIT_SHOW_GLOW = "Show glow";
-        GIT_HIDE_GLOW = "Hide glow";
         GIT_POSITION_UNCHANGED = "No changed pawprints at that position in this comparison.";
         GIT_BLOCK_DATA_CHANGED = "\nSniffed out changed block data.";
         GIT_INVALID_DETAILS_SIDE = "Choose from or to so this snoot knows which details to fetch.";
         GIT_DATA_TRUNCATED = "\n[Data trimmed to fit this pawbook]";
         GIT_NO_BLOCK_DATA = "No saved block data for these paws.";
-        HELP_GIT = "Plot Git pawbook :3\n/git commit <message>\n/git log [--all] [n|--page n]\n/git status\n/git diff [ref] [ref]\n/git restore <ref>\n/git inspect\n/git branch [name [ref]]\n/git checkout <branch|commit>\n/git rebase <branch>\n/git show <ref>\n/git search [--all] [--page n] <text>\n/git diff show|hide\n/git diff inspect <x> <y> <z> [from|to]\n/git recoveries [page]\n/git recover <id> <new-branch>";
+        HELP_GIT = "Plot Git pawbook :3\n/git commit <message>\n/git log [--all] [n|--page n]\n/git status\n/git diff [ref] [ref]\n/git restore <ref>\n/git inspect\n/git branch [name [ref]]\n/git checkout <branch|commit>\n/git rebase <branch>\n/git show <ref>\n/git search [--all] [--page n] <text>\n/git diff inspect <x> <y> <z> [from|to]\n/git recoveries [page]\n/git recover <id> <new-branch>";
         USAGE_PLOT_HOME = "Usage: /p home";
         PLOT_HOME_UNCLAIMED = "No plot den of your own yet. Use /p auto to claim one.";
         PLOT_MEMBER_ALREADY_ADDED = "That player is already in this plot pack.";

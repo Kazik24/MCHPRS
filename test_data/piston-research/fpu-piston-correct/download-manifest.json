@@ -1,0 +1,14 @@
+{
+  "schema_version": 1,
+  "source_host": "urmom",
+  "source_directory": "/srv/mchprs/data/schems",
+  "verified_utc": "2026-10-07T19:44:26.228928+00:00",
+  "files": [
+    {
+      "name": "fpu_pistion_correct.schem",
+      "bytes": 78220,
+      "sha256": "704016b6900ec22ff0d37184de480a5c9965fd390b7bcf7c3f23d7677048c391",
+      "modified_utc": "2026-10-07T19:43:08.221528+00:00"
+    }
+  ]
+}

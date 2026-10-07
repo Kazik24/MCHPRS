@@ -548,8 +548,8 @@ impl Repository {
             }
             extra.push(json!({"text": format!("  {message}"), "color": "white"}));
             json!({"text": format!("\n{}", &id[..8]), "color": "yellow", "extra": extra,
-                "hover_event": {"action": "show_text", "value": {"text": format!("Author: {author}\nDate: {date}\n{id}")}},
-                "click_event": {"action": "copy_to_clipboard", "value": id}})
+                "hover_event": {"action": "show_text", "value": {"text": format!("Author: {author}\nDate: {date}\n{}", &id[..8])}},
+                "click_event": {"action": "copy_to_clipboard", "value": &id[..8]}})
         }).collect())
     }
 

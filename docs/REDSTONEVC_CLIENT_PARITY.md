@@ -135,8 +135,8 @@ Target row structure with MROWW IDs:
 [yellow] a12b34cd ([aqua] HEAD[yellow] -> [green] master[yellow])  [white] Working adder
 ```
 
-Use MROWW's full commit ID as the clipboard payload, while displaying eight
-characters. A hover card can show author, date and that full ID. Match the timezone
+Use MROWW's eight-character commit ID for visible text, clipboard payload,
+completion and hover cards. Keep full IDs internally. Match the timezone
 used by the plugin deployment when comparing dates; the current MROWW UTC date
 is a visible difference. Keep `/git show` available explicitly, but the reference
 row click is a clipboard action, not a show-command action.
@@ -179,11 +179,10 @@ player's glow automatically for nonempty results. Reuse its existing comparison
 and marker facilities. Keep full IDs internally and MROWW reference validation;
 there is no reason to copy the plugin's ambiguous-prefix lookup.
 
-MROWW's show/hide helpers and source/destination links can remain as secondary
-controls. Use a gray summary label and individually colored counts instead of
+Omit Show/Hide glow controls and commands. Source/destination links can remain
+as secondary controls. Use a gray summary label and individually colored counts instead of
 coloring the whole summary one color. Keep execution-change information separate.
-An empty diff should use neutral feedback without inviting a meaningless Show
-click. Marker caps and proximity selection remain an existing visible difference;
+An empty diff should use neutral feedback without controls. Marker caps and proximity selection remain an existing visible difference;
 do not raise whole-plot rendering limits blindly to reproduce 3,000 entities.
 
 The shared-state bug is excluded explicitly; see **Diff ownership** below.
@@ -298,7 +297,7 @@ MROWW Git help, completion or hints.
 | Shape | Scale 1.01, centered offset -0.005. | Same scale and offset. | Already aligned. |
 | Glow colors | Green `#39FF14`, red `#FF2D2D`, yellow `#FFE23D`, inspect white. | `#55FF55`, `#FF5555`, `#FFFF55`. | Use the reference RGB values. |
 | Lighting | Block/sky brightness 15/15. | No explicit brightness override. | Match full brightness. |
-| Diff activation | Immediate for nonempty diff. | Explicit Show glow. | Automatic activation; retain show/hide as helpers. |
+| Diff activation | Immediate for nonempty diff. | Explicit Show glow. | Automatic activation; omit show/hide controls. |
 | Diff lifetime | 900 server ticks, about 45 seconds at 20 TPS. | Default five minutes of wall-clock time. | Match the nominal 45-second visible duration; keep cleanup independent of paused plot simulation. |
 | Inspect lifetime | 60 server ticks, about three seconds. | No white history-inspect marker. | About three seconds. |
 | Marker set | First 3,000 changes. | Nearest 128 by default within 64 blocks and loaded view; batched updates. | Retain safe whole-plot bounds and disclose visible subset with neutral feedback. |
@@ -327,14 +326,14 @@ visibility rather than viewer-specific ownership. The separate inspection
 highlight field is shared too.
 
 Do not reproduce this. Keep MROWW's sessions keyed by player UUID and send marker
-packets only to their owner. A player's diff, hide, timeout, plot exit, restore
+packets only to their owner. A player's diff, timeout, plot exit, restore
 cleanup or permission loss must never replace another player's comparison or
 arbitrarily remove another player's markers. A plot restore legitimately
 invalidates comparisons for everyone because the shared build changed; that is
 different from one player issuing an unrelated command.
 
 If matching the reference's next-command cleanup, apply it only to the initiating
-player's overlay. Keep helper interactions such as show/hide, comparison inspect
+player's overlay. Keep `/git inspect`, comparison inspect
 and sword inspection usable without clearing their own prerequisite comparison.
 Scope any new white inspect marker and asynchronous inspection reply to the
 requesting player as well. Retain permission checks on all viewer interactions.

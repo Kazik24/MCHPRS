@@ -125,15 +125,11 @@ impl Diff {
             if !id.is_empty() {
                 extra.push(button(
                     &messages::git_diff_reference(label, &id[..8]),
-                    &format!("/git show {id}"),
+                    &format!("/git show {}", &id[..8]),
                 ));
             } else {
                 extra.push(json!({"text": format!(" [{label}]"), "color": "gray"}));
             }
-        }
-        if self.counts.iter().sum::<u64>() != 0 {
-            extra.push(button(messages::GIT_SHOW_GLOW, "/git diff show"));
-            extra.push(button(messages::GIT_HIDE_GLOW, "/git diff hide"));
         }
         summary
     }

@@ -59,7 +59,7 @@ Rebase uses the same restoration behavior and leaves simulation paused.
 | `/git`, `/git help`, `/help git` | Usage. |
 | `/git status` | Active branch and colored added/removed/modified totals against the working build, plus execution changes and storage usage. |
 | `/git commit <message>` | Save a complete snapshot and advance the active branch. |
-| `/git log [--all] [n]` | Current ancestry, or all commits; defaults to ten entries, up to 1000 per response. Hover for author/date/full ID; click to copy the full ID. |
+| `/git log [--all] [n]` | Current ancestry, or all commits; defaults to ten entries, up to 1000 per response. Hover for author/date/eight-character ID; click to copy that short ID. |
 | `/git log [--all] --page <page>` | Ten entries per page with Previous/Next controls. |
 | `/git search [--all] [--page n] <text>` | Search commit messages. |
 | `/git show <ref>` | Commit ID, author, UTC date, message and parent. |
@@ -70,7 +70,6 @@ Rebase uses the same restoration behavior and leaves simulation paused.
 | `/git diff [ref] [ref]` | Compare HEAD to working build, one saved ref to working build, or two saved refs; show totals and glow automatically. |
 | `/git inspect` | Inspect the non-air block under the crosshair within ten blocks: current state and up to 200 ancestor commits of state history. |
 | `/git restore <ref>` | Restore saved contents as working changes, preserving branch and HEAD, recovering unfinished work and pausing simulation. |
-| `/git diff show`, `/git diff hide` | Enable/disable the prepared glow overlay. |
 | `/git diff inspect <x> <y> <z> [from\|to]` | Show a changed coordinate's states and data immediately; optionally restrict data to one side. |
 | `/git recoveries [page]` | List automatically saved unfinished work. |
 | `/git recover <id> <new-branch>` | Put a recovery on a new branch and check it out. |
@@ -84,12 +83,13 @@ References are branch names, `HEAD`, full commit IDs or unique prefixes of at
 least eight characters. Messages are limited to 256 characters, searches to 128,
 and branch names to 20 ASCII letters/digits/underscores/hyphens, beginning with
 a letter or digit. `HEAD` and names resembling commit IDs are reserved. Each
-repository supports up to 128 branches.
+repository supports up to 128 branches. Completion suggests eight-character
+commit IDs, matching displayed, copied and tooltip IDs.
 
 ## Inspect changes in the world
 
 A comparison shows colored **+added -removed ~modified** totals and secondary
-reference links and **Show glow / Hide glow** buttons in chat. Nonempty comparisons
+reference links in chat. Nonempty comparisons
 show private glow automatically; empty comparisons give gray feedback. Execution
 changes are reported separately. It never lists all changed blocks in chat.
 
@@ -108,10 +108,10 @@ They follow the player, showing the nearest changes in loaded chunks. Defaults
 are 128 markers within 64 blocks, with 32 changes per update. The comparison
 counts remain exact when fewer markers are visible. Comparisons expire after
 45 seconds by default (existing `git_session_seconds` settings are respected) and
-are removed on plot exit, checkout, restore, rebase or permission loss. Hide
-retains the prepared comparison until expiry so Show can restore it. An ordinary
-Git command hides only that player's glow; show/hide and comparison inspection
-keep the comparison usable. Other players' commands never steal or clear it.
+are removed on plot exit, checkout, restore, rebase or permission loss. An ordinary
+Git command hides only that player's glow; `/git inspect`, comparison inspection
+and sword inspection keep the glow visible. Other players' commands never steal
+or clear it.
 
 `/git inspect` needs no sword or prepared comparison. It briefly marks the targeted
 block with private white glow and prints aqua headings, a gray current state, and

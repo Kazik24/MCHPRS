@@ -377,7 +377,6 @@ impl Plot {
             Some("commit") => "commit",
             Some("branch") if args.len() > 1 => "branch",
             Some("checkout" | "restore" | "recover" | "rebase") => "checkout",
-            Some("diff") if args.get(1) == Some(&"show") => "visual",
             _ => "read",
         };
         ensure!(
@@ -385,8 +384,7 @@ impl Plot {
             messages::GIT_PERMISSION_DENIED
         );
         let actor = self.players[player].uuid;
-        if args.first() != Some(&"diff")
-            || !matches!(args.get(1), Some(&"show" | &"hide" | &"inspect"))
+        if args != ["inspect"] && (args.first() != Some(&"diff") || args.get(1) != Some(&"inspect"))
         {
             self.hide_git(player, false);
         }
@@ -394,27 +392,6 @@ impl Plot {
             for line in messages::HELP_GIT.lines() {
                 self.players[player].send_color_message(ColorCode::Gray, line);
             }
-            return Ok(());
-        }
-        if args == ["diff", "hide"] {
-            self.hide_git(player, false);
-            self.players[player]
-                .send_color_message(ColorCode::Gray, messages::GIT_DIFF_GLOW_HIDDEN);
-            return Ok(());
-        }
-        if args == ["diff", "show"] {
-            let session = self
-                .git
-                .sessions
-                .get_mut(&actor)
-                .context(messages::GIT_PREPARE_COMPARISON)?;
-            session.enabled = true;
-            session.last_pos = None;
-            session.next_update = Instant::now();
-            session.expires =
-                Instant::now() + Duration::from_secs(CONFIG.git_session_seconds.clamp(10, 3600));
-            self.players[player]
-                .send_color_message(ColorCode::Gray, messages::GIT_DIFF_INSPECT_HINT);
             return Ok(());
         }
         ensure!(!self.git.locked, messages::GIT_CHECKOUT_LOCKED);
@@ -1119,8 +1096,8 @@ fn completion(
             "recoveries",
             "recover",
         ],
-        ("diff", 1) => vec!["show", "hide", "inspect", "HEAD"],
-        ("diff", 2) if !matches!(words.get(2), Some(&"show" | &"hide" | &"inspect")) => {
+        ("diff", 1) => vec!["inspect", "HEAD"],
+        ("diff", 2) if words.get(2) != Some(&"inspect") => {
             vec!["HEAD"]
         }
         ("checkout" | "restore" | "show", 1) | ("branch", 2) => vec!["HEAD"],
@@ -1130,9 +1107,7 @@ fn completion(
     let refs = matches!(
         (command.as_str(), argument),
         ("diff", 1) | ("checkout" | "restore" | "show", 1) | ("branch", 2)
-    ) || (command == "diff"
-        && argument == 2
-        && !matches!(words.get(2), Some(&"show" | &"hide" | &"inspect")));
+    ) || (command == "diff" && argument == 2 && words.get(2) != Some(&"inspect"));
     if refs || (command == "rebase" && argument == 1) {
         values.extend(branches.iter().map(String::as_str));
     }

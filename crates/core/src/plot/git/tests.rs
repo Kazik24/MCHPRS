@@ -476,15 +476,7 @@ fn diff_classifies_add_remove_state_and_data_and_inspects_removed_positions() {
     let summary = diff.summary().to_string();
     assert!(summary.contains("~2") && summary.contains("execution changed"));
     assert!(!summary.contains("Page"));
-    assert_eq!(
-        diff.summary()["extra"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .find(|part| part["text"] == " [Show glow]")
-            .unwrap()["click_event"]["command"],
-        "/git diff show"
-    );
+    assert!(!summary.contains("Show glow") && !summary.contains("Hide glow"));
     let removed = diff.inspect(pos(2, 64, 3), None).unwrap().to_string();
     assert!(removed.contains("From: stone") && removed.contains("To: air"));
     let inspected = diff.inspect(pos(4, 64, 3), None).unwrap();
@@ -1480,7 +1472,7 @@ fn reference_chat_layout_clipboard_counts_and_contextual_completion() {
     assert_eq!(row["color"], "yellow");
     assert_eq!(
         row["click_event"],
-        json!({"action": "copy_to_clipboard", "value": head})
+        json!({"action": "copy_to_clipboard", "value": &head[..8]})
     );
     assert!(row["hover_event"]["value"]["text"]
         .as_str()
@@ -1502,7 +1494,7 @@ fn reference_chat_layout_clipboard_counts_and_contextual_completion() {
     );
     assert_eq!(
         repo.recent_commits().unwrap(),
-        vec![head.clone(), initial.clone()]
+        vec![head[..8].to_owned(), initial[..8].to_owned()]
     );
     use mchprs_network::packets::clientbound::CChatMessage;
     let packet = CChatMessage {
@@ -1558,7 +1550,19 @@ fn reference_chat_layout_clipboard_counts_and_contextual_completion() {
         completion(&["/git", "checkout"], "MA", &names, &ids),
         vec!["master"]
     );
-    assert!(completion(&["/git", "diff", "HEAD"], &head[..8], &names, &ids).contains(&head));
+    assert_eq!(
+        completion(&["/git", "diff", "HEAD"], &head[..8], &names, &ids),
+        vec![head[..8].to_owned()]
+    );
+    assert!(ids.iter().all(|id| id.len() == 8));
+    assert_eq!(repo.resolve(&head[..8]).unwrap(), head);
+    assert_eq!(repo.resolve(&initial[..8]).unwrap(), initial);
+    let hover = row["hover_event"]["value"]["text"].as_str().unwrap();
+    assert!(hover.ends_with(&head[..8]));
+    assert!(!hover.contains(&head));
+    let suggestions = completion(&["/git", "diff"], "", &names, &ids);
+    assert!(!suggestions.contains(&"show".into()) && !suggestions.contains(&"hide".into()));
+    assert!(!messages::HELP_GIT.contains("diff show|hide"));
     assert_eq!(completion(&["/git", "rebase"], "", &names, &ids), names);
     assert!(completion(&["/git", "diff", "inspect"], "", &names, &ids).is_empty());
 }
@@ -1687,10 +1691,14 @@ fn another_players_commands_and_diff_never_steal_viewer_markers() {
     assert!(Arc::ptr_eq(&plot.git.sessions[&2].diff, &bob_diff));
     assert_eq!(read_frame(&mut bob_peer, false).unwrap().0, 0x72);
     plot.git_command(1, &["help"]).unwrap();
-    plot.git_command(1, &["diff", "hide"]).unwrap();
     plot.git.pending = Some(pending(0));
     assert!(plot.git_command(1, &["status"]).is_err());
     assert!(plot.git_command(1, &["unknown"]).is_err());
+    plot.owner = Some(1);
+    assert!(plot.git_command(0, &["inspect"]).is_err());
+    assert!(plot.git.sessions[&1].enabled);
+    assert_eq!(plot.git.sessions[&1].markers, alice_markers);
+    plot.owner = Some(2);
     plot.git.pending = None;
     assert!(Arc::ptr_eq(&plot.git.sessions[&1].diff, &diff));
     assert_eq!(plot.git.sessions[&1].markers, alice_markers);
