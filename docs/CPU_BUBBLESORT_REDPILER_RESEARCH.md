@@ -1,5 +1,7 @@
 # CPU_BubbleSort: interpreter behavior and Redpiler admission
 
+Follow-up: [CPU compilation bug and runtime observations](CPU_BUBBLESORT_REDPILER_COMPILATION_REPORT.md) records the subsequent sampled-runtime implementation, passing sorting comparisons and remaining regression gaps. The report below preserves the earlier research snapshot.
+
 Research date: 2026-10-07. The unchanged downloaded CPU completes its sorting program in the MCHPRS interpreter. Redpiler rejects it before constructing an executable graph because its horizontal empty ordinary pistons do not fit the implemented clock protocol. The missing piston head is a separate defect; it did not prevent the measured program from sorting and stopping.
 
 This report distinguishes measured interpreter behavior, actual compiler errors, structural recognition limitations and proposed compiler work. It does not certify a compiled CPU or independent Java conformance. Production compiler and interpreter code were not changed by this research.
