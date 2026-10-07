@@ -40,13 +40,7 @@ impl DirectBackend {
             NodeType::Observer => {
                 let powered = !node.powered;
                 if powered {
-                    schedule_tick(
-                        &mut self.scheduler,
-                        node_id,
-                        node,
-                        1,
-                        TickPriority::Normal,
-                    );
+                    schedule_tick(&mut self.scheduler, node_id, node, 1, TickPriority::Normal);
                 }
                 self.set_node(node_id, powered, bool_to_ss(powered));
             }

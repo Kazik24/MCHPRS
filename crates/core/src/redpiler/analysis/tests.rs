@@ -1,6 +1,7 @@
 use super::*;
 mod ideal;
 mod legalization;
+mod memory;
 mod observer_logical;
 mod outputs;
 mod regions;
@@ -633,7 +634,7 @@ fn compiled_adder_matches_arithmetic_and_holds_each_logical_transaction() {
 
 #[test]
 fn extracted_counter_transition_matches_all_sixteen_bit_states() {
-    use crate::redpiler::instant::{boolean::Variable, clocked, logic};
+    use crate::redpiler::instant::{clocked, logic};
     let (world, _, manifest) = fixture("counter_basic");
     let report = analyze_world(&world);
     let program = clocked::recognize(&world, &report, &Default::default(), false)
@@ -666,16 +667,10 @@ fn extracted_counter_transition_matches_all_sixteen_bit_states() {
         for (bit, &actor) in ids.iter().enumerate() {
             bits[actor] = count & (1 << bit) != 0;
         }
+        let fired = logic.evaluate_with_memory(|_| 0, |actor| bits[actor]);
         let mut next = 0u16;
         for (bit, &actor) in ids.iter().enumerate() {
-            if logic.arena.evaluate(logic.responses[actor], |v| match v {
-                Variable::Signal { .. } => false,
-                Variable::Memory(actor) => bits[actor],
-                Variable::Actuator(_)
-                | Variable::Geometry { .. }
-                | Variable::Observer(_)
-                | Variable::WireDot(_) => unreachable!(),
-            }) {
+            if fired[actor] {
                 next |= 1 << bit;
             }
         }
@@ -949,26 +944,32 @@ fn unrelated_ordinary_nodes_keep_working_in_a_compiled_piston_plot() {
 }
 
 #[test]
-fn uncertified_instant_boundaries_fail_transactionally() {
+fn formerly_wave_only_gates_and_explicit_sampling_compile_read_only() {
     for name in ["and_3", "or_interpreter_illigal", "bud_noninstantinputs"] {
-        let (world, bounds, _) = fixture(name);
-        let before = snapshot(&world, bounds);
-        let mut compiler = Compiler::default();
-        let result = compiler.compile(
-            &world,
-            world.get_corners(),
-            Default::default(),
-            Vec::new(),
-            Default::default(),
-        );
-        let error = result.unwrap_err().to_string();
-        if name != "bud_noninstantinputs" {
-            assert!(error.contains("certified instant reset owner")
-                || error.contains("neither a certified observer reset nor a proven payload-following response"), "{name}: {error}");
+        for assume_instant in [false, true] {
+            let (world, bounds, _) = fixture(name);
+            let before = snapshot(&world, bounds);
+            let mut compiler = Compiler::default();
+            compiler
+                .compile(
+                    &world,
+                    world.get_corners(),
+                    CompilerOptions {
+                        assume_instant,
+                        ..Default::default()
+                    },
+                    vec![],
+                    Default::default(),
+                )
+                .unwrap_or_else(|error| panic!("{name}: {error}"));
+            assert!(!compiler
+                .backend
+                .as_ref()
+                .unwrap()
+                .logical_stats()
+                .is_empty());
+            assert_eq!(snapshot(&world, bounds), before);
         }
-        assert!(!compiler.is_active());
-        assert!(compiler.current_flags().is_none());
-        assert_eq!(snapshot(&world, bounds), before, "{name}");
     }
 }
 
@@ -1305,26 +1306,26 @@ fn candidate_graphs_preserve_mobile_aliases_ports_and_world_state_under_optimiza
 }
 
 #[test]
-fn candidate_graphs_reject_uncertified_reset_groups_and_unowned_observers() {
+fn logical_candidate_preparation_preserves_shared_reset_inventory_and_ordinary_observers() {
     let (world, bounds, _) = fixture("or_interpreter_illigal");
     let before = snapshot(&world, bounds);
-    let error = graph::prepare_candidate_graph(
+    let candidate = graph::prepare_candidate_graph(
         &world,
         world.get_corners(),
         &[],
         &Default::default(),
         Default::default(),
     )
-    .unwrap_err();
+    .unwrap();
     assert!(
-        matches!(error, graph::GraphPreparationError::Execution(_)),
-        "{error}"
+        candidate
+            .report
+            .group_recognition
+            .iter()
+            .any(|group| !group.failures.is_empty()),
+        "physical reset inventory is still available"
     );
-    let error = error.to_string();
-    assert!(
-        error.contains("reset") || error.contains("cycle") || error.contains("sampling"),
-        "{error}"
-    );
+    assert_eq!(candidate.summary().instant_inputs, 0);
     assert_eq!(snapshot(&world, bounds), before);
     let (mut world, bounds, _) = fixture("instant_observer");
     world.set_block(
@@ -1337,23 +1338,30 @@ fn candidate_graphs_reject_uncertified_reset_groups_and_unowned_observers() {
         },
     );
     let before = snapshot(&world, bounds);
-    let error = graph::prepare_candidate_graph(
+    graph::prepare_candidate_graph(
         &world,
         world.get_corners(),
         &[],
         &Default::default(),
         Default::default(),
     )
-    .unwrap_err();
-    assert!(
-        matches!(error, graph::GraphPreparationError::Execution(_)),
-        "{error}"
-    );
-    assert!(
-        error.to_string().contains("no supported region owner"),
-        "{error}"
-    );
+    .unwrap();
     assert_eq!(snapshot(&world, bounds), before);
+    let mut compiler = Compiler::default();
+    compiler
+        .compile(
+            &world,
+            world.get_corners(),
+            Default::default(),
+            vec![],
+            Default::default(),
+        )
+        .unwrap();
+    for _ in 0..24 {
+        compiler.tick();
+        compiler.flush(&mut world);
+    }
+    assert!(matches!(world.get_block(BASE), Block::Observer { observer } if !observer.powered));
 }
 
 #[test]
@@ -1421,7 +1429,16 @@ fn exposed_reset_signals_and_missing_graph_sources_are_explicit_errors() {
     let cap = BASE + BlockPos::new(0, 3, 5);
     world.set_block(
         cap.offset(BlockFace::East),
-        Block::RedstoneLamp { lit: false },
+        Block::RedstoneRepeater {
+            repeater: mchprs_blocks::blocks::RedstoneRepeater {
+                facing: mchprs_blocks::BlockDirection::West,
+                ..Default::default()
+            },
+        },
+    );
+    world.set_block(
+        cap.offset(BlockFace::East).offset(BlockFace::Bottom),
+        Block::Stone {},
     );
     let error = graph::prepare_candidate_graph(
         &world,
@@ -1435,7 +1452,10 @@ fn exposed_reset_signals_and_missing_graph_sources_are_explicit_errors() {
         matches!(error, graph::GraphPreparationError::Execution(_)),
         "{error}"
     );
-    assert!(error.to_string().contains("ordinary consumer"), "{error}");
+    assert!(
+        error.to_string().contains("ordinary") && error.to_string().contains("consumer"),
+        "{error}"
+    );
 
     let mut world = empty();
     world.set_block(BASE, Block::RedstoneLamp { lit: false });
@@ -1565,6 +1585,32 @@ fn shared_reset_exposure_inventory_does_not_mutate_logical_preparation() {
     .unwrap();
     assert_eq!(candidate.summary().instant_inputs, 0);
     assert_eq!(snapshot(&world, bounds), before);
+    let mut compiler = Compiler::default();
+    compiler
+        .compile(
+            &world,
+            bounds,
+            Default::default(),
+            vec![],
+            Default::default(),
+        )
+        .unwrap();
+    for _ in 0..24 {
+        compiler.tick();
+    }
+    let held = compiler.backend.as_ref().unwrap().logical_stats();
+    for _ in 0..32 {
+        compiler.tick();
+    }
+    assert_eq!(compiler.backend.as_ref().unwrap().logical_stats(), held);
+    compiler.reset(&mut world, bounds);
+    for piston in &report.pistons {
+        assert!(matches!(world.get_block(piston.pos), Block::Piston { piston } if piston.extended));
+        assert!(matches!(world.get_block(piston.head), Block::PistonHead { head } if !head.short));
+        assert_eq!(world.get_block(piston.payload), Block::RedstoneBlock);
+    }
+    assert!(world.piston_state().events.is_empty());
+    assert!(world.piston_state().motions.is_empty());
 
     // One torch can physically reach both bases. It cannot be removed as
     // independently owned reset circuitry for two separate payload protocols.
@@ -1606,6 +1652,32 @@ fn shared_reset_exposure_inventory_does_not_mutate_logical_preparation() {
     .unwrap();
     assert_eq!(candidate.summary().instant_inputs, 0);
     assert_eq!(snapshot(&world, bounds), before);
+    let mut compiler = Compiler::default();
+    compiler
+        .compile(
+            &world,
+            bounds,
+            Default::default(),
+            vec![],
+            Default::default(),
+        )
+        .unwrap();
+    for _ in 0..24 {
+        compiler.tick();
+    }
+    let held = compiler.backend.as_ref().unwrap().logical_stats();
+    for _ in 0..32 {
+        compiler.tick();
+    }
+    assert_eq!(compiler.backend.as_ref().unwrap().logical_stats(), held);
+    compiler.reset(&mut world, bounds);
+    for piston in &report.pistons {
+        assert!(matches!(world.get_block(piston.pos), Block::Piston { piston } if piston.extended));
+        assert!(matches!(world.get_block(piston.head), Block::PistonHead { head } if !head.short));
+        assert_eq!(world.get_block(piston.payload), Block::RedstoneBlock);
+    }
+    assert!(world.piston_state().events.is_empty());
+    assert!(world.piston_state().motions.is_empty());
 }
 
 #[test]

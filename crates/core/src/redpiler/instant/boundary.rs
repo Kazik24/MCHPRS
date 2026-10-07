@@ -17,7 +17,6 @@ pub(crate) struct Boundaries<'a> {
     consumers: FxHashSet<BlockPos>,
     hidden: FxHashSet<BlockPos>,
     retained: FxHashSet<BlockPos>,
-    sampled_wires: FxHashSet<BlockPos>,
     pub executable: bool,
     pub outputs: &'a [OutputPort],
     output_channels: FxHashMap<(BlockPos, bool), usize>,
@@ -40,7 +39,6 @@ impl<'a> Boundaries<'a> {
             consumers,
             hidden: Default::default(),
             retained: Default::default(),
-            sampled_wires: Default::default(),
             executable: false,
             outputs: &[],
             output_channels: Default::default(),
@@ -52,6 +50,8 @@ impl<'a> Boundaries<'a> {
         wires: &FxHashSet<BlockPos>,
         sources: &[BlockPos],
         outputs: &'a [OutputPort],
+        owned: &FxHashSet<BlockPos>,
+        empty_far: &FxHashSet<BlockPos>,
     ) -> Self {
         let mut result = Self::new(report);
         result.executable = true;
@@ -70,35 +70,30 @@ impl<'a> Boundaries<'a> {
             .consumers
             .extend(outputs.iter().map(|port| port.consumer));
         result.hidden.extend(wires.iter().copied());
-        result.hidden.extend(
+        result.hidden.extend(owned.iter().copied());
+        // Compile-owned reset/clock observers have no ordinary graph source;
+        // electrical search must omit them just as logical extraction does.
+        result.internals.extend(
             report
-                .pistons
+                .observers
                 .iter()
-                .flat_map(|p| [p.pos, p.head, p.payload]),
+                .copied()
+                .filter(|pos| owned.contains(pos)),
         );
-        result.internals.extend(report.observers.iter().copied());
+        result.mobile.retain(|pos, _| !empty_far.contains(pos));
         result.retained.extend(sources.iter().copied());
         // Extracted live sources outrank a provisional reset-family label.
         // Otherwise identify_nodes removes a source that the plan must bind.
-        result.internals.retain(|pos| !result.retained.contains(pos));
+        result
+            .internals
+            .retain(|pos| !result.retained.contains(pos));
+        result.hidden.retain(|pos| !result.retained.contains(pos));
         result
     }
 
     pub fn projects(&self, pos: BlockPos, input: LinkType) -> bool {
         self.output_channels
             .contains_key(&(pos, input == LinkType::Side))
-    }
-
-    pub fn retain_sequential_sources(&mut self, sources: impl IntoIterator<Item = BlockPos>) {
-        for pos in sources { self.internals.remove(&pos); }
-    }
-
-    pub fn own_sampled_wires(&mut self, wires: impl IntoIterator<Item = BlockPos>) {
-        self.sampled_wires.extend(wires);
-    }
-
-    pub fn is_sampled_wire(&self, pos: BlockPos) -> bool {
-        self.sampled_wires.contains(&pos)
     }
 
     pub fn is_retained(&self, pos: BlockPos) -> bool {

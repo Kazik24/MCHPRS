@@ -139,15 +139,6 @@ impl FromIterator<TickEntry> for TickScheduler<ScheduledBlockTick> {
 }
 
 impl<T> TickScheduler<T> {
-    /// Preserve relative deadlines, priority and FIFO order for retained work.
-    pub(crate) fn retain(&mut self, mut keep: impl FnMut(&T) -> bool) {
-        for bucket in &mut self.queues_deque {
-            for queue in &mut bucket.0 {
-                queue.retain(&mut keep);
-            }
-        }
-    }
-
     #[inline]
     pub fn schedule_tick(&mut self, node: T, delay: usize, priority: TickPriority) {
         self.schedule_half_tick(node, delay * 2, priority);

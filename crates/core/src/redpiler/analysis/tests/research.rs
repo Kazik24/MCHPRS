@@ -692,34 +692,129 @@ fn fpu_strict_import_preserves_the_947_analog_reference_values() {
 #[test]
 fn fixed_fpu_compiles_with_and_without_optimization() {
     let fixture = manifest("fpu_legal");
-    let (world, _) = load(&fixture);
-    for assume_instant in [false, true] {
-        for optimize in [false, true] {
-            let mut compiler = Compiler::default();
-            compiler
-                .compile(
-                    &world,
-                    world.get_corners(),
-                    CompilerOptions {
-                        optimize,
-                        assume_instant,
-                        ..Default::default()
-                    },
-                    vec![],
-                    Default::default(),
-                )
-                .unwrap();
-            assert!(compiler.is_active());
-            assert!(compiler.warnings().is_empty());
-            if assume_instant {
+    let mut errors = Vec::new();
+    for optimize in [true, false] {
+        let (mut world, _) = load(&fixture);
+        let bounds = world.get_corners();
+        let mut compiler = Compiler::default();
+        let result = compiler.compile(
+            &world,
+            bounds,
+            CompilerOptions {
+                optimize,
+                assume_instant: true,
+                ..Default::default()
+            },
+            vec![],
+            Default::default(),
+        );
+        match result {
+            Ok(()) => {
+                assert!(compiler.is_active());
+                assert!(compiler.warnings().is_empty());
                 assert!(!compiler
                     .backend
                     .as_ref()
                     .unwrap()
                     .logical_stats()
                     .is_empty());
+                for _ in 0..8 {
+                    compiler.tick_with_world(&mut world);
+                }
+                compiler.reset(&mut world, bounds);
+                assert!(!compiler.is_active());
+                assert!(world.piston_state().events.is_empty());
+                assert!(world.piston_state().motions.is_empty());
+                assert!(!world.scheduler().iter_entries().any(|entry| matches!(
+                    world.get_block(entry.pos),
+                    Block::Piston { .. } | Block::PistonHead { .. } | Block::MovingPiston { .. }
+                )));
+                crate::world::for_each_block_optimized(&world, bounds.0, bounds.1, |pos| {
+                    let block = world.get_block(pos);
+                    assert!(!matches!(block, Block::MovingPiston { .. }), "{pos:?}");
+                    if let Block::Piston { piston } = block {
+                        if piston.extended {
+                            assert!(
+                                matches!(world.get_block(pos.offset(piston.facing.into())),
+                                Block::PistonHead { head } if head.facing == piston.facing && head.sticky == piston.sticky && !head.short),
+                                "settled extended piston at {pos:?} needs its matching head"
+                            );
+                        }
+                    }
+                });
+                // This fixture's proved reset above owner (48,62,42) must
+                // export a dormant observer, without replaying its flash.
+                let reset = BASE + BlockPos::new(8, 33, 2);
+                assert!(
+                    matches!(world.get_block(reset), Block::Observer { observer } if !observer.powered)
+                );
+                assert!(!world
+                    .scheduler()
+                    .iter_entries()
+                    .any(|entry| entry.pos == reset));
+            }
+            Err(error) => {
+                assert!(!compiler.is_active());
+                errors.push(format!("assume_instant=true, optimize={optimize}: {error}"));
             }
         }
+    }
+    assert!(
+        errors.is_empty(),
+        "FPU compilation failures:\n{}",
+        errors.join("\n")
+    );
+}
+
+#[test]
+fn fixed_fpu_default_requires_construction_certification_transactionally() {
+    let fixture = manifest("fpu_legal");
+    for optimize in [true, false] {
+        let (world, bounds) = load(&fixture);
+        let fingerprint = |world: &PlotWorld| {
+            let mut digest = Sha256::new();
+            crate::world::for_each_block_optimized(world, bounds.0, bounds.1, |pos| {
+                for coordinate in [pos.x, pos.y, pos.z] {
+                    digest.update(coordinate.to_le_bytes());
+                }
+                digest.update(world.get_block_raw(pos).to_le_bytes());
+                digest.update(serde_json::to_vec(&world.get_block_entity(pos)).unwrap());
+            });
+            digest.update(serde_json::to_vec(world.piston_state()).unwrap());
+            digest.update(
+                serde_json::to_vec(&world.scheduler().iter_entries().collect::<Vec<_>>()).unwrap(),
+            );
+            digest.finalize()
+        };
+        let before = fingerprint(&world);
+        let mut compiler = Compiler::default();
+        let error = compiler
+            .compile(
+                &world,
+                world.get_corners(),
+                CompilerOptions {
+                    optimize,
+                    ..Default::default()
+                },
+                vec![],
+                Default::default(),
+            )
+            .unwrap_err()
+            .to_string();
+        assert!(
+            error.contains(
+                "neither a certified observer reset nor a proven payload-following response"
+            ),
+            "{error}"
+        );
+        assert!(
+            error.contains(&format!("{:?}", BASE + BlockPos::new(6, 38, 75))),
+            "{error}"
+        );
+        assert!(error.contains("--assume-instant"), "{error}");
+        assert!(!compiler.is_active());
+        assert!(compiler.current_flags().is_none());
+        assert_eq!(fingerprint(&world), before);
     }
 }
 
@@ -795,10 +890,11 @@ fn fpu_material_legalization_preserves_the_author_confirmed_invalid_entries() {
 }
 
 #[test]
-fn rilax_material_diagnostics_reject_uncertified_logical_sampling_transactionally() {
-    let (world, bounds) = load(&manifest("rilax_memory_bank_bud"));
-    let report = analyze_world(&world);
-    let unsupported: Vec<_> = report
+fn rilax_logical_memory_preserves_data_until_delivered_write_and_read_events() {
+    let descriptor = manifest("rilax_memory_bank_bud");
+    let (imported, bounds) = load(&descriptor);
+    let report = analyze_world(&imported);
+    let empty_generators: Vec<_> = report
         .pistons
         .iter()
         .filter(|p| {
@@ -806,21 +902,54 @@ fn rilax_material_diagnostics_reject_uncertified_logical_sampling_transactionall
                 .contains(&PistonDiagnostic::UnsupportedPayload)
         })
         .collect();
-    assert_eq!(unsupported.len(), 56);
-    assert!(unsupported
+    assert_eq!(empty_generators.len(), 56);
+    assert!(empty_generators
         .iter()
-        .all(|p| !p.piston.sticky && world.get_block(p.payload) == Block::Air));
-    let before = snapshot(&world, bounds);
-    for assume_instant in [false, true] {
+        .all(|p| !p.piston.sticky && imported.get_block(p.payload) == Block::Air));
+    let imported_snapshot = snapshot(&imported, bounds);
+    let words = |compiler: &Compiler| {
+        let stats = compiler.backend.as_ref().unwrap().logical_stats();
+        let memory: Vec<_> = stats
+            .iter()
+            .flat_map(|(_, _, memory)| memory.iter())
+            .collect();
+        std::array::from_fn::<_, 8, _>(|address| {
+            (0..8).fold(0u8, |word, bit| {
+                let stored = memory
+                    .iter()
+                    .find(|(pos, _)| *pos == memory_pos(address as u8, bit))
+                    .expect("explicit RILAX memory cell")
+                    .1;
+                word | (u8::from(stored) << bit)
+            })
+        })
+    };
+    let controls =
+        |compiler: &mut Compiler, world: &mut PlotWorld, inputs: Vec<(BlockPos, bool)>| {
+            for (pos, powered) in inputs {
+                let Block::Lever { lever } = world.get_block(pos) else {
+                    panic!("missing RILAX control {pos:?}")
+                };
+                if lever.powered != powered {
+                    compiler.on_use_block(pos);
+                    compiler.flush(world);
+                }
+            }
+            for _ in 0..24 {
+                compiler.tick_with_world(world);
+            }
+            compiler.flush(world);
+        };
+    // This import's read-path gate has no default construction certificate.
+    // Trust waives that proof only; all sampling/data/feedback checks still run.
+    for optimize in [false, true] {
         let mut compiler = Compiler::default();
         let error = compiler
             .compile(
-                &world,
-                world.get_corners(),
+                &imported,
+                imported.get_corners(),
                 CompilerOptions {
-                    assume_instant,
-                    optimize: true,
-                    io_only: true,
+                    optimize,
                     ..Default::default()
                 },
                 vec![],
@@ -829,11 +958,116 @@ fn rilax_material_diagnostics_reject_uncertified_logical_sampling_transactionall
             .unwrap_err()
             .to_string();
         assert!(
-            error.contains("sampling") || error.contains("generator"),
+            error.contains(
+                "neither a certified observer reset nor a proven payload-following response"
+            ),
+            "{error}"
+        );
+        assert!(
+            error.contains(&format!("{:?}", BASE + BlockPos::new(0, 5, 10))),
             "{error}"
         );
         assert!(!compiler.is_active());
-        assert_eq!(snapshot(&world, bounds), before);
+        assert_eq!(snapshot(&imported, bounds), imported_snapshot);
+    }
+    for assume_instant in [true] {
+        for optimize in [false, true] {
+            let (mut world, _) = load(&descriptor);
+            let mut compiler = Compiler::default();
+            compiler
+                .compile(
+                    &world,
+                    world.get_corners(),
+                    CompilerOptions {
+                        assume_instant,
+                        optimize,
+                        io_only: true,
+                        ..Default::default()
+                    },
+                    vec![],
+                    Default::default(),
+                )
+                .unwrap();
+            assert_eq!(
+                snapshot(&world, bounds),
+                imported_snapshot,
+                "compilation is read-only"
+            );
+            assert!(compiler
+                .backend
+                .as_ref()
+                .unwrap()
+                .logical_stats()
+                .iter()
+                .all(|(_, samples, _)| *samples == 0));
+            let mut expected = words(&compiler);
+            for (selected, value) in [(0u8, 0xa5u8), (2, 0x5a), (7, 0xff), (0, 0), (2, 0x81)] {
+                controls(
+                    &mut compiler,
+                    &mut world,
+                    (0..3)
+                        .map(|bit| {
+                            (
+                                BASE + BlockPos::new(19, 12, 3 + 2 * bit),
+                                selected & (1 << bit) != 0,
+                            )
+                        })
+                        .collect(),
+                );
+                let before_data = words(&compiler);
+                controls(
+                    &mut compiler,
+                    &mut world,
+                    (0..8)
+                        .map(|bit| {
+                            (
+                                BASE + BlockPos::new(14, 14, 25 - 2 * bit),
+                                value & (1 << bit) != 0,
+                            )
+                        })
+                        .collect(),
+                );
+                assert_eq!(
+                    words(&compiler),
+                    before_data,
+                    "prepared data must wait for a delivered event"
+                );
+                controls(&mut compiler, &mut world, vec![(BASE + WRITE_ENABLE, true)]);
+                controls(
+                    &mut compiler,
+                    &mut world,
+                    vec![(BASE + WRITE_ENABLE, false)],
+                );
+                expected[usize::from(selected)] = value;
+                assert_eq!(words(&compiler), expected, "write address {selected}");
+            }
+            for selected in [7u8, 2, 0] {
+                controls(
+                    &mut compiler,
+                    &mut world,
+                    (0..3)
+                        .map(|bit| {
+                            (
+                                BASE + BlockPos::new(20, 7, 3 + 2 * bit),
+                                selected & (1 << bit) != 0,
+                            )
+                        })
+                        .collect(),
+                );
+                controls(&mut compiler, &mut world, vec![(BASE + READ_ENABLE, true)]);
+                assert_eq!(
+                    output_word(&world),
+                    expected[usize::from(selected)],
+                    "read address {selected}"
+                );
+                controls(&mut compiler, &mut world, vec![(BASE + READ_ENABLE, false)]);
+                assert_eq!(words(&compiler), expected);
+            }
+            compiler.reset(&mut world, bounds);
+            assert_eq!(memory_words(&world), expected);
+            assert!(world.piston_state().events.is_empty());
+            assert!(world.piston_state().motions.is_empty());
+        }
     }
 }
 

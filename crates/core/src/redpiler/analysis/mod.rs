@@ -320,9 +320,6 @@ pub fn analyze(
                                 }
                                 Block::Observer { .. } => {
                                     report.observers.push(pos);
-                                    report
-                                        .issues
-                                        .push(AdmissionIssue::ObserverRuntimeUnavailable { pos });
                                 }
                                 _ => {}
                             }
@@ -346,7 +343,7 @@ pub fn analyze(
                 .push(AdmissionIssue::UnownedPistonHead { pos });
         }
     }
-    report.payload_groups = payload_groups(&report.pistons);
+    report.payload_groups = payload_groups(world, &report.pistons);
     if !report.pistons.is_empty() {
         let mobile = report
             .payload_groups
@@ -511,11 +508,23 @@ fn describe(
     p
 }
 
-fn payload_groups(pistons: &[PistonDescriptor]) -> Vec<PayloadGroup> {
+fn payload_groups(world: &impl World, pistons: &[PistonDescriptor]) -> Vec<PayloadGroup> {
     // Linear-size union-find over possible near/far payload positions. Avoid an
     // O(pistons^2) pairwise search on adders and long chains.
     let mut parent: Vec<_> = (0..pistons.len()).collect();
     let mut rank = vec![0u8; pistons.len()];
+    // An empty ordinary generator only occupies its head. Its far cell can
+    // be a stationary base/head belonging to a different logical mechanism.
+    let aliases = |p: &PistonDescriptor| {
+        let far = p.head.offset(p.piston.facing.into());
+        let empty = !p.piston.sticky
+            && (world.get_block(p.head) == Block::Air
+                || matches!(world.get_block(p.head), Block::PistonHead { head } if p.piston.extended && !head.sticky && !head.short && head.facing == p.piston.facing))
+            && !crate::redpiler::instant::outputs::supported_payload(world.get_block(far));
+        [Some(p.head), (!empty).then_some(far)]
+            .into_iter()
+            .flatten()
+    };
     fn root(parent: &mut [usize], mut i: usize) -> usize {
         while parent[i] != i {
             parent[i] = parent[parent[i]];
@@ -525,7 +534,7 @@ fn payload_groups(pistons: &[PistonDescriptor]) -> Vec<PayloadGroup> {
     }
     let mut owners = FxHashMap::default();
     for (i, p) in pistons.iter().enumerate() {
-        for q in [p.head, p.head.offset(p.piston.facing.into())] {
+        for q in aliases(p) {
             if let Some(&j) = owners.get(&q) {
                 let a = root(&mut parent, i);
                 let b = root(&mut parent, j);
@@ -556,9 +565,7 @@ fn payload_groups(pistons: &[PistonDescriptor]) -> Vec<PayloadGroup> {
             groups.len() - 1
         });
         groups[group].members.push(i);
-        groups[group]
-            .positions
-            .extend([p.head, p.head.offset(p.piston.facing.into())]);
+        groups[group].positions.extend(aliases(p));
     }
     for group in &mut groups {
         group.positions.sort_by_key(|p| (p.y, p.z, p.x));

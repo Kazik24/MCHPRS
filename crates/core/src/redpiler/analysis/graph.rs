@@ -139,12 +139,18 @@ pub fn prepare_candidate_graph(
     )
     .map_err(GraphPreparationError::Analysis)?;
     let graph = if report.pistons.is_empty() {
-        let input = CompilerInput { world, bounds: report.bounds, ticks, boundaries: None };
+        let input = CompilerInput {
+            world,
+            bounds: report.bounds,
+            ticks,
+            boundaries: None,
+        };
         crate::redpiler::passes::run_passes(options, &input, &monitor)
             .map_err(GraphPreparationError::Graph)?
     } else {
         crate::redpiler::instant::program::prepare(world, &report, ticks, options, monitor.clone())
-            .map_err(GraphPreparationError::Execution)?.0
+            .map_err(GraphPreparationError::Execution)?
+            .0
     };
     if monitor.cancelled() {
         return Err(GraphPreparationError::Analysis(AnalysisError::Cancelled));

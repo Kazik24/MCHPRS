@@ -1,12 +1,16 @@
-//! Logical Counter throughput and warmed divider episodes; BubbleSort admission only.
+//! Compiled/interpreted Counter throughput and warmed divider episodes; BubbleSort admission only.
 use anyhow::{bail, ensure, Context, Result};
-use mchprs_blocks::{blocks::Block, BlockPos};
+use mchprs_blocks::{
+    blocks::{Block, LeverFace},
+    BlockFace, BlockPos,
+};
 use mchprs_core::{
     plot::{
         worldedit::{load_schematic, paste_clipboard},
         PlotWorld, PLOT_WIDTH,
     },
     redpiler::{Compiler, CompilerOptions},
+    redstone,
     world::{storage::Chunk, World},
 };
 use serde_json::{json, Value};
@@ -23,6 +27,7 @@ fn main() -> Result<()> {
     let mut ticks = 60_000u32;
     let mut flush_every = 0u32;
     let mut optimize = false;
+    let mut interpreted = false;
     let mut output = None;
     let mut args = std::env::args().skip(1);
     while let Some(arg) = args.next() {
@@ -32,8 +37,12 @@ fn main() -> Result<()> {
                 optimize = true;
                 continue;
             }
+            "--interpreted" => {
+                interpreted = true;
+                continue;
+            }
             "--help" => {
-                println!("instant [--component counter_basic|cpu_bubblesort|fpu_divider] [--optimize] [--iterations 3] [--episodes 32] [--ticks 60000] [--flush-every 0|1] [--output path.json]");
+                println!("instant [--component counter_basic|cpu_bubblesort|fpu_divider] [--interpreted | --optimize] [--iterations 3] [--episodes 32] [--ticks 60000] [--flush-every 0|1] [--output path.json]");
                 return Ok(());
             }
             _ => {}
@@ -58,6 +67,14 @@ fn main() -> Result<()> {
         "--ticks must be at least 50000 and divisible by six"
     );
     ensure!(flush_every <= 1, "--flush-every must be zero or one");
+    ensure!(
+        !interpreted || !optimize,
+        "--optimize applies only to compiled execution"
+    );
+    ensure!(
+        !interpreted || component != "cpu_bubblesort",
+        "--interpreted compares Counter/divider runtime; BubbleSort is admission only"
+    );
     let manifest_path = match component.as_str() {
         "counter_basic" => "test_data/instant-pistons-io/fixtures/counter_basic.json",
         "cpu_bubblesort" => "test_data/piston-research/fixtures/cpu_bubblesort.json",
@@ -71,24 +88,40 @@ fn main() -> Result<()> {
         descriptor["origin"] = json!([2, 8, 2]);
     }
     let mut samples = Vec::new();
+    let backend = if interpreted {
+        "interpreted"
+    } else {
+        "compiled"
+    };
+    let tick_operation = if interpreted {
+        "tick_interpreted"
+    } else {
+        "tick_with_world"
+    };
     for index in 1..=iterations {
-        println!("{component} sample {index}/{iterations}");
+        println!("{backend} {component} sample {index}/{iterations}");
         let mut world = load(&descriptor)?;
-        let mut compiler = Compiler::default();
+        let mut compiler = (!interpreted).then(Compiler::default);
         let started = Instant::now();
-        let admission = compiler.compile(
-            &world,
-            world.get_corners(),
-            CompilerOptions {
-                assume_instant: true,
-                optimize,
-                budget_multiplier: 8,
-                ..Default::default()
-            },
-            Vec::new(),
-            Default::default(),
-        );
-        let compile_seconds = started.elapsed().as_secs_f64();
+        let admission = compiler.as_mut().map_or(Ok(()), |compiler| {
+            compiler.compile(
+                &world,
+                world.get_corners(),
+                CompilerOptions {
+                    assume_instant: true,
+                    optimize,
+                    budget_multiplier: 8,
+                    ..Default::default()
+                },
+                Vec::new(),
+                Default::default(),
+            )
+        });
+        let compile_seconds = if interpreted {
+            0.0
+        } else {
+            started.elapsed().as_secs_f64()
+        };
         let mut sample = match admission {
             Err(error) => json!({"admitted": false, "error": error.to_string()}),
             Ok(()) if component == "cpu_bubblesort" => {
@@ -107,12 +140,38 @@ fn main() -> Result<()> {
                     )
                 };
                 let mut result = result.unwrap_or_else(|error| json!({"error": error.to_string()}));
-                result["admitted"] = json!(true);
+                if !interpreted {
+                    result["admitted"] = json!(true);
+                }
                 result
             }
         };
         sample["compile_seconds_metadata"] = json!(compile_seconds);
-        sample["warnings"] = json!(compiler.warnings());
+        sample["compile_statistics"] = json!(compiler.as_ref().and_then(Compiler::stats).map(|stats| {
+            let regions = &stats.regions;
+            json!({
+                "backend_nodes": stats.backend_nodes,
+                "graph": {
+                    "baseline": stats.graph.baseline().map(|counts| json!({"nodes": counts.nodes, "links": counts.links})),
+                    "final": stats.graph.final_graph().map(|counts| json!({"nodes": counts.nodes, "links": counts.links})),
+                    "wire_nodes_elided_before_baseline": stats.graph.wire_nodes_elided,
+                },
+                "regions": {
+                    "logical": regions.logical_regions, "clocked": regions.clocked_regions,
+                    "pistons": regions.pistons, "payload_groups": regions.payload_groups,
+                    "memory_cells": regions.memory_cells,
+                },
+                "program": {
+                    "arena_decisions_including_handoff": regions.decisions,
+                    "response_roots": regions.response_roots,
+                    "output_ports": regions.output_ports, "output_terms": regions.output_terms,
+                    "executable_response_decisions": regions.logical_response_decisions,
+                    "executable_output_and_sampling_decisions": regions.logical_output_decisions,
+                    "input_bindings": regions.logical_input_bindings,
+                },
+            })
+        }));
+        sample["warnings"] = json!(compiler.as_ref().map_or(&[][..], Compiler::warnings));
         println!("{}", serde_json::to_string(&sample)?);
         samples.push(sample);
     }
@@ -124,17 +183,18 @@ fn main() -> Result<()> {
     elapsed.sort_by(f64::total_cmp);
     let median = elapsed.get(elapsed.len() / 2).copied();
     let report = json!({
-        "schema": 1, "component": component, "manifest": manifest_path, "schematic_sha256": descriptor["sha256"],
+        "schema": 1, "backend": backend, "component": component, "manifest": manifest_path, "schematic_sha256": descriptor["sha256"],
         "actual_origin": [origin(&descriptor).x, origin(&descriptor).y, origin(&descriptor).z],
-        "flags": if optimize { "-O --assume-instant" } else { "--assume-instant" }, "budget_multiplier": 8,
-        "admitted_means": "compiler acceptance only; no physical or arithmetic equivalence claim",
-        "scope": "actual logical Counter/divider paths; BubbleSort admission only; no runtime fallback",
-        "measurement_kind": match component.as_str() { "counter_basic" => "logical_counter_runtime", "fpu_divider" => "logical_divider_episodes", _ => "admission_only" },
+        "flags": if interpreted { None } else { Some(if optimize { "-O --assume-instant" } else { "--assume-instant" }) }, "budget_multiplier": (!interpreted).then_some(8),
+        "admitted_means": (!interpreted).then_some("compiler acceptance only; no physical or arithmetic equivalence claim"),
+        "scope": if interpreted { "interpreter Counter/divider with identical saved inputs, warmup, stimulus and observation windows" } else { "actual logical Counter/divider paths; BubbleSort admission only; no runtime fallback" },
+        "measurement_kind": match (component.as_str(), interpreted) { ("counter_basic", true) => "interpreted_counter_runtime", ("counter_basic", false) => "logical_counter_runtime", ("fpu_divider", true) => "interpreted_divider_episodes", ("fpu_divider", false) => "logical_divider_episodes", _ => "admission_only" },
         "timing": if component == "fpu_divider" {
-            "accumulated stimulus and per-tick timers include on_use_block, tick_with_world and optional flush; initialization, one warm episode and output observations excluded"
+            format!("accumulated stimulus and per-tick timers include lever use, {tick_operation} and optional compiled flush; initialization, one warm episode and output observations excluded")
         } else {
-            "per-tick tick_with_world; optional Compiler::flush included; preparation and observations excluded"
+            format!("per-tick {tick_operation}; optional compiled flush included; preparation and observations excluded")
         },
+        "interpreter_flush_policy": interpreted.then_some("no-op: interpreter block state is already published"),
         "counter_protocol": "exact IO fixture; 24 inactive ticks, lever OFF->ON, 600 active warmup ticks, then fixed active window",
         "game_ticks": if component == "counter_basic" { Some(ticks) } else { None }, "flush_every_game_ticks": flush_every,
         "divider_protocol": (component == "fpu_divider").then_some("saved A/B held; 64 ON initialization ticks; one untimed OFF128/ON128 warm episode; repeated held OFF128/ON128 complete episodes preserving ordinary clock timing; observe response170 during OFF and verify final reset0 after ON"),
@@ -156,7 +216,7 @@ fn main() -> Result<()> {
 }
 
 fn counter(
-    compiler: &mut Compiler,
+    compiler: &mut Option<Compiler>,
     world: &mut PlotWorld,
     descriptor: &Value,
     ticks: u32,
@@ -191,37 +251,37 @@ fn counter(
     };
     read(world)?;
     for _ in 0..24 {
-        compiler.tick_with_world(world);
+        tick(compiler, world);
     }
-    compiler.on_use_block(trigger);
+    use_lever(compiler, world, trigger);
     for _ in 0..600 {
-        compiler.tick_with_world(world);
+        tick(compiler, world);
     }
     let mut elapsed = Duration::ZERO;
     let mut progression = Vec::new();
-    for tick in 1..=ticks {
+    for game_tick in 1..=ticks {
         let started = Instant::now();
-        compiler.tick_with_world(world);
+        tick(compiler, world);
         if flush_every == 1 {
-            compiler.flush(world);
+            flush(compiler, world);
         }
         elapsed += started.elapsed();
-        if tick % 600 == 5 || tick == ticks - 1 {
+        if game_tick % 600 == 5 || game_tick == ticks - 1 {
             if flush_every == 0 {
-                compiler.flush(world);
+                flush(compiler, world);
             }
-            progression.push((600 + tick, read(world)?));
+            progression.push((600 + game_tick, read(world)?));
         }
     }
     let changing = progression.windows(2).all(|pair| pair[0].1 != pair[1].1);
     Ok(
-        json!({"measurement_kind": "logical_counter_runtime", "activity_confirmed": changing,
+        json!({"measurement_kind": if compiler.is_some() { "logical_counter_runtime" } else { "interpreted_counter_runtime" }, "activity_confirmed": changing,
         "seconds": elapsed.as_secs_f64(), "word_progression": progression}),
     )
 }
 
 fn divider(
-    compiler: &mut Compiler,
+    compiler: &mut Option<Compiler>,
     world: &mut PlotWorld,
     descriptor: &Value,
     episodes: usize,
@@ -253,9 +313,9 @@ fn divider(
     };
     read(world)?;
     for _ in 0..64 {
-        compiler.tick_with_world(world);
+        tick(compiler, world);
     }
-    compiler.flush(world);
+    flush(compiler, world);
     let (_, warm_response, _) = divider_phase(compiler, world, trigger, flush_every, &read)?;
     let (_, _, warm_reset) = divider_phase(compiler, world, trigger, flush_every, &read)?;
     ensure!(
@@ -277,43 +337,77 @@ fn divider(
     }
     let seconds = elapsed.as_secs_f64();
     Ok(json!({
-        "measurement_kind": "logical_divider_episodes", "activity_confirmed": true,
+        "measurement_kind": if compiler.is_some() { "logical_divider_episodes" } else { "interpreted_divider_episodes" }, "activity_confirmed": true,
         "seconds": seconds, "episodes": episodes, "episodes_per_second": episodes as f64 / seconds,
         "game_ticks_per_episode": 256, "warmup_game_ticks": 320,
         "response_170_observed_each_off_window": true, "final_reset_0_verified": true,
         "verified_episodes": episodes, "episode_observations": words,
-        "flush_policy": if flush_every == 0 { "every game tick for observation, excluded" } else { "every game tick, included" },
-        "timed_operations": "on_use_block for both enable edges, 256 tick_with_world calls per episode, optional per-tick flush; timer overhead included",
+        "flush_policy": if compiler.is_none() { "no-op: interpreter block state is already published" } else if flush_every == 0 { "every game tick for observation, excluded" } else { "every game tick, included" },
+        "timed_operations": if compiler.is_some() { "on_use_block for both enable edges, 256 tick_with_world calls per episode, optional per-tick flush; timer overhead included" } else { "lever toggle and surrounding/support callbacks for both enable edges, 256 tick_interpreted calls per episode; timer overhead included" },
         "arithmetic_validity": "saved-input response/reset protocol only; no general arithmetic proof"
     }))
 }
 
 fn divider_phase(
-    compiler: &mut Compiler,
+    compiler: &mut Option<Compiler>,
     world: &mut PlotWorld,
     trigger: BlockPos,
     flush_every: u32,
     read: &impl Fn(&PlotWorld) -> Result<u16>,
 ) -> Result<(Duration, bool, u16)> {
     let started = Instant::now();
-    compiler.on_use_block(trigger);
+    use_lever(compiler, world, trigger);
     let mut elapsed = started.elapsed();
     let mut observed_response = false;
     let mut word = 0;
     for _ in 0..128 {
         let started = Instant::now();
-        compiler.tick_with_world(world);
+        tick(compiler, world);
         if flush_every == 1 {
-            compiler.flush(world);
+            flush(compiler, world);
         }
         elapsed += started.elapsed();
         if flush_every == 0 {
-            compiler.flush(world);
+            flush(compiler, world);
         }
         word = read(world)?;
         observed_response |= word == 170;
     }
     Ok((elapsed, observed_response, word))
+}
+
+fn tick(compiler: &mut Option<Compiler>, world: &mut PlotWorld) {
+    if let Some(compiler) = compiler {
+        compiler.tick_with_world(world);
+    } else {
+        world.tick_interpreted();
+    }
+}
+
+fn flush(compiler: &mut Option<Compiler>, world: &mut PlotWorld) {
+    if let Some(compiler) = compiler {
+        compiler.flush(world);
+    }
+}
+
+fn use_lever(compiler: &mut Option<Compiler>, world: &mut PlotWorld, pos: BlockPos) {
+    if let Some(compiler) = compiler {
+        compiler.on_use_block(pos);
+        return;
+    }
+    let Block::Lever { mut lever } = world.get_block(pos) else {
+        panic!("missing benchmark lever at {pos:?}");
+    };
+    lever.powered = !lever.powered;
+    let block = Block::Lever { lever };
+    world.set_block(pos, block);
+    redstone::update_surrounding_blocks(world, pos);
+    let face = match lever.face {
+        LeverFace::Floor => BlockFace::Bottom,
+        LeverFace::Ceiling => BlockFace::Top,
+        LeverFace::Wall => lever.facing.opposite().block_face(),
+    };
+    redstone::update_surrounding_blocks(world, pos.offset(face));
 }
 
 fn load(descriptor: &Value) -> Result<PlotWorld> {

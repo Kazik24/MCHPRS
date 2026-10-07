@@ -12,7 +12,6 @@ use rustc_hash::{FxHashMap, FxHashSet};
 pub(crate) struct MemoryCell {
     pub actor: usize,
     pub base: BlockPos,
-    pub near: BlockPos,
     pub far: BlockPos,
     pub initial: bool,
 }
@@ -67,7 +66,8 @@ pub(crate) fn recognize(
         .pistons
         .iter()
         .enumerate()
-        .filter(|(_, p)| !p.piston.sticky)
+        .filter(|(_, p)| !p.piston.sticky && p.piston.facing == BlockFacing::Down
+            && matches!(world.get_block(p.pos.offset(BlockFace::Top)), Block::Observer { observer } if observer.facing == BlockFacing::Down))
         .map(|(id, _)| id)
         .collect();
     if clocks.is_empty() {
@@ -88,7 +88,7 @@ pub(crate) fn recognize(
             || (!assume_instant && !world.get_block(above.offset(BlockFace::Top)).is_solid())
         {
             return Err(format!(
-                "ordinary piston at {:?} is not a ready empty observer-clock generator; independent piston update samplers are not implemented",
+                "ordinary piston at {:?} is not a ready empty observer-clock generator",
                 p.pos
             ));
         }
@@ -113,10 +113,17 @@ pub(crate) fn recognize(
         }
         let target = pos.offset(face);
         let Some(actor) = report.pistons.iter().position(|p| p.pos == target) else {
-            return Err(format!(
-                "observer at {pos:?} is not attached to an owned clock or output piston"
-            ));
+            continue;
         };
+        if actor != clock
+            && !report.recognition[actor]
+                .inputs
+                .sources
+                .iter()
+                .any(|source| source.source == pos)
+        {
+            continue;
+        }
         if observer.powered {
             return Err(format!("clock observer at {pos:?} is active at entry"));
         }
@@ -210,7 +217,6 @@ pub(crate) fn recognize(
         memory.push(MemoryCell {
             actor,
             base: p.pos,
-            near: p.head,
             far: p.head.offset(p.piston.facing.into()),
             initial: !p.piston.extended,
         });

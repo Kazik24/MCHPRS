@@ -24,7 +24,12 @@ pub(crate) fn split(
         bases.entry(piston.pos).or_insert(actor);
         for pos in [piston.pos, piston.head, piston.payload]
             .into_iter()
-            .chain(piston.piston.sticky.then_some(piston.head.offset(piston.piston.facing.into())))
+            .chain(
+                piston
+                    .piston
+                    .sticky
+                    .then_some(piston.head.offset(piston.piston.facing.into())),
+            )
             .chain(families::reset_positions(&report.recognition[actor]))
         {
             if let Some(other) = owners.insert(pos, actor) {
@@ -101,31 +106,58 @@ pub(crate) fn split(
     // Observers belong to the state they watch and the notification net they
     // drive, including dust watchers that are not mounted on a piston base.
     for &pos in &report.observers {
-        let Block::Observer { observer } = world.get_block(pos) else { unreachable!() };
+        let Block::Observer { observer } = world.get_block(pos) else {
+            unreachable!()
+        };
         let target = pos.offset(observer.facing.into());
         let front = pos.offset(BlockFace::from(observer.facing).opposite());
         let mut dependencies = vec![target, pos, pos.offset(BlockFace::Bottom)];
         if matches!(world.get_block(target), Block::RedstoneWire { .. }) {
-            dependencies.extend(BlockFace::values().into_iter().map(|face| target.offset(face)));
+            dependencies.extend(
+                BlockFace::values()
+                    .into_iter()
+                    .map(|face| target.offset(face)),
+            );
             if !update_inputs.contains_key(&target) {
-                update_inputs.insert(target, topology.wire_inputs(target).map_err(|e| e.to_string())?);
+                update_inputs.insert(
+                    target,
+                    topology.wire_inputs(target).map_err(|e| e.to_string())?,
+                );
             }
             dependencies.extend(update_inputs[&target].wires.iter().copied());
             dependencies.extend(update_inputs[&target].sources.iter().map(|d| d.source));
         }
-        dependencies.extend(std::iter::once(front).chain(BlockFace::values().into_iter()
-            .filter(|&face| face != observer.facing.into()).map(|face| front.offset(face))));
-        let mut actors: Vec<_> = dependencies.iter().flat_map(|p|
-            owners.get(p).copied().into_iter().chain(reads.get(p).into_iter().flatten().copied())
-        ).collect();
+        dependencies.extend(
+            std::iter::once(front).chain(
+                BlockFace::values()
+                    .into_iter()
+                    .filter(|&face| face != observer.facing.into())
+                    .map(|face| front.offset(face)),
+            ),
+        );
+        let mut actors: Vec<_> = dependencies
+            .iter()
+            .flat_map(|p| {
+                owners
+                    .get(p)
+                    .copied()
+                    .into_iter()
+                    .chain(reads.get(p).into_iter().flatten().copied())
+            })
+            .collect();
         actors.sort_unstable();
         actors.dedup();
         let Some(&actor) = actors.first() else {
-            return Err(format!("observer at {pos:?} has no supported region owner"));
+            // Unrelated observers stay in the ordinary timed graph.
+            continue;
         };
-        for &other in &actors[1..] { regions.union(actor, other); }
+        for &other in &actors[1..] {
+            regions.union(actor, other);
+        }
         owners.insert(pos, actor);
-        for dependency in dependencies { reads.entry(dependency).or_default().push(actor); }
+        for dependency in dependencies {
+            reads.entry(dependency).or_default().push(actor);
+        }
     }
     for (&pos, &owner) in &owners {
         if let Some(actors) = reads.get(&pos) {

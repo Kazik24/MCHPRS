@@ -144,7 +144,9 @@ pub type CompileGraph = StableGraph<CompileNode, CompileLink>;
 #[derive(Debug)]
 pub enum GraphError {
     Cancelled,
-    MissingSource { pos: BlockPos },
+    MissingSource {
+        pos: BlockPos,
+    },
     UnsupportedInstantExport,
     UnsupportedCommandBlockExport,
     UnsupportedObserverExport,

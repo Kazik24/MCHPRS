@@ -27,7 +27,10 @@ pub(super) fn run<W: World>(
     let mut nodes_by_position = FxHashMap::default();
     let mut watched = FxHashSet::default();
     for_each_block_optimized(plot, input.bounds.0, input.bounds.1, |pos| {
-        if !input.boundaries.is_some_and(|boundaries| boundaries.is_owned(pos)) {
+        if !input
+            .boundaries
+            .is_some_and(|boundaries| boundaries.is_owned(pos))
+        {
             if let Block::Observer { observer } = plot.get_block(pos) {
                 watched.insert(pos.offset(observer.facing.into()));
             }
@@ -37,6 +40,9 @@ pub(super) fn run<W: World>(
     if let Some(boundaries) = input.boundaries {
         for (group, payload) in boundaries.report.payload_groups.iter().enumerate() {
             for &alias in &payload.positions {
+                if boundaries.mobile_group(alias).is_none() {
+                    continue;
+                }
                 graph.add_node(CompileNode {
                     ty: NodeType::MobileSource { group, alias },
                     block: None,
@@ -83,7 +89,13 @@ pub(super) fn run<W: World>(
         if input.boundaries.is_some_and(|b| b.is_owned(pos)) {
             return;
         }
-        for_pos(graph, &mut nodes_by_position, ignore_wires && !watched.contains(&pos), plot, pos);
+        for_pos(
+            graph,
+            &mut nodes_by_position,
+            ignore_wires && !watched.contains(&pos),
+            plot,
+            pos,
+        );
     });
 
     for pos in &watched {
@@ -92,18 +104,28 @@ pub(super) fn run<W: World>(
         }
     }
     for node in graph.node_weights() {
-        let NodeType::Observer { watched } = node.ty else { continue };
+        let NodeType::Observer { watched } = node.ty else {
+            continue;
+        };
         let observer = node.block.unwrap().0;
-        let (min, max) = input.bounds;
-        if watched.x < min.x || watched.x > max.x
-            || watched.y < min.y || watched.y > max.y
-            || watched.z < min.z || watched.z > max.z
+        let min = input.bounds.0.min(input.bounds.1);
+        let max = input.bounds.0.max(input.bounds.1);
+        if watched.x < min.x
+            || watched.x > max.x
+            || watched.y < min.y
+            || watched.y > max.y
+            || watched.z < min.z
+            || watched.z > max.z
         {
             return Err(super::GraphError::UnsupportedObserverWatch {
-                observer, watched, reason: "the watched cell is outside the compiled selection",
+                observer,
+                watched,
+                reason: "the watched cell is outside the compiled selection",
             });
         }
-        if input.boundaries.is_some_and(|boundaries| boundaries.is_owned(watched))
+        if input
+            .boundaries
+            .is_some_and(|boundaries| boundaries.is_owned(watched))
             && matches!(plot.get_block(watched), Block::RedstoneWire { .. })
         {
             return Err(super::GraphError::UnsupportedObserverWatch {
@@ -248,7 +270,9 @@ fn identify_block<W: World>(
             (NodeType::Torch, NodeState::simple(lit))
         }
         Block::Observer { observer } => (
-            NodeType::Observer { watched: pos.offset(observer.facing.into()) },
+            NodeType::Observer {
+                watched: pos.offset(observer.facing.into()),
+            },
             NodeState::simple(observer.powered),
         ),
         Block::RedstoneWire { wire } => (NodeType::Wire, NodeState::with_strength(wire.power)),

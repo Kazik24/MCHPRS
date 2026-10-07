@@ -100,7 +100,10 @@ fn convert_node(
 }
 
 pub(super) fn run(graph: &mut CompileGraph) -> Result<(), super::GraphError> {
-    if graph.node_weights().any(|node| matches!(node.ty, CNodeType::Observer { .. })) {
+    if graph
+        .node_weights()
+        .any(|node| matches!(node.ty, CNodeType::Observer { .. }))
+    {
         return Err(super::GraphError::UnsupportedObserverExport);
     }
     if graph

@@ -98,6 +98,34 @@ impl RelativeCoordinate for f64 {
         result.is_finite().then_some(result)
     }
 }
+
+pub(crate) fn complete_teleport<'a>(
+    id: i32,
+    text: &str,
+    names: impl Iterator<Item = &'a str>,
+) -> Option<CTabComplete> {
+    let (command, prefix) = text.split_once(' ')?;
+    if !matches!(command, "/tp" | "/teleport") {
+        return None;
+    }
+    let normalized_prefix = prefix.to_ascii_lowercase();
+    let mut names: Vec<_> = names
+        .filter(|name| name.to_ascii_lowercase().starts_with(&normalized_prefix))
+        .collect();
+    names.sort_unstable();
+    Some(CTabComplete {
+        id,
+        start: (command.encode_utf16().count() + 1) as i32,
+        length: prefix.encode_utf16().count() as i32,
+        matches: names
+            .into_iter()
+            .map(|name| CTabCompleteMatch {
+                match_: name.to_owned(),
+                tooltip: None,
+            })
+            .collect(),
+    })
+}
 fn parse_relative_coord<F: RelativeCoordinate>(
     coord: &str,
     ref_coord: F,
@@ -1152,11 +1180,13 @@ fn declared_command_nodes() -> Vec<Node<'static>> {
             152,
         ]),
         // 1: /teleport
-        Node::literal("teleport", &[2, 3]),
+        Node::literal("teleport", &[3, 2]),
         // 2: /teleport [x, y, z]
         Node::argument("x, y, z", Parser::Vec3, &[]).executable(),
         // 3: /teleport [player]
-        Node::argument("player", Parser::Entity(3), &[]).executable(),
+        Node::argument("player", Parser::String(0), &[])
+            .executable()
+            .suggestions("minecraft:ask_server"),
         // 4: /tp
         Node::redirect("tp", 1),
         // 5: /stop
@@ -1451,6 +1481,34 @@ pub static DECLARE_COMMANDS: Lazy<PacketEncoder> = Lazy::new(|| {
 #[cfg(test)]
 mod security_tests {
     use super::*;
+    #[test]
+    fn teleport_autocomplete_suggests_player_names_without_selectors() {
+        let nodes = declared_command_nodes();
+        assert_eq!(nodes[1].children, &[3, 2]);
+        assert!(matches!(nodes[3].parser, Some(Parser::String(0))));
+        assert_eq!(nodes[3].suggestions_type, Some("minecraft:ask_server"));
+        let names = ["Zoe", "Alice", "Alex"];
+        for (text, expected) in [
+            ("/tp ", vec!["Alex", "Alice", "Zoe"]),
+            ("/teleport al", vec!["Alex", "Alice"]),
+            ("/tp @", vec![]),
+            ("/tp 1 2 ", vec![]),
+        ] {
+            let response = complete_teleport(42, text, names.into_iter()).unwrap();
+            let start = text.find(' ').unwrap() + 1;
+            assert_eq!(response.id, 42);
+            assert_eq!(response.start, start as i32);
+            assert_eq!(response.length, text[start..].encode_utf16().count() as i32);
+            assert_eq!(
+                response
+                    .matches
+                    .into_iter()
+                    .map(|item| item.match_)
+                    .collect::<Vec<_>>(),
+                expected
+            );
+        }
+    }
     #[test]
     fn command_declarations_have_valid_edges_and_no_legacy_tick_aliases() {
         let nodes = declared_command_nodes();

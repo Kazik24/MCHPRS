@@ -156,10 +156,18 @@ pub fn compile(
     instant: Vec<crate::redpiler::instant::program::PreparedInstant>,
 ) -> Result<(), BackendError> {
     // Geometry observation reads settled blocks, never electrical alias power.
-    let geometry_positions: FxHashSet<_> = instant.iter().flat_map(|program| {
-        program.pistons.iter().flat_map(|piston| [piston.pos, piston.head, piston.payload])
-            .chain(program.aliases.iter().map(|(_, pos, _)| *pos))
-    }).collect();
+    let geometry_positions: FxHashSet<_> = instant
+        .iter()
+        .flat_map(|program| {
+            program
+                .pistons
+                .iter()
+                .flat_map(|piston| [piston.pos, piston.head])
+                .chain(program.aliases.iter().filter_map(|&(group, pos, _)| {
+                    (program.payloads[group] != Block::Air).then_some(pos)
+                }))
+        })
+        .collect();
     if graph.node_weights().any(|n| {
         matches!(
             n.ty,
@@ -263,7 +271,11 @@ pub fn compile(
         backend.instant_dirty = vec![true; backend.instant.len()];
         for (region, runtime) in backend.instant.iter().enumerate() {
             for source in runtime.source_nodes() {
-                backend.instant_dependencies.entry(source).or_default().push(region);
+                backend
+                    .instant_dependencies
+                    .entry(source)
+                    .or_default()
+                    .push(region);
             }
         }
         for regions in backend.instant_dependencies.values_mut() {
@@ -285,15 +297,37 @@ pub fn compile(
         };
         let observer = backend.nodes.get(nodes_map[&idx]);
         if geometry_positions.contains(&watched) {
-            backend.instant_observers.entry(watched).or_default().push(observer);
+            backend
+                .instant_observers
+                .entry(watched)
+                .or_default()
+                .push(observer);
         } else if let Some(&source) = backend.pos_map.get(&watched) {
-            backend.observer_watchers.entry(source).or_default().push(observer);
+            backend
+                .observer_watchers
+                .entry(source)
+                .or_default()
+                .push(observer);
         }
         // A fixed cell without a node cannot change while compilation is active.
     }
-    for observers in backend.observer_watchers.values_mut().chain(backend.instant_observers.values_mut()) {
+    for observers in backend
+        .observer_watchers
+        .values_mut()
+        .chain(backend.instant_observers.values_mut())
+    {
         observers.sort_unstable_by_key(|id| id.index());
         observers.dedup();
+    }
+    for &pos in backend.instant_observers.keys() {
+        let bindings = backend
+            .instant
+            .iter_mut()
+            .map(|runtime| usize::from(runtime.watch_geometry(pos)))
+            .sum::<usize>();
+        if bindings != 1 {
+            return Err(BackendError::ObserverGeometryBinding { pos, bindings });
+        }
     }
 
     // Track command-block overrides read through a comparator's far input.
@@ -343,7 +377,13 @@ pub fn compile(
         let id = backend.nodes.get(i);
         let node = &mut backend.nodes[id];
         if matches!(node.ty, NodeType::Observer) && node.powered && !node.pending_tick {
-            super::schedule_tick(&mut backend.scheduler, id, node, 1, mchprs_world::TickPriority::Normal);
+            super::schedule_tick(
+                &mut backend.scheduler,
+                id,
+                node,
+                1,
+                mchprs_world::TickPriority::Normal,
+            );
         }
     }
 
@@ -436,5 +476,170 @@ mod tests {
             })
         );
         assert!(backend.nodes.inner().is_empty());
+    }
+
+    fn observer_chain(
+        ticks: Vec<TickEntry>,
+        powered: bool,
+    ) -> (DirectBackend, [super::super::node::NodeId; 3]) {
+        use mchprs_blocks::blocks::{Lever, RedstoneObserver};
+        use mchprs_blocks::BlockFacing;
+        let positions = [
+            BlockPos::new(4, 30, 4),
+            BlockPos::new(5, 30, 4),
+            BlockPos::new(6, 30, 4),
+        ];
+        let mut graph = CompileGraph::new();
+        let mut lever = node(NodeType::Lever, 0);
+        lever.block = Some((
+            positions[0],
+            Block::Lever {
+                lever: Lever::default(),
+            }
+            .get_id(),
+        ));
+        graph.add_node(lever);
+        for i in 1..3 {
+            let mut observer = node(
+                NodeType::Observer {
+                    watched: positions[i - 1],
+                },
+                0,
+            );
+            observer.block = Some((
+                positions[i],
+                Block::Observer {
+                    observer: RedstoneObserver {
+                        facing: BlockFacing::West,
+                        powered: powered && i == 1,
+                    },
+                }
+                .get_id(),
+            ));
+            observer.state = NodeState::simple(powered && i == 1);
+            graph.add_node(observer);
+        }
+        let mut backend = DirectBackend::default();
+        backend
+            .compile(graph, ticks, &Default::default(), vec![])
+            .unwrap();
+        let ids = positions.map(|pos| backend.pos_map[&pos]);
+        (backend, ids)
+    }
+
+    #[test]
+    fn observer_watch_chain_preserves_pulse_delays_and_ignores_pending_retriggers() {
+        let (mut backend, [lever, first, second]) = observer_chain(vec![], false);
+        backend.set_node(lever, true, 15);
+        backend.set_node(lever, false, 0); // Changes during the pending rise do not extend it.
+        assert!(backend.nodes[first].pending_tick);
+        for (tick, expected) in [
+            (1, (0, 0)),
+            (2, (15, 0)),
+            (3, (15, 0)),
+            (4, (0, 15)),
+            (5, (0, 15)),
+            (6, (0, 0)),
+        ] {
+            backend.tick();
+            assert_eq!(
+                (
+                    backend.nodes[first].output_power,
+                    backend.nodes[second].output_power
+                ),
+                expected,
+                "half tick {tick}"
+            );
+            if tick == 2 {
+                backend.set_node(lever, true, 15); // The powered pulse also does not retrigger.
+            }
+        }
+        for _ in 0..4 {
+            backend.tick();
+        }
+        assert!(!backend.nodes[first].pending_tick && !backend.nodes[second].pending_tick);
+        backend.set_node(lever, false, 0);
+        backend.tick();
+        assert_eq!(backend.nodes[first].output_power, 0);
+        backend.tick();
+        assert_eq!(backend.nodes[first].output_power, 15);
+    }
+
+    #[test]
+    fn observer_imported_deadline_and_powered_entry_complete_without_retrigger() {
+        let entry = TickEntry {
+            block_type: None,
+            pos: BlockPos::new(5, 30, 4),
+            ticks_left: 1,
+            tick_priority: mchprs_world::TickPriority::High,
+        };
+        let (mut backend, [lever, first, _]) = observer_chain(vec![entry], false);
+        backend.set_node(lever, true, 15);
+        backend.tick();
+        assert_eq!(backend.nodes[first].output_power, 15);
+        backend.tick();
+        assert_eq!(backend.nodes[first].output_power, 15);
+        backend.tick();
+        assert_eq!(backend.nodes[first].output_power, 0);
+
+        let (mut backend, [_, first, _]) = observer_chain(vec![], true);
+        backend.tick();
+        assert_eq!(backend.nodes[first].output_power, 15);
+        backend.tick();
+        assert_eq!(backend.nodes[first].output_power, 0);
+    }
+
+    #[test]
+    fn observer_sees_comparator_block_state_but_not_entity_strength_alone() {
+        let source_pos = BlockPos::new(4, 30, 4);
+        let observer_pos = BlockPos::new(5, 30, 4);
+        let mut graph = CompileGraph::new();
+        let mut source = node(
+            NodeType::Comparator {
+                mode: mchprs_blocks::blocks::ComparatorMode::Compare,
+                far_input: None,
+                facing_diode: false,
+            },
+            5,
+        );
+        source.state.powered = true;
+        source.block = Some((
+            source_pos,
+            Block::RedstoneComparator {
+                comparator: mchprs_blocks::blocks::RedstoneComparator {
+                    powered: true,
+                    ..Default::default()
+                },
+            }
+            .get_id(),
+        ));
+        graph.add_node(source);
+        let mut observer = node(
+            NodeType::Observer {
+                watched: source_pos,
+            },
+            0,
+        );
+        observer.block = Some((
+            observer_pos,
+            Block::Observer {
+                observer: mchprs_blocks::blocks::RedstoneObserver::default(),
+            }
+            .get_id(),
+        ));
+        graph.add_node(observer);
+        let mut backend = DirectBackend::default();
+        backend
+            .compile(graph, vec![], &Default::default(), vec![])
+            .unwrap();
+        let source = backend.pos_map[&source_pos];
+        let observer = backend.pos_map[&observer_pos];
+        backend.set_node(source, true, 8);
+        assert!(!backend.nodes[observer].pending_tick);
+        backend.set_node(source, false, 0);
+        assert!(backend.nodes[observer].pending_tick);
+        backend.tick();
+        backend.tick();
+        assert_eq!(backend.nodes[observer].output_power, 15);
     }
 }

@@ -602,6 +602,14 @@ impl ServerBoundPacketHandler for Plot {
         if !self.players[player_idx].can_use_commands() {
             return;
         }
+        if packet.text.starts_with("/tp ") || packet.text.starts_with("/teleport ") {
+            let _ = self.message_sender.send(Message::CompletePlayerNames(
+                mchprs_network::PlayerPacketSender::new(&self.players[player_idx].client),
+                packet.transaction_id,
+                packet.text,
+            ));
+            return;
+        }
         if let Some(completion) =
             self.complete_warps(player_idx, packet.transaction_id, &packet.text)
         {

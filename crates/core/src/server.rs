@@ -57,6 +57,7 @@ pub enum Message {
     PlayerLeavePlot(Player),
     /// This message is sent to the server thread when a player runs /tp <name>.
     PlayerTeleportOther(Player, String),
+    CompletePlayerNames(PlayerPacketSender, i32, String),
     /// This message is sent to the server thread when a player changes their gamemode.
     PlayerUpdateGamemode(u128, Gamemode),
     /// This message is sent to the server thread when a plot unloads itself.
@@ -601,6 +602,17 @@ impl MinecraftServer {
             }
             Message::Shutdown => {
                 self.graceful_shutdown();
+            }
+            Message::CompletePlayerNames(sender, id, text) => {
+                if let Some(response) = plot::commands::complete_teleport(
+                    id,
+                    &text,
+                    self.online_players
+                        .values()
+                        .map(|player| player.username.as_str()),
+                ) {
+                    sender.send_packet(&response.encode());
+                }
             }
             Message::PlayerTeleportOther(player, other_username) => {
                 let username_lower = other_username.to_lowercase();

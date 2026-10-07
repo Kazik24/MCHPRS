@@ -7,7 +7,7 @@ use crate::redpiler::analysis::topology::{SourceKind, Topology};
 use crate::redpiler::analysis::{AnalysisLimits, AnalysisReport};
 use crate::redpiler::TaskMonitor;
 use crate::world::World;
-use mchprs_blocks::block_entities::BlockEntity;
+use mchprs_blocks::block_entities::{BlockEntity, ContainerType};
 use mchprs_blocks::blocks::Block;
 use mchprs_blocks::{BlockFace, BlockPos};
 use mchprs_world::TickEntry;
@@ -18,6 +18,24 @@ use std::collections::VecDeque;
 enum Dependency {
     Observer(usize),
     Wire(usize),
+}
+
+#[derive(Default)]
+pub(super) struct Certification {
+    pub owned: FxHashSet<BlockPos>,
+    /// Electrically reset actors whose universal extension was proved.
+    pub reset_actors: FxHashSet<usize>,
+}
+
+fn fixed_furnace(world: &impl World, pos: BlockPos) -> bool {
+    matches!(world.get_block(pos), Block::Furnace { .. })
+        && matches!(
+            world.get_block_entity(pos),
+            Some(BlockEntity::Container {
+                ty: ContainerType::Furnace,
+                ..
+            })
+        )
 }
 
 fn dependencies(
@@ -109,9 +127,10 @@ pub(super) fn certify<W: World>(
     monitor: &TaskMonitor,
     candidates: &[BlockPos],
     memory: &FxHashSet<usize>,
-) -> Result<FxHashSet<BlockPos>, String> {
+    assume_instant: bool,
+) -> Result<Certification, String> {
     if candidates.is_empty() {
-        return Ok(FxHashSet::default());
+        return Ok(Certification::default());
     }
     // Extract once for the whole region. Its guarded local sensor graph keeps
     // paths opened by another payload geometry in the closure proof.
@@ -192,6 +211,8 @@ pub(super) fn certify<W: World>(
     let pending: FxHashSet<_> = ticks.iter().map(|tick| tick.pos).collect();
     let mut wire_sources = FxHashMap::default();
     let mut owned = FxHashSet::default();
+    let mut reset_actors = FxHashSet::default();
+    let mut presentation_caps = FxHashSet::default();
     for &pos in candidates {
         let Block::Observer { observer: block } = world.get_block(pos) else {
             unreachable!()
@@ -202,9 +223,9 @@ pub(super) fn certify<W: World>(
             format!("observer at {pos:?} watches {watched:?} (minecraft:{}) and forms a notification state boundary", world.get_block(watched).get_name())
         };
         let fail = |reason: &str| format!("{}: {reason}", prefix());
-        if !face.is_horizontal() || block.powered || pending.contains(&pos) {
+        if block.powered || pending.contains(&pos) {
             return Err(fail(
-                "logical reset needs a dormant horizontal observer without pending work",
+                "logical reset needs a dormant observer without pending work",
             ));
         }
         let Some(&owner) = actors.get(&watched) else {
@@ -218,41 +239,53 @@ pub(super) fn certify<W: World>(
             ));
         }
         let cap = pos.offset(face.opposite());
-        if !world.get_block(cap).is_solid()
+        if world.get_block_entity(cap).is_some() && !fixed_furnace(world, cap) {
+            return Err(fail(&format!(
+                "fixed reset cap at {cap:?} has an unsupported block entity; only a matching stationary furnace inventory is supported"
+            )));
+        }
+        let lamp_cap = matches!(world.get_block(cap), Block::RedstoneLamp { .. });
+        if is_presentation_output(world, report, pos, cap) {
+            presentation_caps.insert(cap);
+        }
+        if (!assume_instant && !world.get_block(cap).is_solid())
             || mobile.contains_key(&cap)
             || actors.contains_key(&cap)
             || matches!(
                 world.get_block_entity(cap),
                 Some(BlockEntity::MovingPiston(_))
             )
-            || pending.contains(&cap)
+            || (!lamp_cap && pending.contains(&cap))
         {
             return Err(fail(
                 "observer output needs a stationary fixed conductor without pending work",
             ));
         }
-        if !report.recognition[owner]
-            .inputs
-            .sources
-            .iter()
-            .any(|source| source.source == pos)
-        {
-            return Err(fail(
-                "the pulse has no proved electrical return to its watched actor",
-            ));
-        }
-        let return_path = topology
-            .signal_inputs(cap, face.opposite())
-            .map_err(|error| error.to_string())?;
-        if !return_path.outside_bounds.is_empty()
-            || !return_path
+        if !assume_instant
+            && !report.recognition[owner]
+                .inputs
                 .sources
                 .iter()
                 .any(|source| source.source == pos)
         {
             return Err(fail(
-                "the output conductor lacks complete observer return context",
+                "the pulse has no proved electrical return to its watched actor",
             ));
+        }
+        if !assume_instant {
+            let return_path = topology
+                .signal_inputs(cap, face.opposite())
+                .map_err(|error| error.to_string())?;
+            if !return_path.outside_bounds.is_empty()
+                || !return_path
+                    .sources
+                    .iter()
+                    .any(|source| source.source == pos)
+            {
+                return Err(fail(
+                    "the output conductor lacks complete observer return context",
+                ));
+            }
         }
         let observer = report
             .observers
@@ -273,7 +306,21 @@ pub(super) fn certify<W: World>(
                 Dependency::Wire(id) => cone.contains(&id),
             })
         };
-        if let Some(output) = outputs.iter().position(|inputs| influenced(inputs)) {
+        // A fixed cap lamp or adjacent lamp is presentation: its lit bit
+        // neither emits power nor changes conduction. Omit the reset flash,
+        // keeping its native driver live; a watched flash is a state boundary.
+        if let Some(output) = outputs.iter().enumerate().find_map(|(id, inputs)| {
+            if !influenced(inputs) {
+                return None;
+            }
+            let consumer = oracle.logic.outputs[id].consumer;
+            if is_presentation_output(world, report, pos, consumer) {
+                presentation_caps.insert(consumer);
+                None
+            } else {
+                Some(id)
+            }
+        }) {
             return Err(fail(&format!(
                 "reset pulse reaches ordinary data consumer {:?}",
                 oracle.logic.outputs[output].consumer
@@ -286,8 +333,14 @@ pub(super) fn certify<W: World>(
             else {
                 unreachable!()
             };
+            let other_watched = other.offset(other_block.facing.into());
+            if other_watched == pos {
+                return Err(fail(&format!(
+                    "owned reset observer is watched by observer {other:?}; the omitted reset signal is an observable state boundary"
+                )));
+            }
             if wires
-                .get(&other.offset(other_block.facing.into()))
+                .get(&other_watched)
                 .is_some_and(|wire| cone.contains(wire))
             {
                 return Err(fail(&format!(
@@ -318,6 +371,11 @@ pub(super) fn certify<W: World>(
                 return Err(fail("reset dust contains pending work"));
             }
             let support = wire_pos.offset(BlockFace::Bottom);
+            if world.get_block_entity(support).is_some() && !fixed_furnace(world, support) {
+                return Err(fail(&format!(
+                    "reset dust support at {support:?} has an unsupported block entity; only a matching stationary furnace inventory is supported"
+                )));
+            }
             if mobile.contains_key(&support)
                 || actors.contains_key(&support)
                 || heads.contains_key(&support)
@@ -350,7 +408,7 @@ pub(super) fn certify<W: World>(
         // prove the complete pure domain acyclic before any program activates.
         let mut lower = vec![0u8; wires.len()];
         let mut memo = FxHashMap::default();
-        loop {
+        while !assume_instant {
             let mut changed = false;
             for &wire in &cone {
                 for &PowerTerm {
@@ -387,7 +445,8 @@ pub(super) fn certify<W: World>(
             let piston = &report.pistons[actor];
             if !piston.piston.sticky
                 || memory.contains(&actor)
-                || (electrical.contains(&actor)
+                || (!assume_instant
+                    && electrical.contains(&actor)
                     && fixed_value(
                         arena,
                         oracle.logic.responses[actor],
@@ -410,8 +469,8 @@ pub(super) fn certify<W: World>(
                 SourceKind::Ordinary | SourceKind::Constant => true,
             };
             let adjacent_data = inputs.sources.iter().any(|source| {
-                let delta = source.source - piston.pos;
-                independent_data(source.kind) && delta.x.abs() + delta.y.abs() + delta.z.abs() == 1
+                independent_data(source.kind)
+                    && super::sampling::data_notifies(world, source.source, piston.pos)
             });
             let mut coupled_data = adjacent_data;
             for update in &report.ports.pistons[actor].updates {
@@ -436,7 +495,45 @@ pub(super) fn certify<W: World>(
                 return Err(fail(&format!("reset notification independently samples piston {:?}: no independently coupled data update; explicit sampling is required", piston.pos)));
             }
         }
+        if !assume_instant {
+            // Keep joint electrical reset proofs for default construction
+            // admission. Notification-only recipients have no such proof.
+            reset_actors.extend(electrical);
+        }
         owned.extend([pos, cap]);
     }
-    Ok(owned)
+    owned.retain(|pos| {
+        !presentation_caps.contains(pos)
+        // Fixed inventories retain their native constant comparator owner.
+        // Their analog override is independent of reset electrical power.
+        && !fixed_furnace(world, *pos)
+    });
+    Ok(Certification {
+        owned,
+        reset_actors,
+    })
+}
+
+pub(super) fn is_presentation_output(
+    world: &impl World,
+    report: &AnalysisReport,
+    source: BlockPos,
+    consumer: BlockPos,
+) -> bool {
+    let Block::Observer { observer } = world.get_block(source) else {
+        return false;
+    };
+    let cap = source.offset(BlockFace::from(observer.facing).opposite());
+    let delta = consumer - cap;
+    matches!(world.get_block(consumer), Block::RedstoneLamp { .. })
+        && delta.x.abs() + delta.y.abs() + delta.z.abs() <= 1
+        && world.get_block(cap).is_solid()
+        && !report.payload_groups.iter().any(|group| group.positions.contains(&cap) || group.positions.contains(&consumer))
+        && !report.pistons.iter().any(|piston| piston.pos == cap)
+        && !matches!(world.get_block_entity(cap), Some(BlockEntity::MovingPiston(_)))
+        && world.get_block_entity(consumer).is_none()
+        && !BlockFace::values().into_iter().any(|face| {
+            let pos = consumer.offset(face);
+            matches!(world.get_block(pos), Block::Observer { observer } if pos.offset(observer.facing.into()) == consumer)
+        })
 }

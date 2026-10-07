@@ -355,9 +355,7 @@ impl<'a, W: World> InputSearchState<'a, W> {
                 if let Some(boundaries) = self.boundaries {
                     for term in &boundaries.outputs[port].terms {
                         if let Some(source) = term.source {
-                            if !boundaries.is_sampled_wire(source) {
-                                self.link_source(source, idx, LinkType::Default, 0);
-                            }
+                            self.link_source(source, idx, LinkType::Default, 0);
                         }
                     }
                 }

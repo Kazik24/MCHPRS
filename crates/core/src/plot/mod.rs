@@ -352,13 +352,6 @@ impl PlotWorld {
         &self.to_be_ticked
     }
 
-    /// A handoff replay owns region requests; ordinary deadlines are restored
-    /// from the live compiled scheduler rather than simulated a second time.
-    pub(crate) fn retain_tick_requests(&mut self, mut keep: impl FnMut(BlockPos) -> bool) {
-        self.to_be_ticked.retain(|tick| keep(tick.pos));
-        self.tick_index.invalidate();
-    }
-
     /// Queued command-block chat, in emission order.
     pub fn command_output(&self) -> impl Iterator<Item = &str> {
         self.command_messages

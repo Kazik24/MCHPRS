@@ -200,7 +200,7 @@ fn comparator_ports_preserve_strength_and_distinguish_side_conductors() {
                         }
                         (world, trigger, output, dust)
                     };
-                    let (mut compiled, trigger, output, _) = make_world();
+                    let (mut compiled, trigger, output, dust) = make_world();
                     let mut compiler = Compiler::default();
                     compiler
                         .compile(
@@ -222,21 +222,48 @@ fn comparator_ports_preserve_strength_and_distinguish_side_conductors() {
                     // Retraction removes the mobile main/side supply. The fixed
                     // container remains the main input only in the side case.
                     let expected = if side_input { strength.min(8) } else { 0 };
-                    assert!(
-                        matches!(compiled.get_block_entity(output),
-                        Some(BlockEntity::Comparator { output_strength }) if *output_strength == expected),
-                        "{payload:?}, side={side_input}, strength={strength}, actual={:?}",
-                        compiled.get_block_entity(output)
+                    let live_strength = |compiler: &Compiler| {
+                        compiler
+                            .backend
+                            .as_ref()
+                            .unwrap()
+                            .ordinary_sources()
+                            .into_iter()
+                            .find(|&(pos, _)| pos == output)
+                            .unwrap()
+                            .1
+                    };
+                    assert_eq!(
+                        live_strength(&compiler),
+                        expected,
+                        "{payload:?}, side={side_input}, strength={strength}"
                     );
-                    let held = json!(compiled.get_block_entity(output));
+                    // The side fixture's front dust joins the conditional raw
+                    // output cone, so its display is owned and deferred to handoff.
+                    if !optimize && !side_input {
+                        assert!(matches!(compiled.get_block(dust),
+                            Block::RedstoneWire { wire } if wire.power == expected),
+                            "{payload:?}, side={side_input}, strength={strength}, dust={dust:?}, actual={:?}",
+                            compiled.get_block(dust));
+                    }
+                    let held = compiled.get_block(dust);
                     for _ in 0..16 {
                         compiler.tick();
                         compiler.flush(&mut compiled);
+                        assert_eq!(live_strength(&compiler), expected);
+                        assert_eq!(compiled.get_block(dust), held);
                     }
-                    assert_eq!(json!(compiled.get_block_entity(output)), held);
                     let bounds = compiled.get_corners();
                     compiler.reset(&mut compiled, bounds);
-                    assert_eq!(json!(compiled.get_block_entity(output)), held);
+                    // Comparator entity strength is materialized at handoff.
+                    assert!(matches!(compiled.get_block_entity(output),
+                        Some(BlockEntity::Comparator { output_strength }) if *output_strength == expected));
+                    if side_input || !optimize {
+                        assert!(matches!(compiled.get_block(dust),
+                            Block::RedstoneWire { wire } if wire.power == expected),
+                            "handoff {payload:?}, side={side_input}, strength={strength}, actual={:?}",
+                            compiled.get_block(dust));
+                    }
                 }
             }
         }
@@ -385,8 +412,7 @@ fn shared_near_outputs_use_deterministic_first_owner_geometry() {
                 .find(|group| group.members.len() > 1)
                 .unwrap();
             let first = &report.pistons[group.members[0]];
-            let near = first.head;
-            let far = near.offset(first.piston.facing.into());
+            let far = first.head.offset(first.piston.facing.into());
             let mut compiler = Compiler::default();
             compiler
                 .compile(
@@ -429,11 +455,15 @@ fn shared_near_outputs_use_deterministic_first_owner_geometry() {
                 .filter(|&pos| world.get_block(pos) == Block::RedstoneBlock)
                 .collect();
             assert_eq!(material.len(), 1);
-            assert!(
-                material[0] == near || material[0] == far,
-                "shared payload must use the deterministic first owner"
+            let first_active = group.members.iter().find(|&&actor| {
+                matches!(world.get_block(report.pistons[actor].pos), Block::Piston { piston } if !piston.extended)
+            });
+            let expected = first_active.map_or(far, |&actor| report.pistons[actor].head);
+            assert_eq!(
+                material[0], expected,
+                "shared payload must use the deterministic first active owner"
             );
-            saw_near |= material[0] == near;
+            saw_near |= first_active.is_some();
             assert!(world.piston_state().events.is_empty());
             assert!(world.piston_state().motions.is_empty());
             variants.push(snapshot(&world, bounds));

@@ -60,6 +60,7 @@ fn block_powered_mut(block: &mut Block) -> Option<&mut bool> {
         Block::RedstoneTorch { lit } => lit,
         Block::RedstoneWallTorch { lit, .. } => lit,
         Block::RedstoneRepeater { repeater } => &mut repeater.powered,
+        Block::Observer { observer } => &mut observer.powered,
         Block::Lever { lever } => &mut lever.powered,
         Block::StoneButton { button } => &mut button.powered,
         Block::StonePressurePlate { powered } => powered,
@@ -210,8 +211,9 @@ pub struct RegionStatistics {
     pub output_ports: usize,
     pub output_terms: usize,
     pub logical_response_decisions: usize,
+    /// Output guards and independent sampling guards, excluding response work.
     pub logical_output_decisions: usize,
-    /// Unique bindings per logical plan; response/output plans may overlap.
+    /// Unique bindings per logical plan; plans may overlap.
     pub logical_input_bindings: usize,
 }
 
@@ -248,7 +250,7 @@ impl CompileStatistics {
             ));
             if regions.logical_regions != 0 {
                 lines.push(format!(
-                    "Logical plans: {} response decisions / {} output decisions / {} input bindings",
+                    "Logical plans: {} response decisions / {} output and sampling decisions / {} input bindings",
                     regions.logical_response_decisions, regions.logical_output_decisions,
                     regions.logical_input_bindings,
                 ));
