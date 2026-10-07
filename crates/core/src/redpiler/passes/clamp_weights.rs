@@ -1,27 +1,6 @@
-use super::Pass;
 use crate::redpiler::compile_graph::CompileGraph;
-use crate::redpiler::{CompilerInput, CompilerOptions};
-use crate::world::World;
 
-pub struct ClampWeights;
-
-impl<W: World> Pass<W> for ClampWeights {
-    fn run_pass(
-        &self,
-        graph: &mut CompileGraph,
-        _: &CompilerOptions,
-        _: &CompilerInput<'_, W>,
-    ) -> Result<(), super::GraphError> {
-        graph.retain_edges(|g, edge| g[edge].ss < 15);
-        Ok(())
-    }
-
-    fn should_run(&self, _: &CompilerOptions) -> bool {
-        // Mandatory
-        true
-    }
-
-    fn status_message(&self) -> &'static str {
-        "Clamping weights"
-    }
+pub(super) fn run(graph: &mut CompileGraph) -> Result<(), super::GraphError> {
+    graph.retain_edges(|g, edge| g[edge].attenuation < 15);
+    Ok(())
 }

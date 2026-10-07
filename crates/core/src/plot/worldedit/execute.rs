@@ -10,7 +10,6 @@ use mchprs_blocks::blocks::{Block, FlipDirection, RotateAmt};
 use mchprs_blocks::items::{Item, ItemStack};
 use mchprs_blocks::{BlockFace, BlockFacing, BlockPos};
 use mchprs_network::packets::clientbound::*;
-use mchprs_network::packets::SlotData;
 use schematic::{load_schematic_with_warnings, save_schematic};
 use std::fs::File;
 use std::path::PathBuf;
@@ -30,11 +29,7 @@ pub(super) fn execute_wand(ctx: CommandExecuteContext<'_>) {
             slot: 0,
             item: ctx.player.inventory[(ctx.player.selected_slot + 36) as usize]
                 .as_ref()
-                .map(|item| SlotData {
-                    item_count: item.count as i8,
-                    item_id: item.item_type.get_id() as i32,
-                    nbt: item.nbt.clone(),
-                }),
+                .map(crate::container::slot_data),
         }],
     }
     .encode();
@@ -47,27 +42,15 @@ pub(super) fn execute_set(ctx: CommandExecuteContext<'_>) {
     let start_time = Instant::now();
     let pattern = ctx.arguments[0].unwrap_pattern();
 
-    let mut operation = worldedit_start_operation(ctx.player);
-    capture_undo(
-        ctx.plot,
-        ctx.player,
-        ctx.player.first_position.unwrap(),
-        ctx.player.second_position.unwrap(),
-    );
-    for x in operation.x_range() {
-        for y in operation.y_range() {
-            for z in operation.z_range() {
-                let block_pos = BlockPos::new(x, y, z);
-                let block_id = pattern.pick().get_id();
-
-                if ctx.plot.set_block_raw(block_pos, block_id) {
-                    operation.update_block();
-                }
-            }
+    let first = ctx.player.first_position.unwrap();
+    let second = ctx.player.second_position.unwrap();
+    let mut blocks_updated = 0;
+    capture_undo(ctx.plot, ctx.player, first, second);
+    for_each_selected_position(first, second, |pos| {
+        if ctx.plot.set_block_raw(pos, pattern.pick().get_id()) {
+            blocks_updated += 1;
         }
-    }
-
-    let blocks_updated = operation.blocks_updated();
+    });
 
     ctx.player
         .send_worldedit_message(&messages::worldedit_completed(
@@ -82,30 +65,17 @@ pub(super) fn execute_replace(ctx: CommandExecuteContext<'_>) {
     let filter = ctx.arguments[0].unwrap_mask();
     let pattern = ctx.arguments[1].unwrap_pattern();
 
-    let mut operation = worldedit_start_operation(ctx.player);
-    capture_undo(
-        ctx.plot,
-        ctx.player,
-        ctx.player.first_position.unwrap(),
-        ctx.player.second_position.unwrap(),
-    );
-    for x in operation.x_range() {
-        for y in operation.y_range() {
-            for z in operation.z_range() {
-                let block_pos = BlockPos::new(x, y, z);
-
-                if filter.matches(ctx.plot.get_block(block_pos)) {
-                    let block_id = pattern.pick().get_id();
-
-                    if ctx.plot.set_block_raw(block_pos, block_id) {
-                        operation.update_block();
-                    }
-                }
-            }
+    let first = ctx.player.first_position.unwrap();
+    let second = ctx.player.second_position.unwrap();
+    let mut blocks_updated = 0;
+    capture_undo(ctx.plot, ctx.player, first, second);
+    for_each_selected_position(first, second, |pos| {
+        if filter.matches(ctx.plot.get_block(pos))
+            && ctx.plot.set_block_raw(pos, pattern.pick().get_id())
+        {
+            blocks_updated += 1;
         }
-    }
-
-    let blocks_updated = operation.blocks_updated();
+    });
 
     ctx.player
         .send_worldedit_message(&messages::worldedit_completed(
@@ -120,17 +90,13 @@ pub(super) fn execute_count(ctx: CommandExecuteContext<'_>) {
     let filter = ctx.arguments[0].unwrap_pattern();
 
     let mut blocks_counted = 0;
-    let operation = worldedit_start_operation(ctx.player);
-    for x in operation.x_range() {
-        for y in operation.y_range() {
-            for z in operation.z_range() {
-                let block_pos = BlockPos::new(x, y, z);
-                if filter.matches(ctx.plot.get_block(block_pos)) {
-                    blocks_counted += 1;
-                }
-            }
+    let first = ctx.player.first_position.unwrap();
+    let second = ctx.player.second_position.unwrap();
+    for_each_selected_position(first, second, |pos| {
+        if filter.matches(ctx.plot.get_block(pos)) {
+            blocks_counted += 1;
         }
-    }
+    });
 
     ctx.player
         .send_worldedit_message(&messages::worldedit_counted(
@@ -463,27 +429,8 @@ pub(super) fn execute_shift(ctx: CommandExecuteContext<'_>) {
     let first_pos = player.first_position.unwrap();
     let second_pos = player.second_position.unwrap();
 
-    let mut move_both_points = |x, y, z| {
-        player.worldedit_set_first_position(BlockPos::new(
-            first_pos.x + x,
-            first_pos.y + y,
-            first_pos.z + z,
-        ));
-        player.worldedit_set_second_position(BlockPos::new(
-            second_pos.x + x,
-            second_pos.y + y,
-            second_pos.z + z,
-        ));
-    };
-
-    match direction {
-        BlockFacing::Up => move_both_points(0, amount as i32, 0),
-        BlockFacing::Down => move_both_points(0, -(amount as i32), 0),
-        BlockFacing::East => move_both_points(amount as i32, 0, 0),
-        BlockFacing::West => move_both_points(-(amount as i32), 0, 0),
-        BlockFacing::South => move_both_points(0, 0, amount as i32),
-        BlockFacing::North => move_both_points(0, 0, -(amount as i32)),
-    }
+    player.worldedit_set_first_position(direction.offset_pos(first_pos, amount as i32));
+    player.worldedit_set_second_position(direction.offset_pos(second_pos, amount as i32));
 
     player.send_worldedit_message(&messages::region_shifted(amount));
 }
@@ -715,7 +662,7 @@ pub(super) fn execute_help(mut ctx: CommandExecuteContext<'_>) {
     ];
 
     for arg in command.arguments {
-        message.append(&mut vec![
+        message.extend([
             ChatComponentBuilder::new(" [".to_owned())
                 .color_code(ColorCode::Yellow)
                 .finish(),
@@ -735,7 +682,7 @@ pub(super) fn execute_help(mut ctx: CommandExecuteContext<'_>) {
     );
 
     for arg in command.arguments {
-        message.append(&mut vec![
+        message.extend([
             ChatComponentBuilder::new("\n  [".to_owned())
                 .color_code(ColorCode::Yellow)
                 .finish(),
@@ -782,7 +729,7 @@ pub(super) fn execute_help(mut ctx: CommandExecuteContext<'_>) {
         );
 
         for flag in command.flags {
-            message.append(&mut vec![
+            message.extend([
                 ChatComponentBuilder::new(format!("\n  -{}", flag.letter))
                     .color_code(ColorCode::Gold)
                     .finish(),
@@ -928,55 +875,51 @@ pub(super) fn execute_replace_container(ctx: CommandExecuteContext<'_>) {
     };
     let slots = to.num_slots() as u32;
 
-    let operation = worldedit_start_operation(ctx.player);
-    for x in operation.x_range() {
-        for y in operation.y_range() {
-            for z in operation.z_range() {
-                let pos = BlockPos::new(x, y, z);
-                let block = ctx.plot.get_block(pos);
+    let first = ctx.player.first_position.unwrap();
+    let second = ctx.player.second_position.unwrap();
+    for_each_selected_position(first, second, |pos| {
+        let block = ctx.plot.get_block(pos);
 
-                if ContainerType::from_block(block).is_none() {
-                    continue;
-                }
-                let block_entity = ctx.plot.get_block_entity(pos);
-                if let Some(BlockEntity::Container {
-                    comparator_override,
-                    ty,
-                    ..
-                }) = block_entity
-                {
-                    if *ty != from {
-                        continue;
-                    }
-                    let ss = *comparator_override;
-
-                    let items_needed = match ss {
-                        0 => 0,
-                        15 => slots * 64,
-                        _ => ((32 * slots * ss as u32) as f32 / 7.0 - 1.0).ceil() as u32,
-                    } as usize;
-                    let mut inventory = Vec::new();
-                    for (slot, items_added) in (0..items_needed).step_by(64).enumerate() {
-                        let count = (items_needed - items_added).min(64);
-                        inventory.push(InventoryEntry {
-                            id: Item::Redstone {}.get_id(),
-                            slot: slot as i8,
-                            count: count as i8,
-                            nbt: None,
-                        });
-                    }
-
-                    let new_entity = BlockEntity::Container {
-                        comparator_override: ss,
-                        inventory: inventory.into(),
-                        ty: to,
-                    };
-                    ctx.plot.set_block_entity(pos, new_entity);
-                    ctx.plot.set_block(pos, new_block);
-                }
-            }
+        if ContainerType::from_block(block).is_none() {
+            return;
         }
-    }
+        let block_entity = ctx.plot.get_block_entity(pos);
+        if let Some(BlockEntity::Container {
+            comparator_override,
+            ty,
+            ..
+        }) = block_entity
+        {
+            if *ty != from {
+                return;
+            }
+            let ss = *comparator_override;
+
+            let items_needed = match ss {
+                0 => 0,
+                15 => slots * 64,
+                _ => ((32 * slots * ss as u32) as f32 / 7.0 - 1.0).ceil() as u32,
+            } as usize;
+            let mut inventory = Vec::new();
+            for (slot, items_added) in (0..items_needed).step_by(64).enumerate() {
+                let count = (items_needed - items_added).min(64);
+                inventory.push(InventoryEntry {
+                    id: Item::Redstone {}.get_id(),
+                    slot: slot as i8,
+                    count: count as i8,
+                    nbt: None,
+                });
+            }
+
+            let new_entity = BlockEntity::Container {
+                comparator_override: ss,
+                inventory: inventory.into(),
+                ty: to,
+            };
+            ctx.plot.set_block_entity(pos, new_entity);
+            ctx.plot.set_block(pos, new_block);
+        }
+    });
 
     ctx.player
         .send_worldedit_message(&messages::selection_replaced(start_time.elapsed()));
@@ -991,6 +934,32 @@ mod tests {
     use super::*;
     use crate::plot::PLOT_WIDTH;
     use crate::world::storage::Chunk;
+
+    #[test]
+    fn selection_traversal_preserves_order_and_reversed_bounds() {
+        let first = BlockPos::new(-1, 2, 4);
+        let second = BlockPos::new(0, 3, 5);
+        let expected = vec![
+            BlockPos::new(-1, 2, 4),
+            BlockPos::new(-1, 2, 5),
+            BlockPos::new(-1, 3, 4),
+            BlockPos::new(-1, 3, 5),
+            BlockPos::new(0, 2, 4),
+            BlockPos::new(0, 2, 5),
+            BlockPos::new(0, 3, 4),
+            BlockPos::new(0, 3, 5),
+        ];
+        for (first, second) in [(first, second), (second, first)] {
+            let mut positions = Vec::new();
+            for_each_selected_position(first, second, |pos| positions.push(pos));
+            assert_eq!(positions, expected);
+        }
+        for first in [first, BlockPos::new(i32::MAX, 0, 0)] {
+            let mut positions = Vec::new();
+            for_each_selected_position(first, first, |pos| positions.push(pos));
+            assert_eq!(positions, [first]);
+        }
+    }
 
     #[test]
     fn vertical_destinations_count_floors_and_require_headroom() {

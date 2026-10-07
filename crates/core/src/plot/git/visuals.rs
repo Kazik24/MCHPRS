@@ -4,6 +4,7 @@ use crate::config::CONFIG;
 use crate::messages;
 use crate::player::{allocate_entity_id, PacketSender, PlayerPos};
 use mchprs_blocks::blocks::Block;
+use mchprs_blocks::BlockColorVariant;
 use mchprs_network::packets::clientbound::{
     CDestroyEntities, CEntityMetadata, CEntityMetadataEntry, CSpawnEntity, ClientBoundPacket,
 };
@@ -37,8 +38,9 @@ pub(super) fn metadata(entity_id: i32, kind: u8) -> CEntityMetadata {
         metadata: vec![
             entry(0, 0, vec![0x40]), // Glowing.
             entry(5, 8, vec![1]),    // No gravity.
-            entry(11, 33, vector(-0.001)),
-            entry(12, 33, vector(1.002)),
+            // Center the enlarged glass around the block to avoid overlapping faces.
+            entry(11, 33, vector(-0.005)),
+            entry(12, 33, vector(1.01)),
             entry(17, 3, 2.0f32.to_be_bytes().to_vec()),
             entry(
                 22,
@@ -49,7 +51,20 @@ pub(super) fn metadata(entity_id: i32, kind: u8) -> CEntityMetadata {
                     _ => 0xffff55,
                 }),
             ),
-            entry(23, 14, varint(Block::Glass {}.get_id() as i32)),
+            entry(
+                23,
+                14,
+                varint(
+                    Block::StainedGlass {
+                        color: match kind {
+                            0 => BlockColorVariant::Lime,
+                            1 => BlockColorVariant::Red,
+                            _ => BlockColorVariant::Yellow,
+                        },
+                    }
+                    .get_id() as i32,
+                ),
+            ),
         ],
     }
 }

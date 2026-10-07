@@ -63,7 +63,6 @@ impl NodeState {
         NodeState {
             powered,
             output_strength: if powered { 15 } else { 0 },
-            pending_tick: false,
             ..Default::default()
         }
     }
@@ -77,18 +76,17 @@ impl NodeState {
         }
     }
 
-    pub fn ss(ss: u8) -> NodeState {
+    pub fn with_strength(strength: u8) -> NodeState {
         NodeState {
-            output_strength: ss,
-            pending_tick: false,
+            output_strength: strength,
             ..Default::default()
         }
     }
 
-    pub fn comparator(powered: bool, ss: u8) -> NodeState {
+    pub fn comparator(powered: bool, strength: u8) -> NodeState {
         NodeState {
             powered,
-            output_strength: ss,
+            output_strength: strength,
             ..Default::default()
         }
     }
@@ -127,20 +125,13 @@ pub enum LinkType {
 #[derive(Debug)]
 pub struct CompileLink {
     pub ty: LinkType,
-    pub ss: u8,
+    /// Signal strength lost between source and target.
+    pub attenuation: u8,
 }
 
 impl CompileLink {
-    pub fn new(ty: LinkType, ss: u8) -> CompileLink {
-        CompileLink { ty, ss }
-    }
-
-    pub fn default(ss: u8) -> CompileLink {
-        Self::new(LinkType::Default, ss)
-    }
-
-    pub fn side(ss: u8) -> CompileLink {
-        Self::new(LinkType::Side, ss)
+    pub fn new(ty: LinkType, attenuation: u8) -> CompileLink {
+        CompileLink { ty, attenuation }
     }
 }
 

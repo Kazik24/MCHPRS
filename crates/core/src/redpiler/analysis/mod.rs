@@ -207,7 +207,7 @@ impl AnalysisReport {
             .filter(|p| !p.reset_seeds.is_empty())
             .count();
         format!(
-            "{} pistons, {} reset candidates, {} payload groups, {} observers; {} compilation blockers",
+            "{} pistons, {} reset candidates, {} payload groups, {} observers; {} region validation requirements",
             self.pistons.len(), candidates, self.payload_groups.len(), self.observers.len(), self.issues.len()
         )
     }

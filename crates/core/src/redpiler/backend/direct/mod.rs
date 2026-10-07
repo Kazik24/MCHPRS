@@ -1,4 +1,4 @@
-//! The direct backend does not do code generation and operates on the `CompileNode` graph directly
+//! Execute the compiled graph using packed nodes and priority-ordered tick queues.
 
 mod compile;
 mod instant;
@@ -6,9 +6,8 @@ pub mod node;
 mod tick;
 mod update;
 
-use super::{BackendError, JITBackend, TickScheduler};
+use super::{BackendError, TickScheduler};
 use crate::redpiler::compile_graph::CompileGraph;
-use crate::redpiler::task_monitor::TaskMonitor;
 use crate::redpiler::{block_powered_mut, CompilerOptions};
 use crate::redstone::bool_to_ss;
 use crate::redstone::noteblock;
@@ -20,7 +19,6 @@ use mchprs_world::{TickEntry, TickPriority};
 use node::{Node, NodeId, NodeType, Nodes};
 use rustc_hash::FxHashMap;
 use std::fmt;
-use std::sync::Arc;
 use tracing::{debug, warn};
 
 enum Event {
@@ -49,7 +47,7 @@ pub struct DirectBackend {
     events: Vec<Event>,
     noteblock_info: Vec<(BlockPos, Instrument, u32)>,
     command_far_comparators: FxHashMap<NodeId, Vec<NodeId>>,
-    instant: Option<instant::Runtime>,
+    instant: Vec<instant::Runtime>,
 }
 
 impl DirectBackend {
@@ -125,15 +123,14 @@ impl DirectBackend {
         self.events = remaining;
     }
 
-    pub(crate) fn compile_instant(
+    pub(crate) fn compile(
         &mut self,
         graph: CompileGraph,
-        program: crate::redpiler::instant::program::PreparedInstant,
         ticks: Vec<TickEntry>,
         options: &CompilerOptions,
-        monitor: Arc<TaskMonitor>,
+        instant: Vec<crate::redpiler::instant::program::PreparedInstant>,
     ) -> Result<(), BackendError> {
-        compile::compile(self, graph, ticks, options, monitor, Some(program))
+        compile::compile(self, graph, ticks, options, instant)
     }
     #[inline]
     fn schedule_tick(&mut self, node_id: NodeId, delay: usize, priority: TickPriority) {
@@ -143,17 +140,20 @@ impl DirectBackend {
     fn refresh_outputs(&mut self, source: NodeId) {
         if !self
             .instant
-            .as_ref()
-            .is_some_and(|runtime| runtime.output_depends_on(source))
+            .iter()
+            .any(|runtime| runtime.output_depends_on(source))
         {
             return;
         }
-        if let Some(runtime) = self.instant.take() {
-            for (node, strength) in runtime.output_changes(&self.nodes) {
-                self.set_node(node, strength != 0, strength);
+        let runtimes = std::mem::take(&mut self.instant);
+        for runtime in &runtimes {
+            if runtime.output_depends_on(source) {
+                for (node, strength) in runtime.output_changes(&self.nodes) {
+                    self.set_node(node, strength != 0, strength);
+                }
             }
-            self.instant = Some(runtime);
         }
+        self.instant = runtimes;
     }
 
     fn set_node(&mut self, node_id: NodeId, powered: bool, new_power: u8) {
@@ -167,7 +167,7 @@ impl DirectBackend {
             let node = &self.nodes[node_id];
             let update_link = unsafe { *node.updates.get_unchecked(i) };
             let side = update_link.side();
-            let distance = update_link.ss();
+            let distance = update_link.attenuation();
             let update = update_link.node();
 
             let update_ref = &mut self.nodes[update];
@@ -186,8 +186,8 @@ impl DirectBackend {
 
             // Safety: signal strength is never larger than 15
             unsafe {
-                *inputs.ss_counts.get_unchecked_mut(old_power as usize) -= 1;
-                *inputs.ss_counts.get_unchecked_mut(new_power as usize) += 1;
+                *inputs.strength_counts.get_unchecked_mut(old_power as usize) -= 1;
+                *inputs.strength_counts.get_unchecked_mut(new_power as usize) += 1;
             }
 
             update::update_node(
@@ -217,17 +217,15 @@ impl DirectBackend {
             self.refresh_outputs(node_id);
         }
     }
-}
 
-impl JITBackend for DirectBackend {
-    fn tick_with_world<W: World>(&mut self, world: &mut W) {
+    pub(crate) fn tick_with_world<W: World>(&mut self, world: &mut W) {
         self.process_command_outputs(world);
         world.piston_state_mut().logical_tick += 1;
         self.tick();
         self.process_command_outputs(world);
     }
 
-    fn inspect(&mut self, pos: BlockPos) {
+    pub(crate) fn inspect(&mut self, pos: BlockPos) {
         let Some(node_id) = self.pos_map.get(&pos) else {
             debug!("could not find node at pos {}", pos);
             return;
@@ -236,7 +234,7 @@ impl JITBackend for DirectBackend {
         debug!("Node {:?}: {:#?}", node_id, self.nodes[*node_id]);
     }
 
-    fn reset<W: World>(&mut self, world: &mut W, io_only: bool) {
+    pub(crate) fn reset<W: World>(&mut self, world: &mut W, io_only: bool) {
         // Display flushing can clear dirty flags without writing hidden nodes.
         // Handoff must materialize their current strengths, including ordinary
         // dust between a virtual region supply and its consumer.
@@ -246,7 +244,7 @@ impl JITBackend for DirectBackend {
             }
         }
         self.flush(world, false);
-        if let Some(runtime) = self.instant.take() {
+        for runtime in std::mem::take(&mut self.instant) {
             runtime.materialize(world);
         }
         self.scheduler.reset(world, &self.blocks);
@@ -278,7 +276,7 @@ impl JITBackend for DirectBackend {
         self.events.clear();
     }
 
-    fn on_use_block(&mut self, pos: BlockPos) {
+    pub(crate) fn on_use_block(&mut self, pos: BlockPos) {
         let node_id = self.pos_map[&pos];
         let node = &self.nodes[node_id];
         match node.ty {
@@ -294,12 +292,12 @@ impl JITBackend for DirectBackend {
             }
             _ => warn!("Tried to use a {:?} redpiler node", node.ty),
         }
-        if let Some(runtime) = &mut self.instant {
+        for runtime in &mut self.instant {
             runtime.observe_action(pos, self.nodes[node_id].output_power);
         }
     }
 
-    fn set_pressure_plate(&mut self, pos: BlockPos, powered: bool) {
+    pub(crate) fn set_pressure_plate(&mut self, pos: BlockPos, powered: bool) {
         let node_id = self.pos_map[&pos];
         let node = &self.nodes[node_id];
         match node.ty {
@@ -310,7 +308,7 @@ impl JITBackend for DirectBackend {
         }
     }
 
-    fn tick(&mut self) {
+    pub(crate) fn tick(&mut self) {
         let mut queues = self.scheduler.queues_this_tick_move_next();
 
         for node_id in queues.drain_iter() {
@@ -318,18 +316,19 @@ impl JITBackend for DirectBackend {
         }
 
         self.scheduler.end_tick(queues);
-        if let Some(mut runtime) = self.instant.take() {
+        let mut runtimes = std::mem::take(&mut self.instant);
+        for runtime in &mut runtimes {
             let changes = runtime.advance(&self.nodes);
             for (id, strength) in changes {
                 if self.nodes[id].output_power != strength {
                     self.set_node(id, strength != 0, strength);
                 }
             }
-            self.instant = Some(runtime);
         }
+        self.instant = runtimes;
     }
 
-    fn flush<W: World>(&mut self, world: &mut W, io_only: bool) {
+    pub(crate) fn flush<W: World>(&mut self, world: &mut W, io_only: bool) {
         self.process_command_outputs(world);
         for event in self.events.drain(..) {
             match event {
@@ -371,16 +370,6 @@ impl JITBackend for DirectBackend {
             node.changed = false;
         }
     }
-
-    fn compile(
-        &mut self,
-        graph: CompileGraph,
-        ticks: Vec<TickEntry>,
-        options: &CompilerOptions,
-        monitor: Arc<TaskMonitor>,
-    ) -> Result<(), BackendError> {
-        compile::compile(self, graph, ticks, options, monitor, None)
-    }
 }
 
 /// Set node for use in `update`. None of the nodes here have usable output power,
@@ -407,20 +396,22 @@ fn schedule_tick(
     scheduler.schedule_tick(node_id, delay, priority);
 }
 
+// Ignore strength zero; any nonzero counter at strengths 1..15 means powered.
 const BOOL_INPUT_MASK: u128 = u128::from_ne_bytes([
     0, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255,
 ]);
 
-fn get_bool_input(node: &Node) -> bool {
-    u128::from_le_bytes(node.default_inputs.ss_counts) & BOOL_INPUT_MASK != 0
+fn has_main_input(node: &Node) -> bool {
+    u128::from_le_bytes(node.default_inputs.strength_counts) & BOOL_INPUT_MASK != 0
 }
 
-fn get_bool_side(node: &Node) -> bool {
-    u128::from_le_bytes(node.side_inputs.ss_counts) & BOOL_INPUT_MASK != 0
+fn has_side_input(node: &Node) -> bool {
+    u128::from_le_bytes(node.side_inputs.strength_counts) & BOOL_INPUT_MASK != 0
 }
 
-fn last_index_positive(array: &[u8; 16]) -> u32 {
-    // Note: this might be slower on big-endian systems
+fn strongest_input(array: &[u8; 16]) -> u32 {
+    // Each byte counts links at that strength. The highest nonzero byte is
+    // the strongest input; reading all sixteen bytes keeps this scan constant-time.
     let value = u128::from_le_bytes(*array);
     if value == 0 {
         0
@@ -429,15 +420,16 @@ fn last_index_positive(array: &[u8; 16]) -> u32 {
     }
 }
 
-fn get_all_input(node: &Node) -> (u8, u8) {
-    let input_power = last_index_positive(&node.default_inputs.ss_counts) as u8;
+fn input_strengths(node: &Node) -> (u8, u8) {
+    let input_power = strongest_input(&node.default_inputs.strength_counts) as u8;
 
-    let side_input_power = last_index_positive(&node.side_inputs.ss_counts) as u8;
+    let side_input_power = strongest_input(&node.side_inputs.strength_counts) as u8;
 
     (input_power, side_input_power)
 }
 
-// This function is optimized for input values from 0 to 15 and does not work correctly outside that range
+// With validated 0..15 strengths, wrapping subtraction puts underflow above 15.
+// This preserves the compact comparator calculation in the tick and update loops.
 fn calculate_comparator_output(mode: ComparatorMode, input_strength: u8, power_on_sides: u8) -> u8 {
     let difference = input_strength.wrapping_sub(power_on_sides);
     if difference <= 15 {
@@ -486,7 +478,7 @@ impl fmt::Display for DirectBackend {
             writeln!(f, "    n{} [ label = \"{}\\n({})\" ];", id, label, pos)?;
             for link in node.updates.iter() {
                 let out_index = link.node().index();
-                let distance = link.ss();
+                let distance = link.attenuation();
                 let color = if link.side() { ",color=\"blue\"" } else { "" };
                 writeln!(
                     f,

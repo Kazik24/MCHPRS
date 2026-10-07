@@ -221,10 +221,10 @@ fn anpu_cannot_bypass_compiled_graph_admission() {
             "--optimize",
             "--io-only",
             "--optimize --io-only",
-            "--piston-events",
+            "--assume-instant",
         ] {
             let mut compiler = Compiler::default();
-            let mut options = CompilerOptions::parse(flags);
+            let mut options = CompilerOptions::parse(flags).unwrap();
             options.budget_multiplier = budget_multiplier;
             let error = compiler
                 .compile(
@@ -242,4 +242,5 @@ fn anpu_cannot_bypass_compiled_graph_admission() {
                 "failed admission must preserve physical state and queued work; budget={budget_multiplier}, flags={flags}");
         }
     }
+    assert!(CompilerOptions::parse("--piston-events").is_err());
 }

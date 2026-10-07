@@ -1,9 +1,6 @@
-use super::Pass;
 use crate::redpiler::compile_graph::{
     CompileGraph, LinkType as CLinkType, NodeIdx, NodeType as CNodeType,
 };
-use crate::redpiler::{CompilerInput, CompilerOptions};
-use crate::world::World;
 use itertools::Itertools;
 use mchprs_blocks::blocks::ComparatorMode as CComparatorMode;
 use petgraph::visit::EdgeRef;
@@ -30,7 +27,7 @@ fn convert_node(
                 CLinkType::Default => LinkType::Default,
                 CLinkType::Side => LinkType::Side,
             },
-            weight: weight.ss,
+            weight: weight.attenuation,
             to: idx,
         });
     }
@@ -99,52 +96,34 @@ fn convert_node(
     }
 }
 
-pub struct ExportGraph;
-
-impl<W: World> Pass<W> for ExportGraph {
-    fn run_pass(
-        &self,
-        graph: &mut CompileGraph,
-        _: &CompilerOptions,
-        _: &CompilerInput<'_, W>,
-    ) -> Result<(), super::GraphError> {
-        if graph
-            .node_weights()
-            .any(|node| matches!(node.ty, CNodeType::CommandBlock { .. }))
-        {
-            return Err(super::GraphError::UnsupportedCommandBlockExport);
-        }
-        if graph.node_weights().any(|n| {
-            matches!(
-                n.ty,
-                CNodeType::InstantInput { .. }
-                    | CNodeType::MobileSource { .. }
-                    | CNodeType::InstantOutput { .. }
-            )
-        }) {
-            return Err(super::GraphError::UnsupportedInstantExport);
-        }
-        let mut nodes_map =
-            FxHashMap::with_capacity_and_hasher(graph.node_count(), Default::default());
-        for node in graph.node_indices() {
-            nodes_map.insert(node, nodes_map.len());
-        }
-
-        let nodes = graph
-            .node_indices()
-            .map(|idx| convert_node(graph, idx, &nodes_map))
-            .collect_vec();
-
-        fs::write("redpiler_graph.bc", serialize(nodes.as_slice()).unwrap())
-            .map_err(super::GraphError::Export)?;
-        Ok(())
+pub(super) fn run(graph: &mut CompileGraph) -> Result<(), super::GraphError> {
+    if graph
+        .node_weights()
+        .any(|node| matches!(node.ty, CNodeType::CommandBlock { .. }))
+    {
+        return Err(super::GraphError::UnsupportedCommandBlockExport);
+    }
+    if graph.node_weights().any(|n| {
+        matches!(
+            n.ty,
+            CNodeType::InstantInput { .. }
+                | CNodeType::MobileSource { .. }
+                | CNodeType::InstantOutput { .. }
+        )
+    }) {
+        return Err(super::GraphError::UnsupportedInstantExport);
+    }
+    let mut nodes_map = FxHashMap::with_capacity_and_hasher(graph.node_count(), Default::default());
+    for node in graph.node_indices() {
+        nodes_map.insert(node, nodes_map.len());
     }
 
-    fn should_run(&self, options: &CompilerOptions) -> bool {
-        options.export
-    }
+    let nodes = graph
+        .node_indices()
+        .map(|idx| convert_node(graph, idx, &nodes_map))
+        .collect_vec();
 
-    fn status_message(&self) -> &'static str {
-        "Exporting graph"
-    }
+    fs::write("redpiler_graph.bc", serialize(nodes.as_slice()).unwrap())
+        .map_err(super::GraphError::Export)?;
+    Ok(())
 }

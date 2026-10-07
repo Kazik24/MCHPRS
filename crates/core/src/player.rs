@@ -5,12 +5,11 @@ use crate::permissions::{self, PlayerPermissionsCache, Rank};
 use crate::plot::worldedit::{WorldEditClipboard, WorldEditUndo};
 use crate::plot::PLOT_SCALE;
 use crate::utils::HyphenatedUUID;
-use byteorder::{BigEndian, ReadBytesExt};
 use mchprs_blocks::block_entities::{ContainerType, InventoryEntry};
 use mchprs_blocks::items::{Item, ItemStack};
 use mchprs_blocks::{BlockDirection, BlockFacing, BlockPos};
 use mchprs_network::packets::clientbound::*;
-use mchprs_network::packets::{PacketEncoder, SlotData};
+use mchprs_network::packets::PacketEncoder;
 use mchprs_network::{PlayerConn, PlayerPacketSender};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -213,10 +212,8 @@ impl Player {
     }
 
     pub fn generate_offline_uuid(username: &str) -> u128 {
-        Cursor::new(md5::compute(format!("OfflinePlayer:{}", username)).0)
-            .read_u128::<BigEndian>()
-            .unwrap()
-            // Encode version and varient into uuid
+        u128::from_be_bytes(md5::compute(format!("OfflinePlayer:{}", username)).0)
+            // Encode UUID variant and version 3 (MD5).
             & (!(0xC << 60) & !(0xF << 76))
             | ((0x8 << 60) | (0x3 << 76))
     }
@@ -873,11 +870,7 @@ impl Player {
             window_id: 0,
             state_id: 0,
             slot: slot as i16,
-            slot_data: item.as_ref().map(|item| SlotData {
-                item_id: item.item_type.get_id() as i32,
-                item_count: item.count as i8,
-                nbt: item.nbt.clone(),
-            }),
+            slot_data: item.as_ref().map(crate::container::slot_data),
         }
         .encode();
         self.client.send_packet(&set_slot);
@@ -938,6 +931,14 @@ impl PacketSender for Player {
 #[cfg(test)]
 mod coordinate_security_tests {
     use super::*;
+    #[test]
+    fn offline_uuid_matches_java_name_uuid() {
+        assert_eq!(
+            Player::generate_offline_uuid("Notch"),
+            0xb50ad385_829d_3141_a216_7e7d7539ba7f
+        );
+    }
+
     #[test]
     fn player_coordinates_reject_nonfinite_and_extreme_positions() {
         for value in [

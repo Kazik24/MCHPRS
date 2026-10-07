@@ -178,7 +178,7 @@ fn compiled_handoff_preserves_pending_short_pulse() {
             .compile(
                 &world,
                 world.get_corners(),
-                CompilerOptions::parse(options),
+                CompilerOptions::parse(options).unwrap(),
                 ticks,
                 Default::default(),
             )
@@ -267,7 +267,7 @@ fn all_binary_plate_variants_power_and_survive_compiler_flush() {
             .compile(
                 &world,
                 world.get_corners(),
-                CompilerOptions::parse("-O -io"),
+                CompilerOptions::parse("-O -io").unwrap(),
                 Vec::new(),
                 Default::default(),
             )
@@ -482,7 +482,7 @@ fn dust_steps_over_opaque_blocks_and_powers_the_block_below_in_both_backends() {
                     .compile(
                         &world,
                         world.get_corners(),
-                        CompilerOptions::parse(backend),
+                        CompilerOptions::parse(backend).unwrap(),
                         Vec::new(),
                         Default::default(),
                     )

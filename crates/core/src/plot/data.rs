@@ -1,11 +1,10 @@
 use super::{Plot, NUM_CHUNKS, PLOT_SCALE, PLOT_SECTIONS, PLOT_WIDTH};
 use anyhow::{anyhow, ensure, Context, Result};
-use mchprs_save_data::plot_data::{ChunkData, PlotData, Tps, WorldSendRate};
+use mchprs_save_data::plot_data::{PlotData, Tps, WorldSendRate};
 use once_cell::sync::Lazy;
 use std::path::Path;
 use std::time::Duration;
 
-// TODO: where to put this?
 pub fn sleep_time_for_tps(tps: Tps) -> Duration {
     match tps {
         Tps::Limited(tps) => {
@@ -58,14 +57,12 @@ static EMPTY_PLOT: Lazy<Result<PlotData<PLOT_SECTIONS>, String>> = Lazy::new(|| 
             })
             .map_err(|error| format!("failed to read template plot: {}", error))
     } else {
-        let mut chunks = Vec::new();
+        let mut chunk_data = Vec::with_capacity(NUM_CHUNKS);
         for chunk_x in 0..PLOT_WIDTH {
             for chunk_z in 0..PLOT_WIDTH {
-                chunks.push(Plot::generate_chunk(8, chunk_x, chunk_z));
+                chunk_data.push(Plot::generate_chunk(8, chunk_x, chunk_z).save());
             }
         }
-        let chunk_data: Vec<ChunkData<PLOT_SECTIONS>> =
-            chunks.iter_mut().map(|c| c.save()).collect();
         Ok(PlotData {
             tps: Tps::Limited(crate::config::CONFIG.default_tps),
             world_send_rate: WorldSendRate::default(),

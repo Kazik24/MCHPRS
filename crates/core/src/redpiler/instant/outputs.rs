@@ -3,7 +3,7 @@ use super::boolean::{BooleanArena, Expr, GeometryPart, Variable};
 use crate::redpiler::analysis::ports::ConsumerInput;
 use mchprs_blocks::BlockPos;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub(crate) struct PowerTerm {
     pub guard: Expr,
     /// None denotes a redstone block, whose strength is always fifteen.
@@ -11,7 +11,7 @@ pub(crate) struct PowerTerm {
     pub attenuation: u8,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub(crate) struct OutputPort {
     pub consumer: BlockPos,
     pub input: ConsumerInput,

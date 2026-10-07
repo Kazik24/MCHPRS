@@ -56,6 +56,7 @@ pub(crate) fn recognize(
     world: &impl World,
     report: &AnalysisReport,
     monitor: &TaskMonitor,
+    assume_instant: bool,
 ) -> Result<Option<ClockedProgram>, String> {
     let clocks: Vec<_> = report
         .pistons
@@ -74,11 +75,11 @@ pub(crate) fn recognize(
         let above = p.pos.offset(BlockFace::Top);
         if p.piston.facing != BlockFacing::Down
             || !p.piston.extended
-            || !p.powered
+            || (!assume_instant && !p.powered)
             || world.get_block(p.payload) != Block::Air
             || !matches!(world.get_block(above),Block::Observer { observer }
                 if observer.facing==BlockFacing::Down && !observer.powered)
-            || !world.get_block(above.offset(BlockFace::Top)).is_solid()
+            || (!assume_instant && !world.get_block(above.offset(BlockFace::Top)).is_solid())
         {
             return Err(format!(
                 "ordinary piston at {:?} is not a ready empty observer-clock generator; independent piston update samplers are not implemented",

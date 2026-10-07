@@ -11,17 +11,19 @@ impl NodeId {
         self.0 as usize
     }
 
-    /// Safety: index must be within bounds of nodes array
+    /// # Safety
+    /// The index must fit in `u32` and belong to the `Nodes` used to dereference it.
+    /// That node array must keep its indices valid for the lifetime of this ID.
     pub unsafe fn from_index(index: usize) -> NodeId {
         NodeId(index as u32)
     }
 }
 
-// This is Pretty Bad:tm: because one can create a NodeId using another instance of Nodes,
-// but at least some type system protection is better than none.
+/// Fixed node storage. IDs are validated during compilation so runtime indexing
+/// can skip bounds checks. Never use an ID from another backend's node array.
 #[derive(Default)]
 pub struct Nodes {
-    pub nodes: Box<[Node]>,
+    nodes: Box<[Node]>,
 }
 
 impl Nodes {
@@ -30,11 +32,8 @@ impl Nodes {
     }
 
     pub fn get(&self, idx: usize) -> NodeId {
-        if self.nodes.get(idx).is_some() {
-            NodeId(idx as u32)
-        } else {
-            panic!("node index out of bounds: {}", idx)
-        }
+        assert!(idx < self.nodes.len(), "node index out of bounds: {idx}");
+        NodeId(idx as u32)
     }
 
     pub fn inner(&self) -> &[Node] {
@@ -53,30 +52,33 @@ impl Nodes {
 impl Index<NodeId> for Nodes {
     type Output = Node;
 
-    // The index here MUST have been created by this instance, otherwise scary things will happen !
     fn index(&self, index: NodeId) -> &Self::Output {
+        // Safety: IDs belong to this fixed array and were checked during compilation.
         unsafe { self.nodes.get_unchecked(index.0 as usize) }
     }
 }
 
 impl IndexMut<NodeId> for Nodes {
     fn index_mut(&mut self, index: NodeId) -> &mut Self::Output {
+        // Safety: same invariant as immutable indexing.
         unsafe { self.nodes.get_unchecked_mut(index.0 as usize) }
     }
 }
 
+/// Packed update link: 27 bits for the node, one for the side channel, and
+/// four for attenuation. Keep this layout small for the runtime update loop.
 #[derive(Clone, Copy)]
 pub struct ForwardLink {
     data: u32,
 }
 
 impl ForwardLink {
-    pub fn new(id: NodeId, side: bool, ss: u8) -> Self {
+    pub fn new(id: NodeId, side: bool, attenuation: u8) -> Self {
         assert!(id.index() < (1 << 27));
-        // the clamp_weights compile pass should ensure ss < 15
-        assert!(ss < 15);
+        // The clamp_weights pass removes links that cannot carry power.
+        assert!(attenuation < 15);
         Self {
-            data: (id.index() as u32) << 5 | if side { 1 << 4 } else { 0 } | ss as u32,
+            data: (id.index() as u32) << 5 | if side { 1 << 4 } else { 0 } | attenuation as u32,
         }
     }
 
@@ -91,7 +93,7 @@ impl ForwardLink {
         self.data & (1 << 4) != 0
     }
 
-    pub fn ss(self) -> u8 {
+    pub fn attenuation(self) -> u8 {
         (self.data & 0b1111) as u8
     }
 }
@@ -101,7 +103,7 @@ impl std::fmt::Debug for ForwardLink {
         f.debug_struct("ForwardLink")
             .field("node", &self.node())
             .field("side", &self.side())
-            .field("ss", &self.ss())
+            .field("attenuation", &self.attenuation())
             .finish()
     }
 }
@@ -136,25 +138,12 @@ pub enum NodeType {
     },
 }
 
-impl NodeType {
-    pub fn _is_io_block(self) -> bool {
-        matches!(
-            self,
-            NodeType::Lamp
-                | NodeType::Button
-                | NodeType::Lever
-                | NodeType::Trapdoor
-                | NodeType::PressurePlate
-                | NodeType::NoteBlock { .. }
-                | NodeType::CommandBlock { .. }
-        )
-    }
-}
-
 #[repr(align(16))]
 #[derive(Debug, Clone, Default)]
 pub struct NodeInput {
-    pub ss_counts: [u8; 16],
+    /// Number of incoming links currently supplying each strength, from 0 to 15.
+    /// Compilation caps each channel at 255 links to keep these counters in `u8`.
+    pub strength_counts: [u8; 16],
 }
 
 #[derive(Debug, Clone, Copy)]

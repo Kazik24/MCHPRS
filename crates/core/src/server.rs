@@ -17,7 +17,7 @@ use mchprs_network::packets::clientbound::{
 use mchprs_network::packets::serverbound::{
     SHandshake, SLoginPluginResponse, SLoginStart, SPing, SRequest, ServerBoundPacketHandler,
 };
-use mchprs_network::packets::{PacketEncoderExt, SlotData};
+use mchprs_network::packets::PacketEncoderExt;
 use mchprs_network::{NetworkServer, NetworkState, PlayerPacketSender};
 use rustc_hash::FxHashMap;
 use serde::{Deserialize, Serialize};
@@ -295,11 +295,15 @@ impl MinecraftServer {
             self.update_player_entry(player.uuid, plot_x, plot_z);
         }
 
-        let plot_loaded = self
+        let plot = self
             .running_plots
             .iter()
-            .any(|p| p.plot_x == plot_x && p.plot_z == plot_z);
-        if !plot_loaded {
+            .find(|p| p.plot_x == plot_x && p.plot_z == plot_z);
+        if let Some(plot) = plot {
+            let _ = plot
+                .priv_message_sender
+                .send(PrivMessage::PlayerEnterPlot(player));
+        } else {
             let (priv_tx, priv_rx) = mpsc::channel();
             Plot::load_and_run(
                 plot_x,
@@ -315,15 +319,6 @@ impl MinecraftServer {
                 plot_z,
                 priv_message_sender: priv_tx,
             });
-        } else {
-            let plot_list_entry = self
-                .running_plots
-                .iter()
-                .find(|p| p.plot_x == plot_x && p.plot_z == plot_z)
-                .unwrap();
-            let _ = plot_list_entry
-                .priv_message_sender
-                .send(PrivMessage::PlayerEnterPlot(player));
         }
     }
 
@@ -477,16 +472,10 @@ impl MinecraftServer {
         player.client.send_packet(&player_info);
 
         // Send the player's inventory
-        let slot_data: Vec<Option<SlotData>> = player
+        let slot_data = player
             .inventory
             .iter()
-            .map(|op| {
-                op.as_ref().map(|item| SlotData {
-                    item_count: item.count as i8,
-                    item_id: item.item_type.get_id() as i32,
-                    nbt: item.nbt.clone(),
-                })
-            })
+            .map(|item| item.as_ref().map(crate::container::slot_data))
             .collect();
         let window_items = CWindowItems {
             window_id: 0,
@@ -623,23 +612,18 @@ impl MinecraftServer {
                     let plot_x = other_player.plot_x;
                     let plot_z = other_player.plot_z;
 
-                    let plot_loaded = self
+                    let plot_index = self
                         .running_plots
                         .iter()
-                        .any(|p| p.plot_x == plot_x && p.plot_z == plot_z);
-                    if !plot_loaded {
-                        player.send_system_message(messages::TARGET_PLOT_NOT_LOADED);
-                        self.send_player_to_plot(player, false);
-                    } else {
+                        .position(|p| p.plot_x == plot_x && p.plot_z == plot_z);
+                    if let Some(index) = plot_index {
                         self.update_player_entry(player.uuid, plot_x, plot_z);
-                        let plot_list_entry = self
-                            .running_plots
-                            .iter()
-                            .find(|p| p.plot_x == plot_x && p.plot_z == plot_z)
-                            .unwrap();
-                        let _ = plot_list_entry
+                        let _ = self.running_plots[index]
                             .priv_message_sender
                             .send(PrivMessage::PlayerTeleportOther(player, other_username));
+                    } else {
+                        player.send_system_message(messages::TARGET_PLOT_NOT_LOADED);
+                        self.send_player_to_plot(player, false);
                     }
                 } else {
                     player.send_system_message(messages::PLAYER_NOT_FOUND);

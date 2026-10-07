@@ -1,5 +1,3 @@
-//! # [`IdentifyNodes`]
-//!
 //! This pass populates the graph with nodes using the input given in [`CompilerInput`].
 //! This pass is *mandatory*. Without it, the graph will never be populated.
 //!
@@ -7,7 +5,6 @@
 //!
 //! There are no requirements for this pass.
 
-use super::Pass;
 use crate::redpiler::compile_graph::{
     CompileGraph, CompileLink, CompileNode, LinkType, NodeIdx, NodeState, NodeType,
 };
@@ -19,128 +16,110 @@ use mchprs_blocks::blocks::Block;
 use mchprs_blocks::BlockPos;
 use rustc_hash::FxHashMap;
 
-pub struct IdentifyNodes;
+pub(super) fn run<W: World>(
+    graph: &mut CompileGraph,
+    options: &CompilerOptions,
+    input: &CompilerInput<'_, W>,
+) -> Result<(), super::GraphError> {
+    let ignore_wires = options.optimize;
+    let plot = input.world;
 
-impl<W: World> Pass<W> for IdentifyNodes {
-    fn run_pass(
-        &self,
-        graph: &mut CompileGraph,
-        options: &CompilerOptions,
-        input: &CompilerInput<'_, W>,
-    ) -> Result<(), super::GraphError> {
-        let ignore_wires = options.optimize;
-        let plot = input.world;
+    let mut nodes_by_position = FxHashMap::default();
 
-        let mut nodes_by_position = FxHashMap::default();
-
-        if let Some(boundaries) = input.boundaries {
-            for (group, payload) in boundaries.report.payload_groups.iter().enumerate() {
-                for &alias in &payload.positions {
-                    graph.add_node(CompileNode {
-                        ty: NodeType::MobileSource { group, alias },
-                        block: None,
-                        state: NodeState::ss(if plot.get_block(alias) == Block::RedstoneBlock {
+    if let Some(boundaries) = input.boundaries {
+        for (group, payload) in boundaries.report.payload_groups.iter().enumerate() {
+            for &alias in &payload.positions {
+                graph.add_node(CompileNode {
+                    ty: NodeType::MobileSource { group, alias },
+                    block: None,
+                    state: NodeState::with_strength(
+                        if plot.get_block(alias) == Block::RedstoneBlock {
                             15
                         } else {
                             0
-                        }),
-                        is_input: false,
-                        is_output: false,
-                    });
-                }
+                        },
+                    ),
+                    is_input: false,
+                    is_output: false,
+                });
             }
-            for piston in 0..boundaries.report.pistons.len() {
-                if boundaries.executable {
-                    break;
-                }
-                let strength = boundaries.report.recognition[piston]
-                    .inputs
-                    .sources
-                    .iter()
-                    .filter(|source| !boundaries.internal_dependency(piston, source))
-                    .map(|source| {
-                        redstone::source_strength(
-                            plot.get_block(source.source),
-                            plot,
-                            source.source,
-                        )
+        }
+        for piston in 0..boundaries.report.pistons.len() {
+            if boundaries.executable {
+                break;
+            }
+            let strength = boundaries.report.recognition[piston]
+                .inputs
+                .sources
+                .iter()
+                .filter(|source| !boundaries.internal_dependency(piston, source))
+                .map(|source| {
+                    redstone::source_strength(plot.get_block(source.source), plot, source.source)
                         .saturating_sub(source.attenuation)
-                    })
-                    .max()
-                    .unwrap_or(0);
-                graph.add_node(CompileNode {
-                    ty: NodeType::InstantInput { piston },
-                    block: None,
-                    state: NodeState::ss(strength),
-                    is_input: false,
-                    is_output: false,
-                });
-            }
+                })
+                .max()
+                .unwrap_or(0);
+            graph.add_node(CompileNode {
+                ty: NodeType::InstantInput { piston },
+                block: None,
+                state: NodeState::with_strength(strength),
+                is_input: false,
+                is_output: false,
+            });
         }
-
-        let (first_pos, second_pos) = input.bounds;
-
-        for_each_block_optimized(plot, first_pos, second_pos, |pos| {
-            if input.boundaries.is_some_and(|b| b.is_owned(pos)) {
-                return;
-            }
-            for_pos(graph, &mut nodes_by_position, ignore_wires, plot, pos);
-        });
-
-        if let Some(boundaries) = input.boundaries {
-            for node in graph.node_weights_mut() {
-                if node
-                    .block
-                    .is_some_and(|(pos, _)| boundaries.is_retained(pos))
-                {
-                    node.is_input = true;
-                }
-                if node.block.is_some_and(|(pos, _)| boundaries.is_output(pos)) {
-                    node.is_output = true;
-                }
-            }
-        }
-
-        if let Some(boundaries) = input.boundaries {
-            for (port, output) in boundaries.outputs.iter().enumerate() {
-                let target = *nodes_by_position.get(&output.consumer).ok_or(
-                    super::GraphError::MissingSource {
-                        pos: output.consumer,
-                    },
-                )?;
-                let source = graph.add_node(CompileNode {
-                    ty: NodeType::InstantOutput { port },
-                    block: None,
-                    state: NodeState::ss(output.initial_strength),
-                    is_input: false,
-                    is_output: false,
-                });
-                let channel = match output.input {
-                    crate::redpiler::analysis::ports::ConsumerInput::Main => LinkType::Default,
-                    crate::redpiler::analysis::ports::ConsumerInput::ComparatorSide => {
-                        LinkType::Side
-                    }
-                };
-                graph.add_edge(source, target, CompileLink::new(channel, 0));
-            }
-        }
-
-        for entry in input.ticks {
-            if let Some(&idx) = nodes_by_position.get(&entry.pos) {
-                graph[idx].state.pending_tick = true;
-            }
-        }
-        Ok(())
     }
 
-    fn should_run(&self, _: &CompilerOptions) -> bool {
-        // Mandatory
-        true
+    let (first_pos, second_pos) = input.bounds;
+
+    for_each_block_optimized(plot, first_pos, second_pos, |pos| {
+        if input.boundaries.is_some_and(|b| b.is_owned(pos)) {
+            return;
+        }
+        for_pos(graph, &mut nodes_by_position, ignore_wires, plot, pos);
+    });
+
+    if let Some(boundaries) = input.boundaries {
+        for node in graph.node_weights_mut() {
+            if node
+                .block
+                .is_some_and(|(pos, _)| boundaries.is_retained(pos))
+            {
+                node.is_input = true;
+            }
+            if node.block.is_some_and(|(pos, _)| boundaries.is_output(pos)) {
+                node.is_output = true;
+            }
+        }
     }
 
-    fn status_message(&self) -> &'static str {
-        "Identifying nodes"
+    if let Some(boundaries) = input.boundaries {
+        for (port, output) in boundaries.outputs.iter().enumerate() {
+            let target = *nodes_by_position.get(&output.consumer).ok_or(
+                super::GraphError::MissingSource {
+                    pos: output.consumer,
+                },
+            )?;
+            let source = graph.add_node(CompileNode {
+                ty: NodeType::InstantOutput { port },
+                block: None,
+                state: NodeState::with_strength(output.initial_strength),
+                is_input: false,
+                is_output: false,
+            });
+            let channel = match output.input {
+                crate::redpiler::analysis::ports::ConsumerInput::Main => LinkType::Default,
+                crate::redpiler::analysis::ports::ConsumerInput::ComparatorSide => LinkType::Side,
+            };
+            graph.add_edge(source, target, CompileLink::new(channel, 0));
+        }
     }
+
+    for entry in input.ticks {
+        if let Some(&idx) = nodes_by_position.get(&entry.pos) {
+            graph[idx].state.pending_tick = true;
+        }
+    }
+    Ok(())
 }
 
 fn for_pos<W: World>(
@@ -233,7 +212,7 @@ fn identify_block<W: World>(
         Block::RedstoneTorch { lit, .. } | Block::RedstoneWallTorch { lit, .. } => {
             (NodeType::Torch, NodeState::simple(lit))
         }
-        Block::RedstoneWire { wire } => (NodeType::Wire, NodeState::ss(wire.power)),
+        Block::RedstoneWire { wire } => (NodeType::Wire, NodeState::with_strength(wire.power)),
         Block::StoneButton { button } => (NodeType::Button, NodeState::simple(button.powered)),
         Block::RedstoneLamp { lit } => (NodeType::Lamp, NodeState::simple(lit)),
         Block::Lever { lever } => (NodeType::Lever, NodeState::simple(lever.powered)),
@@ -245,7 +224,7 @@ fn identify_block<W: World>(
             NodeState::simple(block.pressure_plate_powered().unwrap()),
         ),
         Block::IronTrapdoor { powered, .. } => (NodeType::Trapdoor, NodeState::simple(powered)),
-        Block::RedstoneBlock => (NodeType::Constant, NodeState::ss(15)),
+        Block::RedstoneBlock => (NodeType::Constant, NodeState::with_strength(15)),
         Block::NoteBlock {
             instrument: _,
             note,
@@ -282,7 +261,7 @@ fn identify_block<W: World>(
         }
         block if comparator::has_override(block) => (
             NodeType::Constant,
-            NodeState::ss(comparator::get_override(block, world, pos)),
+            NodeState::with_strength(comparator::get_override(block, world, pos)),
         ),
         _ => return None,
     };

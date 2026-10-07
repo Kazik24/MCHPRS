@@ -7,7 +7,7 @@ use crate::redpiler::instant::boolean::{Expr, GeometryPart, Variable, TRUE};
 use crate::redpiler::instant::program::PreparedInstant;
 use crate::world::storage::Chunk;
 use crate::world::World;
-use mchprs_blocks::blocks::{Block, LeverFace};
+use mchprs_blocks::blocks::{Block, LeverFace, RedstonePistonHead};
 use mchprs_blocks::{BlockFace, BlockPos};
 use rustc_hash::{FxHashMap, FxHashSet};
 
@@ -16,13 +16,15 @@ pub(super) struct Runtime {
     sources: FxHashMap<BlockPos, NodeId>,
     aliases: Vec<(NodeId, Supply)>,
     fired: Vec<bool>,
+    // Half ticks since launch: 0 ready, 1..2 retracting, 3 near payload,
+    // 4..5 extending, 6 reset complete (resample on the next advance).
     phase: u8,
     repeated: bool,
     elapsed: u64,
-    ready: FxHashMap<BlockPos, u8>,
-    epoch: FxHashMap<BlockPos, u8>,
+    ready_inputs: FxHashMap<BlockPos, u8>,
+    launch_inputs: FxHashMap<BlockPos, u8>,
     actions: Vec<(BlockPos, u8)>,
-    epoch_actions: Vec<(BlockPos, u8)>,
+    launch_actions: Vec<(BlockPos, u8)>,
     decisions: Vec<Decision>,
     outputs: Vec<Output>,
     output_sources: FxHashSet<NodeId>,
@@ -59,15 +61,22 @@ enum Input {
     Geometry { actor: usize, part: GeometryPart },
 }
 enum Supply {
-    Wave { group: usize, initial: bool },
-    Memory { actor: usize, far: bool },
+    Wave {
+        group: usize,
+        initial: bool,
+        near: Option<usize>,
+    },
+    Memory {
+        actor: usize,
+        far: bool,
+    },
 }
 
 impl Runtime {
     pub(super) fn bind(
         mut program: PreparedInstant,
-        bindings: FxHashMap<BlockPos, NodeId>,
-        output_bindings: FxHashMap<usize, NodeId>,
+        bindings: &FxHashMap<BlockPos, NodeId>,
+        output_bindings: &FxHashMap<usize, NodeId>,
         nodes: &Nodes,
     ) -> Result<Self, BackendError> {
         let mut sources = FxHashMap::default();
@@ -92,7 +101,20 @@ impl Runtime {
                     far: pos == cell.far,
                 }
             } else {
-                Supply::Wave { group, initial }
+                // ponytail: O(n²) alias binding at compile time; index heads if profiling warrants it.
+                let near = program.pistons.iter().enumerate().find_map(|(actor, p)| {
+                    (p.head == pos
+                        && program
+                            .aliases
+                            .iter()
+                            .any(|&(g, _, powered)| g == group && powered))
+                    .then_some(actor)
+                });
+                Supply::Wave {
+                    group,
+                    initial,
+                    near,
+                }
             };
             aliases.push((
                 *bindings
@@ -101,7 +123,7 @@ impl Runtime {
                 supply,
             ));
         }
-        let ready = sources
+        let ready_inputs = sources
             .iter()
             .map(|(&pos, &id)| (pos, nodes[id].output_power))
             .collect();
@@ -142,12 +164,11 @@ impl Runtime {
             .iter()
             .enumerate()
             .map(|(port, output)| {
-                let node =
-                    *output_bindings
-                        .get(&port)
-                        .ok_or(BackendError::MissingInstantBinding {
-                            pos: output.consumer,
-                        })?;
+                let node = *output_bindings.get(&(port + program.output_offset)).ok_or(
+                    BackendError::MissingInstantBinding {
+                        pos: output.consumer,
+                    },
+                )?;
                 let terms = output
                     .terms
                     .iter()
@@ -200,10 +221,10 @@ impl Runtime {
             phase: 0,
             repeated: false,
             elapsed: 0,
-            epoch: FxHashMap::default(),
-            ready,
+            launch_inputs: FxHashMap::default(),
+            ready_inputs,
             actions: Vec::new(),
-            epoch_actions: Vec::new(),
+            launch_actions: Vec::new(),
             decisions,
             outputs,
             output_sources,
@@ -224,26 +245,12 @@ impl Runtime {
 
     pub(super) fn advance(&mut self, nodes: &Nodes) -> Vec<(NodeId, u8)> {
         self.elapsed += 1;
+        if self.program.assume_instant {
+            self.advance_ideal(nodes);
+            return self.supply_changes(nodes);
+        }
         if self.phase == 0 || self.phase == 6 {
-            for (&root, value) in self.program.logic.responses.iter().zip(&mut self.fired) {
-                let mut id = root;
-                while id > TRUE {
-                    let d = &self.decisions[(id - 2) as usize];
-                    let high = match d.input {
-                        Input::Source(source) => nodes[source].output_power > d.threshold,
-                        Input::Memory(actor) => self.memory[actor],
-                        Input::Geometry { .. } => {
-                            unreachable!("response functions contain no output geometry")
-                        }
-                    };
-                    id = if high { d.high } else { d.low };
-                }
-                *value = id == TRUE;
-            }
-            self.group_fired.fill(false);
-            for (actor, &fired) in self.fired.iter().enumerate() {
-                self.group_fired[self.actor_groups[actor]] |= fired;
-            }
+            self.sample_responses(nodes);
             let active = self
                 .program
                 .clocked
@@ -255,12 +262,12 @@ impl Runtime {
                     self.previous_wave_memory.clone_from(&self.memory);
                 }
                 if self.phase == 0 {
-                    self.epoch = self
+                    self.launch_inputs = self
                         .sources
                         .iter()
                         .map(|(&pos, &id)| (pos, nodes[id].output_power))
                         .collect();
-                    self.epoch_actions = std::mem::take(&mut self.actions);
+                    self.launch_actions = std::mem::take(&mut self.actions);
                     self.repeated = false;
                 } else {
                     self.repeated = true;
@@ -268,7 +275,7 @@ impl Runtime {
                 self.phase = 1;
             } else {
                 self.phase = 0;
-                self.ready = self
+                self.ready_inputs = self
                     .sources
                     .iter()
                     .map(|(&pos, &id)| (pos, nodes[id].output_power))
@@ -290,14 +297,62 @@ impl Runtime {
                 self.moving_memory.fill(false);
             }
         }
+        self.supply_changes(nodes)
+    }
+
+    fn sample_responses(&mut self, nodes: &Nodes) {
+        for actor in 0..self.fired.len() {
+            self.fired[actor] = self.evaluate(self.program.logic.responses[actor], nodes);
+        }
+        self.group_fired.fill(false);
+        for (actor, &fired) in self.fired.iter().enumerate() {
+            self.group_fired[self.actor_groups[actor]] |= fired;
+        }
+    }
+
+    fn advance_ideal(&mut self, nodes: &Nodes) {
+        if let Some(clock) = self.program.clocked.as_ref().map(|c| c.clock) {
+            if !self.evaluate(self.program.logic.responses[clock], nodes) {
+                self.phase = 0;
+                return; // Stored data and the last sampled output remain held.
+            }
+            // Keep the observer clock's six-tick cadence, without movement or
+            // reset pulses. Every cell reads the old bank before atomic commit.
+            if self.phase == 0 || self.phase == 6 {
+                self.sample_responses(nodes);
+                for cell in &self.program.clocked.as_ref().unwrap().memory {
+                    self.memory[cell.actor] = self.fired[cell.actor];
+                }
+                self.phase = 1;
+            } else {
+                self.phase += 1;
+            }
+        } else {
+            self.sample_responses(nodes);
+        }
+    }
+
+    fn supply_changes(&self, nodes: &Nodes) -> Vec<(NodeId, u8)> {
         let mut changes: Vec<_> = self
             .aliases
             .iter()
             .map(|(id, supply)| {
                 let powered = match *supply {
-                    Supply::Wave { group, initial } => {
-                        let low = self.phase != 0 && self.phase != 6 && self.group_fired[group];
-                        initial && !low
+                    Supply::Wave {
+                        group,
+                        initial,
+                        near,
+                    } => {
+                        if self.program.assume_instant {
+                            if let Some(actor) = near {
+                                self.near_owner(group) == Some(actor)
+                            } else {
+                                initial && !self.group_fired[group]
+                            }
+                        } else {
+                            let low = self.phase != 0 && self.phase != 6 && self.group_fired[group];
+                            initial && !low
+                        }
                     }
                     Supply::Memory { actor, far } => {
                         !self.moving_memory[actor] && self.memory[actor] != far
@@ -321,6 +376,17 @@ impl Runtime {
                 GeometryPart::MovingBase => self.memory[actor] && self.moving_memory[actor],
             };
         }
+        if self.program.assume_instant {
+            return match part {
+                GeometryPart::FarPayload => !self.group_fired[self.actor_groups[actor]],
+                GeometryPart::NearPayload => {
+                    self.near_owner(self.actor_groups[actor]) == Some(actor)
+                }
+                GeometryPart::Head => !self.fired[actor],
+                GeometryPart::RetractedBase => self.fired[actor],
+                GeometryPart::MovingBase => false,
+            };
+        }
         let active = self.phase != 0 && self.phase != 6;
         match part {
             GeometryPart::FarPayload => !active || !self.group_fired[self.actor_groups[actor]],
@@ -329,6 +395,13 @@ impl Runtime {
             GeometryPart::RetractedBase => self.phase == 3 && self.fired[actor],
             GeometryPart::MovingBase => (1..=2).contains(&self.phase) && self.fired[actor],
         }
+    }
+
+    fn near_owner(&self, group: usize) -> Option<usize> {
+        self.program.groups[group]
+            .iter()
+            .copied()
+            .find(|&actor| self.fired[actor])
     }
 
     pub(super) fn output_depends_on(&self, source: NodeId) -> bool {
@@ -369,6 +442,10 @@ impl Runtime {
     }
 
     pub(super) fn materialize<W: World>(self, world: &mut W) {
+        if self.program.assume_instant {
+            self.materialize_ideal(world);
+            return;
+        }
         let first = self.program.bounds.0;
         let plot_x = first.x.div_euclid(PLOT_BLOCK_WIDTH);
         let plot_z = first.z.div_euclid(PLOT_BLOCK_WIDTH);
@@ -379,6 +456,7 @@ impl Runtime {
             })
             .collect();
         let mut replay = PlotWorld::from_chunks(plot_x, plot_z, chunks, Default::default());
+        replay.piston_state_mut().next_identity = world.piston_state().next_identity;
         for &(pos, block, ref entity) in &self.program.template {
             replay.set_block(pos, block);
             if let Some(entity) = entity {
@@ -403,7 +481,7 @@ impl Runtime {
                 crate::redstone::update(block, &mut replay, pos, None);
             }
         }
-        for (&pos, &strength) in &self.ready {
+        for (&pos, &strength) in &self.ready_inputs {
             apply_source(&mut replay, pos, strength);
         }
         // Prepared data can alter dust without firing an instant. Bring that
@@ -419,10 +497,10 @@ impl Runtime {
             replay.tick_interpreted();
         }
         if self.phase != 0 {
-            for &(pos, strength) in &self.epoch_actions {
+            for &(pos, strength) in &self.launch_actions {
                 apply_source(&mut replay, pos, strength);
             }
-            for (&pos, &strength) in &self.epoch {
+            for (&pos, &strength) in &self.launch_inputs {
                 // Timed ordinary sources need the same launch values even when
                 // they were updated by a backend tick rather than player use.
                 apply_source(&mut replay, pos, strength);
@@ -450,8 +528,42 @@ impl Runtime {
             motion.last_tick = time.wrapping_sub(state.logical_tick.wrapping_sub(motion.last_tick));
         }
         state.logical_tick = time;
-        state.next_identity = state.next_identity.max(world.piston_state().next_identity);
-        *world.piston_state_mut() = state;
+        let target = world.piston_state_mut();
+        target
+            .events
+            .retain(|event| !self.program.owned.contains(&event.pos));
+        target.events.extend(
+            state
+                .events
+                .into_iter()
+                .filter(|event| self.program.owned.contains(&event.pos)),
+        );
+        target
+            .motions
+            .retain(|motion| !self.program.owned.contains(&motion.pos));
+        target.motions.extend(
+            state
+                .motions
+                .into_iter()
+                .filter(|motion| self.program.owned.contains(&motion.pos)),
+        );
+        target.movement_work = target.movement_work[target.movement_cursor..]
+            .iter()
+            .copied()
+            .filter(|(pos, _)| !self.program.owned.contains(pos))
+            .chain(
+                state
+                    .movement_work
+                    .into_iter()
+                    .skip(state.movement_cursor)
+                    .filter(|(pos, _)| self.program.owned.contains(pos)),
+            )
+            .collect();
+        target.movement_cursor = 0;
+        target.logical_tick = time;
+        target.phase = state.phase;
+        target.scheduled_advanced = state.scheduled_advanced;
+        target.next_identity = target.next_identity.max(state.next_identity);
         for tick in replay
             .scheduler()
             .iter_entries()
@@ -461,6 +573,83 @@ impl Runtime {
         }
         // Ordinary values and work belong to the live backend. The replay is
         // used only for region geometry, motion entities and reset work.
+    }
+
+    fn materialize_ideal(self, world: &mut impl World) {
+        // Export current logical occupancy and stored bits, rather than replaying
+        // a launch history which this mode deliberately does not implement.
+        for &(_, pos, _) in &self.program.aliases {
+            world.set_block(pos, Block::Air);
+            world.delete_block_entity(pos);
+        }
+        for (actor, p) in self.program.pistons.iter().enumerate() {
+            let retracted = if self.memory_actors[actor] {
+                self.memory[actor]
+            } else {
+                self.fired[actor]
+            };
+            let mut piston = p.piston;
+            piston.extended = !retracted;
+            world.set_block(p.pos, Block::Piston { piston });
+            if !retracted {
+                world.set_block(
+                    p.head,
+                    Block::PistonHead {
+                        head: RedstonePistonHead {
+                            facing: piston.facing,
+                            sticky: piston.sticky,
+                            short: false,
+                        },
+                    },
+                );
+            }
+        }
+        for (group, members) in self.program.groups.iter().enumerate() {
+            let p = &self.program.pistons[members[0]];
+            let payload = self
+                .program
+                .template
+                .iter()
+                .find(|(pos, _, _)| *pos == p.payload)
+                .map_or(Block::Air, |(_, block, _)| *block);
+            let owner = if self.memory_actors[members[0]] {
+                self.memory[members[0]].then_some(members[0])
+            } else {
+                self.near_owner(group)
+            };
+            let pos = owner.map_or(p.payload, |actor| self.program.pistons[actor].head);
+            world.set_block(pos, payload);
+        }
+        // Internal reset observers are dormant in the logical snapshot.
+        for &(pos, block, _) in &self.program.template {
+            if self.program.owned.contains(&pos) && matches!(block, Block::Observer { .. }) {
+                world.set_block(pos, block);
+            }
+        }
+        world.piston_state_mut().logical_tick =
+            self.program.logical_tick.wrapping_add(self.elapsed);
+        for &pos in self
+            .program
+            .logic
+            .wires
+            .iter()
+            .chain(&self.program.logic.consumer_wires)
+        {
+            if let Block::RedstoneWire { mut wire } = world.get_block(pos) {
+                wire.power = 0;
+                world.set_block(pos, Block::RedstoneWire { wire });
+            }
+        }
+        for &pos in self
+            .program
+            .logic
+            .wires
+            .iter()
+            .chain(&self.program.logic.consumer_wires)
+        {
+            let block = world.get_block(pos);
+            crate::redstone::update(block, world, pos, None);
+        }
     }
 }
 

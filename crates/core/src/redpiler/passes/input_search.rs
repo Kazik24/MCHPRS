@@ -1,12 +1,9 @@
-//! # [`InputSearch`]
-//!
 //! This pass populates the graph with edges.
 //! This pass is *mandatory*. Without it, there would be no links between nodes.
 
-use super::Pass;
 use crate::redpiler::compile_graph::{CompileGraph, CompileLink, LinkType, NodeIdx, NodeType};
 use crate::redpiler::instant::boundary::Boundaries;
-use crate::redpiler::{CompilerInput, CompilerOptions};
+use crate::redpiler::CompilerInput;
 use crate::redstone::{self, comparator};
 use crate::world::World;
 use mchprs_blocks::blocks::{Block, RedstoneWire};
@@ -15,28 +12,13 @@ use petgraph::visit::NodeIndexable;
 use rustc_hash::FxHashMap;
 use std::collections::VecDeque;
 
-pub struct InputSearch;
-
-impl<W: World> Pass<W> for InputSearch {
-    fn run_pass(
-        &self,
-        graph: &mut CompileGraph,
-        _: &CompilerOptions,
-        input: &CompilerInput<'_, W>,
-    ) -> Result<(), super::GraphError> {
-        let mut state = InputSearchState::new(input.world, graph, input.boundaries);
-        state.search();
-        state.error.map_or(Ok(()), Err)
-    }
-
-    fn should_run(&self, _: &CompilerOptions) -> bool {
-        // Mandatory
-        true
-    }
-
-    fn status_message(&self) -> &'static str {
-        "Searching for links"
-    }
+pub(super) fn run<W: World>(
+    graph: &mut CompileGraph,
+    input: &CompilerInput<'_, W>,
+) -> Result<(), super::GraphError> {
+    let mut state = InputSearchState::new(input.world, graph, input.boundaries);
+    state.search();
+    state.error.map_or(Ok(()), Err)
 }
 
 struct InputSearchState<'a, W: World> {
@@ -89,11 +71,8 @@ impl<'a, W: World> InputSearchState<'a, W> {
             return;
         }
         if let Some(&node) = self.pos_map.get(&source) {
-            let link = match ty {
-                LinkType::Default => CompileLink::default(distance),
-                LinkType::Side => CompileLink::side(distance),
-            };
-            self.graph.add_edge(node, target, link);
+            self.graph
+                .add_edge(node, target, CompileLink::new(ty, distance));
         } else if self.error.is_none() {
             self.error = Some(super::GraphError::MissingSource { pos: source });
         }
@@ -171,7 +150,7 @@ impl<'a, W: World> InputSearchState<'a, W> {
         start_node: NodeIdx,
         root_pos: BlockPos,
         link_ty: LinkType,
-        mut distance: u8,
+        distance: u8,
     ) {
         let mut queue: VecDeque<BlockPos> = VecDeque::new();
         let mut discovered = FxHashMap::default();
@@ -179,9 +158,8 @@ impl<'a, W: World> InputSearchState<'a, W> {
         discovered.insert(root_pos, distance);
         queue.push_back(root_pos);
 
-        while !queue.is_empty() {
-            let pos = queue.pop_front().unwrap();
-            distance = discovered[&pos];
+        while let Some(pos) = queue.pop_front() {
+            let distance = discovered[&pos];
             // Signals cannot survive fifteen wire steps. Stop before distance
             // arithmetic overflows and before traversing irrelevant long nets.
             if distance >= 15 || self.boundaries.is_some_and(|b| b.is_internal(pos)) {
@@ -207,7 +185,7 @@ impl<'a, W: World> InputSearchState<'a, W> {
 
                 if is_wire(self.world, neighbor_pos) && !discovered.contains_key(&neighbor_pos) {
                     queue.push_back(neighbor_pos);
-                    discovered.insert(neighbor_pos, discovered[&pos] + 1);
+                    discovered.insert(neighbor_pos, distance + 1);
                 }
 
                 if side.is_horizontal() {
@@ -217,7 +195,7 @@ impl<'a, W: World> InputSearchState<'a, W> {
                             && !discovered.contains_key(&neighbor_up_pos)
                         {
                             queue.push_back(neighbor_up_pos);
-                            discovered.insert(neighbor_up_pos, discovered[&pos] + 1);
+                            discovered.insert(neighbor_up_pos, distance + 1);
                         }
                     }
 
@@ -227,7 +205,7 @@ impl<'a, W: World> InputSearchState<'a, W> {
                             && !discovered.contains_key(&neighbor_down_pos)
                         {
                             queue.push_back(neighbor_down_pos);
-                            discovered.insert(neighbor_down_pos, discovered[&pos] + 1);
+                            discovered.insert(neighbor_down_pos, distance + 1);
                         }
                     }
                 }

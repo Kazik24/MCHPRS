@@ -1,6 +1,7 @@
 use super::*;
 mod legalization;
 mod outputs;
+mod regions;
 mod research;
 use crate::plot::worldedit::{load_schematic, paste_clipboard};
 use crate::plot::{PlotWorld, PLOT_WIDTH};
@@ -731,7 +732,7 @@ fn extracted_counter_transition_matches_all_sixteen_bit_states() {
     use crate::redpiler::instant::{boolean::Variable, clocked, logic};
     let (world, _, manifest) = fixture("counter_basic");
     let report = analyze_world(&world);
-    let program = clocked::recognize(&world, &report, &Default::default())
+    let program = clocked::recognize(&world, &report, &Default::default(), false)
         .unwrap()
         .unwrap();
     let logic = logic::extract_with_state(
@@ -1564,7 +1565,7 @@ fn candidate_graphs_preserve_mobile_aliases_ports_and_world_state_under_optimiza
                                 candidate.graph[edge.source()]
                                     .state
                                     .output_strength
-                                    .saturating_sub(edge.weight().ss)
+                                    .saturating_sub(edge.weight().attenuation)
                             })
                             .max()
                             .unwrap_or(0);
@@ -1643,7 +1644,7 @@ fn candidate_graphs_reject_unowned_observers_and_illegal_reset_groups() {
 
 #[test]
 fn direct_backend_rejects_candidate_boundaries_before_mutating_its_state() {
-    use crate::redpiler::backend::{direct::DirectBackend, BackendError, JITBackend};
+    use crate::redpiler::backend::{direct::DirectBackend, BackendError};
     let (world, _, _) = fixture("instant_torch");
     let candidate = graph::prepare_candidate_graph(
         &world,
@@ -2070,7 +2071,7 @@ fn io_only_reset_preserves_containers_closed_at_activation() {
         .compile(
             &world,
             bounds,
-            CompilerOptions::parse("--io-only"),
+            CompilerOptions::parse("--io-only").unwrap(),
             Vec::new(),
             Default::default(),
         )

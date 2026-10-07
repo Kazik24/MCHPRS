@@ -1,5 +1,4 @@
 use crate::plot::{PLOT_BLOCK_HEIGHT, PLOT_SECTIONS};
-use itertools::Itertools;
 use mchprs_blocks::block_entities::BlockEntity;
 use mchprs_blocks::blocks::Block;
 use mchprs_blocks::BlockPos;
@@ -12,7 +11,6 @@ use mchprs_network::packets::clientbound::{
 use mchprs_network::packets::{PacketEncoder, PalettedContainer};
 use rustc_hash::FxHashMap;
 use serde::Serialize;
-use std::convert::TryInto;
 use std::mem;
 use std::sync::atomic::{AtomicU64, Ordering};
 
@@ -132,7 +130,8 @@ fn bitbuffer_format() {
 pub struct PalettedBitBuffer {
     data: BitBuffer,
     palette: Vec<u32>,
-    max_entries: u32,
+    // Cached capacity keeps palette admission cheap in block-write loops.
+    palette_capacity: u32,
     use_palette: bool,
     /// 9 for block states, 4 for biomes
     direct_threshold: u64,
@@ -144,7 +143,7 @@ impl PalettedBitBuffer {
         PalettedBitBuffer {
             data: BitBuffer::create(4, entries),
             palette,
-            max_entries: 16,
+            palette_capacity: 16,
             use_palette: true,
             direct_threshold,
         }
@@ -161,7 +160,7 @@ impl PalettedBitBuffer {
             data: BitBuffer::load(entries, bits_per_entry, longs),
             palette,
             use_palette: bits_per_entry < 9,
-            max_entries: 1 << bits_per_entry,
+            palette_capacity: 1 << bits_per_entry,
             direct_threshold,
         }
     }
@@ -169,22 +168,20 @@ impl PalettedBitBuffer {
     fn resize_buffer(&mut self) {
         assert!(
             self.use_palette,
-            "The buffer should never resizing if it's already using global palette"
+            "Cannot resize a buffer that already uses the global palette"
         );
         let old_bits_per_entry = self.data.bits_per_entry;
-        // It is more efficient to use the global palette when the bits reaches the treshold
-        // As of 1.16, the global palette requires 15 bits
+        // Switch to global state IDs when the local palette reaches its bit limit.
         let new_bits = if old_bits_per_entry + 1 >= self.direct_threshold {
-            self.max_entries = 1 << 15;
+            self.palette_capacity = 1 << 15;
             self.use_palette = false;
             15
         } else {
-            self.max_entries <<= 1;
+            self.palette_capacity <<= 1;
             old_bits_per_entry as u8 + 1
         };
-        // Swap out the old buffer
-        let mut old_buffer = BitBuffer::create(new_bits, self.data.entries);
-        mem::swap(&mut self.data, &mut old_buffer);
+        let new_buffer = BitBuffer::create(new_bits, self.data.entries);
+        let old_buffer = mem::replace(&mut self.data, new_buffer);
         // Copy entries into new buffer
         if new_bits == 15 {
             for entry_idx in 0..old_buffer.entries {
@@ -214,7 +211,7 @@ impl PalettedBitBuffer {
             if let Some(palette_index) = self.palette.iter().position(|x| x == &val) {
                 self.data.set_entry(index, palette_index as u32);
             } else {
-                if self.palette.len() + 1 > self.max_entries as usize {
+                if self.palette.len() + 1 > self.palette_capacity as usize {
                     self.resize_buffer();
                     self.set_entry(index, val);
                     return;
@@ -245,7 +242,7 @@ impl PalettedBitBuffer {
                 data_array: self.data.longs.clone(),
                 palette: self
                     .use_palette
-                    .then(|| self.palette.clone().into_iter().map(|x| x as i32).collect()),
+                    .then(|| self.palette.iter().map(|&id| id as i32).collect()),
             }
         }
     }
@@ -256,7 +253,6 @@ pub struct ChunkSection {
     block_count: u32,
     multi_block: CMultiBlockChange,
     changed_blocks: Option<Box<[i16; 16 * 16 * 16]>>,
-    changed: bool,
 }
 
 impl ChunkSection {
@@ -283,7 +279,6 @@ impl ChunkSection {
         let idx = ChunkSection::get_index(x, y, z);
         let changed = old_block != block;
         if changed {
-            self.changed = true;
             self.changed_blocks
                 .get_or_insert_with(|| Box::new([-1; 4096]))[idx] = block as i16;
         }
@@ -311,7 +306,6 @@ impl ChunkSection {
                 records: Vec::new(),
             },
             changed_blocks: None,
-            changed: false,
         }
     }
 
@@ -323,24 +317,15 @@ impl ChunkSection {
             return None;
         }
 
-        let longs: Vec<i64> = self
-            .buffer
-            .data
-            .longs
-            .clone()
-            .into_iter()
-            .map(|x| x as i64)
-            .collect();
-        let palette: Vec<i32> = self
-            .buffer
-            .palette
-            .clone()
-            .into_iter()
-            .map(|x| x as i32)
-            .collect();
         Some(ChunkSectionData {
-            data: longs,
-            palette,
+            data: self
+                .buffer
+                .data
+                .longs
+                .iter()
+                .map(|&word| word as i64)
+                .collect(),
+            palette: self.buffer.palette.iter().map(|&id| id as i32).collect(),
             bits_per_block: self.buffer.data.bits_per_entry as i8,
             block_count: self.block_count as i32,
             entries: self.buffer.entries(),
@@ -359,10 +344,10 @@ impl ChunkSection {
         // Pending changes must be visible to new clients even before the next batch flush.
         let mut snapshot;
         let mut count = self.block_count as i16;
-        let buffer = if self.changed || !overrides.is_empty() {
+        let buffer = if self.changed_blocks.is_some() || !overrides.is_empty() {
             snapshot = self.buffer.clone();
-            if self.changed {
-                for (index, block) in self.changed_blocks.as_ref().unwrap().iter().enumerate() {
+            if let Some(changes) = &self.changed_blocks {
+                for (index, block) in changes.iter().enumerate() {
                     if *block >= 0 {
                         snapshot.set_entry(index, *block as u32);
                     }
@@ -388,8 +373,8 @@ impl ChunkSection {
     }
 
     fn flush(&mut self) {
-        if self.changed {
-            for (i, block) in self.changed_blocks.as_ref().unwrap().iter().enumerate() {
+        if let Some(changes) = &self.changed_blocks {
+            for (i, block) in changes.iter().enumerate() {
                 if *block >= 0 {
                     self.buffer.set_entry(i, *block as u32);
                 }
@@ -401,8 +386,8 @@ impl ChunkSection {
         self.multi_block.chunk_x = chunk_x;
         self.multi_block.chunk_y = chunk_y;
         self.multi_block.chunk_z = chunk_z;
-        if self.changed {
-            for (i, block) in self.changed_blocks.take().unwrap().iter().enumerate() {
+        if let Some(changes) = self.changed_blocks.take() {
+            for (i, block) in changes.iter().enumerate() {
                 if *block >= 0 {
                     self.buffer.set_entry(i, *block as u32);
                     self.multi_block.records.push(C3BMultiBlockChangeRecord {
@@ -413,7 +398,6 @@ impl ChunkSection {
                     });
                 }
             }
-            self.changed = false;
         }
         &self.multi_block
     }
@@ -435,7 +419,6 @@ impl Default for ChunkSection {
                 records: Vec::new(),
             },
             changed_blocks: None,
-            changed: false,
         }
     }
 }
@@ -692,13 +675,7 @@ impl Chunk {
 
     pub fn save(&mut self) -> ChunkData<PLOT_SECTIONS> {
         ChunkData {
-            sections: self
-                .sections
-                .iter_mut()
-                .map(|s| s.save())
-                .collect_vec()
-                .try_into()
-                .unwrap(),
+            sections: std::array::from_fn(|index| self.sections[index].save()),
             // Cloning the map also clones spare capacity after mass deletions.
             // Saved snapshots need space only for the remaining entities.
             block_entities: self
@@ -715,12 +692,7 @@ impl Chunk {
             z,
             instance: CHUNK_INSTANCE.fetch_add(1, Ordering::Relaxed),
             revision: 0,
-            sections: IntoIterator::into_iter(chunk_data.sections)
-                .map(ChunkSection::load)
-                .collect_vec()
-                .try_into()
-                .map_err(|_| ())
-                .unwrap(),
+            sections: chunk_data.sections.map(ChunkSection::load),
             block_entities: chunk_data.block_entities,
         };
         // Older saves can have sign blocks without entities. These signs need
@@ -778,7 +750,8 @@ impl Chunk {
             .enumerate()
             .filter_map(move |(y, section)| {
                 section
-                    .changed
+                    .changed_blocks
+                    .is_some()
                     .then(move || section.multi_block(x, y as u32, z))
             })
     }
@@ -793,6 +766,22 @@ impl Chunk {
 #[cfg(test)]
 mod heightmap_tests {
     use super::*;
+    #[test]
+    fn palette_growth_preserves_entries_through_global_conversion() {
+        let mut buffer = PalettedBitBuffer::new(512, 9);
+        for index in 0..512 {
+            buffer.set_entry(index, index as u32);
+            if [15, 16, 31, 32, 63, 64, 127, 128, 255, 256, 511].contains(&index) {
+                for previous in 0..=index {
+                    assert_eq!(buffer.get_entry(previous), previous as u32);
+                }
+                assert_eq!(buffer.use_palette, index < 256);
+            }
+        }
+        buffer.set_entry(0, 32767);
+        assert_eq!(buffer.get_entry(0), 32767);
+    }
+
     #[test]
     fn loading_repairs_missing_sign_entities_in_join_snapshots() {
         let mut chunk = Chunk::empty(-2, 3);

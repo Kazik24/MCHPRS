@@ -44,7 +44,6 @@ use mchprs_blocks::block_entities::BlockEntity;
 use mchprs_blocks::blocks::Block;
 use mchprs_blocks::{BlockFace, BlockPos};
 use mchprs_network::packets::clientbound::*;
-use mchprs_network::packets::SlotData;
 use mchprs_network::PlayerPacketSender;
 use mchprs_save_data::plot_data::{ChunkData, PistonAnimation, PlotData, Tps, WorldSendRate};
 use mchprs_world::{AdvancePhase, PistonMotion, PistonState, TickPriority};
@@ -1221,11 +1220,7 @@ impl Plot {
                     entity_id: other_player.entity_id as i32,
                     equipment: vec![CEntityEquipmentEquipment {
                         slot: 0, // Main hand
-                        item: Some(SlotData {
-                            item_count: item.count as i8,
-                            item_id: item.item_type.get_id() as i32,
-                            nbt: item.nbt.clone(),
-                        }),
+                        item: Some(crate::container::slot_data(item)),
                     }],
                 }
                 .encode();
@@ -1250,11 +1245,7 @@ impl Plot {
                 entity_id: player.entity_id as i32,
                 equipment: vec![CEntityEquipmentEquipment {
                     slot: 0, // Main hand
-                    item: Some(SlotData {
-                        item_count: item.count as i8,
-                        item_id: item.item_type.get_id() as i32,
-                        nbt: item.nbt.clone(),
-                    }),
+                    item: Some(crate::container::slot_data(item)),
                 }],
             }
             .encode();

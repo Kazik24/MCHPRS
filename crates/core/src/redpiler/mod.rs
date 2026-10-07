@@ -1,22 +1,22 @@
+//! Compile world blocks into an electrical graph, then execute it with the direct
+//! backend. Piston regions also carry an instant program for moving geometry.
+
 pub mod analysis;
 pub(crate) mod backend;
 mod compile_graph;
 pub mod instant;
-mod task_monitor;
-// mod debug_graph;
 mod passes;
+mod task_monitor;
 
-use crate::redpiler::passes::make_default_pass_manager;
 use crate::redstone;
 use crate::world::{for_each_block_mut_optimized, World};
-use backend::BackendDispatcher;
-use backend::JITBackend;
+use backend::direct::DirectBackend;
 use mchprs_blocks::blocks::Block;
 use mchprs_blocks::BlockPos;
 use mchprs_world::TickEntry;
 use std::sync::Arc;
 use std::time::Instant;
-use tracing::{debug, trace, warn};
+use tracing::{debug, trace};
 
 pub use backend::{Queues, TickScheduler};
 pub use task_monitor::TaskMonitor;
@@ -72,6 +72,8 @@ fn block_powered_mut(block: &mut Block) -> Option<&mut bool> {
 
 #[derive(Default, PartialEq, Eq, Debug)]
 pub struct CompilerOptions {
+    /// Evaluate logical piston state without movement or reset pulses.
+    pub assume_instant: bool,
     /// Set by the server from the initiating player's rank, never from flags.
     /// Zero retains the default 1x budget; values are capped at 8x.
     pub budget_multiplier: usize,
@@ -83,71 +85,58 @@ pub struct CompilerOptions {
     pub io_only: bool,
     /// Update all blocks in the input region after reset.
     pub update: bool,
-    /// Export a dot file of the graph after backend compile (backend dependent)
+    /// Export a dot file of the backend graph after compilation.
     pub export_dot_graph: bool,
-    /// The backend variant to be used after compilation
-    pub backend_variant: BackendVariant,
-}
-
-#[derive(Debug, Default, PartialEq, Eq)]
-pub enum BackendVariant {
-    #[default]
-    Direct,
 }
 
 impl CompilerOptions {
-    pub fn parse(str: &str) -> CompilerOptions {
-        let mut co: CompilerOptions = Default::default();
-        let options = str.split_whitespace();
-        for option in options {
+    pub fn parse(flags: &str) -> Result<CompilerOptions, String> {
+        let mut options = Self::default();
+        for option in flags.split_whitespace() {
             if option.starts_with("--") {
                 match option {
-                    "--optimize" => co.optimize = true,
-                    "--export" => co.export = true,
-                    "--io-only" => co.io_only = true,
-                    "--update" => co.update = true,
-                    "--export-dot" => co.export_dot_graph = true,
-                    // FIXME: use actual error handling
-                    _ => warn!("Unrecognized option: {}", option),
+                    "--assume-instant" => options.assume_instant = true,
+                    "--optimize" => options.optimize = true,
+                    "--export" => options.export = true,
+                    "--io-only" => options.io_only = true,
+                    "--update" => options.update = true,
+                    "--export-dot" => options.export_dot_graph = true,
+                    _ => return Err(format!("Unrecognized Redpiler option: {option}")),
                 }
-            } else if let Some(str) = option.strip_prefix('-') {
-                for c in str.chars() {
-                    let lower = c.to_lowercase().to_string();
-                    match lower.as_str() {
-                        "o" => co.optimize = true,
-                        "e" => co.export = true,
-                        "i" => co.io_only = true,
-                        "u" => co.update = true,
-                        // FIXME: use actual error handling
-                        _ => warn!("Unrecognized option: -{}", c),
+            } else if let Some(short_flags) = option.strip_prefix('-') {
+                if short_flags.is_empty() {
+                    return Err(format!("Unrecognized Redpiler option: {option}"));
+                }
+                for c in short_flags.chars() {
+                    match c.to_ascii_lowercase() {
+                        'o' => options.optimize = true,
+                        'e' => options.export = true,
+                        'i' => options.io_only = true,
+                        'u' => options.update = true,
+                        _ => return Err(format!("Unrecognized Redpiler option: -{c}")),
                     }
                 }
             } else {
-                // FIXME: use actual error handling
-                warn!("Unrecognized option: {}", option);
+                return Err(format!("Unrecognized Redpiler option: {option}"));
             }
         }
-        co
+        Ok(options)
     }
 }
 
 #[derive(Default)]
 pub struct Compiler {
-    is_active: bool, //todo add option to disable redpiler completely
-    jit: Option<BackendDispatcher>,
+    backend: Option<DirectBackend>,
     options: CompilerOptions,
 }
 
 impl Compiler {
     pub fn is_active(&self) -> bool {
-        self.is_active
+        self.backend.is_some()
     }
 
     pub fn current_flags(&self) -> Option<&CompilerOptions> {
-        match self.is_active {
-            true => Some(&self.options),
-            false => None,
-        }
+        self.backend.as_ref().map(|_| &self.options)
     }
 
     pub fn compile<W: World>(
@@ -161,7 +150,7 @@ impl Compiler {
         debug!("Starting compile");
         let start = Instant::now();
 
-        if self.is_active {
+        if self.is_active() {
             return Err(CompileError::AlreadyActive);
         }
         monitor.set_budget_multiplier(options.budget_multiplier);
@@ -191,19 +180,16 @@ impl Compiler {
             ticks: &ticks,
             boundaries: None,
         };
-        let pass_manager = make_default_pass_manager::<W>();
         let (graph, instant) = if report.pistons.is_empty() {
             (
-                pass_manager
-                    .run_passes(&options, &input, monitor.clone())
-                    .map_err(CompileError::Graph)?,
-                None,
+                passes::run_passes(&options, &input, &monitor).map_err(CompileError::Graph)?,
+                Vec::new(),
             )
         } else {
             let (graph, program) =
                 instant::program::prepare(world, &report, &ticks, &options, monitor.clone())
                     .map_err(CompileError::Instant)?;
-            (graph, Some(program))
+            (graph, program)
         };
 
         if monitor.cancelled() {
@@ -212,39 +198,26 @@ impl Compiler {
 
         // Stage a fresh backend. Reusing one can leave aliases, scheduler work
         // or side tables from a previous compilation. Publish only on success.
-        let mut jit = match options.backend_variant {
-            BackendVariant::Direct => BackendDispatcher::DirectBackend(Default::default()),
-        };
+        let mut backend = DirectBackend::default();
         trace!("Compiling backend");
         monitor.set_message("Compiling backend".to_string());
-        if let Some(program) = instant {
-            match &mut jit {
-                BackendDispatcher::DirectBackend(backend) => backend
-                    .compile_instant(graph, program, ticks, &options, monitor.clone())
-                    .map_err(CompileError::Backend)?,
-            }
-        } else {
-            jit.compile(graph, ticks, &options, monitor.clone())
-                .map_err(CompileError::Backend)?;
-        }
+        backend
+            .compile(graph, ticks, &options, instant)
+            .map_err(CompileError::Backend)?;
         if monitor.cancelled() {
             return Err(CompileError::Cancelled);
         }
         monitor.inc_progress();
 
-        self.jit = Some(jit);
+        self.backend = Some(backend);
         self.options = options;
-        self.is_active = true;
         debug!("Compile completed in {:?}", start.elapsed());
         Ok(())
     }
 
     pub fn reset<W: World>(&mut self, world: &mut W, bounds: (BlockPos, BlockPos)) {
-        if self.is_active {
-            self.is_active = false;
-            if let Some(mut jit) = self.jit.take() {
-                jit.reset(world, self.options.io_only)
-            }
+        if let Some(mut backend) = self.backend.take() {
+            backend.reset(world, self.options.io_only);
         }
 
         if self.options.update {
@@ -257,16 +230,10 @@ impl Compiler {
         self.options = Default::default();
     }
 
-    fn backend(&mut self) -> &mut BackendDispatcher {
-        assert!(
-            self.is_active,
-            "tried to get redpiler backend when inactive"
-        );
-        if let Some(jit) = &mut self.jit {
-            jit
-        } else {
-            panic!("redpiler is active but is missing jit backend");
-        }
+    fn backend(&mut self) -> &mut DirectBackend {
+        self.backend
+            .as_mut()
+            .expect("tried to get redpiler backend when inactive")
     }
 
     pub fn tick(&mut self) {
@@ -291,7 +258,7 @@ impl Compiler {
     }
 
     pub fn inspect(&mut self, pos: BlockPos) {
-        if let Some(backend) = &mut self.jit {
+        if let Some(backend) = &mut self.backend {
             backend.inspect(pos);
         } else {
             debug!("cannot inspect when backend is not running");
@@ -312,30 +279,40 @@ mod tests {
 
     #[test]
     fn parse_options() {
-        let input = "-io -u --export";
+        let input = "-iO -U --export";
         let expected_options = CompilerOptions {
+            assume_instant: false,
             budget_multiplier: 0,
             io_only: true,
             optimize: true,
             export: true,
             update: true,
             export_dot_graph: false,
-            backend_variant: BackendVariant::default(),
         };
-        let options = CompilerOptions::parse(input);
+        let options = CompilerOptions::parse(input).unwrap();
 
         assert_eq!(options, expected_options);
     }
 
     #[test]
     fn compilation_budget_cannot_be_selected_by_command_flags() {
-        assert_eq!(
-            CompilerOptions::parse("--budget-multiplier=8").budget_multiplier,
-            0
-        );
+        assert!(CompilerOptions::parse("--budget-multiplier=8").is_err());
         let monitor = TaskMonitor::default();
         assert_eq!(monitor.budget_multiplier(), 1);
         monitor.set_budget_multiplier(usize::MAX);
         assert_eq!(monitor.budget_multiplier(), 8);
+    }
+
+    #[test]
+    fn logical_mode_is_explicit_and_unknown_flags_fail() {
+        assert!(
+            CompilerOptions::parse("--assume-instant -oi")
+                .unwrap()
+                .assume_instant
+        );
+        assert!(!CompilerOptions::parse("").unwrap().assume_instant);
+        for flags in ["--assume-instnat", "-ox", "-", "assume-instant"] {
+            assert!(CompilerOptions::parse(flags).is_err(), "{flags}");
+        }
     }
 }

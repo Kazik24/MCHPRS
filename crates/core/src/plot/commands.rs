@@ -8,7 +8,7 @@ use crate::redpiler::CompilerOptions;
 use crate::server::Message;
 use mchprs_network::packets::clientbound::{
     CDeclareCommands, CDeclareCommandsNode as Node, CDeclareCommandsNodeParser as Parser,
-    ClientBoundPacket,
+    CTabComplete, CTabCompleteMatch, ClientBoundPacket,
 };
 use mchprs_network::packets::PacketEncoder;
 use mchprs_network::PlayerPacketSender;
@@ -44,6 +44,53 @@ impl RelativeCoordinate for i32 {
         self.checked_add(offset)
     }
 }
+
+pub(super) fn complete_redpiler(id: i32, text: &str) -> Option<CTabComplete> {
+    let boundary = text.rfind(char::is_whitespace)?;
+    let start = boundary + text[boundary..].chars().next()?.len_utf8();
+    let words: Vec<_> = text[..start].split_whitespace().collect();
+    if !matches!(words.first(), Some(&"/rp" | &"/redpiler")) {
+        return None;
+    }
+    let analyze = match words.get(1) {
+        Some(&"compile" | &"c") => false,
+        Some(&"analyze") => true,
+        _ => return None,
+    };
+    let prefix = &text[start..];
+    let matches = [
+        "--assume-instant",
+        "--optimize",
+        "--io-only",
+        "--update",
+        "--export",
+        "--export-dot",
+        "--graph",
+        "-o",
+        "-i",
+        "-u",
+        "-e",
+    ]
+    .into_iter()
+    .filter(|flag| flag.starts_with(prefix) && !words[2..].contains(flag))
+    .filter(|flag| match *flag {
+        "--graph" => analyze,
+        "--export" | "--export-dot" | "-e" => !analyze,
+        _ => true,
+    })
+    .map(|flag| CTabCompleteMatch {
+        match_: flag.to_owned(),
+        tooltip: None,
+    })
+    .collect();
+    Some(CTabComplete {
+        id,
+        start: text[..start].encode_utf16().count() as i32,
+        length: prefix.encode_utf16().count() as i32,
+        matches,
+    })
+}
+
 impl RelativeCoordinate for f64 {
     fn checked_offset(self, offset: Self) -> Option<Self> {
         let result = self + offset;
@@ -353,16 +400,27 @@ impl Plot {
                     return;
                 }
                 let ticks: Vec<_> = self.world.scheduler().iter_entries().collect();
+                let flags = args
+                    .iter()
+                    .copied()
+                    .filter(|&arg| arg != "--graph")
+                    .collect::<Vec<_>>()
+                    .join(" ");
+                let mut options = match CompilerOptions::parse(&flags) {
+                    Ok(options) => options,
+                    Err(error) => {
+                        self.players[player].send_error_message(&error);
+                        return;
+                    }
+                };
+                if options.export || options.export_dot_graph {
+                    self.players[player].send_error_message(
+                        "Export flags are unavailable during read-only analysis.",
+                    );
+                    return;
+                }
+                options.budget_multiplier = self.players[player].compilation_budget_multiplier();
                 if args.contains(&"--graph") {
-                    let flags = args
-                        .iter()
-                        .copied()
-                        .filter(|&arg| arg != "--graph")
-                        .collect::<Vec<_>>()
-                        .join(" ");
-                    let mut options = crate::redpiler::CompilerOptions::parse(&flags);
-                    options.budget_multiplier =
-                        self.players[player].compilation_budget_multiplier();
                     match crate::redpiler::analysis::graph::prepare_candidate_graph(
                         &self.world,
                         self.world.get_corners(),
@@ -398,16 +456,20 @@ impl Plot {
                         if !report.pistons.is_empty() {
                             self.players[player].send_system_message(&report.recognition_summary());
                         }
-                        // The complete structured report is available in logs;
-                        // keep a large plot from flooding the player's chat.
                         debug!(report = %serde_json::to_string(&report).unwrap(), "Redpiler analysis");
-                        for issue in report.issues.iter().take(8) {
-                            self.players[player].send_error_message(&issue.to_string());
-                        }
-                        if report.issues.len() > 8 {
-                            self.players[player].send_system_message(
-                                "The full report is written when debug logging is enabled.",
-                            );
+                        // Stage the same backend as compile, then drop it without
+                        // activating it or transferring any interpreter work.
+                        match crate::redpiler::Compiler::default().compile(
+                            &self.world,
+                            self.world.get_corners(),
+                            options,
+                            ticks,
+                            Default::default(),
+                        ) {
+                            Ok(()) => self.players[player]
+                                .send_system_message("This plot can compile with these flags."),
+                            Err(error) => self.players[player]
+                                .send_error_message(&format!("Redpiler: {error}")),
                         }
                     }
                     Err(error) => self.players[player].send_error_message(&error.to_string()),
@@ -416,7 +478,13 @@ impl Plot {
             "compile" | "c" => {
                 let start_time = Instant::now();
                 let args = args.join(" ");
-                let mut options = CompilerOptions::parse(&args);
+                let mut options = match CompilerOptions::parse(&args) {
+                    Ok(options) => options,
+                    Err(error) => {
+                        self.players[player].send_error_message(&error);
+                        return;
+                    }
+                };
                 options.budget_multiplier = self.players[player].compilation_budget_multiplier();
 
                 if options.optimize {
@@ -1109,11 +1177,11 @@ fn declared_command_nodes() -> Vec<Node<'static>> {
         // 64: /toggleautorp
         Node::literal("toggleautorp", &[]).executable(),
         // 65: /redpiler
-        Node::literal("redpiler", &[67, 68, 69, 131]),
+        Node::literal("redpiler", &[67, 68, 69, 131, 147, 148, 149]),
         // 66: /rp
         Node::redirect("rp", 65),
         // 67: /redpiler compile
-        Node::literal("compile", &[]).executable(),
+        Node::literal("compile", &[133]).executable(),
         // 68: /redpiler inspect
         Node::literal("inspect", &[]).executable(),
         // 69: /redpiler reset
@@ -1228,10 +1296,12 @@ fn declared_command_nodes() -> Vec<Node<'static>> {
         // 130: /git uses the existing greedy, server-completed arguments node.
         Node::literal("git", &[109]).executable(),
         // 131: /redpiler analyze
-        Node::literal("analyze", &[132]).executable(),
+        Node::literal("analyze", &[132, 133]).executable(),
         // 132-133: read-only graph preparation and ordinary optimization flags.
         Node::literal("--graph", &[133]).executable(),
-        Node::argument("options", Parser::String(2), &[]).executable(),
+        Node::argument("options", Parser::String(2), &[])
+            .executable()
+            .suggestions("minecraft:ask_server"),
         // 134-143: gamemode alias, names, IDs and legacy shortcuts.
         Node::redirect("gm", 135),
         Node::literal("gamemode", &[136, 137, 138, 139, 140, 141]),
@@ -1248,6 +1318,10 @@ fn declared_command_nodes() -> Vec<Node<'static>> {
         Node::redirect("desel", 36).executable(),
         // 146: /set accepts the same block patterns as //set.
         Node::redirect("set", 24),
+        // 147-149: Redpiler subcommand aliases share arguments and suggestions.
+        Node::redirect("c", 67).executable(),
+        Node::redirect("i", 68).executable(),
+        Node::redirect("r", 69).executable(),
     ]
 }
 
@@ -1265,7 +1339,7 @@ mod security_tests {
     #[test]
     fn command_declarations_have_valid_edges_and_no_legacy_tick_aliases() {
         let nodes = declared_command_nodes();
-        assert_eq!(nodes.len(), 147);
+        assert_eq!(nodes.len(), 150);
         for node in &nodes {
             for edge in node.children.iter().copied().chain(node.redirect_node) {
                 assert!(edge >= 0 && (edge as usize) < nodes.len());
@@ -1404,5 +1478,66 @@ mod security_tests {
             assert!(!changes_plot(command, &["analyze"]));
             assert!(changes_plot(command, &["compile"]));
         }
+    }
+
+    #[test]
+    fn redpiler_flags_complete_aliases_prefixes_and_multiple_options() {
+        let nodes = declared_command_nodes();
+        for command in ["compile", "analyze"] {
+            let node = nodes.iter().find(|n| n.name == Some(command)).unwrap();
+            assert!(node.children.iter().any(|&id| {
+                nodes[id as usize].suggestions_type == Some("minecraft:ask_server")
+            }));
+        }
+        assert_eq!(
+            nodes[nodes[147].redirect_node.unwrap() as usize].name,
+            Some("compile")
+        );
+        for (text, expected) in [
+            ("/rp compile --ass", vec!["--assume-instant"]),
+            ("/redpiler c --optimize --i", vec!["--io-only"]),
+            (
+                "/rp analyze --graph --assume-instant --o",
+                vec!["--optimize"],
+            ),
+            (
+                "/rp compile -",
+                vec![
+                    "--assume-instant",
+                    "--optimize",
+                    "--io-only",
+                    "--update",
+                    "--export",
+                    "--export-dot",
+                    "-o",
+                    "-i",
+                    "-u",
+                    "-e",
+                ],
+            ),
+            ("/rp analyze --ex", vec![]),
+            ("/rp compile --unknown", vec![]),
+        ] {
+            let response = complete_redpiler(42, text).unwrap();
+            let start = text.rfind(' ').unwrap() + 1;
+            assert_eq!(response.id, 42);
+            assert_eq!(response.start, text[..start].encode_utf16().count() as i32);
+            assert_eq!(response.length, text[start..].encode_utf16().count() as i32);
+            assert_eq!(
+                response
+                    .matches
+                    .iter()
+                    .map(|m| m.match_.as_str())
+                    .collect::<Vec<_>>(),
+                expected
+            );
+            for item in response.matches {
+                assert!(item.match_ == "--graph" || CompilerOptions::parse(&item.match_).is_ok());
+            }
+        }
+        let response = complete_redpiler(0, "/rp analyze --graph ").unwrap();
+        assert!(!response.matches.iter().any(|m| m.match_ == "--graph"));
+        assert!(complete_redpiler(0, "/rp reset ").is_none());
+        assert!(complete_redpiler(0, "/git compile ").is_none());
     }
 }

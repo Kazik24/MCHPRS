@@ -83,6 +83,7 @@ pub(super) fn capture_raw(world: &mut PlotWorld, work: &Arc<Budget>) -> Result<B
     Ok(raw)
 }
 
+/// Encoded snapshot bytes, charged to either the work or storage budget.
 pub(super) struct Encoded {
     pub bytes: Bytes,
     pub raw_len: usize,
@@ -121,16 +122,7 @@ impl Encoded {
             })
         }
     }
-}
 
-pub(super) struct Stored {
-    pub bytes: Bytes,
-    pub raw_len: usize,
-    pub checksum: u32,
-    pub compressed: bool,
-}
-
-impl Stored {
     pub fn decode(&self, dict: &[u8], work: &Arc<Budget>) -> Result<Snapshot, String> {
         // Keep the workspace reservation alive until deserialization finishes.
         let decompressed;

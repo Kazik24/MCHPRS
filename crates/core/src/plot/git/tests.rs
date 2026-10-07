@@ -906,26 +906,37 @@ fn display_metadata_matches_checked_in_protocol_and_ids_are_unique() {
         .find(|e| e["name"] == "block_display")
         .unwrap();
     assert_eq!(display["id"], 15);
+    assert_eq!(display["metadataKeys"][11], "translation");
+    assert_eq!(display["metadataKeys"][12], "scale");
     assert_eq!(display["metadataKeys"][22], "glow_color_override");
     assert_eq!(display["metadataKeys"][23], "block_state");
-    for (kind, color) in [(0, 0x55ff55), (1, 0xff5555), (2, 0xffff55), (3, 0xffff55)] {
+    for (kind, color, glass) in [
+        (0, 0x55ff55, "lime_stained_glass"),
+        (1, 0xff5555, "red_stained_glass"),
+        (2, 0xffff55, "yellow_stained_glass"),
+        (3, 0xffff55, "yellow_stained_glass"),
+    ] {
         let packet = visuals::metadata(7, kind);
         assert_eq!(packet.metadata[0].value, [0x40]);
         let glow = packet.metadata.iter().find(|m| m.index == 22).unwrap();
         use mchprs_network::packets::PacketDecoderExt;
+        for (index, expected) in [(11, -0.005f32), (12, 1.01f32)] {
+            let transform = packet.metadata.iter().find(|m| m.index == index).unwrap();
+            assert_eq!(transform.metadata_type, 33);
+            assert_eq!(transform.value.len(), 12);
+            let mut values = std::io::Cursor::new(&transform.value);
+            for _ in 0..3 {
+                assert_eq!(values.read_float().unwrap(), expected);
+            }
+        }
         assert_eq!(
             std::io::Cursor::new(&glow.value).read_varint().unwrap(),
             color
         );
-        assert_eq!(
-            packet
-                .metadata
-                .iter()
-                .find(|m| m.index == 23)
-                .unwrap()
-                .metadata_type,
-            14
-        );
+        let state = packet.metadata.iter().find(|m| m.index == 23).unwrap();
+        assert_eq!(state.metadata_type, 14);
+        let id = std::io::Cursor::new(&state.value).read_varint().unwrap();
+        assert_eq!(Block::from_id(id as u32).get_name(), glass);
     }
     assert_ne!(
         crate::player::allocate_entity_id(),

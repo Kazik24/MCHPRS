@@ -15,6 +15,9 @@ use rustc_hash::FxHashSet;
 use std::sync::Arc;
 
 pub(crate) struct PreparedInstant {
+    pub assume_instant: bool,
+    pub pistons: Vec<crate::redpiler::analysis::PistonDescriptor>,
+    pub output_offset: usize,
     pub clocked: Option<super::clocked::ClockedProgram>,
     pub controls: Vec<BlockPos>,
     pub logic: WaveLogic,
@@ -32,7 +35,7 @@ pub(crate) fn prepare(
     ticks: &[TickEntry],
     options: &CompilerOptions,
     monitor: Arc<TaskMonitor>,
-) -> Result<(CompileGraph, PreparedInstant), String> {
+) -> Result<(CompileGraph, Vec<PreparedInstant>), String> {
     if options.export {
         return Err("instant runtime export is not implemented".into());
     }
@@ -51,7 +54,78 @@ pub(crate) fn prepare(
             return Err(issue.to_string());
         }
     }
-    let clocked = super::clocked::recognize(world, report, &monitor)?;
+    let mut programs = Vec::new();
+    for region in super::regions::split(world, report, &monitor)? {
+        programs.push(prepare_region(
+            world,
+            &region,
+            ticks,
+            options,
+            monitor.clone(),
+        )?);
+    }
+    let wires = programs
+        .iter()
+        .flat_map(|p| p.logic.wires.iter().copied())
+        .collect();
+    let sources: Vec<_> = programs
+        .iter()
+        .flat_map(|p| p.logic.sources.iter().copied())
+        .collect();
+    let mut outputs = Vec::new();
+    for program in &mut programs {
+        program.output_offset = outputs.len();
+        outputs.extend(program.logic.outputs.iter().cloned());
+    }
+    let boundaries = Boundaries::executable(report, &wires, &sources, &outputs);
+    let input = CompilerInput {
+        world,
+        bounds: report.bounds,
+        ticks,
+        boundaries: Some(&boundaries),
+    };
+    let graph = crate::redpiler::passes::run_passes(options, &input, &monitor)
+        .map_err(|e| e.to_string())?;
+    for program in &mut programs {
+        // Keep player controls upstream of ordinary timed input stages for handoff.
+        let mut visited = FxHashSet::default();
+        let mut pending: Vec<_> = graph
+            .node_indices()
+            .filter(|&id| {
+                graph[id]
+                    .block
+                    .is_some_and(|(pos, _)| program.logic.sources.contains(&pos))
+            })
+            .collect();
+        while let Some(id) = pending.pop() {
+            if !visited.insert(id) {
+                continue;
+            }
+            if let Some((pos, _)) = graph[id].block {
+                if matches!(
+                    graph[id].ty,
+                    crate::redpiler::compile_graph::NodeType::Lever
+                        | crate::redpiler::compile_graph::NodeType::Button
+                        | crate::redpiler::compile_graph::NodeType::PressurePlate
+                ) {
+                    program.controls.push(pos);
+                }
+            }
+            pending.extend(graph.neighbors_directed(id, petgraph::Direction::Incoming));
+        }
+        program.controls.sort_by_key(|p| (p.y, p.z, p.x));
+    }
+    Ok((graph, programs))
+}
+
+fn prepare_region(
+    world: &impl World,
+    report: &AnalysisReport,
+    ticks: &[TickEntry],
+    options: &CompilerOptions,
+    monitor: Arc<TaskMonitor>,
+) -> Result<PreparedInstant, String> {
+    let clocked = super::clocked::recognize(world, report, &monitor, options.assume_instant)?;
     let is_clock = |id| clocked.as_ref().is_some_and(|c| c.clock == id);
     let is_memory = |id| {
         clocked
@@ -64,7 +138,7 @@ pub(crate) fn prepare(
     for (id, p) in report.pistons.iter().enumerate() {
         if (!p.piston.sticky && !is_clock(id))
             || !p.piston.extended
-            || !p.powered
+            || (!options.assume_instant && !p.powered)
             || p.piston.facing == BlockFacing::Up
         {
             return Err(format!(
@@ -140,31 +214,36 @@ pub(crate) fn prepare(
         let observer_pos = p.pos.offset(BlockFace::Top);
         if let Block::Observer { observer } = world.get_block(observer_pos) {
             let cap = observer_pos.offset(BlockFace::Top);
-            if observer.facing != BlockFacing::Down
-                || observer.powered
-                || !world.get_block(cap).is_solid()
-                || report
-                    .payload_groups
-                    .iter()
-                    .any(|g| g.positions.contains(&cap))
+            if !options.assume_instant
+                && (observer.facing != BlockFacing::Down
+                    || observer.powered
+                    || !world.get_block(cap).is_solid()
+                    || report
+                        .payload_groups
+                        .iter()
+                        .any(|g| g.positions.contains(&cap)))
             {
                 return Err(format!(
                     "piston at {:?} has an unsupported observer reset",
                     p.pos
                 ));
             }
-            if !report.recognition[id].resets.iter().any(|r| {
-                r.family == crate::redpiler::analysis::families::ResetFamily::ObserverAbove
-                    && r.source == observer_pos
-            }) {
+            if !options.assume_instant
+                && !report.recognition[id].resets.iter().any(|r| {
+                    r.family == crate::redpiler::analysis::families::ResetFamily::ObserverAbove
+                        && r.source == observer_pos
+                })
+            {
                 return Err(format!(
                     "piston at {:?} has an unverified observer return path: {:?}",
                     p.pos, report.recognition[id].failures
                 ));
             }
-            if report.recognition[id].resets.iter().any(|r| {
-                r.family != crate::redpiler::analysis::families::ResetFamily::ObserverAbove
-            }) {
+            if !options.assume_instant
+                && report.recognition[id].resets.iter().any(|r| {
+                    r.family != crate::redpiler::analysis::families::ResetFamily::ObserverAbove
+                })
+            {
                 return Err(format!(
                     "piston at {:?} has multiple reset families and needs a joint reset protocol",
                     p.pos
@@ -200,32 +279,36 @@ pub(crate) fn prepare(
         clocked.validate(world, &logic)?;
     }
     for (id, p) in report.pistons.iter().enumerate() {
-        if clocked.is_none() && !observer_pistons.contains(&id) && !logic.follows_payload[id] {
+        if !options.assume_instant
+            && clocked.is_none()
+            && !observer_pistons.contains(&id)
+            && !logic.follows_payload[id]
+        {
             return Err(format!("piston at {:?} has neither an observer reset nor a proven payload-following response",p.pos));
         }
     }
-    if let Some(exposure) = report
-        .ports
-        .reset_exposures
-        .iter()
-        .find(|e| !report.pistons.iter().any(|p| p.pos == e.consumer))
+    if let Some(exposure) =
+        report.ports.reset_exposures.iter().find(|e| {
+            !options.assume_instant && !report.pistons.iter().any(|p| p.pos == e.consumer)
+        })
     {
         return Err(format!(
             "reset signal at {:?} is visible to ordinary consumer at {:?}",
             exposure.source, exposure.consumer
         ));
     }
-    if logic
-        .evaluate(|pos| crate::redstone::source_strength(world.get_block(pos), world, pos))
-        .iter()
-        .any(|&f| f)
+    if !options.assume_instant
+        && logic
+            .evaluate(|pos| crate::redstone::source_strength(world.get_block(pos), world, pos))
+            .iter()
+            .any(|&f| f)
     {
         return Err("instant network is not in its ready electrical state".into());
     }
     let mut aliases = Vec::new();
     for (id, group) in report.payload_groups.iter().enumerate() {
-        // The response removes a shared far payload if any owner fires. Near
-        // ownership is deliberately hidden and is restored by physical replay.
+        // A shared far payload disappears if any owner fires. Physical mode
+        // hides near ownership; logical mode selects the first firing owner.
         let p = &report.pistons[group.members[0]];
         for &alias in &group.positions {
             aliases.push((
@@ -257,7 +340,7 @@ pub(crate) fn prepare(
                     part: super::boolean::GeometryPart::NearPayload,
                 } = decision.variable
                 {
-                    if shared[actor] {
+                    if shared[actor] && !options.assume_instant {
                         return Err(format!("consumer at {:?} observes near ownership of a shared payload; only shared far occupancy has a compiled protocol", output.consumer));
                     }
                 }
@@ -270,45 +353,6 @@ pub(crate) fn prepare(
     owned.extend(crate::redpiler::analysis::families::reset_internals(
         &report.recognition,
     ));
-    let boundaries = Boundaries::executable(report, &logic.wires, &logic.sources, &logic.outputs);
-    let input = CompilerInput {
-        world,
-        bounds: report.bounds,
-        ticks,
-        boundaries: Some(&boundaries),
-    };
-    let graph = crate::redpiler::passes::make_default_pass_manager()
-        .run_passes(options, &input, monitor.clone())
-        .map_err(|e| e.to_string())?;
-    // Retain interaction provenance across ordinary timed input stages. The
-    // program may read a torch while the player actually changes its lever.
-    let mut visited = FxHashSet::default();
-    let mut pending: Vec<_> = graph
-        .node_indices()
-        .filter(|&id| {
-            graph[id]
-                .block
-                .is_some_and(|(pos, _)| logic.sources.contains(&pos))
-        })
-        .collect();
-    let mut controls = Vec::new();
-    while let Some(id) = pending.pop() {
-        if !visited.insert(id) {
-            continue;
-        }
-        if let Some((pos, _)) = graph[id].block {
-            if matches!(
-                graph[id].ty,
-                crate::redpiler::compile_graph::NodeType::Lever
-                    | crate::redpiler::compile_graph::NodeType::Button
-                    | crate::redpiler::compile_graph::NodeType::PressurePlate
-            ) {
-                controls.push(pos);
-            }
-        }
-        pending.extend(graph.neighbors_directed(id, petgraph::Direction::Incoming));
-    }
-    controls.sort_by_key(|p| (p.y, p.z, p.x));
     let mut template = Vec::new();
     let (first, last) = logic
         .context
@@ -330,22 +374,22 @@ pub(crate) fn prepare(
     if monitor.cancelled() {
         return Err("instant compilation cancelled".into());
     }
-    Ok((
-        graph,
-        PreparedInstant {
-            clocked,
-            controls,
-            logic,
-            groups: report
-                .payload_groups
-                .iter()
-                .map(|g| g.members.clone())
-                .collect(),
-            aliases,
-            owned,
-            template,
-            bounds: report.bounds,
-            logical_tick: world.piston_state().logical_tick,
-        },
-    ))
+    Ok(PreparedInstant {
+        assume_instant: options.assume_instant,
+        pistons: report.pistons.clone(),
+        output_offset: 0,
+        clocked,
+        controls: Vec::new(),
+        logic,
+        groups: report
+            .payload_groups
+            .iter()
+            .map(|g| g.members.clone())
+            .collect(),
+        aliases,
+        owned,
+        template,
+        bounds: report.bounds,
+        logical_tick: world.piston_state().logical_tick,
+    })
 }

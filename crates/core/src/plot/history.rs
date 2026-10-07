@@ -10,7 +10,7 @@ use super::{Plot, PlotWorld, PLOT_SECTIONS};
 use crate::config::CONFIG;
 use crate::player::PacketSender;
 use budget::{Budget, Bytes, Reservation};
-use codec::{capture_raw, Encoded, Stored};
+use codec::{capture_raw, Encoded};
 use mchprs_network::packets::clientbound::{CChatMessage, ClientBoundPacket};
 use mchprs_save_data::plot_data::Tps;
 use mchprs_world::AdvancePhase;
@@ -35,7 +35,7 @@ fn validate_tick_limit(ticks: usize, unlimited: bool) -> Result<(), String> {
 }
 
 pub(super) struct TickHistory {
-    slots: Vec<Option<Stored>>,
+    slots: Vec<Option<Encoded>>,
     dictionary: Option<Bytes>,
     _slots_reservation: Option<Reservation>,
     budget: Arc<Budget>,
@@ -80,7 +80,7 @@ impl TickHistory {
     }
 
     pub fn memory_bytes(&self) -> usize {
-        self.slots.capacity() * size_of::<Option<Stored>>()
+        self.slots.capacity() * size_of::<Option<Encoded>>()
             + self.heap_bytes
             + self.dictionary.as_ref().map_or(0, |d| d.data.capacity())
     }
@@ -109,7 +109,7 @@ impl TickHistory {
             return Err(messages::HISTORY_CAPACITY_MUST_BETWEEN_GAME_TICKS.into());
         }
         let bytes = capacity
-            .checked_mul(size_of::<Option<Stored>>())
+            .checked_mul(size_of::<Option<Encoded>>())
             .ok_or(messages::HISTORY_SIZE_OVERFLOW)?;
         let reservation = budget.reserve(bytes)?;
         let mut slots = Vec::new();
@@ -156,12 +156,7 @@ impl TickHistory {
         };
         self.heap_bytes += bytes.data.capacity();
         self.raw_bytes += encoded.raw_len;
-        self.slots[self.next_write] = Some(Stored {
-            bytes,
-            raw_len: encoded.raw_len,
-            checksum: encoded.checksum,
-            compressed: encoded.compressed,
-        });
+        self.slots[self.next_write] = Some(Encoded { bytes, ..encoded });
         self.len += 1;
         self.next_write = (self.next_write + 1) % self.capacity();
         Ok(())

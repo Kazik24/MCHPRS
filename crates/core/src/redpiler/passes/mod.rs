@@ -1,3 +1,4 @@
+//! Fixed graph preparation pipeline, shared by ordinary and instant compilation.
 mod clamp_weights;
 mod coalesce;
 mod constant_coalesce;
@@ -9,95 +10,152 @@ mod input_search;
 mod prune_orphans;
 mod unreachable_output;
 
-use crate::world::World;
-
 use super::compile_graph::{CompileGraph, GraphError};
-use super::task_monitor::TaskMonitor;
-use super::{CompilerInput, CompilerOptions};
-use std::sync::Arc;
+use super::{CompilerInput, CompilerOptions, TaskMonitor};
+use crate::world::World;
 use std::time::Instant;
 use tracing::trace;
 
-pub const fn make_default_pass_manager<'w, W: World>() -> PassManager<'w, W> {
-    PassManager::new(&[
-        &identify_nodes::IdentifyNodes,
-        &input_search::InputSearch,
-        &clamp_weights::ClampWeights,
-        &dedup_links::DedupLinks,
-        &constant_fold::ConstantFold,
-        &unreachable_output::UnreachableOutput,
-        &constant_coalesce::ConstantCoalesce,
-        &coalesce::Coalesce,
-        &prune_orphans::PruneOrphans,
-        &export_graph::ExportGraph,
-    ])
-}
+pub(super) fn run_passes<W: World>(
+    options: &CompilerOptions,
+    input: &CompilerInput<'_, W>,
+    monitor: &TaskMonitor,
+) -> Result<CompileGraph, GraphError> {
+    let mut graph = CompileGraph::new();
+    // Ten passes (including skipped ones), followed by backend compilation.
+    monitor.set_max_progress(11);
 
-pub struct PassManager<'p, W: World> {
-    passes: &'p [&'p dyn Pass<W>],
-}
-
-impl<'p, W: World> PassManager<'p, W> {
-    pub const fn new(passes: &'p [&dyn Pass<W>]) -> Self {
-        Self { passes }
-    }
-
-    pub fn run_passes(
-        &self,
-        options: &CompilerOptions,
-        input: &CompilerInput<'_, W>,
-        monitor: Arc<TaskMonitor>,
-    ) -> Result<CompileGraph, GraphError> {
-        let mut graph = CompileGraph::new();
-
-        // Add one for the backend compile step
-        monitor.set_max_progress(self.passes.len() + 1);
-
-        for &pass in self.passes {
-            if !pass.should_run(options) {
-                trace!("Skipping pass: {}", pass.name());
-                monitor.inc_progress();
-                continue;
-            }
-
+    let mut run = |message: &str,
+                   enabled: bool,
+                   pass: &dyn Fn(&mut CompileGraph) -> Result<(), GraphError>| {
+        if enabled {
             if monitor.cancelled() {
                 return Err(GraphError::Cancelled);
             }
-
-            trace!("Running pass: {}", pass.name());
-            monitor.set_message(pass.status_message().to_string());
+            trace!("Running pass: {message}");
+            monitor.set_message(message.to_string());
             let start = Instant::now();
-
-            pass.run_pass(&mut graph, options, input)?;
-
+            pass(&mut graph)?;
             trace!("Completed pass in {:?}", start.elapsed());
             trace!("node_count: {}", graph.node_count());
             trace!("edge_count: {}", graph.edge_count());
-            monitor.inc_progress();
+        } else {
+            trace!("Skipping pass: {message}");
         }
+        monitor.inc_progress();
+        Ok(())
+    };
 
-        Ok(graph)
-    }
+    // These three passes establish the nodes, inputs and valid link weights.
+    run("Identifying nodes", true, &|graph| {
+        identify_nodes::run(graph, options, input)
+    })?;
+    run("Searching for links", true, &|graph| {
+        input_search::run(graph, input)
+    })?;
+    run("Clamping weights", true, &clamp_weights::run)?;
+
+    run("Deduplicating links", options.optimize, &dedup_links::run)?;
+    run("Constant folding", options.optimize, &|graph| {
+        constant_fold::run(graph, input.world)
+    })?;
+    run(
+        "Pruning unreachable comparator outputs",
+        options.optimize,
+        &unreachable_output::run,
+    )?;
+    run(
+        "Coalescing constants",
+        options.optimize,
+        &constant_coalesce::run,
+    )?;
+    run(
+        "Combining duplicate logic",
+        options.optimize,
+        &coalesce::run,
+    )?;
+    run(
+        "Pruning orphans",
+        options.optimize && options.io_only,
+        &prune_orphans::run,
+    )?;
+    run("Exporting graph", options.export, &export_graph::run)?;
+    Ok(graph)
 }
 
-pub trait Pass<W: World> {
-    fn run_pass(
-        &self,
-        graph: &mut CompileGraph,
-        options: &CompilerOptions,
-        input: &CompilerInput<'_, W>,
-    ) -> Result<(), GraphError>;
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::plot::PlotWorld;
+    use crate::redpiler::compile_graph::NodeType;
+    use crate::world::storage::Chunk;
+    use mchprs_blocks::blocks::{Block, Lever, LeverFace, RedstoneRepeater, RedstoneWire};
+    use mchprs_blocks::{BlockDirection, BlockPos};
 
-    /// This name should only be use for debugging purposes,
-    /// it is not a valid identifier of the pass.
-    fn name(&self) -> &'static str {
-        std::any::type_name::<Self>()
+    #[test]
+    fn pipeline_preserves_required_passes_flags_progress_and_cancellation() {
+        let mut world = PlotWorld::from_chunks(0, 0, vec![Chunk::empty(0, 0)], Default::default());
+        world.set_block(
+            BlockPos::new(4, 30, 4),
+            Block::Lever {
+                lever: Lever::new(LeverFace::Floor, BlockDirection::North, false),
+            },
+        );
+        world.set_block(BlockPos::new(5, 30, 4), Block::RedstoneLamp { lit: false });
+        world.set_block(
+            BlockPos::new(3, 30, 4),
+            Block::RedstoneRepeater {
+                repeater: RedstoneRepeater {
+                    facing: BlockDirection::East,
+                    ..Default::default()
+                },
+            },
+        );
+        world.set_block(
+            BlockPos::new(10, 30, 4),
+            Block::RedstoneWire {
+                wire: RedstoneWire::default(),
+            },
+        );
+        let input = CompilerInput {
+            world: &world,
+            bounds: (BlockPos::new(0, 0, 0), BlockPos::new(15, 31, 15)),
+            ticks: &[],
+            boundaries: None,
+        };
+        for (optimize, io_only, expected_nodes) in [
+            (false, false, 4),
+            (false, true, 4),
+            (true, false, 3),
+            (true, true, 2),
+        ] {
+            let monitor = TaskMonitor::default();
+            let options = CompilerOptions {
+                optimize,
+                io_only,
+                ..Default::default()
+            };
+            let graph = run_passes(&options, &input, &monitor).unwrap();
+            assert_eq!(graph.node_count(), expected_nodes);
+            let lamp = graph
+                .node_indices()
+                .find(|&id| graph[id].ty == NodeType::Lamp)
+                .unwrap();
+            assert_eq!(
+                graph
+                    .neighbors_directed(lamp, petgraph::Direction::Incoming)
+                    .count(),
+                1
+            );
+            assert_eq!(monitor.progress(), 10);
+            assert_eq!(monitor.max_progress(), 11);
+        }
+        let monitor = TaskMonitor::default();
+        monitor.cancel();
+        assert!(matches!(
+            run_passes(&CompilerOptions::default(), &input, &monitor),
+            Err(GraphError::Cancelled)
+        ));
+        assert_eq!(monitor.progress(), 0);
     }
-
-    fn should_run(&self, options: &CompilerOptions) -> bool {
-        // Run passes for optimized builds by default
-        options.optimize
-    }
-
-    fn status_message(&self) -> &'static str;
 }

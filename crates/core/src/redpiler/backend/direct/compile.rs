@@ -1,5 +1,5 @@
 use crate::redpiler::compile_graph::{CompileGraph, LinkType, NodeIdx};
-use crate::redpiler::{CompilerOptions, TaskMonitor};
+use crate::redpiler::CompilerOptions;
 use itertools::Itertools;
 use mchprs_blocks::blocks::{Block, Instrument};
 use mchprs_blocks::BlockPos;
@@ -8,7 +8,6 @@ use petgraph::visit::EdgeRef;
 use petgraph::Direction;
 use rustc_hash::FxHashMap;
 use smallvec::SmallVec;
-use std::sync::Arc;
 use tracing::trace;
 
 use super::node::{ForwardLink, Node, NodeId, NodeInput, NodeType, Nodes, NonMaxU8};
@@ -38,30 +37,26 @@ fn compile_node(
     let mut default_input_count = 0;
     let mut side_input_count = 0;
 
-    let mut default_inputs = NodeInput { ss_counts: [0; 16] };
-    let mut side_inputs = NodeInput { ss_counts: [0; 16] };
+    let mut default_inputs = NodeInput {
+        strength_counts: [0; 16],
+    };
+    let mut side_inputs = NodeInput {
+        strength_counts: [0; 16],
+    };
+    // Strengths and channel sizes were validated before lowering.
     for edge in graph.edges_directed(node_idx, Direction::Incoming) {
         let weight = edge.weight();
-        let distance = weight.ss;
+        let distance = weight.attenuation;
         let source = edge.source();
-        let ss = graph[source].state.output_strength.saturating_sub(distance);
+        let strength = graph[source].state.output_strength.saturating_sub(distance);
         match weight.ty {
             LinkType::Default => {
-                if default_input_count >= MAX_INPUTS {
-                    panic!(
-                        "Exceeded the maximum number of default inputs {}",
-                        MAX_INPUTS
-                    );
-                }
                 default_input_count += 1;
-                default_inputs.ss_counts[ss as usize] += 1;
+                default_inputs.strength_counts[strength as usize] += 1;
             }
             LinkType::Side => {
-                if side_input_count >= MAX_INPUTS {
-                    panic!("Exceeded the maximum number of side inputs {}", MAX_INPUTS);
-                }
                 side_input_count += 1;
-                side_inputs.ss_counts[ss as usize] += 1;
+                side_inputs.strength_counts[strength as usize] += 1;
             }
         }
     }
@@ -84,7 +79,7 @@ fn compile_node(
                 let target_id = NodeId::from_index(idx);
 
                 let weight = edge.weight();
-                ForwardLink::new(target_id, weight.ty == LinkType::Side, weight.ss)
+                ForwardLink::new(target_id, weight.ty == LinkType::Side, weight.attenuation)
             })
             .collect()
     } else {
@@ -157,8 +152,7 @@ pub fn compile(
     graph: CompileGraph,
     ticks: Vec<TickEntry>,
     options: &CompilerOptions,
-    _monitor: Arc<TaskMonitor>,
-    instant: Option<crate::redpiler::instant::program::PreparedInstant>,
+    instant: Vec<crate::redpiler::instant::program::PreparedInstant>,
 ) -> Result<(), BackendError> {
     if graph.node_weights().any(|n| {
         matches!(
@@ -167,7 +161,7 @@ pub fn compile(
                 | crate::redpiler::compile_graph::NodeType::MobileSource { .. }
                 | crate::redpiler::compile_graph::NodeType::InstantOutput { .. }
         )
-    }) && instant.is_none()
+    }) && instant.is_empty()
     {
         return Err(BackendError::InstantRuntimeUnavailable);
     }
@@ -231,7 +225,7 @@ pub fn compile(
         .map(|node| node.block.map(|(pos, id)| (pos, Block::from_id(id))))
         .collect();
     backend.nodes = Nodes::new(nodes);
-    if let Some(program) = instant {
+    if !instant.is_empty() {
         let bindings = graph
             .node_indices()
             .filter_map(|idx| match graph[idx].ty {
@@ -242,7 +236,7 @@ pub fn compile(
                     .block
                     .map(|(pos, _)| (pos, backend.nodes.get(nodes_map[&idx]))),
             })
-            .collect();
+            .collect::<FxHashMap<_, _>>();
         let outputs = graph
             .node_indices()
             .filter_map(|idx| match graph[idx].ty {
@@ -251,13 +245,15 @@ pub fn compile(
                 }
                 _ => None,
             })
-            .collect();
-        backend.instant = Some(super::instant::Runtime::bind(
-            program,
-            bindings,
-            outputs,
-            &backend.nodes,
-        )?);
+            .collect::<FxHashMap<_, _>>();
+        for program in instant {
+            backend.instant.push(super::instant::Runtime::bind(
+                program,
+                &bindings,
+                &outputs,
+                &backend.nodes,
+            )?);
+        }
     }
 
     // Create a mapping from block pos to backend NodeId
@@ -267,7 +263,7 @@ pub fn compile(
         }
     }
 
-    // Schedule backend ticks
+    // Track command-block overrides read through a comparator's far input.
     for (i, block) in backend.blocks.iter().enumerate() {
         let Some((pos, Block::RedstoneComparator { comparator })) = block else {
             continue;
@@ -296,6 +292,7 @@ pub fn compile(
         }
     }
 
+    // Preserve pending tick deadlines, priorities and input order.
     for entry in ticks {
         if let Some(node) = backend.pos_map.get(&entry.pos) {
             backend.scheduler.schedule_half_tick(
@@ -307,7 +304,7 @@ pub fn compile(
         }
     }
 
-    // Dot file output
+    // Initialize command-block power and automatic execution requests.
     for idx in graph.node_indices() {
         if let crate::redpiler::compile_graph::NodeType::CommandBlock {
             initial_tick,
@@ -349,14 +346,13 @@ fn update_command_output(backend: &mut DirectBackend, id: NodeId, initial_tick: 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::redpiler::backend::JITBackend;
     use crate::redpiler::compile_graph::{CompileLink, CompileNode, NodeState, NodeType};
 
     fn node(ty: NodeType, strength: u8) -> CompileNode {
         CompileNode {
             ty,
             block: None,
-            state: NodeState::ss(strength),
+            state: NodeState::with_strength(strength),
             is_input: false,
             is_output: false,
         }
@@ -385,7 +381,7 @@ mod tests {
         let target = graph.add_node(node(NodeType::Lamp, 0));
         for _ in 0..256 {
             let source = graph.add_node(node(NodeType::Constant, 15));
-            graph.add_edge(source, target, CompileLink::default(0));
+            graph.add_edge(source, target, CompileLink::new(LinkType::Default, 0));
         }
         let mut backend = DirectBackend::default();
         assert_eq!(

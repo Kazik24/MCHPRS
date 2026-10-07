@@ -1,54 +1,38 @@
-use super::Pass;
 use crate::redpiler::compile_graph::{CompileGraph, LinkType, NodeIdx, NodeType};
-use crate::redpiler::{CompilerInput, CompilerOptions};
-use crate::world::World;
 use itertools::Itertools;
 use petgraph::visit::{EdgeRef, NodeIndexable};
 use petgraph::Direction;
 
-pub struct Coalesce;
-
-impl<W: World> Pass<W> for Coalesce {
-    fn run_pass(
-        &self,
-        graph: &mut CompileGraph,
-        _: &CompilerOptions,
-        _: &CompilerInput<'_, W>,
-    ) -> Result<(), super::GraphError> {
-        for i in 0..graph.node_bound() {
-            let idx = NodeIdx::new(i);
-            if !graph.contains_node(idx) {
-                continue;
-            }
-
-            let node = &graph[idx];
-            // Comparators depend on the link weight as well as the type,
-            // we could implement that later if it's beneficial enough.
-            if matches!(node.ty, NodeType::Comparator { .. }) || !node.is_removable() {
-                continue;
-            }
-
-            let Ok(edge) = graph.edges_directed(idx, Direction::Incoming).exactly_one() else {
-                continue;
-            };
-
-            if edge.weight().ty != LinkType::Default {
-                continue;
-            }
-
-            let source = edge.source();
-            // Comparators might output less than 15 ss
-            if matches!(graph[source].ty, NodeType::Comparator { .. }) {
-                continue;
-            }
-            coalesce_outgoing(graph, source, idx);
+pub(super) fn run(graph: &mut CompileGraph) -> Result<(), super::GraphError> {
+    for i in 0..graph.node_bound() {
+        let idx = NodeIdx::new(i);
+        if !graph.contains_node(idx) {
+            continue;
         }
-        Ok(())
-    }
 
-    fn status_message(&self) -> &'static str {
-        "Combining duplicate logic"
+        let node = &graph[idx];
+        // Comparators depend on the link weight as well as the type,
+        // we could implement that later if it's beneficial enough.
+        if matches!(node.ty, NodeType::Comparator { .. }) || !node.is_removable() {
+            continue;
+        }
+
+        let Ok(edge) = graph.edges_directed(idx, Direction::Incoming).exactly_one() else {
+            continue;
+        };
+
+        if edge.weight().ty != LinkType::Default {
+            continue;
+        }
+
+        let source = edge.source();
+        // Comparators can output less than full strength.
+        if matches!(graph[source].ty, NodeType::Comparator { .. }) {
+            continue;
+        }
+        coalesce_outgoing(graph, source, idx);
     }
+    Ok(())
 }
 
 fn coalesce_outgoing(graph: &mut CompileGraph, source_idx: NodeIdx, into_idx: NodeIdx) {

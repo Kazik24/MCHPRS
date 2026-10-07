@@ -139,13 +139,16 @@ pub fn prepare_candidate_graph(
         super::AnalysisLimits::for_budget(monitor.budget_multiplier()),
     )
     .map_err(GraphPreparationError::Analysis)?;
-    // Conducting movers need conditional geometry, which the older electrical
-    // candidate graph does not encode. Use the same staged program as compile.
-    if report.pistons.iter().any(|p| {
-        let payload = world.get_block(p.payload);
-        payload != mchprs_blocks::blocks::Block::RedstoneBlock
-            && crate::redpiler::instant::outputs::supported_payload(payload)
-    }) {
+    // Logical mode, clocks and conducting movers require executable preparation;
+    // the older electrical candidate graph does not encode their protocol.
+    if options.assume_instant
+        || report.pistons.iter().any(|p| {
+            let payload = world.get_block(p.payload);
+            !p.piston.sticky
+                || payload != mchprs_blocks::blocks::Block::RedstoneBlock
+                    && crate::redpiler::instant::outputs::supported_payload(payload)
+        })
+    {
         let (graph, _) = crate::redpiler::instant::program::prepare(
             world,
             &report,
@@ -218,8 +221,7 @@ pub fn prepare_candidate_graph(
         ticks,
         boundaries: Some(&boundaries),
     };
-    let graph = crate::redpiler::passes::make_default_pass_manager()
-        .run_passes(options, &input, monitor.clone())
+    let graph = crate::redpiler::passes::run_passes(options, &input, &monitor)
         .map_err(GraphPreparationError::Graph)?;
     if monitor.cancelled() {
         return Err(GraphPreparationError::Analysis(AnalysisError::Cancelled));

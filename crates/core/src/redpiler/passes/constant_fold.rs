@@ -1,34 +1,19 @@
-use super::Pass;
 use crate::redpiler::compile_graph::{CompileGraph, LinkType, NodeIdx, NodeType};
-use crate::redpiler::{CompilerInput, CompilerOptions};
 use crate::world::World;
 use mchprs_blocks::blocks::{Block, ComparatorMode};
 use petgraph::visit::{EdgeRef, NodeIndexable};
 use petgraph::Direction;
 use tracing::trace;
 
-pub struct ConstantFold;
-
-impl<W: World> Pass<W> for ConstantFold {
-    fn run_pass(
-        &self,
-        graph: &mut CompileGraph,
-        _: &CompilerOptions,
-        input: &CompilerInput<'_, W>,
-    ) -> Result<(), super::GraphError> {
-        loop {
-            let num_folded = fold(graph, input.world);
-            if num_folded == 0 {
-                break;
-            }
-            trace!("Fold iteration: {} nodes", num_folded);
+pub(super) fn run(graph: &mut CompileGraph, world: &impl World) -> Result<(), super::GraphError> {
+    loop {
+        let num_folded = fold(graph, world);
+        if num_folded == 0 {
+            break;
         }
-        Ok(())
+        trace!("Fold iteration: {} nodes", num_folded);
     }
-
-    fn status_message(&self) -> &'static str {
-        "Constant folding"
-    }
+    Ok(())
 }
 
 fn fold(graph: &mut CompileGraph, world: &impl World) -> usize {
@@ -64,7 +49,7 @@ fn fold(graph: &mut CompileGraph, world: &impl World) -> usize {
                         constant
                             .state
                             .output_strength
-                            .saturating_sub(edge.weight().ss),
+                            .saturating_sub(edge.weight().attenuation),
                     )
                 }
                 LinkType::Side => {
@@ -72,7 +57,7 @@ fn fold(graph: &mut CompileGraph, world: &impl World) -> usize {
                         constant
                             .state
                             .output_strength
-                            .saturating_sub(edge.weight().ss),
+                            .saturating_sub(edge.weight().attenuation),
                     )
                 }
             }

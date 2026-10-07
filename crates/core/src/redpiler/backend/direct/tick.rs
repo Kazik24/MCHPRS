@@ -15,7 +15,7 @@ impl DirectBackend {
                     return;
                 }
 
-                let should_be_powered = get_bool_input(node);
+                let should_be_powered = has_main_input(node);
                 if node.powered && !should_be_powered {
                     self.set_node(node_id, false, 0);
                 } else if !node.powered {
@@ -32,7 +32,7 @@ impl DirectBackend {
                 }
             }
             NodeType::Torch => {
-                let should_be_powered = !get_bool_input(node);
+                let should_be_powered = !has_main_input(node);
                 if node.powered != should_be_powered {
                     self.set_node(node_id, should_be_powered, bool_to_ss(should_be_powered));
                 }
@@ -40,7 +40,7 @@ impl DirectBackend {
             NodeType::Comparator {
                 mode, far_input, ..
             } => {
-                let (mut input_power, side_input_power) = get_all_input(node);
+                let (mut input_power, side_input_power) = input_strengths(node);
                 if let Some(far_override) = far_input {
                     if input_power < 15 {
                         input_power = far_override.get();
@@ -53,7 +53,7 @@ impl DirectBackend {
                 }
             }
             NodeType::Lamp => {
-                let should_be_lit = get_bool_input(node);
+                let should_be_lit = has_main_input(node);
                 if node.powered && !should_be_lit {
                     self.set_node(node_id, false, 0);
                 }
@@ -66,7 +66,7 @@ impl DirectBackend {
                 }
                 self.set_node(node_id, false, 0);
             }
-            _ => {} //unreachable!("Node {:?} should not be ticked!", node.ty),
+            _ => {}
         }
     }
 }

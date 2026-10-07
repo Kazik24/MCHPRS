@@ -12,7 +12,7 @@ use mchprs_blocks::items::{Item, ItemStack};
 use mchprs_blocks::{BlockFace, BlockPos};
 use mchprs_network::packets::clientbound::*;
 use mchprs_network::packets::serverbound::*;
-use mchprs_network::packets::{PacketEncoder, SlotData};
+use mchprs_network::packets::PacketEncoder;
 use serde_json::json;
 use std::path::PathBuf;
 use std::time::Instant;
@@ -565,6 +565,12 @@ impl ServerBoundPacketHandler for Plot {
         if !self.players[player_idx].can_use_commands() {
             return;
         }
+        if let Some(completion) =
+            super::commands::complete_redpiler(packet.transaction_id, &packet.text)
+        {
+            self.players[player_idx].send_packet(&completion.encode());
+            return;
+        }
         if let Some(completion) = self.complete_git(player_idx, packet.transaction_id, &packet.text)
         {
             self.players[player_idx].send_packet(&completion.encode());
@@ -660,11 +666,7 @@ impl ServerBoundPacketHandler for Plot {
                         item: self.players[player].inventory
                             [creative_inventory_action.slot as usize]
                             .as_ref()
-                            .map(|item| SlotData {
-                                item_count: item.count as i8,
-                                item_id: item.item_type.get_id() as i32,
-                                nbt: item.nbt.clone(),
-                            }),
+                            .map(crate::container::slot_data),
                     }],
                 }
                 .encode();
@@ -954,11 +956,7 @@ impl ServerBoundPacketHandler for Plot {
                 slot: 0, // Main hand
                 item: self.players[player].inventory[held_item_change.slot as usize + 36]
                     .as_ref()
-                    .map(|item| SlotData {
-                        item_count: item.count as i8,
-                        item_id: item.item_type.get_id() as i32,
-                        nbt: item.nbt.clone(),
-                    }),
+                    .map(crate::container::slot_data),
             }],
         }
         .encode();

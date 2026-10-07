@@ -1,5 +1,58 @@
 # Implemented instant-piston pipeline
 
+## Independent builds and ideal timing (2026-10-07)
+
+Independent instant regions share the ordinary electrical graph but have separate
+wave phases, clocks, memory and interpreter handoff. Two adders and two counters
+can compile on one plot and start at different times. Regions follow mobile
+payload ownership, reset ownership, power and sampling dependencies; sharing a
+plot or an ordinary input alone does not join them. The parser conservatively
+joins moving geometry within two cells of a dependency. Electrically coupled
+regions with multiple clock generators still require another protocol.
+
+For ideal logical behavior, use:
+
+```text
+/rp analyze --assume-instant
+/rp compile --assume-instant --optimize --io-only
+```
+
+This explicit mode evaluates combinational piston logic once per game tick from
+current ordinary sources. Input changes during a held trigger are supported.
+Movement delays, reset pulses and physical reset certification are omitted;
+ordinary repeaters, comparators and torches retain their existing timing.
+Conditional wiring, attenuation, payload ownership and cycle checks remain.
+For a shared payload, the first firing owner determines its logical near position.
+
+Recognized clocks still sample every six game ticks. All memory cells read the old
+bank before committing their updates together. Disabling the clock holds memory
+and the last sampled response; restarting continues from that stored value. The
+counter's output represents the previous sampled bank, so its stored value can
+be one ahead of the stable displayed count.
+
+`/rp reset` in this mode writes current stationary logical occupancy and stored
+memory, then recomputes dust. It does not replay historical launches. Subsequent
+interpreter ticks resume physical behavior. Entry still requires extended pistons
+with matching stationary heads and supported payloads; initially retracted memory,
+generic independently sampled BUD mechanisms and arbitrary feedback remain
+unsupported.
+
+Unknown flags now reach the player as errors before changing the active compiler.
+Plain `/rp analyze` stages actual compilation without activating it and accepts the
+same flags. `/rp analyze --graph --assume-instant` uses executable preparation.
+The older structural candidate path remains available for redstone-only fixtures.
+
+Regressions cover four independent builds with staggered triggers and physical
+handoff, all supplied adder truth vectors repeatedly on one logical compilation,
+clock pause/restart, stored-memory handoff and all optimize/I/O combinations.
+Validation: `cargo test -p mchprs_core --lib --locked` passed 407 tests, with
+zero failures and nine ignored. `cargo check --workspace --all-targets --locked`
+also passed. The new regressions are in
+[regions.rs](../crates/core/src/redpiler/analysis/tests/regions.rs).
+`cargo build --release --locked` passed and rebuilt `target/release/mchprs.exe`.
+The physical-mode details below describe the original waveform model; its reset
+certification and prepared-input restrictions do not apply to `--assume-instant`.
+
 This document describes the Rust implementation in the working tree on 2026-10-06. Direct/Boolean executable acceptance covers the lever/repeater revisions of `ADDER_1BIT.schem`, `ADDER_11BITS.schem` and `COUNTER_BASIC.schem`, plus the tested observer-backed gates and chains. Conditional electrical output ports now support ordinary consumers of moving conductors; the output need not be another piston. ANPU Pong remains unsupported by the compiled graph. Its ordered interpreter BUD trace and complete screen reference are preserved for future compiled acceptance; no interpreter-backed Redpiler mode exists. See [ANPU scope and reference tests](ANPU_REDPILER.md). The broader [implementation plan](INSTANT_PISTON_IMPLEMENTATION_PLAN.md) remains a roadmap for additional graph families, independent clocks and stop/restart protocols.
 
 The tested I/O schematic is [ADDER_11BITS.schem](../test_data/instant-pistons-io/ADDER_11BITS.schem), dimensions 23 × 7 × 46, SHA-256 `335ab94a3ba7f89cd0a497a2ac606372ff2743cfcd549f4863ead310af4138b9`. Its [manifest](../test_data/instant-pistons-io/fixtures/adder_11bits.json) defines the controls and observation windows. The original 21 × 7 × 46 schematic also passes graph preparation. Both contain 142 sticky pistons: 98 carry redstone blocks and 44 carry white wool. Multiple pistons can share one payload, so those actuator counts are not counts of independent blocks.
@@ -23,7 +76,7 @@ The [post-legalization ANPU check](ANPU_REDPILER.md#admission-after-the-fpurilax
 
 ## Wave execution and output timing
 
-[The Direct runtime](../crates/core/src/redpiler/backend/direct/instant.rs) evaluates source thresholds through backend node IDs. It does not read blocks, walk wires, run piston callbacks, or simulate internal nanoticks during compiled ticks. There is one synchronous wave coordinator for the selected network. Its prepared-data and trigger protocol must be respected; independent overlapping computations are later work.
+[The Direct runtime](../crates/core/src/redpiler/backend/direct/instant.rs) evaluates source thresholds through backend node IDs. It does not read blocks, walk wires, run piston callbacks, or simulate internal nanoticks during compiled ticks. There is one synchronous wave coordinator per connected instant region. Its prepared-data and trigger protocol must be respected in physical mode; independent regions can overlap.
 
 Entry functions must indicate that no actuator needs to retract. This prevents compilation itself from creating a trigger. After ordinary scheduled input work has run, the runtime evaluates the ready network. In the accepted episode, data remains stable and the trigger's nonzero-to-zero change removes power. Restoring power before the first tick cancels that launch. Internal stages compose within the same response rather than adding ticks per piston.
 
@@ -89,7 +142,7 @@ This is handoff work, not a runtime simulation fallback. It reconstructs support
 - The supplied standalone BUD examples and illegal OR are rejected transactionally. BUD storage currently requires the owned shared-clock protocol; standalone adapters, AND_3 sampling history, torch/dust reset execution and XOR's context-dependent later reset waveform need additional work. Structural recognition of those families remains available.
 - Current extraction budgets are 1,024 actuators, 64 response source positions, eight actors per internal local occupancy enumeration, 4,096 configurations per output-wire shape, 8,388,608 traversal checks, 1,048,576 Boolean decisions and 2,097,152 conjunction-cache entries. Server-selected budget multipliers scale the actor, source, traversal and arena limits; the local occupancy limits remain fixed. Budget exhaustion fails preparation; a partial function is never activated. The separate analysis defaults are 16,777,216 inspected cells, 65,536 pistons and 4,194,304 dependency steps.
 
-Priority next examples are legal ownership transfer with exposed near outputs, observers watching moved payloads, and independently controlled BUD data/update circuits attached to this output adapter. The existing 1-bit carry interface now supplies the initial moving-conductor regression. Complete clock/rearm histories are needed before changing control or data during an active recurring episode can become a supported operation. The current clocked path requires 1–64 independent storage cells and one torch control; composing independent clocks remains a separate milestone.
+Priority next examples are legal ownership transfer with exposed near outputs, observers watching moved payloads, and independently controlled BUD data/update circuits attached to this output adapter. The existing 1-bit carry interface now supplies the initial moving-conductor regression. Complete clock/rearm histories are needed before changing control or data during an active recurring episode can become a supported operation. The current clocked path requires 1–64 independent storage cells and one torch control; independent regions have separate clocks; multiple clocks within a coupled region remain a separate protocol.
 
 ## Manual test
 
@@ -150,7 +203,7 @@ Use a clean plot containing the counter's I/O revision, with its saved trigger o
 
 Switch the trigger at selection-local `(7,8,0)` on, then run `/adv 11`. The first output repeater should be unpowered: the displayed count is one. Each subsequent `/adv 6` should advance the displayed count to two, three, four and onward. Read **unpowered repeater = one**, LSB first at `(18,1,4+2i)`. Internal memory/payload positions remain visually frozen while compiled. Use fresh imports for separate trials; stopping and restarting the generator is not yet a certified protocol.
 
-Run `/rp reset` during a response and advance additional ticks to check interpreted continuation. A plain `/rp compile` trial should have the same output waveform. Keep the network inside one plot; this initial clocked path does not compose a second independent counter or adder network with a different control source.
+Run `/rp reset` during a response and advance additional ticks to check interpreted continuation. A plain `/rp compile` trial should have the same output waveform. Keep each network inside one plot; independently controlled counters and adders may share that plot.
 
 ## Manual 1-bit output test
 

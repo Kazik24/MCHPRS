@@ -27,7 +27,6 @@ use regex::Regex;
 use rustc_hash::FxHashMap;
 use std::collections::HashMap;
 use std::fmt;
-use std::ops::RangeInclusive;
 use std::str::FromStr;
 
 pub use schematic::*;
@@ -1030,46 +1029,16 @@ fn invalid_pattern_weights_and_numeric_ids_do_not_panic() {
     }
 }
 
-struct WorldEditOperation {
-    blocks_updated: usize,
-    x_range: RangeInclusive<i32>,
-    y_range: RangeInclusive<i32>,
-    z_range: RangeInclusive<i32>,
-}
-
-impl WorldEditOperation {
-    fn new(first_pos: BlockPos, second_pos: BlockPos) -> WorldEditOperation {
-        let start_pos = first_pos.min(second_pos);
-        let end_pos = first_pos.max(second_pos);
-
-        let x_range = start_pos.x..=end_pos.x;
-        let y_range = start_pos.y..=end_pos.y;
-        let z_range = start_pos.z..=end_pos.z;
-
-        WorldEditOperation {
-            blocks_updated: 0,
-            x_range,
-            y_range,
-            z_range,
+/// Preserve X/Y/Z traversal order for pattern sampling and block notifications.
+fn for_each_selected_position(first: BlockPos, second: BlockPos, mut visit: impl FnMut(BlockPos)) {
+    let start = first.min(second);
+    let end = first.max(second);
+    for x in start.x..=end.x {
+        for y in start.y..=end.y {
+            for z in start.z..=end.z {
+                visit(BlockPos::new(x, y, z));
+            }
         }
-    }
-
-    fn update_block(&mut self) {
-        self.blocks_updated += 1;
-    }
-
-    fn blocks_updated(&self) -> usize {
-        self.blocks_updated
-    }
-
-    fn x_range(&self) -> RangeInclusive<i32> {
-        self.x_range.clone()
-    }
-    fn y_range(&self) -> RangeInclusive<i32> {
-        self.y_range.clone()
-    }
-    fn z_range(&self) -> RangeInclusive<i32> {
-        self.z_range.clone()
     }
 }
 
@@ -1109,12 +1078,6 @@ pub fn ray_trace_block(
     }
 
     None
-}
-
-fn worldedit_start_operation(player: &mut Player) -> WorldEditOperation {
-    let first_pos = player.first_position.unwrap();
-    let second_pos = player.second_position.unwrap();
-    WorldEditOperation::new(first_pos, second_pos)
 }
 
 fn create_clipboard(
@@ -1194,13 +1157,11 @@ pub fn paste_clipboard(
     let offset_y = pos.y - cb.offset_y;
     let offset_z = pos.z - cb.offset_z;
     let mut i = 0;
-    // This can be made better, but right now it's not D:
     let x_range = offset_x..offset_x + cb.size_x as i32;
     let y_range = offset_y..offset_y + cb.size_y as i32;
     let z_range = offset_z..offset_z + cb.size_z as i32;
 
     let entries = cb.data.entries();
-    // I have no clue if these clones are going to cost anything noticeable.
     'top_loop: for y in y_range {
         for z in z_range.clone() {
             for x in x_range.clone() {
@@ -1292,19 +1253,11 @@ fn expand_selection(player: &mut Player, amount: BlockPos, contract: bool) {
     let mut p1 = player.first_position.unwrap();
     let mut p2 = player.second_position.unwrap();
 
-    fn get_pos_axis(pos: &mut BlockPos, axis: u8) -> &mut i32 {
-        match axis {
-            0 => &mut pos.x,
-            1 => &mut pos.y,
-            2 => &mut pos.z,
-            _ => unreachable!(),
-        }
-    }
-
-    let mut expand_axis = |axis: u8| {
-        let amount = *get_pos_axis(&mut amount.clone(), axis);
-        let p1 = get_pos_axis(&mut p1, axis);
-        let p2 = get_pos_axis(&mut p2, axis);
+    for (p1, p2, amount) in [
+        (&mut p1.x, &mut p2.x, amount.x),
+        (&mut p1.y, &mut p2.y, amount.y),
+        (&mut p1.z, &mut p2.z, amount.z),
+    ] {
         #[allow(clippy::comparison_chain)]
         if amount > 0 {
             if (p1 > p2) ^ contract {
@@ -1319,10 +1272,6 @@ fn expand_selection(player: &mut Player, amount: BlockPos, contract: bool) {
                 *p2 += amount;
             }
         }
-    };
-
-    for axis in 0..=2 {
-        expand_axis(axis);
     }
 
     if Some(p1) != player.first_position {

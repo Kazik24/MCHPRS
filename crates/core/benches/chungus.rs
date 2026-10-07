@@ -27,7 +27,7 @@ fn init_compiler() -> Compiler {
     let world = load_world("./benches/chungus_mandelbrot_plot");
     let mut compiler: Compiler = Default::default();
 
-    let options = CompilerOptions::parse("-O");
+    let options = CompilerOptions::parse("-O").unwrap();
     let bounds = world.get_corners();
     let monitor = Default::default();
     compiler

@@ -90,7 +90,7 @@ fn run_mandelbrot_chungus_compiled() {
     let mut plot = load_test_plot("./benches/chungus_mandelbrot_plot");
 
     let mut compiler: Compiler = Default::default();
-    let options = CompilerOptions::parse("-O");
+    let options = CompilerOptions::parse("-O").unwrap();
     let bounds = plot.get_corners();
     compiler
         .compile(&plot, bounds, options, Vec::new(), Default::default())
@@ -117,7 +117,7 @@ fn run_mandelbrot_chungus_interpreted_to_compiled() {
     }
 
     let mut compiler: Compiler = Default::default();
-    let options = CompilerOptions::parse("-O");
+    let options = CompilerOptions::parse("-O").unwrap();
     let bounds = plot.get_corners();
     let ticks = plot.scheduler().iter_entries().collect();
     compiler
@@ -171,7 +171,7 @@ fn run_mandelbrot_chungus_compiled_to_interpreted() {
     let mut plot = load_test_plot("./benches/chungus_mandelbrot_plot");
 
     let mut compiler: Compiler = Default::default();
-    let options = CompilerOptions::parse("-O");
+    let options = CompilerOptions::parse("-O").unwrap();
     let bounds = plot.get_corners();
     compiler
         .compile(&plot, bounds, options, Vec::new(), Default::default())
