@@ -4,6 +4,7 @@ mod legalization;
 mod memory;
 mod observer_logical;
 mod outputs;
+mod presentation;
 mod regions;
 mod research;
 use crate::plot::worldedit::{load_schematic, paste_clipboard};

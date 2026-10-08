@@ -21,7 +21,9 @@ pub fn on_use(
     item_in_hand: Option<Item>,
 ) -> ActionResult {
     if crate::permissions::dedicated_permissions() {
-        let action = if ContainerType::from_block(block).is_some() {
+        let action = if block.is_sign() {
+            "sign"
+        } else if ContainerType::from_block(block).is_some() {
             "container"
         } else if block.is_command_block() {
             "commandblock"
@@ -160,6 +162,38 @@ pub fn on_use(
                             pos: pos.packed(),
                             ty: entity.ty(),
                             nbt,
+                        }
+                        .encode(),
+                    );
+                }
+            }
+            ActionResult::Success
+        }
+        b if b.is_sign() => {
+            if let Some(BlockEntity::Sign(sign)) = world.get_block_entity(pos) {
+                if !sign.waxed {
+                    let properties = b.properties();
+                    let rotation = if let Some(facing) = properties.get("facing") {
+                        match facing.as_str() {
+                            "north" => 8,
+                            "east" => 12,
+                            "south" => 0,
+                            "west" => 4,
+                            _ => return ActionResult::Pass,
+                        }
+                    } else {
+                        properties
+                            .get("rotation")
+                            .and_then(|rotation| rotation.parse::<u8>().ok())
+                            .unwrap_or(0)
+                    };
+                    let angle = f64::from(rotation) * std::f64::consts::TAU / 16.0;
+                    let dx = player.pos.x - pos.x as f64 - 0.5;
+                    let dz = player.pos.z - pos.z as f64 - 0.5;
+                    player.send_packet(
+                        &COpenSignEditor {
+                            pos: pos.packed(),
+                            front: -angle.sin() * dx + angle.cos() * dz > 0.0,
                         }
                         .encode(),
                     );
@@ -695,24 +729,23 @@ pub fn use_item_on_block(
         let block = get_state_for_placement(world, block_pos, item.item_type, &ctx);
         let block = apply_item_properties(block, &item.nbt);
 
-        match block {
-            block
-                if block.is_sign()
-                    && !item
-                        .nbt
-                        .as_ref()
-                        .is_some_and(|blob| blob.content.contains_key("BlockEntityTag")) =>
-            {
-                let open_sign_editor = COpenSignEditor {
-                    pos: block_pos.packed(),
-                }
-                .encode();
-                ctx.player.client.send_packet(&open_sign_editor);
-            }
-            _ => {}
-        }
-
         place_in_world(block, world, block_pos, &item.nbt);
+        if block.is_sign()
+            && !item
+                .nbt
+                .as_ref()
+                .is_some_and(|blob| blob.content.contains_key("BlockEntityTag"))
+        {
+            // The client needs the sign block entity before it can open its editor.
+            world.flush_block_changes();
+            ctx.player.send_packet(
+                &COpenSignEditor {
+                    pos: block_pos.packed(),
+                    front: true,
+                }
+                .encode(),
+            );
+        }
         crate::sound::placed(world, block_pos, block, ctx.player.uuid);
         ItemUseResult::Placed(block_pos)
     } else {

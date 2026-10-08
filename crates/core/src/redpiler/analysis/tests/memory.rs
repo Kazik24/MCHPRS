@@ -5,7 +5,7 @@ use mchprs_blocks::BlockDirection;
 // The second cell's QC data reads the first cell's far payload through a
 // separate dust line three blocks above its base. Neither data line delivers
 // a qualifying notification. One lower dust staircase samples both cells.
-fn wire_bank() -> (PlotWorld, [BlockPos; 2], BlockPos, BlockPos) {
+pub(super) fn wire_bank() -> (PlotWorld, [BlockPos; 2], BlockPos, BlockPos) {
     let mut world = empty();
     let cells = [BASE, BASE + BlockPos::new(8, -5, 0)];
     for base in cells {
@@ -221,7 +221,9 @@ fn different_writers_delivered_in_one_half_tick_both_commit_their_banks() {
     }
 }
 
-fn generator_cell(head_only: bool) -> (PlotWorld, BlockPos, BlockPos, BlockPos, BlockPos) {
+pub(super) fn generator_cell(
+    head_only: bool,
+) -> (PlotWorld, BlockPos, BlockPos, BlockPos, BlockPos) {
     let mut world = empty();
     let cell = BASE;
     world.set_block(

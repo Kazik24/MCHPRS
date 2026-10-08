@@ -497,3 +497,83 @@ its full 50,100-tick replay remains outstanding.
 $env:MCHPRS_PM1_CLOCK_OUTPUT = 'target/pm1-compilation-1-analysis-new.json'
 cargo test -p mchprs_core --lib --release --locked pm1_compilation_1_update_generators -- --ignored --nocapture --test-threads=1
 ```
+
+### PM1 base-to-head route and cancelled request, 2026-10-08
+
+Downloaded the compilation save again with
+`tools/download_piston_research.py --names PM1_FIXED_COMPILATION_1.schem` into
+an ignored diagnostics directory. Verification at
+`2026-10-08T10:21:22.322877+00:00` returned the same 243,256 bytes and SHA-256
+`cf5ef6b5e62defbc02dc3b201b9bb29766feb310f6abfcad2941486312e0bd7c`.
+Original schematics and frozen expectations were preserved.
+
+The new [route diagnostic](../../crates/core/src/redpiler/analysis/tests/research/notification_routes.rs)
+hash-checks that save and inventories the target's data, notification ports,
+neighbor reset family and shared payload. The first 500 ticks of the unchanged
+native start protocol produce no samples or motion at local `(9,51,0)` or its
+neighboring source. This does not establish inactivity for the full protocol.
+
+A separately loaded copy is deliberately perturbed; it is not an original
+protocol equivalence result. Raw removal of QC data at local `(9,53,0)` leaves
+the target extended with power false. Removing source control at `(7,51,0)`
+and rechecking source base `(8,50,0)` then starts a native movement/reset
+episode. At tick 2, the source's retraction notifies the target's existing head
+at `(9,50,0)` from West. This queues the target's retraction with data false.
+Later callbacks restore power before that event executes; the event is never
+applied and the target stays extended. Further head callbacks occur when the
+source settles and extends. The source shares its redstone payload with the
+horizontal piston at `(6,48,0)` and has an observer above at `(8,51,0)`.
+
+Notification discovery now records piston-base changes independently of power,
+including whether the receiving head must exist. The classifier diagnostic
+names source `(8,50,0)`, receiver `(9,50,0)` and the absent ordered movement/reset
+timing certificate. This fixes the missing route inventory; it does not certify
+an atomic instant sample. Replacing the episode with one settled pose edge
+would retract the target incorrectly in this perturbation.
+
+The next execution change must preserve notification, queued request, power
+recheck and accepted commit separately, using the existing scheduler. It must
+also prove or preserve the observer/reset and shared-payload episode. Compiler
+admission, full 50,000-tick equivalence and active-window TPS remain outstanding
+for PM1. No frozen expectations were replaced with perturbation results.
+
+```powershell
+$env:MCHPRS_PM1_ROUTE_OUTPUT = 'F:/rustrepos/MCHPRS/target/pm1-route-validation-20261008/route-native-new.json'
+cargo test -p mchprs_core --lib --locked pm1_missing_sampling_route_inventory_and_native_trace -- --ignored --nocapture --test-threads=1
+```
+
+The output must be new. It records ordered callbacks, event phases and the
+explicit `is_original_protocol: false` perturbation separately. A small ordinary
+native regression also verifies that a base-to-head route samples an existing
+head but cannot sample after that head disappears.
+
+Final release validation of this change repeats the flag/budget matrix:
+
+| Flags | Normal budget | Maximum budget (8x) |
+| --- | --- | --- |
+| default | piston budget exceeded, 0.071 s | 51-generator rejection, 1.778 s |
+| `-O` | piston budget exceeded, 0.068 s | 51-generator rejection, 1.829 s |
+| `--assume-instant` | piston budget exceeded, 0.079 s | 51-generator rejection, 1.816 s |
+| both | piston budget exceeded, 0.072 s | 51-generator rejection, 1.790 s |
+
+Times cover compiler calls only. The complete matrix/500-tick diagnostic took
+47.14 seconds after a separate fresh release build; loading, preparation and
+that build are excluded from the table. Every rejection preserves input and
+leaves compilation inactive. The independent classifier now gives the explicit
+base-to-head timing diagnosis above. The unchanged native prefix remains 43
+messages versus 25 in the earlier frozen prefix, as recorded for this newer
+save before these changes.
+
+The full core run passes 544 tests with 16 ignored using an isolated configuration
+with the documented 67,108,864-block WorldEdit cap. The local core configuration's
+4,194,304-block cap rejects the existing 8,639,540-block WorldEdit fixture; no
+server settings or fixture were changed to run validation. Final release checks
+also pass all five BUD presentation tests, nine client packet tests, and both
+small notification regressions. Scoped documentation links and Rust formatting
+checks pass. Large-bank display cost and PM1 compiled TPS are unmeasured.
+The final release route diagnostic passes in 29.30 seconds and again records
+zero target-region callbacks in the original 500-tick prefix and the separately
+labelled tick-2 request cancellation. Release checks use
+`target/redpiler-release-validation` because the existing release artifacts
+contain older block/network APIs; a fresh build succeeds without code changes
+to those packages.

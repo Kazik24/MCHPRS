@@ -13,15 +13,20 @@ use serde::Serialize;
 pub enum UpdateKind {
     WireNotification,
     AdjacentHeadChange,
+    /// A potential native callback route; movement timing is not certified here.
+    PistonBaseChange,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct UpdateDependency {
     pub source: BlockPos,
     pub kind: UpdateKind,
-    /// The notification can sample/recheck without contributing electrical
-    /// power to this piston. This is an interface, not a new Boolean edge.
+    /// The callback source is separate from this piston's recorded electrical
+    /// dependencies. This is a physical channel, not a Boolean edge or a
+    /// sampling certificate.
     pub independent_of_power: bool,
+    /// A callback to the receiver's head forwards only while that head exists.
+    pub requires_extended: bool,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -136,6 +141,11 @@ pub(super) fn discover<W: World>(
     consumers: &[(BlockPos, Block)],
 ) -> Result<PortReport, AnalysisError> {
     let mut report = PortReport::default();
+    let piston_bases: FxHashMap<_, _> = pistons
+        .iter()
+        .enumerate()
+        .map(|(actor, piston)| (piston.pos, actor))
+        .collect();
     let reset_internals = super::families::reset_internals(recognition);
     let mut piston_groups = vec![0; pistons.len()];
     let mut reset_owners: FxHashMap<BlockPos, Vec<usize>> = FxHashMap::default();
@@ -200,11 +210,30 @@ pub(super) fn discover<W: World>(
                         UpdateKind::AdjacentHeadChange => {
                             inputs.sources.iter().any(|d| d.source == pos)
                         }
+                        UpdateKind::PistonBaseChange => unreachable!(),
                     };
                     ports.updates.push(UpdateDependency {
                         source: pos,
                         kind,
                         independent_of_power: !provides_power,
+                        requires_extended: false,
+                    });
+                }
+            }
+        }
+        // Native base changes can recheck another base or its still-present head.
+        for (receiver, requires_extended) in [(p.pos, false), (p.head, true)] {
+            for face in BlockFace::values() {
+                let source = receiver.offset(face);
+                if piston_bases
+                    .get(&source)
+                    .is_some_and(|&actor| actor != index)
+                {
+                    ports.updates.push(UpdateDependency {
+                        source,
+                        kind: UpdateKind::PistonBaseChange,
+                        independent_of_power: !inputs.sources.iter().any(|d| d.source == source),
+                        requires_extended,
                     });
                 }
             }

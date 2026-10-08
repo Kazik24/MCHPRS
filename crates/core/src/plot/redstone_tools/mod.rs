@@ -20,6 +20,8 @@ use serde_json::{json, Value};
 #[derive(Default)]
 pub(crate) struct PlayerTools {
     pub wire: Option<wire::Session>,
+    /// Explicit opt-out survives route cleanup until an enabling command succeeds.
+    wire_disabled: bool,
     pub auto_stack: Option<stack::AutoStack>,
     pub selection_visible: bool,
     pub block_search: Option<SearchCache>,
@@ -186,6 +188,7 @@ impl Plot {
         };
         // Stopping a session must remain available if its permissions changed.
         if matches!(tool, ToolCommand::Wire) && args == ["off"] {
+            self.players[player].redstone_tools.wire_disabled = true;
             self.clear_wire_tool(player);
             self.players[player].send_system_message(messages::WIRE_DISABLED);
             return true;

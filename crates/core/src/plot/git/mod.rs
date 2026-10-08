@@ -938,6 +938,13 @@ impl Plot {
             .clicks
             .get(&uuid)
             .is_some_and(|last| last.elapsed() < Duration::from_millis(200))
+            && [36 + viewer.selected_slot as usize, 45]
+                .iter()
+                .any(|&slot| {
+                    viewer.inventory[slot]
+                        .as_ref()
+                        .is_some_and(|item| item.item_type.get_name().ends_with("_sword"))
+                })
         {
             return true;
         }

@@ -22,6 +22,7 @@ thread_local! {
 #[derive(Default)]
 struct Recorder {
     entries: Vec<Value>,
+    positions: Option<Vec<BlockPos>>,
     depth: usize,
     action: usize,
     operation: usize,
@@ -45,7 +46,13 @@ pub(crate) fn callback(
     pos: BlockPos,
     dir: Option<BlockFace>,
 ) -> CallbackGuard {
-    let active = RECORDER.with(|r| r.borrow().is_some());
+    let active = RECORDER.with(|r| {
+        r.borrow().as_ref().is_some_and(|r| {
+            r.positions
+                .as_ref()
+                .is_none_or(|positions| positions.contains(&pos))
+        })
+    });
     if active {
         record_operation(
             world,
@@ -63,10 +70,39 @@ pub(crate) fn record_event(world: &impl World, kind: &str, event: PistonEvent) {
 pub(crate) fn record_operation(world: &impl World, kind: &str, data: Value) {
     RECORDER.with(|r| {
         if let Some(r) = r.borrow_mut().as_mut() {
+            if let Some(positions) = &r.positions {
+                let pos = data
+                    .get("pos")
+                    .or_else(|| data.get(0))
+                    .and_then(|pos| serde_json::from_value::<BlockPos>(pos.clone()).ok());
+                if !pos.is_some_and(|pos| positions.contains(&pos)) {
+                    return;
+                }
+            }
             r.entries.push(json!({"kind":kind,"tick":world.piston_state().logical_tick,
                 "phase":world.piston_state().phase,"operation":r.operation,"action":r.action,"depth":r.depth,"data":data}));
         }
     });
+}
+
+pub(crate) fn capture_at(positions: &[BlockPos], f: impl FnOnce()) -> Vec<Value> {
+    struct Guard;
+    impl Drop for Guard {
+        fn drop(&mut self) {
+            RECORDER.with(|r| *r.borrow_mut() = None);
+        }
+    }
+    RECORDER.with(|r| {
+        let mut recorder = r.borrow_mut();
+        assert!(recorder.is_none(), "nested callback capture");
+        *recorder = Some(Recorder {
+            positions: Some(positions.to_vec()),
+            ..Default::default()
+        });
+    });
+    let _guard = Guard;
+    f();
+    take_callbacks()
 }
 fn context(action: usize, operation: usize) {
     RECORDER.with(|r| {

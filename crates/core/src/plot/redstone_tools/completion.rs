@@ -22,7 +22,9 @@ impl Plot {
         let prefix = &text[start..];
         let args: Vec<_> = tail.split_whitespace().collect();
         let mut choices: Vec<String> = match tool {
-            ToolCommand::Wire => vec!["off".into()],
+            ToolCommand::Wire if !tail.trim_start().contains(char::is_whitespace) => {
+                ["free", "plane", "off"].map(str::to_owned).to_vec()
+            }
             ToolCommand::Container if args.len() < 2 && !tail.contains(' ') => {
                 ["chest", "barrel", "hopper", "furnace"]
                     .map(str::to_owned)
@@ -76,5 +78,42 @@ impl Plot {
                 })
                 .collect(),
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::plot::client_sync_tests::fixture;
+
+    #[test]
+    fn wire_aiming_modes_complete_only_the_first_argument() {
+        let (mut plot, _peer) = fixture(false);
+        for (text, expected) in [
+            ("/wire ", vec!["free", "off", "plane"]),
+            ("/wire f", vec!["free"]),
+            ("/wire p", vec!["plane"]),
+            ("/wire o", vec!["off"]),
+            ("//wire fr", vec!["free"]),
+            ("/wire  p", vec!["plane"]),
+            ("/wire free ", vec![]),
+            ("//wire plane o", vec![]),
+        ] {
+            let response = plot.complete_redstone_tools(0, 7, text).unwrap();
+            assert_eq!(response.id, 7);
+            assert_eq!(response.start, (text.rfind(' ').unwrap() + 1) as i32);
+            assert_eq!(
+                response.length,
+                (text.len() - response.start as usize) as i32
+            );
+            assert_eq!(
+                response
+                    .matches
+                    .iter()
+                    .map(|entry| entry.match_.as_str())
+                    .collect::<Vec<_>>(),
+                expected,
+                "{text}"
+            );
+        }
     }
 }

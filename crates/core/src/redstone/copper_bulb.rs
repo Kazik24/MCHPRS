@@ -99,7 +99,16 @@ pub(crate) fn oxidation_state(
     gate: f32,
     roll: f32,
 ) -> Option<mchprs_blocks::blocks::Block> {
-    let block = world.get_block(pos);
+    oxidation_state_with(|pos| world.get_block(pos), pos, gate, roll)
+}
+
+pub(crate) fn oxidation_state_with(
+    get_block: impl Fn(BlockPos) -> mchprs_blocks::blocks::Block,
+    pos: BlockPos,
+    gate: f32,
+    roll: f32,
+) -> Option<mchprs_blocks::blocks::Block> {
+    let block = get_block(pos);
     if !block.is_copper_bulb() || gate >= 0.05688889 {
         return None;
     }
@@ -119,9 +128,7 @@ pub(crate) fn oxidation_state(
                 if distance == 0 || distance > 4 {
                     continue;
                 }
-                let Some(other) = world
-                    .get_block(pos + BlockPos::new(dx, dy, dz))
-                    .copper_oxidation()
+                let Some(other) = get_block(pos + BlockPos::new(dx, dy, dz)).copper_oxidation()
                 else {
                     continue;
                 };

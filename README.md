@@ -77,12 +77,15 @@ execution and `/rp reset` hands it back to the interpreter. Read
 
 Hold any carrot on a stick to use the [wire pen](docs/WIRE_TOOL.md): right-click
 to start, aim to preview, right-click to build and continue. `/wire` supplies a
-named pen or resets your route. F cycles horizontal and two vertical drawing
-planes; sneak + F changes the preferred bend. Build intermediate points and switch
-planes to form a 3D route. Switching items or `/wire off` cancels the route; hold
-the pen and right-click to start again. The pen builds supports and dust together,
-using glass for flat runs and white wool for steps. Search is bounded and circuit
-safety is checked conservatively. It does not check signal range or insert repeaters.
+named pen or resets your route. F cycles horizontal, two vertical drawing planes,
+and Free aiming; sneak + F changes the preferred bend. Build intermediate points
+and switch planes to form a 3D route. `/wire free` aims at blocks in any direction;
+`/wire plane` restores horizontal aiming. Switching items cancels the route;
+hold the pen and right-click to start again. `/wire off` disables the tool until
+an explicit `/wire`, `/wire free`, or `/wire plane`. The pen builds supports
+and dust together, sampling the starting support's passive material and color.
+Search is bounded and circuit safety is checked conservatively. It does not
+check signal range or insert repeaters.
 
 ## Administration and logging
 

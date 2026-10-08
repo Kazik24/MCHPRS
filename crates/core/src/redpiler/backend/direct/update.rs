@@ -161,7 +161,10 @@ fn update_node_inner(
             if node.powered != should_be_powered {
                 set_node(node, should_be_powered);
                 if should_be_powered {
-                    events.push(Event::NoteBlockPlay { noteblock_id });
+                    events.push(Event::NoteBlockPlay {
+                        noteblock_id,
+                        unblocked: None,
+                    });
                 }
             }
         }

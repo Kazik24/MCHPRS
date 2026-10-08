@@ -799,13 +799,14 @@ impl ClientBoundPacket for CJoinGame {
 
 pub struct COpenSignEditor {
     pub pos: PackedPos,
+    pub front: bool,
 }
 
 impl ClientBoundPacket for COpenSignEditor {
     fn encode(&self) -> PacketEncoder {
         let mut buf = Vec::new();
         buf.write_position(self.pos);
-        buf.write_bool(true);
+        buf.write_bool(self.front);
         PacketEncoder::new(buf, 0x35)
     }
 }

@@ -14,11 +14,11 @@ graph rewrites:
 | --- | --- |
 | [Redstone model](REDSTONE_MODEL.md) | Spatial signal algebra, component transitions, dust propagation, and scheduled work. |
 | [Piston model](PISTON_MODEL.md) | Piston events, moving payloads, quasi-connectivity, BUD sampling, instant circuits, and nano/pico stepping. |
-| [Redpiler architecture](../REDPILER_ARCHITECTURE.md) | Compilation lifecycle, inference, conditional geometry solver, instant pistons, optimizer, backend, and handoff. |
+| [Redpiler architecture](REDPILER_ARCHITECTURE.md) | Compilation lifecycle, inference, conditional geometry solver, instant pistons, optimizer, backend, and handoff. |
 | [Redpiler parser](REDPILER_PARSER.md) | Spatial extraction, recognition, ownership, boundaries, and admission. |
 | [Redpiler optimizer](REDPILER_OPTIMIZER.md) | Actual pass order, rewrite rules, and correctness conditions. |
-| [Redpiler model](REDPILER_MODEL.md) | Weighted graph execution and compiled instant/sequential transition systems. |
-| [Partial compilation scope](REDPILER_PARTIAL_COMPILATION.md) | Proposed native/compiled ownership, boundary contract, implementation gates, and acceptance criteria. |
+| [Redpiler model](REDPILER_MODEL.md) | Weighted graph execution, retained state, notifications, scheduling, and handoff contracts. |
+| [Execution generalization scope](REDPILER_PARTIAL_COMPILATION.md) | Combined BUD presentation, qualified notification execution, and native/compiled ownership proposal with separate acceptance gates. |
 | [Test suites](tests/README.md) | Checks, frozen references, capture procedures, and limits of the evidence. |
 
 For an electrical change, start with the redstone model. For a movement or

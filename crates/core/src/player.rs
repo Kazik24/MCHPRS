@@ -216,6 +216,11 @@ impl Player {
         self.permissions_cache = Some(PlayerPermissionsCache::default());
     }
 
+    #[cfg(test)]
+    pub(crate) fn set_test_permissions(&mut self, nodes: &[&str]) {
+        self.permissions_cache = Some(PlayerPermissionsCache::for_test(nodes));
+    }
+
     pub fn generate_offline_uuid(username: &str) -> u128 {
         u128::from_be_bytes(md5::compute(format!("OfflinePlayer:{}", username)).0)
             // Encode UUID variant and version 3 (MD5).

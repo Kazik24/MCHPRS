@@ -70,6 +70,7 @@ enum Plane {
     Horizontal,
     VerticalX,
     VerticalZ,
+    Free,
 }
 
 impl Plane {
@@ -77,15 +78,17 @@ impl Plane {
         match self {
             Self::Horizontal => Self::VerticalX,
             Self::VerticalX => Self::VerticalZ,
-            Self::VerticalZ => Self::Horizontal,
+            Self::VerticalZ => Self::Free,
+            Self::Free => Self::Horizontal,
         }
     }
 
-    fn axis(self) -> usize {
+    fn axis(self) -> Option<usize> {
         match self {
-            Self::Horizontal => 1,
-            Self::VerticalX => 2,
-            Self::VerticalZ => 0,
+            Self::Horizontal => Some(1),
+            Self::VerticalX => Some(2),
+            Self::VerticalZ => Some(0),
+            Self::Free => None,
         }
     }
 
@@ -94,6 +97,7 @@ impl Plane {
             Self::Horizontal => messages::WIRE_PLANE_HORIZONTAL,
             Self::VerticalX => messages::WIRE_PLANE_VERTICAL_X,
             Self::VerticalZ => messages::WIRE_PLANE_VERTICAL_Z,
+            Self::Free => messages::WIRE_PLANE_FREE,
         }
     }
 }
@@ -280,11 +284,20 @@ fn tool_item() -> Item {
     Item::from_name("carrot_on_a_stick").expect("Minecraft tool item")
 }
 
+fn holds_pen(player: &Player) -> bool {
+    player.inventory[36 + player.selected_slot as usize]
+        .as_ref()
+        .is_some_and(|item| item.item_type == tool_item())
+}
+
 impl Plot {
     pub(super) fn wire_tool(&mut self, player: usize, args: &[&str]) -> Result<()> {
-        if !args.is_empty() {
-            bail!(messages::WIRE_USAGE);
-        }
+        let plane = match args {
+            [] => None,
+            ["free"] => Some(Plane::Free),
+            ["plane"] => Some(Plane::Horizontal),
+            _ => bail!(messages::WIRE_USAGE),
+        };
         if !matches!(self.players[player].gamemode, Gamemode::Creative) {
             bail!(messages::SWITCH_CREATIVE_MODE_FIRST);
         }
@@ -292,12 +305,32 @@ impl Plot {
         {
             bail!(messages::TOOL_PERMISSION_DENIED);
         }
+        if let Some(plane) = plane.filter(|_| holds_pen(&self.players[player])) {
+            let data = &mut self.players[player];
+            let mut session = data
+                .redstone_tools
+                .wire
+                .take()
+                .unwrap_or_else(|| Session::new(data.selected_slot));
+            session.plane = plane;
+            let target = session
+                .start
+                .and_then(|start| aim(&self.world, data, data.yaw, data.pitch, Some(start), plane));
+            session.retarget(target);
+            session.set_status(if session.start.is_none() {
+                messages::WIRE_ENABLED
+            } else if target.is_none() {
+                messages::WIRE_NO_TARGET
+            } else {
+                messages::WIRE_PENDING
+            });
+            data.redstone_tools.wire_disabled = false;
+            data.redstone_tools.wire = Some(session);
+            return Ok(());
+        }
         let data = &self.players[player];
         let selected = data.selected_slot;
-        let slot = if data.inventory[36 + selected as usize]
-            .as_ref()
-            .is_some_and(|item| item.item_type == tool_item())
-        {
+        let slot = if holds_pen(data) {
             selected
         } else {
             (0..9)
@@ -307,9 +340,13 @@ impl Plot {
         self.clear_wire_tool(player);
         if self.players[player].inventory[36 + slot as usize].is_none() {
             let mut blob = nbt::Blob::new();
-            components::set_tool_display(tool_item().get_id() as i32, &mut blob, "Wire Pen",
-                "RC draw | F plane | Sneak+F bend | Sneak+RC cancel")
-                .map_err(|error| anyhow::anyhow!(messages::container_components_failed(error)))?;
+            components::set_tool_display(
+                tool_item().get_id() as i32,
+                &mut blob,
+                "Wire Pen",
+                "RC draw | F plane | Sneak+F bend | Sneak+RC cancel",
+            )
+            .map_err(|error| anyhow::anyhow!(messages::container_components_failed(error)))?;
             self.players[player].set_inventory_slot(
                 36 + slot,
                 Some(ItemStack {
@@ -325,7 +362,13 @@ impl Plot {
             player,
         );
         self.players[player].send_packet(&CHeldItemChange { slot: slot as i8 }.encode());
-        self.players[player].redstone_tools.wire = Some(Session::new(slot));
+        let mut session = Session::new(slot);
+        if let Some(plane) = plane {
+            session.plane = plane;
+            session.set_status(messages::WIRE_ENABLED);
+        }
+        self.players[player].redstone_tools.wire_disabled = false;
+        self.players[player].redstone_tools.wire = Some(session);
         self.players[player].send_system_message(messages::WIRE_ENABLED);
         Ok(())
     }
@@ -341,19 +384,15 @@ impl Plot {
 
     pub(in crate::plot) fn wire_tools_active(&self) -> bool {
         self.players.iter().any(|player| {
-            player.redstone_tools.wire.is_some()
-                || (matches!(player.gamemode, Gamemode::Creative)
-                    && player.inventory[36 + player.selected_slot as usize]
-                        .as_ref()
-                        .is_some_and(|item| item.item_type == tool_item()))
+            !player.redstone_tools.wire_disabled
+                && (player.redstone_tools.wire.is_some()
+                    || (matches!(player.gamemode, Gamemode::Creative) && holds_pen(player)))
         })
     }
 
     pub(in crate::plot) fn wire_held(&self, player: usize) -> bool {
         let data = &self.players[player];
-        data.inventory[36 + data.selected_slot as usize]
-            .as_ref()
-            .is_some_and(|item| item.item_type == tool_item())
+        !data.redstone_tools.wire_disabled && holds_pen(data)
     }
 
     pub(in crate::plot) fn unload_wire_chunk(&mut self, player: usize, x: i32, z: i32) {
@@ -747,11 +786,14 @@ fn aim(
         };
         let coordinates = [target.x, target.y, target.z];
         if world.contains_position(target)
-            && start.is_none_or(|start| coordinates[axis] == [start.x, start.y, start.z][axis])
+            && start
+                .zip(axis)
+                .is_none_or(|(start, axis)| coordinates[axis] == [start.x, start.y, start.z][axis])
         {
             return Some(target);
         }
     }
+    let axis = axis?;
     let start = start?;
     let support = [
         f64::from(start.x) + 0.5,

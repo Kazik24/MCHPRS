@@ -24,6 +24,8 @@ pub(super) struct Runtime {
     group_fired: Vec<bool>,
     memory_actors: Vec<bool>,
     memory: Vec<bool>,
+    published_memory: Vec<bool>,
+    memory_geometry: FxHashMap<BlockPos, Observation>,
     sampling: Vec<SamplingEvent>,
     sampling_groups: Vec<Vec<usize>>,
     sampling_pending: bool,
@@ -367,6 +369,7 @@ impl Runtime {
             .map(|piston| !piston.piston.extended)
             .collect();
         let mut memory = vec![false; program.logic.responses.len()];
+        let mut memory_geometry = FxHashMap::default();
         for cell in program
             .clocked
             .iter()
@@ -374,6 +377,16 @@ impl Runtime {
             .chain(&program.independent_memory)
         {
             memory[cell.actor] = cell.initial;
+            for (pos, observation) in [
+                (cell.base, Observation::Base(cell.actor)),
+                (
+                    program.pistons[cell.actor].head,
+                    Observation::Near(cell.actor),
+                ),
+                (cell.far, Observation::Far(cell.actor)),
+            ] {
+                memory_geometry.insert(pos, observation);
+            }
         }
         let mut group_fired = vec![false; program.groups.len()];
         for (actor, &value) in fired.iter().enumerate() {
@@ -382,7 +395,9 @@ impl Runtime {
         let mut runtime = Self {
             logical,
             fired,
+            published_memory: memory.clone(),
             memory,
+            memory_geometry,
             group_fired,
             program,
             aliases,
@@ -707,6 +722,35 @@ impl Runtime {
                     Block::Air
                 }
             }
+        }
+    }
+
+    pub(super) fn memory_block_at(&self, pos: BlockPos) -> Option<Block> {
+        self.memory_geometry
+            .get(&pos)
+            .map(|&observation| self.observed_block(observation))
+    }
+
+    pub(super) fn flush_memory(&mut self, world: &mut impl World) {
+        for cell in self
+            .program
+            .clocked
+            .iter()
+            .flat_map(|clock| &clock.memory)
+            .chain(&self.program.independent_memory)
+        {
+            if self.published_memory[cell.actor] == self.memory[cell.actor] {
+                continue;
+            }
+            let piston = &self.program.pistons[cell.actor];
+            for (pos, observation) in [
+                (cell.base, Observation::Base(cell.actor)),
+                (piston.head, Observation::Near(cell.actor)),
+                (cell.far, Observation::Far(cell.actor)),
+            ] {
+                world.set_block(pos, self.observed_block(observation));
+            }
+            self.published_memory[cell.actor] = self.memory[cell.actor];
         }
     }
 

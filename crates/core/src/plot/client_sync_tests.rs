@@ -1,6 +1,11 @@
 use super::*;
 use crate::plot::client_test_utils::{decode_blocks, read_ack, read_blocks};
+use mchprs_blocks::blocks::{
+    Instrument, Lever, LeverFace, RedstonePiston, RedstonePistonHead, RedstoneWire,
+    RedstoneWireSide,
+};
 use mchprs_blocks::items::{Item, ItemStack};
+use mchprs_blocks::{BlockDirection, BlockFacing};
 use mchprs_network::packets::serverbound::*;
 use mchprs_network::packets::PacketDecoderExt;
 use mchprs_network::test_support::{connection, read_frame};
@@ -76,6 +81,171 @@ fn placement(pos: BlockPos, sequence: i32) -> SPlayerBlockPlacemnt {
         cursor_z: 0.5,
         inside_block: false,
         sequence,
+    }
+}
+
+#[test]
+fn wand_right_click_accepts_block_edges_and_extended_shapes_without_placing() {
+    for compressed in [false, true] {
+        let (mut plot, mut peer) = fixture(compressed);
+        let support = BlockPos::new(32, 20, 32);
+        plot.players[0].inventory[36] = Some(ItemStack {
+            item_type: Item::from_name("wooden_axe").unwrap(),
+            count: 1,
+            nbt: None,
+        });
+        plot.handle_player_digging(digging(support, 0, 1), 0);
+        episode(&mut peer, compressed, 1);
+        assert_eq!(plot.players[0].first_position, Some(support));
+
+        for (index, cursor) in [f32::NAN, f32::INFINITY, 2.0].into_iter().enumerate() {
+            let sequence = index as i32 + 2;
+            let mut click = placement(support, sequence);
+            click.cursor_x = cursor;
+            plot.handle_player_block_placement(click, 0);
+            episode(&mut peer, compressed, sequence);
+            assert_eq!(plot.players[0].second_position, None);
+        }
+        let mut click = placement(support, 5);
+        click.cursor_x = -f32::EPSILON;
+        click.cursor_z = 1.0 + f32::EPSILON;
+        plot.handle_player_block_placement(click, 0);
+        episode(&mut peer, compressed, 5);
+        assert_eq!(plot.players[0].second_position, Some(support));
+        assert_eq!(plot.world.get_block(support), Block::Sandstone {});
+        assert_eq!(
+            plot.world.get_block(support.offset(BlockFace::Top)),
+            Block::Air
+        );
+
+        let fence = support + BlockPos::new(1, 0, 0);
+        let block = Block::from_name("oak_fence").unwrap();
+        plot.world.set_block(fence, block);
+        let mut click = placement(fence, 6);
+        click.cursor_y = 1.25;
+        plot.handle_player_block_placement(click, 0);
+        episode(&mut peer, compressed, 6);
+        assert_eq!(plot.players[0].second_position, Some(fence));
+        assert_eq!(plot.world.get_block(fence), block);
+    }
+}
+
+#[test]
+fn both_wand_positions_need_selection_permission_without_plot_edit_access() {
+    for allowed in [false, true] {
+        let (mut plot, mut peer) = fixture(false);
+        plot.owner = None;
+        plot.players[0].set_test_permissions(if allowed {
+            &["worldedit.selection.pos"]
+        } else {
+            &[]
+        });
+        assert!(!plot.players[0].can_edit_plot(plot.owner, (0, 0)));
+        let support = BlockPos::new(32, 20, 32);
+        plot.players[0].inventory[36] = Some(ItemStack {
+            item_type: Item::from_name("wooden_axe").unwrap(),
+            count: 1,
+            nbt: None,
+        });
+        plot.handle_player_digging(digging(support, 0, 1), 0);
+        episode(&mut peer, false, 1);
+        plot.handle_player_block_placement(placement(support, 2), 0);
+        episode(&mut peer, false, 2);
+        let expected = allowed.then_some(support);
+        assert_eq!(plot.players[0].first_position, expected);
+        assert_eq!(plot.players[0].second_position, expected);
+        assert_eq!(plot.world.get_block(support), Block::Sandstone {});
+        assert_eq!(
+            plot.world.get_block(support.offset(BlockFace::Top)),
+            Block::Air
+        );
+    }
+}
+
+#[test]
+fn switching_from_git_sword_does_not_swallow_wand_right_click() {
+    let (mut plot, mut peer) = fixture(false);
+    let support = BlockPos::new(32, 20, 32);
+    plot.players[0].inventory[36] = Some(ItemStack {
+        item_type: Item::from_name("wooden_sword").unwrap(),
+        count: 1,
+        nbt: None,
+    });
+    plot.handle_use_item(
+        SUseItem {
+            hand: 0,
+            sequence: 1,
+            yaw: 0.0,
+            pitch: 0.0,
+        },
+        0,
+    );
+    episode(&mut peer, false, 1);
+    plot.players[0].inventory[36] = Some(ItemStack {
+        item_type: Item::WEWand {},
+        count: 1,
+        nbt: None,
+    });
+    plot.handle_player_block_placement(placement(support, 2), 0);
+    episode(&mut peer, false, 2);
+    assert_eq!(plot.players[0].second_position, Some(support));
+    assert_eq!(plot.world.get_block(support), Block::Sandstone {});
+}
+
+#[test]
+fn compass_right_click_works_in_air_and_on_blocks_with_either_hand() {
+    for compressed in [false, true] {
+        for hand in [0, 1] {
+            for on_block in [false, true] {
+                let (mut plot, mut peer) = fixture(compressed);
+                let target = BlockPos::new(32, 22, 39);
+                plot.world.set_block(target, Block::Stone {});
+                plot.players[0].inventory[if hand == 0 { 36 } else { 45 }] = Some(ItemStack {
+                    item_type: Item::Compass,
+                    count: 1,
+                    nbt: None,
+                });
+                if on_block {
+                    let mut click = placement(target, 1);
+                    click.hand = hand;
+                    plot.handle_player_block_placement(click, 0);
+                } else {
+                    plot.handle_use_item(
+                        SUseItem {
+                            hand,
+                            sequence: 1,
+                            yaw: 0.0,
+                            pitch: 0.0,
+                        },
+                        0,
+                    );
+                }
+                let (ids, _) = episode(&mut peer, compressed, 1);
+                assert_eq!(ids.iter().filter(|&&id| id == 0x41).count(), 1);
+                let destination = plot.players[0].pos;
+                assert_eq!(
+                    (destination.x, destination.y, destination.z),
+                    (32.5, 23.0, 39.5)
+                );
+                plot.handle_use_item(
+                    SUseItem {
+                        hand,
+                        sequence: 2,
+                        yaw: 0.0,
+                        pitch: 0.0,
+                    },
+                    0,
+                );
+                let (ids, _) = episode(&mut peer, compressed, 2);
+                assert!(!ids.contains(&0x41), "fallback packet teleported twice");
+                assert_eq!(plot.players[0].pos.y, destination.y);
+                assert_eq!(plot.world.get_block(target), Block::Stone {});
+                assert_eq!(
+                    plot.world.get_block(target.offset(BlockFace::Top)),
+                    Block::Air
+                );
+            }
+        }
     }
 }
 
@@ -225,6 +395,196 @@ fn episode(
         }
     }
     panic!("action acknowledgement did not arrive within 128 packets");
+}
+
+fn compiled_bud_fixture(
+    compressed: bool,
+    io_only: bool,
+) -> (Plot, TcpStream, BlockPos, BlockPos, BlockPos, BlockPos) {
+    let (mut plot, peer) = fixture(compressed);
+    let senders = std::mem::take(&mut plot.world.packet_senders);
+    plot.world.set_screen_only(false);
+    // Base and head straddle a section boundary to exercise packet collection.
+    let cell = BlockPos::new(47, 32, 40);
+    let piston = RedstonePiston {
+        facing: BlockFacing::Down,
+        sticky: true,
+        extended: true,
+    };
+    plot.world.set_block(cell, Block::Piston { piston });
+    plot.world.set_block(
+        cell.offset(BlockFace::Bottom),
+        Block::PistonHead {
+            head: RedstonePistonHead::from(piston),
+        },
+    );
+    plot.world
+        .set_block(cell + BlockPos::new(0, -2, 0), Block::RedstoneBlock);
+    let data_wire = cell + BlockPos::new(0, 3, 0);
+    plot.world
+        .set_block(data_wire.offset(BlockFace::Bottom), Block::Stone {});
+    plot.world.set_block(
+        data_wire,
+        Block::RedstoneWire {
+            wire: RedstoneWire {
+                north: RedstoneWireSide::None,
+                south: RedstoneWireSide::None,
+                east: RedstoneWireSide::Side,
+                west: RedstoneWireSide::Side,
+                power: 0,
+            },
+        },
+    );
+    let data = data_wire.offset(BlockFace::East);
+    let generator = cell + BlockPos::new(2, 0, 0);
+    plot.world.set_block(
+        generator,
+        Block::Piston {
+            piston: RedstonePiston {
+                facing: BlockFacing::West,
+                sticky: false,
+                extended: false,
+            },
+        },
+    );
+    let sample = generator.offset(BlockFace::South);
+    let note = cell + BlockPos::new(0, -3, 0);
+    plot.world.set_block(
+        note,
+        Block::NoteBlock {
+            instrument: Instrument::Harp,
+            note: 0,
+            powered: true,
+        },
+    );
+    let note_control = note.offset(BlockFace::East);
+    for pos in [data, sample, note_control] {
+        plot.world
+            .set_block(pos.offset(BlockFace::Bottom), Block::Stone {});
+        plot.world.set_block(
+            pos,
+            Block::Lever {
+                lever: Lever::new(LeverFace::Floor, BlockDirection::North, false),
+            },
+        );
+    }
+    plot.redpiler
+        .compile(
+            &plot.world,
+            plot.world.get_corners(),
+            CompilerOptions {
+                optimize: true,
+                io_only,
+                ..Default::default()
+            },
+            vec![],
+            Default::default(),
+        )
+        .unwrap();
+    plot.redpiler.flush(&mut plot.world);
+    plot.world.flush_block_changes();
+    plot.world.sounds.clear();
+    plot.world.packet_senders = senders;
+    (plot, peer, cell, data, sample, note_control)
+}
+
+#[test]
+fn paused_advance_delivers_committed_bud_geometry_and_preserves_suppression() {
+    for compressed in [false, true] {
+        for io_only in [false, true] {
+            for screen_only in [false, true] {
+                let (mut plot, mut peer, cell, data, sample, _) =
+                    compiled_bud_fixture(compressed, io_only);
+                plot.world.set_screen_only(screen_only);
+                let near = cell.offset(BlockFace::Bottom);
+                let far = near.offset(BlockFace::Bottom);
+                let old = [cell, near, far].map(|pos| (pos, plot.world.get_block_raw(pos)));
+                plot.redpiler.on_use_block(sample);
+                assert_eq!(plot.world.get_block_raw(cell), old[0].1);
+                assert!(!plot.handle_command(0, "/adv", vec!["1"]));
+                drop(mchprs_network::BlockActionAcknowledgement::new(
+                    &plot.players[0].client,
+                    1,
+                ));
+                let (_, blocks) = episode(&mut peer, compressed, 1);
+                for pos in [cell, near, far] {
+                    assert_eq!(
+                        blocks.iter().any(|&(changed, _)| changed == pos),
+                        !io_only && !screen_only,
+                    );
+                }
+                if !io_only {
+                    assert!(
+                        matches!(plot.world.get_block(cell), Block::Piston { piston } if !piston.extended)
+                    );
+                    assert_eq!(plot.world.get_block(near), Block::RedstoneBlock);
+                    assert_eq!(plot.world.get_block(far), Block::Air);
+                    if screen_only {
+                        plot.world.set_screen_only(false);
+                        drop(mchprs_network::BlockActionAcknowledgement::new(
+                            &plot.players[0].client,
+                            2,
+                        ));
+                        let (_, blocks) = episode(&mut peer, compressed, 2);
+                        for pos in [cell, near, far] {
+                            assert!(blocks.contains(&(pos, plot.world.get_block_raw(pos))));
+                        }
+                    }
+                } else {
+                    assert_eq!(
+                        [cell, near, far].map(|pos| (pos, plot.world.get_block_raw(pos))),
+                        old,
+                    );
+                }
+                plot.redpiler.on_use_block(data);
+                plot.redpiler.on_use_block(sample);
+                plot.handle_command(0, "/adv", vec!["1"]);
+                drop(mchprs_network::BlockActionAcknowledgement::new(
+                    &plot.players[0].client,
+                    3,
+                ));
+                let (_, blocks) = episode(&mut peer, compressed, 3);
+                if !io_only {
+                    for &(pos, state) in &old {
+                        assert!(blocks.contains(&(pos, state)));
+                        assert_eq!(plot.world.get_block_raw(pos), state);
+                    }
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn bud_note_obstruction_uses_committed_memory_with_deferred_or_suppressed_display() {
+    for io_only in [false, true] {
+        for frequent in [false, true] {
+            let (mut plot, _peer, cell, data, sample, note_control) =
+                compiled_bud_fixture(false, io_only);
+            plot.redpiler.on_use_block(sample);
+            if frequent {
+                plot.redpiler.flush(&mut plot.world);
+            }
+            plot.redpiler.on_use_block(note_control);
+            if frequent {
+                plot.redpiler.flush(&mut plot.world);
+                assert_eq!(plot.world.sounds.len(), 1, "committed far cell is empty");
+            }
+            plot.redpiler.on_use_block(note_control);
+            plot.redpiler.on_use_block(data);
+            plot.redpiler.on_use_block(sample);
+            plot.redpiler.flush(&mut plot.world);
+            assert_eq!(
+                plot.world.sounds.len(),
+                1,
+                "only the rise while the committed far cell was empty can play",
+            );
+            assert_eq!(
+                plot.world.get_block(cell + BlockPos::new(0, -2, 0)),
+                Block::RedstoneBlock,
+            );
+        }
+    }
 }
 
 #[test]

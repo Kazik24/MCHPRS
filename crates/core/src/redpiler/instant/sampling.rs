@@ -287,6 +287,18 @@ pub(crate) fn recognize(
             }
         }
         if !found {
+            if let Some(update) = report.ports.pistons[actor]
+                .updates
+                .iter()
+                .find(|update| update.kind == UpdateKind::PistonBaseChange)
+            {
+                let receiver = if update.requires_extended {
+                    piston.head
+                } else {
+                    piston.pos
+                };
+                return Err(format!("BUD at {:?} has no independent sampling source represented by the instant runtime; piston base at {:?} can notify {:?}, but its ordered movement/reset callbacks and head eligibility need a timing certificate", piston.pos, update.source, receiver));
+            }
             return Err(format!("BUD at {:?} has no independent sampling source; data changes alone cannot update memory", piston.pos));
         }
         if report.payload_groups[groups[actor]].members.len() != 1 {

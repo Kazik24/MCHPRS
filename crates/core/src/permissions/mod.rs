@@ -294,6 +294,22 @@ pub fn ranked_chat() -> bool {
         .is_some_and(|config| config.redstonefun_ranks)
 }
 impl PlayerPermissionsCache {
+    #[cfg(test)]
+    pub(crate) fn for_test(nodes: &[&str]) -> Self {
+        Self {
+            nodes: nodes
+                .iter()
+                .map(|permission| PermissionNode {
+                    permission: (*permission).into(),
+                    value: true,
+                    priority: (true, 0, 0, false, std::cmp::Reverse(0), 0),
+                    expiry: 0,
+                })
+                .collect(),
+            ..Default::default()
+        }
+    }
+
     pub fn compilation_budget_multiplier(&self) -> usize {
         if (self.rank_budget_expiry != 0 && self.rank_budget_expiry <= now())
             || self.valid_until.is_none_or(|until| Instant::now() >= until)

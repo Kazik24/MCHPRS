@@ -114,11 +114,14 @@ additional writer. A matched path is a structural candidate, not authorization
 to execute it.
 
 [`ports.rs`](crates/core/src/redpiler/analysis/ports.rs) separately discovers
-electrical inputs, wire/head notifications, ordinary consumer interfaces, and
+electrical inputs, wire/head/base notifications, ordinary consumer interfaces, and
 exposed reset signals. Quasi-connectivity may supply power without delivering a
 base recheck. Conversely, a qualifying update may sample unchanged low data.
 Electrical strength and delivered sampling events therefore use separate
 channels; an ordinary graph `Side` edge means diode side input, never BUD sampling.
+Base-to-head routes carry a head-presence condition. Discovery of such a route
+does not certify its movement/reset timing or make it executable by the instant
+sampler; an unsupported route reports its source and receiver explicitly.
 
 [`regions::split`](crates/core/src/redpiler/instant/regions.rs) joins actors by
 shared payload/reset ownership, electrical influence, observer connectivity, and
@@ -400,13 +403,21 @@ notification tables rather than electrical input edges.
 Compiled state is authoritative while active. `tick_with_world` processes
 command output events around callbacks and advances the world's logical tick.
 Commands execute during simulation advances, including `/adv`; note/button
-effects and visible dirty block states are emitted by `flush`. Note playback
-still checks whether the live position is unblocked.
+effects and visible dirty block states are emitted by `flush`. Notes beneath
+owned BUD geometry capture canonical obstruction at their power rise, so
+deferred rendering cannot change sound eligibility. Other notes retain the
+existing live-world obstruction check.
+Compiled copper-bulb oxidation likewise reads committed memory occupancy when
+scanning neighboring copper ages, independently of displayed payload positions.
 
 `--io-only` restricts display writes to input/output nodes. It retains the
-electrical dependencies they need. Logical region geometry is virtual during
-execution and is exported on reset; observer notification can still inspect its
-committed settled block state without moving live blocks.
+electrical dependencies they need. Supported BUD memory publishes its committed
+base/head/payload pose at display flush, including after nonzero manual `/adv`.
+A separate last-published bit avoids rewriting unchanged cells and does not
+consume observer bookkeeping. `--optimize` permits this display; screen-only
+suppresses its deltas while retaining current storage for re-enable and chunk
+snapshots. Other logical region geometry remains virtual until reset; observer
+notification reads committed settled state independently of presentation.
 
 `Compiler::reset` removes the active backend, flushes surviving hidden node
 state, exports comparator entities, materializes region geometry and stored bits,

@@ -150,7 +150,8 @@ impl Plot {
                 player_block_placement.cursor_z,
             ]
             .iter()
-            .any(|n| !n.is_finite() || !(0.0..=1.0).contains(n))
+            // Outline shapes can extend past the voxel; also allow f32 face rounding.
+            .any(|n| !n.is_finite() || !(-0.500001..=1.500001).contains(n))
         {
             return;
         }
@@ -172,12 +173,6 @@ impl Plot {
         };
 
         if self.git_checkout_locked() {
-            cancel(self);
-            return;
-        }
-
-        if !self.players[player].can_edit_plot(self.owner, (self.world.x, self.world.z)) {
-            self.players[player].send_no_permission_message();
             cancel(self);
             return;
         }
@@ -209,6 +204,12 @@ impl Plot {
                 // redpiler will get reset anyways.
                 return;
             }
+        }
+
+        if !self.players[player].can_edit_plot(self.owner, (self.world.x, self.world.z)) {
+            self.players[player].send_no_permission_message();
+            cancel(self);
+            return;
         }
 
         if self.redpiler.is_active() {

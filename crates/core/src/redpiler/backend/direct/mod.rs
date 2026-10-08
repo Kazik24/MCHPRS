@@ -14,7 +14,7 @@ use crate::redstone::noteblock;
 use crate::world::World;
 use mchprs_blocks::block_entities::BlockEntity;
 use mchprs_blocks::blocks::{Block, ComparatorMode, Instrument};
-use mchprs_blocks::BlockPos;
+use mchprs_blocks::{BlockFace, BlockPos};
 use mchprs_world::{TickEntry, TickPriority};
 use node::{Node, NodeId, NodeType, Nodes};
 use rustc_hash::FxHashMap;
@@ -32,6 +32,7 @@ enum Event {
     },
     NoteBlockPlay {
         noteblock_id: u16,
+        unblocked: Option<bool>,
     },
     ButtonRelease {
         pos: BlockPos,
@@ -253,6 +254,7 @@ impl DirectBackend {
     }
 
     fn update_node(&mut self, id: NodeId) {
+        let event_start = self.events.len();
         let node = &self.nodes[id];
         if matches!(node.ty, NodeType::CopperBulb) {
             let powered = has_main_input(node);
@@ -265,6 +267,21 @@ impl DirectBackend {
                 self.set_node(id, powered, bool_to_ss(lit));
             }
         } else if update::update_node(&mut self.scheduler, &mut self.events, &mut self.nodes, id) {
+            if let Some(Event::NoteBlockPlay {
+                noteblock_id,
+                unblocked,
+            }) = self.events.get_mut(event_start)
+            {
+                // Keep note eligibility at its power rise, independent of display cadence.
+                let above = self.noteblock_info[*noteblock_id as usize]
+                    .0
+                    .offset(BlockFace::Top);
+                *unblocked = self
+                    .instant
+                    .iter()
+                    .find_map(|runtime| runtime.memory_block_at(above))
+                    .map(|block| block == Block::Air);
+            }
             self.notify_observer_watchers(id);
         }
     }
@@ -335,8 +352,17 @@ impl DirectBackend {
         else {
             return;
         };
-        let Some(mut next) = crate::redstone::copper_bulb::oxidation_state(world, pos, gate, roll)
-        else {
+        let Some(mut next) = crate::redstone::copper_bulb::oxidation_state_with(
+            |pos| {
+                self.instant
+                    .iter()
+                    .find_map(|runtime| runtime.memory_block_at(pos))
+                    .unwrap_or_else(|| world.get_block(pos))
+            },
+            pos,
+            gate,
+            roll,
+        ) else {
             return;
         };
         let (lit, powered) = live.copper_bulb_state().unwrap();
@@ -472,9 +498,12 @@ impl DirectBackend {
                         crate::redstone::copper_bulb::play_toggle(world, pos, lit);
                     }
                 }
-                Event::NoteBlockPlay { noteblock_id } => {
+                Event::NoteBlockPlay {
+                    noteblock_id,
+                    unblocked,
+                } => {
                     let (pos, instrument, note) = self.noteblock_info[noteblock_id as usize];
-                    if noteblock::is_noteblock_unblocked(world, pos) {
+                    if unblocked.unwrap_or_else(|| noteblock::is_noteblock_unblocked(world, pos)) {
                         noteblock::play_note(world, pos, instrument, note);
                     }
                 }
@@ -515,6 +544,11 @@ impl DirectBackend {
                 world.set_block(*pos, *block);
             }
             node.changed = false;
+        }
+        if !io_only {
+            for runtime in &mut self.instant {
+                runtime.flush_memory(world);
+            }
         }
     }
 }

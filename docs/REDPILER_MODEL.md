@@ -8,12 +8,14 @@ limits. Physical electrical and piston execution are defined separately in
 [REDSTONE_MODEL.md](REDSTONE_MODEL.md) and [PISTON_MODEL.md](PISTON_MODEL.md).
 Runnable evidence and fixture protocols are in [tests/README.md](tests/README.md).
 
-Redpiler has an ordinary electrical graph and three region execution paths:
-an acyclic response-wave adapter, a recognized shared-clock adapter, and a
-notification-driven sequential adapter. Their temporal semantics differ.
-`--assume-instant` selects a certified logical executor for the first two paths.
-It rejects regions needing the notification-driven sequential adapter, rather
-than executing movement and reset bookkeeping under the logical flag.
+Redpiler has an ordinary electrical graph and cached logical piston regions,
+with explicit independent sampling or a recognized shared-clock bank where
+needed. Default compilation and `--assume-instant` use the same runtime;
+the flag relaxes construction proofs, not sampling or execution semantics.
+The former wave and sequential executors are retired. Retained sequential
+extraction helpers contribute dependency and admission proofs, not another
+active runtime. Native/compiled partial execution remains a
+[proposal](REDPILER_PARTIAL_COMPILATION.md).
 Compilation success establishes that the implementation can represent a region;
 it does not establish universal equivalence to every physical input history.
 
@@ -167,13 +169,21 @@ Command entity state and allowed commands remain governed by the ordinary
 command-block implementation.
 
 Note-block power transitions are retained even when the block is acoustically
-blocked; the sound event checks its live unblocked condition when flushed.
+blocked. For an owned BUD position above the note, the event captures committed
+logical occupancy at its power rise and retains it until sound delivery. Other
+notes check live obstruction when flushed. BUD display cadence and intervening
+memory commits therefore cannot change eligibility for an already queued note.
 Electrical input identity therefore does not depend on whether a sound can play
 at compilation entry.
 
-For each backend step, ordinary due work runs first, then each region advances
-and publishes changes through ordinary `set_node` propagation. Region outputs
-can schedule new ordinary work for subsequent steps. Source changes used by
+Compiled copper-bulb oxidation reads neighboring copper ages through committed
+memory occupancy as well. Moving a copper payload in the display cannot alter
+the oxidation decision; ordinary world positions retain their existing reads.
+
+Each ordinary scheduled callback is followed by region evaluation and publication
+through ordinary `set_node` propagation; shared-clock deadlines run after the
+ordinary due work. Interactions also evaluate affected regions immediately.
+Region outputs can schedule new ordinary work. Source changes used by
 electrical output terms can also refresh those outputs immediately. Event
 ordering and resulting pending work are observable even when the eventual
 settled strengths agree.
@@ -188,8 +198,9 @@ See [update.rs](../crates/core/src/redpiler/backend/direct/update.rs),
 For actuator $a$, geometry predicates describe far payload, near payload,
 stationary head, stationary retracted base, and moving base. They are different
 variables because a moving block does not provide the stationary material's
-power or conduction. Let $g$ collect these predicates and any owned observer or
-wire-shape state.
+power or conduction. The active logical runtime projects settled geometry;
+its moving-base predicate is always false. Let $g$ collect the admitted
+geometry predicates and committed stored state.
 
 An extracted consumer channel $o$ is a finite set of terms
 $\mathcal T_o=\{(\gamma_t,\operatorname{source}_t,a_t)\}$, where $\gamma_t(g)$
@@ -244,8 +255,8 @@ power. This exclusion is valid only with the associated ready/reset protocol.
 It is not a statement that those sources cease to exist physically.
 
 The actuator dependency graph has edge $b\to a$ whenever $x_b$ survives in
-$R_a$. After Boolean simplification it must be acyclic. The physical wave
-adapter substitutes dependencies in topological order to produce functions
+$R_a$. After Boolean simplification it must be acyclic. Substitution in
+topological order defines the functions
 
 $$
 F_a(\mathbf s,\mathbf q)=R_a\bigl(\mathbf s,
@@ -253,12 +264,9 @@ F_a(\mathbf s,\mathbf q)=R_a\bigl(\mathbf s,
 $$
 
 Stored bits break combinational dependency cycles; they are not substituted by
-their next values. The logical adapter retains each local $R_a$ and connects
+their next values. The runtime retains each local $R_a$ and connects
 actuator decisions to the corresponding response root. It computes the same
 acyclic functions without expanding them into global decision diagrams.
-The sequential path instead keeps local current-geometry,
-wire and observer variables and supplies a temporal transition system.
-It does not expand a complete memory-bearing network into one acyclic formula.
 
 [boolean.rs](../crates/core/src/redpiler/instant/boolean.rs) represents functions
 as reduced ordered decision diagrams. A decision obeys the Shannon equation
@@ -269,10 +277,11 @@ $$
 
 Equal children remove a decision; identical decisions share an identity;
 conjunction, negation and substitution rebuild canonical decisions. Final
-compaction retains only nodes reachable from response, output and sensor roots.
+compaction retains only nodes reachable from the required runtime and handoff roots.
 Variables include source thresholds, provisional actuators, memory, geometry,
-owned observers and wire-dot shape. This is Boolean canonicalization under the
-chosen variable order. Thresholds for one analog source have implications such
+owned observers and wire-dot shape; construction helpers can use variables
+that executable logical preparation later rejects. This is Boolean canonicalization
+under the chosen variable order. Thresholds for one analog source have implications such
 as $[s>7]\Rightarrow[s>3]$; the arena does not implement a separate analog
 constraint solver. Treating them independently can miss simplifications while
 retaining correctness for valid strengths.
@@ -283,295 +292,157 @@ instruction. Arithmetic truth tables are tests of extracted functions.
 The distinction matters when a layout computes a different function than its
 author intended.
 
-## 6. Acyclic response-wave adapter
+## 6. Cached logical response execution
 
-The nonideal wave adapter retains
-
-$$
-z=(\phi,\mathbf f,\mathbf q,\mathbf m,
-   \text{launch/ready sources},\text{handoff history}),\quad
-\phi\in\{0,1,\ldots,6\}.
-$$
-
-$\phi=0$ is idle/ready; $\phi=6$ is a completed reset checkpoint.
-$f_a$ is the actuator response sampled for the current wave. For each shared
-payload group $B$, define $f_B=\bigvee_{a\in B}f_a$. This is one block with
-several possible owners, not one independent block per actuator.
-
-At $\phi\in\{0,6\}$ the runtime samples all
-$f_a\gets F_a(\mathbf s,\mathbf q)$. If any response is true for an unclocked
-region, begin at phase one; otherwise return to phase zero. At other phases,
-advance $\phi\gets\phi+1$. The following step after phase six can begin another
-wave when the held ordinary levels still call for a response. This recurrence
-belongs to the adapter, even when the external input supplied only one falling
-transition.
-
-Let $A=[\phi\notin\{0,6\}]$. For a nonmemory actuator, current output geometry is
-
-| Predicate | Nonideal wave value |
-| --- | --- |
-| Far payload for group $B$ | $\neg A\lor\neg f_B$ |
-| Near payload for actor $a$ | $[\phi=3]\land f_a$ |
-| Head for actor $a$ | $\neg A\lor\neg f_a$ |
-| Stationary retracted base | $[\phi=3]\land f_a$ |
-| Moving base | $[1\le\phi\le2]\land f_a$ |
-
-Far redstone aliases supply fifteen only when present. Near occupancy contributes
-through an extracted electrical output port. Nonideal admission rejects an
-ordinary consumer whose guard observes the near ownership of a shared group:
-union-of-firings alone cannot choose its physical owner.
-
-This phase adapter models a supported boundary waveform. Ordinary consumers
-retain their own delays and pending transitions. For instance, a one-step rise
-at reset can start a repeater activation that executes after the region has
-already begun its next low phase. Publishing a constant logical result in place
-of the phase waveform changes that consumer's behavior.
-
-Nonideal acyclic admission requires a ready powered extended mechanism with a
-matching stationary head, permitted payload, coupled power/update interface, and
-an owned reset or proven payload-following response. A follower satisfies the
-symbolic condition that its response is identically false when other actuators
-have ready occupancy, independently of external source strengths. Other guards
-exclude unowned observers, extra reset writers, exposed reset signals and
-destructive attachments. Stationary conducting reset caps can retain matching
-furnace inventories; this does not authorize carried entities.
-
-Prepared data is assumed stable through the accepted response/reset episode.
-The runtime's checkpoint is a level evaluation, not a general edge journal.
-[contract.rs](../crates/core/src/redpiler/instant/contract.rs) separately defines
-electrical falling edges, rechecks and provisional trigger cancellation, but
-its `TriggerState` is not the mechanism executing this wave path.
-Ready-entry checks prevent activation merely by compiling an already-active
-nonideal wave network. Do not infer arbitrary independent BUD sampling semantics
-from a formula $F_a$ alone.
-
-## 7. Shared-clock memory adapter
-
-The specialized clock recognizer owns one empty ordinary downward generator,
-its observers, and 1–64 independently owned downward redstone-block cells.
-The clock response depends on one ordinary torch control and not on stored data;
-the bank has an independently identified sampling route without extra writers.
-Different independent regions can own different clocks.
-
-For a stored cell, $q_a=1$ means retracted/near and $q_a=0$ means extended/far.
-At each phase-zero or phase-six checkpoint, sample all responses from the same
-old bank. Only the clock actor's response decides whether to start a wave.
-In nonideal mode, at phase three commit
-
-$$
-q_a^+\gets f_a\quad(a\in\text{memory}),\qquad
-m_a\gets[q_a^-\ne f_a].
-$$
-
-All $f_a$ were calculated before this commit. Updating cells one at a time and
-then calculating the next cell would produce a different sequential machine.
-At phase five clear $m_a$. The stored geometry is
-
-$$
-\mathrm{Far}_a=\mathrm{Head}_a=\neg q_a\land\neg m_a,\qquad
-\mathrm{Near}_a=\mathrm{RetractedBase}_a=q_a\land\neg m_a,\qquad
-\mathrm{MovingBase}_a=q_a\land m_a.
-$$
-
-The extracted bank transition is $\mathbf q_{k+1}=H(\mathbf s_k,\mathbf q_k)$,
-where $H_a=F_a$ for stored actors. A counter is one possible instance of $H$;
-the evaluator contains no arithmetic increment instruction. Output responses
-also retain the wave's old-state evaluation and pass through ordinary consumers,
-so displayed state can lag stored state.
-
-This specialized physical adapter admits fresh ready extended storage.
-Clear, arbitrary mid-episode controls and stop/restart physical equivalence
-require their own protocol evidence. The generic sequential adapter can
-represent other settled entries, but dispatch to it is an implementation choice,
-not a claim that every shared-clock waveform remains equivalent.
-
-See [clocked.rs](../crates/core/src/redpiler/instant/clocked.rs) and
-[direct/instant.rs](../crates/core/src/redpiler/backend/direct/instant.rs).
-
-## 8. Ideal acyclic and clocked mode
-
-With `--assume-instant`, an unclocked acyclic region evaluates $F$ when its bound
-ordinary inputs change. External inputs are held between a stimulus and its
-settled output. Ordinary delayed graph nodes remain separate dynamic inputs.
-It has no movement phase or reset waveform. Its geometry is
+An unclocked region evaluates $F$ when its bound ordinary inputs change.
+Ordinary delayed graph nodes remain separate dynamic inputs. There is no
+movement phase or reset waveform. For a nonmemory actor, settled geometry is
 
 $$
 \mathrm{Far}_B=\neg f_B,\quad
 \mathrm{Head}_a=\neg f_a,\quad
-\mathrm{RetractedBase}_a=f_a,\quad \mathrm{MovingBase}_a=0.
+\mathrm{RetractedBase}_a=f_a,\quad \mathrm{MovingBase}_a=0,
+\qquad f_B=\bigvee_{a\in B}f_a.
 $$
 
 For a shared group, choose the first firing actor in the group's stored order
 as the logical near owner; only that actor has near occupancy. This is a
 deterministic logical convention, not a universal physical ownership law.
-Each new stimulus starts another logical evaluation; ordinary diodes, torches
-and output events retain their existing timing.
+For stored cells, use committed $q_a$ rather than the proposed response $f_a$:
 
-In ideal clocked mode, an inactive clock holds the stored bank and last sampled
-response. An active clock starts a sampling deadline immediately, then samples
-again every six steps. At a sampling event, freeze inputs and the old bank,
-evaluate all $F_a$, and only then commit every proposed memory bit together.
-Changing data alone does not sample a cell. Successive active samples are six steps apart.
-Stopping and restarting holds memory and begins a fresh cadence; there is no
-movement state or physical reset pulse. Output terms that depend on ordinary
-sources remain electrical functions and can still react to those sources.
-
-Compilation validates a logical certificate: settled stationary entry,
-matching extended heads or an unambiguous retained near payload, supported materials, coupled combinational notifications,
-explicit independently sampled storage, and acyclic responses after cutting
-those storage boundaries. Reset timing and reset caps are unnecessary for a
-certified logical gate; this does not authorize unrecognized BUDs or feedback.
-Rejection identifies the boundary and suggests explicit sampling or physical mode.
-
-Compilation reads each certified storage bit from its saved extended/retracted
-pose. Canonical near/far addresses describe both values without modifying the
-world during preparation. A stopped bank can therefore be recompiled with
-nonzero data; binding and inactive evaluation do not sample or clear it.
-
-A side-mounted observer can be owned as logical reset work only after guarded
-electrical extraction proves its pulse resets its pure response targets for
-every data and payload-geometry assignment. Shared reset targets require the
-same proof. The certificate checks notification recipients separately: a reset
-must not become an independent memory sample or reach an ordinary data consumer.
-Explicit storage and clocks retain their existing sampling owners.
+$$
+\mathrm{Far}_a=\mathrm{Head}_a=\neg q_a,\qquad
+\mathrm{Near}_a=\mathrm{RetractedBase}_a=q_a,\qquad
+\mathrm{MovingBase}_a=0.
+$$
 
 The executable decision program binds Boolean input identities and thresholds
-once. Response and output domains have separate snapshots and caches. Changed
-inputs invalidate dependent decisions; evaluation walks needed branches and
-shares cached subexpressions, including computed actuator conditions in the
-local response DAG. The backend indexes ordinary source dependencies,
-so unchanged unclocked regions and intervals between clock samples perform no
-Boolean evaluation. Output guards read the committed bank and settled geometry,
-never a response-domain cache from before commit. This is a decision-program
-adapter, not a retained full-net reference plan. After `/rp reset`, the
-interpreter resumes physical semantics; it need not continue this ideal model.
+once. Response, output, and sampling domains have separate snapshots and
+caches. Changed inputs invalidate dependent decisions; evaluation walks needed
+branches and shares cached subexpressions, including computed actuator
+conditions in the local response DAG. Ordinary source dependencies are indexed,
+so unchanged unclocked regions need no Boolean reevaluation. Output guards
+read committed memory and settled geometry, not a response snapshot from
+before a commit.
 
-## 9. Notification-driven sequential adapter
+Compilation validates stationary entry, matching extended heads or an
+unambiguous retained near payload, supported materials, coupled combinational
+notifications, explicit independently sampled storage, and acyclic responses
+after cutting storage boundaries. Default compilation additionally checks the
+applicable reset/construction proofs; `--assume-instant` relaxes those proofs
+without changing the executable model or authorizing unproved sampling.
+Moving entities, destructive attachments, selection escape, ambiguous
+ownership, and pending owned work remain admission failures.
 
-The sequential adapter exists because an electrical level and a delivered
-sampling update are independent channels. Its state is larger than a bit bank:
+A reset observer can be omitted only after guarded extraction proves that its
+pulse resets pure response targets without independently sampling memory or
+reaching an ordinary data consumer. Explicit storage and clocks retain their
+sampling owners. This logical abstraction does not reproduce every physical
+reset pulse or intermediate movement observation.
 
-$$
-z=(\mathbf q,\mathbf h,\mathbf b^{\mathrm{move}},\mathbf d^{\mathrm{actor}},
- \mathbf p^{\mathrm{payload}},\mathbf d^{\mathrm{payload}},
- \mathbf w,\mathbf\omega,\mathbf o,
- Q^{\mathrm{sample}},Q^{\mathrm{deferred}},Q^{\mathrm{complete}},Q^{\mathrm{observer}}).
-$$
+See [program.rs](../crates/core/src/redpiler/instant/program.rs),
+[logical.rs](../crates/core/src/redpiler/backend/direct/instant/logical.rs), and
+[observer.rs](../crates/core/src/redpiler/instant/observer.rs).
 
-$q_a$ is current retracted state, $h_a$ head presence, $b_a^{\mathrm{move}}$
-moving-base state, $d$ availability deadlines, $p_B^{\mathrm{payload}}$ one shared
-payload's position and owner, $w$ wire strengths, $\omega$ retained wire shapes,
-and $o$ observer states. Queue order is retained. This state covers storage,
-reset, generator and sampled-read geometry without pretending that each is a
-stateless Boolean gate.
+## 7. Shared-clock memory
 
-Local power functions are $R_a(\mathbf s,\mathbf w,\mathbf\omega,\mathbf o,g)$.
-Here $R_a=1$ means the sampled electrical condition calls for retraction.
-A delivered base notification samples that function; a head notification samples
-only while a stationary head is present. Changing remote quasi-connectivity
-power alone does not necessarily deliver either notification.
+The specialized clock recognizer owns one empty ordinary downward generator,
+its observers, and 1–64 independently owned downward redstone-block cells.
+Its control depends on one ordinary torch source and not on stored data;
+the bank has an independently identified sampling route without extra writers.
+Different independent regions can own different clocks.
 
-A request is emitted only when $R_a\ne q_a$ and the base is not moving.
-The action is extension for $R_a=0$, retraction for $R_a=1$, or early
-`RetractWithoutPull` when a same-facing extension payload remains unavailable at
-the far position. There is at most one queued request per actor/action pair.
-On dequeue, the runtime rechecks live power, current state and moving-base
-availability. With $r=[\text{action}\ne\mathrm{Extend}]$, acceptance requires
+For a stored cell, $q_a=1$ means retracted/near and $q_a=0$ means extended/far.
+An inactive clock holds the bank and last sampled response. An active clock
+samples on its first evaluation, then every six steps. Each sample freezes
+inputs and the old bank, evaluates all responses, and commits the bank together:
 
 $$
-R_a=r\ \land\ R_a\ne q_a\ \land\ \neg b_a^{\mathrm{move}}.
+q_a^+\gets F_a(\mathbf s,\mathbf q^-)\quad(a\in\text{memory}).
 $$
 
-An invalid queued request is discarded. A notification, queued request and
-accepted movement are therefore three different observations. Same-value
-sampling can be meaningful even when it emits no request.
+Updating one cell before evaluating another would define a different machine.
+The extracted transition is $\mathbf q_{k+1}=H(\mathbf s_k,\mathbf q_k)$,
+where $H_a=F_a$ for stored actors. A counter is one possible instance of $H$;
+the evaluator contains no arithmetic increment instruction.
 
-Accepted movement changes $q_a$ and head/base availability. Payload movement
-uses actual stored ownership and position: a sticky normal retract can pull a
-stationary far payload to near; early retract does not pull; an extension from
-near moves that payload to the group's common far destination. A moving payload
-provides neither stationary conduction nor power. Completion deadlines are two
-steps after acceptance. The runtime retains and checks the actor/payload
-deadline when consuming completion entries, so replaced work is not applied as
-current completion.
+Changing data alone does not sample a cell. Stopping preserves memory;
+restarting begins a fresh cadence. Output terms dependent on ordinary sources
+can still react electrically. Compilation reads storage from the saved pose,
+and binding establishes event baselines without sampling or clearing it.
+A stopped bank with nonzero memory can therefore be recompiled.
 
-Current geometry predicates are
+See [clocked.rs](../crates/core/src/redpiler/instant/clocked.rs) and
+[the counter regression](../crates/core/src/redpiler/analysis/tests/ideal.rs).
 
-$$
-\begin{aligned}
-\mathrm{Far}_a&=[d_B^{\mathrm{payload}}=0\land p_B^{\mathrm{payload}}=\mathrm{far}_a],\\
-\mathrm{Near}_a&=[d_B^{\mathrm{payload}}=0\land p_B^{\mathrm{payload}}=\mathrm{near}_a],\\
-\mathrm{Head}_a&=h_a,\\
-\mathrm{RetractedBase}_a&=q_a\land\neg b_a^{\mathrm{move}},\\
-\mathrm{MovingBase}_a&=b_a^{\mathrm{move}}.
-\end{aligned}
-$$
+## 8. Independent notification sampling
 
-Each compiled wire sensor uses the same guarded maximum equation as an output
-port, with neighboring wire values as local sources. A dirty sensor reevaluates
-its strength. A changed strength drives precomputed neighbor work in the
-interpreter's `TURBO_ORDER`, retaining traversal direction/layer information.
-Neighbor shape changes use `on_neighbor_changed_from`, and shape changes can
-notify observers and other sensors. This is an ordered worklist system;
-solving only the final electrical fixed point would discard sampling history.
-Sensors include dust adjacent to moving base/head/far positions even when no
-power path uses the payload. A geometry notification can alter saved wire power
-or shape without being an electrical dependency of the sampled piston.
+Power and notification discovery are separate. A generic BUD's desired
+response is $F_a(\mathbf s,\mathbf q)$, but data changes alone do not commit it.
+Current independent sources are certified empty ordinary generators' settled
+base/head pose edges and independently driven fixed dust strength changes.
+Dust requires one writer, no moving power source, and a notification route
+separate from the cell's data route. An ordinary graph observer can supply
+that fixed writer while retaining its scheduled pulse.
 
-Observers watch owned positions. A qualifying watched change schedules a toggle
-two steps later if no observer work is already pending. A rising observer
-toggle schedules its fall two steps later. Its strength feeds sensor equations
-and its output delivers the precomputed sample notifications. Observer pulse
-state and pending deadlines are part of the region state.
+For a notification event $e$ with source value $v_e$, the current adapter
+detects a delivery when $v_e$ differs from its previous value. Compilation
+establishes the baseline; activation itself is not a delivery. An unchanged
+generator pose does not sample periodically. A distinct source action that
+produces another edge is another delivery, even in the same game tick.
 
-The current per-step sequence is:
+The runtime groups affected cells by their generator or fixed writer. A delivered
+group reads one frozen old bank, evaluates eligible recipients, and commits
+them together. A later writer group reads the preceding group's committed bank.
+A base route always qualifies; a head-only route qualifies only while the
+cell is extended in that group's old state. Same-value memory samples remain
+deliveries even when no stored bit changes. This is the current logical
+transaction contract, not a proof of arbitrary native callback ordering.
 
-1. Bring previous completion-generated deferred requests into the sample queue;
-   detect ordinary source changes and deliver their compiled notifications.
-2. Settle dirty wires and process due observer toggles and their sample routes.
-3. Drain sample requests FIFO, rechecking each request; accepted actions emit
-   further notifications and settle affected sensors.
-4. Record boundary strengths before movement completion.
-5. Apply due actor/payload completions, settle their wire/shape changes, and put
-   generated movement requests in the deferred queue for the next step.
-6. Record boundary strengths after completion and return the ordered changes.
+Several generic generators and recipients can be represented, but a region
+with several clock-shaped candidates still fails the shared-clock recognizer.
+Stored-state generator control, multiple dust writers, and unproved
+geometry-dependent notification routes remain rejected. Delivery flags and
+writer ordering do not preserve every native callback's multiplicity and order;
+the proposed generalization must establish those semantics before extending
+admission.
 
-The boundary publisher can return several strength changes for the same port in
-one step. Collapsing them to the last level can erase a pulse seen by an
-ordinary consumer. Extension destination shape changes also differ from full
-neighbor notifications; upgrading one into the other can spuriously sample a
-quasi-powered cell. These distinctions are general consequences of separate
-power, shape, notification and availability channels.
+See [sampling.rs](../crates/core/src/redpiler/instant/sampling.rs),
+[the runtime](../crates/core/src/redpiler/backend/direct/instant.rs), and
+[memory regressions](../crates/core/src/redpiler/analysis/tests/memory.rs).
 
-Sequential admission requires one supported stationary payload per ownership
-group, or an empty all-ordinary group; every owner shares a common far
-destination. Actual alias occupants must be air, a supported payload, or a saved
-head at an owning actor's head position. It permits stationary extended or
-retracted entry and multiple
-ordinary update pistons. It rejects incompatible present heads, moving-context
-entities, destructive moving supports and pending owned entry work. A missing
-saved head represented by air can be retained as an actual initial state;
-recognition does not synthesize a stationary head merely from `extended=true`.
-This does not amount to arbitrary push chains, arbitrary materials, transported
-entities or unrestricted editing during execution.
+## 9. Committed BUD presentation
 
-[program.rs](../crates/core/src/redpiler/instant/program.rs) selects this path
-when the region contains multiple ordinary pistons, a non-downward ordinary
-piston, retracted entry, a missing/mismatched-head diagnostic, or an additional
-reset-writer recognition failure. The fallback then performs its own checks.
-Some unsupported acyclic cases simply fail rather than being retried here;
-representational capability and dispatch coverage are separate.
+Display flush projects each supported BUD's committed bit into its base, head,
+and payload positions. Extended cells show an extended base, stationary head
+at near, and payload at far. Retracted cells show a retracted base, payload at
+near, and air at far. Independent cells and shared-clock banks use the same
+projection.
 
-The sequential adapter is available without `--assume-instant`. Logical
-compilation rejects regions requiring these local notifications, availability
-deadlines or retained-read protocols until they have a logical sampling certificate.
-Execution uses compiled decisions and indices, with no runtime block search or
-interpreter callback invocation. It nevertheless retains selected physical
-ordering because these updates affect observable memory state.
+The last published bit is separate from observer state tracking. Flush writes
+only changed cells through ordinary block storage and packet collection;
+it invokes no physical updates or handoff. A data change without a qualifying
+sample leaves the displayed cell unchanged. Pose publication creates no extra
+samples, observer events, or scheduled work; ordinary flush evaluation retains
+its existing role.
 
-See [sequential extraction](../crates/core/src/redpiler/instant/logic/sequential.rs),
-[notification preparation](../crates/core/src/redpiler/instant/sequential.rs), and
-[sequential runtime](../crates/core/src/redpiler/backend/direct/instant/sequential.rs).
+Normal display cadence, lever/button interaction, and manual game-tick `/adv`
+publish the committed pose. `--optimize` retains BUD presentation.
+`--io-only` suppresses internal BUD writes. Screen-only suppresses internal
+incremental packets through its existing storage overlay; storage still records
+the latest published pose for reads, chunk snapshots, and disabling that mode.
+A chunk snapshot before the next display flush contains the previous published
+pose. At high TPS, client batching can skip short-lived intermediate poses.
+
+Other virtual region internals keep their saved appearance until handoff.
+There is no smooth movement, internal dust/reset animation, or new admission
+from these display writes. Note-block obstruction and copper-bulb oxidation over
+BUD-owned geometry use canonical committed occupancy even when visual writes
+are suppressed or deferred.
+
+See [Direct flush](../crates/core/src/redpiler/backend/direct/mod.rs),
+[manual advancement](../crates/core/src/plot/commands.rs), and
+[screen updates](../crates/core/src/plot/screen_updates.rs).
 
 ## 10. Regions and composition
 
@@ -580,9 +451,10 @@ retained-state transition, admitted histories, and boundary adapters.
 An implementation of $F$ alone is insufficient whenever $H$ or $A$ needs
 storage, sampling, reset, read-gate or clock state.
 
-For independent regions, $z=(z_1,\ldots,z_r)$ and each $H_j$ advances its own
-phase and queues while sharing the ordinary graph. Common plot membership or
-an ordinary input is not a dependency between their retained states. Payload
+For independent regions, $z=(z_1,\ldots,z_r)$ and each $H_j$ retains its own
+bank, sampling baselines, and clock deadline while sharing the ordinary graph.
+Common plot membership or an ordinary input is not a dependency between their
+retained states. Payload
 ownership, reset ownership, sampling routes and moving geometry do establish
 dependencies. Region splitting conservatively joins those dependencies before
 execution. The implementation advances the resulting runtime vector in its
@@ -598,11 +470,10 @@ $$
 where $u$ is an accepted transaction and $D$ its data decoder. Physical
 notifications need not equal $u$: the request may be cancelled, blocked, early,
 or a same-value sample. Multiple updates on one cell require ordered
-transactions unless the family proves an atomic batch. A held read adapter may
-retain its own $r$, giving output $A(\mathbf q,r,\mathbf s)$ rather than a
-continuous read of the current bank. The sequential runtime's geometry and
-queues can represent such history; a generic word-level RAM interface is not
-derived merely from that capability.
+transactions unless the family proves an atomic batch. A held read adapter
+would need its own retained state rather than a continuous read of the current
+bank; a generic word-level RAM interface is not established by the current
+logical equations.
 
 Falling events also remain distinct from data:
 
@@ -633,16 +504,8 @@ This concerns continuation of the compatible physical protocol. An ideal
 region can intentionally differ from physical execution, so materializing it
 does not promise continuing ideal/interpreter equality.
 
-Reset first flushes ordinary hidden state and events. Nonideal wave handoff
-builds a private interpreter world from the region snapshot, restores prepared
-and launch values, and replays a bounded tail to reconstruct owned geometry,
-motion and reset work. It uses at most 32 preparation steps and one current
-six-step wave plus one previous cycle. Clocked handoff retains earlier bank
-values so this cost does not grow with elapsed counting. Only owned work is
-transferred; the live graph scheduler remains authoritative for ordinary
-deadlines.
-
-Ideal acyclic/clocked handoff writes stationary logical occupancy and the last
+Reset first flushes ordinary hidden state and events, including comparator
+entity strengths. Logical handoff writes stationary occupancy and the last
 committed bank. Shared payload ownership uses the first firing actor in stored
 group order. Owned reset observers are off; other owned reset components retain
 their saved presentation. Owned dust receives settled shape and strength from
@@ -652,20 +515,16 @@ callbacks and invokes no electrical update propagation. The ordinary scheduler
 retains its pending work. This is a deterministic settled snapshot, not replay
 of a historical physical reset wave.
 
-Sequential handoff writes retained actor/head/payload geometry, sensor shape and
-power, observer state, remaining observer work, and queued sample requests.
-Unfinished actor and payload availability become moving entities with the
-appropriate remaining completion interval. This restores current temporal state
-rather than reconstructing an unbounded input history.
-
 Finally ordinary scheduler entries return to the world with relative deadlines,
 priority and FIFO order. Constants preserve current physical presentation
-rather than overwriting it with an obsolete compile snapshot. Internal visual
-blocks may have remained at entry presentation while compiled; render flushes
-are not observations of the live internal region state.
+rather than overwriting it with an obsolete compile snapshot. BUD display
+already exposes the most recently published committed pose unless suppressed;
+handoff exports the current bank regardless of the display cadence. Other
+virtual internal components may have remained at entry presentation.
 
-The bounded replay and direct reconstruction are implemented handoff mechanisms,
-not proofs of all edit/save/load/recompile histories. Required new lifecycle
+Explicit reset-with-update additionally invokes the requested physical updates;
+ordinary handoff does not synthesize them. Settled materialization is not a
+proof of all edit/save/load/recompile histories. Required new lifecycle
 support needs continuation tests at the affected state boundaries.
 
 ## 12. Generalization, admission and known gaps
@@ -680,9 +539,8 @@ owned temporal transducer. This explains several otherwise local-looking rules:
 | Mutable mobile aliases and protected graph sources | Ownership and stable identity must survive optimization. |
 | Shared far occupancy versus near owner | A shared block's existence and its owner's position are different state. |
 | Old-bank sampling before commit | A clocked bank defines an atomic transaction. |
-| Deferred completion notifications | Sampling order crosses an availability boundary. |
-| Extension shape change versus neighbor notification | Electrical connectivity and BUD sampling are distinct actions. |
-| Retained read geometry | A sample-and-hold interface has history even when its data source is ordinary memory. |
+| Power cache versus notification | Changed data alone cannot write stored state. |
+| Committed memory versus presentation | Display cadence cannot become a sampling event. |
 | Selected-context and full-plot rules | Extraction needs a closed electrical world; a small selection must include its dependencies. |
 
 Universal documentation should preserve these rules and their state variables,
@@ -703,20 +561,16 @@ current constants in [analysis/mod.rs](../crates/core/src/redpiler/analysis/mod.
 
 The following limits must remain explicit:
 
-- The acyclic reset-wave path can currently admit a layout whose later inhibitor
-  interaction does not match the interpreter. The ignored regression
-  `xor_complete_reset_waveform_matches_interpreted_consumers` documents a
-  tick-eight mismatch. A correct first-wave XOR does not certify reset closure.
-- The sequential worklist is an implemented finite geometry/notification model,
-  not a theorem of equivalence for arbitrary Java callback traces, simultaneous
-  external changes, replacement ordering, or every consumer attachment. Its
-  source-change scan iterates a hash map rather than an explicit external action
-  journal, so multiple ordinary source transitions within one step do not gain
-  a universal application-defined ordering. Its supported payload and ownership
-  checks remain necessary.
-- `--assume-instant` does not mean one universal piston semantics: temporal
-  deadlines remain on the sequential path, while acyclic and shared-clock
-  adapters use the explicit ideal rules above.
+- Clock-shaped candidates still select a specialization requiring exactly one
+  generator. Some notification routes remain unproved, including the current
+  PM1 investigation. Display support does not
+  change those rejection boundaries.
+- Independent sampling currently compares source values and groups recipients
+  by writer. It does not preserve every native repeated notification or callback
+  order. Stored-state control and multiple dust writers remain unsupported.
+- The logical executor omits physical movement and reset episodes. Native hybrid
+  ownership, ordered boundary callbacks, and operation-preserving fallback are
+  proposed work, not a current continuation guarantee.
 - Ordinary optimization contains specialized binary/attenuation assumptions.
   The preservation equation is the required contract; it is not a claim that
   every current transformation has been proved for every analog graph. See

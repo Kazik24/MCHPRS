@@ -37,6 +37,16 @@ in authoritative storage overlays. Disabling it sends current suppressed states.
 Fresh chunk snapshots, saves, and world reads use authoritative storage. Retained
 overlay memory is the cost of skipping ordinary presentation deltas.
 
+While Redpiler is active, display flushes publish the committed piston base,
+stationary head and payload pose of supported BUD memory. Data changes without
+a qualifying sample leave that pose unchanged. Successful nonzero `/adv`
+also flushes compiled state and block changes while paused. The writes use the
+same section batching and screen-only overlay as other ordinary block changes.
+`--io-only` suppresses these internal writes; `--optimize` permits them.
+Fresh chunks contain the last published pose, which can precede a newer
+simulation commit until its display flush. High TPS may coalesce intermediate
+poses without coalescing simulation events.
+
 ## Ordered outgoing queue
 
 Each connection has a background writer shared by its packet senders. Adjacent

@@ -6,6 +6,7 @@ use std::time::Instant;
 
 mod anpu;
 mod anpu_motion_scope;
+mod notification_routes;
 mod pm1_clocks;
 
 #[path = "research/fpu_divider.rs"]

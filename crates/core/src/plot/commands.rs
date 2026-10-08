@@ -882,6 +882,12 @@ impl Plot {
                     AdvanceUnit::Nano => advance_bounded(ticks, || self.world.nanotick_advance(1)),
                     AdvanceUnit::Pico => advance_bounded(ticks, || self.world.picotick_advance(1)),
                 };
+                if advanced > 0 {
+                    if self.redpiler.is_active() {
+                        self.redpiler.flush(&mut self.world);
+                    }
+                    self.world.flush_block_changes();
+                }
                 let progress = messages::advance_progress(advanced, ticks, unit.label());
                 self.players[player]
                     .send_system_message(&messages::plot_advanced(progress, start_time.elapsed()));
@@ -1498,9 +1504,11 @@ fn declared_command_nodes() -> Vec<Node<'static>> {
         Node::argument("x", Parser::Integer(i32::MIN, i32::MAX), &[158]),
         Node::argument("z", Parser::Integer(i32::MIN, i32::MAX), &[]).executable(),
         Node::literal("settings", &[]).executable(),
-        // 160-161: wire pen and WorldEdit-style alias share the existing off literal.
-        Node::literal("wire", &[103]).executable(),
+        // 160-163: wire pen, alias, and aiming modes reuse the existing off literal.
+        Node::literal("wire", &[162, 163, 103]).executable(),
         Node::redirect("/wire", 160).executable(),
+        Node::literal("free", &[]).executable(),
+        Node::literal("plane", &[]).executable(),
     ]
 }
 
@@ -1584,7 +1592,7 @@ mod security_tests {
     #[test]
     fn command_declarations_have_valid_edges_and_no_legacy_tick_aliases() {
         let nodes = declared_command_nodes();
-        assert_eq!(nodes.len(), 162);
+        assert_eq!(nodes.len(), 164);
         for node in &nodes {
             for edge in node.children.iter().copied().chain(node.redirect_node) {
                 assert!(edge >= 0 && (edge as usize) < nodes.len());
@@ -1631,6 +1639,18 @@ mod security_tests {
                 Some(target)
             );
         }
+        let wire = nodes.iter().find(|node| node.name == Some("wire")).unwrap();
+        assert_eq!(
+            wire.children
+                .iter()
+                .map(|&id| nodes[id as usize].name.unwrap())
+                .collect::<Vec<_>>(),
+            ["free", "plane", "off"]
+        );
+        assert!(wire
+            .children
+            .iter()
+            .all(|&id| nodes[id as usize].flags & 0x04 != 0));
         assert_eq!(NO_COMMANDS.packet_id, 0x10);
         assert_eq!(
             format!("{:x}", md5::compute(&NO_COMMANDS.buffer)),
