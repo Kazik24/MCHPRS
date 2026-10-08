@@ -99,7 +99,7 @@ fn fixed_container_context_preserves_inventory_override_and_logical_consumer_lev
                     )
                     .unwrap();
                 compiler.on_use_block(trigger);
-                for _ in 0..24 {
+                for tick in 1..=24 {
                     native.tick_interpreted();
                     compiler.tick();
                     compiler.flush(&mut compiled);
@@ -112,10 +112,12 @@ fn fixed_container_context_preserves_inventory_override_and_logical_consumer_lev
                         json!(native.get_block_entity(comparator))
                     );
                     assert_eq!(compiled.get_block(lamp), native.get_block(lamp));
+                    assert_eq!(
+                        compiled.get_block(output),
+                        native.get_block(output),
+                        "output waveform at tick {tick}, container {kind:?}, strength {strength}, optimize {optimize}, io_only {io_only}"
+                    );
                 }
-                assert!(
-                    matches!(compiled.get_block(output), Block::RedstoneRepeater { repeater } if !repeater.powered)
-                );
                 assert!(matches!(compiled.get_block_entity(comparator),
                     Some(BlockEntity::Comparator { output_strength }) if *output_strength == strength));
                 assert!(

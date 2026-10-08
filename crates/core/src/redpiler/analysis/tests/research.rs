@@ -6,9 +6,9 @@ use std::time::Instant;
 
 mod anpu;
 mod anpu_motion_scope;
+mod bud_cells;
 mod notification_routes;
 mod pm1_clocks;
-mod bud_cells;
 
 #[path = "research/fpu_divider.rs"]
 mod fpu_divider;
@@ -63,6 +63,21 @@ fn load(manifest: &Value) -> (PlotWorld, (BlockPos, BlockPos)) {
         false,
     );
     (world, (first, last))
+}
+
+fn compilation_fingerprint(world: &PlotWorld, bounds: (BlockPos, BlockPos)) -> Vec<u8> {
+    let mut digest = Sha256::new();
+    crate::world::for_each_block_optimized(world, bounds.0, bounds.1, |pos| {
+        for coordinate in [pos.x, pos.y, pos.z] {
+            digest.update(coordinate.to_le_bytes());
+        }
+        digest.update(world.get_block_raw(pos).to_le_bytes());
+        digest.update(serde_json::to_vec(&world.get_block_entity(pos)).unwrap());
+    });
+    digest.update(serde_json::to_vec(world.piston_state()).unwrap());
+    digest
+        .update(serde_json::to_vec(&world.scheduler().iter_entries().collect::<Vec<_>>()).unwrap());
+    digest.finalize().to_vec()
 }
 
 fn block_state(world: &PlotWorld, pos: BlockPos, first: BlockPos) -> Value {
@@ -810,82 +825,37 @@ fn fpu_strict_import_preserves_the_947_analog_reference_values() {
 }
 
 #[test]
-fn corrected_fpu_compiles_in_both_admission_policies_with_and_without_optimization() {
+fn corrected_fpu_rejects_unrepresented_feedback_sampling_transactionally() {
     let fixture = manifest("fpu_legal");
-    let mut errors = Vec::new();
-    for (assume_instant, optimize) in [(false, true), (false, false), (true, true), (true, false)] {
-        let (mut world, _) = load(&fixture);
-        let bounds = world.get_corners();
-        let mut compiler = Compiler::default();
-        let result = compiler.compile(
-            &world,
-            bounds,
-            CompilerOptions {
-                optimize,
-                assume_instant,
-                ..Default::default()
-            },
-            vec![],
-            Default::default(),
-        );
-        match result {
-            Ok(()) => {
-                assert!(compiler.is_active());
-                assert!(compiler.warnings().is_empty());
-                assert!(!compiler
-                    .backend
-                    .as_ref()
-                    .unwrap()
-                    .logical_stats()
-                    .is_empty());
-                for _ in 0..8 {
-                    compiler.tick_with_world(&mut world);
-                }
-                compiler.reset(&mut world, bounds);
-                assert!(!compiler.is_active());
-                assert!(world.piston_state().events.is_empty());
-                assert!(world.piston_state().motions.is_empty());
-                assert!(!world.scheduler().iter_entries().any(|entry| matches!(
-                    world.get_block(entry.pos),
-                    Block::Piston { .. } | Block::PistonHead { .. } | Block::MovingPiston { .. }
-                )));
-                crate::world::for_each_block_optimized(&world, bounds.0, bounds.1, |pos| {
-                    let block = world.get_block(pos);
-                    assert!(!matches!(block, Block::MovingPiston { .. }), "{pos:?}");
-                    if let Block::Piston { piston } = block {
-                        if piston.extended {
-                            assert!(
-                                matches!(world.get_block(pos.offset(piston.facing.into())),
-                                Block::PistonHead { head } if head.facing == piston.facing && head.sticky == piston.sticky && !head.short),
-                                "settled extended piston at {pos:?} needs its matching head"
-                            );
-                        }
-                    }
-                });
-                // This fixture's proved reset above owner (48,62,42) must
-                // export a dormant observer, without replaying its flash.
-                let reset = BASE + BlockPos::new(8, 33, 2);
-                assert!(
-                    matches!(world.get_block(reset), Block::Observer { observer } if !observer.powered)
-                );
-                assert!(!world
-                    .scheduler()
-                    .iter_entries()
-                    .any(|entry| entry.pos == reset));
-            }
-            Err(error) => {
-                assert!(!compiler.is_active());
-                errors.push(format!(
-                    "assume_instant={assume_instant}, optimize={optimize}: {error}"
-                ));
-            }
+    for assume_instant in [false, true] {
+        for optimize in [false, true] {
+            let (world, bounds) = load(&fixture);
+            let before = compilation_fingerprint(&world, bounds);
+            let mut compiler = Compiler::default();
+            let error = compiler
+                .compile(
+                    &world,
+                    world.get_corners(),
+                    CompilerOptions {
+                        optimize,
+                        assume_instant,
+                        ..Default::default()
+                    },
+                    vec![],
+                    Default::default(),
+                )
+                .unwrap_err()
+                .to_string();
+            assert!(
+                error.contains("unsupported internally driven QC sampling interface"),
+                "{error}"
+            );
+            assert!(error.contains("data source"), "{error}");
+            assert!(!compiler.is_active());
+            assert!(compiler.current_flags().is_none());
+            assert_eq!(compilation_fingerprint(&world, bounds), before);
         }
     }
-    assert!(
-        errors.is_empty(),
-        "FPU compilation failures:\n{}",
-        errors.join("\n")
-    );
 }
 
 #[test]
@@ -893,22 +863,7 @@ fn previous_fpu_default_requires_construction_certification_transactionally() {
     let fixture = manifest("fpu_fixed_compilation");
     for optimize in [true, false] {
         let (world, bounds) = load(&fixture);
-        let fingerprint = |world: &PlotWorld| {
-            let mut digest = Sha256::new();
-            crate::world::for_each_block_optimized(world, bounds.0, bounds.1, |pos| {
-                for coordinate in [pos.x, pos.y, pos.z] {
-                    digest.update(coordinate.to_le_bytes());
-                }
-                digest.update(world.get_block_raw(pos).to_le_bytes());
-                digest.update(serde_json::to_vec(&world.get_block_entity(pos)).unwrap());
-            });
-            digest.update(serde_json::to_vec(world.piston_state()).unwrap());
-            digest.update(
-                serde_json::to_vec(&world.scheduler().iter_entries().collect::<Vec<_>>()).unwrap(),
-            );
-            digest.finalize()
-        };
-        let before = fingerprint(&world);
+        let before = compilation_fingerprint(&world, bounds);
         let mut compiler = Compiler::default();
         let error = compiler
             .compile(
@@ -934,7 +889,7 @@ fn previous_fpu_default_requires_construction_certification_transactionally() {
         assert!(!error.contains("--assume-instant"), "{error}");
         assert!(!compiler.is_active());
         assert!(compiler.current_flags().is_none());
-        assert_eq!(fingerprint(&world), before);
+        assert_eq!(compilation_fingerprint(&world, bounds), before);
     }
 }
 

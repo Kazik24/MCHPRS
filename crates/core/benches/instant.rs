@@ -1,6 +1,10 @@
 //! Counter/divider throughput and raw changing-input full-FPU workloads.
 #![recursion_limit = "256"]
 
+#[path = "support/cpus.rs"]
+#[allow(dead_code)]
+mod cpu_support;
+
 use anyhow::{bail, ensure, Context, Result};
 use mchprs_blocks::{
     blocks::{Block, LeverFace, RedstoneRepeater},
@@ -147,6 +151,7 @@ fn main() -> Result<()> {
     let mut seed = 0x4d43_4850_5253_2026u64;
     let mut input_every = 1usize;
     let mut output = None;
+    let mut reference_path = None;
     let mut args = std::env::args().skip(1);
     while let Some(arg) = args.next() {
         match arg.as_str() {
@@ -168,7 +173,7 @@ fn main() -> Result<()> {
                 return Ok(());
             }
             "--help" => {
-                println!("instant [--component counter_basic|cpu_bubblesort|fpu_divider|fpu_legal] [--changing-inputs | --workload random|random-walk|sequence] [--seed integer] [--input-every ticks] [--interpreted | --optimize] [--iterations 3] [--episodes 32] [--ticks 60000] [--flush-every 0|1] [--output path.json]\n--workload implies --changing-inputs. Sequence repeats 128 fixed raw port pairs with opcode zero.\n--check-workloads verifies generators without loading a schematic.");
+                println!("instant [--component counter_basic|pc_counter|cpu_bubblesort|fpu_divider|fpu_legal] [--changing-inputs | --workload random|random-walk|sequence] [--seed integer] [--input-every ticks] [--interpreted | --optimize] [--iterations 3] [--episodes 32] [--ticks 60000] [--flush-every 0|1] [--output path.json] [--reference frozen-native-report.json]\n--workload implies --changing-inputs. Sequence repeats 128 fixed raw port pairs with opcode zero.\n--check-workloads verifies generators without loading a schematic.");
                 return Ok(());
             }
             _ => {}
@@ -183,6 +188,7 @@ fn main() -> Result<()> {
             "--ticks" => ticks = value.parse()?,
             "--flush-every" => flush_every = value.parse()?,
             "--output" => output = Some(value),
+            "--reference" => reference_path = Some(value),
             "--seed" => seed = value.parse()?,
             "--input-every" => input_every = value.parse()?,
             "--workload" => {
@@ -211,57 +217,119 @@ fn main() -> Result<()> {
         "--optimize applies only to compiled execution"
     );
     ensure!(
-        !interpreted || matches!(component.as_str(), "counter_basic" | "fpu_divider"),
-        "--interpreted compares Counter/divider runtime"
+        !interpreted
+            || matches!(
+                component.as_str(),
+                "counter_basic" | "pc_counter" | "fpu_divider" | "fpu_legal"
+            ),
+        "unsupported interpreted component"
     );
     ensure!(
         !changing_inputs || matches!(component.as_str(), "fpu_legal" | "fpu_divider"),
         "--changing-inputs applies to fpu_legal or fpu_divider"
     );
     ensure!(
-        !changing_inputs || !interpreted,
-        "--changing-inputs compares compiled plans against an unoptimized compiled reference"
+        component != "pc_counter" || interpreted,
+        "pc_counter benchmark requires --interpreted"
     );
+    ensure!(
+        component != "fpu_legal" || !interpreted || changing_inputs,
+        "interpreted full FPU requires --changing-inputs or --workload"
+    );
+    ensure!(
+        reference_path.is_none() || (interpreted && (changing_inputs || component == "pc_counter")),
+        "--reference requires an interpreted FPU input workload or pc_counter"
+    );
+    let frozen: Option<Value> = reference_path
+        .as_ref()
+        .map(|path| -> Result<Value> {
+            Ok(serde_json::from_slice(&std::fs::read(root().join(path))?)?)
+        })
+        .transpose()?;
     let manifest_path = match component.as_str() {
         "counter_basic" => "test_data/instant-pistons-io/fixtures/counter_basic.json",
+        "pc_counter" => "inline revised Potados PC counter protocol",
         "cpu_bubblesort" => "test_data/piston-research/fixtures/cpu_bubblesort.json",
         "fpu_divider" => "test_data/piston-research/fixtures/fpu_divider.json",
         "fpu_legal" => "test_data/piston-research/fixtures/fpu_legal.json",
         _ => bail!("unknown component {component}"),
     };
-    let mut descriptor: Value =
-        serde_json::from_slice(&std::fs::read(root().join(manifest_path))?)?;
+    let mut descriptor: Value = if component == "pc_counter" {
+        json!({"fixture":"test_data/piston-research/test-potados-counter-revised-20261008/TEST_POTADOS_PC_COUNTER.schem",
+            "sha256":"641c50d1903ccf3715759007d5b82e0f04786020d8cce80fbdbb4a3c8a3596f7",
+            "dimensions":[24,19,75], "origin":[40,30,40]})
+    } else {
+        serde_json::from_slice(&std::fs::read(root().join(manifest_path))?)?
+    };
+    if let Some(frozen) = &frozen {
+        ensure!(
+            frozen["schema"] == 1
+                && frozen["backend"] == "interpreted"
+                && frozen["component"] == component
+                && frozen["schematic_sha256"] == descriptor["sha256"],
+            "frozen report belongs to a different workload or fixture"
+        );
+        if changing_inputs {
+            ensure!(
+                component != "fpu_legal"
+                    || frozen["input_protocol_id"] == "native-fpu-cycled-off-inputs-on-v1",
+                "frozen FPU report uses a different trigger protocol"
+            );
+            ensure!(
+                frozen["episodes"] == episodes
+                    && frozen["seed"] == seed
+                    && frozen["workload"] == workload.name()
+                    && frozen["input_every_game_ticks"]
+                        == if component == "fpu_legal" {
+                            json!(input_every)
+                        } else {
+                            Value::Null
+                        },
+                "frozen FPU workload parameters differ"
+            );
+        }
+    }
     if component == "cpu_bubblesort" {
         // Same closed-context origin as the compiled CPU harness.
         descriptor["origin"] = json!([2, 8, 2]);
     } else if component == "fpu_legal" && descriptor.get("origin").is_none() {
         descriptor["origin"] = json!([40, 30, 40]);
     }
-    // Arithmetic is unspecified. Validate the selected plan's trace
-    // against an independent plain compiled run before measuring whole phases.
-    let mut reference_traces: Option<Vec<Vec<u16>>> = None;
+    // Freeze native outputs or validate the compiled plan before timing stimulus and ticks.
+    let mut reference_traces: Option<Vec<Vec<u16>>> = frozen
+        .as_ref()
+        .map(|report| -> Result<_> {
+            Ok(serde_json::from_value(
+                report["per_game_tick_output_words"].clone(),
+            )?)
+        })
+        .transpose()?;
+    let mut captured_traces = None;
     let mut validation = None;
     if changing_inputs {
         for checked_optimize in [false, optimize] {
             let mut world = load(&descriptor)?;
             let probes = fpu_probes(&mut world, &descriptor)?;
-            let mut compiler = Some(Compiler::default());
-            compiler
-                .as_mut()
-                .unwrap()
-                .compile(
-                    &world,
-                    world.get_corners(),
-                    CompilerOptions {
-                        assume_instant: true,
-                        optimize: checked_optimize,
-                        budget_multiplier: 8,
-                        ..Default::default()
-                    },
-                    Vec::new(),
-                    Default::default(),
-                )
-                .context("changing-input trace validation compilation failed")?;
+            if interpreted {
+                world.set_random_tick_speed(0);
+            }
+            let mut compiler = (!interpreted).then(Compiler::default);
+            if let Some(compiler) = &mut compiler {
+                compiler
+                    .compile(
+                        &world,
+                        world.get_corners(),
+                        CompilerOptions {
+                            assume_instant: true,
+                            optimize: checked_optimize,
+                            budget_multiplier: 8,
+                            ..Default::default()
+                        },
+                        Vec::new(),
+                        Default::default(),
+                    )
+                    .context("changing-input trace validation compilation failed")?;
+            }
             let (report, traces) = fpu_changing_inputs(
                 &mut compiler,
                 &mut world,
@@ -275,14 +343,20 @@ fn main() -> Result<()> {
                 true,
                 reference_traces.as_deref(),
             )?;
+            if interpreted {
+                captured_traces = Some(traces.clone());
+            }
             if reference_traces.is_none() {
                 reference_traces = Some(traces);
-            } else {
-                validation = Some(report);
+            }
+            validation = Some(report);
+            if interpreted {
+                break;
             }
         }
     }
     let mut samples = Vec::new();
+    let mut native_final_checkpoint = None;
     let backend = if interpreted {
         "interpreted"
     } else {
@@ -296,6 +370,9 @@ fn main() -> Result<()> {
     for index in 1..=iterations {
         println!("{backend} {component} sample {index}/{iterations}");
         let mut world = load(&descriptor)?;
+        if interpreted {
+            world.set_random_tick_speed(0);
+        }
         let probes = if changing_inputs {
             fpu_probes(&mut world, &descriptor)?
         } else {
@@ -346,6 +423,8 @@ fn main() -> Result<()> {
                         reference_traces.as_deref(),
                     )
                     .map(|(report, _)| report)
+                } else if component == "pc_counter" {
+                    pc_counter(&mut world, &descriptor, reference_traces.as_deref())
                 } else if component == "counter_basic" {
                     counter(&mut compiler, &mut world, &descriptor, ticks, flush_every)
                 } else {
@@ -357,13 +436,57 @@ fn main() -> Result<()> {
                         flush_every,
                     )
                 };
-                let mut result = result.unwrap_or_else(|error| json!({"error": error.to_string()}));
+                let mut result = if interpreted {
+                    result?
+                } else {
+                    result.unwrap_or_else(|error| json!({"error": error.to_string()}))
+                };
                 if !interpreted {
                     result["admitted"] = json!(true);
                 }
                 result
             }
         };
+        if interpreted {
+            sample["instant_piston_cache_stats"] =
+                json!(world.instant_piston_cache().map(|cache| cache.stats()));
+            sample["final_checkpoint"] = json!(cpu_support::checkpoint(
+                &world,
+                if component == "pc_counter" {
+                    4096
+                } else if changing_inputs {
+                    (episodes
+                        * if component == "fpu_legal" {
+                            input_every * 2
+                        } else {
+                            256
+                        }) as u32
+                } else {
+                    ticks
+                },
+                &[]
+            ));
+            if let Some(frozen) = &frozen {
+                ensure!(
+                    sample["final_checkpoint"] == frozen["samples"][0]["final_checkpoint"],
+                    "native final whole-world checkpoint differs from frozen baseline"
+                );
+            }
+            if let Some(checkpoint) = &native_final_checkpoint {
+                ensure!(
+                    sample["final_checkpoint"] == *checkpoint,
+                    "native final whole-world checkpoint differs across iterations"
+                );
+            } else {
+                native_final_checkpoint = Some(sample["final_checkpoint"].clone());
+            }
+            if component == "pc_counter" {
+                let traces = serde_json::from_value(sample["per_game_tick_output_words"].take())?;
+                if reference_traces.is_none() {
+                    reference_traces = Some(traces);
+                }
+            }
+        }
         sample["compile_seconds_metadata"] = json!(compile_seconds);
         sample["compile_statistics"] = json!(compiler.as_ref().and_then(Compiler::stats).map(|stats| {
             let regions = &stats.regions;
@@ -408,7 +531,7 @@ fn main() -> Result<()> {
     let input_median = input_elapsed.get(input_elapsed.len() / 2).copied();
     let changing_game_ticks = episodes as u64
         * if component == "fpu_legal" {
-            input_every as u64
+            input_every as u64 * if interpreted { 2 } else { 1 }
         } else {
             256
         };
@@ -417,10 +540,12 @@ fn main() -> Result<()> {
         "actual_origin": [origin(&descriptor).x, origin(&descriptor).y, origin(&descriptor).z],
         "flags": if interpreted { None } else { Some(if optimize { "-O --assume-instant" } else { "--assume-instant" }) }, "budget_multiplier": (!interpreted).then_some(8),
         "admitted_means": (!interpreted).then_some("compiler acceptance only; no physical or arithmetic equivalence claim"),
-        "scope": if interpreted { "interpreter Counter/divider with identical saved inputs, warmup, stimulus and observation windows" } else { "actual logical workloads; BubbleSort and full FPU without --changing-inputs are admission only; no runtime fallback" },
-        "measurement_kind": if changing_inputs { if component == "fpu_legal" { "full_fpu_raw_changing_inputs" } else { "divider_raw_changing_inputs" } } else { match (component.as_str(), interpreted) { ("counter_basic", true) => "interpreted_counter_runtime", ("counter_basic", false) => "logical_counter_runtime", ("fpu_divider", true) => "interpreted_divider_episodes", ("fpu_divider", false) => "logical_divider_episodes", _ => "admission_only" } },
+        "scope": if interpreted { "native interpreter with random ticks disabled; per-tick outputs and final whole-world checkpoint compared with --reference" } else { "actual logical workloads; BubbleSort and full FPU without --changing-inputs are admission only; no runtime fallback" },
+        "measurement_kind": if changing_inputs { if component == "fpu_legal" { "full_fpu_raw_changing_inputs" } else { "divider_raw_changing_inputs" } } else { match (component.as_str(), interpreted) { ("pc_counter", true) => "interpreted_pc_counter_runtime", ("counter_basic", true) => "interpreted_counter_runtime", ("counter_basic", false) => "logical_counter_runtime", ("fpu_divider", true) => "interpreted_divider_episodes", ("fpu_divider", false) => "logical_divider_episodes", _ => "admission_only" } },
         "timing": if changing_inputs {
-            String::from("whole phase timers include lever stimulus, tick_with_world and flush only with --flush-every 1; phase observations, compilation, warmup and independent validation excluded")
+            format!("timers include lever stimulus, {tick_operation} and optional compiled flush; observations, preparation and independent validation excluded")
+        } else if component == "pc_counter" {
+            String::from("4096 per-tick tick_interpreted timers after 23 ordered lever activations and one untimed activation tick; observation and checkpoint excluded")
         } else if component == "fpu_divider" {
             format!("accumulated stimulus and per-tick timers include lever use, {tick_operation} and optional compiled flush; initialization, one warm episode and output observations excluded")
         } else {
@@ -428,7 +553,9 @@ fn main() -> Result<()> {
         },
         "interpreter_flush_policy": interpreted.then_some("no-op: interpreter block state is already published"),
         "counter_protocol": "exact IO fixture; 24 inactive ticks, lever OFF->ON, 600 active warmup ticks, then fixed active window",
-        "game_ticks": if changing_inputs { Some(changing_game_ticks) } else if component == "counter_basic" { Some(u64::from(ticks)) } else { None }, "flush_every_game_ticks": flush_every,
+        "pc_counter_protocol": (component == "pc_counter").then_some("revised saved fixture; all 23 OFF levers enabled in Y/Z/X order; one untimed activation tick; 4096 measured ticks; exact decoded pulse peaks 1..682 and final count 682"),
+        "random_tick_speed": interpreted.then_some(0),
+        "game_ticks": if component == "pc_counter" { Some(4096) } else if changing_inputs { Some(changing_game_ticks) } else if component == "counter_basic" { Some(u64::from(ticks)) } else { None }, "flush_every_game_ticks": flush_every,
         "divider_protocol": (component == "fpu_divider" && !changing_inputs).then_some("saved A/B held; 64 ON initialization ticks; one untimed OFF128/ON128 warm episode; repeated held OFF128/ON128 complete episodes preserving ordinary clock timing; observe response170 during OFF and verify final reset0 after ON"),
         "episodes": (component == "fpu_divider" || changing_inputs).then_some(episodes),
         "changing_inputs": changing_inputs,
@@ -437,27 +564,32 @@ fn main() -> Result<()> {
         "sequence_period": (changing_inputs && workload == Workload::Sequence).then_some(128),
         "seed": changing_inputs.then_some(seed),
         "input_every_game_ticks": (changing_inputs && component == "fpu_legal").then_some(input_every),
-        "changing_input_protocol": changing_inputs.then_some(if component == "fpu_legal" {
+        "input_protocol_id": (changing_inputs && component == "fpu_legal" && interpreted).then_some("native-fpu-cycled-off-inputs-on-v1"),
+        "changing_input_protocol": changing_inputs.then_some(if component == "fpu_legal" && interpreted {
+            "cycled native raw-port stream: trigger ensured ON for 64 initial ticks; eight untimed warm vectors; each vector sets trigger OFF, delivers ordered changed-lever updates, holds OFF for input-every ticks, then ON for input-every reset ticks; no arithmetic or readiness oracle"
+        } else if component == "fpu_legal" {
             "continuous OFF raw-port stream: trigger ensured OFF before warmup and held OFF; 1024 initial ticks and untimed workload warmup (128 vectors for sequence, 32 otherwise); each measured vector delivers ordered changed-lever updates then input-every native game ticks; no arithmetic or readiness oracle"
         } else {
             "fixed-window raw-port benchmark: 64 initial ON ticks; untimed workload warmup (128 vectors for sequence, eight otherwise); ordered lever updates set operand port masks while ON, then hold all inputs ON64, OFF128, ON64; no arithmetic or readiness oracle"
         }),
         "trace_validation": validation.as_ref().map(|report| json!({
-            "reference": "independent unoptimized --assume-instant compiler with identical output ports/adapters and workload",
-            "selected_plan_every_game_tick_matches": true,
+            "reference": if interpreted { if frozen.is_some() { "supplied frozen native baseline" } else { "untimed native capture; reuse this report with --reference" } } else { "independent unoptimized --assume-instant compiler with identical output ports/adapters and workload" },
+            "selected_plan_every_game_tick_matches": !interpreted || frozen.is_some(),
             "output_varied": report["activity_confirmed"],
             "output_trace_sha256": report["output_trace_sha256"],
             "first_output_change_game_ticks": report["first_output_change_game_ticks"],
-            "latency_scope": if component == "fpu_legal" { "untimed replay; first visible output-word change after vector update relative to previous interval boundary; no valid-result latency claim" } else { "untimed replay; first visible output-word change after OFF relative to end of ON preparation; no valid-result latency claim" },
+            "latency_scope": if component == "fpu_legal" && interpreted { "untimed replay; first visible output-word change after trigger OFF and vector update relative to previous ON interval boundary; no valid-result latency claim" } else if component == "fpu_legal" { "untimed replay; first visible output-word change after vector update relative to previous interval boundary; no valid-result latency claim" } else { "untimed replay; first visible output-word change after OFF relative to end of ON preparation; no valid-result latency claim" },
         })),
+        "reference_path": reference_path,
+        "per_game_tick_output_words": if interpreted { captured_traces.as_ref().or(reference_traces.as_ref()) } else { None },
         "median_seconds": median,
-        "median_tps": median.filter(|_| component == "counter_basic" || changing_inputs).map(|seconds| if changing_inputs { changing_game_ticks as f64 / seconds } else { f64::from(ticks) / seconds }),
-        "median_ns_per_tick": median.filter(|_| component == "counter_basic" || changing_inputs).map(|seconds| seconds * 1e9 / if changing_inputs { changing_game_ticks as f64 } else { f64::from(ticks) }),
+        "median_tps": median.filter(|_| component == "pc_counter" || component == "counter_basic" || changing_inputs).map(|seconds| if changing_inputs { changing_game_ticks as f64 / seconds } else if component == "pc_counter" { 4096.0 / seconds } else { f64::from(ticks) / seconds }),
+        "median_ns_per_tick": median.filter(|_| component == "pc_counter" || component == "counter_basic" || changing_inputs).map(|seconds| seconds * 1e9 / if changing_inputs { changing_game_ticks as f64 } else if component == "pc_counter" { 4096.0 } else { f64::from(ticks) }),
         "median_episodes_per_second": median.filter(|_| component == "fpu_divider" || changing_inputs).map(|seconds| episodes as f64 / seconds),
         "median_input_processing_seconds": input_median,
         "median_input_processing_tps": input_median.map(|seconds| changing_game_ticks as f64 / seconds),
         "median_input_sets_per_second": input_median.map(|seconds| episodes as f64 / seconds),
-        "input_processing_scope": changing_inputs.then_some("stimulus and compiled tick cost; reported even when outputs stay constant; not completed arithmetic throughput"),
+        "input_processing_scope": changing_inputs.then_some("stimulus and selected backend tick cost; reported even when outputs stay constant; not completed arithmetic throughput"),
         "samples": samples,
     });
     if let Some(path) = output {
@@ -468,6 +600,86 @@ fn main() -> Result<()> {
         println!("{}", serde_json::to_string_pretty(&report)?);
     }
     Ok(())
+}
+
+fn pc_counter(
+    world: &mut PlotWorld,
+    descriptor: &Value,
+    expected: Option<&[Vec<u16>]>,
+) -> Result<Value> {
+    let origin = origin(descriptor);
+    let mut levers = Vec::new();
+    for y in 0..19 {
+        for z in 0..75 {
+            for x in 0..24 {
+                let pos = origin + BlockPos::new(x, y, z);
+                if let Block::Lever { lever } = world.get_block(pos) {
+                    ensure!(
+                        !lever.powered,
+                        "PC counter lever must initially be OFF at {pos:?}"
+                    );
+                    levers.push(pos);
+                }
+            }
+        }
+    }
+    ensure!(levers.len() == 23, "PC counter must have 23 controls");
+    let mut native = None;
+    for pos in levers {
+        use_lever(&mut native, world, pos);
+    }
+    world.tick_interpreted();
+    let read = |world: &PlotWorld| -> Result<u16> {
+        (0..16).try_fold(0u16, |word, bit| {
+            let pos = origin + BlockPos::new(13, 2, 3 + bit * 4);
+            let Block::RedstoneRepeater { repeater } = world.get_block(pos) else {
+                bail!("missing PC counter output at {pos:?}");
+            };
+            Ok((word << 1) | u16::from(!repeater.powered))
+        })
+    };
+    if let Some(expected) = expected {
+        ensure!(
+            expected.len() == 1 && expected[0].len() == 4096,
+            "PC counter reference must have exactly 4096 output words"
+        );
+    }
+    let mut elapsed = Duration::ZERO;
+    let mut words = Vec::with_capacity(4096);
+    let mut peaks = Vec::new();
+    let mut peak = 0;
+    for tick in 0..4096 {
+        let started = Instant::now();
+        world.tick_interpreted();
+        elapsed += started.elapsed();
+        let word = read(world)?;
+        if let Some(expected) = expected {
+            ensure!(
+                word == expected[0][tick],
+                "PC counter output differs from baseline at tick {}",
+                tick + 1
+            );
+        }
+        if word == 0 && peak != 0 {
+            peaks.push(peak);
+            peak = 0;
+        }
+        peak = peak.max(word);
+        words.push(word);
+    }
+    if peak != 0 {
+        peaks.push(peak);
+    }
+    ensure!(
+        peaks == (1..=682).collect::<Vec<u16>>() && words.last() == Some(&682),
+        "PC counter must produce consecutive pulse peaks 1 through 682"
+    );
+    Ok(
+        json!({"measurement_kind":"interpreted_pc_counter_runtime", "activity_confirmed":true,
+        "seconds":elapsed.as_secs_f64(), "game_ticks":4096,
+        "peak_count":peaks.len(), "final_count":words.last(),
+        "every_game_tick_compared":expected.is_some(), "per_game_tick_output_words":[words]}),
+    )
 }
 
 fn counter(
@@ -722,15 +934,38 @@ fn fpu_changing_inputs(
 ) -> Result<(Value, Vec<Vec<u16>>)> {
     let origin = origin(descriptor);
     let full_fpu = descriptor["ports"]["light_blue_operand_inputs"].is_array();
-    let warm_episodes = if workload == Workload::Sequence {
+    let cycled_full_fpu = full_fpu && compiler.is_none();
+    let warm_episodes = if cycled_full_fpu {
+        8
+    } else if workload == Workload::Sequence {
         128
     } else if full_fpu {
         32
     } else {
         8
     };
-    let initial_ticks = if full_fpu { 1024 } else { 64 };
-    let episode_ticks = if full_fpu { input_every } else { 256 };
+    let initial_ticks = if full_fpu && !cycled_full_fpu {
+        1024
+    } else {
+        64
+    };
+    let episode_ticks = if cycled_full_fpu {
+        input_every * 2
+    } else if full_fpu {
+        input_every
+    } else {
+        256
+    };
+    if let Some(expected) = expected {
+        ensure!(
+            expected.len() == episodes,
+            "full-FPU reference episode count changed"
+        );
+        ensure!(
+            expected.iter().all(|trace| trace.len() == episode_ticks),
+            "full-FPU reference trace length changed"
+        );
+    }
     let operand_bits = if full_fpu { 16 } else { 10 };
     let opcode_bits = if full_fpu { 3 } else { 0 };
     let trigger = origin + position(&descriptor["observations"]["trigger"][0]);
@@ -798,19 +1033,13 @@ fn fpu_changing_inputs(
         seed,
         warm_episodes + episodes,
     );
-    if full_fpu && trigger_lever.powered {
+    if full_fpu && trigger_lever.powered != cycled_full_fpu {
         use_lever(compiler, world, trigger);
     }
     for _ in 0..initial_ticks {
         tick(compiler, world);
     }
     flush(compiler, world);
-    if let Some(expected) = expected {
-        ensure!(
-            expected.len() == episodes,
-            "full-FPU reference episode count changed"
-        );
-    }
     let mut phase_times = [Duration::ZERO; 3];
     let mut traces = Vec::with_capacity(episodes);
     let mut boundaries = Vec::with_capacity(episodes);
@@ -830,7 +1059,9 @@ fn fpu_changing_inputs(
         } else {
             0
         };
-        let phases: &[usize] = if full_fpu {
+        let phases: &[usize] = if cycled_full_fpu {
+            &[input_every, input_every]
+        } else if full_fpu {
             std::slice::from_ref(&input_every)
         } else {
             &[64, 128, 64]
@@ -839,7 +1070,10 @@ fn fpu_changing_inputs(
             let started = Instant::now();
             if phase == 0 {
                 // The public API delivers these source changes separately.
-                // Full FPU stays OFF; divider inputs change while ON.
+                // Native FPU rearms between vectors; compiled FPU stays OFF.
+                if cycled_full_fpu {
+                    use_lever(compiler, world, trigger);
+                }
                 for (bit, &pos) in inputs.iter().enumerate() {
                     if ((current_inputs ^ stimulus) >> bit) & 1 != 0 {
                         use_lever(compiler, world, pos);
@@ -848,10 +1082,25 @@ fn fpu_changing_inputs(
             } else {
                 use_lever(compiler, world, trigger);
             }
-            for _ in 0..phase_ticks {
+            let mut native_elapsed = started.elapsed();
+            for game_tick in 0..phase_ticks {
+                let native_started = compiler.is_none().then(Instant::now);
                 tick(compiler, world);
                 if flush_every == 1 {
                     flush(compiler, world);
+                }
+                if let Some(native_started) = native_started {
+                    native_elapsed += native_started.elapsed();
+                }
+                if compiler.is_none() && measured && !capture_trace {
+                    let expected =
+                        expected.context("native workload needs a captured reference")?;
+                    ensure!(
+                        read_output(world)? == expected[episode][boundary_tick + game_tick],
+                        "native FPU episode {} game tick {} differs from baseline",
+                        episode + 1,
+                        boundary_tick + game_tick + 1
+                    );
                 }
                 if recording {
                     if flush_every == 0 {
@@ -860,7 +1109,11 @@ fn fpu_changing_inputs(
                     trace.push(read_output(world)?);
                 }
             }
-            let duration = started.elapsed();
+            let duration = if compiler.is_none() {
+                native_elapsed
+            } else {
+                started.elapsed()
+            };
             if measured {
                 phase_times[phase] += duration;
             }
@@ -876,17 +1129,13 @@ fn fpu_changing_inputs(
             );
             if full_fpu {
                 ensure!(
-                    matches!(world.get_block(trigger), Block::Lever { lever } if !lever.powered),
-                    "full-FPU trigger must remain OFF throughout the input stream"
+                    matches!(world.get_block(trigger), Block::Lever { lever } if lever.powered == (cycled_full_fpu && phase == 1)),
+                    "full-FPU trigger differs from the declared phase"
                 );
             }
             boundary_tick += phase_ticks;
             if measured {
                 if let Some(expected) = expected {
-                    ensure!(
-                        expected[episode].len() == episode_ticks,
-                        "full-FPU reference trace length changed"
-                    );
                     ensure!(word == expected[episode][boundary_tick - 1], "full-FPU episode {} phase {phase} output {word} differs from plain reference {}", episode + 1, expected[episode][boundary_tick - 1]);
                 }
                 boundary_hash.update(word.to_le_bytes());
@@ -955,18 +1204,18 @@ fn fpu_changing_inputs(
         "tps": varied.then_some(episodes as f64 * episode_ticks as f64 / seconds), "input_episodes_per_second": varied.then_some(episodes as f64 / seconds),
         "no_throughput_reason": (!varied).then_some("no visible output transitions in validation; this input/trigger window is not a confirmed active FPU workload"),
         "unique_output_words": unique_words,
-        "unique_output_words_scope": "separate untimed per-game-tick validation; actual timed outputs are the phase-boundary words",
-        "phase_seconds": if full_fpu { json!({"continuous_off": phase_times[0].as_secs_f64()}) } else { json!({"held_on_prepare64": phase_times[0].as_secs_f64(), "off_compute128": phase_times[1].as_secs_f64(), "on_reset64": phase_times[2].as_secs_f64()}) },
+        "unique_output_words_scope": if compiler.is_none() { "separate untimed per-game-tick validation; timed native runs compare every game tick outside timers" } else { "separate untimed per-game-tick validation; actual timed outputs are the phase-boundary words" },
+        "phase_seconds": if cycled_full_fpu { json!({"off_compute":phase_times[0].as_secs_f64(), "on_reset":phase_times[1].as_secs_f64()}) } else if full_fpu { json!({"continuous_off": phase_times[0].as_secs_f64()}) } else { json!({"held_on_prepare64": phase_times[0].as_secs_f64(), "off_compute128": phase_times[1].as_secs_f64(), "on_reset64": phase_times[2].as_secs_f64()}) },
         "warmup_game_ticks": initial_ticks + warm_episodes * episode_ticks,
         "warmup_input_sets": warm_episodes,
-        "input_lever_bit_flips": input_flips, "trigger_edges": if full_fpu { 0 } else { episodes * 2 },
+        "input_lever_bit_flips": input_flips, "trigger_edges": if full_fpu && !cycled_full_fpu { 0 } else { episodes * 2 },
         "mean_changed_bits_per_input_set": input_flips as f64 / episodes as f64,
         "unique_input_sets": unique_inputs.len(), "repeated_input_sets": episodes - unique_inputs.len(),
         "input_stream_sha256": format!("{:x}", input_hash.finalize()),
         "workload": workload.name(), "workload_description": workload.description(),
         "sequence_period": (workload == Workload::Sequence).then_some(128),
-        "explicit_stimulus_calls": input_flips + if full_fpu { 0 } else { episodes as u64 * 2 },
-        "input_updates": if full_fpu { "ordered changed-lever callbacks while trigger remains OFF; inputs held during each native tick interval; no atomic multi-input API" } else { "ordered changed-lever callbacks while ON; all input/opcode levers held for ON64/OFF128/ON64; no atomic multi-input API" },
+        "explicit_stimulus_calls": input_flips + if full_fpu && !cycled_full_fpu { 0 } else { episodes as u64 * 2 },
+        "input_updates": if cycled_full_fpu { "trigger OFF before ordered changed-lever callbacks; hold OFF for input-every ticks; trigger ON and hold for input-every reset ticks; no atomic multi-input API" } else if full_fpu { "ordered changed-lever callbacks while trigger remains OFF; inputs held during each native tick interval; no atomic multi-input API" } else { "ordered changed-lever callbacks while ON; all input/opcode levers held for ON64/OFF128/ON64; no atomic multi-input API" },
         "input_every_game_ticks": full_fpu.then_some(input_every),
         "operand_bank_bits": operand_bits, "opcode_bits": opcode_bits, "input_lever_count": inputs.len(),
         "random_generator": (workload != Workload::Sequence).then_some("xorshift64(13,7,17)"), "seed": seed,
@@ -987,8 +1236,8 @@ fn fpu_changing_inputs(
         "output_encoding": if full_fpu { "manifest output order bit15..0; powered Repeater=1; raw presentation mask" } else { "manifest MSB-first output order; unpowered Repeater=1; raw presentation mask" },
         "phase_boundary_words": boundaries, "phase_boundary_sha256": format!("{:x}", boundary_hash.finalize()),
         "output_trace_sha256": format!("{:x}", trace_hash.finalize()),
-        "output_trace_sha256_scope": if capture_trace { "actual untimed per-game-tick validation trace" } else { "validated reference trace; actual timed observations are the separate phase-boundary checksum" },
-        "every_game_tick_compared": capture_trace && expected.is_some(),
+        "output_trace_sha256_scope": if capture_trace { "actual untimed per-game-tick validation trace" } else if compiler.is_none() { "validated reference trace; timed native runs compare every game tick outside timers" } else { "validated reference trace; actual timed observations are the separate phase-boundary checksum" },
+        "every_game_tick_compared": (capture_trace || compiler.is_none()) && expected.is_some(),
         "timed_phase_boundaries_compared": !capture_trace && expected.is_some(),
         "first_output_change_game_ticks": latencies,
         "flush_policy": if flush_every == 1 { "inside every timed tick" } else { "phase boundaries only outside timers; untimed validation publishes every tick" },

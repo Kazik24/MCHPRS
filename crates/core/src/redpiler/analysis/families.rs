@@ -8,7 +8,7 @@ use mchprs_blocks::block_entities::{BlockEntity, ContainerType};
 use mchprs_blocks::blocks::Block;
 use mchprs_blocks::{BlockFace, BlockFacing, BlockPos};
 use mchprs_world::TickEntry;
-use rustc_hash::FxHashSet;
+use rustc_hash::{FxHashMap, FxHashSet};
 use serde::Serialize;
 use std::fmt;
 
@@ -194,6 +194,12 @@ pub(super) fn recognize<W: World>(
     groups: &[PayloadGroup],
     ticks: &[TickEntry],
 ) -> Result<(Vec<PistonRecognition>, Vec<GroupRecognition>), AnalysisError> {
+    let mut actor_groups = vec![0; pistons.len()];
+    for (group, descriptor) in groups.iter().enumerate() {
+        for &actor in &descriptor.members {
+            actor_groups[actor] = group;
+        }
+    }
     let movement: FxHashSet<_> = groups
         .iter()
         .flat_map(|g| g.positions.iter().copied())
@@ -272,7 +278,14 @@ pub(super) fn recognize<W: World>(
         }
         observer(topology, p, &movement, &pending, &mut result)?;
         torches(topology, p, &movement, &pending, &mut result)?;
-        dust(topology, p, &movement, &pending, &mut result)?;
+        dust(
+            topology,
+            p,
+            actor_groups[index],
+            &movement,
+            &pending,
+            &mut result,
+        )?;
         if result.resets.is_empty() {
             result.failures.push(RecognitionFailure::NoResetPath);
         }
@@ -524,6 +537,7 @@ fn torches<W: World>(
 fn dust<W: World>(
     topology: &mut Topology<'_, W>,
     p: &PistonDescriptor,
+    group: usize,
     movement: &FxHashSet<BlockPos>,
     pending: &FxHashSet<BlockPos>,
     r: &mut PistonRecognition,
@@ -545,7 +559,9 @@ fn dust<W: World>(
         let Some(Block::RedstoneWire { wire }) = topology.read(source)? else {
             continue;
         };
-        if !r.inputs.wires.contains(&source) {
+        let conductor = family == ResetFamily::DustBelowHead
+            && conductor_reset(topology, p, source, wire, movement, pending)?;
+        if !r.inputs.wires.contains(&source) && !conductor {
             // Under-head dust is a named construction even if its support no
             // longer returns power. Unrelated lateral output dust is ignored.
             if family == ResetFamily::DustBelowHead {
@@ -563,17 +579,15 @@ fn dust<W: World>(
         for &pos in &supply.outside_bounds {
             r.failures.push(RecognitionFailure::OutsideBounds { pos });
         }
-        let Some(group) = topology.mobile_group(p.head) else {
-            r.failures
-                .push(RecognitionFailure::NoPayloadSupply { source });
-            continue;
-        };
-        let positions: Vec<_> = supply
+        let mut positions: Vec<_> = supply
             .sources
             .iter()
             .filter(|d| d.kind == SourceKind::MobilePayload { group })
             .map(|d| d.source)
             .collect();
+        if !positions.contains(&p.head) && conductor {
+            positions.push(p.head);
+        }
         if !positions.contains(&p.head) {
             r.failures
                 .push(RecognitionFailure::NoPayloadSupply { source });
@@ -597,4 +611,104 @@ fn dust<W: World>(
         });
     }
     Ok(())
+}
+
+/// A near conductor can close the reset path without emitting power itself.
+/// Its fixed repeater supply must remain on for every admitted input value.
+fn conductor_reset<W: World>(
+    topology: &mut Topology<'_, W>,
+    p: &PistonDescriptor,
+    source: BlockPos,
+    wire: mchprs_blocks::blocks::RedstoneWire,
+    movement: &FxHashSet<BlockPos>,
+    pending: &FxHashSet<BlockPos>,
+) -> Result<bool, AnalysisError> {
+    let Some(payload) = topology.read(p.payload)? else {
+        return Ok(false);
+    };
+    if !BlockFace::from(p.piston.facing).is_horizontal()
+        || payload == Block::RedstoneBlock
+        || !crate::redpiler::instant::outputs::supported_payload(payload)
+        || !topology
+            .read(p.pos.offset(BlockFace::Bottom))?
+            .is_some_and(|block| block.is_solid())
+    {
+        return Ok(false);
+    }
+    // Shape reads stay within the adjacent columns, including their top/bottom cells.
+    let mut context = FxHashMap::default();
+    for x in -1..=1 {
+        for y in -1..=1 {
+            for z in -1..=1 {
+                let pos = source + BlockPos::new(x, y, z);
+                let Some(block) = topology.read(pos)? else {
+                    return Ok(false);
+                };
+                if pos != p.head
+                    && pos != p.payload
+                    && pos != p.pos
+                    && (movement.contains(&pos) || matches!(block, Block::Piston { .. }))
+                {
+                    return Ok(false);
+                }
+                context.insert(pos, block);
+            }
+        }
+    }
+    context.insert(p.head, payload);
+    context.insert(p.payload, Block::Air);
+    context.insert(
+        p.pos,
+        Block::Piston {
+            piston: p.piston.extend(false),
+        },
+    );
+    let shape = redstone::wire::get_regulated_sides_from(wire, source, |pos| context[&pos]);
+    if redstone::wire::get_current_side(
+        shape,
+        BlockFace::from(p.piston.facing)
+            .opposite()
+            .unwrap_direction(),
+    )
+    .is_none()
+    {
+        return Ok(false);
+    }
+    for side in BlockFace::values() {
+        let pos = p.head.offset(side);
+        if movement.contains(&pos) || pending.contains(&pos) {
+            continue;
+        }
+        let Some(Block::RedstoneRepeater { repeater }) = topology.read(pos)? else {
+            continue;
+        };
+        if !repeater.powered || repeater.locked || repeater.facing.block_face() != side {
+            continue;
+        }
+        let rear = pos.offset(repeater.facing.block_face());
+        if movement.contains(&rear) || topology.read(rear)? != Some(Block::RedstoneBlock) {
+            continue;
+        }
+        let mut lockable = false;
+        for facing in [repeater.facing.rotate(), repeater.facing.rotate_ccw()] {
+            let adjacent = pos.offset(facing.block_face());
+            let Some(block) = topology.read(adjacent)? else {
+                lockable = true;
+                break;
+            };
+            lockable |= movement.contains(&adjacent)
+                || (redstone::is_diode(block)
+                    && redstone::power::emits_weak_power(
+                        block,
+                        topology.world,
+                        adjacent,
+                        facing.block_face(),
+                        false,
+                    ));
+        }
+        if !lockable {
+            return Ok(true);
+        }
+    }
+    Ok(false)
 }

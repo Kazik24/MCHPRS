@@ -486,6 +486,9 @@ impl DirectBackend {
         self.scheduler.end_tick(queues);
         // Owned periodic clocks sample after ordinary events at this deadline.
         self.evaluate_instant(true);
+        for runtime in &mut self.instant {
+            runtime.end_tick();
+        }
     }
 
     pub(crate) fn flush<W: World>(&mut self, world: &mut W, io_only: bool) {

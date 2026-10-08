@@ -1,4 +1,7 @@
+mod instant_piston;
 pub mod storage;
+pub use instant_piston::InstantPistonCache;
+pub(crate) use instant_piston::PowerRoute;
 pub(crate) mod wire_cache;
 pub use wire_cache::Neighbor as WireNeighbor;
 
@@ -33,10 +36,20 @@ pub trait World {
     /// Removes a block entity at `pos` if it exists.
     fn delete_block_entity(&mut self, pos: BlockPos);
 
+    /// Native motion restoration retains its certificate until completion is checked.
+    fn delete_piston_entity(&mut self, pos: BlockPos) {
+        self.delete_block_entity(pos);
+    }
+
     /// Returns a reference to the block entity at `pos` if it exists.
     /// Returns None if there is no block entity at `pos`.
     fn get_block_entity(&self, pos: BlockPos) -> Option<&BlockEntity>;
     fn get_block_entity_mut(&mut self, pos: BlockPos) -> Option<&mut BlockEntity>;
+    fn set_piston_progress(&mut self, pos: BlockPos, progress: f32) {
+        if let Some(BlockEntity::MovingPiston(entity)) = self.get_block_entity_mut(pos) {
+            entity.set_progress(progress);
+        }
+    }
     fn piston_state(&self) -> &mchprs_world::PistonState;
     fn piston_state_mut(&mut self) -> &mut mchprs_world::PistonState;
 
@@ -70,6 +83,20 @@ pub trait World {
 
     /// Compact section/local address, when this world supports indexed wire walks.
     fn wire_location(&self, _pos: BlockPos) -> Option<u32> {
+        None
+    }
+
+    /// Read a live state through an address returned by this world's wire cache.
+    fn get_wire_block_raw(&self, location: WireNeighbor) -> u32 {
+        self.get_block_raw(location.pos)
+    }
+
+    /// Opt-in worlds must revoke affected certificates on arbitrary block/entity edits.
+    fn instant_piston_cache(&self) -> Option<&InstantPistonCache> {
+        None
+    }
+
+    fn instant_piston_cache_mut(&mut self) -> Option<&mut InstantPistonCache> {
         None
     }
 

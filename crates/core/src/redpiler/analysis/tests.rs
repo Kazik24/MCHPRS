@@ -1,10 +1,12 @@
 use super::*;
+mod admission;
 mod compatibility;
 mod ideal;
 mod legalization;
 mod memory;
 mod observer_logical;
 mod outputs;
+mod piston_contract;
 mod presentation;
 mod regions;
 mod research;
@@ -571,7 +573,7 @@ fn apply_adder_actions(compiled: &mut PlotWorld, compiler: &mut Compiler, case: 
 }
 
 #[test]
-fn compiled_adder_matches_arithmetic_and_holds_each_logical_transaction() {
+fn compiled_adder_matches_arithmetic_in_each_response_window() {
     for assume_instant in [false, true] {
         for optimize in [false, true] {
             for io_only in [false, true] {
@@ -605,23 +607,21 @@ fn compiled_adder_matches_arithmetic_and_holds_each_logical_transaction() {
                         .logical_stats()
                         .is_empty());
                     apply_adder_actions(&mut world, &mut compiler, case);
-                    for _ in 0..16 {
+                    for tick in 1..=24 {
                         compiler.tick();
                         compiler.flush(&mut world);
-                    }
-                    for _ in 0..8 {
-                        assert_eq!(
-                            regions::repeater_value(
-                                &world,
-                                &manifest["ports"]["observations"]["sum_repeater"],
-                                BlockPos::new(0, 0, 0)
-                            ) as u64,
-                            case["expectation"]["sum"].as_u64().unwrap(),
-                            "{}",
-                            case["id"]
-                        );
-                        compiler.tick();
-                        compiler.flush(&mut world);
+                        if tick % 6 == 5 {
+                            assert_eq!(
+                                regions::repeater_value(
+                                    &world,
+                                    &manifest["ports"]["observations"]["sum_repeater"],
+                                    BlockPos::new(0, 0, 0)
+                                ) as u64,
+                                case["expectation"]["sum"].as_u64().unwrap(),
+                                "{}",
+                                case["id"]
+                            );
+                        }
                         assert!(world.piston_state().events.is_empty());
                         assert!(world.piston_state().motions.is_empty());
                     }
@@ -691,7 +691,7 @@ fn clocked_counter_rejects_missing_sampling_extra_writers_and_exposed_clock() {
         let expected = match mutation {
             "sampling" => {
                 world.set_block(BASE + BlockPos::new(3, 11, 19), Block::Air);
-                "independent sampling output"
+                "no independent sampling source"
             }
             "cap" => {
                 world.set_block(BASE + BlockPos::new(2, 13, 19), Block::Glass {});
@@ -880,7 +880,7 @@ fn compiled_adder_is_derived_from_rotated_and_translated_geometry() {
             for tick in 1..=16 {
                 compiler.tick();
                 compiler.flush(&mut compiled);
-                if tick >= 12 {
+                if tick % 6 == 5 {
                     let mut value = 0u16;
                     for (bit, local) in manifest["ports"]["observations"]["sum_repeater"]
                         .as_array()

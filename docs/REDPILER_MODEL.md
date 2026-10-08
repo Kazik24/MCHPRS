@@ -8,9 +8,11 @@ limits. Physical electrical and piston execution are defined separately in
 [REDSTONE_MODEL.md](REDSTONE_MODEL.md) and [PISTON_MODEL.md](PISTON_MODEL.md).
 Runnable evidence and fixture protocols are in [tests/README.md](tests/README.md).
 
-Redpiler has an ordinary electrical graph and cached logical piston regions,
-with explicit independent sampling or a recognized shared-clock bank where
-needed. Default compilation and `--assume-instant` use the same runtime;
+Redpiler has an ordinary electrical graph, cached Boolean piston circuits,
+explicit BUD memory nodes, and scheduled electrical output boundaries.
+Inputs must be synchronized and held through the supported response/reset
+episode; changes outside that protocol have undefined compiled behavior.
+Default compilation and `--assume-instant` use the same runtime;
 the flag relaxes construction proofs, not sampling or execution semantics.
 The former wave and sequential executors are retired. Retained sequential
 extraction helpers contribute dependency and admission proofs, not another
@@ -198,9 +200,9 @@ See [update.rs](../crates/core/src/redpiler/backend/direct/update.rs),
 For actuator $a$, geometry predicates describe far payload, near payload,
 stationary head, stationary retracted base, and moving base. They are different
 variables because a moving block does not provide the stationary material's
-power or conduction. The active logical runtime projects settled geometry;
-its moving-base predicate is always false. Let $g$ collect the admitted
-geometry predicates and committed stored state.
+power or conduction. Internal Boolean decisions use settled geometry;
+electrical outputs and observers use scheduled boundary geometry. Let $g$
+collect the admitted geometry predicates and committed stored state.
 
 An extracted consumer channel $o$ is a finite set of terms
 $\mathcal T_o=\{(\gamma_t,\operatorname{source}_t,a_t)\}$, where $\gamma_t(g)$
@@ -295,8 +297,8 @@ author intended.
 ## 6. Cached logical response execution
 
 An unclocked region evaluates $F$ when its bound ordinary inputs change.
-Ordinary delayed graph nodes remain separate dynamic inputs. There is no
-movement phase or reset waveform. For a nonmemory actor, settled geometry is
+Ordinary delayed graph nodes remain separate dynamic inputs. Internal Boolean
+evaluation uses settled geometry. For a nonmemory actor, this geometry is
 
 $$
 \mathrm{Far}_B=\neg f_B,\quad
@@ -321,9 +323,28 @@ once. Response, output, and sampling domains have separate snapshots and
 caches. Changed inputs invalidate dependent decisions; evaluation walks needed
 branches and shares cached subexpressions, including computed actuator
 conditions in the local response DAG. Ordinary source dependencies are indexed,
-so unchanged unclocked regions need no Boolean reevaluation. Output guards
-read committed memory and settled geometry, not a response snapshot from
-before a commit.
+so unchanged unclocked regions need no Boolean reevaluation. Electrical output
+guards instead read a small scheduled boundary phase. Only actors used by
+ordinary consumers or observers need this state; a shared payload includes all
+its possible owners. No native piston events, movement entities, world scans,
+or neighbor callbacks run in the compiled executor.
+
+For a certified observer or payload-fed dust reset, a response launched at $r$
+uses these electrical phases:
+
+| Phase | Tick | Conducting payload occupancy |
+| --- | --- | --- |
+| Retracting | $r$ | Neither far nor near |
+| Retracted | $r+2$ | Near |
+| Extending | $r+3$ | Neither far nor near |
+| Extended | $r+5$ | Far |
+| Next response while active | $r+6$ | Start the next cycle |
+
+Direct input actions between ticks launch on the next tick. Scheduled source
+changes can launch within their current tick. Moving payloads do not emit or
+conduct power. Ordinary repeaters, observers and bulbs consume the resulting
+electrical edges through their existing graph rules. An idle tick checks the
+next deadline; Boolean functions are not reevaluated for each boundary phase.
 
 Compilation validates stationary entry, matching extended heads or an
 unambiguous retained near payload, supported materials, coupled combinational
@@ -337,8 +358,28 @@ ownership, and pending owned work remain admission failures.
 A reset observer can be omitted only after guarded extraction proves that its
 pulse resets pure response targets without independently sampling memory or
 reaching an ordinary data consumer. Explicit storage and clocks retain their
-sampling owners. This logical abstraction does not reproduce every physical
-reset pulse or intermediate movement observation.
+sampling owners. Certification retains the reset owner and its electrically
+affected actors so exposed reset edges survive the Boolean abstraction.
+The model covers synchronized instant constructions; arbitrary interacting
+movement, destructive payloads and desynchronized reset histories are outside
+its contract.
+
+An ordinary timed node fed by piston outputs can provide QC data without
+notifying the receiving piston. A separate piston update then samples that
+data. This interface requires an explicit sampling domain; treating it as a
+combinational input launches responses on the wrong tick. The revised
+`TEST_POTADOS_PC_COUNTER` contains this interface: repeater data changes at
+tick 5, the update wave launches the response at tick 7, and its output
+repeater changes at tick 9. The simple unclocked model launched at tick 5
+and changed that output at tick 7. Admission must reject an unrepresented
+sampling interface with either flag. This limitation does not establish that
+the physical counter is noninstant.
+
+Two other notification interfaces are excluded: a reset observer whose
+falling pulse returns through a notifying wire can interrupt extension and
+drop the retained block, and an ordinary observer watching a piston-driven
+trapdoor or note block depends on native callbacks that those blocks do not
+emit on state changes. Neither interface is replayed by the Boolean executor.
 
 See [program.rs](../crates/core/src/redpiler/instant/program.rs),
 [logical.rs](../crates/core/src/redpiler/backend/direct/instant/logical.rs), and
@@ -347,7 +388,7 @@ See [program.rs](../crates/core/src/redpiler/instant/program.rs),
 ## 7. Shared-clock memory
 
 The specialized clock recognizer owns one empty ordinary downward generator,
-its observers, and 1–64 independently owned downward redstone-block cells.
+its observers, and 1–64 independently owned cells with supported payloads.
 Its control depends on one ordinary torch source and not on stored data.
 Validation follows the clock's control expression, including upstream pure
 actuators; independent data inputs elsewhere in the region are not clock controls.
@@ -356,9 +397,9 @@ The bank has an independently identified sampling route without extra writers.
 Different independent regions can own different clocks.
 
 For a stored cell, $q_a=1$ means retracted/near and $q_a=0$ means extended/far.
-An inactive clock holds the bank and last sampled response. An active clock
-samples on its first evaluation, then every six steps. Each sample freezes
-inputs and the old bank, evaluates all responses, and commits the bank together:
+An inactive clock holds the bank. An active clock launches a response every six
+steps. Each launch freezes inputs and the old bank and evaluates the Boolean
+responses. The update net samples two steps later and commits the bank together:
 
 $$
 q_a^+\gets F_a(\mathbf s,\mathbf q^-)\quad(a\in\text{memory}).
@@ -367,7 +408,8 @@ $$
 Updating one cell before evaluating another would define a different machine.
 The extracted transition is $\mathbf q_{k+1}=H(\mathbf s_k,\mathbf q_k)$,
 where $H_a=F_a$ for stored actors. A counter is one possible instance of $H$;
-the evaluator contains no arithmetic increment instruction.
+the evaluator contains no arithmetic increment instruction. A bank commit does
+not reevaluate the pure circuit until the next response launch.
 
 Changing data alone does not sample a cell. Stopping preserves memory;
 restarting begins a fresh cadence. Output terms dependent on ordinary sources

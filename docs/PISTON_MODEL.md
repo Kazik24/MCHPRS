@@ -441,6 +441,25 @@ The following literal implementation choices matter when extending those models:
 - Support is a directional predicate. A moving cell usually loses stationary support, with an explicit downward retracting source-base exception for dust. Restore-time validity and head ownership still apply.
 - Same-value BUD samples are observable even without a movement. A movement count cannot stand in for an ordered sample trace or establish continuously sampled storage.
 
+The interpreter can learn a per-piston address certificate from an actual native
+retract/reset cycle. Its initial family is a sticky, non-upward actor moving one
+entity-free redstone block, with a downward-facing reset observer directly above
+the base and an entity-free solid cap. Admission requires ordinary pull
+retraction, both exact motion identities completing, an observer-driven
+single-block reset without an alternate cap writer, and both reset motions
+completing with the expected restored footprint. Geometry alone never enables
+the fast path.
+
+A proven actor caches the eleven addresses from section 2's power query and the
+six strong-power source addresses around each potential conductor. Each sample
+still reads live block states and electrical strengths in the original order.
+Native events, notifications, BUD samples and movement phases remain
+unchanged. Relevant block/entity edits revoke certificates; mutable chunk or
+piston-state access clears them. Certificates are bounded, ephemeral interpreter
+state, rather than saved-world data or permission to collapse future waves.
+Runtime coverage and benchmark protocols are recorded in
+[tests/INSTANT_PISTONS.md](tests/INSTANT_PISTONS.md).
+
 | Subject | Source |
 | --- | --- |
 | Power, requests, acceptance and mutation order | [piston.rs](../crates/core/src/redstone/piston.rs) |

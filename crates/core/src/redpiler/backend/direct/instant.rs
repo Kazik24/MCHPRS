@@ -11,6 +11,7 @@ use mchprs_blocks::BlockPos;
 use rustc_hash::{FxHashMap, FxHashSet};
 
 mod logical;
+mod timing;
 
 pub(super) struct Runtime {
     logical: Option<logical::State>,
@@ -31,6 +32,14 @@ pub(super) struct Runtime {
     sampling_pending: bool,
     observations: Vec<(BlockPos, Observation, Block)>,
     observations_dirty: bool,
+    boundaries: Vec<timing::Boundary>,
+    boundary_index: Vec<Option<usize>>,
+    reset_owners: Vec<Vec<usize>>,
+    next_boundary: Option<u64>,
+    pending_launch: bool,
+    in_tick: bool,
+    bank_deadline: Option<u64>,
+    bank_values: Vec<bool>,
 }
 
 #[derive(Clone, Copy)]
@@ -363,6 +372,15 @@ impl Runtime {
                 return Err(BackendError::LogicalWireInput { pos });
             }
         }
+        aliases.retain(|(node, _)| {
+            !nodes[*node].updates.is_empty()
+                || logical
+                    .as_ref()
+                    .unwrap()
+                    .source_nodes()
+                    .any(|source| source == *node)
+                || output_sources.contains(node)
+        });
         let fired: Vec<_> = program
             .pistons
             .iter()
@@ -392,6 +410,75 @@ impl Runtime {
         for (actor, &value) in fired.iter().enumerate() {
             group_fired[actor_groups[actor]] |= value;
         }
+        let mut geometry_masks = vec![0u8; fired.len()];
+        for (actor, part) in logical.as_ref().unwrap().outputs.geometry_inputs() {
+            geometry_masks[actor] |= 1 << part as u8;
+        }
+        for &(node, ref supply) in &aliases {
+            if nodes[node].updates.is_empty() {
+                continue;
+            }
+            match supply {
+                Supply::Wave { group, near, .. } => {
+                    let part = if near.is_some() {
+                        GeometryPart::NearPayload
+                    } else {
+                        GeometryPart::FarPayload
+                    };
+                    for &actor in &program.groups[*group] {
+                        geometry_masks[actor] |= 1 << part as u8;
+                    }
+                }
+                Supply::Memory { actor, far } => {
+                    geometry_masks[*actor] |= 1
+                        << (if *far {
+                            GeometryPart::FarPayload
+                        } else {
+                            GeometryPart::NearPayload
+                        }) as u8;
+                }
+            }
+        }
+        for members in &program.groups {
+            let mask = members
+                .iter()
+                .fold(0, |mask, &actor| mask | geometry_masks[actor]);
+            for &actor in members {
+                geometry_masks[actor] |= mask;
+            }
+        }
+        let mut reset_owners = vec![Vec::new(); fired.len()];
+        for group in &program.reset_groups {
+            for &actor in &group.actors {
+                reset_owners[actor].push(group.owner);
+            }
+        }
+        if let Some(clock) = &program.clocked {
+            reset_owners[clock.clock].push(clock.clock);
+        }
+        for actor in 0..fired.len() {
+            reset_owners[actor].sort_unstable();
+            reset_owners[actor].dedup();
+        }
+        let mut boundary_index = vec![None; fired.len()];
+        let mut boundaries = Vec::new();
+        for actor in 0..fired.len() {
+            if geometry_masks[actor] != 0 {
+                boundary_index[actor] = Some(boundaries.len());
+                boundaries.push(timing::Boundary::new(
+                    actor,
+                    reset_owners[actor].clone(),
+                    fired[actor],
+                ));
+            }
+        }
+        let bank_values = vec![
+            false;
+            program
+                .clocked
+                .as_ref()
+                .map_or(0, |clock| clock.memory.len())
+        ];
         let mut runtime = Self {
             logical,
             fired,
@@ -411,6 +498,14 @@ impl Runtime {
             sampling_pending: false,
             observations: Vec::new(),
             observations_dirty: false,
+            boundaries,
+            boundary_index,
+            reset_owners,
+            next_boundary: None,
+            pending_launch: false,
+            in_tick: false,
+            bank_deadline: None,
+            bank_values,
         };
         // Compilation establishes event baselines; activation itself is not a sample.
         let mut state = runtime.logical.take().unwrap();
@@ -457,6 +552,11 @@ impl Runtime {
 
     pub(super) fn begin_tick(&mut self) {
         self.elapsed += 1;
+        self.in_tick = true;
+    }
+
+    pub(super) fn end_tick(&mut self) {
+        self.in_tick = false;
     }
 
     pub(super) fn source_nodes(&self) -> impl Iterator<Item = NodeId> + '_ {
@@ -518,15 +618,47 @@ impl Runtime {
         sources_changed: bool,
         clock_event: bool,
     ) -> Vec<(NodeId, u8)> {
+        let boundary_due = clock_event
+            && self
+                .next_boundary
+                .is_some_and(|deadline| deadline <= self.elapsed);
+        let bank_due = clock_event
+            && self
+                .bank_deadline
+                .is_some_and(|deadline| deadline <= self.elapsed);
+        let launch_due = clock_event && self.pending_launch;
         let state = self.logical.as_ref().unwrap();
         let due = clock_event
             && state
                 .next_sample
                 .is_some_and(|deadline| deadline <= self.elapsed);
-        if state.initialized && !sources_changed && !due && !self.sampling_pending {
+        if state.initialized && !sources_changed && !due && !self.sampling_pending && !bank_due {
+            if boundary_due || launch_due {
+                if self.advance_boundaries(launch_due) {
+                    return self.supply_changes(nodes);
+                }
+            }
             return Vec::new();
         }
         let mut state = self.logical.take().unwrap();
+        if bank_due {
+            self.bank_deadline = None;
+            for (cell, &value) in self
+                .program
+                .clocked
+                .as_ref()
+                .unwrap()
+                .memory
+                .iter()
+                .zip(&self.bank_values)
+            {
+                self.memory[cell.actor] = value;
+            }
+            #[cfg(test)]
+            {
+                state.samples += 1;
+            }
+        }
         state
             .responses
             .capture(|input, threshold| self.read_input(input, threshold, nodes));
@@ -555,14 +687,12 @@ impl Runtime {
                 self.group_fired[self.actor_groups[actor]] |= fired;
             }
             if let Some(clock) = &self.program.clocked {
-                for cell in &clock.memory {
-                    self.memory[cell.actor] = self.fired[cell.actor];
+                for (cell, value) in clock.memory.iter().zip(&mut self.bank_values) {
+                    *value = self.fired[cell.actor];
                 }
-                #[cfg(test)]
-                {
-                    state.samples += 1;
-                }
-                state.next_sample = Some(self.elapsed + 6);
+                let launch = self.elapsed + u64::from(!self.in_tick);
+                self.bank_deadline = Some(launch + 2);
+                state.next_sample = Some(launch + 6);
             }
         }
         state
@@ -631,7 +761,44 @@ impl Runtime {
         state.initialized = true;
         self.observations_dirty = true;
         self.logical = Some(state);
+        if clock_event {
+            self.advance_boundaries(true);
+        } else {
+            self.pending_launch = true;
+        }
         self.supply_changes(nodes)
+    }
+
+    fn advance_boundaries(&mut self, launch: bool) -> bool {
+        self.pending_launch = false;
+        let clock_active = self
+            .program
+            .clocked
+            .as_ref()
+            .is_none_or(|clock| self.fired[clock.clock]);
+        let mut changed = false;
+        for boundary in &mut self.boundaries {
+            let previous = boundary.phase;
+            if launch {
+                let requested = if self.memory_actors[boundary.actor] {
+                    self.memory[boundary.actor]
+                } else {
+                    clock_active && self.fired[boundary.actor]
+                };
+                boundary.request(requested, self.elapsed);
+            }
+            let resetting =
+                clock_active && boundary.reset_owners.iter().any(|&owner| self.fired[owner]);
+            boundary.advance(self.elapsed, resetting);
+            changed |= previous != boundary.phase;
+        }
+        self.next_boundary = self
+            .boundaries
+            .iter()
+            .filter_map(|boundary| boundary.deadline)
+            .min();
+        self.observations_dirty |= changed;
+        changed
     }
 
     fn supply_changes(&mut self, nodes: &Nodes) -> Vec<(NodeId, u8)> {
@@ -646,15 +813,24 @@ impl Runtime {
                         near,
                     } => {
                         if let Some(actor) = near {
-                            self.near_owner(group) == Some(actor)
+                            self.geometry(actor, GeometryPart::NearPayload)
                         } else {
-                            initial && !self.group_fired[group]
+                            initial
+                                && self.geometry(
+                                    self.program.groups[group][0],
+                                    GeometryPart::FarPayload,
+                                )
                         }
                     }
                     Supply::Memory { actor, far } => {
-                        self.memory[actor] != far
-                            && self.program.payloads[self.actor_groups[actor]]
-                                == Block::RedstoneBlock
+                        self.geometry(
+                            actor,
+                            if far {
+                                GeometryPart::FarPayload
+                            } else {
+                                GeometryPart::NearPayload
+                            },
+                        ) && self.program.payloads[self.actor_groups[actor]] == Block::RedstoneBlock
                     }
                 };
                 let strength = if powered { 15 } else { 0 };
@@ -666,6 +842,22 @@ impl Runtime {
     }
 
     fn geometry(&self, actor: usize, part: GeometryPart) -> bool {
+        if let Some(index) = self.boundary_index[actor] {
+            if part == GeometryPart::FarPayload && !self.memory_actors[actor] {
+                return self.program.groups[self.actor_groups[actor]]
+                    .iter()
+                    .all(|&member| {
+                        self.boundary_index[member].map_or(!self.fired[member], |index| {
+                            self.boundaries[index].geometry(part)
+                        })
+                    });
+            }
+            if part == GeometryPart::NearPayload {
+                return self.boundaries[index].geometry(part)
+                    && self.near_owner(self.actor_groups[actor]) == Some(actor);
+            }
+            return self.boundaries[index].geometry(part);
+        }
         if self.memory_actors[actor] {
             return match part {
                 GeometryPart::FarPayload | GeometryPart::Head => !self.memory[actor],
@@ -696,6 +888,11 @@ impl Runtime {
         match observation {
             Observation::Base(actor) => {
                 let mut piston = self.program.pistons[actor].piston;
+                if self.geometry(actor, GeometryPart::MovingBase) {
+                    return Block::MovingPiston {
+                        moving: piston.into(),
+                    };
+                }
                 piston.extended = !self.geometry(actor, GeometryPart::RetractedBase);
                 Block::Piston { piston }
             }
@@ -711,6 +908,15 @@ impl Runtime {
                     }
                 } else if self.geometry(actor, GeometryPart::NearPayload) {
                     self.program.payloads[self.actor_groups[actor]]
+                } else if self.boundary_index[actor].is_some_and(|index| {
+                    self.boundaries[index].phase == timing::Phase::Extending
+                        || (self.boundaries[index].phase == timing::Phase::Retracting
+                            && self.program.payloads[self.actor_groups[actor]] != Block::Air
+                            && self.near_owner(self.actor_groups[actor]) == Some(actor))
+                }) {
+                    Block::MovingPiston {
+                        moving: piston.piston.into(),
+                    }
                 } else {
                     Block::Air
                 }
@@ -718,6 +924,16 @@ impl Runtime {
             Observation::Far(actor) => {
                 if self.geometry(actor, GeometryPart::FarPayload) {
                     self.program.payloads[self.actor_groups[actor]]
+                } else if let Some(owner) =
+                    self.near_owner(self.actor_groups[actor]).filter(|&owner| {
+                        self.boundary_index[owner].is_some_and(|index| {
+                            self.boundaries[index].phase == timing::Phase::Extending
+                        })
+                    })
+                {
+                    Block::MovingPiston {
+                        moving: self.program.pistons[owner].piston.into(),
+                    }
                 } else {
                     Block::Air
                 }
@@ -728,7 +944,26 @@ impl Runtime {
     pub(super) fn memory_block_at(&self, pos: BlockPos) -> Option<Block> {
         self.memory_geometry
             .get(&pos)
-            .map(|&observation| self.observed_block(observation))
+            .map(|&observation| self.committed_block(observation))
+    }
+
+    fn committed_block(&self, observation: Observation) -> Block {
+        let actor = match observation {
+            Observation::Base(actor) | Observation::Near(actor) | Observation::Far(actor) => actor,
+        };
+        let piston = self.program.pistons[actor].piston;
+        let payload = self.program.payloads[self.actor_groups[actor]];
+        match observation {
+            Observation::Base(_) => Block::Piston {
+                piston: piston.extend(!self.memory[actor]),
+            },
+            Observation::Near(_) if self.memory[actor] => payload,
+            Observation::Near(_) => Block::PistonHead {
+                head: piston.extend(true).into(),
+            },
+            Observation::Far(_) if self.memory[actor] => Block::Air,
+            Observation::Far(_) => payload,
+        }
     }
 
     pub(super) fn flush_memory(&mut self, world: &mut impl World) {
@@ -748,7 +983,7 @@ impl Runtime {
                 (piston.head, Observation::Near(cell.actor)),
                 (cell.far, Observation::Far(cell.actor)),
             ] {
-                world.set_block(pos, self.observed_block(observation));
+                world.set_block(pos, self.committed_block(observation));
             }
             self.published_memory[cell.actor] = self.memory[cell.actor];
         }
@@ -782,6 +1017,23 @@ impl Runtime {
         let Some(observation) = observation else {
             return false;
         };
+        let actor = match observation {
+            Observation::Base(actor) | Observation::Near(actor) | Observation::Far(actor) => actor,
+        };
+        let actors = match observation {
+            Observation::Far(_) => self.program.groups[self.actor_groups[actor]].clone(),
+            _ => vec![actor],
+        };
+        for actor in actors {
+            if self.boundary_index[actor].is_none() {
+                self.boundary_index[actor] = Some(self.boundaries.len());
+                self.boundaries.push(timing::Boundary::new(
+                    actor,
+                    self.reset_owners[actor].clone(),
+                    self.fired[actor],
+                ));
+            }
+        }
         self.observations
             .push((pos, observation, self.observed_block(observation)));
         true
@@ -832,7 +1084,31 @@ impl Runtime {
         changes
     }
 
-    pub(super) fn materialize(self, world: &mut impl World) {
+    pub(super) fn materialize(mut self, world: &mut impl World) {
+        if self
+            .program
+            .clocked
+            .as_ref()
+            .is_some_and(|clock| !self.fired[clock.clock])
+        {
+            self.fired.fill(false);
+        }
+        for boundary in &mut self.boundaries {
+            let retracted = if self.memory_actors[boundary.actor] {
+                self.memory[boundary.actor]
+            } else {
+                self.fired[boundary.actor]
+            };
+            *boundary = timing::Boundary::new(boundary.actor, Vec::new(), retracted);
+        }
+        self.group_fired.fill(false);
+        for (actor, &fired) in self.fired.iter().enumerate() {
+            self.group_fired[self.actor_groups[actor]] |= if self.memory_actors[actor] {
+                self.memory[actor]
+            } else {
+                fired
+            };
+        }
         // Export current logical occupancy and stored bits, rather than replaying
         // a launch history which this mode deliberately does not implement.
         for &(_, pos, _) in &self.program.aliases {

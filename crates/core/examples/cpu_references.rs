@@ -40,18 +40,21 @@ fn main() {
         }
         let mut world = load_cpu(cpu);
         let mut trace = Vec::new();
+        let mut ram_trace = Vec::new();
+        collect_ram(&world, cpu, 0, &mut ram_trace);
         let mut frames = Vec::new();
         if cpu.name == "anpu_pong" {
             collect_screen(&world, 0, &mut frames);
         }
         let mut checkpoints = vec![checkpoint(&world, 0, &trace)];
-        click(&mut world, cpu.start);
+        click_cpu(&mut world, cpu, cpu.start);
         let mut elapsed = Duration::ZERO;
         for tick in 1..=50_000 {
             let now = Instant::now();
             world.tick_interpreted();
             elapsed += now.elapsed();
             collect_chat(&world, tick, &mut trace);
+            collect_ram(&world, cpu, tick, &mut ram_trace);
             if cpu.name == "anpu_pong" {
                 collect_screen(&world, tick, &mut frames);
             }
@@ -62,7 +65,7 @@ fn main() {
             }
         }
         if let Some(stop) = cpu.stop {
-            click(&mut world, stop);
+            click_cpu(&mut world, cpu, stop);
             for tick in 50_001..=50_100 {
                 world.tick_interpreted();
                 collect_chat(&world, tick, &mut trace);
@@ -74,6 +77,7 @@ fn main() {
             schematic_sha256: cpu.sha256.into(),
             checkpoints,
             chat_trace: trace,
+            ram_trace,
         };
         std::fs::write(path, serde_json::to_vec_pretty(&reference).unwrap()).unwrap();
         if cpu.name == "anpu_pong" {

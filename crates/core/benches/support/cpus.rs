@@ -348,6 +348,7 @@ pub struct RunTiming {
     pub active: Duration,
     pub active_ticks: u32,
     pub visual_counts: (u64, u64, u64),
+    pub instant_piston_cache_stats: Option<(usize, usize, u64)>,
 }
 
 pub fn replay(cpu: Cpu, expected: &Reference) -> RunTiming {
@@ -483,6 +484,7 @@ pub fn replay_with_visuals(
         total: elapsed,
         active,
         active_ticks,
+        instant_piston_cache_stats: world.instant_piston_cache().map(|cache| cache.stats()),
         visual_counts: {
             let final_counts = world.visual_update_counts();
             (

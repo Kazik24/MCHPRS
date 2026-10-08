@@ -130,6 +130,30 @@ second, including stimulus handling and publication. Use `--episodes` to choose
 the count; this is a bounded saved-input protocol, not an arithmetic proof.
 Physical sampled throughput does not measure logical-plan performance.
 
+The same benchmark supports native full-FPU input streams and the revised
+Potados PC_COUNTER fixture. Disable random ticks, capture a baseline, then pass
+that report to the candidate build with identical workload arguments:
+
+```sh
+cargo bench -p mchprs_core --bench instant -- --component fpu_legal --interpreted --workload random --episodes 8 --input-every 128 --iterations 3 --output target/native-fpu-baseline.json
+cargo bench -p mchprs_core --bench instant -- --component fpu_legal --interpreted --workload random --episodes 8 --input-every 128 --iterations 3 --reference target/native-fpu-baseline.json --output target/native-fpu-candidate.json
+cargo bench -p mchprs_core --bench instant -- --component pc_counter --interpreted --iterations 3 --output target/native-counter-baseline.json
+cargo bench -p mchprs_core --bench instant -- --component pc_counter --interpreted --iterations 3 --reference target/native-counter-baseline.json --output target/native-counter-candidate.json
+```
+
+Native execution disables random ticks automatically. References verify fixture
+and stimulus metadata, every measured output word, and final whole-world state.
+Output observations and checkpoint hashing are outside timers. FPU timers include
+ordered input-lever updates and interpreted ticks; its output words are raw port
+observations, without an arithmetic oracle. PC_COUNTER measures 4,096 ticks after
+enabling its 23 controls and one untimed activation tick, and requires decoded
+pulse peaks 1 through 682 with final count 682. Use the `cpus` benchmark for PM1,
+ANPU and the complete BubbleSort episode and its existing frozen assertions.
+Native full-FPU episodes initialize ON for 64 ticks, warm eight vectors, then
+change inputs while OFF and hold each OFF/ON phase for `--input-every` ticks.
+Both phases contribute to timing and output checks. Compiled full-FPU input
+streams retain their continuous-OFF protocol; these are different workloads.
+
 One ignored test records an unresolved complete-reset waveform discrepancy:
 
 ```sh

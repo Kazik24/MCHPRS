@@ -52,6 +52,7 @@ fn main() {
         let mut active_times = Vec::new();
         let mut active_ticks = 0;
         let mut visual_counts = Vec::new();
+        let mut instant_cache_stats = Vec::new();
         for sample in 1..=iterations {
             let timing = replay_with_visuals(cpu, &expected, screen_only, flush_every);
             println!("{} sample {sample}: {:.6}s / 50,000 game ticks ({:.1} TPS); active window: {} ticks / {:.6}s ({:.1} TPS); all assertions passed",cpu.name,timing.total.as_secs_f64(),50_000.0/timing.total.as_secs_f64(),timing.active_ticks,timing.active.as_secs_f64(),f64::from(timing.active_ticks)/timing.active.as_secs_f64());
@@ -59,6 +60,7 @@ fn main() {
             active_times.push(timing.active);
             active_ticks = timing.active_ticks;
             visual_counts.push(timing.visual_counts);
+            instant_cache_stats.push(timing.instant_piston_cache_stats);
             if flush_every != 0 {
                 println!(
                     "visual totals: {} flushes, {} sections, {} block records",
@@ -86,6 +88,7 @@ fn main() {
             "visual_mode":if screen_only { "screen" } else { "all" },
             "visual_flush_every_game_ticks":flush_every,
             "visual_counts":visual_counts,
+            "instant_piston_cache_stats":instant_cache_stats,
         }));
     }
     if let Some(path) = output {

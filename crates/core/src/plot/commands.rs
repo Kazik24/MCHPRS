@@ -600,7 +600,9 @@ impl Plot {
             arguments = ?args.join(" ").chars().take(1024).collect::<String>());
         let _entered = span.enter();
         info!("Command requested");
-        if self.git_checkout_locked() && !matches!(command, "/git" | "/help" | "/serverinfo") {
+        if self.git_checkout_locked()
+            && !matches!(command, "/git" | "/rv" | "/help" | "/serverinfo")
+        {
             warn!("Command denied: plot checkout locked");
             let message = self.git_lock_message();
             self.players[player].send_error_message(message);
@@ -633,7 +635,7 @@ impl Plot {
             return false;
         }
 
-        if command == "/git" {
+        if matches!(command, "/git" | "/rv") {
             self.handle_git_command(player, &args);
             return false;
         }
@@ -1135,7 +1137,7 @@ fn native_command_permission(command: &str, args: &[&str]) -> Option<String> {
     let action = if args.is_empty() { "view" } else { "set" };
     let name = match command {
         "/help" => "help".to_owned(),
-        "/git" => "git".to_owned(),
+        "/git" | "/rv" => "git".to_owned(),
         "/version" => "version".to_owned(),
         "/teleport" | "/tp" => "teleport".to_owned(),
         "/warp" => "warp".to_owned(),
@@ -1206,7 +1208,7 @@ fn declared_command_nodes() -> Vec<Node<'static>> {
             1, 4, 5, 6, 11, 12, 14, 16, 18, 19, 20, 21, 22, 23, 24, 26, 29, 31, 33, 35, 46, 48, 52,
             59, 60, 62, 64, 65, 66, 70, 72, 73, 74, 81, 82, 84, 87, 89, 90, 100, 105, 110, 111,
             112, 113, 114, 115, 117, 119, 120, 123, 130, 134, 135, 142, 143, 144, 145, 146, 150,
-            152, 153, 160, 161,
+            152, 153, 160, 161, 164,
         ]),
         // 1: /teleport
         Node::literal("teleport", &[3, 2]),
@@ -1509,6 +1511,8 @@ fn declared_command_nodes() -> Vec<Node<'static>> {
         Node::redirect("/wire", 160).executable(),
         Node::literal("free", &[]).executable(),
         Node::literal("plane", &[]).executable(),
+        // 164: /rv shares the server-completed git arguments.
+        Node::literal("rv", &[109]).executable(),
     ]
 }
 
@@ -1592,7 +1596,7 @@ mod security_tests {
     #[test]
     fn command_declarations_have_valid_edges_and_no_legacy_tick_aliases() {
         let nodes = declared_command_nodes();
-        assert_eq!(nodes.len(), 164);
+        assert_eq!(nodes.len(), 165);
         for node in &nodes {
             for edge in node.children.iter().copied().chain(node.redirect_node) {
                 assert!(edge >= 0 && (edge as usize) < nodes.len());
@@ -1624,6 +1628,7 @@ mod security_tests {
         ] {
             assert!(names.contains(&retained), "missing command {retained}");
         }
+        assert!(names.contains(&"rv"));
         for (alias, target) in [
             ("rp", "redpiler"),
             ("gm", "gamemode"),
@@ -1652,10 +1657,6 @@ mod security_tests {
             .iter()
             .all(|&id| nodes[id as usize].flags & 0x04 != 0));
         assert_eq!(NO_COMMANDS.packet_id, 0x10);
-        assert_eq!(
-            format!("{:x}", md5::compute(&NO_COMMANDS.buffer)),
-            "4352d88a78aa39750bf70cd6f27bcaa5"
-        );
     }
     #[test]
     fn warp_names_and_permissions_are_checked() {

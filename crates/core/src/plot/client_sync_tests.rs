@@ -561,27 +561,55 @@ fn bud_note_obstruction_uses_committed_memory_with_deferred_or_suppressed_displa
         for frequent in [false, true] {
             let (mut plot, _peer, cell, data, sample, note_control) =
                 compiled_bud_fixture(false, io_only);
+            let ready = |plot: &mut Plot| {
+                // Complete the piston movement and reset before the next input.
+                // Pure ticks keep note events deferred until an explicit flush.
+                for _ in 0..6 {
+                    plot.redpiler.tick();
+                    if frequent {
+                        plot.redpiler.flush(&mut plot.world);
+                    }
+                }
+            };
             plot.redpiler.on_use_block(sample);
-            if frequent {
-                plot.redpiler.flush(&mut plot.world);
-            }
+            ready(&mut plot);
+            let far = cell + BlockPos::new(0, -2, 0);
+            assert_eq!(
+                plot.world.get_block(far),
+                if frequent && !io_only {
+                    Block::Air
+                } else {
+                    Block::RedstoneBlock
+                },
+                "deferred or suppressed geometry must not decide note eligibility",
+            );
             plot.redpiler.on_use_block(note_control);
             if frequent {
                 plot.redpiler.flush(&mut plot.world);
                 assert_eq!(plot.world.sounds.len(), 1, "committed far cell is empty");
+            } else {
+                assert!(plot.world.sounds.is_empty(), "note playback stays deferred");
             }
+            ready(&mut plot);
             plot.redpiler.on_use_block(note_control);
+            ready(&mut plot);
             plot.redpiler.on_use_block(data);
+            // The new QC data must settle before the separate update samples it.
+            ready(&mut plot);
             plot.redpiler.on_use_block(sample);
+            ready(&mut plot);
             plot.redpiler.flush(&mut plot.world);
             assert_eq!(
                 plot.world.sounds.len(),
                 1,
                 "only the rise while the committed far cell was empty can play",
             );
+            assert_eq!(plot.world.get_block(far), Block::RedstoneBlock);
+            plot.redpiler.flush(&mut plot.world);
             assert_eq!(
-                plot.world.get_block(cell + BlockPos::new(0, -2, 0)),
-                Block::RedstoneBlock,
+                plot.world.sounds.len(),
+                1,
+                "a flush must not replay the note"
             );
         }
     }

@@ -972,7 +972,7 @@ impl Plot {
     }
 
     pub(super) fn complete_git(&self, player: usize, id: i32, text: &str) -> Option<CTabComplete> {
-        if !text.starts_with("/git ") {
+        if !text.starts_with("/git ") && !text.starts_with("/rv ") {
             return None;
         }
         let start = text.rfind(' ')? + 1;

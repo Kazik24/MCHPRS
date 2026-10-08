@@ -100,99 +100,62 @@ fn side_return(rotation: Option<RotateAmt>) -> (PlotWorld, [BlockPos; 2], BlockP
 }
 
 #[test]
-fn logical_side_observer_return_is_derived_from_rotated_geometry_and_held_data() {
+fn logical_side_observer_rejects_a_return_that_drops_its_payload() {
     for rotation in [
         None,
         Some(RotateAmt::Rotate90),
         Some(RotateAmt::Rotate180),
         Some(RotateAmt::Rotate270),
     ] {
-        for left in [false, true] {
-            for right in [false, true] {
-                let mut restored = None;
-                for optimize in [false, true] {
-                    let (mut world, inputs, output, observer) = side_return(rotation);
-                    let Block::RedstoneRepeater { repeater } = world.get_block(output) else {
-                        unreachable!()
-                    };
-                    assert_eq!(
-                        world.get_block(output.offset(repeater.facing.block_face())),
-                        Block::RedstoneBlock
-                    );
-                    let mut compiler = Compiler::default();
-                    compiler
-                        .compile(
-                            &world,
-                            world.get_corners(),
-                            CompilerOptions {
-                                assume_instant: true,
-                                optimize,
-                                ..Default::default()
-                            },
-                            Vec::new(),
-                            Default::default(),
-                        )
-                        .unwrap();
-                    for (input, powered) in inputs.into_iter().zip([left, right]) {
-                        if !powered {
-                            compiler.on_use_block(input);
-                        }
-                    }
-                    for _ in 0..16 {
-                        compiler.tick_with_world(&mut world);
-                    }
-                    compiler.flush(&mut world);
-                    let Block::RedstoneRepeater { repeater } = world.get_block(output) else {
-                        unreachable!()
-                    };
-                    assert_eq!(
-                        repeater.powered,
-                        left || right,
-                        "the first data response is OR; its observer return is internal reset work"
-                    );
-                    let backend = compiler.backend.as_ref().unwrap();
-
-                    let settled = backend.logical_stats();
-                    assert!(!settled.is_empty());
-                    assert!(settled
-                        .iter()
-                        .all(|(_, samples, memory)| *samples == 0 && memory.is_empty()));
-                    for _ in 0..32 {
-                        compiler.tick_with_world(&mut world);
-                    }
-                    assert_eq!(
-                        compiler.backend.as_ref().unwrap().logical_stats(),
-                        settled,
-                        "held data must not replay the observer reset or reevaluate its domain"
-                    );
-                    assert!(world.piston_state().motions.is_empty());
-                    assert!(world.piston_state().events.is_empty());
-
-                    let bounds = world.get_corners();
-                    compiler.reset(&mut world, bounds);
-                    assert!(!compiler.is_active());
-                    let Block::Piston { piston } = world.get_block(BASE) else {
-                        unreachable!()
-                    };
-                    assert_eq!(piston.extended, left || right);
-                    assert!(
-                        matches!(world.get_block(observer), Block::Observer { observer } if !observer.powered)
-                    );
-                    assert!(world.piston_state().motions.is_empty());
-                    assert!(world.piston_state().events.is_empty());
-                    assert!(!world.scheduler().iter_entries().any(|tick| matches!(
-                        world.get_block(tick.pos),
-                        Block::Piston { .. } | Block::Observer { .. }
-                    )));
-                    let snapshot = snapshot(
+        let (mut native, inputs, _, _) = side_return(rotation);
+        for input in inputs {
+            lever_action(&mut native, input, false);
+        }
+        let trace = crate::redstone::piston::trace::capture(|| {
+            for _ in 0..8 {
+                native.tick_interpreted();
+            }
+        });
+        assert!(
+            trace.iter().any(|entry| matches!(
+                entry.operation,
+                crate::redstone::piston::trace::Operation::Applied(PistonEvent {
+                    action: PistonAction::RetractWithoutPull,
+                    ..
+                })
+            )),
+            "the short return pulse interrupts extension and drops the payload"
+        );
+        for assume_instant in [false, true] {
+            for optimize in [false, true] {
+                let (world, _, _, observer) = side_return(rotation);
+                let bounds = (BASE - BlockPos::new(5, 2, 5), BASE + BlockPos::new(5, 4, 5));
+                let before = snapshot(&world, bounds);
+                let mut compiler = Compiler::default();
+                let error = compiler
+                    .compile(
                         &world,
-                        (BASE - BlockPos::new(5, 2, 5), BASE + BlockPos::new(5, 4, 5)),
-                    );
-                    if let Some(previous) = &restored {
-                        assert_eq!(&snapshot, previous);
-                    }
-                    restored = Some(snapshot);
-                }
+                        world.get_corners(),
+                        CompilerOptions {
+                            assume_instant,
+                            optimize,
+                            ..Default::default()
+                        },
+                        vec![],
+                        Default::default(),
+                    )
+                    .unwrap_err()
+                    .to_string();
+                assert!(error.contains("logical piston admission failed"), "{error}");
+                assert!(
+                    error.contains(
+                        "falling pulse may retract during extension and drop the retained payload"
+                    ),
+                    "{error}"
+                );
+                assert!(error.contains(&format!("{observer:?}")), "{error}");
+                assert!(!compiler.is_active());
+                assert_eq!(snapshot(&world, bounds), before);
             }
         }
     }
@@ -273,111 +236,191 @@ fn logical_side_observer_rejects_an_exposed_pulse_and_an_independent_sampler_tra
 }
 
 #[test]
-fn ordinary_observer_sees_only_committed_constant_logical_outputs() {
-    use mchprs_blocks::blocks::TrapdoorHalf;
-    for optimize in [false, true] {
-        for io_only in [false, true] {
-            let mut world = empty();
-            world.set_block(
-                BASE,
-                Block::Piston {
-                    piston: RedstonePiston {
-                        facing: BlockFacing::East,
-                        sticky: true,
-                        extended: true,
-                    },
+fn ordinary_observer_rejects_a_piston_output_without_state_notifications() {
+    use mchprs_blocks::blocks::{Instrument, TrapdoorHalf};
+    fn make_world(output_block: Block) -> (PlotWorld, BlockPos, BlockPos, BlockPos, BlockPos) {
+        let mut world = empty();
+        world.set_block(
+            BASE,
+            Block::Piston {
+                piston: RedstonePiston {
+                    facing: BlockFacing::East,
+                    sticky: true,
+                    extended: true,
                 },
-            );
-            world.set_block(
-                BASE.offset(BlockFace::East),
-                Block::PistonHead {
-                    head: RedstonePistonHead {
-                        facing: BlockFacing::East,
-                        sticky: true,
-                        short: false,
-                    },
+            },
+        );
+        world.set_block(
+            BASE.offset(BlockFace::East),
+            Block::PistonHead {
+                head: RedstonePistonHead {
+                    facing: BlockFacing::East,
+                    sticky: true,
+                    short: false,
                 },
-            );
-            world.set_block(BASE + BlockPos::new(2, 0, 0), Block::RedstoneBlock);
-            let input = BASE.offset(BlockFace::North);
-            world.set_block(input.offset(BlockFace::Bottom), Block::Stone {});
-            world.set_block(
-                input,
-                Block::Lever {
-                    lever: Lever::new(LeverFace::Floor, BlockDirection::North, true),
+            },
+        );
+        world.set_block(BASE + BlockPos::new(2, 0, 0), Block::RedstoneBlock);
+        let input = BASE.offset(BlockFace::North);
+        world.set_block(input.offset(BlockFace::Bottom), Block::Stone {});
+        world.set_block(
+            input,
+            Block::Lever {
+                lever: Lever::new(LeverFace::Floor, BlockDirection::North, true),
+            },
+        );
+        // x OR !x is constant after settling, but moving payloads briefly
+        // remove !x. Its native observer notifications depend on neighboring
+        // piston updates rather than the trapdoor's state transition.
+        let output = BASE + BlockPos::new(1, 0, -1);
+        world.set_block(output, output_block);
+        let observer = output.offset(BlockFace::North);
+        world.set_block(
+            observer,
+            Block::Observer {
+                observer: RedstoneObserver {
+                    facing: BlockFacing::South,
+                    powered: false,
                 },
+            },
+        );
+        let lamp = observer.offset(BlockFace::North);
+        world.set_block(lamp, Block::RedstoneLamp { lit: false });
+        (world, input, output, observer, lamp)
+    }
+    let trapdoor = Block::IronTrapdoor {
+        facing: BlockDirection::North,
+        half: TrapdoorHalf::Bottom,
+        powered: true,
+    };
+    let (mut native, input, output, _, _) = make_world(trapdoor);
+    lever_action(&mut native, input, false);
+    assert!(matches!(
+        native.get_block(output),
+        Block::IronTrapdoor { powered: false, .. }
+    ));
+    assert!(
+        native.scheduler().iter_entries().next().is_none(),
+        "the trapdoor state change itself sends no observer notification"
+    );
+    for output_block in [
+        trapdoor,
+        Block::RedstoneLamp { lit: true },
+        Block::NoteBlock {
+            instrument: Instrument::Harp,
+            note: 0,
+            powered: true,
+        },
+    ] {
+        for assume_instant in [false, true] {
+            for optimize in [false, true] {
+                let (world, _, _, observer, _) = make_world(output_block);
+                let bounds = (BASE - BlockPos::new(3, 2, 4), BASE + BlockPos::new(3, 2, 3));
+                let before = snapshot(&world, bounds);
+                let mut compiler = Compiler::default();
+                let error = compiler
+                    .compile(
+                        &world,
+                        world.get_corners(),
+                        CompilerOptions {
+                            assume_instant,
+                            optimize,
+                            ..Default::default()
+                        },
+                        vec![],
+                        Default::default(),
+                    )
+                    .unwrap_err()
+                    .to_string();
+                assert!(error.contains("logical piston admission failed"), "{error}");
+                assert!(
+                error.contains(
+                    "without state notifications; callback-dependent observations are unsupported"
+                ),
+                "{error}"
             );
-            // Direct input x and the owner's near payload !x provide a constant
-            // settled level. Neither transaction may expose an old/new mixture.
-            let output = BASE + BlockPos::new(1, 0, -1);
-            world.set_block(
-                output,
-                Block::IronTrapdoor {
-                    facing: BlockDirection::North,
-                    half: TrapdoorHalf::Bottom,
-                    powered: true,
+                assert!(error.contains(&format!("{observer:?}")), "{error}");
+                assert!(!compiler.is_active());
+                assert_eq!(snapshot(&world, bounds), before);
+            }
+        }
+    }
+}
+
+#[test]
+fn ordinary_observer_tracks_either_owner_of_a_shared_far_payload() {
+    let make_world = || {
+        let (mut world, _, manifest) = fixture("or_1");
+        let report = analyze_world(&world);
+        let group = report
+            .payload_groups
+            .iter()
+            .find(|group| group.members.len() > 1)
+            .unwrap();
+        let first = &report.pistons[group.members[0]];
+        let far = first.head.offset(first.piston.facing.into());
+        let observer = far.offset(BlockFace::Top);
+        let lamp = observer.offset(BlockFace::Top);
+        assert_eq!(world.get_block(observer), Block::Air);
+        assert_eq!(world.get_block(lamp), Block::Air);
+        world.set_block(
+            observer,
+            Block::Observer {
+                observer: RedstoneObserver {
+                    facing: BlockFacing::Down,
+                    powered: false,
                 },
-            );
-            let observer = output.offset(BlockFace::North);
-            world.set_block(
-                observer,
-                Block::Observer {
-                    observer: RedstoneObserver {
-                        facing: BlockFacing::South,
-                        powered: false,
-                    },
-                },
-            );
-            let lamp = observer.offset(BlockFace::North);
-            world.set_block(lamp, Block::RedstoneLamp { lit: false });
-            let bounds = world.get_corners();
+            },
+        );
+        world.set_block(lamp, Block::RedstoneLamp { lit: false });
+        (world, manifest, observer, lamp)
+    };
+    for assignment in [1, 2] {
+        for optimize in [false, true] {
+            let (mut world, manifest, observer, lamp) = make_world();
+            let (mut native, _, _, _) = make_world();
             let mut compiler = Compiler::default();
             compiler
                 .compile(
                     &world,
-                    bounds,
+                    world.get_corners(),
                     CompilerOptions {
-                        assume_instant: true,
                         optimize,
-                        io_only,
                         ..Default::default()
                     },
                     vec![],
                     Default::default(),
                 )
                 .unwrap();
-            for _ in 0..12 {
-                compiler.tick();
-                compiler.flush(&mut world);
-            }
-            for _ in 0..2 {
-                compiler.on_use_block(input);
-                compiler.flush(&mut world);
-                for _ in 0..16 {
-                    assert!(matches!(
-                        world.get_block(output),
-                        Block::IronTrapdoor { powered: true, .. }
-                    ));
-                    assert_eq!(
-                        world.get_block(lamp),
-                        Block::RedstoneLamp { lit: false },
-                        "an unchanged committed level must not deliver an observer pulse"
-                    );
-                    if !io_only {
-                        assert!(
-                            matches!(world.get_block(observer), Block::Observer { observer } if !observer.powered)
-                        );
-                    }
-                    compiler.tick();
-                    compiler.flush(&mut world);
+            for (bit, name) in ["IN1", "IN2"].into_iter().enumerate() {
+                let input = local_pos(&manifest["ports"]["inputs"][name]);
+                let powered = assignment & (1 << bit) != 0;
+                let Block::Lever { lever } = world.get_block(input) else {
+                    unreachable!()
+                };
+                if lever.powered != powered {
+                    compiler.on_use_block(input);
                 }
+                lever_action(&mut native, input, powered);
             }
-            compiler.reset(&mut world, bounds);
-            assert!(matches!(
-                world.get_block(output),
-                Block::IronTrapdoor { powered: true, .. }
-            ));
-            assert_eq!(world.get_block(lamp), Block::RedstoneLamp { lit: false });
+            let mut pulse = false;
+            for tick in 1..=36 {
+                native.tick_interpreted();
+                compiler.tick_with_world(&mut world);
+                compiler.flush(&mut world);
+                assert_eq!(
+                    world.get_block(observer),
+                    native.get_block(observer),
+                    "shared observer at tick {tick}, assignment {assignment}, optimize {optimize}"
+                );
+                assert_eq!(
+                    world.get_block(lamp),
+                    native.get_block(lamp),
+                    "shared lamp at tick {tick}, assignment {assignment}, optimize {optimize}"
+                );
+                pulse |= matches!(native.get_block(lamp), Block::RedstoneLamp { lit: true });
+            }
+            assert!(pulse);
         }
     }
 }

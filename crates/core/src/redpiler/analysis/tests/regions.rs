@@ -185,6 +185,25 @@ pub(super) fn repeater_value(world: &PlotWorld, ports: &Value, shift: BlockPos) 
     })
 }
 
+fn stored_value(compiler: &Compiler, ports: &Value, shift: BlockPos) -> u16 {
+    let banks = compiler.backend.as_ref().unwrap().logical_stats();
+    ports
+        .as_array()
+        .unwrap()
+        .iter()
+        .enumerate()
+        .fold(0, |word, (bit, port)| {
+            let cell = local_pos(port) + shift;
+            let stored = banks
+                .iter()
+                .flat_map(|(_, _, cells)| cells)
+                .find(|(pos, _)| *pos == cell)
+                .unwrap()
+                .1;
+            word | (u16::from(stored) << bit)
+        })
+}
+
 #[test]
 fn ideal_mode_supports_repeated_arithmetic_independent_clocks_and_stored_handoff() {
     for optimize in [false, true] {
@@ -251,12 +270,25 @@ fn ideal_mode_supports_repeated_arithmetic_independent_clocks_and_stored_handoff
                     .iter()
                     .filter(|c| c["expectation"].is_object())
                 {
-                    for action in case["actions"]
-                        .as_array()
-                        .unwrap()
-                        .iter()
-                        .filter(|a| a["op"] == "lever")
+                    let trigger = local_pos(&manifest["ports"]["inputs"]["trigger"]) + *shift;
+                    if matches!(world.get_block(trigger), Block::Lever { lever } if !lever.powered)
                     {
+                        compiler.on_use_block(trigger);
+                        compiler.flush(&mut world);
+                    }
+                    logical_ticks(&mut compiler, &mut world, &controls, &mut elapsed, 32);
+                    for action in case["actions"].as_array().unwrap().iter() {
+                        if action["op"] == "wait_ready" {
+                            logical_ticks(
+                                &mut compiler,
+                                &mut world,
+                                &controls,
+                                &mut elapsed,
+                                action["ticks"].as_u64().unwrap() as usize,
+                            );
+                            continue;
+                        }
+                        assert_eq!(action["op"], "lever");
                         let pos = local_pos(&action["pos"]) + *shift;
                         let Block::Lever { lever } = world.get_block(pos) else {
                             panic!("missing control")
@@ -266,8 +298,12 @@ fn ideal_mode_supports_repeated_arithmetic_independent_clocks_and_stored_handoff
                             compiler.flush(&mut world);
                         }
                     }
-                    logical_ticks(&mut compiler, &mut world, &controls, &mut elapsed, 12);
-                    for _ in 0..8 {
+                    // Sample both consumers in the fixture's common response window.
+                    for tick in 1..=24 {
+                        logical_ticks(&mut compiler, &mut world, &controls, &mut elapsed, 1);
+                        if !(5..=7).contains(&tick) {
+                            continue;
+                        }
                         assert_eq!(
                             repeater_value(
                                 &world,
@@ -290,7 +326,6 @@ fn ideal_mode_supports_repeated_arithmetic_independent_clocks_and_stored_handoff
                                 case["id"]
                             );
                         }
-                        logical_ticks(&mut compiler, &mut world, &controls, &mut elapsed, 1);
                     }
                 }
             }
@@ -300,22 +335,22 @@ fn ideal_mode_supports_repeated_arithmetic_independent_clocks_and_stored_handoff
             let held: Vec<_> = counters
                 .iter()
                 .map(|(m, shift)| {
-                    repeater_value(&world, &m["ports"]["observations"]["repeater"], *shift)
+                    stored_value(&compiler, &m["ports"]["observations"]["memory"], *shift)
                 })
                 .collect();
             logical_ticks(&mut compiler, &mut world, &controls, &mut elapsed, 24);
             assert_eq!(
-                repeater_value(
-                    &world,
-                    &counters[0].0["ports"]["observations"]["repeater"],
+                stored_value(
+                    &compiler,
+                    &counters[0].0["ports"]["observations"]["memory"],
                     counters[0].1
                 ),
                 held[0]
             );
             assert_eq!(
-                repeater_value(
-                    &world,
-                    &counters[1].0["ports"]["observations"]["repeater"],
+                stored_value(
+                    &compiler,
+                    &counters[1].0["ports"]["observations"]["memory"],
                     counters[1].1
                 ),
                 held[1].wrapping_add(4)
@@ -324,9 +359,9 @@ fn ideal_mode_supports_repeated_arithmetic_independent_clocks_and_stored_handoff
             compiler.on_use_block(controls[0]);
             logical_ticks(&mut compiler, &mut world, &controls, &mut elapsed, 24);
             assert_eq!(
-                repeater_value(
-                    &world,
-                    &counters[0].0["ports"]["observations"]["repeater"],
+                stored_value(
+                    &compiler,
+                    &counters[0].0["ports"]["observations"]["memory"],
                     counters[0].1
                 ),
                 held[0].wrapping_add(4)
@@ -338,7 +373,7 @@ fn ideal_mode_supports_repeated_arithmetic_independent_clocks_and_stored_handoff
             let counts: Vec<_> = counters
                 .iter()
                 .map(|(m, shift)| {
-                    repeater_value(&world, &m["ports"]["observations"]["repeater"], *shift)
+                    stored_value(&compiler, &m["ports"]["observations"]["memory"], *shift)
                 })
                 .collect();
             let bounds = world.get_corners();
@@ -356,10 +391,8 @@ fn ideal_mode_supports_repeated_arithmetic_independent_clocks_and_stored_handoff
                         };
                         count | (u16::from(!piston.extended) << bit)
                     });
-                // This schematic's output bank reads the previous sampled count.
                 assert_eq!(
-                    stored,
-                    expected.wrapping_add(1),
+                    stored, expected,
                     "stored handoff, optimize={optimize}, io={io_only}"
                 );
             }

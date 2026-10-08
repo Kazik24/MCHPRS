@@ -11,7 +11,7 @@ use mchprs_blocks::BlockDirection;
 use rustc_hash::FxHashSet;
 
 #[test]
-fn multiple_clock_candidates_defer_to_sampling_and_report_the_unproved_route() {
+fn multiple_clock_candidates_defer_to_sampling_and_require_independent_control() {
     use crate::redpiler::instant::{clocked, sampling};
     let mut world = empty();
     for dx in [0, 8] {
@@ -48,13 +48,12 @@ fn multiple_clock_candidates_defer_to_sampling_and_report_the_unproved_route() {
     }
     let error = sampling::recognize(&world, &report, &monitor, None, &FxHashSet::default())
         .err()
-        .expect("observer movement delivery is not represented by settled pose edges");
-    assert!(error.contains("is watched by observer"), "{error}");
-    assert!(error.contains(&format!("{:?}", BASE)), "{error}");
+        .expect("observing a generator does not supply its independent control");
     assert!(
-        error.contains(&format!("{:?}", BASE.offset(BlockFace::Top))),
+        error.contains("no independently coupled control update"),
         "{error}"
     );
+    assert!(error.contains(&format!("{:?}", BASE)), "{error}");
 }
 
 #[test]

@@ -235,7 +235,7 @@ fn ideal_counter_recompiles_a_settled_nonzero_bank_without_resampling() {
 }
 
 #[test]
-fn ideal_stateless_domain_evaluates_only_after_a_dependency_changes() {
+fn stateless_domain_reuses_inactive_decisions_and_advances_output_phases() {
     for optimize in [false, true] {
         let (mut world, _, manifest) = fixture("instant_observer");
         let mut compiler = Compiler::default();
@@ -292,7 +292,19 @@ fn ideal_stateless_domain_evaluates_only_after_a_dependency_changes() {
         for _ in 0..64 {
             compiler.tick_with_world(&mut world);
         }
-        assert_eq!(evaluations(&compiler), changed_evaluations);
+        assert!(
+            evaluations(&compiler) > changed_evaluations,
+            "the observable reset cycle remains active with held inputs"
+        );
+        compiler.on_use_block(local_pos(&manifest["ports"]["inputs"]["trigger"]));
+        for _ in 0..16 {
+            compiler.tick_with_world(&mut world);
+        }
+        let stopped_evaluations = evaluations(&compiler);
+        for _ in 0..64 {
+            compiler.tick_with_world(&mut world);
+        }
+        assert_eq!(evaluations(&compiler), stopped_evaluations);
     }
 }
 

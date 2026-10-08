@@ -138,7 +138,9 @@ pub(crate) fn recognize(
         }
         observers.insert(pos);
     }
-    let sampling = sampling.ok_or("observer clock has no independent sampling output")?;
+    let Some(sampling) = sampling else {
+        return Ok(None);
+    };
     let mobile = report
         .payload_groups
         .iter()
@@ -149,6 +151,7 @@ pub(crate) fn recognize(
     let mut memory = Vec::new();
     for (actor, p) in report.pistons.iter().enumerate() {
         if actor == clock
+            || super::sampling::fixed_powered(report, actor)
             || observed_outputs.contains(&actor)
             || matches!(
                 world.get_block(p.pos.offset(BlockFace::Top)),
@@ -207,12 +210,9 @@ pub(crate) fn recognize(
                 p.pos
             ));
         }
-        if p.piston.facing != BlockFacing::Down
-            || !p.piston.sticky
-            || world.get_block(p.payload) != Block::RedstoneBlock
-        {
+        if !p.piston.sticky || !super::outputs::supported_payload(world.get_block(p.payload)) {
             return Err(format!(
-                "clocked BUD at {:?} needs a downward redstone-block storage mechanism",
+                "clocked BUD at {:?} needs a supported sticky-piston storage payload",
                 p.pos
             ));
         }

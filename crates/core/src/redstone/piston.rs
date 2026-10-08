@@ -5,6 +5,8 @@ use mchprs_blocks::{BlockFace, BlockFacing, BlockPos};
 use mchprs_world::{AdvancePhase, PistonAction, PistonEvent};
 use smallvec::SmallVec;
 
+mod instant;
+
 #[cfg(test)]
 mod tests;
 #[cfg(test)]
@@ -38,6 +40,31 @@ fn powered(world: &impl World, pos: BlockPos, face: BlockFace) -> bool {
 }
 
 pub fn should_piston_extend(world: &impl World, facing: BlockFacing, pos: BlockPos) -> bool {
+    if let Some(routes) = world
+        .instant_piston_cache()
+        .and_then(|cache| cache.power_routes(pos, facing.into()))
+    {
+        return routes.iter().any(|route| {
+            let block = Block::from_id(world.get_wire_block_raw(route.source));
+            if block.is_solid() {
+                route
+                    .strong
+                    .iter()
+                    .zip(BlockFace::values())
+                    .any(|(&source, side)| {
+                        super::get_strong_power(
+                            Block::from_id(world.get_wire_block_raw(source)),
+                            world,
+                            source.pos,
+                            side,
+                            true,
+                        ) > 0
+                    })
+            } else {
+                super::get_weak_power(block, world, route.source.pos, route.side, true) > 0
+            }
+        });
+    }
     let front: BlockFace = facing.into();
     if NEIGHBORS
         .into_iter()
@@ -171,9 +198,35 @@ fn moving(
 
 fn extend(world: &mut impl World, piston: RedstonePiston, pos: BlockPos) -> bool {
     let facing = piston.facing.into();
+    let awaiting_reset = world
+        .instant_piston_cache()
+        .is_some_and(|cache| cache.awaiting_reset(pos, facing));
+    let mut reset = awaiting_reset && instant::reset_driven(world, pos, facing);
+    if awaiting_reset && !reset {
+        if let Some(cache) = world.instant_piston_cache_mut() {
+            cache.invalidate(pos);
+        }
+    }
     let Some(line) = payload_line(world, pos.offset(facing), facing) else {
+        if let Some(cache) = world.instant_piston_cache_mut() {
+            cache.invalidate(pos);
+        }
         return false;
     };
+    if reset {
+        let head = pos.offset(facing);
+        let far = head.offset(facing);
+        reset = line.as_slice() == [head]
+            && world.get_block(head) == Block::RedstoneBlock
+            && world.get_block_entity(head).is_none()
+            && world.get_block(far) == Block::Air
+            && world.get_block_entity(far).is_none();
+        if !reset {
+            if let Some(cache) = world.instant_piston_cache_mut() {
+                cache.invalidate(pos);
+            }
+        }
+    }
     // Snapshot before writing overlapping source and destination cells.
     let payloads: SmallVec<[_; 2]> = line
         .iter()
@@ -210,6 +263,24 @@ fn extend(world: &mut impl World, piston: RedstonePiston, pos: BlockPos) -> bool
         },
     );
     notify(world, pos);
+    if reset {
+        let head = pos.offset(facing);
+        let ahead = head.offset(facing);
+        let identities = [head, ahead].map(|cell| {
+            world
+                .piston_motion_index(cell, None)
+                .map(|index| world.piston_state().motions[index].identity)
+        });
+        if let [Some(head), Some(payload)] = identities {
+            let routes = world
+                .instant_piston_cache()
+                .filter(|cache| !cache.has_routes(pos, facing))
+                .map(|_| instant::routes(world, pos, facing));
+            if let Some(cache) = world.instant_piston_cache_mut() {
+                cache.begin_reset(pos, facing, [head, payload], routes);
+            }
+        }
+    }
     true
 }
 
@@ -222,6 +293,9 @@ fn retract(
 ) {
     let facing: BlockFace = piston.facing.into();
     let head = pos.offset(facing);
+    let candidate = world.instant_piston_cache().is_some()
+        && instant::candidate_retract(world, piston, pos, action);
+    let mut pulled_redstone = false;
     if matches!(world.get_block(head), Block::MovingPiston { .. }) {
         finish(world, head, true);
     }
@@ -258,6 +332,7 @@ fn retract(
             && !immovable_container(block)
         {
             let entity = world.get_block_entity(ahead).cloned();
+            pulled_redstone = block == Block::RedstoneBlock {} && entity.is_none();
             moving(world, head, piston, block, false, false, entity);
             world.delete_block_entity(ahead);
             world.set_block(ahead, Block::Air);
@@ -266,6 +341,20 @@ fn retract(
     }
 
     notify(world, head);
+    if candidate && pulled_redstone {
+        let identities = [pos, head].map(|cell| {
+            world
+                .piston_motion_index(cell, None)
+                .map(|index| world.piston_state().motions[index].identity)
+        });
+        if let [Some(base), Some(payload)] = identities {
+            if let Some(cache) = world.instant_piston_cache_mut() {
+                cache.begin_retract(pos, facing, [base, payload]);
+            }
+        }
+    } else if let Some(cache) = world.instant_piston_cache_mut() {
+        cache.invalidate(pos);
+    }
 }
 
 pub(crate) fn tick_motion(world: &mut impl World, pos: BlockPos, identity: u64) {
@@ -278,14 +367,17 @@ pub(crate) fn tick_motion(world: &mut impl World, pos: BlockPos, identity: u64) 
             Some(BlockEntity::MovingPiston(_))
         )
     {
+        if let Some(cache) = world.instant_piston_cache_mut() {
+            cache.reject_motion(pos, identity);
+        }
         world.remove_piston_motion(i);
         return;
     }
     let (complete, progress) = world.advance_piston_motion(i);
     if complete {
         finish(world, pos, false);
-    } else if let Some(BlockEntity::MovingPiston(e)) = world.get_block_entity_mut(pos) {
-        e.set_progress(progress);
+    } else {
+        world.set_piston_progress(pos, progress);
     }
 }
 
@@ -304,10 +396,11 @@ fn finish(world: &mut impl World, pos: BlockPos, interrupted: bool) {
     if !interrupted {
         block = block.without_waterlogging();
     }
-    let carried_entity = world
-        .piston_motion_index(pos, None)
-        .and_then(|i| world.piston_state().motions[i].carried_entity.clone());
-    world.delete_block_entity(pos);
+    let motion = world.piston_motion_index(pos, None);
+    let carried_entity =
+        motion.and_then(|i| world.piston_state().motions[i].carried_entity.clone());
+    let identity = motion.map(|index| world.piston_state().motions[index].identity);
+    world.delete_piston_entity(pos);
     world.set_block(pos, block);
     if let Some(entity) = carried_entity {
         world.set_block_entity(pos, *entity);
@@ -339,6 +432,14 @@ fn finish(world: &mut impl World, pos: BlockPos, interrupted: bool) {
         super::update(restored, world, pos, None);
     }
     notify(world, pos);
+    if world
+        .instant_piston_cache()
+        .is_some_and(|cache| !cache.is_empty())
+    {
+        if let Some(identity) = identity {
+            instant::completed(world, pos, entity, identity, interrupted);
+        }
+    }
 }
 
 fn shape_changed(world: &mut impl World, pos: BlockPos) {

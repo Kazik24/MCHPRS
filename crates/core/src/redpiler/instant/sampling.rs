@@ -44,6 +44,31 @@ pub(crate) struct Classification {
     pub memory: Vec<MemoryCell>,
     pub events: Vec<SamplingEvent>,
     pub generators: Vec<usize>,
+    pub fixed: Vec<usize>,
+}
+
+/// A stationary emitter supplies power independently of every movable pose.
+/// Restrict this proof to adjacency; a dust path can change its connections.
+pub(crate) fn fixed_powered(report: &AnalysisReport, actor: usize) -> bool {
+    let piston = &report.pistons[actor];
+    piston.piston.extended
+        && report.recognition[actor]
+            .inputs
+            .sources
+            .iter()
+            .any(|source| {
+                if source.kind != SourceKind::Constant || source.attenuation != 0 {
+                    return false;
+                }
+                let receiver = match source.route {
+                    crate::redpiler::analysis::topology::PowerRoute::Direct => piston.pos,
+                    crate::redpiler::analysis::topology::PowerRoute::QuasiConnectivity => {
+                        piston.pos.offset(mchprs_blocks::BlockFace::Top)
+                    }
+                };
+                let delta = source.source - receiver;
+                delta.x.abs() + delta.y.abs() + delta.z.abs() == 1
+            })
 }
 
 /// Data delivery must reach the base, rather than merely supply QC power.
@@ -112,6 +137,7 @@ pub(crate) fn reset_candidates(world: &impl World, report: &AnalysisReport) -> F
             report.pistons.iter().enumerate().any(|(actor, piston)| {
                 piston.piston.sticky
                     && piston.pos == watched
+                    && !fixed_powered(report, actor)
                     && report.recognition[actor]
                         .inputs
                         .sources
@@ -129,6 +155,9 @@ pub(crate) fn recognize(
     clocked: Option<&ClockedProgram>,
     resets: &FxHashSet<BlockPos>,
 ) -> Result<Classification, String> {
+    let fixed: Vec<_> = (0..report.pistons.len())
+        .filter(|&actor| fixed_powered(report, actor))
+        .collect();
     let mut groups = vec![0; report.pistons.len()];
     let mut mobile = FxHashMap::default();
     for (group, descriptor) in report.payload_groups.iter().enumerate() {
@@ -202,18 +231,6 @@ pub(crate) fn recognize(
         .collect();
     for &actor in &generators {
         let piston = &report.pistons[actor];
-        for &pos in &report.observers {
-            let Block::Observer { observer } = world.get_block(pos) else {
-                continue;
-            };
-            let watched = pos.offset(observer.facing.into());
-            if watched == piston.pos || watched == piston.head {
-                return Err(format!(
-                    "ordinary sampling generator at {:?} is watched by observer at {pos:?}; timed movement notifications require a proven shared-clock contract",
-                    piston.pos
-                ));
-            }
-        }
         let descriptor = &report.payload_groups[groups[actor]];
         let near = world.get_block(piston.head);
         let empty_near = near == Block::Air
@@ -227,7 +244,7 @@ pub(crate) fn recognize(
         {
             return Err(format!("ordinary sampling generator at {:?} must have an empty stationary head and no movable payload", piston.pos));
         }
-        if !coupled[actor] {
+        if !coupled[actor] && !fixed.contains(&actor) {
             return Err(format!(
                 "ordinary sampling generator at {:?} has no independently coupled control update",
                 piston.pos
@@ -241,6 +258,7 @@ pub(crate) fn recognize(
     let mut events: Vec<SamplingEvent> = Vec::new();
     for (actor, piston) in report.pistons.iter().enumerate() {
         if !piston.piston.sticky
+            || fixed.contains(&actor)
             || coupled[actor]
             || reset_actors.contains(&actor)
             || report.recognition[actor].is_matched()
@@ -365,6 +383,7 @@ pub(crate) fn recognize(
         memory,
         events,
         generators,
+        fixed,
     })
 }
 
@@ -396,6 +415,72 @@ pub(crate) fn validate(
                     _ => return Err(format!("sampling control at {origin:?} retains unsupported physical state")),
                 }
                 pending.extend([decision.low, decision.high]);
+            }
+        }
+    }
+    Ok(())
+}
+
+/// Internal timed feedback cannot act as prepared QC data unless a sampled
+/// boundary states when the receiving Boolean function is evaluated.
+pub(crate) fn validate_feedback(
+    world: &impl World,
+    report: &AnalysisReport,
+    monitor: &TaskMonitor,
+    targets: &FxHashSet<BlockPos>,
+    internally_driven: &FxHashSet<BlockPos>,
+) -> Result<(), String> {
+    let mut groups = vec![0; report.pistons.len()];
+    let mut mobile = FxHashMap::default();
+    for (group, descriptor) in report.payload_groups.iter().enumerate() {
+        for &actor in &descriptor.members {
+            groups[actor] = group;
+        }
+        for &pos in &descriptor.positions {
+            mobile.insert(pos, group);
+        }
+    }
+    let mut topology = Topology::new(
+        world,
+        report.bounds,
+        monitor,
+        AnalysisLimits::for_budget(monitor.budget_multiplier()).max_dependency_steps,
+        mobile,
+    );
+    let mut wires: FxHashMap<BlockPos, PowerDependencies> = FxHashMap::default();
+    for (actor, piston) in report.pistons.iter().enumerate() {
+        if !targets.contains(&piston.pos) {
+            continue;
+        }
+        for data in &report.recognition[actor].inputs.sources {
+            if data.kind != SourceKind::Ordinary
+                || data.route != crate::redpiler::analysis::topology::PowerRoute::QuasiConnectivity
+                || !internally_driven.contains(&data.source)
+                || data_notifies(world, data.source, piston.pos)
+            {
+                continue;
+            }
+            let mut notified = false;
+            let mut mobile_writer = false;
+            for update in &report.ports.pistons[actor].updates {
+                if update.kind != UpdateKind::WireNotification {
+                    continue;
+                }
+                if !wires.contains_key(&update.source) {
+                    wires.insert(
+                        update.source,
+                        topology
+                            .wire_inputs(update.source)
+                            .map_err(|error| error.to_string())?,
+                    );
+                }
+                for source in &wires[&update.source].sources {
+                    notified |= source.source == data.source;
+                    mobile_writer |= matches!(source.kind, SourceKind::MobilePayload { group } if group != groups[actor]);
+                }
+            }
+            if !notified && mobile_writer {
+                return Err(format!("unsupported internally driven QC sampling interface at {:?}: data source {:?} does not notify the base; a movable writer delivers updates without an explicit sampled boundary", piston.pos, data.source));
             }
         }
     }

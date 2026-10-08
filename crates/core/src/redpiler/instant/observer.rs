@@ -24,8 +24,16 @@ enum Dependency {
 #[derive(Default)]
 pub(super) struct Certification {
     pub owned: FxHashSet<BlockPos>,
-    /// Electrically reset actors whose universal extension was proved.
+    /// Electrical reset actors admitted by construction proof or the assumption policy.
     pub reset_actors: FxHashSet<usize>,
+    pub reset_groups: Vec<ResetGroup>,
+    pub notifying_returns: Vec<(usize, BlockPos)>,
+}
+
+/// One watched response launches a pulse that resets these electrical actors.
+pub(crate) struct ResetGroup {
+    pub owner: usize,
+    pub actors: Vec<usize>,
 }
 
 fn dependencies(
@@ -202,6 +210,8 @@ pub(super) fn certify<W: World>(
     let mut wire_sources = FxHashMap::default();
     let mut owned = FxHashSet::default();
     let mut reset_actors = FxHashSet::default();
+    let mut reset_groups = Vec::new();
+    let mut notifying_returns = Vec::new();
     let mut presentation_caps = FxHashSet::default();
     for &pos in candidates {
         let Block::Observer { observer: block } = world.get_block(pos) else {
@@ -451,6 +461,9 @@ pub(super) fn certify<W: World>(
                     piston.pos
                 )));
             }
+            if super::sampling::fixed_powered(report, actor) {
+                continue;
+            }
             let inputs = &report.recognition[actor].inputs;
             let independent_data = |kind: SourceKind| match kind {
                 SourceKind::Observer => false,
@@ -484,11 +497,26 @@ pub(super) fn certify<W: World>(
                 return Err(fail(&format!("reset pulse independently samples piston {:?} without a coupled data update; a separate sampling source is required", piston.pos)));
             }
         }
-        if !assume_instant {
-            // Keep joint electrical reset proofs for default construction
-            // admission. Notification-only recipients have no such proof.
-            reset_actors.extend(electrical);
+        // A delivered recheck is not a reset waveform. Only electrical
+        // recipients share the watched owner's output phase.
+        if report.ports.pistons[owner].updates.iter().any(|update| {
+            update.kind == UpdateKind::WireNotification
+                && wires
+                    .get(&update.source)
+                    .is_some_and(|wire| cone.contains(wire))
+        }) {
+            notifying_returns.push((owner, pos));
         }
+        let mut group: Vec<_> = electrical
+            .into_iter()
+            .filter(|&actor| !super::sampling::fixed_powered(report, actor))
+            .collect();
+        group.sort_unstable();
+        reset_actors.extend(group.iter().copied());
+        reset_groups.push(ResetGroup {
+            owner,
+            actors: group,
+        });
         owned.extend([pos, cap]);
     }
     owned.retain(|pos| {
@@ -500,6 +528,8 @@ pub(super) fn certify<W: World>(
     Ok(Certification {
         owned,
         reset_actors,
+        reset_groups,
+        notifying_returns,
     })
 }
 

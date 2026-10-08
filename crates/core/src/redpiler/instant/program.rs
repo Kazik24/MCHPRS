@@ -20,6 +20,7 @@ pub(crate) struct PreparedInstant {
     pub clocked: Option<super::clocked::ClockedProgram>,
     pub independent_memory: Vec<super::clocked::MemoryCell>,
     pub sampling: Vec<super::sampling::SamplingEvent>,
+    pub reset_groups: Vec<super::observer::ResetGroup>,
     pub payloads: Vec<Block>,
     pub controls: Vec<BlockPos>,
     pub logic: WaveLogic,
@@ -111,6 +112,47 @@ pub(crate) fn prepare(
     let graph = crate::redpiler::passes::run_passes(options, &input, &monitor)
         .map_err(|e| e.to_string())?;
     for program in &mut programs {
+        {
+            let mut internally_driven = FxHashSet::default();
+            let mut visited = FxHashSet::default();
+            let ports = program.output_offset..program.output_offset + program.logic.outputs.len();
+            let mut pending: Vec<_> = graph.node_indices().filter(|&id| {
+                matches!(graph[id].ty, crate::redpiler::compile_graph::NodeType::InstantOutput { port } if ports.contains(&port))
+            }).collect();
+            while let Some(id) = pending.pop() {
+                if !visited.insert(id) {
+                    continue;
+                }
+                if let Some((pos, _)) = graph[id].block {
+                    internally_driven.insert(pos);
+                }
+                pending.extend(graph.neighbors_directed(id, petgraph::Direction::Outgoing));
+            }
+            let targets = program
+                .pistons
+                .iter()
+                .enumerate()
+                .filter_map(|(actor, piston)| {
+                    (!program
+                        .independent_memory
+                        .iter()
+                        .any(|cell| cell.actor == actor)
+                        && !program.clocked.as_ref().is_some_and(|clock| {
+                            clock.clock == actor
+                                || clock.memory.iter().any(|cell| cell.actor == actor)
+                        }))
+                    .then_some(piston.pos)
+                })
+                .collect();
+            super::sampling::validate_feedback(
+                world,
+                report,
+                &monitor,
+                &targets,
+                &internally_driven,
+            )
+            .map_err(&admission_error)?;
+        }
         // Keep player controls upstream of ordinary timed input stages for handoff.
         let sources: FxHashSet<_> = program.logic.sources.iter().copied().collect();
         let mut visited = FxHashSet::default();
@@ -183,6 +225,7 @@ fn prepare_region(
     let mut independent =
         super::sampling::recognize(world, report, &monitor, clocked.as_ref(), &candidates)?;
     let is_clock = |id| clocked.as_ref().is_some_and(|c| c.clock == id);
+    let is_fixed = |id| independent.fixed.contains(&id);
     let is_generator = |id| is_clock(id) || independent.generators.contains(&id);
     let is_memory = |id| {
         clocked
@@ -264,6 +307,7 @@ fn prepare_region(
             || (!options.assume_instant
                 && p.piston.facing == BlockFacing::Up
                 && !is_memory(id)
+                && !is_fixed(id)
                 && !is_generator(id))
         {
             return Err(format!("piston at {:?} has unsupported geometry; expected a settled sticky piston or sampling generator", p.pos));
@@ -353,7 +397,7 @@ fn prepare_region(
             !matches!(s.kind, crate::redpiler::analysis::topology::SourceKind::MobilePayload { group } if group == actor_groups[id])
                 && super::sampling::data_notifies(world, s.source, p.pos)
         });
-        if !power_notification && !adjacent_source && !is_memory(id) && !candidates.iter().any(|&pos| matches!(world.get_block(pos), Block::Observer { observer } if pos.offset(observer.facing.into()) == p.pos)) {
+        if !power_notification && !adjacent_source && !is_memory(id) && !is_fixed(id) && !candidates.iter().any(|&pos| matches!(world.get_block(pos), Block::Observer { observer } if pos.offset(observer.facing.into()) == p.pos)) {
             return Err(format!("piston at {:?} has no update coupled to its power input or independent sampling source",p.pos));
         }
     }
@@ -361,27 +405,24 @@ fn prepare_region(
         reset_owners.extend(clocked.observers.iter().copied());
         owned.extend(clocked.observers.iter().copied());
     }
-    let unowned_observers: Vec<_> = candidates
-        .iter()
-        .copied()
-        .filter(|pos| !reset_owners.contains(pos))
-        .collect();
+    // A shared sampler does not prove its independent output reset pulses.
+    let reset_observers: Vec<_> = candidates.iter().copied().collect();
     let mut memory = clocked.as_ref().map_or_else(FxHashSet::default, |clock| {
         clock.memory.iter().map(|cell| cell.actor).collect()
     });
     memory.extend(independent.memory.iter().map(|cell| cell.actor));
-    let certification = super::observer::certify(
+    let mut certification = super::observer::certify(
         world,
         report,
         ticks,
         &monitor,
-        &unowned_observers,
+        &reset_observers,
         &memory,
         options.assume_instant,
     )?;
     owned.extend(certification.owned);
     observer_pistons.extend(certification.reset_actors);
-    reset_owners.extend(unowned_observers);
+    reset_owners.extend(reset_observers);
     for (actor, piston) in report.pistons.iter().enumerate() {
         if reset_owners.iter().any(|&pos| matches!(world.get_block(pos), Block::Observer { observer } if pos.offset(observer.facing.into()) == piston.pos)) { observer_pistons.insert(actor); }
     }
@@ -403,19 +444,66 @@ fn prepare_region(
     if let Some(clocked) = &clocked {
         clocked.validate(world, &logic)?;
     }
+    for &(actor, observer) in &certification.notifying_returns {
+        if logic.responses[actor] != super::boolean::FALSE {
+            return Err(format!("observer at {observer:?} has a notifying reset return; its falling pulse may retract during extension and drop the retained payload"));
+        }
+    }
+    for &pos in &report.observers {
+        let Block::Observer { observer } = world.get_block(pos) else {
+            unreachable!()
+        };
+        let watched = pos.offset(observer.facing.into());
+        if !reset_owners.contains(&pos)
+            && matches!(
+                world.get_block(watched),
+                Block::IronTrapdoor { .. } | Block::NoteBlock { .. } | Block::RedstoneLamp { .. }
+            )
+            && logic
+                .outputs
+                .iter()
+                .any(|output| output.consumer == watched)
+        {
+            return Err(format!("ordinary observer at {pos:?} watches piston-driven output {watched:?} without state notifications; callback-dependent observations are unsupported"));
+        }
+    }
     for (id, p) in report.pistons.iter().enumerate() {
+        if is_fixed(id) && logic.responses[id] != super::boolean::FALSE {
+            return Err(format!(
+                "fixed piston at {:?} has a pose-dependent power path",
+                p.pos
+            ));
+        }
         if !options.assume_instant
-            && clocked.is_none()
             && !observer_pistons.contains(&id)
             && !logic.follows_payload[id]
             && !report.recognition[id].is_matched()
             && !is_memory(id)
+            && !is_fixed(id)
             && !is_generator(id)
         {
             return Err(format!(
                 "piston at {:?} has no verified observer reset or payload-following response",
                 p.pos
             ));
+        }
+        if report.recognition[id].is_matched()
+            && report.recognition[id].resets.iter().any(|reset| {
+                matches!(
+                    reset.family,
+                    crate::redpiler::analysis::families::ResetFamily::DustBelowHead
+                        | crate::redpiler::analysis::families::ResetFamily::LateralDust
+                )
+            })
+            && !is_fixed(id)
+            && !is_memory(id)
+        {
+            certification
+                .reset_groups
+                .push(super::observer::ResetGroup {
+                    owner: id,
+                    actors: vec![id],
+                });
         }
     }
     if let Some(exposure) = report.ports.reset_exposures.iter().find(|e| {
@@ -486,6 +574,7 @@ fn prepare_region(
         clocked,
         independent_memory: independent.memory,
         sampling: independent.events,
+        reset_groups: certification.reset_groups,
         payloads: logical_payloads,
         controls: Vec::new(),
         logic,

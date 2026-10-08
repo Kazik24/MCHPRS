@@ -47,23 +47,28 @@ fn sticky_base_change_rechecks_an_existing_bud_head_without_powering_its_base() 
     }));
     for assume_instant in [false, true] {
         let mut compiler = Compiler::default();
-        let error = compiler
-            .compile(
-                &world,
-                world.get_corners(),
-                CompilerOptions {
-                    assume_instant,
-                    ..Default::default()
-                },
-                vec![],
-                Default::default(),
-            )
-            .unwrap_err()
-            .to_string();
-        assert!(error.contains(&format!("{source:?}")), "{error}");
-        assert!(error.contains(&format!("{head:?}")), "{error}");
-        assert!(error.contains("timing certificate"), "{error}");
-        assert!(!compiler.is_active());
+        let result = compiler.compile(
+            &world,
+            world.get_corners(),
+            CompilerOptions {
+                assume_instant,
+                ..Default::default()
+            },
+            vec![],
+            Default::default(),
+        );
+        if assume_instant {
+            result.unwrap();
+            assert!(compiler.is_active());
+        } else {
+            let error = result.unwrap_err().to_string();
+            assert!(error.contains(&format!("{source:?}")), "{error}");
+            assert!(
+                error.contains("no verified observer reset or payload-following response"),
+                "{error}"
+            );
+            assert!(!compiler.is_active());
+        }
     }
     world.set_block(data, Block::Air);
     let held = trace::capture(|| {

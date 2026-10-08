@@ -262,7 +262,10 @@ impl ChunkSection {
     }
 
     fn get_block(&self, x: u32, y: u32, z: u32) -> u32 {
-        let idx = ChunkSection::get_index(x, y, z);
+        self.get_block_by_index(ChunkSection::get_index(x, y, z))
+    }
+
+    pub(crate) fn get_block_by_index(&self, idx: usize) -> u32 {
         self.changed_blocks
             .as_ref()
             .and_then(|blocks| (blocks[idx] >= 0).then_some(blocks[idx] as u32))
@@ -1018,10 +1021,13 @@ mod heightmap_tests {
     #[test]
     fn lazy_change_tracking_survives_save_and_packet_flush() {
         let mut section = ChunkSection::default();
+        let index = ChunkSection::get_index(1, 2, 3);
         assert!(section.changed_blocks.is_none());
         assert!(!section.set_block(1, 2, 3, 0));
         assert!(section.changed_blocks.is_none());
         assert!(section.set_block(1, 2, 3, 1));
+        assert_eq!(section.buffer.get_entry(index), 0);
+        assert_eq!(section.get_block_by_index(index), 1);
         let saved = section.save();
         assert_eq!(section.get_block(1, 2, 3), 1);
         assert!(
@@ -1033,11 +1039,14 @@ mod heightmap_tests {
         assert_eq!(packet.records[0].block_id, 1);
         assert!(section.changed_blocks.is_none());
         assert_eq!(section.get_block(1, 2, 3), 1);
+        assert_eq!(section.get_block_by_index(index), 1);
         let loaded = ChunkSection::load(saved);
         assert!(loaded.changed_blocks.is_none());
         assert_eq!(loaded.get_block(1, 2, 3), 1);
+        assert_eq!(loaded.get_block_by_index(index), 1);
         assert!(section.set_block(1, 2, 3, 0));
         assert_eq!(section.get_block(1, 2, 3), 0);
+        assert_eq!(section.get_block_by_index(index), 0);
         assert_eq!(section.block_count(), 0);
     }
 }

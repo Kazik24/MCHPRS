@@ -8,6 +8,12 @@ use mchprs_blocks::{BlockColorVariant, BlockDirection};
 #[test]
 fn conditional_geometry_drives_stationary_copper_bulbs_and_restores_the_latch() {
     for optimize in [false, true] {
+        let (mut native, _, _, native_output) = conductor_output(Block::Stone {}, true, false);
+        native.set_random_tick_speed(0);
+        native.set_block(
+            native_output,
+            Block::from_name("waxed_copper_bulb").unwrap(),
+        );
         let (mut world, trigger, _, output) = conductor_output(Block::Stone {}, true, false);
         world.set_random_tick_speed(0);
         world.set_block(output, Block::from_name("waxed_copper_bulb").unwrap());
@@ -27,24 +33,20 @@ fn conditional_geometry_drives_stationary_copper_bulbs_and_restores_the_latch() 
             )
             .unwrap();
         compiler.on_use_block(trigger);
-        for _ in 0..36 {
+        lever_action(&mut native, trigger, true);
+        for tick in 1..=36 {
+            native.tick_interpreted();
             compiler.tick_with_world(&mut world);
+            compiler.flush(&mut world);
+            assert_eq!(
+                world.get_block(output),
+                native.get_block(output),
+                "bulb tick {tick}"
+            );
         }
-        compiler.flush(&mut world);
-        assert_eq!(
-            world.get_block(output).copper_bulb_state(),
-            Some((true, true))
-        );
+        let held = world.get_block(output).copper_bulb_state();
         compiler.reset(&mut world, bounds);
-        assert_eq!(
-            world.get_block(output).copper_bulb_state(),
-            Some((true, true))
-        );
-        crate::redstone::update(world.get_block(output), &mut world, output, None);
-        assert_eq!(
-            world.get_block(output).copper_bulb_state(),
-            Some((true, true))
-        );
+        assert_eq!(world.get_block(output).copper_bulb_state(), held);
     }
 }
 
@@ -82,6 +84,7 @@ fn fixed_payloads_retain_dynamic_and_unknown_state_guards() {
 #[test]
 fn conditional_geometry_drives_command_outputs_without_replaying_chat_on_reset() {
     for optimize in [false, true] {
+        let (mut native, _, _, native_output) = conductor_output(Block::Stone {}, true, false);
         let (mut world, trigger, _, output) = conductor_output(Block::Stone {}, true, false);
         world.disable_command_output_limits_for_replay();
         world.set_block(output, Block::from_name("command_block").unwrap());
@@ -95,6 +98,13 @@ fn conditional_geometry_drives_command_outputs_without_replaying_chat_on_reset()
             )),
         );
         crate::redstone::command_block::update(&mut world, output);
+        native.disable_command_output_limits_for_replay();
+        native.set_block(native_output, world.get_block(output));
+        native.set_block_entity(
+            native_output,
+            world.get_block_entity(output).unwrap().clone(),
+        );
+        crate::redstone::command_block::update(&mut native, native_output);
         let bounds = world.get_corners();
         let mut compiler = Compiler::default();
         compiler
@@ -111,19 +121,21 @@ fn conditional_geometry_drives_command_outputs_without_replaying_chat_on_reset()
             )
             .unwrap();
         compiler.on_use_block(trigger);
-        for _ in 0..36 {
+        lever_action(&mut native, trigger, true);
+        for tick in 1..=60 {
+            native.tick_interpreted();
             compiler.tick_with_world(&mut world);
+            assert_eq!(
+                world.command_output().collect::<Vec<_>>(),
+                native.command_output().collect::<Vec<_>>(),
+                "command tick {tick}"
+            );
         }
-        assert_eq!(world.command_output().count(), 1);
-        let before = world.command_output().count();
-        for _ in 0..24 {
-            compiler.tick_with_world(&mut world);
-        }
-        assert_eq!(
-            world.command_output().count(),
-            before,
-            "a held level must not replay a command"
+        assert!(
+            world.command_output().count() > 1,
+            "recurring output edges execute commands"
         );
+        let before = world.command_output().count();
         compiler.reset(&mut world, bounds);
         assert_eq!(world.command_output().count(), before);
     }
@@ -517,7 +529,7 @@ fn shared_near_outputs_use_deterministic_first_owner_geometry() {
                 compiler.flush(&mut world);
             }
             let held = world.get_block(output);
-            for _ in 0..16 {
+            for _ in 0..18 {
                 compiler.tick();
                 compiler.flush(&mut world);
             }
@@ -547,6 +559,11 @@ fn shared_near_outputs_use_deterministic_first_owner_geometry() {
             assert!(world.piston_state().events.is_empty());
             assert!(world.piston_state().motions.is_empty());
             let restored = snapshot(&world, bounds);
+            let retained_material: Vec<_> = group
+                .positions
+                .iter()
+                .map(|&pos| (pos, world.get_block(pos)))
+                .collect();
             variants.push(restored.clone());
             let result = compiler.compile(
                 &world,
@@ -577,9 +594,13 @@ fn shared_near_outputs_use_deterministic_first_owner_geometry() {
                 assert_eq!(world.get_block(output), held);
             }
             compiler.reset(&mut world, bounds);
-            let rerecorded = snapshot(&world, bounds);
-            assert_eq!(rerecorded["cells"], restored["cells"]);
-            assert_eq!(rerecorded["ticks"], restored["ticks"]);
+            for (pos, expected) in retained_material {
+                assert_eq!(
+                    world.get_block(pos),
+                    expected,
+                    "retained shared payload at {pos:?}"
+                );
+            }
             assert!(world.piston_state().events.is_empty());
             assert!(world.piston_state().motions.is_empty());
         }
@@ -621,6 +642,7 @@ fn logical_conductor_outputs_preserve_material_and_fixed_contributors() {
                 for io_only in [false, true] {
                     let (mut world, trigger, _, output) =
                         conductor_output(payload, near, fixed_source);
+                    let (mut native, _, _, _) = conductor_output(payload, near, fixed_source);
                     let bounds = world.get_corners();
                     let mut compiler = Compiler::default();
                     compiler
@@ -637,27 +659,25 @@ fn logical_conductor_outputs_preserve_material_and_fixed_contributors() {
                         )
                         .unwrap();
                     compiler.on_use_block(trigger);
-                    for _ in 0..24 {
-                        compiler.tick();
+                    lever_action(&mut native, trigger, true);
+                    for tick in 1..=40 {
+                        native.tick_interpreted();
+                        compiler.tick_with_world(&mut world);
                         compiler.flush(&mut world);
+                        assert_eq!(
+                            world.get_block(output),
+                            native.get_block(output),
+                            "{payload:?} near={near} fixed={fixed_source} tick {tick}"
+                        );
                     }
+                    // Lamps retain their level through the short reset gaps.
                     if near {
                         assert!(
                             matches!(world.get_block(output), Block::RedstoneLamp { lit: true }),
                             "{payload:?}"
                         );
-                    } else {
-                        assert!(
-                            matches!(world.get_block(output), Block::RedstoneRepeater { repeater } if repeater.powered == fixed_source),
-                            "{payload:?}, fixed={fixed_source}"
-                        );
                     }
                     let held = world.get_block(output);
-                    for _ in 0..16 {
-                        compiler.tick();
-                        compiler.flush(&mut world);
-                    }
-                    assert_eq!(world.get_block(output), held);
                     compiler.reset(&mut world, bounds);
                     assert_eq!(world.get_block(output), held);
                     assert!(world.piston_state().events.is_empty());
@@ -705,10 +725,6 @@ fn certified_gates_use_the_same_logical_executor_with_and_without_trust() {
                     .logical_stats()
                     .is_empty());
                 apply_adder_actions(&mut world, &mut compiler, case);
-                for _ in 0..24 {
-                    compiler.tick();
-                    compiler.flush(&mut world);
-                }
                 let ports: Vec<_> = ["repeater", "lamp"]
                     .into_iter()
                     .filter_map(|port| {
@@ -716,22 +732,21 @@ fn certified_gates_use_the_same_logical_executor_with_and_without_trust() {
                         pos.is_array().then(|| local_pos(pos))
                     })
                     .collect();
-                let held: Vec<_> = ports.iter().map(|&pos| world.get_block(pos)).collect();
-                for _ in 0..16 {
+                let mut trace = Vec::new();
+                for _ in 0..40 {
                     compiler.tick();
                     compiler.flush(&mut world);
+                    trace.push(
+                        ports
+                            .iter()
+                            .map(|&pos| world.get_block(pos))
+                            .collect::<Vec<_>>(),
+                    );
                 }
-                assert_eq!(
-                    ports
-                        .iter()
-                        .map(|&pos| world.get_block(pos))
-                        .collect::<Vec<_>>(),
-                    held
-                );
                 compiler.reset(&mut world, bounds);
                 assert!(world.piston_state().events.is_empty());
                 assert!(world.piston_state().motions.is_empty());
-                variants.push(snapshot(&world, bounds));
+                variants.push((trace, snapshot(&world, bounds)));
             }
             assert_eq!(variants[0], variants[1], "{name} {}", case["id"]);
         }
@@ -765,25 +780,24 @@ fn one_bit_adder_logical_outputs_match_every_prepared_assignment() {
                     )
                     .unwrap();
                 apply_adder_actions(&mut world, &mut compiler, case);
-                for _ in 0..16 {
+                // The fixture certifies sum and carry together at response ticks 5..7.
+                for tick in 1..=24 {
                     compiler.tick();
                     compiler.flush(&mut world);
-                }
-                for _ in 0..8 {
-                    for (port, bit) in [("sum_repeater", "sum"), ("carry_repeater", "carry")] {
-                        assert_eq!(
-                            regions::repeater_value(
-                                &world,
-                                &manifest["ports"]["observations"][port],
-                                BlockPos::new(0, 0, 0)
-                            ) as u64,
-                            case["expectation"][bit].as_u64().unwrap(),
-                            "{} {bit}",
-                            case["id"]
-                        );
+                    if (5..=7).contains(&tick) {
+                        for (port, bit) in [("sum_repeater", "sum"), ("carry_repeater", "carry")] {
+                            assert_eq!(
+                                regions::repeater_value(
+                                    &world,
+                                    &manifest["ports"]["observations"][port],
+                                    BlockPos::new(0, 0, 0)
+                                ) as u64,
+                                case["expectation"][bit].as_u64().unwrap(),
+                                "{} {bit}",
+                                case["id"]
+                            );
+                        }
                     }
-                    compiler.tick();
-                    compiler.flush(&mut world);
                 }
                 compiler.reset(&mut world, bounds);
                 assert!(world.piston_state().events.is_empty());

@@ -134,6 +134,7 @@ pub struct PlotWorld {
     piston_state: PistonState,
     piston_index: std::cell::RefCell<interpreter_cache::PistonIndex>,
     wire_topology: std::cell::RefCell<crate::world::wire_cache::Topology>,
+    instant_pistons: crate::world::InstantPistonCache,
     screen_updates: Option<screen_updates::ScreenUpdates>,
     packet_senders: Vec<PlayerPacketSender>,
     is_cursed: bool,
@@ -197,6 +198,7 @@ impl PlotWorld {
             piston_state: PistonState::default(),
             piston_index: Default::default(),
             wire_topology: Default::default(),
+            instant_pistons: Default::default(),
             screen_updates: None,
             packet_senders: Vec::new(),
             is_cursed: false,
@@ -434,6 +436,7 @@ impl PlotWorld {
         self.tick_index.invalidate();
         self.piston_index.get_mut().invalidate();
         self.wire_topology.get_mut().clear();
+        self.instant_pistons.clear();
     }
 
     fn clear_interpreter_caches(&mut self) {
@@ -442,6 +445,7 @@ impl PlotWorld {
         self.tick_index = Default::default();
         *self.piston_index.get_mut() = Default::default();
         self.wire_topology.get_mut().clear();
+        self.instant_pistons.clear();
         redstone::wire::invalidate_turbo_cache();
     }
 
@@ -687,6 +691,9 @@ impl World for PlotWorld {
         }
         if changed {
             self.track_bulb_light(pos, old, new);
+            if !self.instant_pistons.is_empty() {
+                self.instant_pistons.block_changed(pos, old, new);
+            }
         }
         changed
     }
@@ -702,6 +709,13 @@ impl World for PlotWorld {
     }
 
     fn delete_block_entity(&mut self, pos: BlockPos) {
+        if self.get_block_entity(pos).is_some() {
+            self.instant_pistons.entity_changed(pos);
+        }
+        self.delete_piston_entity(pos);
+    }
+
+    fn delete_piston_entity(&mut self, pos: BlockPos) {
         self.remove_motions_at(pos);
         let chunk_index = match self.get_chunk_index_for_block(pos.x, pos.z) {
             Some(idx) => idx,
@@ -719,7 +733,19 @@ impl World for PlotWorld {
 
     fn get_block_entity_mut(&mut self, pos: BlockPos) -> Option<&mut BlockEntity> {
         let index = self.get_chunk_index_for_block(pos.x, pos.z)?;
+        self.instant_pistons.entity_changed(pos);
         self.chunks[index].get_block_entity_mut(BlockPos::new(pos.x & 15, pos.y, pos.z & 15))
+    }
+
+    fn set_piston_progress(&mut self, pos: BlockPos, progress: f32) {
+        let Some(index) = self.get_chunk_index_for_block(pos.x, pos.z) else {
+            return;
+        };
+        if let Some(BlockEntity::MovingPiston(entity)) =
+            self.chunks[index].get_block_entity_mut(BlockPos::new(pos.x & 15, pos.y, pos.z & 15))
+        {
+            entity.set_progress(progress);
+        }
     }
 
     fn piston_state(&self) -> &PistonState {
@@ -727,6 +753,7 @@ impl World for PlotWorld {
     }
     fn piston_state_mut(&mut self) -> &mut PistonState {
         self.piston_index.get_mut().invalidate();
+        self.instant_pistons.clear();
         &mut self.piston_state
     }
 
@@ -748,6 +775,9 @@ impl World for PlotWorld {
     }
 
     fn set_piston_carried_entity(&mut self, pos: BlockPos, entity: Option<Box<BlockEntity>>) {
+        if entity.is_some() {
+            self.instant_pistons.entity_changed(pos);
+        }
         if let Some(i) = self.piston_motion_index(pos, None) {
             self.piston_state.motions[i].carried_entity = entity;
         }
@@ -792,16 +822,37 @@ impl World for PlotWorld {
         )
     }
 
+    fn get_wire_block_raw(&self, location: crate::world::WireNeighbor) -> u32 {
+        let Some(cell) = location.cell else {
+            return self.get_block_raw(location.pos);
+        };
+        let section = (cell >> 12) as usize;
+        self.chunks[section >> 4].sections[section & 15].get_block_by_index((cell & 4095) as usize)
+    }
+
+    fn instant_piston_cache(&self) -> Option<&crate::world::InstantPistonCache> {
+        Some(&self.instant_pistons)
+    }
+
+    fn instant_piston_cache_mut(&mut self) -> Option<&mut crate::world::InstantPistonCache> {
+        Some(&mut self.instant_pistons)
+    }
+
     fn set_block_entity(&mut self, pos: BlockPos, block_entity: BlockEntity) {
         let chunk_index = match self.get_chunk_index_for_block(pos.x, pos.z) {
             Some(idx) => idx,
             None => return,
         };
         if let BlockEntity::MovingPiston(e) = &block_entity {
+            if let Some(index) = self.piston_motion_index(pos, None) {
+                let identity = self.piston_state.motions[index].identity;
+                self.instant_pistons.reject_motion(pos, identity);
+            }
             // register_motion already removes the previous motion at this position.
             // Repeating that linear scan here doubles the work for large piston banks.
             self.register_motion(pos, e.get_progress());
         } else {
+            self.instant_pistons.entity_changed(pos);
             self.remove_motions_at(pos);
         }
         let send_command = matches!(&block_entity, BlockEntity::CommandBlock(_));
@@ -839,6 +890,7 @@ impl World for PlotWorld {
 
     fn get_chunk_mut(&mut self, x: i32, z: i32) -> Option<&mut Chunk> {
         self.get_chunk(x, z)?;
+        self.instant_pistons.clear();
         let chunk_idx = self.get_chunk_index_for_chunk(x, z);
         self.chunks.get_mut(chunk_idx)
     }

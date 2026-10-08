@@ -31,6 +31,15 @@ pub(super) struct Plan {
 }
 
 impl Plan {
+    pub(super) fn geometry_inputs(
+        &self,
+    ) -> impl Iterator<Item = (usize, super::GeometryPart)> + '_ {
+        self.inputs.iter().filter_map(|(input, _)| match input {
+            Input::Geometry { actor, part } => Some((*actor, *part)),
+            _ => None,
+        })
+    }
+
     pub(super) fn compile_counts(&self) -> (usize, usize) {
         (self.decisions.len(), self.inputs.len())
     }
@@ -613,6 +622,7 @@ mod tests {
                 clocked: None,
                 independent_memory: Vec::new(),
                 sampling: Vec::new(),
+                reset_groups: Vec::new(),
                 payloads: Vec::new(),
                 controls: Vec::new(),
                 groups: Vec::new(),
