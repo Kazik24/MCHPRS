@@ -1,0 +1,26 @@
+{
+  "schema_version": 1,
+  "source_host": "urmom",
+  "source_directory": "/srv/mchprs/data/schems",
+  "verified_utc": "2026-10-08T12:27:22.886984+00:00",
+  "files": [
+    {
+      "name": "BUD_MEMORY_PM1.schem",
+      "bytes": 683,
+      "sha256": "50a56e8fa93dda0e78f108681932c6276b03f9f1eebf3393198fae092b5694c8",
+      "modified_utc": "2026-10-08T12:21:44.729265+00:00"
+    },
+    {
+      "name": "BUD_MEMORY_ANPU_NONINSTANT.schem",
+      "bytes": 661,
+      "sha256": "636257241603d4d5eaa050c3abc6f2b7639329598530c3fc1f2604853094532b",
+      "modified_utc": "2026-10-08T12:22:36.715722+00:00"
+    },
+    {
+      "name": "BUD_MEMORY_PISTION_UPDATE_INSTANT.schem",
+      "bytes": 794,
+      "sha256": "988dc0adaa7df229fab14f6578febb2e6ca96263a5c328650a66d7a32d493aa0",
+      "modified_utc": "2026-10-08T12:23:00.018927+00:00"
+    }
+  ]
+}

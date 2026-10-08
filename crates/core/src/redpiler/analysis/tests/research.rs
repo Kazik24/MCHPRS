@@ -8,6 +8,7 @@ mod anpu;
 mod anpu_motion_scope;
 mod notification_routes;
 mod pm1_clocks;
+mod bud_cells;
 
 #[path = "research/fpu_divider.rs"]
 mod fpu_divider;

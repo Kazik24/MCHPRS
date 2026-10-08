@@ -1,0 +1,400 @@
+BUD schematic investigation — 2026-10-08
+
+Downloaded originals, compiler diagnostics and native/compiled comparisons are complete.
+No production admission checks or executors were changed. No frozen expectations were
+rewritten. The only Rust changes are an opt-in research test and its module declaration.
+Results apply to the local code at 7fb43015e58e92be6a89b8504988a969fa7e7335;
+results.json records SHA-256 hashes of the relevant source files. Remote server binary
+version and native remote execution were not inspected. Interpreter execution here uses
+the repository's production PlotWorld, redstone callbacks, scheduler and piston machinery.
+
+The main result is more nuanced than “all fail compilation”:
+* Exact schematic-sized selections reject all four files.
+* With complete loaded plot context, ANPU and instant update already compile under every
+  requested flag combination, but their native and compiled ordering differs.
+* PM1 reaches a clock validator that incorrectly includes its data sources in the clock
+  source count, and also restricts the actual clock control to torches.
+* The additional mixed horizontal/vertical example fails a shared-clock specialization
+  before the generic independent sampling classifier is attempted.
+
+Unverified before implementation: PM1 and mixed-layout compiled execution remains
+unavailable under the intact guards. No proposed admission fix has been run as a bypass.
+No vanilla Java capture, exhaustive analog-strength test, translation/rotation campaign,
+full CPU replay, or remote server version comparison was performed for these new files.
+Native/compiled tests cover the saved configuration, stable input episodes and three
+controlled ordering schedules; they do not prove every possible schedule.
+
+Exact source identity and loading
+
+Existing workflow: tools/download_piston_research.py, host urmom, read-only SSH/SCP,
+source /srv/mchprs/data/schems. Each download manifest contains remote modification time,
+file length and verified SHA-256. The accepted comparison is COUNTER_BASIC.schem; the
+user confirmed that identity. Its remote download matches the existing frozen fixture.
+
+Filename                                  Dimensions  Bytes  Loader offset
+BUD_MEMORY_PM1.schem                       8 x 7 x 7   683    (1,3,0)
+BUD_MEMORY_ANPU_NONINSTANT.schem            5 x 8 x 6   661    (4,2,1)
+BUD_MEMORY_PISTION_UPDATE_INSTANT.schem     6 x 7 x 7   794    (4,5,1)
+BUD_VERTICAL_ERROR_UPDATE.schem            15 x 7 x 8  830    (7,4,1)
+COUNTER_BASIC.schem                        24 x 17 x 35 1864  (0,1,0)
+
+SHA-256:
+PM1:      50a56e8fa93dda0e78f108681932c6276b03f9f1eebf3393198fae092b5694c8
+ANPU:     636257241603d4d5eaa050c3abc6f2b7639329598530c3fc1f2604853094532b
+Instant:  988dc0adaa7df229fab14f6578febb2e6ca96263a5c328650a66d7a32d493aa0
+Mixed:    8d92e23e2539d5d5b7bda6ee48467d26d74953852b134a60f1dc8ee2f4d45c1e
+Counter:  ae325e9238942ad0ebbe49671b39cda1a563ab45e7bd55c32ee5800298cf3ff4
+
+All four new files are Sponge v2, DataVersion 4325. Block entities are signs only (3,3,3,4).
+We use load_schematic and paste_clipboard with selection minimum O=(40,30,40), and paste
+anchor O+loader_offset. Every local (x,y,z) in this report maps to loaded world
+(x+40,y+30,z+40). Callback/event records use loaded-world coordinates; block snapshots
+and source listings use local coordinates. Inspection JSON preserves every original
+block state, sign text, offset and block entity. No rotation or legalization was applied.
+
+Saved-state limitation: block poses, wire strengths and lever/observer/torch/repeater
+states are saved; pending scheduled ticks and their priority/FIFO order, piston event
+requests, logical tick/advance phase and movement work identities are not. These files
+contain no moving-piston entities. Paste does not synthesize ordinary neighbor updates or
+settle BUDs. Each original was run idle first for 12 ticks with empty queues; all memories
+held. The instant I2 cell is saved retracted while its QC data is powered. Native and
+compiled idle both preserve that state. Do not “repair” it by equating pose to power.
+The remote save cannot establish whether a request was pending at the time of //save.
+
+Port and initial-pose inventory (local coordinates)
+
+PM1:
+  I3/I2/I1 signs map respectively to data levers (6,5,2)/(6,5,4)/(6,5,6), all OFF.
+  Three memory bases (4,3,2)/(4,3,4)/(4,3,6), sticky/down, all retracted.
+  Near payloads are redstone blocks at (4,2,z); heads are absent; far cells (4,1,z) are air.
+  Repeaters (3,1,2)/(3,1,4)/(3,1,6) are OFF, delay 1 redstone tick.
+  Unlabelled enable/stop lever (0,2,0) is ON: ON stops; OFF starts.
+  Empty normal/down generator (3,3,0) is extended, head (3,2,0).
+  Reset observer (3,4,0), sampling observer (4,3,0), both unpowered.
+
+ANPU:
+  I1/I2 levers (1,6,3)/(1,6,5) are OFF; Trigger (4,1,0) is OFF.
+  Memories (2,3,3)/(2,3,5), sticky/down, retracted; near redstone blocks (2,2,z),
+  absent heads, air at far (2,1,z). Repeaters (1,1,3)/(1,1,5) are OFF.
+  I1 updater (3,3,2), normal/south, retracted; possible head (3,3,3) touches memory BASE.
+  I2 updater (3,3,5), normal/south, retracted; updater BASE touches memory BASE.
+  Target blocks (3,2,2)/(3,2,5) and dust x=4,y=2,z=1..5 deliver trigger power/updates.
+  ON and OFF trigger edges both cause native updater work; no periodic clock is present.
+
+Instant:
+  I1/I2 levers (1,5,3)/(1,5,5) and Trigger (4,5,1) are ON.
+  I1 memory (3,3,3), sticky/down, extended, head (3,2,3), far redstone block (3,1,3).
+  I2 memory (3,3,5), sticky/down, retracted, no head, near redstone block (3,2,5).
+  Repeaters (2,1,3)/(2,1,5) are respectively ON/OFF.
+  Empty normal/north generators (4,3,4)/(4,3,6) are extended; their existing heads
+  (4,3,3)/(4,3,5) touch the corresponding memory BASE, not its head.
+  Wall torches (5,4,4)/(5,4,6) are OFF. Trigger bus at x=4,y=5 supplies QC power;
+  each torch supplies dust (5,3,4)/(5,3,6). OFF trigger releases both generators;
+  later torch power restores them. ON alone does not deliver another pose edge.
+
+Mixed horizontal/vertical file:
+  This contains two banks, with FIVE memories, not just two individual piston cells.
+  Horizontal sticky/west bases (4,2,4)/(4,2,6), initially retracted, near payloads
+  (3,2,4)/(3,2,6), absent heads; far cells (2,2,4)/(2,2,6) air.
+  Unlabelled horizontal data levers (6,4,4)/(6,4,6) OFF; repeaters (1,2,4)/(1,2,6) OFF.
+  Vertical I3/I2/I1 bases (11,3,3)/(11,3,5)/(11,3,7), sticky/down, retracted;
+  near redstone blocks (11,2,z), no heads; far cells (11,1,z) air.
+  Their levers (13,5,3)/(13,5,5)/(13,5,7) and repeaters (10,1,z) are OFF.
+  Shared Trigger (7,3,0) ON stops both reset branches; OFF releases them.
+  Horizontal empty normal/north generator (5,2,1) extended, head (5,2,0), reset observer
+  (5,3,1), sampling observer (5,2,2), bus x=5,y=2,z=3..7.
+  Vertical empty normal/down generator (10,3,1) extended, head (10,2,1), reset observer
+  (10,4,1), sampling observer (11,3,1), bus x=12,y=3,z=2..7.
+  All four observers unpowered. Common control dust (6,3,1)/(7,4,1)/(8,3,1) powers both.
+
+Compilation results
+
+Each entry is result and elapsed microseconds: normal budget / maximum budget.
+Rows for a bank's variants share the same unmodified full-schematic compilation attempt.
+CompilerOptions.budget_multiplier is explicitly 1 or 8; setting only TaskMonitor would
+be overwritten by Compiler::compile. Normal/max analysis limits are 16/128 Mi inspected
+cells, 65,536/524,288 pistons and 4/32 Mi dependency steps. Actual inventories inspect
+8,192 cells for each original; dependency counts are PM1 418, ANPU 592, instant 1001,
+mixed 920. None of these failures is budget exhaustion.
+
+Complete loaded plot selection: (0,0,0)..(255,255,255)
+Variant                default          -O               --assume-instant   both
+PM1 I3/I2/I1 bank      M 959/782         M 759/775        M 741/811          M 757/748
+ANPU I1 head->base     PASS 1539/1296    PASS 1425/1306   PASS 1321/1315     PASS 1313/1309
+ANPU I2 base->base     PASS 1539/1296    PASS 1425/1306   PASS 1321/1315     PASS 1313/1309
+Instant I1            PASS 1411/1358    PASS 1384/1371   PASS 1361/1382     PASS 1381/1434
+Instant I2            PASS 1411/1358    PASS 1384/1371   PASS 1361/1382     PASS 1381/1434
+Mixed horizontal bank V 284/277         V 275/272        V 278/261          V 274/267
+Mixed vertical bank   V 284/277         V 275/272        V 278/261          V 274/267
+COUNTER_BASIC         PASS 40965/40188  PASS 40074/40038 PASS 39854/40456   PASS 39843/39601
+
+Exact errors, all prefixed “logical piston admission failed: ”:
+M: observer-clock execution needs one ordinary torch control source
+V: BUD update at BlockPos { x: 44, y: 32, z: 44 } has an independent writer outside its clock
+
+Exact schematic-sized selection, all flags/budgets:
+PM1: BUD update at BlockPos { x: 44, y: 33, z: 42 } has another writer or incomplete context
+  First guard clocked.rs:180; incomplete context on sampling bus, not an extra physical writer.
+ANPU: piston at BlockPos { x: 43, y: 33, z: 42 } needs update context outside the selection
+  at BlockPos { x: 45, y: 33, z: 42 }
+  Local updater (3,3,2), required context (5,3,2); first guard program.rs:337.
+Instant: piston at BlockPos { x: 44, y: 33, z: 44 } needs update context outside the selection
+  at BlockPos { x: 46, y: 33, z: 44 }
+  Local updater (4,3,4), required context (6,3,4); first guard program.rs:337.
+Mixed: same V as complete context; specialized rejection masks later boundary checks.
+All exact timings, selected bounds and active/error status are retained in results.json.
+Changing the declared selection to include existing loaded air is a separate comparison,
+not a block modification or a relaxation of the selection-boundary guard.
+
+Why PM1 differs from the accepted counter
+
+program.rs:181 recognizes the shared clock before sampling.rs:103 classifies independent
+cells. PM1 has one recognized clock, three clock-owned cells and two owned observers;
+no independent memory events are required. The error occurs after logical extraction,
+at program.rs:404 -> clocked.rs:26. logic.rs:321 collects response_sources from ALL
+piston responses, before output extraction; it is not the clock-root's dependency set.
+The counted sources are all minecraft:lever:
+  control (0,2,0) -> world (40,32,40)
+  I3 (6,5,2) -> (46,35,42)
+  I2 (6,5,4) -> (46,35,44)
+  I1 (6,5,6) -> (46,35,46)
+Extracted roots show the clock depends only on control at threshold 0; each cell's data
+root depends only on its own data lever at threshold 0. No stored-state-dependent
+control or power cycle exists in those roots. There is one writer, observer (4,3,0),
+on the lower bus; the upper data dust powers via QC without delivering writes.
+
+COUNTER_BASIC compiles in all eight comparisons. Its clock is local (2,11,19), world
+(42,41,59), with 16 memory cells. Its region's sole ordinary response source is a
+redstone_wall_torch at (7,8,2), world (47,38,42), facing south. Stored geometry supplies
+its counter data, so it adds no external data lever sources to response_sources. Its
+clock root traverses an Actuator edge (132), which the existing validator already walks.
+That is why similar BUD update delivery passes there but PM1 fails. Restricting source
+collection to the clock root alone would still leave PM1's lever outside the torch whitelist.
+
+Region and writer inventory
+
+Every new file is one analysis region. None has electrical connections between payload
+groups in ports.connections. Region membership does not establish a single master clock.
+PM1 joins clock/cells through the sampling observer and its dust dependencies.
+ANPU joins each generator/cell through head/base notification adjacency; the shared
+trigger net occurs in both generator power reads, and the conservative two-cell geometry
+join in regions.rs:169 connects those reads to both actors. There are two notification
+generators, two independent stored data roots and one common trigger, not two inferred
+master clocks. Ordinary sources are Trigger (4,1,0), I1 (1,6,3), I2 (1,6,5), all levers.
+In the saved retracted pose ANPU I1 has NO entries in ports.updates: ports.rs discovers
+existing heads but not the future updater head. sampling.rs:222 nevertheless recognizes
+the prospective head/base adjacency using piston descriptors. It classifies both targets
+requires_extended=false because these callbacks go to the memory base. ANPU I2 explicitly
+records a PistonBaseChange from (3,3,5). None of the new files hits the unsupported sticky
+base/head timing-certificate guard in sampling.rs:300; that existing negative route is
+covered by notification_routes.rs tests and was retained unchanged. Both instant targets
+also have requires_extended=false: the updater head is the source, the memory base is
+the receiver. A head-source route is not a head-only receiver eligibility condition.
+Instant likewise has two generators and two memory roots under common Trigger. Additionally,
+the second empty generator's possible far position (4,3,4) is the first generator's
+stationary base: regions.rs:24 ownership overlap joins them. This is stationary context,
+not a movable payload. Its five ordinary response sources are the two wall torches
+(5,4,4)/(5,4,6), Trigger (4,5,1) and data levers (1,5,3)/(1,5,5).
+
+For mixed layout, both generators read the same dust set (6,3,1),(7,4,1),(8,3,1) and lever
+(7,3,0). Example actual join: horizontal base (5,2,1) is two faces from dust (6,3,1),
+which is in the vertical generator's read set. The conservative geometry/read join
+therefore merges their regions. Each observer's watcher and output bus joins its own
+memory bank. There is no mobile payload data edge between banks. The downward-only
+clock candidate filter clocked.rs:65 chooses (10,3,1), not the north-facing (5,2,1).
+It then sees horizontal memory (4,2,4), world (44,32,44), notified by dust (5,2,3..5)
+whose writer is observer (5,2,2), world (45,32,42), facing north. That source is different
+from the chosen clock sampling observer (11,3,1), world (51,33,41), facing west.
+clocked.rs:187 rejects it before independent sampling is attempted. This is a writer
+outside the selected specialization; it is not proof of unsafe independent sampling.
+The diagnostic generic classifier recognizes 2 generators, 5 cells and 11 dust delivery
+descriptors (five horizontal, six vertical), with two writer identities. Its ideal
+extraction and sampling validation pass. Generic response sources are common Trigger,
+reset observers (5,3,1)/(10,4,1) and all five data levers. There are no Memory variables
+in the sampling control. These diagnostic calls do not activate or bypass compilation.
+Native trace shows two explicit reset/notification branches with a common enable;
+generator count, distance and correlated six-tick schedules were not used to infer
+separate master clocks or to prove one synchronous bank.
+
+Native sampling and ordering evidence
+
+Each original is first run without perturbation for 12 ticks. Next, individual data
+levers are toggled with 8 idle ticks each; NO memory samples occur and stored state holds.
+Then Trigger/enable runs 24 ticks, stops 12, data is toggled back while stopped, and it
+runs/stops again. Repeated triggers with unchanged data retain repeated native callbacks
+and same-value checks, without extra stored-state changes. Both committed memory poses
+are reached through the interpreter. All heads were probed in separately prepared
+extended/retracted poses using the LIVE head block; present heads forward to their base,
+near redstone payloads do not. Native data-without-notification and head eligibility
+have asserts in the new capture. These probes are labelled controlled preparations.
+
+Let T be the tick before a trigger action; no tick is silently advanced between actions.
+PM1 and mixed release: generator Retract commits T+1. Sampling/reset observers turn on
+T+3 in scheduled FIFO order. Dust callbacks sample the memory bases, and their piston
+events execute in that same event phase. The restored generator base queues its Extend
+for T+4. Observers turn off T+5. With extending memory, outputs first turn on T+7.
+Next generator retract is T+7; subsequent observer deliveries repeat every six ticks.
+Both observer pulse edges remain delivered native checks, including unchanged data.
+Stop/restored power can cancel a queued generator retract at event execution.
+
+ANPU stable data: trigger changes queue generators immediately; generator events at T+1
+write their base/head geometry and synchronously notify the appropriate memory BASE.
+Memory events enqueued from those callbacks run in the same FIFO event phase. Extension
+movement restores payloads at T+3; repeaters turn ON T+5. Retraction output turns OFF T+3.
+I1 additionally receives the updater's head-completion callback. I2 receives updater
+base callbacks, including restoration on retraction, but no head-completion delivery
+on extension. “Generator pose changed” misses those different callback sequences.
+
+Instant stable data: Trigger OFF queues generator retracts; T+1 commits them, removes
+their adjacent heads, and notifies memory bases. Torches turn ON T+2 as ordinary scheduled
+events; restored generator bases queue Extend for T+4. Memory retraction output turns
+OFF T+3; extension output turns ON T+5. Trigger ON suppresses torches later while QC
+keeps generators extended; it does not itself produce another committed generator edge.
+“Instant” here means the memory recheck is delivered in the generator event phase without
+a separate observer sampling delay. It does not erase scheduled torch/repeater work,
+movement completion, FIFO order or the opportunity to cancel a queued event.
+
+Native engine order: plot/mod.rs:prepare_operation and advance_operation drain ordinary
+scheduled ticks by priority/FIFO, then piston events including newly enqueued ones, then
+an identity-checked snapshot of moving entities. Movement completion callbacks can enqueue
+piston events for the following tick's event phase. piston.rs:106 rechecks live power
+before executing a requested action. piston.rs:172/216 notify writes; :292 restores and
+notifies completed movement; :358 delivers neighbors. redstone/mod.rs:292 forwards live
+piston-head callbacks. Power checks use piston.rs:40 and do not themselves write memory.
+
+Identical native/compiled comparisons
+
+The successful ANPU/instant cases were replayed with the SAME initial snapshot, lever
+actions and idle counts under all four flags and both budgets. All eight compiled
+projections agree with each other; --assume-instant does not choose a different executor.
+The stable-data episode matches every settled endpoint in both variants of both files.
+It still differs in FOUR observed repeater-output frames per file: compiled output work
+can be scheduled from an immediate logical memory write while native must execute piston
+events and finish movement first. Raw frames also expose the physical moving poses.
+
+Three controlled schedules start from each original saved snapshot, after 12 idle ticks:
+1. Trigger edge, reverse Trigger before ANY tick, then 12 ticks.
+   Native cancels queued updater work. In instant, native outputs remain I1=ON,I2=OFF;
+   compiled outputs become ON/ON. I2 was sampled from a request whose native movement
+   never executed. ANPU outputs happen to agree (OFF/OFF) because data is already OFF,
+   but compiled diagnostics record four bank commits from the two cancelled pose edges.
+2. Trigger edge, flip every data lever before ANY tick, then 18 ticks.
+   ANPU native memories/outputs end ON/ON; compiled OFF/OFF. Native samples updated data
+   at generator event execution; compiled samples stale data during on_use_block.
+   Instant final endpoints reconverge after later torch/generator work, but intermediate
+   output frames differ. Reconvergence is not cancellation/order equivalence.
+3. Trigger edge, run exactly ONE tick, flip every data lever, then 18 ticks.
+   ANPU native outputs end I1=ON,I2=OFF; compiled OFF/OFF. At T+3 moving-head completion
+   rechecks I1 using new data; its queued Extend executes T+4 and output turns ON T+8.
+   I2 has no corresponding extension-head delivery. Instant final outputs agree OFF/OFF
+   but five intermediate repeater-output frames differ.
+
+These differences are compiler execution defects in local comparisons, not differing
+schematic initialization: imported poses and schedules are identical on both sides.
+PM1/mixed compiled comparison attempts remain rejected; their native traces are captured
+but no compiled equivalence claim is made. No admission check was suppressed for a run.
+
+Callers and smallest implementation recommendation
+
+Traced path: Compiler::compile (redpiler/mod.rs:312) -> analysis::analyze ->
+families::recognize / ports::discover -> instant::regions::split -> program::prepare_region
+-> clocked::recognize -> sampling::recognize -> geometry/ownership/attachment/boundary
+checks -> observer::certify -> pending-work checks -> logic::extract_ideal_with_state
+-> sampling::validate / ClockedProgram::validate -> graph passes -> DirectBackend bind.
+Runtime: direct/mod.rs set_node/on_use_block/tick_after_callbacks -> evaluate_instant ->
+instant::Runtime::advance; outputs return through existing ordinary propagation/scheduler.
+Reset, flush and memory geometry callers were also read. Clock/sample recognition and
+validation have one production preparation caller; the remaining callers are diagnostics
+and tests. There is no alternate interpreter fallback executor to extend.
+
+PM1 judgment: the bank/control is already logically representable but misclassified by
+the region-wide source validator. Smallest admission correction is to traverse the
+CLOCK ROOT's Signal leaves, following Actuator response edges with the existing dependency
+walker pattern, instead of checking all response_sources. Admit an ordinary supported
+binary control with proved release polarity, including this lever, while retaining the
+stored-data/unsupported-state rejection. Collecting clock leaves alone is insufficient
+while the torch-only condition remains. Preserve all construction and structural guards.
+Before shipping, prove the existing clock schedule against first delivery, pulse-off
+delivery, stop/cancel and restart: Runtime::advance (:543) currently samples immediately
+on activation and thereafter every six ticks (:565), while native first delivery is T+3.
+Therefore this investigation does NOT establish that a validator-only edit satisfies the
+requested exact ordering contract. No “compile succeeds” patch is recommended as complete.
+
+ANPU judgments, both variants: independent sampling topology is already recognized;
+strict native ordering needs a specific execution extension, not weaker construction
+proofs. sampling.rs:222 aggregates adjacent generator base/head into one pose-edge source.
+instant.rs:572 commits a delivery when the evaluated generator response changes. This
+occurs on input propagation before native requests can be cancelled or execute. It also
+omits movement-completion callbacks. Extend the existing logical runtime/scheduling
+machinery with certified delivery phases for empty generators: request, live-power
+validation at event execution, ordered base/head writes, and head/base completion
+notifications. Preserve same-value deliveries and eligibility at the callback phase.
+
+Instant judgments: already accepted with complete context and correct stable endpoints;
+needs the same cancellation/ordered-delivery extension for the requested semantics.
+Keep ordinary torch and repeater nodes on their existing scheduler. Do not force stored
+I2 to its current power state or treat an evaluated generator response as completed motion.
+
+Mixed judgment: specialization misclassification is established, but generic execution
+equivalence remains unproved. General sampling preparation must not be pre-empted merely
+because one downward clock-shaped actor occurs in a conservatively merged region. Select
+the shared-clock specialization only for a bank whose writer ownership it actually proves,
+or retain separately certified per-writer domains in the existing logical program. Do
+not catch arbitrary clocked errors and blindly retry generic admission. The generic
+diagnostic's ordinary observer feedback still needs ownership, pending-work, callback,
+start/stop/cancel and scheduler proof before executing it. Removing the independent-writer
+guard or replacing a two-branch notification model with one timer is not a valid fix.
+
+No change is needed to support selection escape: use a selection with required loaded
+context, and keep the boundary checks. All fixes must retain geometry, exact payload
+ownership/material, block entities, attachment checks, pending events/motions/ticks,
+construction proofs, acyclic response checks and transactional failed compilation.
+Default and --assume-instant must share delivery semantics; only proofs may differ.
+
+Meaningful regression cases before implementation
+
+* Keep all four original SHA-pinned snapshots and all existing CPU/Java expectations.
+* PM1: clock-only source set {control}; three independent data inputs must not be counted
+  as clock controls. Keep negative stored-state-dependent control tests; preserve counter
+  acceptance and extra-writer/exposed-clock rejection. Native first/off/restart delivery
+  and output schedules must compare under every flag at budgets 1 and 8.
+* ANPU I1/I2: data-only hold in both poses; trigger before data in the same interval;
+  one-tick-delayed data; cancelled updater requests; completion callbacks; repeated
+  same-data deliveries; distinct writer deliveries in FIFO order. Assert I1=ON/I2=OFF
+  in the one-tick data case rather than regenerating expectations from compiled output.
+* Instant: saved asymmetric I1/I2 poses; cancelled trigger must preserve ON/OFF; pulse
+  restart and data during the torch-reset interval; ordinary repeater deadlines and
+  intermediate output transitions, not only quiescent endpoints.
+* Mixed: retain both observer writer identities; horizontal and vertical data isolation;
+  both committed poses; callback/observer FIFO and cancellation; shared-control region
+  grouping must not select a single clock model without a certificate.
+* Head-only route: existing head forwards to base; absent head does not. Recheck power
+  before commit, and cancel replaced movement identities. Keep selection/payload/entity/
+  attachment/pending-work transactional rejection tests.
+
+Validation and reproducibility
+
+Passed: extracted-cell capture with native hold/head asserts; accepted-counter preparation
+and 8 compilation options; mixed capture and read-only generic extraction/validation;
+summary asserts identical compiled projections across flags/budgets and original SHA-256.
+Existing suites: redpiler::analysis::tests 95 passed / 13 ignored;
+redstone::piston::tests 42 passed / 2 ignored. Frozen baselines remain unchanged.
+
+Reproduce downloads using tools/download_piston_research.py --names <exact filenames>
+with fresh output directories. Generate inspection using tools/inspect_instant_pistons.py
+--write --pack-dir <download-directory>. Then, from repository root in PowerShell:
+  $env:MCHPRS_BUD_CELL_OUTPUT='test_data/piston-research/bud-cells-20261008/traces/new-run.json'
+  Remove-Item Env:MCHPRS_BUD_CELL_CASE -ErrorAction SilentlyContinue
+  cargo test -p mchprs_core --lib investigate_extracted_bud_cells -- --ignored --nocapture
+  $env:MCHPRS_BUD_COUNTER_OUTPUT='test_data/piston-research/bud-cells-20261008/traces/new-counter.json'
+  cargo test -p mchprs_core --lib investigate_counter_bud_sources -- --ignored --nocapture
+For only the mixed file, set MCHPRS_BUD_CELL_CASE=BUD_VERTICAL_ERROR_UPDATE.
+Output destinations must be new files. The tests never write to originals or expectations.
+
+Authoritative detailed captures:
+  bud-cells-20261008/traces/evidence-final.json (original three; actual option budgets)
+  bud-cells-20261008/traces/counter-evidence.json (actual full preparation, not a partial oracle)
+  bud-vertical-20261008/traces/evidence-generic.json (mixed native and generic diagnostics)
+results.json contains compact comparisons and source provenance. Earlier preserved
+development captures are superseded: their maximum-budget labels preceded correcting
+CompilerOptions.budget_multiplier, and must not be used as maximum-budget evidence.

@@ -1,0 +1,14 @@
+{
+  "schema_version": 1,
+  "source_host": "urmom",
+  "source_directory": "/srv/mchprs/data/schems",
+  "verified_utc": "2026-10-08T12:34:31.850575+00:00",
+  "files": [
+    {
+      "name": "COUNTER_BASIC.schem",
+      "bytes": 1864,
+      "sha256": "ae325e9238942ad0ebbe49671b39cda1a563ab45e7bd55c32ee5800298cf3ff4",
+      "modified_utc": "2026-10-06T12:11:09.678053+00:00"
+    }
+  ]
+}
