@@ -22,6 +22,7 @@ mod packet_handlers;
 mod picking;
 #[cfg(test)]
 mod piston_tests;
+mod preview;
 pub(crate) mod redstone_tools;
 mod scoreboard;
 mod screen_updates;
@@ -121,6 +122,7 @@ pub struct Plot {
     neighbor_views: neighbors::Views,
     neighbor_source: Option<neighbors::LiveSource>,
     git: git::State,
+    wire_cursor: usize,
 }
 
 pub struct PlotWorld {
@@ -1351,6 +1353,7 @@ impl Plot {
     ) {
         if was_loaded && !should_be_loaded {
             self.unload_git_chunk(player_idx, chunk_x, chunk_z);
+            self.unload_wire_chunk(player_idx, chunk_x, chunk_z);
             self.neighbor_views
                 .unload(self.players[player_idx].uuid, (chunk_x, chunk_z));
             let unload_chunk = CUnloadChunk { chunk_x, chunk_z }.encode();
@@ -1558,6 +1561,9 @@ impl Plot {
     }
 
     fn leave_plot(&mut self, uuid: u128) -> Player {
+        if let Some(player) = self.players.iter().position(|player| player.uuid == uuid) {
+            self.clear_wire_tool(player);
+        }
         let player_idx = self.players.iter().position(|p| p.uuid == uuid).unwrap();
         self.hide_git(player_idx, true);
         self.close_open_container(player_idx);
@@ -1814,6 +1820,7 @@ impl Plot {
     fn remove_dc_players(&mut self) {
         for player in 0..self.players.len() {
             if !self.players[player].client.alive() {
+                self.clear_wire_tool(player);
                 self.close_open_container(player);
             }
         }
@@ -1875,12 +1882,17 @@ impl Plot {
                 }
             };
 
+            let tick_duration = match self.tps {
+                Tps::Limited(tps) if tps != 0 => {
+                    Some(Duration::from_nanos((1_000_000_000 / tps as u64).max(1)))
+                }
+                _ => None,
+            };
             let batch_size = match self.tps {
                 Tps::Limited(tps) if tps != 0 => {
                     let dur_per_tick = Duration::from_nanos((1_000_000_000 / tps as u64).max(1));
                     self.lag_time += now - self.last_update_time;
                     let batch_size = (self.lag_time.as_nanos() / dur_per_tick.as_nanos()) as u64;
-                    self.lag_time -= dur_per_tick * batch_size as u32;
                     batch_size.min(max_batch_size)
                 }
                 Tps::Unlimited => max_batch_size,
@@ -1893,22 +1905,26 @@ impl Plot {
                 // 50_000 (= 3.33 MHz) here is arbitrary.
                 // We just need a number that's not too high so we actually get around to sending block updates.
                 let batch_size = batch_size.min(50_000) as u32;
-                let mut ticks_completed = batch_size;
-                if self.redpiler.is_active() {
-                    for _ in 0..batch_size {
-                        self.tick();
-                    }
-                    self.redpiler.flush(&mut self.world);
+                let slice = if self.wire_tools_active() {
+                    Duration::from_millis(5)
                 } else {
-                    for i in 0..batch_size {
-                        self.tick();
-                        if now.elapsed() > Duration::from_millis(200) {
-                            ticks_completed = i + 1;
-                            break;
-                        }
+                    Duration::from_millis(200)
+                };
+                let mut ticks_completed = 0;
+                for _ in 0..batch_size {
+                    self.tick();
+                    ticks_completed += 1;
+                    if simulation_started.elapsed() >= slice {
+                        break;
                     }
                 }
-                self.last_nspt = Some(self.last_update_time.elapsed() / ticks_completed);
+                if self.redpiler.is_active() {
+                    self.redpiler.flush(&mut self.world);
+                }
+                if let Some(duration) = tick_duration {
+                    self.lag_time = self.lag_time.saturating_sub(duration * ticks_completed);
+                }
+                self.last_nspt = Some(simulation_started.elapsed() / ticks_completed);
                 self.world.update_stats.simulation += simulation_started.elapsed();
                 self.world.update_stats.simulated_ticks += u64::from(ticks_completed);
             }
@@ -1941,6 +1957,7 @@ impl Plot {
 
         // Handle commands before removing players just in case they ran a command before leaving
         self.handle_commands();
+        self.update_wire_tools();
         self.update_open_containers();
         for player in &mut self.players {
             redstone_tools::selection::update(player);
@@ -2087,6 +2104,7 @@ impl Plot {
             neighbor_views: Default::default(),
             neighbor_source: None,
             git: Default::default(),
+            wire_cursor: 0,
             world,
         }
     }
@@ -2141,8 +2159,13 @@ impl Plot {
             self.update();
             let delta = before.elapsed();
 
-            if delta < self.sleep_time {
-                let sleep_time = self.sleep_time - delta;
+            let cadence = if self.wire_tools_active() {
+                self.sleep_time.min(Duration::from_millis(20))
+            } else {
+                self.sleep_time
+            };
+            if delta < cadence {
+                let sleep_time = cadence - delta;
                 thread::sleep(sleep_time);
             } else {
                 thread::yield_now();

@@ -13,6 +13,7 @@ pub(super) fn page(topic: Option<&str>) -> Option<&'static str> {
         "warp" | "warps" | "setwarp" => messages::HELP_WARPS,
         "tps" | "adv" | "rtps" | "ticks" | "radvance" | "radv" => messages::HELP_TICKS,
         "we" | "worldedit" => messages::HELP_WORLD_EDIT,
+        "wire" => messages::HELP_WIRE,
         "tools" | "redstonetools" | "find" | "signsearch" | "ss" | "rstack" | "rs"
         | "autostack" | "container" | "cursel" => messages::HELP_REDSTONE_TOOLS,
         "schematics" | "schematic" | "load" | "save" => messages::HELP_SCHEMATICS,

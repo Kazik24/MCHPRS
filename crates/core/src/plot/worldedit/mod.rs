@@ -753,6 +753,7 @@ static ALIASES: Lazy<HashMap<&'static str, &'static str>> = Lazy::new(|| {
 pub struct WorldEditPatternPart {
     pub weight: f32,
     pub block_id: u32,
+    pub match_block_type: bool,
 }
 
 #[derive(Clone, Debug)]
@@ -808,6 +809,23 @@ impl WorldEditUndo {
             plot_x: self.plot_x,
             plot_z: self.plot_z,
         }
+    }
+}
+
+/// Capture sparse tool edits without saving the untouched space between them.
+pub(in crate::plot) fn capture_positions(
+    world: &mut PlotWorld,
+    positions: impl IntoIterator<Item = BlockPos>,
+) -> WorldEditUndo {
+    let origin = BlockPos::zero();
+    WorldEditUndo {
+        clipboards: positions
+            .into_iter()
+            .map(|pos| create_clipboard(world, origin, pos, pos))
+            .collect(),
+        pos: origin,
+        plot_x: world.x,
+        plot_z: world.z,
     }
 }
 
@@ -885,9 +903,9 @@ impl FromStr for WorldEditPattern {
                 .ok_or_else(|| PatternParseError::InvalidPattern(part.to_owned()))?;
 
             let block_name = pattern_match.get(5).unwrap().as_str();
-            let mut block = if pattern_match.get(4).is_some()
-                || block_name.bytes().all(|byte| byte.is_ascii_digit())
-            {
+            let explicit_state = pattern_match.get(4).is_some()
+                || block_name.bytes().all(|byte| byte.is_ascii_digit());
+            let mut block = if explicit_state {
                 let id = block_name
                     .parse::<u32>()
                     .map_err(|_| PatternParseError::InvalidPattern(part.to_owned()))?;
@@ -920,6 +938,7 @@ impl FromStr for WorldEditPattern {
             pattern.parts.push(WorldEditPatternPart {
                 weight,
                 block_id: block.get_id(),
+                match_block_type: !explicit_state && pattern_match.get(7).is_none(),
             });
         }
 
@@ -934,7 +953,11 @@ impl FromStr for WorldEditPattern {
 impl WorldEditPattern {
     pub fn matches(&self, block: Block) -> bool {
         let block_id = block.get_id();
-        self.parts.iter().any(|part| part.block_id == block_id)
+        self.parts.iter().any(|part| {
+            part.block_id == block_id
+                || (part.match_block_type
+                    && Block::from_id(part.block_id).registry_id() == block.registry_id())
+        })
     }
 
     pub fn pick(&self) -> Block {
@@ -952,6 +975,7 @@ impl WorldEditPattern {
         let mut selected = &WorldEditPatternPart {
             block_id: 0,
             weight: 0.0,
+            match_block_type: false,
         };
 
         for part in &self.parts {
@@ -982,6 +1006,39 @@ fn container_patterns_apply_properties_and_split_only_between_blocks() {
     assert_eq!(pattern.parts[1].weight, 0.75);
     for invalid in ["hopper[facing=up]", "furnace[lit=maybe]", "cake[bites=7]"] {
         assert!(WorldEditPattern::from_str(invalid).is_err());
+    }
+}
+
+#[test]
+fn bare_block_masks_match_all_states_and_explicit_states_stay_exact() {
+    for name in [
+        "moving_piston",
+        "minecraft:moving_piston",
+        "sticky_piston",
+        "hopper",
+    ] {
+        let mask: WorldEditPattern = name.parse().unwrap();
+        let state_id = mask.parts[0].block_id;
+        let exact: WorldEditPattern = format!("={state_id}").parse().unwrap();
+        let numeric: WorldEditPattern = state_id.to_string().parse().unwrap();
+        let block = Block::from_id(state_id);
+        let props = mchprs_blocks::generated::STATE_PROPERTIES[state_id as usize]
+            .iter()
+            .map(|(key, value)| format!("{key}={value}"))
+            .collect::<Vec<_>>()
+            .join(",");
+        let properties: WorldEditPattern =
+            format!("{}[{props}]", block.get_name()).parse().unwrap();
+        for id in 0..mchprs_blocks::generated::STATE_PROPERTIES.len() as u32 {
+            let candidate = Block::from_id(id);
+            assert_eq!(
+                mask.matches(candidate),
+                candidate.get_name() == block.get_name()
+            );
+            for exact in [&exact, &numeric, &properties] {
+                assert_eq!(exact.matches(candidate), id == state_id);
+            }
+        }
     }
 }
 

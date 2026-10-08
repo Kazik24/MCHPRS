@@ -1,0 +1,14 @@
+{
+  "schema_version": 1,
+  "source_host": "urmom",
+  "source_directory": "/srv/mchprs/data/schems",
+  "verified_utc": "2026-10-08T09:41:07.972009+00:00",
+  "files": [
+    {
+      "name": "PM1_FIXED_COMPILATION_1.schem",
+      "bytes": 243256,
+      "sha256": "cf5ef6b5e62defbc02dc3b201b9bb29766feb310f6abfcad2941486312e0bd7c",
+      "modified_utc": "2026-10-08T09:37:36.522127+00:00"
+    }
+  ]
+}

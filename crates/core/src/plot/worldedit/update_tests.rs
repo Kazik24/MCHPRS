@@ -8,6 +8,66 @@ use mchprs_network::test_support::read_frame;
 use mchprs_network::{test_support::connection, BlockActionAcknowledgement, PlayerPacketSender};
 
 #[test]
+fn replace_removes_all_moving_piston_states_and_their_motion_entities() {
+    use mchprs_blocks::block_entities::MovingPistonEntity;
+    use mchprs_blocks::blocks::RedstoneMovingPiston;
+    let mut world = world();
+    let conn = connection(false).unwrap();
+    let mut player = Player::test_player(conn.player);
+    let first = BlockPos::new(32, 20, 32);
+    for (i, (face, sticky)) in mchprs_blocks::BlockFace::values()
+        .into_iter()
+        .flat_map(|face| [false, true].map(|sticky| (face, sticky)))
+        .enumerate()
+    {
+        let pos = first + BlockPos::new(i as i32, 0, 0);
+        world.set_block(
+            pos,
+            Block::MovingPiston {
+                moving: RedstoneMovingPiston {
+                    facing: face.into(),
+                    sticky,
+                },
+            },
+        );
+        if sticky {
+            world.set_block_entity(
+                pos,
+                BlockEntity::MovingPiston(MovingPistonEntity {
+                    block_state: Block::Stone {}.get_id(),
+                    facing: face,
+                    ..Default::default()
+                }),
+            );
+        }
+    }
+    let stone = first + BlockPos::new(12, 0, 0);
+    world.set_block(stone, Block::Stone {});
+    player.first_position = Some(first);
+    player.second_position = Some(stone);
+    execute_replace(CommandExecuteContext {
+        plot: &mut world,
+        player: &mut player,
+        arguments: vec![
+            Argument::Mask("moving_piston".parse().unwrap()),
+            Argument::Pattern("air".parse().unwrap()),
+        ],
+        flags: vec![],
+    });
+    assert!(world.piston_state().motions.is_empty());
+    for _ in 0..4 {
+        world.tick_interpreted();
+    }
+    for x in first.x..stone.x {
+        let pos = BlockPos::new(x, first.y, first.z);
+        assert_eq!(world.get_block(pos), Block::Air);
+        assert!(world.get_block_entity(pos).is_none());
+    }
+    assert_eq!(world.get_block(stone), Block::Stone {});
+    assert_eq!(player.worldedit_undo.len(), 1);
+}
+
+#[test]
 fn screen_only_paste_and_repeated_paste_publish_authoritative_nonlamp_blocks() {
     for compressed in [false, true] {
         let mut world = world();

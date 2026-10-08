@@ -82,6 +82,19 @@ fn pointed_block(
     pitch: f32,
     read: &impl Fn(BlockPos) -> Option<Block>,
 ) -> Option<RayHit> {
+    ray_trace(eye, yaw, pitch, RANGE, read, &|block| {
+        collision_bounds(block).filter(|_| !matches!(block.get_name(), "water" | "lava"))
+    })
+}
+
+pub(super) fn ray_trace(
+    eye: PlayerPos,
+    yaw: f32,
+    pitch: f32,
+    range: f64,
+    read: &impl Fn(BlockPos) -> Option<Block>,
+    bounds: &impl Fn(Block) -> Option<Bounds>,
+) -> Option<RayHit> {
     if !eye.is_valid() || !yaw.is_finite() || !pitch.is_finite() {
         return None;
     }
@@ -121,10 +134,9 @@ fn pointed_block(
         let block = read(pos)?;
         let distance = next.into_iter().fold(f64::INFINITY, f64::min);
         let below = BlockPos::new(pos.x, pos.y - 1, pos.z);
-        let extended = read(below)
-            .and_then(|block| collision_bounds(block).filter(|bounds| bounds.max[1] > 1.0));
-        let current =
-            collision_bounds(block).filter(|_| !matches!(block.get_name(), "water" | "lava"));
+        let extended =
+            read(below).and_then(|block| bounds(block).filter(|bounds| bounds.max[1] > 1.0));
+        let current = bounds(block);
         let mut closest: Option<RayHit> = None;
         // Fence and wall collision bounds extend into the voxel above them.
         for (target, bounds) in [(pos, current), (below, extended)] {
@@ -132,7 +144,7 @@ fn pointed_block(
                 bounds.and_then(|bounds| bounds.ray_intersection(target, origin, direction))
             {
                 if hit_distance >= entry - 1e-9
-                    && hit_distance <= distance.min(RANGE) + 1e-9
+                    && hit_distance <= distance.min(range) + 1e-9
                     && closest
                         .as_ref()
                         .is_none_or(|previous| hit_distance < previous.distance)
@@ -149,7 +161,7 @@ fn pointed_block(
         if closest.is_some() {
             return closest;
         }
-        if distance > RANGE {
+        if distance > range {
             return None;
         }
         // Advance tied axes together so touching a voxel corner is not a hit.
@@ -163,8 +175,8 @@ fn pointed_block(
     }
 }
 
-struct RayHit {
-    block: BlockPos,
+pub(super) struct RayHit {
+    pub(super) block: BlockPos,
     distance: f64,
     origin: [f64; 3],
     direction: [f64; 3],
@@ -243,9 +255,9 @@ fn compass_destination(
 }
 
 #[derive(Clone, Copy)]
-struct Bounds {
-    min: [f64; 3],
-    max: [f64; 3],
+pub(super) struct Bounds {
+    pub(super) min: [f64; 3],
+    pub(super) max: [f64; 3],
 }
 
 impl Bounds {

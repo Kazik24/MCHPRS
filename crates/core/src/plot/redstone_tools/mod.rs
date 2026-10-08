@@ -4,6 +4,7 @@ mod items;
 mod search;
 pub(super) mod selection;
 mod stack;
+mod wire;
 
 #[cfg(test)]
 mod tests;
@@ -18,6 +19,7 @@ use serde_json::{json, Value};
 /// Session state only: none of these preferences or caches alter player saves.
 #[derive(Default)]
 pub(crate) struct PlayerTools {
+    pub wire: Option<wire::Session>,
     pub auto_stack: Option<stack::AutoStack>,
     pub selection_visible: bool,
     pub block_search: Option<SearchCache>,
@@ -27,6 +29,7 @@ pub(crate) struct PlayerTools {
 
 #[derive(Clone, Copy)]
 enum ToolCommand {
+    Wire,
     Find,
     SignSearch,
     RStack,
@@ -38,6 +41,7 @@ enum ToolCommand {
 impl ToolCommand {
     fn parse(command: &str) -> Option<Self> {
         match command {
+            "/wire" | "//wire" => Some(Self::Wire),
             "//find" => Some(Self::Find),
             "//signsearch" | "//ss" => Some(Self::SignSearch),
             "//rstack" | "//rs" => Some(Self::RStack),
@@ -50,6 +54,7 @@ impl ToolCommand {
 
     fn permission(self) -> &'static str {
         match self {
+            Self::Wire => "redstonetools.wire",
             Self::Find => "redstonetools.find",
             Self::SignSearch => "redstonetools.signsearch",
             Self::RStack => "redstonetools.rstack",
@@ -180,6 +185,11 @@ impl Plot {
             return false;
         };
         // Stopping a session must remain available if its permissions changed.
+        if matches!(tool, ToolCommand::Wire) && args == ["off"] {
+            self.clear_wire_tool(player);
+            self.players[player].send_system_message(messages::WIRE_DISABLED);
+            return true;
+        }
         if matches!(tool, ToolCommand::AutoStack) && args == ["off"] {
             self.players[player].redstone_tools.auto_stack = None;
             ToolNotice::AutoStackDisabled.send(&self.players[player]);
@@ -201,7 +211,8 @@ impl Plot {
         }
         if matches!(
             command,
-            ToolCommand::Find
+            ToolCommand::Wire
+                | ToolCommand::Find
                 | ToolCommand::SignSearch
                 | ToolCommand::RStack
                 | ToolCommand::AutoStack
@@ -220,6 +231,7 @@ impl Plot {
 
     fn execute_tool(&mut self, player: usize, command: ToolCommand, args: &[&str]) -> Result<()> {
         match command {
+            ToolCommand::Wire => self.wire_tool(player, args),
             ToolCommand::Find => self.search_blocks(player, args),
             ToolCommand::SignSearch => self.search_signs(player, args),
             ToolCommand::RStack => self.redstone_stack(player, args),

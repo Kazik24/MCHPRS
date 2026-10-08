@@ -124,6 +124,9 @@ impl Plot {
             return;
         }
         let (yaw, pitch) = (self.players[player].yaw, self.players[player].pitch);
+        if self.use_wire_tool(player, player_block_placement.hand, yaw, pitch) {
+            return;
+        }
         if self.sword_git(player, player_block_placement.hand, yaw, pitch) {
             return;
         }
@@ -288,6 +291,12 @@ impl Plot {
 
     fn dig_block(&mut self, player_digging: SPlayerDigging, player: usize) {
         if self.players[player].awaiting_teleport() {
+            return;
+        }
+        if self.wire_held(player) && matches!(player_digging.status, 0..=2 | 6) {
+            if player_digging.status == 6 {
+                self.flip_wire_route(player);
+            }
             return;
         }
         if self.git_checkout_locked() {
@@ -792,6 +801,9 @@ impl ServerBoundPacketHandler for Plot {
             &self.players[player].client,
             packet.sequence,
         );
+        if self.use_wire_tool(player, packet.hand, packet.yaw, packet.pitch) {
+            return;
+        }
         if self.sword_git(player, packet.hand, packet.yaw, packet.pitch) {
             return;
         }
@@ -1003,6 +1015,9 @@ impl ServerBoundPacketHandler for Plot {
     fn handle_held_item_change(&mut self, held_item_change: SHeldItemChange, player: usize) {
         if !(0..9).contains(&held_item_change.slot) {
             return;
+        }
+        if self.players[player].selected_slot != held_item_change.slot as u32 {
+            self.clear_wire_tool(player);
         }
         let entity_equipment = CEntityEquipment {
             entity_id: self.players[player].entity_id as i32,

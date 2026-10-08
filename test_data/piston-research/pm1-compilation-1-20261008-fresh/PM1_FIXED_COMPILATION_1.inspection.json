@@ -1,0 +1,3307 @@
+{
+  "schema_version": 1,
+  "path": "test_data/piston-research/pm1-compilation-1-20261008-fresh/PM1_FIXED_COMPILATION_1.schem",
+  "sha256": "cf5ef6b5e62defbc02dc3b201b9bb29766feb310f6abfcad2941486312e0bd7c",
+  "bytes": 243256,
+  "nbt_root_name": "",
+  "sponge_version": 2,
+  "data_version": 4325,
+  "dimensions": [
+    207,
+    234,
+    177
+  ],
+  "decoded_cells": 8573526,
+  "encoded_bytes": 8751963,
+  "coordinate_convention": "selection-local from saved minimum; x fastest, z next, y slowest",
+  "sponge_offset": null,
+  "legacy_we_offset": [
+    0,
+    -1,
+    -176
+  ],
+  "loader_offset": [
+    0,
+    1,
+    176
+  ],
+  "palette": [
+    {
+      "id": 0,
+      "state": "minecraft:air",
+      "count": 7771297
+    },
+    {
+      "id": 1,
+      "state": "minecraft:glowstone",
+      "count": 168692
+    },
+    {
+      "id": 2,
+      "state": "minecraft:glass",
+      "count": 164
+    },
+    {
+      "id": 3,
+      "state": "minecraft:light_gray_wool",
+      "count": 2548
+    },
+    {
+      "id": 4,
+      "state": "minecraft:white_wool",
+      "count": 33939
+    },
+    {
+      "id": 5,
+      "state": "minecraft:quartz_block",
+      "count": 16968
+    },
+    {
+      "id": 6,
+      "state": "minecraft:white_concrete",
+      "count": 5093
+    },
+    {
+      "id": 7,
+      "state": "minecraft:smooth_quartz",
+      "count": 28796
+    },
+    {
+      "id": 8,
+      "state": "minecraft:redstone_block",
+      "count": 59407
+    },
+    {
+      "id": 9,
+      "state": "minecraft:redstone_wire[east=side,north=side,power=0,south=side,west=side]",
+      "count": 17228
+    },
+    {
+      "id": 10,
+      "state": "minecraft:smooth_stone_slab[type=top,waterlogged=false]",
+      "count": 22852
+    },
+    {
+      "id": 11,
+      "state": "minecraft:redstone_wire[east=none,north=up,power=11,south=up,west=none]",
+      "count": 5
+    },
+    {
+      "id": 12,
+      "state": "minecraft:redstone_wire[east=up,north=none,power=14,south=side,west=none]",
+      "count": 23
+    },
+    {
+      "id": 13,
+      "state": "minecraft:redstone_wire[east=none,north=side,power=13,south=side,west=none]",
+      "count": 4145
+    },
+    {
+      "id": 14,
+      "state": "minecraft:redstone_wire[east=none,north=side,power=12,south=side,west=none]",
+      "count": 3253
+    },
+    {
+      "id": 15,
+      "state": "minecraft:redstone_wire[east=none,north=none,power=14,south=side,west=up]",
+      "count": 42
+    },
+    {
+      "id": 16,
+      "state": "minecraft:redstone_wire[east=none,north=up,power=13,south=side,west=none]",
+      "count": 326
+    },
+    {
+      "id": 17,
+      "state": "minecraft:redstone_wire[east=none,north=side,power=11,south=side,west=none]",
+      "count": 3437
+    },
+    {
+      "id": 18,
+      "state": "minecraft:redstone_wire[east=none,north=side,power=10,south=side,west=none]",
+      "count": 3102
+    },
+    {
+      "id": 19,
+      "state": "minecraft:redstone_wire[east=none,north=side,power=9,south=side,west=none]",
+      "count": 3092
+    },
+    {
+      "id": 20,
+      "state": "minecraft:redstone_wire[east=none,north=side,power=8,south=side,west=none]",
+      "count": 2851
+    },
+    {
+      "id": 21,
+      "state": "minecraft:redstone_wire[east=none,north=side,power=7,south=side,west=none]",
+      "count": 2859
+    },
+    {
+      "id": 22,
+      "state": "minecraft:redstone_wire[east=none,north=side,power=6,south=side,west=none]",
+      "count": 2737
+    },
+    {
+      "id": 23,
+      "state": "minecraft:sticky_piston[extended=true,facing=south]",
+      "count": 8721
+    },
+    {
+      "id": 24,
+      "state": "minecraft:piston_head[facing=south,short=false,type=sticky]",
+      "count": 8721
+    },
+    {
+      "id": 25,
+      "state": "minecraft:redstone_wire[east=none,north=side,power=15,south=up,west=none]",
+      "count": 616
+    },
+    {
+      "id": 26,
+      "state": "minecraft:redstone_wire[east=side,north=none,power=5,south=side,west=none]",
+      "count": 22
+    },
+    {
+      "id": 27,
+      "state": "minecraft:redstone_wire[east=side,north=none,power=6,south=none,west=side]",
+      "count": 2715
+    },
+    {
+      "id": 28,
+      "state": "minecraft:redstone_wire[east=side,north=none,power=7,south=none,west=side]",
+      "count": 2843
+    },
+    {
+      "id": 29,
+      "state": "minecraft:redstone_wire[east=side,north=none,power=8,south=none,west=side]",
+      "count": 2873
+    },
+    {
+      "id": 30,
+      "state": "minecraft:redstone_wire[east=side,north=none,power=9,south=none,west=side]",
+      "count": 3205
+    },
+    {
+      "id": 31,
+      "state": "minecraft:redstone_wire[east=side,north=none,power=10,south=none,west=side]",
+      "count": 3162
+    },
+    {
+      "id": 32,
+      "state": "minecraft:redstone_wire[east=side,north=none,power=11,south=none,west=side]",
+      "count": 3317
+    },
+    {
+      "id": 33,
+      "state": "minecraft:redstone_wire[east=side,north=none,power=12,south=none,west=side]",
+      "count": 3388
+    },
+    {
+      "id": 34,
+      "state": "minecraft:redstone_wire[east=side,north=none,power=13,south=none,west=side]",
+      "count": 4820
+    },
+    {
+      "id": 35,
+      "state": "minecraft:redstone_wire[east=side,north=none,power=14,south=none,west=side]",
+      "count": 6527
+    },
+    {
+      "id": 36,
+      "state": "minecraft:redstone_wire[east=side,north=none,power=15,south=none,west=side]",
+      "count": 10163
+    },
+    {
+      "id": 37,
+      "state": "minecraft:piston_head[facing=west,short=false,type=sticky]",
+      "count": 5566
+    },
+    {
+      "id": 38,
+      "state": "minecraft:sticky_piston[extended=true,facing=west]",
+      "count": 5584
+    },
+    {
+      "id": 39,
+      "state": "minecraft:redstone_wire[east=side,north=none,power=1,south=none,west=side]",
+      "count": 1136
+    },
+    {
+      "id": 40,
+      "state": "minecraft:redstone_wire[east=side,north=none,power=2,south=none,west=side]",
+      "count": 1319
+    },
+    {
+      "id": 41,
+      "state": "minecraft:redstone_wire[east=side,north=none,power=3,south=none,west=side]",
+      "count": 2555
+    },
+    {
+      "id": 42,
+      "state": "minecraft:redstone_wire[east=side,north=none,power=4,south=none,west=side]",
+      "count": 2642
+    },
+    {
+      "id": 43,
+      "state": "minecraft:redstone_wire[east=side,north=none,power=5,south=none,west=side]",
+      "count": 2711
+    },
+    {
+      "id": 44,
+      "state": "minecraft:redstone_wire[east=up,north=none,power=13,south=none,west=side]",
+      "count": 411
+    },
+    {
+      "id": 45,
+      "state": "minecraft:redstone_wire[east=none,north=side,power=4,south=side,west=none]",
+      "count": 2321
+    },
+    {
+      "id": 46,
+      "state": "minecraft:redstone_wire[east=none,north=side,power=3,south=side,west=none]",
+      "count": 1938
+    },
+    {
+      "id": 47,
+      "state": "minecraft:redstone_wire[east=side,north=none,power=7,south=side,west=none]",
+      "count": 6
+    },
+    {
+      "id": 48,
+      "state": "minecraft:redstone_wire[east=none,north=side,power=2,south=side,west=none]",
+      "count": 1399
+    },
+    {
+      "id": 49,
+      "state": "minecraft:redstone_wire[east=none,north=side,power=1,south=side,west=none]",
+      "count": 1174
+    },
+    {
+      "id": 50,
+      "state": "minecraft:redstone_wire[east=none,north=side,power=5,south=side,west=none]",
+      "count": 2513
+    },
+    {
+      "id": 51,
+      "state": "minecraft:redstone_wire[east=side,north=none,power=9,south=side,west=none]",
+      "count": 6
+    },
+    {
+      "id": 52,
+      "state": "minecraft:redstone_wire[east=side,north=none,power=11,south=side,west=none]",
+      "count": 14
+    },
+    {
+      "id": 53,
+      "state": "minecraft:redstone_wire[east=side,north=none,power=13,south=side,west=none]",
+      "count": 39
+    },
+    {
+      "id": 54,
+      "state": "minecraft:redstone_wire[east=none,north=side,power=15,south=side,west=none]",
+      "count": 4538
+    },
+    {
+      "id": 55,
+      "state": "minecraft:redstone_wire[east=none,north=side,power=14,south=side,west=none]",
+      "count": 6589
+    },
+    {
+      "id": 56,
+      "state": "minecraft:redstone_wire[east=side,north=none,power=15,south=side,west=none]",
+      "count": 416
+    },
+    {
+      "id": 57,
+      "state": "minecraft:redstone_wire[east=side,north=none,power=8,south=none,west=up]",
+      "count": 104
+    },
+    {
+      "id": 58,
+      "state": "minecraft:redstone_wire[east=none,north=side,power=9,south=none,west=side]",
+      "count": 9
+    },
+    {
+      "id": 59,
+      "state": "minecraft:redstone_wire[east=side,north=none,power=2,south=side,west=none]",
+      "count": 7
+    },
+    {
+      "id": 60,
+      "state": "minecraft:redstone_wire[east=none,north=side,power=11,south=none,west=side]",
+      "count": 65
+    },
+    {
+      "id": 61,
+      "state": "minecraft:redstone_wire[east=side,north=none,power=4,south=side,west=none]",
+      "count": 6
+    },
+    {
+      "id": 62,
+      "state": "minecraft:redstone_wire[east=none,north=side,power=13,south=none,west=side]",
+      "count": 193
+    },
+    {
+      "id": 63,
+      "state": "minecraft:redstone_wire[east=none,north=side,power=15,south=none,west=side]",
+      "count": 1679
+    },
+    {
+      "id": 64,
+      "state": "minecraft:redstone_wire[east=none,north=side,power=2,south=none,west=side]",
+      "count": 5
+    },
+    {
+      "id": 65,
+      "state": "minecraft:observer[facing=east,powered=false]",
+      "count": 920
+    },
+    {
+      "id": 66,
+      "state": "minecraft:sticky_piston[extended=true,facing=east]",
+      "count": 9169
+    },
+    {
+      "id": 67,
+      "state": "minecraft:piston_head[facing=east,short=false,type=sticky]",
+      "count": 9169
+    },
+    {
+      "id": 68,
+      "state": "minecraft:redstone_wire[east=up,north=none,power=6,south=none,west=side]",
+      "count": 132
+    },
+    {
+      "id": 69,
+      "state": "minecraft:redstone_wire[east=none,north=side,power=4,south=none,west=side]",
+      "count": 34
+    },
+    {
+      "id": 70,
+      "state": "minecraft:piston_head[facing=north,short=false,type=sticky]",
+      "count": 11593
+    },
+    {
+      "id": 71,
+      "state": "minecraft:sticky_piston[extended=true,facing=north]",
+      "count": 11593
+    },
+    {
+      "id": 72,
+      "state": "minecraft:redstone_wire[east=none,north=side,power=6,south=none,west=side]",
+      "count": 9
+    },
+    {
+      "id": 73,
+      "state": "minecraft:redstone_wire[east=none,north=side,power=8,south=none,west=side]",
+      "count": 13
+    },
+    {
+      "id": 74,
+      "state": "minecraft:lime_concrete",
+      "count": 2446
+    },
+    {
+      "id": 75,
+      "state": "minecraft:redstone_wire[east=side,north=side,power=15,south=side,west=side]",
+      "count": 5782
+    },
+    {
+      "id": 76,
+      "state": "minecraft:redstone_wire[east=side,north=none,power=11,south=none,west=up]",
+      "count": 250
+    },
+    {
+      "id": 77,
+      "state": "minecraft:redstone_wire[east=none,north=none,power=11,south=side,west=side]",
+      "count": 18
+    },
+    {
+      "id": 78,
+      "state": "minecraft:redstone_wire[east=none,north=none,power=13,south=side,west=side]",
+      "count": 208
+    },
+    {
+      "id": 79,
+      "state": "minecraft:redstone_wire[east=none,north=none,power=15,south=side,west=side]",
+      "count": 121
+    },
+    {
+      "id": 80,
+      "state": "minecraft:redstone_wire[east=up,north=side,power=14,south=none,west=none]",
+      "count": 25
+    },
+    {
+      "id": 81,
+      "state": "minecraft:black_wool",
+      "count": 3551
+    },
+    {
+      "id": 82,
+      "state": "minecraft:redstone_wall_torch[facing=south,lit=false]",
+      "count": 287
+    },
+    {
+      "id": 83,
+      "state": "minecraft:redstone_torch[lit=false]",
+      "count": 89
+    },
+    {
+      "id": 84,
+      "state": "minecraft:observer[facing=down,powered=false]",
+      "count": 33809
+    },
+    {
+      "id": 85,
+      "state": "minecraft:redstone_wire[east=up,north=none,power=14,south=none,west=side]",
+      "count": 249
+    },
+    {
+      "id": 86,
+      "state": "minecraft:blue_wool",
+      "count": 314
+    },
+    {
+      "id": 87,
+      "state": "minecraft:redstone_wire[east=side,north=none,power=7,south=none,west=up]",
+      "count": 84
+    },
+    {
+      "id": 88,
+      "state": "minecraft:lime_wool",
+      "count": 887
+    },
+    {
+      "id": 89,
+      "state": "minecraft:red_wool",
+      "count": 709
+    },
+    {
+      "id": 90,
+      "state": "minecraft:purple_wool",
+      "count": 1640
+    },
+    {
+      "id": 91,
+      "state": "minecraft:redstone_wire[east=up,north=none,power=5,south=none,west=side]",
+      "count": 106
+    },
+    {
+      "id": 92,
+      "state": "minecraft:redstone_wire[east=side,north=none,power=5,south=none,west=up]",
+      "count": 37
+    },
+    {
+      "id": 93,
+      "state": "minecraft:light_blue_concrete",
+      "count": 1644
+    },
+    {
+      "id": 94,
+      "state": "minecraft:redstone_wire[east=side,north=none,power=1,south=none,west=up]",
+      "count": 73
+    },
+    {
+      "id": 95,
+      "state": "minecraft:redstone_wire[east=side,north=none,power=14,south=none,west=up]",
+      "count": 207
+    },
+    {
+      "id": 96,
+      "state": "minecraft:redstone_wire[east=side,north=none,power=12,south=none,west=up]",
+      "count": 185
+    },
+    {
+      "id": 97,
+      "state": "minecraft:redstone_wire[east=side,north=none,power=3,south=none,west=up]",
+      "count": 54
+    },
+    {
+      "id": 98,
+      "state": "minecraft:redstone_wire[east=side,north=none,power=15,south=side,west=side]",
+      "count": 820
+    },
+    {
+      "id": 99,
+      "state": "minecraft:redstone_wire[east=side,north=side,power=15,south=none,west=side]",
+      "count": 837
+    },
+    {
+      "id": 100,
+      "state": "minecraft:redstone_wall_torch[facing=west,lit=false]",
+      "count": 1034
+    },
+    {
+      "id": 101,
+      "state": "minecraft:redstone_wire[east=side,north=none,power=15,south=none,west=up]",
+      "count": 311
+    },
+    {
+      "id": 102,
+      "state": "minecraft:redstone_wire[east=none,north=side,power=0,south=side,west=none]",
+      "count": 3597
+    },
+    {
+      "id": 103,
+      "state": "minecraft:redstone_wire[east=none,north=side,power=14,south=up,west=none]",
+      "count": 366
+    },
+    {
+      "id": 104,
+      "state": "minecraft:redstone_wire[east=none,north=up,power=14,south=side,west=none]",
+      "count": 495
+    },
+    {
+      "id": 105,
+      "state": "minecraft:redstone_wire[east=side,north=none,power=6,south=none,west=up]",
+      "count": 75
+    },
+    {
+      "id": 106,
+      "state": "minecraft:redstone_wire[east=side,north=none,power=2,south=none,west=up]",
+      "count": 38
+    },
+    {
+      "id": 107,
+      "state": "minecraft:redstone_wire[east=up,north=none,power=4,south=none,west=side]",
+      "count": 63
+    },
+    {
+      "id": 108,
+      "state": "minecraft:redstone_wire[east=side,north=none,power=13,south=none,west=up]",
+      "count": 277
+    },
+    {
+      "id": 109,
+      "state": "minecraft:redstone_wire[east=side,north=none,power=9,south=none,west=up]",
+      "count": 65
+    },
+    {
+      "id": 110,
+      "state": "minecraft:redstone_wire[east=side,north=none,power=4,south=none,west=up]",
+      "count": 43
+    },
+    {
+      "id": 111,
+      "state": "minecraft:redstone_wire[east=side,north=up,power=15,south=none,west=none]",
+      "count": 11
+    },
+    {
+      "id": 112,
+      "state": "minecraft:redstone_wire[east=none,north=none,power=6,south=side,west=side]",
+      "count": 11
+    },
+    {
+      "id": 113,
+      "state": "minecraft:redstone_wire[east=side,north=none,power=15,south=up,west=none]",
+      "count": 57
+    },
+    {
+      "id": 114,
+      "state": "minecraft:redstone_wire[east=none,north=up,power=15,south=side,west=none]",
+      "count": 293
+    },
+    {
+      "id": 115,
+      "state": "minecraft:redstone_wire[east=side,north=side,power=10,south=none,west=none]",
+      "count": 73
+    },
+    {
+      "id": 116,
+      "state": "minecraft:piston_head[facing=down,short=false,type=sticky]",
+      "count": 30016
+    },
+    {
+      "id": 117,
+      "state": "minecraft:redstone_wire[east=side,north=side,power=8,south=none,west=none]",
+      "count": 17
+    },
+    {
+      "id": 118,
+      "state": "minecraft:redstone_wire[east=side,north=up,power=13,south=none,west=side]",
+      "count": 2
+    },
+    {
+      "id": 119,
+      "state": "minecraft:redstone_wire[east=none,north=none,power=13,south=up,west=side]",
+      "count": 52
+    },
+    {
+      "id": 120,
+      "state": "minecraft:redstone_wire[east=none,north=side,power=13,south=up,west=none]",
+      "count": 334
+    },
+    {
+      "id": 121,
+      "state": "minecraft:redstone_wire[east=up,north=none,power=15,south=none,west=side]",
+      "count": 229
+    },
+    {
+      "id": 122,
+      "state": "minecraft:redstone_wall_torch[facing=east,lit=false]",
+      "count": 242
+    },
+    {
+      "id": 123,
+      "state": "minecraft:redstone_wall_torch[facing=north,lit=false]",
+      "count": 697
+    },
+    {
+      "id": 124,
+      "state": "minecraft:redstone_wire[east=none,north=up,power=1,south=side,west=none]",
+      "count": 20
+    },
+    {
+      "id": 125,
+      "state": "minecraft:redstone_wire[east=none,north=up,power=11,south=side,west=none]",
+      "count": 296
+    },
+    {
+      "id": 126,
+      "state": "minecraft:cyan_terracotta",
+      "count": 394
+    },
+    {
+      "id": 127,
+      "state": "minecraft:command_block[conditional=false,facing=north]",
+      "count": 23
+    },
+    {
+      "id": 128,
+      "state": "minecraft:light_gray_stained_glass",
+      "count": 21
+    },
+    {
+      "id": 129,
+      "state": "minecraft:command_block[conditional=false,facing=east]",
+      "count": 2
+    },
+    {
+      "id": 130,
+      "state": "minecraft:brown_wool",
+      "count": 586
+    },
+    {
+      "id": 131,
+      "state": "minecraft:redstone_wire[east=none,north=side,power=14,south=none,west=up]",
+      "count": 57
+    },
+    {
+      "id": 132,
+      "state": "minecraft:redstone_wire[east=up,north=none,power=6,south=none,west=up]",
+      "count": 2
+    },
+    {
+      "id": 133,
+      "state": "minecraft:redstone_wire[east=up,north=none,power=3,south=none,west=side]",
+      "count": 49
+    },
+    {
+      "id": 134,
+      "state": "minecraft:redstone_wire[east=none,north=side,power=11,south=up,west=none]",
+      "count": 355
+    },
+    {
+      "id": 135,
+      "state": "minecraft:redstone_wire[east=none,north=side,power=9,south=up,west=none]",
+      "count": 193
+    },
+    {
+      "id": 136,
+      "state": "minecraft:redstone_wire[east=side,north=side,power=6,south=none,west=none]",
+      "count": 9
+    },
+    {
+      "id": 137,
+      "state": "minecraft:redstone_wire[east=none,north=side,power=7,south=up,west=none]",
+      "count": 133
+    },
+    {
+      "id": 138,
+      "state": "minecraft:redstone_wire[east=none,north=up,power=7,south=side,west=none]",
+      "count": 175
+    },
+    {
+      "id": 139,
+      "state": "minecraft:redstone_wire[east=none,north=side,power=5,south=up,west=none]",
+      "count": 33
+    },
+    {
+      "id": 140,
+      "state": "minecraft:redstone_wire[east=side,north=side,power=4,south=none,west=none]",
+      "count": 8
+    },
+    {
+      "id": 141,
+      "state": "minecraft:redstone_wire[east=none,north=side,power=3,south=up,west=none]",
+      "count": 63
+    },
+    {
+      "id": 142,
+      "state": "minecraft:redstone_wire[east=none,north=up,power=3,south=side,west=none]",
+      "count": 76
+    },
+    {
+      "id": 143,
+      "state": "minecraft:redstone_wire[east=side,north=side,power=2,south=none,west=none]",
+      "count": 3
+    },
+    {
+      "id": 144,
+      "state": "minecraft:redstone_wire[east=side,north=side,power=15,south=none,west=none]",
+      "count": 672
+    },
+    {
+      "id": 145,
+      "state": "minecraft:redstone_wire[east=side,north=side,power=13,south=none,west=none]",
+      "count": 182
+    },
+    {
+      "id": 146,
+      "state": "minecraft:redstone_wire[east=none,north=side,power=6,south=up,west=none]",
+      "count": 59
+    },
+    {
+      "id": 147,
+      "state": "minecraft:observer[facing=south,powered=false]",
+      "count": 947
+    },
+    {
+      "id": 148,
+      "state": "minecraft:sticky_piston[extended=true,facing=down]",
+      "count": 30016
+    },
+    {
+      "id": 149,
+      "state": "minecraft:redstone_wire[east=none,north=up,power=12,south=side,west=none]",
+      "count": 294
+    },
+    {
+      "id": 150,
+      "state": "minecraft:observer[facing=north,powered=false]",
+      "count": 1039
+    },
+    {
+      "id": 151,
+      "state": "minecraft:pink_wool",
+      "count": 1589
+    },
+    {
+      "id": 152,
+      "state": "minecraft:redstone_wire[east=none,north=side,power=12,south=up,west=none]",
+      "count": 361
+    },
+    {
+      "id": 153,
+      "state": "minecraft:redstone_wire[east=side,north=none,power=8,south=side,west=none]",
+      "count": 10
+    },
+    {
+      "id": 154,
+      "state": "minecraft:redstone_wire[east=side,north=side,power=11,south=none,west=side]",
+      "count": 3
+    },
+    {
+      "id": 155,
+      "state": "minecraft:redstone_wire[east=none,north=none,power=8,south=up,west=side]",
+      "count": 10
+    },
+    {
+      "id": 156,
+      "state": "minecraft:light_blue_wool",
+      "count": 23753
+    },
+    {
+      "id": 157,
+      "state": "minecraft:redstone_wire[east=side,north=side,power=5,south=side,west=none]",
+      "count": 61
+    },
+    {
+      "id": 158,
+      "state": "minecraft:redstone_wire[east=side,north=side,power=3,south=side,west=none]",
+      "count": 72
+    },
+    {
+      "id": 159,
+      "state": "minecraft:yellow_wool",
+      "count": 414
+    },
+    {
+      "id": 160,
+      "state": "minecraft:redstone_wire[east=side,north=side,power=14,south=none,west=none]",
+      "count": 40
+    },
+    {
+      "id": 161,
+      "state": "minecraft:redstone_wire[east=none,north=none,power=12,south=side,west=side]",
+      "count": 157
+    },
+    {
+      "id": 162,
+      "state": "minecraft:redstone_wire[east=none,north=side,power=14,south=side,west=side]",
+      "count": 33
+    },
+    {
+      "id": 163,
+      "state": "minecraft:redstone_wire[east=none,north=side,power=10,south=none,west=side]",
+      "count": 24
+    },
+    {
+      "id": 164,
+      "state": "minecraft:cyan_wool",
+      "count": 17713
+    },
+    {
+      "id": 165,
+      "state": "minecraft:target[power=0]",
+      "count": 1150
+    },
+    {
+      "id": 166,
+      "state": "minecraft:redstone_wire[east=none,north=side,power=12,south=side,west=side]",
+      "count": 34
+    },
+    {
+      "id": 167,
+      "state": "minecraft:redstone_wire[east=side,north=side,power=0,south=none,west=none]",
+      "count": 161
+    },
+    {
+      "id": 168,
+      "state": "minecraft:redstone_wire[east=side,north=none,power=0,south=none,west=side]",
+      "count": 8999
+    },
+    {
+      "id": 169,
+      "state": "minecraft:redstone_wire[east=side,north=side,power=0,south=none,west=side]",
+      "count": 155
+    },
+    {
+      "id": 170,
+      "state": "minecraft:redstone_wire[east=up,north=side,power=0,south=none,west=side]",
+      "count": 2
+    },
+    {
+      "id": 171,
+      "state": "minecraft:redstone_wire[east=none,north=side,power=10,south=side,west=side]",
+      "count": 35
+    },
+    {
+      "id": 172,
+      "state": "minecraft:redstone_wire[east=none,north=side,power=8,south=side,west=side]",
+      "count": 44
+    },
+    {
+      "id": 173,
+      "state": "minecraft:redstone_wire[east=none,north=side,power=6,south=side,west=side]",
+      "count": 61
+    },
+    {
+      "id": 174,
+      "state": "minecraft:redstone_wire[east=none,north=side,power=4,south=side,west=side]",
+      "count": 63
+    },
+    {
+      "id": 175,
+      "state": "minecraft:redstone_wire[east=up,north=side,power=10,south=none,west=none]",
+      "count": 8
+    },
+    {
+      "id": 176,
+      "state": "minecraft:redstone_wire[east=up,north=side,power=6,south=none,west=none]",
+      "count": 2
+    },
+    {
+      "id": 177,
+      "state": "minecraft:redstone_wire[east=up,north=side,power=2,south=none,west=none]",
+      "count": 4
+    },
+    {
+      "id": 178,
+      "state": "minecraft:redstone_wire[east=up,north=side,power=12,south=none,west=none]",
+      "count": 23
+    },
+    {
+      "id": 179,
+      "state": "minecraft:redstone_wire[east=up,north=side,power=8,south=none,west=none]",
+      "count": 7
+    },
+    {
+      "id": 180,
+      "state": "minecraft:redstone_wire[east=none,north=up,power=13,south=none,west=side]",
+      "count": 48
+    },
+    {
+      "id": 181,
+      "state": "minecraft:gray_wool",
+      "count": 5270
+    },
+    {
+      "id": 182,
+      "state": "minecraft:redstone_wire[east=none,north=none,power=10,south=side,west=side]",
+      "count": 38
+    },
+    {
+      "id": 183,
+      "state": "minecraft:redstone_wire[east=up,north=none,power=10,south=none,west=side]",
+      "count": 177
+    },
+    {
+      "id": 184,
+      "state": "minecraft:redstone_wire[east=none,north=side,power=5,south=side,west=side]",
+      "count": 65
+    },
+    {
+      "id": 185,
+      "state": "minecraft:redstone_wire[east=side,north=side,power=3,south=none,west=none]",
+      "count": 5
+    },
+    {
+      "id": 186,
+      "state": "minecraft:redstone_wire[east=up,north=none,power=12,south=none,west=side]",
+      "count": 190
+    },
+    {
+      "id": 187,
+      "state": "minecraft:green_wool",
+      "count": 579
+    },
+    {
+      "id": 188,
+      "state": "minecraft:redstone_wire[east=up,north=none,power=1,south=none,west=side]",
+      "count": 24
+    },
+    {
+      "id": 189,
+      "state": "minecraft:redstone_wire[east=none,north=side,power=15,south=side,west=side]",
+      "count": 369
+    },
+    {
+      "id": 190,
+      "state": "minecraft:redstone_wire[east=up,north=none,power=0,south=none,west=side]",
+      "count": 536
+    },
+    {
+      "id": 191,
+      "state": "minecraft:redstone_wire[east=none,north=side,power=15,south=none,west=up]",
+      "count": 223
+    },
+    {
+      "id": 192,
+      "state": "minecraft:redstone_wire[east=none,north=side,power=12,south=none,west=side]",
+      "count": 153
+    },
+    {
+      "id": 193,
+      "state": "minecraft:redstone_wire[east=up,north=none,power=11,south=none,west=side]",
+      "count": 244
+    },
+    {
+      "id": 194,
+      "state": "minecraft:redstone_wire[east=up,north=none,power=7,south=none,west=side]",
+      "count": 107
+    },
+    {
+      "id": 195,
+      "state": "minecraft:redstone_wire[east=none,north=side,power=4,south=up,west=none]",
+      "count": 62
+    },
+    {
+      "id": 196,
+      "state": "minecraft:redstone_wire[east=none,north=up,power=10,south=side,west=none]",
+      "count": 325
+    },
+    {
+      "id": 197,
+      "state": "minecraft:redstone_wire[east=none,north=up,power=12,south=none,west=side]",
+      "count": 241
+    },
+    {
+      "id": 198,
+      "state": "minecraft:redstone_wire[east=side,north=side,power=14,south=side,west=none]",
+      "count": 104
+    },
+    {
+      "id": 199,
+      "state": "minecraft:redstone_wire[east=side,north=side,power=13,south=side,west=none]",
+      "count": 17
+    },
+    {
+      "id": 200,
+      "state": "minecraft:stone_button[face=wall,facing=north,powered=false]",
+      "count": 46
+    },
+    {
+      "id": 201,
+      "state": "minecraft:stone_button[face=wall,facing=south,powered=false]",
+      "count": 115
+    },
+    {
+      "id": 202,
+      "state": "minecraft:redstone_wire[east=none,north=side,power=14,south=none,west=side]",
+      "count": 93
+    },
+    {
+      "id": 203,
+      "state": "minecraft:black_terracotta",
+      "count": 1723
+    },
+    {
+      "id": 204,
+      "state": "minecraft:redstone_wire[east=up,north=none,power=2,south=none,west=side]",
+      "count": 45
+    },
+    {
+      "id": 205,
+      "state": "minecraft:redstone_wire[east=none,north=side,power=10,south=up,west=none]",
+      "count": 273
+    },
+    {
+      "id": 206,
+      "state": "minecraft:repeater[delay=1,facing=north,locked=false,powered=false]",
+      "count": 91
+    },
+    {
+      "id": 207,
+      "state": "minecraft:repeater[delay=1,facing=north,locked=false,powered=true]",
+      "count": 64
+    },
+    {
+      "id": 208,
+      "state": "minecraft:redstone_wire[east=side,north=none,power=14,south=side,west=none]",
+      "count": 273
+    },
+    {
+      "id": 209,
+      "state": "minecraft:redstone_wire[east=side,north=none,power=10,south=none,west=up]",
+      "count": 113
+    },
+    {
+      "id": 210,
+      "state": "minecraft:redstone_wire[east=side,north=none,power=10,south=side,west=none]",
+      "count": 5
+    },
+    {
+      "id": 211,
+      "state": "minecraft:redstone_wire[east=up,north=none,power=9,south=side,west=none]",
+      "count": 54
+    },
+    {
+      "id": 212,
+      "state": "minecraft:redstone_wire[east=side,north=side,power=15,south=side,west=none]",
+      "count": 957
+    },
+    {
+      "id": 213,
+      "state": "minecraft:redstone_wire[east=none,north=side,power=15,south=up,west=side]",
+      "count": 24
+    },
+    {
+      "id": 214,
+      "state": "minecraft:redstone_wire[east=side,north=side,power=15,south=up,west=none]",
+      "count": 29
+    },
+    {
+      "id": 215,
+      "state": "minecraft:redstone_wire[east=none,north=up,power=15,south=none,west=side]",
+      "count": 100
+    },
+    {
+      "id": 216,
+      "state": "minecraft:redstone_wire[east=none,north=side,power=8,south=up,west=none]",
+      "count": 231
+    },
+    {
+      "id": 217,
+      "state": "minecraft:stone_button[face=floor,facing=north,powered=false]",
+      "count": 41
+    },
+    {
+      "id": 218,
+      "state": "minecraft:gold_block",
+      "count": 5141
+    },
+    {
+      "id": 219,
+      "state": "minecraft:redstone_wire[east=none,north=up,power=4,south=side,west=none]",
+      "count": 56
+    },
+    {
+      "id": 220,
+      "state": "minecraft:redstone_wire[east=none,north=up,power=0,south=side,west=none]",
+      "count": 125
+    },
+    {
+      "id": 221,
+      "state": "minecraft:gray_concrete",
+      "count": 734
+    },
+    {
+      "id": 222,
+      "state": "minecraft:redstone_wire[east=none,north=none,power=15,south=side,west=up]",
+      "count": 639
+    },
+    {
+      "id": 223,
+      "state": "minecraft:redstone_wire[east=none,north=side,power=2,south=up,west=none]",
+      "count": 45
+    },
+    {
+      "id": 224,
+      "state": "minecraft:redstone_wire[east=none,north=up,power=8,south=none,west=side]",
+      "count": 14
+    },
+    {
+      "id": 225,
+      "state": "minecraft:redstone_wire[east=none,north=side,power=6,south=none,west=up]",
+      "count": 13
+    },
+    {
+      "id": 226,
+      "state": "minecraft:redstone_wire[east=none,north=side,power=8,south=none,west=up]",
+      "count": 32
+    },
+    {
+      "id": 227,
+      "state": "minecraft:redstone_wire[east=none,north=side,power=10,south=none,west=up]",
+      "count": 9
+    },
+    {
+      "id": 228,
+      "state": "minecraft:redstone_wire[east=none,north=side,power=12,south=none,west=up]",
+      "count": 60
+    },
+    {
+      "id": 229,
+      "state": "minecraft:redstone_wire[east=none,north=side,power=11,south=side,west=side]",
+      "count": 49
+    },
+    {
+      "id": 230,
+      "state": "minecraft:redstone_wire[east=side,north=none,power=15,south=side,west=up]",
+      "count": 19
+    },
+    {
+      "id": 231,
+      "state": "minecraft:redstone_wire[east=up,north=none,power=5,south=side,west=none]",
+      "count": 1
+    },
+    {
+      "id": 232,
+      "state": "minecraft:redstone_wire[east=up,north=none,power=13,south=side,west=none]",
+      "count": 10
+    },
+    {
+      "id": 233,
+      "state": "minecraft:lime_terracotta",
+      "count": 191
+    },
+    {
+      "id": 234,
+      "state": "minecraft:redstone_wire[east=side,north=up,power=12,south=none,west=none]",
+      "count": 12
+    },
+    {
+      "id": 235,
+      "state": "minecraft:redstone_wire[east=up,north=none,power=0,south=side,west=none]",
+      "count": 7
+    },
+    {
+      "id": 236,
+      "state": "minecraft:redstone_wire[east=none,north=side,power=9,south=none,west=up]",
+      "count": 6
+    },
+    {
+      "id": 237,
+      "state": "minecraft:redstone_wire[east=none,north=none,power=9,south=side,west=up]",
+      "count": 2
+    },
+    {
+      "id": 238,
+      "state": "minecraft:redstone_wire[east=none,north=side,power=11,south=none,west=up]",
+      "count": 5
+    },
+    {
+      "id": 239,
+      "state": "minecraft:redstone_wire[east=none,north=side,power=7,south=none,west=up]",
+      "count": 12
+    },
+    {
+      "id": 240,
+      "state": "minecraft:redstone_wire[east=none,north=side,power=5,south=none,west=up]",
+      "count": 14
+    },
+    {
+      "id": 241,
+      "state": "minecraft:redstone_wire[east=side,north=none,power=13,south=up,west=none]",
+      "count": 27
+    },
+    {
+      "id": 242,
+      "state": "minecraft:redstone_wire[east=side,north=none,power=5,south=up,west=none]",
+      "count": 4
+    },
+    {
+      "id": 243,
+      "state": "minecraft:redstone_wire[east=side,north=none,power=7,south=up,west=none]",
+      "count": 25
+    },
+    {
+      "id": 244,
+      "state": "minecraft:redstone_wire[east=side,north=none,power=9,south=up,west=none]",
+      "count": 4
+    },
+    {
+      "id": 245,
+      "state": "minecraft:redstone_wire[east=side,north=none,power=11,south=up,west=none]",
+      "count": 15
+    },
+    {
+      "id": 246,
+      "state": "minecraft:redstone_wire[east=none,north=none,power=0,south=side,west=side]",
+      "count": 223
+    },
+    {
+      "id": 247,
+      "state": "minecraft:repeater[delay=1,facing=east,locked=false,powered=true]",
+      "count": 547
+    },
+    {
+      "id": 248,
+      "state": "minecraft:redstone_wire[east=side,north=none,power=0,south=none,west=up]",
+      "count": 196
+    },
+    {
+      "id": 249,
+      "state": "minecraft:repeater[delay=1,facing=west,locked=false,powered=false]",
+      "count": 8
+    },
+    {
+      "id": 250,
+      "state": "minecraft:redstone_wire[east=none,north=up,power=2,south=side,west=none]",
+      "count": 69
+    },
+    {
+      "id": 251,
+      "state": "minecraft:redstone_wire[east=side,north=up,power=13,south=none,west=none]",
+      "count": 11
+    },
+    {
+      "id": 252,
+      "state": "minecraft:redstone_wire[east=side,north=side,power=11,south=none,west=none]",
+      "count": 125
+    },
+    {
+      "id": 253,
+      "state": "minecraft:redstone_wire[east=side,north=side,power=12,south=none,west=none]",
+      "count": 26
+    },
+    {
+      "id": 254,
+      "state": "minecraft:redstone_wire[east=up,north=none,power=9,south=none,west=side]",
+      "count": 135
+    },
+    {
+      "id": 255,
+      "state": "minecraft:redstone_wire[east=side,north=side,power=9,south=none,west=none]",
+      "count": 40
+    },
+    {
+      "id": 256,
+      "state": "minecraft:redstone_wire[east=side,north=side,power=5,south=none,west=none]",
+      "count": 16
+    },
+    {
+      "id": 257,
+      "state": "minecraft:redstone_wire[east=side,north=side,power=8,south=side,west=none]",
+      "count": 56
+    },
+    {
+      "id": 258,
+      "state": "minecraft:redstone_wire[east=side,north=side,power=6,south=side,west=none]",
+      "count": 63
+    },
+    {
+      "id": 259,
+      "state": "minecraft:clay",
+      "count": 107
+    },
+    {
+      "id": 260,
+      "state": "minecraft:gray_terracotta",
+      "count": 2385
+    },
+    {
+      "id": 261,
+      "state": "minecraft:redstone_wire[east=none,north=none,power=7,south=up,west=side]",
+      "count": 7
+    },
+    {
+      "id": 262,
+      "state": "minecraft:command_block[conditional=false,facing=west]",
+      "count": 8
+    },
+    {
+      "id": 263,
+      "state": "minecraft:command_block[conditional=false,facing=down]",
+      "count": 8
+    },
+    {
+      "id": 264,
+      "state": "minecraft:command_block[conditional=false,facing=south]",
+      "count": 3
+    },
+    {
+      "id": 265,
+      "state": "minecraft:redstone_wire[east=none,north=none,power=0,south=none,west=none]",
+      "count": 5301
+    },
+    {
+      "id": 266,
+      "state": "minecraft:redstone_wire[east=side,north=none,power=12,south=side,west=none]",
+      "count": 32
+    },
+    {
+      "id": 267,
+      "state": "minecraft:redstone_wire[east=none,north=up,power=9,south=side,west=none]",
+      "count": 226
+    },
+    {
+      "id": 268,
+      "state": "minecraft:redstone_wire[east=side,north=up,power=14,south=none,west=none]",
+      "count": 79
+    },
+    {
+      "id": 269,
+      "state": "minecraft:redstone_wire[east=up,north=none,power=8,south=none,west=side]",
+      "count": 102
+    },
+    {
+      "id": 270,
+      "state": "minecraft:redstone_wire[east=none,north=up,power=10,south=up,west=none]",
+      "count": 8
+    },
+    {
+      "id": 271,
+      "state": "minecraft:redstone_wire[east=none,north=up,power=12,south=up,west=none]",
+      "count": 4
+    },
+    {
+      "id": 272,
+      "state": "minecraft:redstone_wire[east=none,north=up,power=14,south=up,west=none]",
+      "count": 17
+    },
+    {
+      "id": 273,
+      "state": "minecraft:redstone_wire[east=none,north=side,power=9,south=side,west=side]",
+      "count": 35
+    },
+    {
+      "id": 274,
+      "state": "minecraft:orange_wool",
+      "count": 620
+    },
+    {
+      "id": 275,
+      "state": "minecraft:command_block[conditional=false,facing=up]",
+      "count": 16
+    },
+    {
+      "id": 276,
+      "state": "minecraft:orange_concrete",
+      "count": 16418
+    },
+    {
+      "id": 277,
+      "state": "minecraft:purple_concrete",
+      "count": 68
+    },
+    {
+      "id": 278,
+      "state": "minecraft:redstone_wire[east=none,north=none,power=0,south=up,west=side]",
+      "count": 15
+    },
+    {
+      "id": 279,
+      "state": "minecraft:redstone_wire[east=none,north=up,power=8,south=side,west=none]",
+      "count": 278
+    },
+    {
+      "id": 280,
+      "state": "minecraft:stone_button[face=wall,facing=west,powered=false]",
+      "count": 15
+    },
+    {
+      "id": 281,
+      "state": "minecraft:redstone_wire[east=side,north=none,power=4,south=up,west=none]",
+      "count": 2
+    },
+    {
+      "id": 282,
+      "state": "minecraft:redstone_wire[east=none,north=none,power=13,south=side,west=up]",
+      "count": 50
+    },
+    {
+      "id": 283,
+      "state": "minecraft:oak_sign[rotation=3,waterlogged=false]",
+      "count": 1
+    },
+    {
+      "id": 284,
+      "state": "minecraft:redstone_wire[east=up,north=side,power=9,south=none,west=none]",
+      "count": 4
+    },
+    {
+      "id": 285,
+      "state": "minecraft:redstone_wire[east=side,north=none,power=2,south=up,west=side]",
+      "count": 1
+    },
+    {
+      "id": 286,
+      "state": "minecraft:redstone_wire[east=side,north=side,power=15,south=none,west=up]",
+      "count": 19
+    },
+    {
+      "id": 287,
+      "state": "minecraft:redstone_wire[east=side,north=side,power=10,south=none,west=side]",
+      "count": 2
+    },
+    {
+      "id": 288,
+      "state": "minecraft:redstone_wire[east=up,north=side,power=11,south=side,west=none]",
+      "count": 3
+    },
+    {
+      "id": 289,
+      "state": "minecraft:redstone_wire[east=up,north=side,power=15,south=none,west=side]",
+      "count": 5
+    },
+    {
+      "id": 290,
+      "state": "minecraft:redstone_wire[east=none,north=none,power=2,south=side,west=side]",
+      "count": 10
+    },
+    {
+      "id": 291,
+      "state": "minecraft:redstone_wire[east=none,north=none,power=4,south=side,west=side]",
+      "count": 7
+    },
+    {
+      "id": 292,
+      "state": "minecraft:redstone_wire[east=none,north=none,power=8,south=side,west=side]",
+      "count": 14
+    },
+    {
+      "id": 293,
+      "state": "minecraft:redstone_wire[east=none,north=none,power=14,south=side,west=side]",
+      "count": 20
+    },
+    {
+      "id": 294,
+      "state": "minecraft:redstone_wire[east=none,north=up,power=5,south=side,west=none]",
+      "count": 50
+    },
+    {
+      "id": 295,
+      "state": "minecraft:redstone_wire[east=none,north=side,power=1,south=up,west=none]",
+      "count": 5
+    },
+    {
+      "id": 296,
+      "state": "minecraft:repeater[delay=1,facing=east,locked=false,powered=false]",
+      "count": 518
+    },
+    {
+      "id": 297,
+      "state": "minecraft:redstone_wire[east=side,north=none,power=0,south=side,west=side]",
+      "count": 81
+    },
+    {
+      "id": 298,
+      "state": "minecraft:redstone_wire[east=none,north=side,power=0,south=none,west=side]",
+      "count": 34
+    },
+    {
+      "id": 299,
+      "state": "minecraft:oak_wall_sign[facing=west,waterlogged=false]",
+      "count": 69
+    },
+    {
+      "id": 300,
+      "state": "minecraft:redstone_wire[east=side,north=none,power=0,south=side,west=none]",
+      "count": 48
+    },
+    {
+      "id": 301,
+      "state": "minecraft:piston_head[facing=north,short=false,type=normal]",
+      "count": 32
+    },
+    {
+      "id": 302,
+      "state": "minecraft:piston[extended=true,facing=north]",
+      "count": 32
+    },
+    {
+      "id": 303,
+      "state": "minecraft:observer[facing=west,powered=false]",
+      "count": 122
+    },
+    {
+      "id": 304,
+      "state": "minecraft:redstone_wire[east=none,north=up,power=9,south=none,west=side]",
+      "count": 6
+    },
+    {
+      "id": 305,
+      "state": "minecraft:oak_wall_sign[facing=north,waterlogged=false]",
+      "count": 78
+    },
+    {
+      "id": 306,
+      "state": "minecraft:redstone_wire[east=none,north=up,power=3,south=none,west=side]",
+      "count": 4
+    },
+    {
+      "id": 307,
+      "state": "minecraft:redstone_wire[east=side,north=none,power=3,south=side,west=none]",
+      "count": 4
+    },
+    {
+      "id": 308,
+      "state": "minecraft:redstone_wire[east=none,north=up,power=6,south=side,west=none]",
+      "count": 104
+    },
+    {
+      "id": 309,
+      "state": "minecraft:redstone_wire[east=none,north=side,power=3,south=none,west=side]",
+      "count": 5
+    },
+    {
+      "id": 310,
+      "state": "minecraft:redstone_wire[east=side,north=none,power=7,south=side,west=side]",
+      "count": 1
+    },
+    {
+      "id": 311,
+      "state": "minecraft:redstone_wire[east=side,north=none,power=9,south=side,west=side]",
+      "count": 2
+    },
+    {
+      "id": 312,
+      "state": "minecraft:redstone_wire[east=side,north=none,power=6,south=up,west=none]",
+      "count": 1
+    },
+    {
+      "id": 313,
+      "state": "minecraft:redstone_wire[east=none,north=side,power=0,south=up,west=none]",
+      "count": 664
+    },
+    {
+      "id": 314,
+      "state": "minecraft:repeater[delay=1,facing=south,locked=false,powered=true]",
+      "count": 86
+    },
+    {
+      "id": 315,
+      "state": "minecraft:oak_wall_sign[facing=south,waterlogged=false]",
+      "count": 147
+    },
+    {
+      "id": 316,
+      "state": "minecraft:redstone_wire[east=side,north=side,power=14,south=none,west=side]",
+      "count": 2
+    },
+    {
+      "id": 317,
+      "state": "minecraft:redstone_wire[east=side,north=side,power=12,south=none,west=side]",
+      "count": 1
+    },
+    {
+      "id": 318,
+      "state": "minecraft:redstone_wire[east=side,north=none,power=6,south=side,west=none]",
+      "count": 14
+    },
+    {
+      "id": 319,
+      "state": "minecraft:redstone_wire[east=side,north=up,power=2,south=none,west=side]",
+      "count": 1
+    },
+    {
+      "id": 320,
+      "state": "minecraft:redstone_wire[east=none,north=up,power=0,south=none,west=side]",
+      "count": 20
+    },
+    {
+      "id": 321,
+      "state": "minecraft:white_stained_glass",
+      "count": 282
+    },
+    {
+      "id": 322,
+      "state": "minecraft:redstone_wire[east=side,north=side,power=14,south=up,west=none]",
+      "count": 19
+    },
+    {
+      "id": 323,
+      "state": "minecraft:piston[extended=true,facing=up]",
+      "count": 23
+    },
+    {
+      "id": 324,
+      "state": "minecraft:redstone_wire[east=none,north=up,power=6,south=none,west=side]",
+      "count": 8
+    },
+    {
+      "id": 325,
+      "state": "minecraft:redstone_wire[east=none,north=none,power=14,south=up,west=side]",
+      "count": 50
+    },
+    {
+      "id": 326,
+      "state": "minecraft:redstone_wire[east=none,north=none,power=12,south=up,west=side]",
+      "count": 80
+    },
+    {
+      "id": 327,
+      "state": "minecraft:redstone_wire[east=none,north=none,power=10,south=up,west=side]",
+      "count": 54
+    },
+    {
+      "id": 328,
+      "state": "minecraft:redstone_wire[east=none,north=none,power=6,south=up,west=side]",
+      "count": 3
+    },
+    {
+      "id": 329,
+      "state": "minecraft:redstone_wire[east=none,north=none,power=4,south=up,west=side]",
+      "count": 5
+    },
+    {
+      "id": 330,
+      "state": "minecraft:redstone_wire[east=none,north=none,power=2,south=up,west=side]",
+      "count": 7
+    },
+    {
+      "id": 331,
+      "state": "minecraft:redstone_wire[east=up,north=side,power=7,south=none,west=none]",
+      "count": 11
+    },
+    {
+      "id": 332,
+      "state": "minecraft:sticky_piston[extended=false,facing=west]",
+      "count": 8
+    },
+    {
+      "id": 333,
+      "state": "minecraft:redstone_wire[east=none,north=up,power=15,south=side,west=side]",
+      "count": 33
+    },
+    {
+      "id": 334,
+      "state": "minecraft:redstone_wire[east=none,north=none,power=9,south=side,west=side]",
+      "count": 10
+    },
+    {
+      "id": 335,
+      "state": "minecraft:repeater[delay=1,facing=west,locked=false,powered=true]",
+      "count": 11
+    },
+    {
+      "id": 336,
+      "state": "minecraft:redstone_wire[east=none,north=side,power=13,south=none,west=up]",
+      "count": 98
+    },
+    {
+      "id": 337,
+      "state": "minecraft:redstone_wire[east=up,north=side,power=13,south=none,west=none]",
+      "count": 3
+    },
+    {
+      "id": 338,
+      "state": "minecraft:redstone_wire[east=up,north=none,power=13,south=none,west=up]",
+      "count": 1
+    },
+    {
+      "id": 339,
+      "state": "minecraft:piston_head[facing=up,short=false,type=normal]",
+      "count": 23
+    },
+    {
+      "id": 340,
+      "state": "minecraft:oak_wall_sign[facing=east,waterlogged=false]",
+      "count": 1
+    },
+    {
+      "id": 341,
+      "state": "minecraft:blue_concrete",
+      "count": 2412
+    },
+    {
+      "id": 342,
+      "state": "minecraft:redstone_wire[east=none,north=none,power=11,south=up,west=side]",
+      "count": 6
+    },
+    {
+      "id": 343,
+      "state": "minecraft:black_concrete",
+      "count": 19571
+    },
+    {
+      "id": 344,
+      "state": "minecraft:redstone_wire[east=up,north=none,power=10,south=side,west=none]",
+      "count": 55
+    },
+    {
+      "id": 345,
+      "state": "minecraft:redstone_wire[east=up,north=none,power=12,south=side,west=none]",
+      "count": 16
+    },
+    {
+      "id": 346,
+      "state": "minecraft:redstone_wire[east=side,north=up,power=9,south=none,west=none]",
+      "count": 12
+    },
+    {
+      "id": 347,
+      "state": "minecraft:redstone_wire[east=up,north=none,power=11,south=side,west=none]",
+      "count": 5
+    },
+    {
+      "id": 348,
+      "state": "minecraft:redstone_wire[east=side,north=side,power=7,south=none,west=none]",
+      "count": 19
+    },
+    {
+      "id": 349,
+      "state": "minecraft:redstone_wire[east=none,north=none,power=9,south=up,west=side]",
+      "count": 8
+    },
+    {
+      "id": 350,
+      "state": "minecraft:redstone_wire[east=side,north=none,power=4,south=side,west=side]",
+      "count": 1
+    },
+    {
+      "id": 351,
+      "state": "minecraft:redstone_wire[east=side,north=none,power=6,south=side,west=side]",
+      "count": 1
+    },
+    {
+      "id": 352,
+      "state": "minecraft:redstone_wire[east=side,north=none,power=8,south=side,west=side]",
+      "count": 22
+    },
+    {
+      "id": 353,
+      "state": "minecraft:redstone_wire[east=side,north=none,power=10,south=side,west=side]",
+      "count": 1
+    },
+    {
+      "id": 354,
+      "state": "minecraft:redstone_wire[east=side,north=none,power=12,south=side,west=side]",
+      "count": 22
+    },
+    {
+      "id": 355,
+      "state": "minecraft:redstone_wire[east=side,north=none,power=14,south=side,west=side]",
+      "count": 2
+    },
+    {
+      "id": 356,
+      "state": "minecraft:redstone_wire[east=up,north=none,power=14,south=none,west=up]",
+      "count": 20
+    },
+    {
+      "id": 357,
+      "state": "minecraft:redstone_wire[east=none,north=none,power=15,south=up,west=side]",
+      "count": 205
+    },
+    {
+      "id": 358,
+      "state": "minecraft:redstone_wire[east=none,north=side,power=7,south=side,west=side]",
+      "count": 50
+    },
+    {
+      "id": 359,
+      "state": "minecraft:redstone_wire[east=none,north=none,power=11,south=side,west=up]",
+      "count": 1
+    },
+    {
+      "id": 360,
+      "state": "minecraft:iron_block",
+      "count": 1
+    },
+    {
+      "id": 361,
+      "state": "minecraft:redstone_wire[east=up,north=none,power=15,south=side,west=none]",
+      "count": 98
+    },
+    {
+      "id": 362,
+      "state": "minecraft:piston_head[facing=down,short=false,type=normal]",
+      "count": 52
+    },
+    {
+      "id": 363,
+      "state": "minecraft:redstone_wire[east=side,north=none,power=10,south=up,west=none]",
+      "count": 11
+    },
+    {
+      "id": 364,
+      "state": "minecraft:redstone_wire[east=side,north=up,power=12,south=none,west=side]",
+      "count": 2
+    },
+    {
+      "id": 365,
+      "state": "minecraft:redstone_wire[east=side,north=up,power=6,south=none,west=side]",
+      "count": 1
+    },
+    {
+      "id": 366,
+      "state": "minecraft:redstone_wire[east=none,north=none,power=5,south=up,west=side]",
+      "count": 3
+    },
+    {
+      "id": 367,
+      "state": "minecraft:redstone_wire[east=side,north=none,power=10,south=up,west=side]",
+      "count": 1
+    },
+    {
+      "id": 368,
+      "state": "minecraft:redstone_wire[east=side,north=side,power=1,south=side,west=none]",
+      "count": 67
+    },
+    {
+      "id": 369,
+      "state": "minecraft:redstone_wire[east=up,north=none,power=4,south=side,west=none]",
+      "count": 2
+    },
+    {
+      "id": 370,
+      "state": "minecraft:redstone_wire[east=side,north=up,power=15,south=none,west=side]",
+      "count": 2
+    },
+    {
+      "id": 371,
+      "state": "minecraft:repeater[delay=2,facing=west,locked=false,powered=false]",
+      "count": 1
+    },
+    {
+      "id": 372,
+      "state": "minecraft:sticky_piston[extended=false,facing=north]",
+      "count": 1
+    },
+    {
+      "id": 373,
+      "state": "minecraft:piston[extended=true,facing=down]",
+      "count": 52
+    },
+    {
+      "id": 374,
+      "state": "minecraft:redstone_wire[east=none,north=side,power=12,south=side,west=up]",
+      "count": 1
+    },
+    {
+      "id": 375,
+      "state": "minecraft:redstone_wire[east=none,north=none,power=12,south=side,west=up]",
+      "count": 1
+    },
+    {
+      "id": 376,
+      "state": "minecraft:redstone_wire[east=none,north=side,power=14,south=side,west=up]",
+      "count": 1
+    },
+    {
+      "id": 377,
+      "state": "minecraft:redstone_wire[east=side,north=side,power=11,south=up,west=none]",
+      "count": 18
+    },
+    {
+      "id": 378,
+      "state": "minecraft:redstone_wire[east=none,north=none,power=3,south=side,west=side]",
+      "count": 10
+    },
+    {
+      "id": 379,
+      "state": "minecraft:redstone_wire[east=up,north=side,power=11,south=none,west=none]",
+      "count": 5
+    },
+    {
+      "id": 380,
+      "state": "minecraft:redstone_wire[east=none,north=up,power=12,south=side,west=side]",
+      "count": 39
+    },
+    {
+      "id": 381,
+      "state": "minecraft:redstone_wire[east=up,north=side,power=12,south=none,west=side]",
+      "count": 1
+    },
+    {
+      "id": 382,
+      "state": "minecraft:redstone_wire[east=side,north=none,power=13,south=up,west=side]",
+      "count": 23
+    },
+    {
+      "id": 383,
+      "state": "minecraft:redstone_wire[east=side,north=none,power=13,south=side,west=side]",
+      "count": 6
+    },
+    {
+      "id": 384,
+      "state": "minecraft:redstone_wire[east=side,north=side,power=13,south=none,west=side]",
+      "count": 6
+    },
+    {
+      "id": 385,
+      "state": "minecraft:redstone_wire[east=up,north=side,power=15,south=none,west=none]",
+      "count": 20
+    },
+    {
+      "id": 386,
+      "state": "minecraft:redstone_wire[east=none,north=none,power=3,south=up,west=side]",
+      "count": 6
+    },
+    {
+      "id": 387,
+      "state": "minecraft:redstone_wire[east=up,north=none,power=9,south=none,west=up]",
+      "count": 1
+    },
+    {
+      "id": 388,
+      "state": "minecraft:redstone_wire[east=up,north=none,power=5,south=none,west=up]",
+      "count": 1
+    },
+    {
+      "id": 389,
+      "state": "minecraft:redstone_wire[east=up,north=none,power=7,south=none,west=up]",
+      "count": 2
+    },
+    {
+      "id": 390,
+      "state": "minecraft:redstone_wire[east=none,north=up,power=9,south=none,west=up]",
+      "count": 1
+    },
+    {
+      "id": 391,
+      "state": "minecraft:redstone_wire[east=none,north=up,power=10,south=none,west=side]",
+      "count": 9
+    },
+    {
+      "id": 392,
+      "state": "minecraft:comparator[facing=east,mode=compare,powered=true]",
+      "count": 2
+    },
+    {
+      "id": 393,
+      "state": "minecraft:furnace[facing=north,lit=false]",
+      "count": 2
+    },
+    {
+      "id": 394,
+      "state": "minecraft:redstone_wall_torch[facing=north,lit=true]",
+      "count": 62
+    },
+    {
+      "id": 395,
+      "state": "minecraft:redstone_wire[east=none,north=side,power=6,south=side,west=up]",
+      "count": 1
+    },
+    {
+      "id": 396,
+      "state": "minecraft:redstone_wire[east=none,north=none,power=5,south=side,west=up]",
+      "count": 14
+    },
+    {
+      "id": 397,
+      "state": "minecraft:redstone_wire[east=none,north=side,power=10,south=side,west=up]",
+      "count": 2
+    },
+    {
+      "id": 398,
+      "state": "minecraft:redstone_wire[east=none,north=none,power=3,south=side,west=up]",
+      "count": 5
+    },
+    {
+      "id": 399,
+      "state": "minecraft:emerald_block",
+      "count": 232
+    },
+    {
+      "id": 400,
+      "state": "minecraft:redstone_wire[east=up,north=side,power=3,south=side,west=none]",
+      "count": 1
+    },
+    {
+      "id": 401,
+      "state": "minecraft:redstone_wire[east=up,north=side,power=5,south=side,west=none]",
+      "count": 1
+    },
+    {
+      "id": 402,
+      "state": "minecraft:redstone_wire[east=up,north=side,power=7,south=side,west=none]",
+      "count": 1
+    },
+    {
+      "id": 403,
+      "state": "minecraft:redstone_wire[east=side,north=none,power=8,south=up,west=none]",
+      "count": 5
+    },
+    {
+      "id": 404,
+      "state": "minecraft:redstone_wire[east=none,north=side,power=14,south=up,west=side]",
+      "count": 16
+    },
+    {
+      "id": 405,
+      "state": "minecraft:redstone_wire[east=up,north=side,power=5,south=none,west=none]",
+      "count": 8
+    },
+    {
+      "id": 406,
+      "state": "minecraft:redstone_wire[east=side,north=none,power=11,south=up,west=side]",
+      "count": 31
+    },
+    {
+      "id": 407,
+      "state": "minecraft:redstone_wire[east=side,north=none,power=9,south=up,west=side]",
+      "count": 9
+    },
+    {
+      "id": 408,
+      "state": "minecraft:redstone_wire[east=none,north=side,power=15,south=side,west=up]",
+      "count": 1
+    },
+    {
+      "id": 409,
+      "state": "minecraft:redstone_wire[east=side,north=up,power=10,south=none,west=none]",
+      "count": 4
+    },
+    {
+      "id": 410,
+      "state": "minecraft:redstone_wire[east=none,north=up,power=13,south=side,west=up]",
+      "count": 1
+    },
+    {
+      "id": 411,
+      "state": "minecraft:redstone_wire[east=none,north=up,power=2,south=none,west=side]",
+      "count": 8
+    },
+    {
+      "id": 412,
+      "state": "minecraft:redstone_wire[east=side,north=up,power=11,south=up,west=none]",
+      "count": 1
+    },
+    {
+      "id": 413,
+      "state": "minecraft:redstone_wall_torch[facing=west,lit=true]",
+      "count": 524
+    },
+    {
+      "id": 414,
+      "state": "minecraft:redstone_wire[east=side,north=up,power=4,south=none,west=none]",
+      "count": 2
+    },
+    {
+      "id": 415,
+      "state": "minecraft:redstone_wire[east=side,north=up,power=2,south=none,west=none]",
+      "count": 1
+    },
+    {
+      "id": 416,
+      "state": "minecraft:redstone_wire[east=side,north=up,power=6,south=none,west=none]",
+      "count": 5
+    },
+    {
+      "id": 417,
+      "state": "minecraft:redstone_wire[east=side,north=up,power=8,south=none,west=none]",
+      "count": 3
+    },
+    {
+      "id": 418,
+      "state": "minecraft:redstone_wire[east=up,north=none,power=2,south=side,west=none]",
+      "count": 2
+    },
+    {
+      "id": 419,
+      "state": "minecraft:redstone_wire[east=up,north=side,power=13,south=side,west=none]",
+      "count": 10
+    },
+    {
+      "id": 420,
+      "state": "minecraft:redstone_wire[east=side,north=up,power=9,south=up,west=none]",
+      "count": 1
+    },
+    {
+      "id": 421,
+      "state": "minecraft:redstone_wire[east=none,north=none,power=10,south=side,west=up]",
+      "count": 9
+    },
+    {
+      "id": 422,
+      "state": "minecraft:redstone_wire[east=none,north=none,power=5,south=side,west=side]",
+      "count": 11
+    },
+    {
+      "id": 423,
+      "state": "minecraft:redstone_wire[east=none,north=none,power=7,south=side,west=side]",
+      "count": 18
+    },
+    {
+      "id": 424,
+      "state": "minecraft:red_concrete",
+      "count": 1036
+    },
+    {
+      "id": 425,
+      "state": "minecraft:black_stained_glass",
+      "count": 4267
+    },
+    {
+      "id": 426,
+      "state": "minecraft:redstone_wire[east=up,north=side,power=14,south=side,west=none]",
+      "count": 2
+    },
+    {
+      "id": 427,
+      "state": "minecraft:white_terracotta",
+      "count": 166
+    },
+    {
+      "id": 428,
+      "state": "minecraft:redstone_wire[east=none,north=up,power=14,south=side,west=up]",
+      "count": 1
+    },
+    {
+      "id": 429,
+      "state": "minecraft:redstone_wire[east=none,north=up,power=14,south=none,west=side]",
+      "count": 5
+    },
+    {
+      "id": 430,
+      "state": "minecraft:redstone_wire[east=side,north=none,power=0,south=up,west=none]",
+      "count": 17
+    },
+    {
+      "id": 431,
+      "state": "minecraft:redstone_wall_torch[facing=south,lit=true]",
+      "count": 24
+    },
+    {
+      "id": 432,
+      "state": "minecraft:redstone_wire[east=none,north=side,power=0,south=none,west=up]",
+      "count": 91
+    },
+    {
+      "id": 433,
+      "state": "minecraft:sticky_piston[extended=false,facing=south]",
+      "count": 163
+    },
+    {
+      "id": 434,
+      "state": "minecraft:redstone_wire[east=up,north=side,power=0,south=none,west=none]",
+      "count": 17
+    },
+    {
+      "id": 435,
+      "state": "minecraft:redstone_wall_torch[facing=east,lit=true]",
+      "count": 29
+    },
+    {
+      "id": 436,
+      "state": "minecraft:redstone_wire[east=side,north=side,power=4,south=none,west=side]",
+      "count": 1
+    },
+    {
+      "id": 437,
+      "state": "minecraft:orange_terracotta",
+      "count": 663
+    },
+    {
+      "id": 438,
+      "state": "minecraft:redstone_wire[east=none,north=up,power=4,south=none,west=side]",
+      "count": 6
+    },
+    {
+      "id": 439,
+      "state": "minecraft:redstone_wire[east=up,north=side,power=3,south=none,west=none]",
+      "count": 1
+    },
+    {
+      "id": 440,
+      "state": "minecraft:redstone_wire[east=up,north=none,power=15,south=none,west=up]",
+      "count": 1
+    },
+    {
+      "id": 441,
+      "state": "minecraft:redstone_wire[east=side,north=side,power=10,south=side,west=none]",
+      "count": 45
+    },
+    {
+      "id": 442,
+      "state": "minecraft:redstone_wire[east=side,north=none,power=0,south=side,west=up]",
+      "count": 2
+    },
+    {
+      "id": 443,
+      "state": "minecraft:repeater[delay=1,facing=south,locked=false,powered=false]",
+      "count": 69
+    },
+    {
+      "id": 444,
+      "state": "minecraft:redstone_wire[east=up,north=none,power=7,south=side,west=up]",
+      "count": 4
+    },
+    {
+      "id": 445,
+      "state": "minecraft:redstone_wire[east=up,north=none,power=13,south=side,west=up]",
+      "count": 9
+    },
+    {
+      "id": 446,
+      "state": "minecraft:redstone_wire[east=side,north=none,power=15,south=up,west=side]",
+      "count": 70
+    },
+    {
+      "id": 447,
+      "state": "minecraft:redstone_wire[east=side,north=up,power=7,south=none,west=none]",
+      "count": 2
+    },
+    {
+      "id": 448,
+      "state": "minecraft:redstone_wire[east=side,north=up,power=15,south=side,west=none]",
+      "count": 9
+    },
+    {
+      "id": 449,
+      "state": "minecraft:redstone_wire[east=up,north=side,power=4,south=none,west=none]",
+      "count": 1
+    },
+    {
+      "id": 450,
+      "state": "minecraft:redstone_wire[east=none,north=up,power=11,south=none,west=side]",
+      "count": 5
+    },
+    {
+      "id": 451,
+      "state": "minecraft:redstone_wire[east=none,north=up,power=5,south=up,west=none]",
+      "count": 2
+    },
+    {
+      "id": 452,
+      "state": "minecraft:redstone_wire[east=none,north=side,power=5,south=none,west=side]",
+      "count": 5
+    },
+    {
+      "id": 453,
+      "state": "minecraft:comparator[facing=north,mode=compare,powered=true]",
+      "count": 79
+    },
+    {
+      "id": 454,
+      "state": "minecraft:pink_terracotta",
+      "count": 190
+    },
+    {
+      "id": 455,
+      "state": "minecraft:redstone_wire[east=side,north=side,power=12,south=side,west=none]",
+      "count": 64
+    },
+    {
+      "id": 456,
+      "state": "minecraft:purple_terracotta",
+      "count": 173
+    },
+    {
+      "id": 457,
+      "state": "minecraft:redstone_wire[east=none,north=none,power=15,south=none,west=none]",
+      "count": 64
+    },
+    {
+      "id": 458,
+      "state": "minecraft:redstone_wire[east=side,north=up,power=6,south=side,west=none]",
+      "count": 18
+    },
+    {
+      "id": 459,
+      "state": "minecraft:redstone_wire[east=side,north=none,power=5,south=side,west=side]",
+      "count": 1
+    },
+    {
+      "id": 460,
+      "state": "minecraft:redstone_wire[east=none,north=side,power=7,south=none,west=side]",
+      "count": 6
+    },
+    {
+      "id": 461,
+      "state": "minecraft:piston_head[facing=west,short=false,type=normal]",
+      "count": 49
+    },
+    {
+      "id": 462,
+      "state": "minecraft:piston[extended=true,facing=west]",
+      "count": 49
+    },
+    {
+      "id": 463,
+      "state": "minecraft:sticky_piston[extended=false,facing=down]",
+      "count": 328
+    },
+    {
+      "id": 464,
+      "state": "minecraft:yellow_terracotta",
+      "count": 82
+    },
+    {
+      "id": 465,
+      "state": "minecraft:redstone_wire[east=side,north=side,power=15,south=side,west=up]",
+      "count": 1
+    },
+    {
+      "id": 466,
+      "state": "minecraft:redstone_wire[east=none,north=none,power=0,south=side,west=up]",
+      "count": 9
+    },
+    {
+      "id": 467,
+      "state": "minecraft:redstone_wire[east=up,north=side,power=7,south=none,west=up]",
+      "count": 4
+    },
+    {
+      "id": 468,
+      "state": "minecraft:redstone_wire[east=none,north=side,power=3,south=none,west=up]",
+      "count": 4
+    },
+    {
+      "id": 469,
+      "state": "minecraft:redstone_wire[east=none,north=up,power=15,south=up,west=none]",
+      "count": 1
+    },
+    {
+      "id": 470,
+      "state": "minecraft:sticky_piston[extended=false,facing=up]",
+      "count": 7
+    },
+    {
+      "id": 471,
+      "state": "minecraft:redstone_wire[east=side,north=side,power=0,south=side,west=none]",
+      "count": 99
+    },
+    {
+      "id": 472,
+      "state": "minecraft:sticky_piston[extended=true,facing=up]",
+      "count": 7
+    },
+    {
+      "id": 473,
+      "state": "minecraft:redstone_wire[east=side,north=side,power=4,south=side,west=none]",
+      "count": 60
+    },
+    {
+      "id": 474,
+      "state": "minecraft:orange_shulker_box[facing=up]",
+      "count": 1
+    },
+    {
+      "id": 475,
+      "state": "minecraft:red_shulker_box[facing=up]",
+      "count": 1
+    },
+    {
+      "id": 476,
+      "state": "minecraft:redstone_wire[east=up,north=none,power=2,south=none,west=up]",
+      "count": 1
+    },
+    {
+      "id": 477,
+      "state": "minecraft:redstone_wire[east=up,north=none,power=10,south=none,west=up]",
+      "count": 2
+    },
+    {
+      "id": 478,
+      "state": "minecraft:redstone_wire[east=side,north=up,power=0,south=none,west=none]",
+      "count": 18
+    },
+    {
+      "id": 479,
+      "state": "minecraft:redstone_wire[east=up,north=none,power=7,south=side,west=none]",
+      "count": 1
+    },
+    {
+      "id": 480,
+      "state": "minecraft:piston_head[facing=up,short=false,type=sticky]",
+      "count": 7
+    },
+    {
+      "id": 481,
+      "state": "minecraft:redstone_wire[east=up,north=side,power=0,south=none,west=up]",
+      "count": 1
+    },
+    {
+      "id": 482,
+      "state": "minecraft:redstone_wire[east=side,north=side,power=0,south=none,west=up]",
+      "count": 1
+    },
+    {
+      "id": 483,
+      "state": "minecraft:redstone_wire[east=side,north=up,power=3,south=none,west=side]",
+      "count": 1
+    },
+    {
+      "id": 484,
+      "state": "minecraft:redstone_wire[east=side,north=up,power=5,south=none,west=none]",
+      "count": 2
+    },
+    {
+      "id": 485,
+      "state": "minecraft:redstone_wire[east=side,north=up,power=7,south=none,west=side]",
+      "count": 1
+    },
+    {
+      "id": 486,
+      "state": "minecraft:redstone_wire[east=side,north=up,power=11,south=none,west=side]",
+      "count": 1
+    },
+    {
+      "id": 487,
+      "state": "minecraft:redstone_wire[east=side,north=up,power=8,south=none,west=side]",
+      "count": 1
+    },
+    {
+      "id": 488,
+      "state": "minecraft:redstone_wire[east=up,north=none,power=0,south=none,west=up]",
+      "count": 4
+    },
+    {
+      "id": 489,
+      "state": "minecraft:repeater[delay=2,facing=east,locked=false,powered=false]",
+      "count": 14
+    },
+    {
+      "id": 490,
+      "state": "minecraft:redstone_wire[east=side,north=up,power=0,south=up,west=none]",
+      "count": 1
+    },
+    {
+      "id": 491,
+      "state": "minecraft:redstone_wire[east=side,north=up,power=13,south=side,west=none]",
+      "count": 73
+    },
+    {
+      "id": 492,
+      "state": "minecraft:redstone_wire[east=side,north=up,power=13,south=up,west=none]",
+      "count": 1
+    },
+    {
+      "id": 493,
+      "state": "minecraft:redstone_wire[east=none,north=up,power=10,south=side,west=side]",
+      "count": 31
+    },
+    {
+      "id": 494,
+      "state": "minecraft:redstone_wire[east=none,north=none,power=1,south=side,west=side]",
+      "count": 1
+    },
+    {
+      "id": 495,
+      "state": "minecraft:redstone_wire[east=none,north=side,power=3,south=side,west=side]",
+      "count": 67
+    },
+    {
+      "id": 496,
+      "state": "minecraft:redstone_wire[east=none,north=side,power=13,south=side,west=side]",
+      "count": 1
+    },
+    {
+      "id": 497,
+      "state": "minecraft:lever[face=wall,facing=south,powered=true]",
+      "count": 3
+    },
+    {
+      "id": 498,
+      "state": "minecraft:redstone_wire[east=side,north=up,power=0,south=none,west=side]",
+      "count": 17
+    },
+    {
+      "id": 499,
+      "state": "minecraft:piston[extended=true,facing=east]",
+      "count": 8
+    },
+    {
+      "id": 500,
+      "state": "minecraft:piston_head[facing=east,short=false,type=normal]",
+      "count": 8
+    },
+    {
+      "id": 501,
+      "state": "minecraft:redstone_lamp[lit=false]",
+      "count": 1288
+    },
+    {
+      "id": 502,
+      "state": "minecraft:barrier[waterlogged=false]",
+      "count": 7
+    },
+    {
+      "id": 503,
+      "state": "minecraft:redstone_wire[east=none,north=up,power=14,south=side,west=side]",
+      "count": 1
+    },
+    {
+      "id": 504,
+      "state": "minecraft:redstone_wire[east=none,north=up,power=13,south=side,west=side]",
+      "count": 32
+    },
+    {
+      "id": 505,
+      "state": "minecraft:redstone_wire[east=side,north=up,power=11,south=side,west=none]",
+      "count": 35
+    },
+    {
+      "id": 506,
+      "state": "minecraft:redstone_wire[east=side,north=none,power=11,south=side,west=up]",
+      "count": 1
+    },
+    {
+      "id": 507,
+      "state": "minecraft:redstone_wire[east=none,north=side,power=2,south=none,west=up]",
+      "count": 3
+    },
+    {
+      "id": 508,
+      "state": "minecraft:redstone_wire[east=none,north=up,power=7,south=none,west=side]",
+      "count": 1
+    },
+    {
+      "id": 509,
+      "state": "minecraft:redstone_wire[east=none,north=none,power=6,south=side,west=up]",
+      "count": 3
+    },
+    {
+      "id": 510,
+      "state": "minecraft:repeater[delay=3,facing=east,locked=false,powered=false]",
+      "count": 1
+    },
+    {
+      "id": 511,
+      "state": "minecraft:redstone_wire[east=none,north=side,power=0,south=side,west=side]",
+      "count": 116
+    },
+    {
+      "id": 512,
+      "state": "minecraft:blue_terracotta",
+      "count": 1
+    },
+    {
+      "id": 513,
+      "state": "minecraft:lever[face=wall,facing=south,powered=false]",
+      "count": 13
+    },
+    {
+      "id": 514,
+      "state": "minecraft:lever[face=floor,facing=north,powered=false]",
+      "count": 8
+    },
+    {
+      "id": 515,
+      "state": "minecraft:redstone_wire[east=none,north=up,power=12,south=none,west=up]",
+      "count": 8
+    },
+    {
+      "id": 516,
+      "state": "minecraft:oak_sign[rotation=4,waterlogged=false]",
+      "count": 2
+    },
+    {
+      "id": 517,
+      "state": "minecraft:repeater[delay=4,facing=north,locked=false,powered=false]",
+      "count": 10
+    },
+    {
+      "id": 518,
+      "state": "minecraft:redstone_wire[east=up,north=side,power=15,south=side,west=none]",
+      "count": 48
+    },
+    {
+      "id": 519,
+      "state": "minecraft:redstone_lamp[lit=true]",
+      "count": 164
+    },
+    {
+      "id": 520,
+      "state": "minecraft:redstone_wire[east=none,north=side,power=0,south=side,west=up]",
+      "count": 1
+    },
+    {
+      "id": 521,
+      "state": "minecraft:redstone_wire[east=side,north=none,power=11,south=side,west=side]",
+      "count": 13
+    },
+    {
+      "id": 522,
+      "state": "minecraft:redstone_wire[east=side,north=none,power=12,south=up,west=side]",
+      "count": 16
+    },
+    {
+      "id": 523,
+      "state": "minecraft:redstone_wire[east=up,north=none,power=11,south=side,west=up]",
+      "count": 8
+    },
+    {
+      "id": 524,
+      "state": "minecraft:redstone_wire[east=none,north=none,power=7,south=side,west=up]",
+      "count": 12
+    },
+    {
+      "id": 525,
+      "state": "minecraft:redstone_wire[east=side,north=side,power=7,south=side,west=none]",
+      "count": 50
+    },
+    {
+      "id": 526,
+      "state": "minecraft:redstone_wire[east=side,north=side,power=11,south=side,west=none]",
+      "count": 21
+    },
+    {
+      "id": 527,
+      "state": "minecraft:redstone_wire[east=up,north=side,power=14,south=none,west=up]",
+      "count": 15
+    },
+    {
+      "id": 528,
+      "state": "minecraft:redstone_wire[east=up,north=side,power=15,south=none,west=up]",
+      "count": 1
+    },
+    {
+      "id": 529,
+      "state": "minecraft:redstone_wire[east=side,north=side,power=3,south=none,west=side]",
+      "count": 3
+    },
+    {
+      "id": 530,
+      "state": "minecraft:stone",
+      "count": 21
+    },
+    {
+      "id": 531,
+      "state": "minecraft:smooth_stone_slab[type=bottom,waterlogged=false]",
+      "count": 1
+    },
+    {
+      "id": 532,
+      "state": "minecraft:redstone_wire[east=none,north=up,power=13,south=up,west=none]",
+      "count": 2
+    },
+    {
+      "id": 533,
+      "state": "minecraft:oak_sign[rotation=1,waterlogged=false]",
+      "count": 1
+    },
+    {
+      "id": 534,
+      "state": "minecraft:oak_sign[rotation=8,waterlogged=false]",
+      "count": 1
+    },
+    {
+      "id": 535,
+      "state": "minecraft:redstone_wire[east=side,north=none,power=14,south=up,west=side]",
+      "count": 6
+    },
+    {
+      "id": 536,
+      "state": "minecraft:sticky_piston[extended=false,facing=east]",
+      "count": 1
+    },
+    {
+      "id": 537,
+      "state": "minecraft:barrel[facing=east,open=false]",
+      "count": 1
+    },
+    {
+      "id": 538,
+      "state": "minecraft:magenta_concrete",
+      "count": 918
+    },
+    {
+      "id": 539,
+      "state": "minecraft:repeater[delay=2,facing=north,locked=false,powered=false]",
+      "count": 3
+    },
+    {
+      "id": 540,
+      "state": "minecraft:redstone_wire[east=side,north=side,power=0,south=up,west=none]",
+      "count": 12
+    },
+    {
+      "id": 541,
+      "state": "minecraft:redstone_wire[east=up,north=none,power=14,south=side,west=up]",
+      "count": 1
+    },
+    {
+      "id": 542,
+      "state": "minecraft:redstone_wire[east=side,north=side,power=14,south=none,west=up]",
+      "count": 1
+    },
+    {
+      "id": 543,
+      "state": "minecraft:redstone_wire[east=up,north=side,power=11,south=none,west=up]",
+      "count": 8
+    },
+    {
+      "id": 544,
+      "state": "minecraft:redstone_wire[east=side,north=up,power=3,south=none,west=none]",
+      "count": 1
+    },
+    {
+      "id": 545,
+      "state": "minecraft:redstone_wire[east=side,north=none,power=0,south=up,west=side]",
+      "count": 3
+    },
+    {
+      "id": 546,
+      "state": "minecraft:redstone_wire[east=side,north=none,power=12,south=up,west=none]",
+      "count": 51
+    },
+    {
+      "id": 547,
+      "state": "minecraft:redstone_wire[east=side,north=side,power=14,south=up,west=side]",
+      "count": 16
+    },
+    {
+      "id": 548,
+      "state": "minecraft:redstone_wire[east=up,north=none,power=14,south=up,west=side]",
+      "count": 8
+    },
+    {
+      "id": 549,
+      "state": "minecraft:smooth_quartz_stairs[facing=south,half=top,shape=straight,waterlogged=false]",
+      "count": 1
+    },
+    {
+      "id": 550,
+      "state": "minecraft:smooth_quartz_stairs[facing=north,half=top,shape=straight,waterlogged=false]",
+      "count": 1
+    },
+    {
+      "id": 551,
+      "state": "minecraft:redstone_wire[east=up,north=none,power=8,south=side,west=up]",
+      "count": 22
+    },
+    {
+      "id": 552,
+      "state": "minecraft:redstone_wire[east=up,north=none,power=12,south=side,west=up]",
+      "count": 32
+    },
+    {
+      "id": 553,
+      "state": "minecraft:redstone_wire[east=up,north=none,power=9,south=side,west=up]",
+      "count": 11
+    },
+    {
+      "id": 554,
+      "state": "minecraft:redstone_wire[east=side,north=side,power=0,south=up,west=side]",
+      "count": 11
+    },
+    {
+      "id": 555,
+      "state": "minecraft:redstone_wire[east=none,north=side,power=0,south=up,west=side]",
+      "count": 11
+    },
+    {
+      "id": 556,
+      "state": "minecraft:redstone_wire[east=side,north=side,power=12,south=up,west=side]",
+      "count": 22
+    },
+    {
+      "id": 557,
+      "state": "minecraft:redstone_wire[east=none,north=side,power=13,south=up,west=side]",
+      "count": 15
+    },
+    {
+      "id": 558,
+      "state": "minecraft:redstone_wire[east=side,north=side,power=13,south=up,west=none]",
+      "count": 17
+    },
+    {
+      "id": 559,
+      "state": "minecraft:redstone_wire[east=none,north=side,power=11,south=up,west=side]",
+      "count": 17
+    },
+    {
+      "id": 560,
+      "state": "minecraft:redstone_wire[east=side,north=side,power=13,south=up,west=side]",
+      "count": 16
+    },
+    {
+      "id": 561,
+      "state": "minecraft:redstone_wire[east=side,north=side,power=12,south=up,west=none]",
+      "count": 19
+    },
+    {
+      "id": 562,
+      "state": "minecraft:redstone_wire[east=none,north=side,power=12,south=up,west=side]",
+      "count": 16
+    },
+    {
+      "id": 563,
+      "state": "minecraft:redstone_wire[east=side,north=side,power=10,south=up,west=none]",
+      "count": 14
+    },
+    {
+      "id": 564,
+      "state": "minecraft:redstone_wire[east=side,north=side,power=11,south=up,west=side]",
+      "count": 14
+    },
+    {
+      "id": 565,
+      "state": "minecraft:redstone_wire[east=none,north=side,power=10,south=up,west=side]",
+      "count": 14
+    },
+    {
+      "id": 566,
+      "state": "minecraft:redstone_wire[east=side,north=side,power=6,south=none,west=side]",
+      "count": 1
+    },
+    {
+      "id": 567,
+      "state": "minecraft:redstone_wire[east=side,north=none,power=3,south=up,west=none]",
+      "count": 10
+    },
+    {
+      "id": 568,
+      "state": "minecraft:redstone_wire[east=side,north=side,power=9,south=up,west=none]",
+      "count": 14
+    },
+    {
+      "id": 569,
+      "state": "minecraft:redstone_wire[east=side,north=side,power=10,south=up,west=side]",
+      "count": 14
+    },
+    {
+      "id": 570,
+      "state": "minecraft:redstone_wire[east=none,north=side,power=9,south=up,west=side]",
+      "count": 14
+    },
+    {
+      "id": 571,
+      "state": "minecraft:redstone_wire[east=side,north=side,power=8,south=up,west=none]",
+      "count": 3
+    },
+    {
+      "id": 572,
+      "state": "minecraft:redstone_wire[east=side,north=side,power=9,south=up,west=side]",
+      "count": 14
+    },
+    {
+      "id": 573,
+      "state": "minecraft:redstone_wire[east=none,north=side,power=8,south=up,west=side]",
+      "count": 5
+    },
+    {
+      "id": 574,
+      "state": "minecraft:redstone_wire[east=side,north=side,power=7,south=up,west=none]",
+      "count": 1
+    },
+    {
+      "id": 575,
+      "state": "minecraft:redstone_wire[east=side,north=side,power=8,south=up,west=side]",
+      "count": 5
+    },
+    {
+      "id": 576,
+      "state": "minecraft:redstone_wire[east=none,north=side,power=7,south=up,west=side]",
+      "count": 5
+    },
+    {
+      "id": 577,
+      "state": "minecraft:green_concrete",
+      "count": 684
+    },
+    {
+      "id": 578,
+      "state": "minecraft:redstone_wire[east=side,north=side,power=7,south=side,west=side]",
+      "count": 50
+    },
+    {
+      "id": 579,
+      "state": "minecraft:redstone_wire[east=side,north=side,power=8,south=side,west=side]",
+      "count": 37
+    },
+    {
+      "id": 580,
+      "state": "minecraft:redstone_wire[east=side,north=side,power=6,south=side,west=side]",
+      "count": 58
+    },
+    {
+      "id": 581,
+      "state": "minecraft:redstone_wire[east=side,north=side,power=5,south=side,west=side]",
+      "count": 58
+    },
+    {
+      "id": 582,
+      "state": "minecraft:redstone_wire[east=side,north=side,power=4,south=side,west=side]",
+      "count": 58
+    },
+    {
+      "id": 583,
+      "state": "minecraft:redstone_wire[east=side,north=side,power=2,south=side,west=none]",
+      "count": 87
+    },
+    {
+      "id": 584,
+      "state": "minecraft:redstone_wire[east=side,north=side,power=3,south=side,west=side]",
+      "count": 68
+    },
+    {
+      "id": 585,
+      "state": "minecraft:redstone_wire[east=none,north=side,power=2,south=side,west=side]",
+      "count": 85
+    },
+    {
+      "id": 586,
+      "state": "minecraft:redstone_wire[east=side,north=side,power=2,south=side,west=side]",
+      "count": 89
+    },
+    {
+      "id": 587,
+      "state": "minecraft:redstone_wire[east=none,north=side,power=1,south=side,west=side]",
+      "count": 55
+    },
+    {
+      "id": 588,
+      "state": "minecraft:redstone_wire[east=side,north=side,power=1,south=side,west=side]",
+      "count": 54
+    },
+    {
+      "id": 589,
+      "state": "minecraft:smooth_quartz_stairs[facing=south,half=bottom,shape=straight,waterlogged=false]",
+      "count": 1
+    },
+    {
+      "id": 590,
+      "state": "minecraft:smooth_quartz_stairs[facing=north,half=bottom,shape=straight,waterlogged=false]",
+      "count": 1
+    },
+    {
+      "id": 591,
+      "state": "minecraft:redstone_wire[east=side,north=side,power=12,south=side,west=side]",
+      "count": 7
+    },
+    {
+      "id": 592,
+      "state": "minecraft:redstone_wire[east=side,north=side,power=11,south=side,west=side]",
+      "count": 25
+    },
+    {
+      "id": 593,
+      "state": "minecraft:redstone_wire[east=side,north=side,power=9,south=side,west=none]",
+      "count": 28
+    },
+    {
+      "id": 594,
+      "state": "minecraft:redstone_wire[east=side,north=side,power=10,south=side,west=side]",
+      "count": 28
+    },
+    {
+      "id": 595,
+      "state": "minecraft:redstone_wire[east=side,north=side,power=9,south=side,west=side]",
+      "count": 28
+    },
+    {
+      "id": 596,
+      "state": "minecraft:redstone_wire[east=side,north=none,power=10,south=side,west=up]",
+      "count": 1
+    },
+    {
+      "id": 597,
+      "state": "minecraft:redstone_wire[east=side,north=up,power=0,south=side,west=none]",
+      "count": 36
+    },
+    {
+      "id": 598,
+      "state": "minecraft:redstone_wire[east=side,north=up,power=0,south=side,west=side]",
+      "count": 36
+    },
+    {
+      "id": 599,
+      "state": "minecraft:redstone_wire[east=none,north=up,power=0,south=side,west=side]",
+      "count": 36
+    },
+    {
+      "id": 600,
+      "state": "minecraft:redstone_wire[east=side,north=up,power=12,south=side,west=none]",
+      "count": 35
+    },
+    {
+      "id": 601,
+      "state": "minecraft:redstone_wire[east=side,north=up,power=11,south=side,west=side]",
+      "count": 32
+    },
+    {
+      "id": 602,
+      "state": "minecraft:redstone_wire[east=side,north=up,power=12,south=side,west=side]",
+      "count": 42
+    },
+    {
+      "id": 603,
+      "state": "minecraft:redstone_wire[east=none,north=up,power=11,south=side,west=side]",
+      "count": 33
+    },
+    {
+      "id": 604,
+      "state": "minecraft:redstone_wire[east=side,north=up,power=10,south=side,west=none]",
+      "count": 31
+    },
+    {
+      "id": 605,
+      "state": "minecraft:redstone_wire[east=side,north=side,power=1,south=none,west=none]",
+      "count": 8
+    },
+    {
+      "id": 606,
+      "state": "minecraft:redstone_wire[east=side,north=side,power=1,south=none,west=side]",
+      "count": 10
+    },
+    {
+      "id": 607,
+      "state": "minecraft:redstone_wire[east=none,north=side,power=1,south=none,west=side]",
+      "count": 9
+    },
+    {
+      "id": 608,
+      "state": "minecraft:redstone_wire[east=side,north=up,power=13,south=side,west=side]",
+      "count": 28
+    },
+    {
+      "id": 609,
+      "state": "minecraft:redstone_wire[east=side,north=up,power=1,south=none,west=none]",
+      "count": 17
+    },
+    {
+      "id": 610,
+      "state": "minecraft:redstone_wire[east=side,north=up,power=1,south=none,west=side]",
+      "count": 18
+    },
+    {
+      "id": 611,
+      "state": "minecraft:redstone_wire[east=none,north=up,power=1,south=none,west=side]",
+      "count": 16
+    },
+    {
+      "id": 612,
+      "state": "minecraft:redstone_wire[east=none,north=up,power=5,south=none,west=side]",
+      "count": 1
+    },
+    {
+      "id": 613,
+      "state": "minecraft:redstone_wire[east=none,north=up,power=7,south=up,west=side]",
+      "count": 1
+    },
+    {
+      "id": 614,
+      "state": "minecraft:redstone_wire[east=none,north=up,power=9,south=up,west=none]",
+      "count": 1
+    },
+    {
+      "id": 615,
+      "state": "minecraft:redstone_wire[east=none,north=up,power=11,south=up,west=side]",
+      "count": 1
+    },
+    {
+      "id": 616,
+      "state": "minecraft:redstone_wire[east=side,north=side,power=13,south=side,west=side]",
+      "count": 14
+    },
+    {
+      "id": 617,
+      "state": "minecraft:redstone_wire[east=side,north=side,power=14,south=side,west=side]",
+      "count": 28
+    },
+    {
+      "id": 618,
+      "state": "minecraft:redstone_wire[east=side,north=up,power=8,south=side,west=none]",
+      "count": 29
+    },
+    {
+      "id": 619,
+      "state": "minecraft:redstone_wire[east=side,north=up,power=8,south=side,west=side]",
+      "count": 29
+    },
+    {
+      "id": 620,
+      "state": "minecraft:redstone_wire[east=none,north=up,power=8,south=side,west=side]",
+      "count": 29
+    },
+    {
+      "id": 621,
+      "state": "minecraft:redstone_wire[east=side,north=up,power=7,south=side,west=none]",
+      "count": 22
+    },
+    {
+      "id": 622,
+      "state": "minecraft:redstone_wire[east=none,north=up,power=7,south=side,west=side]",
+      "count": 21
+    },
+    {
+      "id": 623,
+      "state": "minecraft:redstone_wire[east=side,north=up,power=7,south=side,west=side]",
+      "count": 21
+    },
+    {
+      "id": 624,
+      "state": "minecraft:redstone_wire[east=none,north=up,power=6,south=side,west=side]",
+      "count": 15
+    },
+    {
+      "id": 625,
+      "state": "minecraft:comparator[facing=north,mode=compare,powered=false]",
+      "count": 18
+    },
+    {
+      "id": 626,
+      "state": "minecraft:redstone_wire[east=side,north=up,power=9,south=side,west=none]",
+      "count": 29
+    },
+    {
+      "id": 627,
+      "state": "minecraft:redstone_wire[east=side,north=up,power=9,south=side,west=side]",
+      "count": 29
+    },
+    {
+      "id": 628,
+      "state": "minecraft:redstone_wire[east=none,north=up,power=9,south=side,west=side]",
+      "count": 29
+    },
+    {
+      "id": 629,
+      "state": "minecraft:redstone_wire[east=side,north=up,power=10,south=side,west=side]",
+      "count": 29
+    },
+    {
+      "id": 630,
+      "state": "minecraft:redstone_wire[east=side,north=up,power=2,south=side,west=none]",
+      "count": 1
+    },
+    {
+      "id": 631,
+      "state": "minecraft:redstone_wire[east=side,north=up,power=3,south=side,west=side]",
+      "count": 3
+    },
+    {
+      "id": 632,
+      "state": "minecraft:redstone_wire[east=none,north=up,power=4,south=side,west=side]",
+      "count": 13
+    },
+    {
+      "id": 633,
+      "state": "minecraft:redstone_wire[east=side,north=up,power=4,south=side,west=none]",
+      "count": 13
+    },
+    {
+      "id": 634,
+      "state": "minecraft:redstone_wire[east=side,north=up,power=4,south=side,west=side]",
+      "count": 13
+    },
+    {
+      "id": 635,
+      "state": "minecraft:redstone_wire[east=none,north=up,power=2,south=side,west=side]",
+      "count": 2
+    },
+    {
+      "id": 636,
+      "state": "minecraft:redstone_wire[east=none,north=up,power=3,south=side,west=side]",
+      "count": 5
+    },
+    {
+      "id": 637,
+      "state": "minecraft:redstone_wire[east=side,north=up,power=3,south=side,west=none]",
+      "count": 3
+    },
+    {
+      "id": 638,
+      "state": "minecraft:redstone_wire[east=none,north=up,power=5,south=side,west=side]",
+      "count": 13
+    },
+    {
+      "id": 639,
+      "state": "minecraft:redstone_wire[east=side,north=up,power=5,south=side,west=none]",
+      "count": 13
+    },
+    {
+      "id": 640,
+      "state": "minecraft:redstone_wire[east=side,north=up,power=5,south=side,west=side]",
+      "count": 13
+    },
+    {
+      "id": 641,
+      "state": "minecraft:redstone_wire[east=side,north=up,power=6,south=side,west=side]",
+      "count": 13
+    },
+    {
+      "id": 642,
+      "state": "minecraft:light_gray_concrete",
+      "count": 18
+    },
+    {
+      "id": 643,
+      "state": "minecraft:redstone_wire[east=none,north=none,power=4,south=side,west=up]",
+      "count": 2
+    },
+    {
+      "id": 644,
+      "state": "minecraft:redstone_wire[east=up,north=side,power=8,south=none,west=up]",
+      "count": 2
+    },
+    {
+      "id": 645,
+      "state": "minecraft:redstone_wire[east=none,north=side,power=4,south=none,west=up]",
+      "count": 2
+    },
+    {
+      "id": 646,
+      "state": "minecraft:redstone_wire[east=side,north=side,power=7,south=none,west=side]",
+      "count": 4
+    },
+    {
+      "id": 647,
+      "state": "minecraft:redstone_wire[east=none,north=none,power=8,south=side,west=up]",
+      "count": 12
+    },
+    {
+      "id": 648,
+      "state": "minecraft:redstone_wire[east=up,north=side,power=12,south=none,west=up]",
+      "count": 12
+    },
+    {
+      "id": 649,
+      "state": "minecraft:redstone_wire[east=up,north=side,power=9,south=none,west=up]",
+      "count": 6
+    },
+    {
+      "id": 650,
+      "state": "minecraft:redstone_wire[east=side,north=up,power=6,south=up,west=none]",
+      "count": 1
+    },
+    {
+      "id": 651,
+      "state": "minecraft:red_terracotta",
+      "count": 56
+    },
+    {
+      "id": 652,
+      "state": "minecraft:smooth_red_sandstone_stairs[facing=east,half=top,shape=straight,waterlogged=false]",
+      "count": 4
+    },
+    {
+      "id": 653,
+      "state": "minecraft:smooth_red_sandstone_stairs[facing=west,half=top,shape=straight,waterlogged=false]",
+      "count": 1
+    },
+    {
+      "id": 654,
+      "state": "minecraft:smooth_red_sandstone_stairs[facing=east,half=bottom,shape=straight,waterlogged=false]",
+      "count": 4
+    }
+  ],
+  "block_entity_count": 462,
+  "piston_block_entities": []
+}

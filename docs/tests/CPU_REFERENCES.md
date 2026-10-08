@@ -340,3 +340,160 @@ above the container cannot replace its analog comparator main input. Flush and
 reset preserve the inventory, and mismatched entities, mobile supports, and
 pending reset work still reject. The analysis suite passed 87 tests with
 8 ignored; PM1 admission and throughput were not rerun for this container change.
+
+### PM1 observer-generator configuration investigation
+
+The reported default-flags/8x-budget rejection is reproducible with the checked-in
+corrected PM1, at source commit `0a5d6459dce4ed23daaf6f36ad9fbe8b8e4cfdbe`.
+This copy reports 66 candidates, rather than the user's 63. Four paste origins
+`(8,8,8)`, `(16,8,8)`, `(8,8,16)`, and `(16,16,16)` all report 66: their
+error coordinates translate, while the candidate count remains unchanged.
+The exact 63-candidate live snapshot has not been reproduced. The isolated
+checkout avoided unrelated incomplete edits in the shared workspace.
+
+The [diagnostic evidence](../../test_data/cpu-references/pm1-sort-clock-analysis.json)
+contains candidate-local geometry, power sources, update interfaces, native
+tick/phase-stamped operations, and translated compiler results. The opt-in
+[diagnostic test](../../crates/core/src/redpiler/analysis/tests/research/pm1_clocks.rs)
+reuses the native piston recorder. It passed in release, including comparison
+of all 25 ordered command messages in the first 500 ticks with the unchanged
+original frozen reference. Analysis and rejected compiler calls preserve the
+input worlds. No circuit blocks or compiler admission checks were changed.
+
+All 66 candidates are ordinary downward pistons with a matching saved head and
+a downward observer above. 64 have stationary glowstone at Far; two have air.
+Their own observers feed power back through quasi-connectivity. Each also has
+a distinct moving redstone-payload control source; some controls reach the base
+through dust rather than an adjacent payload. They share a region containing
+66,015 pistons. These are data-controlled observer-feedback generators, not
+66 proven copies of the single ordinary-torch-controlled counter clock.
+
+The bounded native run exercised 12 candidates and accepted 391 events
+(195 extensions and 196 retractions). The other 54 did not move during these
+500 ticks; that does not establish their roles in later execution. Examples
+below use selection-local coordinates:
+
+| Generator | Observed native movement |
+| --- | --- |
+| `(114,35,143)` | Retract 4, extend 7, retract 10, extend 13; initially a six-tick cycle. Extend 301 is followed by retract 306, a five-tick gap that shifts the phase; subsequent edges are again three ticks apart. |
+| `(64,38,108)` | Retract 4, extend 7, repeated three-tick edges through its last extension at 295; no further movement through tick 500. |
+| `(176,20,90)` | Burst pairs at 306/309, 318/321, 330/333, etc.; later gaps vary, so its sampling cannot be represented as an always-running common clock. |
+| `(113,30,31)` | One retract/extend pair at 456/459 within the captured window. |
+
+`clocked::recognize` counts the observer/piston shape before investigating
+control sources or sampling ownership. Its subsequent validator also requires
+one ordinary torch control and prohibits clock control that depends on stored
+data. The direct executor carries one `clock` and one shared `next_sample`
+deadline, advancing a whole memory bank every six ticks. Removing the count
+guard would neither classify these controls nor preserve their individual
+bursts, stop/restart phases, or sampling fanout.
+
+A read-only diagnostic call to the existing independent classifier, with no
+owned periodic clock, additionally rejects at world `(37,28,51)`, local
+`(29,20,43)`: `BUD ... has no independent sampling source; data changes alone
+cannot update memory`. This is a west-facing, retracted sticky piston. This
+probe is not executable admission or proof of invalid circuit behavior; it
+shows that routing all candidates around the legacy clock recognizer is not
+a complete solution either.
+
+Next step: isolate a data-controlled generator together with its downstream
+sampling interfaces, trace an enable/burst/stop/restart episode, and establish
+delivery ordering between sources. Then generalize generator control and
+per-source event scheduling/ownership. The capture preserves each candidate's
+event tick and phase, but does not establish ordering between different
+candidates inside the same phase. Full 50,100-tick equivalence and compiled
+TPS remain outstanding for any future admitted PM1 implementation.
+
+```powershell
+$env:MCHPRS_PM1_CLOCK_OUTPUT = 'target/pm1-clock-analysis-new.json'
+cargo test -p mchprs_core --lib --release --locked pm1_observer_clock_candidates -- --ignored --nocapture --test-threads=1
+```
+
+The output path must be new; this diagnostic never overwrites frozen references.
+
+### Fresh PM1 compilation save, 2026-10-08
+
+Downloaded `PM1_FIXED_COMPILATION_1.schem` again from the existing read-only
+SSH source `/srv/mchprs/data/schems`. The remote modification time was
+`2026-10-08T09:37:36.522127+00:00`; the download was verified at
+`2026-10-08T09:41:07.972009+00:00`. The
+[download manifest](../../test_data/piston-research/pm1-compilation-1-20261008-fresh/download-manifest.json)
+records SHA-256 `cf5ef6b5e62defbc02dc3b201b9bb29766feb310f6abfcad2941486312e0bd7c`.
+The earlier schematics and frozen references remain unchanged.
+
+This save has dimensions `(207,234,177)`, loader offset `(0,1,176)`, and
+65,762 piston bases. Matching 218 unique block entities identifies a
+selection-local translation `(-31,+32,-3)` from `PM1_SORT_FIXED.schem`.
+The CPU harness deliberately clears the clipboard offset and pastes at `(8,8,8)`;
+its translated start/stop positions are world `(156,67,69)` / `(156,64,69)`,
+selection-local `(148,59,61)` / `(148,56,61)`. The
+[geometry comparison](../../test_data/piston-research/pm1-compilation-1-20261008-fresh/geometry-comparison.json)
+records 4,861 changed cells within the new selection and 10,202 differences
+including excluded old cells. Many are saved dust shapes and piston/lamps states.
+This revision cannot use the earlier two-cell geometry-hash normalization.
+
+The extended opt-in diagnostic passed in release: one test, 61.72 seconds,
+excluding its release build. Its
+[evidence](../../test_data/piston-research/pm1-compilation-1-20261008-fresh/clock-analysis.json)
+records all flag/budget attempts, four paste origins, generator controls,
+potential direct base/head recipients, and the first 500 native ticks.
+Native operations now include a sequence index within each tick, preserving
+cross-generator ordering of recorded samples and accepted events.
+
+| Flags | Normal budget | Maximum budget (8x) |
+| --- | --- | --- |
+| default | piston budget exceeded, 0.096 s | 51-generator rejection, 2.590 s |
+| `-O` | piston budget exceeded, 0.102 s | 51-generator rejection, 2.336 s |
+| `--assume-instant` | piston budget exceeded, 0.110 s | 51-generator rejection, 2.445 s |
+| both | piston budget exceeded, 0.109 s | 51-generator rejection, 2.609 s |
+
+Times cover only the compiler call, excluding loading, hashing, release builds,
+and native replay. All rejected calls preserve the input and leave the compiler
+inactive. Each translated default/8x attempt also reports 51. The downloaded
+revision therefore reproduces the same error type, with 51 rather than the
+previously reported 55. First candidates are local `(69,52,97)` and `(31,62,28)`.
+All 51 are in one region of 65,756 pistons. 49 have stationary glowstone at Far;
+two have air.
+
+The user's stated role is BUD-switch update generation. The static inspection
+finds 12 candidates with a potentially notified adjacent sticky base/head;
+the other 39 lack such direct adjacency, so this inventory does not establish
+their downstream observer/dust fanout. For example, generator local
+`(188,80,12)` has an empty ordinary head, its own observer feeding QC, an
+adjacent moving-redstone-block control at `(187,80,12)`, and a head adjacent to
+sticky base `(187,79,12)`. Its head notification can recheck that base; it is not
+an independently ordinary-torch-controlled shared bank clock. This candidate
+does not move during the bounded capture, which does not establish it is unused.
+
+Four candidates move during the first 500 ticks, with 203 accepted edges:
+`(69,52,97)` has burst pairs 108/111, 120/123, 132/135;
+`(84,67,139)` starts at 168/171 and repeats pairs every 30 ticks;
+`(83,67,140)` accepts 142 edges; `(33,70,105)` accepts 32, stopping after 97.
+These differing controls and bursts cannot be represented by the existing
+single bank deadline. Native ordered output also differs from the old frozen
+prefix: 43 messages versus 25, with program download completion at tick 95
+instead of 293. This observation does not establish a defect in the circuit;
+the save has changed selection and initial state. No expectations were regenerated.
+
+A separate read-only call to the independent sampling classifier rejects at
+world `(17,59,8)`, local `(9,51,0)`:
+`BUD ... has no independent sampling source; data changes alone cannot update memory`.
+It is a downward, extended sticky piston. The classifier accepts ordinary empty
+piston pose notifications and selected stationary independent dust writers;
+it does not yet establish a sampling source for this actor. This is a diagnostic
+probe, not a second compiler rejection or proof of invalid circuitry.
+
+The smallest general direction is to reuse qualified notification delivery,
+the existing timed observer scheduler, and the existing BUD sampling path.
+Generator count alone must not select a shared-clock model. Each delivered
+update rechecks its recipients against current data; data changes without a
+delivered update must still preserve BUD storage. Before changing admission,
+trace the unclassified writer at `(9,51,0)` and establish observer/dust fanout
+for the burst generators. Neither compiler admission nor runtime was changed
+in this investigation. This revision has no compiled equivalence or TPS result;
+its full 50,100-tick replay remains outstanding.
+
+```powershell
+$env:MCHPRS_PM1_CLOCK_OUTPUT = 'target/pm1-compilation-1-analysis-new.json'
+cargo test -p mchprs_core --lib --release --locked pm1_compilation_1_update_generators -- --ignored --nocapture --test-threads=1
+```

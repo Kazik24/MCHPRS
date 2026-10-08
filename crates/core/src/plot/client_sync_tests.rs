@@ -61,6 +61,7 @@ pub(super) fn fixture(compressed: bool) -> (Plot, TcpStream) {
         neighbor_views: Default::default(),
         neighbor_source: None,
         git: Default::default(),
+        wire_cursor: 0,
     };
     (plot, conn.peer)
 }
@@ -75,6 +76,39 @@ fn placement(pos: BlockPos, sequence: i32) -> SPlayerBlockPlacemnt {
         cursor_z: 0.5,
         inside_block: false,
         sequence,
+    }
+}
+
+#[test]
+fn wire_input_slices_retain_unfinished_limited_tps_tick_debt() {
+    let (mut plot, _peer) = fixture(false);
+    // The common packet fixture drops its inbound sender; a full update needs it alive.
+    let connection = connection(false).unwrap();
+    let _incoming = connection.incoming;
+    let _live_peer = connection.peer;
+    plot.players[0].client = connection.player;
+    plot.world.packet_senders.clear();
+    plot.world
+        .packet_senders
+        .push(PlayerPacketSender::new(&plot.players[0].client));
+    assert!(plot.handle_redstone_tools_command(0, "/wire", &[]));
+    assert!(plot.wire_tools_active());
+    plot.tps = Tps::Limited(1_000_000);
+    plot.lag_time = Duration::from_secs(1);
+    plot.last_nspt = Some(Duration::from_nanos(100));
+    for _ in 0..2 {
+        let previous_time = plot.last_update_time;
+        let previous_debt = plot.lag_time;
+        let previous_ticks = plot.world.update_stats.simulated_ticks;
+        plot.update();
+        let completed = plot.world.update_stats.simulated_ticks - previous_ticks;
+        assert!((1..=50_000).contains(&completed));
+        assert_eq!(
+            plot.lag_time,
+            previous_debt + (plot.last_update_time - previous_time)
+                - Duration::from_micros(completed)
+        );
+        assert!(plot.lag_time >= Duration::from_millis(900));
     }
 }
 

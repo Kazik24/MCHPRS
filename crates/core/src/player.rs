@@ -211,6 +211,11 @@ impl Player {
         Self::from_data(Default::default(), 1, "SyncTest".into(), client)
     }
 
+    #[cfg(test)]
+    pub(crate) fn deny_test_permissions(&mut self) {
+        self.permissions_cache = Some(PlayerPermissionsCache::default());
+    }
+
     pub fn generate_offline_uuid(username: &str) -> u128 {
         u128::from_be_bytes(md5::compute(format!("OfflinePlayer:{}", username)).0)
             // Encode UUID variant and version 3 (MD5).

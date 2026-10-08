@@ -22,6 +22,7 @@ impl Plot {
         let prefix = &text[start..];
         let args: Vec<_> = tail.split_whitespace().collect();
         let mut choices: Vec<String> = match tool {
+            ToolCommand::Wire => vec!["off".into()],
             ToolCommand::Container if args.len() < 2 && !tail.contains(' ') => {
                 ["chest", "barrel", "hopper", "furnace"]
                     .map(str::to_owned)

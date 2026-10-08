@@ -452,6 +452,7 @@ pub struct Chunk {
     pub block_entities: FxHashMap<BlockPos, BlockEntity>,
     instance: u64,
     revision: u64,
+    routing_revision: u64,
     pub(crate) block_light: [Option<Vec<u8>>; PLOT_SECTIONS],
 }
 
@@ -506,6 +507,10 @@ impl Chunk {
     /// Independent of local packet flushes, including replacement during rewind.
     pub(crate) fn snapshot_version(&self) -> (u64, u64) {
         (self.instance, self.revision)
+    }
+
+    pub(crate) fn routing_snapshot_version(&self) -> (u64, u64) {
+        (self.instance, self.routing_revision)
     }
 
     pub(crate) fn get_block_entity_mut(&mut self, pos: BlockPos) -> Option<&mut BlockEntity> {
@@ -715,9 +720,15 @@ impl Chunk {
     pub fn set_block(&mut self, x: u32, y: u32, z: u32, block_id: u32) -> bool {
         let section_y = (y >> 4) as usize;
         let section = &mut self.sections[section_y];
+        let previous = section.get_block(x, y & 0xF, z);
         let changed = section.set_block(x, y & 0xF, z, block_id);
         if changed {
             self.revision = self.revision.wrapping_add(1);
+            if super::wire_cache::routing_state(Block::from_id(previous))
+                != super::wire_cache::routing_state(Block::from_id(block_id))
+            {
+                self.routing_revision = self.routing_revision.wrapping_add(1);
+            }
         }
         changed
     }
@@ -764,6 +775,7 @@ impl Chunk {
             z,
             instance: CHUNK_INSTANCE.fetch_add(1, Ordering::Relaxed),
             revision: 0,
+            routing_revision: 0,
             block_light: std::array::from_fn(|_| None),
             sections: chunk_data.sections.map(ChunkSection::load),
             block_entities: chunk_data.block_entities,
@@ -811,6 +823,7 @@ impl Chunk {
             z,
             instance: CHUNK_INSTANCE.fetch_add(1, Ordering::Relaxed),
             revision: 0,
+            routing_revision: 0,
             block_light: std::array::from_fn(|_| None),
             block_entities: FxHashMap::default(),
         }

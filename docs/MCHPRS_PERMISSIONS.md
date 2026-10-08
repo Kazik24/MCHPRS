@@ -94,7 +94,14 @@ WorldEdit gates retain the `mchprs.worldedit.*` namespace for navigation,
 selection, region, clipboard, history, and analysis commands. Native additions
 use `mchprs.we.update`, `.invalidatecaches`, and `.replacecontainer`. Redstone tools
 use `mchprs.redstonetools.find`, `.signsearch`, `.rstack`, `.autostack`, `.container`,
-and `.cursel`. Mutating commands still validate current-plot access and bounds.
+`.cursel`, and `.wire`. Mutating commands still validate current-plot access and bounds.
+
+The [wire pen](WIRE_TOOL.md) requires `mchprs.redstonetools.wire`, plot edit
+access, and `mchprs.build.place` when committing. Legacy mode checks
+`redstonetools.wire` and the existing WorldEdit ownership/member/bypass gate.
+Possession of its carrot on a stick does not grant tool access. `/wire off`
+remains available after tool permissions change. Search budgets and unsupported
+circuit contexts apply regardless of permissions.
 
 ## Numeric limits and rank budgets
 

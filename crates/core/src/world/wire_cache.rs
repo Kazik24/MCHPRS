@@ -2,6 +2,31 @@ use mchprs_blocks::blocks::Block;
 use mchprs_blocks::{BlockDirection, BlockPos};
 use std::sync::{Arc, OnceLock};
 
+/// State relevant to structural routing certificates, independent of current
+/// output strength. Piston geometry and manually selected dust sides stay exact.
+pub(crate) fn routing_state(mut block: Block) -> u32 {
+    match &mut block {
+        Block::RedstoneWire { wire } => wire.power = 0,
+        Block::RedstoneRepeater { repeater } => repeater.powered = false,
+        Block::RedstoneComparator { comparator } => comparator.powered = false,
+        Block::Observer { observer } => observer.powered = false,
+        Block::RedstoneTorch { lit } | Block::RedstoneWallTorch { lit, .. } => *lit = false,
+        Block::Lever { lever } => lever.powered = false,
+        Block::StoneButton { button } => button.powered = false,
+        Block::StonePressurePlate { powered } => *powered = false,
+        Block::RedstoneLamp { lit } => *lit = false,
+        Block::NoteBlock { powered, .. } => *powered = false,
+        _ => {}
+    }
+    if matches!(block, Block::Unknown { .. }) {
+        block = block
+            .with_copper_bulb_state(false, false)
+            .or_else(|| block.with_pressure_plate_power(false))
+            .unwrap_or(block);
+    }
+    block.get_id()
+}
+
 #[derive(Clone, Copy, Debug)]
 pub struct Neighbor {
     pub pos: BlockPos,

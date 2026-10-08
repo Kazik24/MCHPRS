@@ -1200,7 +1200,7 @@ fn declared_command_nodes() -> Vec<Node<'static>> {
             1, 4, 5, 6, 11, 12, 14, 16, 18, 19, 20, 21, 22, 23, 24, 26, 29, 31, 33, 35, 46, 48, 52,
             59, 60, 62, 64, 65, 66, 70, 72, 73, 74, 81, 82, 84, 87, 89, 90, 100, 105, 110, 111,
             112, 113, 114, 115, 117, 119, 120, 123, 130, 134, 135, 142, 143, 144, 145, 146, 150,
-            152, 153,
+            152, 153, 160, 161,
         ]),
         // 1: /teleport
         Node::literal("teleport", &[3, 2]),
@@ -1498,6 +1498,9 @@ fn declared_command_nodes() -> Vec<Node<'static>> {
         Node::argument("x", Parser::Integer(i32::MIN, i32::MAX), &[158]),
         Node::argument("z", Parser::Integer(i32::MIN, i32::MAX), &[]).executable(),
         Node::literal("settings", &[]).executable(),
+        // 160-161: wire pen and WorldEdit-style alias share the existing off literal.
+        Node::literal("wire", &[103]).executable(),
+        Node::redirect("/wire", 160).executable(),
     ]
 }
 
@@ -1581,7 +1584,7 @@ mod security_tests {
     #[test]
     fn command_declarations_have_valid_edges_and_no_legacy_tick_aliases() {
         let nodes = declared_command_nodes();
-        assert_eq!(nodes.len(), 160);
+        assert_eq!(nodes.len(), 162);
         for node in &nodes {
             for edge in node.children.iter().copied().chain(node.redirect_node) {
                 assert!(edge >= 0 && (edge as usize) < nodes.len());
@@ -1609,6 +1612,7 @@ mod security_tests {
             "warp",
             "setwarp",
             "serverinfo",
+            "wire",
         ] {
             assert!(names.contains(&retained), "missing command {retained}");
         }
@@ -1619,6 +1623,7 @@ mod security_tests {
             ("/desel", "/sel"),
             ("desel", "/sel"),
             ("set", "/set"),
+            ("/wire", "wire"),
         ] {
             let node = nodes.iter().find(|node| node.name == Some(alias)).unwrap();
             assert_eq!(
