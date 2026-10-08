@@ -53,10 +53,22 @@ pub(crate) fn data_notifies(world: &impl World, source: BlockPos, base: BlockPos
         let d = pos - base;
         d.x.abs() + d.y.abs() + d.z.abs() == 1
     };
-    if adjacent(source) {
-        return true;
-    }
     let block = world.get_block(source);
+    if matches!(
+        block,
+        Block::RedstoneTorch { .. } | Block::RedstoneWallTorch { .. }
+    ) {
+        let mut notified = false;
+        crate::redstone::surrounding_notifications(source, |pos, _, _| notified |= pos == base);
+        return notified;
+    }
+    if let Block::Observer { observer } = block {
+        let mut notified = false;
+        crate::redstone::observer_notifications(observer.facing, source, |pos, _| {
+            notified |= pos == base;
+        });
+        return notified;
+    }
     let output = match block {
         Block::RedstoneComparator { comparator } => {
             Some(source.offset(comparator.facing.opposite().block_face()))
@@ -66,7 +78,17 @@ pub(crate) fn data_notifies(world: &impl World, source: BlockPos, base: BlockPos
         }
         _ => None,
     };
-    if output.is_some_and(|pos| pos == base || adjacent(pos)) {
+    if let Some(output) = output {
+        let mut notified = false;
+        let facing = match block {
+            Block::RedstoneComparator { comparator } => comparator.facing.block_face(),
+            Block::RedstoneRepeater { repeater } => repeater.facing.block_face(),
+            _ => unreachable!(),
+        };
+        crate::redstone::diode_notifications(output, facing, |pos, _| notified |= pos == base);
+        return notified;
+    }
+    if adjacent(source) {
         return true;
     }
     (matches!(block, Block::Lever { .. } | Block::StoneButton { .. })

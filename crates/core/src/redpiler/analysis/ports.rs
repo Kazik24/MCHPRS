@@ -146,6 +146,11 @@ pub(super) fn discover<W: World>(
         .enumerate()
         .map(|(actor, piston)| (piston.pos, actor))
         .collect();
+    let piston_heads: FxHashMap<_, _> = pistons
+        .iter()
+        .enumerate()
+        .map(|(actor, piston)| (piston.head, actor))
+        .collect();
     let reset_internals = super::families::reset_internals(recognition);
     let mut piston_groups = vec![0; pistons.len()];
     let mut reset_owners: FxHashMap<BlockPos, Vec<usize>> = FxHashMap::default();
@@ -236,11 +241,29 @@ pub(super) fn discover<W: World>(
                         requires_extended,
                     });
                 }
+                if piston_heads
+                    .get(&source)
+                    .is_some_and(|&actor| actor != index)
+                {
+                    ports.updates.push(UpdateDependency {
+                        source,
+                        kind: UpdateKind::AdjacentHeadChange,
+                        independent_of_power: !inputs.sources.iter().any(|d| d.source == source),
+                        requires_extended,
+                    });
+                }
             }
         }
-        ports
-            .updates
-            .sort_by_key(|u| (u.source.y, u.source.z, u.source.x));
+        ports.updates.sort_by_key(|u| {
+            (
+                u.source.y,
+                u.source.z,
+                u.source.x,
+                u.kind as u8,
+                u.requires_extended,
+            )
+        });
+        ports.updates.dedup();
         for d in &inputs.sources {
             if let SourceKind::MobilePayload { group } = d.kind {
                 report.connections.push(RegionConnection {

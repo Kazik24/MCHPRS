@@ -1,4 +1,5 @@
 use super::*;
+mod compatibility;
 mod ideal;
 mod legalization;
 mod memory;

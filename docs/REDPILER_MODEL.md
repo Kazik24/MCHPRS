@@ -348,8 +348,11 @@ See [program.rs](../crates/core/src/redpiler/instant/program.rs),
 
 The specialized clock recognizer owns one empty ordinary downward generator,
 its observers, and 1–64 independently owned downward redstone-block cells.
-Its control depends on one ordinary torch source and not on stored data;
-the bank has an independently identified sampling route without extra writers.
+Its control depends on one ordinary torch source and not on stored data.
+Validation follows the clock's control expression, including upstream pure
+actuators; independent data inputs elsewhere in the region are not clock controls.
+The existing source-type and release-on-loss checks still apply.
+The bank has an independently identified sampling route without extra writers.
 Different independent regions can own different clocks.
 
 For a stored cell, $q_a=1$ means retracted/near and $q_a=0$ means extended/far.
@@ -379,6 +382,9 @@ See [clocked.rs](../crates/core/src/redpiler/instant/clocked.rs) and
 
 Power and notification discovery are separate. A generic BUD's desired
 response is $F_a(\mathbf s,\mathbf q)$, but data changes alone do not commit it.
+Source discovery uses native torch, observer and diode notification geometry.
+Potential piston heads are inventoried even when absent from the saved pose;
+their discovery does not establish a movement timing certificate.
 Current independent sources are certified empty ordinary generators' settled
 base/head pose edges and independently driven fixed dust strength changes.
 Dust requires one writer, no moving power source, and a notification route

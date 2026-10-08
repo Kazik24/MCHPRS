@@ -150,12 +150,19 @@ pub fn on_state_change(facing: BlockFacing, world: &mut impl World, pos: BlockPo
 }
 
 fn update_output_neighbors(world: &mut impl World, front_pos: BlockPos, source_face: BlockFace) {
-    let front_block = world.get_block(front_pos);
-    update(front_block, world, front_pos, Some(source_face));
+    diode_notifications(front_pos, source_face, |pos, dir| {
+        update(world.get_block(pos), world, pos, dir)
+    });
+}
+
+pub(crate) fn diode_notifications(
+    front_pos: BlockPos,
+    source_face: BlockFace,
+    mut visit: impl FnMut(BlockPos, Option<BlockFace>),
+) {
+    visit(front_pos, Some(source_face));
     for direction in BlockFace::values() {
-        let neighbor_pos = front_pos.offset(direction);
-        let block = world.get_block(neighbor_pos);
-        update(block, world, neighbor_pos, Some(direction));
+        visit(front_pos.offset(direction), Some(direction));
     }
 }
 
@@ -427,16 +434,23 @@ pub fn tick(block: Block, world: &mut impl World, pos: BlockPos) {
 }
 
 fn on_observer_state_change(facing: BlockFacing, world: &mut impl World, pos: BlockPos) {
+    observer_notifications(facing, pos, |pos, dir| {
+        update(world.get_block(pos), world, pos, dir)
+    });
+}
+
+pub(crate) fn observer_notifications(
+    facing: BlockFacing,
+    pos: BlockPos,
+    mut visit: impl FnMut(BlockPos, Option<BlockFace>),
+) {
     let front_pos = pos.offset(facing.opposite().into());
-    let front_block = world.get_block(front_pos);
-    update(front_block, world, front_pos, Some(facing.into()));
+    visit(front_pos, Some(facing.into()));
     for direction in BlockFace::values() {
         if direction == facing.into() {
             continue;
         }
-        let neighbor_pos = front_pos.offset(direction);
-        let block = world.get_block(neighbor_pos);
-        update(block, world, neighbor_pos, None);
+        visit(front_pos.offset(direction), None);
     }
 }
 
@@ -472,33 +486,29 @@ pub fn skipping_update_surrounding_blocks(
     pos: BlockPos,
     skip_pistons: bool,
 ) {
+    surrounding_notifications(pos, |target, dir, diagonal| {
+        let block = world.get_block(target);
+        if !diagonal
+            || ((target != pos || !block.is_copper_bulb())
+                && !matches!(block, Block::Observer { .. })
+                && (!skip_pistons || !matches!(block, Block::Piston { .. })))
+        {
+            update(block, world, target, Some(dir));
+        }
+    });
+}
+
+pub(crate) fn surrounding_notifications(
+    pos: BlockPos,
+    mut visit: impl FnMut(BlockPos, BlockFace, bool),
+) {
     for direction in &BlockFace::values() {
         let neighbor_pos = pos.offset(*direction);
-        let block = world.get_block(neighbor_pos);
-        update(block, world, neighbor_pos, Some(direction.opposite()));
-
-        // Also update diagonal blocks
-
+        visit(neighbor_pos, direction.opposite(), false);
         let up_pos = neighbor_pos.offset(BlockFace::Top);
-        let up_block = world.get_block(up_pos);
-        // Diagonals receive power rechecks, not changes to their watched block.
-        // A premature observer pulse can quasi-power a piston before its first
-        // movement and leave it extended when the external source is removed.
-        if (up_pos != pos || !up_block.is_copper_bulb())
-            && !matches!(up_block, Block::Observer { .. })
-            && (!skip_pistons || !matches!(up_block, Block::Piston { .. }))
-        {
-            update(up_block, world, up_pos, Some(BlockFace::Bottom));
-        }
-
+        visit(up_pos, BlockFace::Bottom, true);
         let down_pos = neighbor_pos.offset(BlockFace::Bottom);
-        let down_block = world.get_block(down_pos);
-        if (down_pos != pos || !down_block.is_copper_bulb())
-            && !matches!(down_block, Block::Observer { .. })
-            && (!skip_pistons || !matches!(down_block, Block::Piston { .. }))
-        {
-            update(down_block, world, down_pos, Some(BlockFace::Top));
-        }
+        visit(down_pos, BlockFace::Top, true);
     }
 }
 

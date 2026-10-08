@@ -24,23 +24,18 @@ pub(crate) struct ClockedProgram {
 
 impl ClockedProgram {
     pub fn validate(&self, world: &impl World, logic: &WaveLogic) -> Result<(), String> {
-        if logic.response_sources.len() != 1
-            || !matches!(
-                world.get_block(logic.response_sources[0]),
-                Block::RedstoneTorch { .. } | Block::RedstoneWallTorch { .. }
-            )
-        {
-            return Err("observer-clock execution needs one ordinary torch control source".into());
-        }
         let mut pending = vec![logic.responses[self.clock]];
         let mut visited = FxHashSet::default();
+        let mut controls = FxHashSet::default();
         while let Some(root) = pending.pop() {
             if !visited.insert(root) {
                 continue;
             }
             if let Some(decision) = logic.arena.decision(root) {
                 match decision.variable {
-                    Variable::Signal { .. } => {}
+                    Variable::Signal { pos, .. } => {
+                        controls.insert(pos);
+                    }
                     // Ideal extraction retains shared pure response DAG edges;
                     // validate their inputs rather than treating them as storage.
                     Variable::Actuator(actor) => pending.push(logic.responses[actor]),
@@ -48,6 +43,16 @@ impl ClockedProgram {
                 }
                 pending.extend([decision.low, decision.high]);
             }
+        }
+        if controls.len() != 1
+            || controls.iter().any(|&pos| {
+                !matches!(
+                    world.get_block(pos),
+                    Block::RedstoneTorch { .. } | Block::RedstoneWallTorch { .. }
+                )
+            })
+        {
+            return Err("observer-clock execution needs one ordinary torch control source".into());
         }
         if logic.evaluate(|_| 15)[self.clock] || !logic.evaluate(|_| 0)[self.clock] {
             return Err("clock control must release on loss of ordinary torch power".into());
