@@ -1,0 +1,156 @@
+{
+  "actual_origin": [
+    40,
+    30,
+    40
+  ],
+  "admitted_means": "compiler acceptance only; no physical or arithmetic equivalence claim",
+  "backend": "compiled",
+  "budget_multiplier": 8,
+  "changing_input_protocol": null,
+  "changing_inputs": false,
+  "component": "fpu_legal",
+  "counter_protocol": "exact IO fixture; 24 inactive ticks, lever OFF->ON, 600 active warmup ticks, then fixed active window",
+  "divider_protocol": null,
+  "episodes": null,
+  "flags": "--assume-instant",
+  "flush_every_game_ticks": 0,
+  "game_ticks": null,
+  "input_every_game_ticks": null,
+  "input_processing_scope": null,
+  "interpreter_flush_policy": null,
+  "manifest": "test_data/piston-research/fixtures/fpu_legal.json",
+  "measurement_kind": "admission_only",
+  "median_episodes_per_second": null,
+  "median_input_processing_seconds": null,
+  "median_input_processing_tps": null,
+  "median_input_sets_per_second": null,
+  "median_ns_per_tick": null,
+  "median_seconds": null,
+  "median_tps": null,
+  "samples": [
+    {
+      "admitted": true,
+      "compile_seconds_metadata": 1.9147504,
+      "compile_statistics": {
+        "backend_nodes": 0,
+        "graph": {
+          "baseline": {
+            "links": 0,
+            "nodes": 0
+          },
+          "final": {
+            "links": 0,
+            "nodes": 0
+          },
+          "wire_nodes_elided_before_baseline": false
+        },
+        "program": {
+          "arena_decisions_including_handoff": 44649,
+          "executable_output_and_sampling_decisions": 0,
+          "executable_response_decisions": 0,
+          "input_bindings": 0,
+          "output_ports": 0,
+          "output_terms": 0,
+          "response_roots": 0
+        },
+        "regions": {
+          "clocked": 0,
+          "logical": 0,
+          "memory_cells": 0,
+          "payload_groups": 6609,
+          "pistons": 8090
+        }
+      },
+      "measurement_kind": "admission_only",
+      "warnings": [
+        "Observable piston timing uses a native physical domain; graph optimization applies to disconnected ordinary circuits."
+      ]
+    },
+    {
+      "admitted": true,
+      "compile_seconds_metadata": 1.9151357,
+      "compile_statistics": {
+        "backend_nodes": 0,
+        "graph": {
+          "baseline": {
+            "links": 0,
+            "nodes": 0
+          },
+          "final": {
+            "links": 0,
+            "nodes": 0
+          },
+          "wire_nodes_elided_before_baseline": false
+        },
+        "program": {
+          "arena_decisions_including_handoff": 44649,
+          "executable_output_and_sampling_decisions": 0,
+          "executable_response_decisions": 0,
+          "input_bindings": 0,
+          "output_ports": 0,
+          "output_terms": 0,
+          "response_roots": 0
+        },
+        "regions": {
+          "clocked": 0,
+          "logical": 0,
+          "memory_cells": 0,
+          "payload_groups": 6609,
+          "pistons": 8090
+        }
+      },
+      "measurement_kind": "admission_only",
+      "warnings": [
+        "Observable piston timing uses a native physical domain; graph optimization applies to disconnected ordinary circuits."
+      ]
+    },
+    {
+      "admitted": true,
+      "compile_seconds_metadata": 1.9666817,
+      "compile_statistics": {
+        "backend_nodes": 0,
+        "graph": {
+          "baseline": {
+            "links": 0,
+            "nodes": 0
+          },
+          "final": {
+            "links": 0,
+            "nodes": 0
+          },
+          "wire_nodes_elided_before_baseline": false
+        },
+        "program": {
+          "arena_decisions_including_handoff": 44649,
+          "executable_output_and_sampling_decisions": 0,
+          "executable_response_decisions": 0,
+          "input_bindings": 0,
+          "output_ports": 0,
+          "output_terms": 0,
+          "response_roots": 0
+        },
+        "regions": {
+          "clocked": 0,
+          "logical": 0,
+          "memory_cells": 0,
+          "payload_groups": 6609,
+          "pistons": 8090
+        }
+      },
+      "measurement_kind": "admission_only",
+      "warnings": [
+        "Observable piston timing uses a native physical domain; graph optimization applies to disconnected ordinary circuits."
+      ]
+    }
+  ],
+  "schema": 1,
+  "schematic_sha256": "704016b6900ec22ff0d37184de480a5c9965fd390b7bcf7c3f23d7677048c391",
+  "scope": "actual logical workloads; BubbleSort and full FPU without --changing-inputs are admission only; no runtime fallback",
+  "seed": null,
+  "sequence_period": null,
+  "timing": "per-tick tick_with_world; optional compiled flush included; preparation and observations excluded",
+  "trace_validation": null,
+  "workload": null,
+  "workload_description": null
+}

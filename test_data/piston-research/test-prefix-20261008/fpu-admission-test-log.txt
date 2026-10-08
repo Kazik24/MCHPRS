@@ -1,0 +1,6 @@
+
+running 1 test
+test redpiler::analysis::tests::research::corrected_fpu_compiles_in_both_admission_policies_with_and_without_optimization ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 598 filtered out; finished in 24.10s
+

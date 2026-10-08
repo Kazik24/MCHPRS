@@ -1,0 +1,24 @@
+
+running 1 test
+Compared TEST_BUD_1.schem: 19 protocols
+Compared TEST_BUD_2.schem: 19 protocols
+Compared TEST_CODER_1.schem: 8 protocols
+Compared TEST_DEC.schem: 16 protocols
+Compared TEST_DEC2.schem: 16 protocols
+Compared TEST_INSTANT_3.schem: 8 protocols
+Compared TEST_OR1.schem: 16 protocols
+Compared TEST_OR2.schem: 16 protocols
+Compared TEST_OR_3.schem: 16 protocols
+Compared TEST_PISTION.schem: 8 protocols
+Compared TEST_PISTION_2.schem: 8 protocols
+Compared TEST_WEIRD.schem: 8 protocols
+Compared TEST_WEIRD_3.schem: 8 protocols
+Compared TEST_WEIRD_INSTANT.schem: 8 protocols
+Compared TEST_WEIRD_INSTANT_2.schem: 8 protocols
+Compared TEST_WEIRD_INSTANT_3.schem: 8 protocols
+Compared TEST_XOR.schem: 16 protocols
+Compared TEST_XOR2.schem: 16 protocols
+test redpiler::analysis::tests::research::test_prefix_timing::test_prefixed_schematics_compare_interpreter_outputs ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 601 filtered out; finished in 8.89s
+

@@ -1,0 +1,116 @@
+{
+  "schema_version": 1,
+  "source_host": "urmom",
+  "source_directory": "/srv/mchprs/data/schems",
+  "verified_utc": "2026-10-08T18:32:29.893618+00:00",
+  "files": [
+    {
+      "name": "TEST_BUD_1.schem",
+      "bytes": 952,
+      "sha256": "0fcabfeaae135ccd832eac62545bbe4b00552babd9434629694e695a2198794f",
+      "modified_utc": "2026-10-08T18:05:39.458884+00:00"
+    },
+    {
+      "name": "TEST_BUD_2.schem",
+      "bytes": 812,
+      "sha256": "584ae91f757e51e73c786cd42c51beb9df9f5318553486c1e102828acf1519ea",
+      "modified_utc": "2026-10-08T18:05:54.242016+00:00"
+    },
+    {
+      "name": "TEST_CODER_1.schem",
+      "bytes": 832,
+      "sha256": "f4dd3ec1298df5f8065a16e904e946fddf3a805a5cba3b0efc6dc5363b0fcd17",
+      "modified_utc": "2026-10-08T18:10:22.706418+00:00"
+    },
+    {
+      "name": "TEST_DEC.schem",
+      "bytes": 826,
+      "sha256": "7ea6924310967b394d3635d55d39cff966afdbc289b6ec3e90d2b8a00647433b",
+      "modified_utc": "2026-10-08T18:06:57.432581+00:00"
+    },
+    {
+      "name": "TEST_DEC2.schem",
+      "bytes": 678,
+      "sha256": "9ecf6772bd55ca38c45fb560375d77734e87659b47931a9b09f1a8c5f34acb6b",
+      "modified_utc": "2026-10-08T18:08:45.688550+00:00"
+    },
+    {
+      "name": "TEST_INSTANT_3.schem",
+      "bytes": 671,
+      "sha256": "d94c084aa77e67f189d0ed0b5156cd0ca0bf91ad2c7f6c13681d3cc632da9bb4",
+      "modified_utc": "2026-10-08T18:08:30.600415+00:00"
+    },
+    {
+      "name": "TEST_OR1.schem",
+      "bytes": 715,
+      "sha256": "d2d2b7a1058a37b199a087f6fc9844a186fe001f4e3be46f345cf6303947fe6c",
+      "modified_utc": "2026-10-08T18:04:23.353202+00:00"
+    },
+    {
+      "name": "TEST_OR2.schem",
+      "bytes": 733,
+      "sha256": "2dbdd722d4be7f27d4d2ff71171891998028e1c05588474f96702df3d84674e1",
+      "modified_utc": "2026-10-08T18:05:20.356713+00:00"
+    },
+    {
+      "name": "TEST_OR_3.schem",
+      "bytes": 542,
+      "sha256": "7e0ec3d27ce1d4b648302917fbc7b7c7c7612a6b57a3b1b9b24054c7629b9d72",
+      "modified_utc": "2026-10-08T18:27:14.293465+00:00"
+    },
+    {
+      "name": "TEST_PISTION.schem",
+      "bytes": 760,
+      "sha256": "7d72cf225e3b8a7aa17d9c19450ef7639769cded6ec76e94946447a3d76eee0b",
+      "modified_utc": "2026-10-08T18:03:59.754991+00:00"
+    },
+    {
+      "name": "TEST_PISTION_2.schem",
+      "bytes": 614,
+      "sha256": "567f61a69ff36e693916ea6069241ba2b56882f384b022fc1d88dd710b4985df",
+      "modified_utc": "2026-10-08T18:04:09.974082+00:00"
+    },
+    {
+      "name": "TEST_WEIRD.schem",
+      "bytes": 682,
+      "sha256": "92671bb0d19b0c1a96638474f70e3f3114e133b933c93bae2f0c67d58b246a39",
+      "modified_utc": "2026-10-08T18:26:24.832023+00:00"
+    },
+    {
+      "name": "TEST_WEIRD_3.schem",
+      "bytes": 789,
+      "sha256": "49fa717827d69877a1111fd8ea018a08cf13e60c8bbf3bb2d4ebe09f8cd4c77c",
+      "modified_utc": "2026-10-08T18:12:57.146799+00:00"
+    },
+    {
+      "name": "TEST_WEIRD_INSTANT.schem",
+      "bytes": 688,
+      "sha256": "80c1ded5039308ec6a03ba66b27b33de4d517d6a7e81cb7af823f6de65caf4b1",
+      "modified_utc": "2026-10-08T18:08:01.626156+00:00"
+    },
+    {
+      "name": "TEST_WEIRD_INSTANT_2.schem",
+      "bytes": 669,
+      "sha256": "d245e3c61edce357e437d8e3b0fbf20df15f41f82273db154089de534ecb2204",
+      "modified_utc": "2026-10-08T18:08:12.404252+00:00"
+    },
+    {
+      "name": "TEST_WEIRD_INSTANT_3.schem",
+      "bytes": 691,
+      "sha256": "e08e6744c0b34062ea7ba6f5b366378c3fc80c82b3d07ddd02dea2632efcf8e4",
+      "modified_utc": "2026-10-08T18:26:49.686245+00:00"
+    },
+    {
+      "name": "TEST_XOR.schem",
+      "bytes": 843,
+      "sha256": "dae194c1065443000efa0fd16486584bba027555f5805cf2ec5496edb310e13c",
+      "modified_utc": "2026-10-08T18:05:07.931602+00:00"
+    },
+    {
+      "name": "TEST_XOR2.schem",
+      "bytes": 857,
+      "sha256": "0667d4871f6e390ce9247ea39c8b51d3d4b41beba242647a01491fc8359e7d7c",
+      "modified_utc": "2026-10-08T18:07:17.878764+00:00"
+    }
+  ]
+}

@@ -1,0 +1,118 @@
+warning: linker stdout: Trwa tworzenie biblioteki F:\rustrepos\MCHPRS\target\debug\deps\mchprs_proc_macros-da997f4567e3e19f.dll.lib i obiektu F:\rustrepos\MCHPRS\target\debug\deps\mchprs_proc_macros-da997f4567e3e19f.dll.exp
+  |
+  = note: `#[warn(linker_messages)]` on by default
+
+warning: `mchprs_proc_macros` (lib) generated 1 warning
+   Compiling mchprs_core v0.1.0 (F:\rustrepos\MCHPRS\crates\core)
+warning: variable `sampled` is assigned to, but never used
+   --> crates\core\src\redpiler\backend\direct\instant.rs:596:17
+    |
+596 |             let mut sampled = false;
+    |                 ^^^^^^^^^^^
+    |
+    = note: consider using `_sampled` instead
+    = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+
+warning: value assigned to `sampled` is never read
+   --> crates\core\src\redpiler\backend\direct\instant.rs:603:29
+    |
+603 | ...                   sampled = true;
+    |                       ^^^^^^^^^^^^^^
+    |
+    = help: maybe it is overwritten before being read?
+    = note: `#[warn(unused_assignments)]` (part of `#[warn(unused)]`) on by default
+
+warning: field `response_sources` is never read
+  --> crates\core\src\redpiler\instant\logic.rs:25:9
+   |
+19 | pub(crate) struct WaveLogic {
+   |                   --------- field in this struct
+...
+25 |     pub response_sources: Vec<BlockPos>,
+   |         ^^^^^^^^^^^^^^^^
+   |
+   = note: `WaveLogic` has a derived impl for the trait `Debug`, but this is intentionally ignored during dead code analysis
+   = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: function `extract` is never used
+  --> crates\core\src\redpiler\instant\logic.rs:88:15
+   |
+88 | pub(crate) fn extract(
+   |               ^^^^^^^
+
+warning: function `extract_with_state` is never used
+  --> crates\core\src\redpiler\instant\logic.rs:96:15
+   |
+96 | pub(crate) fn extract_with_state(
+   |               ^^^^^^^^^^^^^^^^^^
+
+warning: `mchprs_core` (lib) generated 5 warnings
+    Finished `test` profile [optimized + debuginfo] target(s) in 49.74s
+     Running unittests src\lib.rs (target\debug\deps\mchprs_core-c13d15f497228b26.exe)
+
+running 8 tests
+test plot::worldedit::schematic::tests::full_production_arena_schematic_fits_the_block_limit ... ok
+test redpiler::analysis::tests::research::native_regressions::production_divider_preserves_all_declared_native_episodes ... Native/Redpiler fpu_divider "idle": 32 operations O=false A=false
+Native/Redpiler fpu_divider "idle": 32 operations O=true A=false
+Native/Redpiler fpu_divider "idle": 32 operations O=false A=true
+Native/Redpiler fpu_divider "idle": 32 operations O=true A=true
+Native/Redpiler fpu_divider "enable-falling": 129 operations O=false A=false
+Native/Redpiler fpu_divider "enable-falling": 129 operations O=true A=false
+Native/Redpiler fpu_divider "enable-falling": 129 operations O=false A=true
+Native/Redpiler fpu_divider "enable-falling": 129 operations O=true A=true
+Native/Redpiler fpu_divider "enable-cycle": 258 operations O=false A=false
+Native/Redpiler fpu_divider "enable-cycle": 258 operations O=true A=false
+Native/Redpiler fpu_divider "enable-cycle": 258 operations O=false A=true
+Native/Redpiler fpu_divider "enable-cycle": 258 operations O=true A=true
+Native/Redpiler fpu_divider "one-over-one": 278 operations O=false A=false
+Native/Redpiler fpu_divider "one-over-one": 278 operations O=true A=false
+Native/Redpiler fpu_divider "one-over-one": 278 operations O=false A=true
+Native/Redpiler fpu_divider "one-over-one": 278 operations O=true A=true
+Native/Redpiler fpu_divider "one-half-over-one": 278 operations O=false A=false
+Native/Redpiler fpu_divider "one-half-over-one": 278 operations O=true A=false
+Native/Redpiler fpu_divider "one-half-over-one": 278 operations O=false A=true
+Native/Redpiler fpu_divider "one-half-over-one": 278 operations O=true A=true
+Native/Redpiler fpu_divider "half-over-one": 278 operations O=false A=false
+Native/Redpiler fpu_divider "half-over-one": 278 operations O=true A=false
+Native/Redpiler fpu_divider "half-over-one": 278 operations O=false A=true
+Native/Redpiler fpu_divider "half-over-one": 278 operations O=true A=true
+Native/Redpiler fpu_divider "zero-over-one": 278 operations O=false A=false
+Native/Redpiler fpu_divider "zero-over-one": 278 operations O=true A=false
+Native/Redpiler fpu_divider "zero-over-one": 278 operations O=false A=true
+Native/Redpiler fpu_divider "zero-over-one": 278 operations O=true A=true
+Native/Redpiler fpu_divider "one-three-quarters-over-half": 278 operations O=false A=false
+Native/Redpiler fpu_divider "one-three-quarters-over-half": 278 operations O=true A=false
+Native/Redpiler fpu_divider "one-three-quarters-over-half": 278 operations O=false A=true
+Native/Redpiler fpu_divider "one-three-quarters-over-half": 278 operations O=true A=true
+Native/Redpiler fpu_divider "one-over-zero": 278 operations O=false A=false
+Native/Redpiler fpu_divider "one-over-zero": 278 operations O=true A=false
+Native/Redpiler fpu_divider "one-over-zero": 278 operations O=false A=true
+Native/Redpiler fpu_divider "one-over-zero": 278 operations O=true A=true
+Native/Redpiler fpu_divider "single-trigger": 70 operations O=false A=false
+Native/Redpiler fpu_divider "single-trigger": 70 operations O=true A=false
+Native/Redpiler fpu_divider "single-trigger": 70 operations O=false A=true
+Native/Redpiler fpu_divider "single-trigger": 70 operations O=true A=true
+Native/Redpiler fpu_divider "retrigger": 156 operations O=false A=false
+Native/Redpiler fpu_divider "retrigger": 156 operations O=true A=false
+Native/Redpiler fpu_divider "retrigger": 156 operations O=false A=true
+Native/Redpiler fpu_divider "retrigger": 156 operations O=true A=true
+ok
+test redpiler::analysis::tests::research::native_regressions::production_fpu_preserves_native_inputs_opcodes_trigger_and_outputs ... Native/Redpiler fpu_legal "all-opcodes-native-timing": 1088 operations O=false A=false
+Native/Redpiler fpu_legal "all-opcodes-native-timing": 1088 operations O=true A=false
+Native/Redpiler fpu_legal "all-opcodes-native-timing": 1088 operations O=false A=true
+Native/Redpiler fpu_legal "all-opcodes-native-timing": 1088 operations O=true A=true
+ok
+test redpiler::analysis::tests::timed::production_adders_preserve_native_arithmetic_windows ... ok
+test redpiler::analysis::tests::timed::production_assumption_keeps_movement_and_sampling_guards ... ok
+test redpiler::analysis::tests::timed::production_counter_counts_in_native_consumer_windows ... ok
+test redpiler::analysis::tests::timed::production_handoff_keeps_unchanged_container_entities ... ok
+test redpiler::analysis::tests::timed::production_timed_commands_keep_synchronous_conditional_chain_results ... ok
+
+test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 594 filtered out; finished in 176.14s
+
+     Running tests\cpu_references.rs (target\debug\deps\cpu_references-ef2ccab03d1dafde.exe)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 5 filtered out; finished in 0.00s
+

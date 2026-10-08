@@ -1,0 +1,128 @@
+[
+  {
+    "name": "TEST_BUD_1.schem",
+    "attempts": 76,
+    "errors": 0,
+    "mismatches": 0,
+    "default_errors": 0
+  },
+  {
+    "name": "TEST_BUD_2.schem",
+    "attempts": 76,
+    "errors": 0,
+    "mismatches": 0,
+    "default_errors": 0
+  },
+  {
+    "name": "TEST_CODER_1.schem",
+    "attempts": 32,
+    "errors": 16,
+    "mismatches": 0,
+    "default_errors": 16
+  },
+  {
+    "name": "TEST_DEC.schem",
+    "attempts": 64,
+    "errors": 0,
+    "mismatches": 0,
+    "default_errors": 0
+  },
+  {
+    "name": "TEST_DEC2.schem",
+    "attempts": 64,
+    "errors": 0,
+    "mismatches": 0,
+    "default_errors": 0
+  },
+  {
+    "name": "TEST_INSTANT_3.schem",
+    "attempts": 32,
+    "errors": 0,
+    "mismatches": 0,
+    "default_errors": 0
+  },
+  {
+    "name": "TEST_OR1.schem",
+    "attempts": 64,
+    "errors": 0,
+    "mismatches": 0,
+    "default_errors": 0
+  },
+  {
+    "name": "TEST_OR2.schem",
+    "attempts": 64,
+    "errors": 0,
+    "mismatches": 0,
+    "default_errors": 0
+  },
+  {
+    "name": "TEST_OR_3.schem",
+    "attempts": 64,
+    "errors": 0,
+    "mismatches": 0,
+    "default_errors": 0
+  },
+  {
+    "name": "TEST_PISTION.schem",
+    "attempts": 32,
+    "errors": 0,
+    "mismatches": 0,
+    "default_errors": 0
+  },
+  {
+    "name": "TEST_PISTION_2.schem",
+    "attempts": 32,
+    "errors": 0,
+    "mismatches": 0,
+    "default_errors": 0
+  },
+  {
+    "name": "TEST_WEIRD.schem",
+    "attempts": 32,
+    "errors": 16,
+    "mismatches": 0,
+    "default_errors": 16
+  },
+  {
+    "name": "TEST_WEIRD_3.schem",
+    "attempts": 32,
+    "errors": 0,
+    "mismatches": 0,
+    "default_errors": 0
+  },
+  {
+    "name": "TEST_WEIRD_INSTANT.schem",
+    "attempts": 32,
+    "errors": 16,
+    "mismatches": 0,
+    "default_errors": 16
+  },
+  {
+    "name": "TEST_WEIRD_INSTANT_2.schem",
+    "attempts": 32,
+    "errors": 16,
+    "mismatches": 0,
+    "default_errors": 16
+  },
+  {
+    "name": "TEST_WEIRD_INSTANT_3.schem",
+    "attempts": 32,
+    "errors": 16,
+    "mismatches": 0,
+    "default_errors": 16
+  },
+  {
+    "name": "TEST_XOR.schem",
+    "attempts": 64,
+    "errors": 0,
+    "mismatches": 0,
+    "default_errors": 0
+  },
+  {
+    "name": "TEST_XOR2.schem",
+    "attempts": 64,
+    "errors": 0,
+    "mismatches": 0,
+    "default_errors": 0
+  }
+]

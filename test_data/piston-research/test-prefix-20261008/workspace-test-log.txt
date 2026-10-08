@@ -1,0 +1,831 @@
+warning: linker stdout: Trwa tworzenie biblioteki F:\rustrepos\MCHPRS\target\debug\deps\mchprs_proc_macros-726eecbe26e80212.dll.lib i obiektu F:\rustrepos\MCHPRS\target\debug\deps\mchprs_proc_macros-726eecbe26e80212.dll.exp
+  |
+  = note: `#[warn(linker_messages)]` on by default
+
+warning: `mchprs_proc_macros` (lib) generated 1 warning
+warning: variable `sampled` is assigned to, but never used
+   --> crates\core\src\redpiler\backend\direct\instant.rs:596:17
+    |
+596 |             let mut sampled = false;
+    |                 ^^^^^^^^^^^
+    |
+    = note: consider using `_sampled` instead
+    = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+
+warning: value assigned to `sampled` is never read
+   --> crates\core\src\redpiler\backend\direct\instant.rs:603:29
+    |
+603 | ...                   sampled = true;
+    |                       ^^^^^^^^^^^^^^
+    |
+    = help: maybe it is overwritten before being read?
+    = note: `#[warn(unused_assignments)]` (part of `#[warn(unused)]`) on by default
+
+warning: field `response_sources` is never read
+  --> crates\core\src\redpiler\instant\logic.rs:25:9
+   |
+19 | pub(crate) struct WaveLogic {
+   |                   --------- field in this struct
+...
+25 |     pub response_sources: Vec<BlockPos>,
+   |         ^^^^^^^^^^^^^^^^
+   |
+   = note: `WaveLogic` has a derived impl for the trait `Debug`, but this is intentionally ignored during dead code analysis
+   = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: function `extract` is never used
+  --> crates\core\src\redpiler\instant\logic.rs:88:15
+   |
+88 | pub(crate) fn extract(
+   |               ^^^^^^^
+
+warning: function `extract_with_state` is never used
+  --> crates\core\src\redpiler\instant\logic.rs:96:15
+   |
+96 | pub(crate) fn extract_with_state(
+   |               ^^^^^^^^^^^^^^^^^^
+
+warning: `mchprs_core` (lib) generated 5 warnings
+   Compiling mchprs_core v0.1.0 (F:\rustrepos\MCHPRS\crates\core)
+    Finished `test` profile [optimized + debuginfo] target(s) in 2.97s
+     Running unittests src\main.rs (target\debug\deps\mchprs-244dc7595f3ac222.exe)
+
+running 1 test
+test logging::tests::spam_and_restart_keep_only_two_bounded_files ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running unittests src\lib.rs (target\debug\deps\mchprs_blocks-565119b4e7f100a3.exe)
+
+running 12 tests
+test blocks::comparator_id_test ... ok
+test blocks::all_barrel_states_keep_entity_redstone_and_transform_semantics ... ok
+test blocks::hopper_furnace_and_cake_states_match_registry_properties ... ok
+test blocks::opaque_simple_blocks_have_the_same_flags_as_iron ... ok
+test blocks::repeater_id_test ... ok
+test blocks::decoded_state_tests::cached_states_preserve_decode_and_properties ... ok
+test blocks::generated_registry_ranges_resolve_every_target_state ... ok
+test blocks::slab_geometry_and_redstone_flags_cover_every_registry_state ... ok
+test blocks::standing_sign_transform_preserves_species_and_waterlogging ... ok
+test blocks::test_piston_observers_id_conversions ... ok
+test items::registry_tests::all_target_items_round_trip_and_piston_variants_are_distinct ... ok
+test blocks::decoded_state_tests::dry_states_match_property_updates_for_entire_registry ... ok
+
+test result: ok. 12 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.22s
+
+     Running unittests src\lib.rs (target\debug\deps\mchprs_core-ef1121a47e30c6f5.exe)
+
+running 602 tests
+test chat_commands::tests::authored_text_matching_notices_is_never_translated ... ok
+test chat_commands::tests::colors_and_nesting_limits_preserve_supported_component_behavior ... ok
+test chat_commands::tests::formatting_arrays_and_extra_ignore_unsupported_fields ... ok
+test chat_commands::tests::selectors_and_literal_say_preserve_text ... ok
+test chat::tests::non_ascii_digits_remain_literal_in_legacy_hex_colors ... ok
+test chat::tests::url_splits_preserve_text_and_formatting ... ok
+test container::tests::creative_drag_fills_compatible_slots_without_consuming_cursor ... ok
+test container::tests::drag_even_and_one_each_and_invalid_sequences ... ok
+test container::tests::furnace_output_fuel_and_shift_transfer_rules ... ok
+test container::tests::hopper_and_furnace_creation_locking_and_cake_bites ... ok
+test container::tests::barrel_creation_state_changes_removal_and_chunk_round_trip ... ok
+test container::tests::hopper_and_furnace_menus_use_their_own_slot_boundaries ... ok
+test container::tests::pickup_split_merge_shift_and_swap_conserve_items ... ok
+test container::tests::placement_uses_all_axes_and_nearest_diagonal_view ... ok
+test container::tests::rejected_drag_sequences_preserve_items_and_cancel_the_drag ... ok
+test interaction::slab_placement_tests::saved_slab_properties_cannot_override_top_placement ... ok
+test container::tests::collect_clone_throw_and_component_limits ... ok
+test messages::tests::feedback_keeps_colors_and_system_packet_position ... ok
+test messages::tests::error_coordinate_teleport_links_survive_network_nbt_encoding ... ok
+test messages::tests::interpolation_preserves_payloads_without_treating_them_as_templates ... ok
+test permissions::tests::compilation_budget_follows_effective_rank_and_rejects_stale_cache ... ok
+test permissions::tests::builder_history_denials_do_not_remove_higher_rank_history_grants ... ok
+test permissions::tests::default_group_and_recursive_inheritance_are_read_without_writes ... ok
+test permissions::tests::denied_group_edges_and_metadata_do_not_grant_permissions ... ok
+test permissions::tests::exact_permissions_do_not_match_prefixes_or_panic ... ok
+test permissions::tests::deployed_git_rank_policy_starts_at_expert_with_owner_storage_tiers ... ok
+test permissions::tests::expired_wrong_world_and_unknown_contexts_cannot_grant_groups ... ok
+test config::tests::reads_and_patches_the_selected_config_file ... ok
+test permissions::tests::git_access_can_be_granted_or_denied_including_an_admin_wildcard ... ok
+test permissions::tests::live_postgres_read_only_permissions ... ignored, Requires MCHPRS_LUCKPERMS_TEST_CONFIG pointing to a private read-only config
+test permissions::tests::legacy_mysql_config_loads_and_invalid_prefix_is_rejected ... ok
+test permissions::tests::git_storage_ranks_respect_inheritance_denials_expiry_and_namespace ... ok
+test permissions::tests::permanent_alternate_group_path_survives_temporary_path_expiry ... ok
+test permissions::tests::plotsquared_packs_preserve_denials_and_do_not_grant_admin ... ok
+test permissions::tests::specific_denials_and_direct_permissions_override_wildcards ... ok
+test permissions::tests::stale_cache_fails_closed ... ok
+test permissions::tests::temporary_memberships_limit_every_inherited_permission ... ok
+test permissions::tests::world_contexts_and_direct_denials_override_inherited_grants ... ok
+test player::client_sync::tests::old_and_duplicate_confirmations_cannot_release_a_new_teleport ... ok
+test player::client_sync::tests::retry_keeps_the_pending_id_and_stops_after_confirmation ... ok
+test player::client_sync::tests::teleport_ids_wrap_without_becoming_negative ... ok
+test player::coordinate_security_tests::offline_uuid_matches_java_name_uuid ... ok
+test player::coordinate_security_tests::player_coordinates_reject_nonfinite_and_extreme_positions ... ok
+test plot::chunk_save_and_load_test ... ok
+test player::error_messages::tests::every_coordinate_links_to_its_own_position_without_changing_the_error ... ok
+test player::client_sync_tests::queued_movement_cannot_undo_teleports_or_release_a_newer_destination ... ok
+test interaction::slab_placement_tests::every_slab_item_places_on_top_without_special_components ... ok
+test plot::client_sync_tests::both_wand_positions_need_selection_permission_without_plot_edit_access ... ok
+test plot::client_sync_tests::actual_placement_and_break_handlers_publish_edits_in_screen_mode ... ok
+test plot::client_sync_tests::confirmed_teleports_reset_other_clients_before_relative_movement ... ok
+test plot::client_sync_tests::bud_note_obstruction_uses_committed_memory_with_deferred_or_suppressed_display ... ok
+test plot::client_sync_tests::redpiler_flag_suggestions_reach_the_chat_client ... ok
+test plot::client_sync_tests::switching_from_git_sword_does_not_swallow_wand_right_click ... ok
+test plot::client_sync_tests::rejected_placement_and_dig_abort_finish_correct_prediction_before_ack ... ok
+test plot::client_sync_tests::compass_right_click_works_in_air_and_on_blocks_with_either_hand ... ok
+test plot::client_sync_tests::teleport_fences_movement_and_edits_until_destination_view_is_queued ... ok
+test plot::client_sync_tests::swords_inspect_without_a_diff_and_never_break_blocks ... ok
+test plot::client_sync_tests::wand_right_click_accepts_block_edges_and_extended_shapes_without_placing ... ok
+test plot::client_sync_tests::void_recovery_fences_stale_movement_and_preserves_coordinate_validation ... ok
+test plot::client_sync_tests::warp_restores_exact_position_and_facing_and_transfers_out_of_locked_plots ... ok
+test plot::command_block_tests::command_block_conditional_chains_and_unsupported_commands_are_bounded ... ok
+test plot::client_sync_tests::paused_advance_delivers_committed_bud_geometry_and_preserves_suppression ... ok
+test plot::command_block_tests::command_block_automatic_repeat_and_pending_ticks_survive_restart ... ok
+test plot::command_block_tests::command_block_repeating_stops_and_stale_ticks_cannot_execute_replacements ... ok
+test plot::command_block_tests::command_block_impulse_runs_once_per_edge_and_survives_short_pulses ... ok
+test plot::client_sync_tests::wire_input_slices_retain_unfinished_limited_tps_tick_debt ... ok
+test plot::command_block_tests::command_blocks_cannot_dispatch_privileged_commands_or_flood_output ... ok
+test plot::command_block_tests::command_output_export_rejection_preserves_live_world_and_pending_ticks ... ok
+test plot::command_block_tests::compiled_automatic_outputs_start_once_and_recompile_without_replaying_impulses ... ok
+test plot::command_block_tests::failed_conditional_source_skips_chain_and_activation_latches_condition ... ok
+test plot::command_block_tests::compiled_command_outputs_follow_impulse_edges_without_render_flush ... ok
+test plot::command_block_tests::compiled_commands_preserve_allowlist_and_update_comparator_success_output ... ok
+test plot::commands::security_tests::advance_arguments_preserve_units_limits_and_error_messages ... ok
+test plot::commands::security_tests::command_declarations_have_valid_edges_and_no_legacy_tick_aliases ... ok
+test plot::commands::security_tests::native_aliases_share_permissions_and_ownership_checks ... ok
+test plot::commands::security_tests::queued_commands_stop_when_the_actor_leaves ... ok
+test plot::commands::security_tests::redpiler_analysis_has_a_read_only_permission ... ok
+test plot::command_block_tests::looping_chain_stops_at_the_command_limit ... ok
+test plot::commands::security_tests::redpiler_flags_complete_aliases_prefixes_and_multiple_options ... ok
+test plot::command_block_tests::compiled_repeating_chain_outputs_match_interpreter_and_preserve_reset_deadlines ... ok
+test plot::commands::security_tests::relative_plot_coordinates_cannot_overflow ... ok
+test plot::commands::security_tests::serverinfo_autocomplete_declares_subcommands_and_numeric_arguments ... ok
+test plot::commands::security_tests::teleport_autocomplete_suggests_player_names_without_selectors ... ok
+test plot::commands::security_tests::teleport_coordinates_center_blocks_and_keep_precision ... ok
+test plot::commands::security_tests::warp_names_and_permissions_are_checked ... ok
+test plot::compass::tests::decorations_do_not_block_clearance_and_search_rejects_hazards ... ok
+test plot::compass::tests::landing_centers_feet_and_requires_full_headroom ... ok
+test plot::compass::tests::landing_handles_partial_and_tall_blocks_and_world_ceiling ... ok
+test plot::compass::tests::misses_and_invalid_rotation_do_not_produce_destinations ... ok
+test plot::compass::tests::range_extends_beyond_old_limit_and_partial_blocks_do_not_hide_targets ... ok
+test plot::compass::tests::obstructed_target_searches_back_along_the_visible_line ... ok
+test plot::compass::tests::ray_hits_first_block_in_all_directions_and_stops_at_bounds ... ok
+test plot::compass::tests::ray_hits_tall_shapes_above_their_voxel_and_passes_through_open_trapdoor_gap ... ok
+test plot::command_block_tests::offline_replay_retains_all_output_without_enabling_other_commands ... ok
+test plot::compass::tests::search_can_find_the_top_of_a_wall_but_does_not_tunnel_through_it ... ok
+test plot::copper_bulb_item_actions_preserve_state_and_exclude_predicted_feedback ... ok
+test plot::database::tests::failed_name_refresh_rolls_back_registration_and_keeps_legacy_access ... ok
+test plot::database::tests::only_owners_or_admins_can_manage_members_and_ownership_is_preserved ... ok
+test plot::database::tests::rename_and_new_uuid_registration_keep_only_current_names_resolvable ... ok
+test plot::database::tests::target_rejoin_resolves_legacy_name_collision_without_transferring_access ... ok
+test plot::database::tests::claims_are_atomic_and_duplicate_claims_cannot_change_the_owner ... ok
+test plot::diagnostics::tests::diagnostics_require_explicit_permission_even_on_standalone_servers ... ok
+test plot::git::tests::another_players_commands_and_diff_never_steal_viewer_markers ... ok
+test plot::git::tests::canonical_hashes_ignore_palette_layout_inventory_order_and_nbt_key_order ... ok
+test plot::commands::security_tests::redpiler_analysis_reports_graph_passes_and_compile_statistics_to_the_client ... ok
+test plot::database::tests::warps_survive_reopening_and_replace_names_case_insensitively ... ok
+test plot::git::tests::creation_and_concurrent_writes_obey_disk_quota_before_growing_files ... ok
+test plot::git::tests::diff_classifies_add_remove_state_and_data_and_inspects_removed_positions ... ok
+test plot::git::tests::display_metadata_matches_checked_in_protocol_and_ids_are_unique ... ok
+test plot::git::tests::default_master_updates_unborn_repositories_without_renaming_saved_branches ... ok
+test plot::git::tests::checkout_preserves_dirty_work_in_a_recoverable_branch ... ok
+test plot::git::tests::commit_checkout_detaches_head_and_keeps_branch_tips_and_dirty_work ... ok
+test plot::git::tests::failed_checkout_restores_save_and_branch_after_target_write ... ok
+test plot::git::tests::interrupted_commit_checkout_restores_detached_head_on_restart ... ok
+test plot::git::tests::lz4_snapshots_are_compact_bounded_and_round_trip ... ok
+test plot::git::tests::malformed_lengths_are_rejected_before_snapshot_and_blob_allocations ... ok
+test plot::git::tests::interrupted_checkout_completes_on_reopen_before_or_after_target_save ... ok
+test plot::git::tests::nearby_markers_are_capped_sorted_and_include_deleted_blocks ... ok
+test plot::git::tests::inspect_history_and_restore_preserve_named_and_detached_heads_and_dirty_work ... ok
+test plot::git::tests::owner_storage_tiers_apply_server_ceiling_and_default ... ok
+test plot::git::tests::nbt_resource_guards_reject_length_depth_and_tag_bombs ... ok
+test plot::git::tests::no_op_commits_branch_validation_and_memory_limit ... ok
+test plot::git::tests::logs_paginate_with_literal_search_and_modern_clicks ... ok
+test plot::git::tests::quota_and_transaction_failures_never_advance_head_or_leave_objects ... ok
+test plot::git::tests::persistent_commits_branch_divergence_and_ordered_search ... ok
+test plot::git::tests::rebase_recovery_quota_failure_preserves_work_and_history ... ok
+test plot::git::tests::rebase_copies_whole_plot_uncommitted_then_commit_advances_current_branch ... ok
+test plot::git::tests::rebase_interrupted_save_resumes_copy_without_moving_branch_tips ... ok
+test plot::git::tests::rebase_requires_named_branches_and_allows_copying_same_branch ... ok
+test plot::git::tests::reference_chat_layout_clipboard_counts_and_contextual_completion ... ok
+test plot::git::tests::rollback_io_failure_keeps_durable_checkout_record ... ok
+test plot::git::tests::snapshots_restore_scheduled_ticks_piston_events_and_entities_exactly ... ok
+test plot::git::tests::streamed_execution_hash_keeps_existing_object_ids ... ok
+test plot::history::tests::borrowed_chunk_encoding_matches_palettes_and_direct_storage ... ok
+test plot::history::tests::byte_limit_evicts_oldest_ticks_without_gaps_and_oversized_capture_stops ... ok
+test plot::history::tests::command_blocks_restore_mutable_data_without_reinitializing_or_replaying_output ... ok
+test plot::history::tests::compressed_admission_uses_stored_size_and_accounts_for_dictionary ... ok
+test plot::history::tests::copper_bulb_rewind_restores_light_and_random_tick_eligibility ... ok
+test plot::history::tests::corrupt_snapshot_or_exhausted_workspace_preserves_rewind_state ... ok
+test plot::history::tests::default_custom_capacity_memory_disable_and_invalid_enable ... ok
+test plot::history::tests::edits_and_entity_only_changes_restore_and_snapshot_capture_preserves_packets ... ok
+test plot::history::tests::memory_stats_include_serialized_entity_payloads_and_compressed_storage ... ok
+test plot::history::tests::normal_limit_and_admin_override_preserve_existing_history_on_rejection ... ok
+test plot::history::tests::one_step_then_multiple_steps_across_wrapped_slots ... ok
+test plot::history::tests::partial_stepping_is_excluded_and_partial_enable_is_rejected ... ok
+test plot::git::tests::validation_and_checksums_reject_corruption_without_changing_history ... ok
+test plot::git::tests::reused_objects_still_obey_metadata_storage_quota ... ok
+test plot::history::tests::raw_fallback_and_concurrent_reservations_obey_exact_limits ... ok
+test plot::history::tests::shared_dictionary_compresses_repeated_random_data ... ok
+test plot::history::tests::piston_motion_entities_and_typed_queue_round_trip ... ok
+test plot::history::tests::shared_limits_release_on_drop_and_reenable_rejection_preserves_history ... ok
+test plot::interpreter_cache::tests::duplicate_legacy_motions_and_events_keep_original_membership ... ok
+test plot::interpreter_cache::tests::tick_membership_matches_ring_through_wrap_duplicates_and_restore ... ok
+test plot::interpreter_cache::tests::wrapped_motion_deque_keeps_vec_save_bytes_and_order ... ok
+test plot::interpreter_cache::tests::ordered_removals_replacements_and_external_mutations_match_linear_lookup ... ok
+test plot::git::tests::storage_rank_downgrade_keeps_history_readable_and_rejects_growth ... ok
+test plot::neighbors::tests::dropping_an_old_live_source_does_not_unregister_its_replacement ... ok
+test plot::neighbors::tests::failed_and_timed_out_requests_retry_without_flooding_the_service ... ok
+test plot::neighbors::tests::live_snapshots_observe_changes_after_local_flushes_and_screen_only_filtering ... ok
+test plot::neighbors::tests::live_snapshots_project_moving_pistons_and_limit_work_per_poll ... ok
+test plot::neighbors::tests::missing_neighbors_use_the_template_or_generated_ground_without_creating_saves ... ok
+test plot::neighbors::tests::neighbor_refreshes_are_grouped_throttled_and_skip_unchanged_packets ... ok
+test plot::neighbors::tests::saved_neighbor_reads_use_correct_negative_coordinates_and_invalidate_changed_files ... ok
+test plot::neighbors::tests::snapshot_cache_obeys_its_memory_limit_and_evicts_the_least_recently_used_chunk ... ok
+test plot::neighbors::tests::stale_replies_cannot_reload_unloaded_chunks_or_follow_a_player_to_another_plot ... ok
+test plot::packet_handlers::movement_tests::relative_movement_accumulates_fractional_steps_without_drift ... ok
+test plot::packet_handlers::movement_tests::relative_movement_uses_the_signed_protocol_range_on_every_axis ... ok
+test plot::picking::tests::pick_rejects_distant_or_nonfinite_targets ... ok
+test plot::picking::tests::pick_selects_existing_stacks_swaps_and_preserves_replaced_items ... ok
+test plot::piston_tests::clearing_interpreter_caches_preserves_pending_motion_events_and_ticks ... ok
+test plot::history::tests::ring_wrap_eviction_rewind_and_new_future ... ok
+test plot::piston_tests::motion_removal_preserves_order_and_removes_all_legacy_duplicates ... ok
+test plot::piston_tests::old_ticks_bind_once_and_remove_legacy_movement_locks ... ok
+test plot::piston_tests::fast_rendering_projects_snapshots_without_changing_piston_timing ... ok
+test plot::piston_tests::persistent_wire_addresses_observe_block_changes_and_plot_boundaries ... ok
+test plot::piston_tests::stale_snapshot_cannot_tick_new_motion_at_same_position ... ok
+test plot::preview::tests::reconciliation_obeys_budget_retains_ids_and_updates_color ... ok
+test plot::redstone_tools::completion::tests::wire_aiming_modes_complete_only_the_first_argument ... ok
+test plot::redstone_tools::items::tests::container_input_is_explicit_and_validated ... ok
+test plot::redstone_tools::search::tests::masks_match_partial_properties_and_reject_unknowns ... ok
+test plot::redstone_tools::search::tests::pages_validate_before_slicing ... ok
+test plot::redstone_tools::search::tests::sign_text_keeps_parent_and_children_and_unicode_ranges ... ok
+test plot::redstone_tools::selection::tests::selection_dimensions_are_inclusive_and_order_independent ... ok
+test plot::redstone_tools::stack::tests::auto_stack_copies_container_data_and_cleans_replaced_entities ... ok
+test plot::redstone_tools::stack::tests::auto_stack_overlaps_without_recursive_copies_and_ignores_outside_edits ... ok
+test plot::redstone_tools::stack::tests::auto_stack_rejects_noop_and_out_of_bounds_configurations ... ok
+test plot::redstone_tools::stack::tests::auto_stack_updates_redstone_at_the_destinations ... ok
+test plot::redstone_tools::stack::tests::every_destination_is_checked_before_mutation ... ok
+test plot::redstone_tools::stack::tests::stack_arguments_are_flexible_signed_and_strict ... ok
+test plot::redstone_tools::tests::bounds_reject_world_edges_without_mutating_world ... ok
+test plot::redstone_tools::tests::chest_entity_survives_chunk_save_and_disappears_with_the_block ... ok
+test plot::redstone_tools::tests::every_container_power_matches_the_comparator_and_survives_save ... ok
+test plot::redstone_tools::tests::generated_actions_use_modern_protocol_and_fixed_commands ... ok
+test plot::redstone_tools::wire::routing::tests::a_new_glass_support_cannot_mute_an_existing_note_block ... ok
+test plot::redstone_tools::wire::routing::tests::a_new_stair_conductor_cannot_add_a_comparator_or_qc_input ... ok
+test plot::piston_tests::restart_preserves_event_motion_and_partial_step_state ... ok
+test plot::redstone_tools::wire::routing::tests::astar_matches_exhaustive_tiny_world_oracle_for_every_obstacle_layout ... ok
+test plot::redstone_tools::wire::routing::tests::astar_routes_around_unselected_wire_contacts_and_consumer_inputs ... ok
+test plot::redstone_tools::wire::routing::tests::cancellation_and_placement_budget_have_distinct_results ... ok
+test plot::redstone_tools::wire::routing::tests::comparator_side_and_hopper_inputs_are_rejected_but_repeater_side_is_safe ... ok
+test plot::redstone_tools::wire::routing::tests::a_piston_beyond_the_old_halo_still_blocks_an_occupied_payload_ray ... ok
+test plot::redstone_tools::wire::routing::tests::constructed_staircase_transmits_native_power_in_both_directions ... ok
+test plot::redstone_tools::wire::routing::tests::consecutive_native_segments_extend_and_turn_along_existing_glass_supports ... ok
+test plot::redstone_tools::wire::routing::tests::dense_machine_route_avoids_a_strongly_powered_support_near_the_start ... ok
+test plot::redstone_tools::wire::routing::tests::dormant_sources_and_strong_power_through_a_conductor_are_rejected ... ok
+test plot::redstone_tools::wire::routing::tests::dust_cannot_mute_an_existing_note_block ... ok
+test plot::redstone_tools::wire::routing::tests::dense_machine_route_finds_a_flat_detour_around_a_late_consumer ... ok
+test plot::redstone_tools::wire::routing::tests::flat_wire_has_no_repeaters_or_range_limit ... ok
+test plot::redstone_tools::wire::routing::tests::endpoint_near_machinery_can_route_along_an_unchanged_connection_side ... ok
+test plot::redstone_tools::wire::routing::tests::incremental_capture_cannot_certify_a_mixed_time_world ... ok
+test plot::redstone_tools::wire::routing::tests::irrelevant_same_chunk_geometry_changes_refresh_the_commit_stamp ... ok
+test plot::redstone_tools::wire::routing::tests::live_power_churn_does_not_starve_a_geometry_check ... ok
+test plot::redstone_tools::wire::routing::tests::incremental_tail_capture_rejects_geometry_changed_after_its_read ... ok
+test plot::redstone_tools::wire::routing::tests::merging_unselected_dust_is_rejected_but_parallel_lanes_at_spacing_two_work ... ok
+test plot::redstone_tools::wire::routing::tests::missing_supports_are_nonconducting_and_placed_before_dust ... ok
+test plot::redstone_tools::wire::routing::tests::long_mechanical_tails_are_sparse_checked_and_stop_at_captured_air ... ok
+test plot::redstone_tools::wire::routing::tests::new_opaque_stair_supports_cannot_conduct_a_dormant_source ... ok
+test plot::redstone_tools::wire::routing::tests::new_staircase_supports_are_opaque_and_work_in_both_directions ... ok
+test plot::redstone_tools::wire::routing::tests::new_supports_sample_passive_start_material_and_preserve_color ... ok
+test plot::redstone_tools::wire::routing::tests::observer_watch_and_independent_piston_notifications_are_rejected ... ok
+test plot::redstone_tools::wire::routing::tests::only_selected_endpoint_dust_may_join_the_route ... ok
+test plot::redstone_tools::wire::routing::tests::pm1_short_connections_from_selected_sources_have_bounded_precise_results ... ignored, loads the full author PM1 schematic for routing safety/performance checks
+test plot::redstone_tools::wire::routing::tests::power_only_updates_do_not_change_the_routing_revision ... ok
+test plot::redstone_tools::wire::routing::tests::qc_power_through_an_above_base_conductor_is_rejected_without_a_notification ... ok
+test plot::redstone_tools::wire::routing::tests::registry_bulb_and_pressure_plate_outputs_do_not_change_geometry ... ok
+test plot::redstone_tools::wire::routing::tests::mixed_xyz_clear_routes_make_progress_before_enumerating_height_prefixes ... ok
+test plot::redstone_tools::wire::routing::tests::selected_incoming_step_dust_does_not_expand_to_the_whole_net ... ok
+test plot::redstone_tools::wire::routing::tests::selected_support_powered_by_dust_does_not_allow_other_sources ... ok
+test plot::redstone_tools::wire::routing::tests::selected_power_sources_feed_routes_away_and_along_the_same_emitter ... ok
+test plot::redstone_tools::wire::routing::tests::support_sampling_never_copies_components_or_nbt_and_opaque_flats_keep_power_guards ... ok
+test plot::redstone_tools::wire::routing::tests::transparent_stair_is_rejected_but_conducting_stair_connects_both_ways ... ok
+test plot::redstone_tools::wire::routing::tests::unavoidable_endpoint_observer_is_reported_without_exhausting_the_search ... ok
+test plot::redstone_tools::wire::routing::tests::straight_wire_on_the_real_generated_floor_is_found ... ok
+test plot::redstone_tools::wire::routing::tests::vertical_targets_route_to_a_safe_staircase_within_the_budget ... ok
+test plot::redstone_tools::wire::session_tests::changed_live_world_refuses_commit_without_partial_placement_or_undo ... ok
+test plot::redstone_tools::wire::session_tests::clicking_existing_dust_preserves_its_support_and_copies_the_support_color ... ok
+test plot::redstone_tools::wire::session_tests::command_uses_empty_hotbar_slot_and_refuses_to_overwrite_full_inventory ... ok
+test plot::redstone_tools::wire::session_tests::completed_refusal_stays_visible_when_clicked_again ... ok
+test plot::redstone_tools::wire::session_tests::committed_segment_is_one_sparse_undo_including_existing_endpoint_shape ... ok
+test plot::redstone_tools::wire::session_tests::cursor_movement_keeps_pending_marker_storage_bounded ... ok
+test plot::redstone_tools::wire::session_tests::cursor_skips_space_above_thin_dust_but_can_select_the_dust_itself ... ok
+test plot::redstone_tools::wire::session_tests::denied_pen_use_and_plane_switch_do_not_activate_or_edit ... ok
+test plot::redstone_tools::wire::session_tests::each_construction_plane_allows_both_coordinates_and_keeps_its_anchor ... ok
+test plot::redstone_tools::wire::session_tests::each_explicit_wire_command_reenables_drawing_after_off ... ok
+test plot::redstone_tools::wire::session_tests::free_aim_accepts_different_xyz_endpoints_and_requires_a_pointed_block ... ok
+test plot::redstone_tools::wire::session_tests::failed_wire_enable_keeps_off_and_off_requires_no_permission ... ok
+test plot::redstone_tools::wire::session_tests::free_command_equips_a_new_pen_without_overwriting_the_held_item ... ok
+test plot::redstone_tools::wire::session_tests::full_worker_queue_retains_snapshot_and_allows_later_retry ... ok
+test plot::redstone_tools::wire::session_tests::holding_a_pen_starts_and_restarts_drawing_without_a_command ... ok
+test plot::redstone_tools::wire::session_tests::invalid_and_offhand_use_acknowledge_without_starting_or_editing ... ok
+test plot::redstone_tools::wire::session_tests::left_click_selects_support_and_right_click_without_a_start_does_not ... ok
+test plot::redstone_tools::wire::session_tests::live_aim_worker_and_preview_build_a_line_on_the_generated_floor ... ok
+test plot::redstone_tools::wire::session_tests::live_elevated_route_copies_stone_supports_and_undo_restores_both_platforms ... ok
+test plot::redstone_tools::wire::session_tests::live_free_route_changes_xyz_builds_and_undoes_the_complete_segment ... ok
+test plot::redstone_tools::wire::session_tests::mode_commands_preserve_the_start_cancel_stale_routes_and_reaim_immediately ... ok
+test plot::redstone_tools::wire::session_tests::noncreative_pen_use_and_plane_switch_do_not_activate_or_edit ... ok
+test plot::redstone_tools::wire::session_tests::older_worker_generation_cannot_publish_a_route ... ok
+test plot::redstone_tools::wire::session_tests::partial_visibility_still_reconciles_visible_markers_and_never_allows_commit ... ok
+test plot::redstone_tools::wire::session_tests::rotating_work_cursor_services_later_players_before_earlier_heavy_previews ... ok
+test plot::redstone_tools::wire::session_tests::status_uses_latest_action_bar_message_once_per_second_without_repeating ... ok
+test plot::redstone_tools::wire::session_tests::stopping_cancels_worker_and_destroys_only_its_markers ... ok
+test plot::redstone_tools::wire::session_tests::swap_cycles_mode_drop_changes_bend_without_losing_pen_and_dig_is_corrected ... ok
+test plot::redstone_tools::wire::session_tests::wire_off_survives_inputs_item_changes_and_route_cleanup ... ok
+test plot::scoreboard::tests::footer_stays_below_flags_and_within_sidebar_limits ... ok
+test plot::scoreboard::tests::git_footer_covers_head_and_restore_states ... ok
+test plot::scoreboard::tests::setting_changes_replace_footer_rows ... ok
+test plot::scoreboard::tests::viewers_without_git_access_keep_plot_status_without_branch_details ... ok
+test plot::screen_updates::tests::copper_bulb_power_and_light_states_are_visible_screen_updates ... ok
+test plot::screen_updates::tests::external_placement_and_removal_reach_clients_before_ack_in_screen_mode ... ok
+test plot::screen_updates::tests::moved_lamp_projects_payload_and_is_cleared_after_entity_removal ... ok
+test plot::screen_updates::tests::only_changed_screen_sections_are_sent_and_turning_off_catches_up ... ok
+test plot::sign_tests::placing_signs_creates_editable_entities_and_preserves_text_on_rotation ... ok
+test plot::sign_tests::right_click_reopens_both_sign_sides_and_preserves_other_text_and_style ... ok
+test plot::sign_tests::sign_editor_respects_wax_permissions_and_reach ... ok
+test plot::sign_tests::sign_placement_sends_the_block_before_opening_the_editor ... ok
+test plot::visuals::tests::general_updates_are_capped_independently_of_piston_animation ... ok
+test plot::visuals::tests::rendering_threshold_and_rate_preserve_user_limits ... ok
+test plot::worldedit::bare_block_masks_match_all_states_and_explicit_states_stay_exact ... ok
+test plot::worldedit::container_patterns_apply_properties_and_split_only_between_blocks ... ok
+test plot::worldedit::execute::tests::selection_traversal_preserves_order_and_reversed_bounds ... ok
+test plot::worldedit::execute::tests::vertical_destinations_count_floors_and_require_headroom ... ok
+test plot::worldedit::invalid_pattern_weights_and_numeric_ids_do_not_panic ... ok
+test plot::worldedit::numeric_patterns_match_names_and_explicit_state_ids ... ok
+test plot::worldedit::safety::tests::malicious_clipboard_offsets_and_volumes_are_rejected ... ok
+test plot::worldedit::safety::tests::out_of_height_and_cross_plot_regions_are_rejected ... ok
+test plot::monitor::tests::high_tick_rate_reports_do_not_overflow ... ok
+test plot::redstone_tools::wire::session_tests::live_continuation_builds_several_supported_segments_then_turns_and_undoes ... ok
+test plot::worldedit::schematic::tests::regression::actual_v2_adder_preserves_six_signs_offsets_and_all_states ... ok
+test plot::worldedit::schematic::tests::regression::all_container_states_and_plain_items_survive_schematic_round_trip ... ok
+test plot::worldedit::schematic::tests::regression::all_existing_v2_fixtures_import_and_export ... ok
+test plot::worldedit::schematic::tests::regression::imports_strip_custom_data_remove_unknown_items_and_apply_vanilla_stack_limits ... ok
+test plot::worldedit::schematic::tests::regression::malformed_schema_palette_data_and_envelopes_return_errors ... ok
+test plot::worldedit::schematic::tests::regression::mixed_sign_rows_paste_and_roundtrip_without_encoding_failure ... ok
+test plot::worldedit::schematic::tests::regression::offset_precedence_defaults_and_overflow ... ok
+test plot::worldedit::schematic::tests::regression::paste_capture_restore_and_reapply_keep_adder_blocks_offsets_and_sign_positions ... ok
+test plot::worldedit::schematic::tests::regression::signs_preserve_both_sides_and_reject_malformed_messages ... ok
+test plot::worldedit::schematic::tests::regression::spatial_order_sparse_varints_and_export_above_127 ... ok
+test plot::worldedit::schematic::tests::regression::sponge_v2_and_v3_command_entities_keep_text_flags_and_validate_types ... ok
+test plot::monitor::tests::starting_monitor_does_not_underflow_reset_counter ... ok
+test plot::worldedit::schematic::tests::full_production_arena_schematic_fits_the_block_limit ... ok
+test plot::worldedit::schematic::tests::regression::v3_entity_envelopes_defaults_authoritative_ids_and_errors ... ok
+test plot::worldedit::schematic::tests::sponge_v2_and_v3_preserve_target_piston_properties ... ok
+test plot::worldedit::schematic_paths::tests::completion_limits_results_after_ranking_not_before_searching ... ok
+test plot::worldedit::schematic_paths::tests::completion_matches_partial_filenames_within_the_requested_folder ... ok
+test plot::worldedit::schematic_paths::tests::completion_ranks_names_and_returns_loadable_nested_paths ... ok
+test plot::worldedit::safety::tests::pm1_sort_and_full_plot_clipboards_fit_the_work_limit ... ok
+test plot::worldedit::schematic_paths::tests::recursive_loading_requires_an_unambiguous_name ... ok
+test plot::worldedit::schematic_paths::tests::shared_schematics_cannot_be_created_or_overwritten ... ok
+test plot::worldedit::stack_tests::overlapping_stacks_use_one_source_and_restore_original_entities ... ok
+test plot::worldedit::update_tests::invalid_update_bounds_are_rejected_before_any_callbacks ... ok
+test plot::worldedit::update_tests::replace_removes_all_moving_piston_states_and_their_motion_entities ... ok
+test plot::worldedit::schematic_paths::tests::links_cannot_bypass_library_boundaries ... ok
+test plot::worldedit::update_tests::update_crosses_unaligned_section_boundaries_and_leaves_outside_blocks_alone ... ok
+test plot::worldedit::update_tests::screen_only_paste_and_repeated_paste_publish_authoritative_nonlamp_blocks ... ok
+test redpiler::analysis::tests::adders_prepare_conditional_payload_graphs_without_mutating_imports ... ok
+test redpiler::analysis::tests::analysis_limits_and_cancellation_are_errors_not_partial_certificates ... ok
+test redpiler::analysis::tests::candidate_graph_requires_context_for_updates_that_do_not_provide_power ... ok
+test redpiler::analysis::tests::all_io_schematics_have_read_only_deterministic_inventories ... ok
+test redpiler::analysis::tests::candidate_graphs_preserve_mobile_aliases_ports_and_world_state_under_optimization ... ok
+test redpiler::analysis::tests::comparator_side_ports_keep_mobile_supplies_on_the_electrical_side_channel ... ok
+test redpiler::analysis::tests::compatibility::clock_validation_uses_only_its_control_root_and_keeps_existing_guards ... ok
+test redpiler::analysis::tests::compatibility::multiple_clock_candidates_defer_to_sampling_and_report_the_unproved_route ... ok
+test redpiler::analysis::tests::clocked_counter_rejects_missing_sampling_extra_writers_and_exposed_clock ... ok
+test redpiler::analysis::tests::compatibility::notification_inventory_includes_absent_writer_heads_and_receiver_eligibility ... ok
+test redpiler::analysis::tests::compatibility::notification_geometry_matches_native_piston_rechecks_in_every_orientation ... ok
+test plot::worldedit::schematic::tests::regression::supplied_minesweeper_loads_plain_items_and_reports_discarded_components ... ok
+test redpiler::analysis::tests::compiled_counter_clock_and_storage_follow_rotated_translated_geometry ... ok
+test redpiler::analysis::tests::contract_edges_follow_lever_torch_delay_and_actual_repeater_consumers ... ok
+test redpiler::analysis::tests::dependency_budget_and_partial_context_do_not_produce_certificates ... ok
+test redpiler::analysis::tests::dust_on_a_mobile_payload_is_rejected_without_activating_a_partial_program ... ok
+test redpiler::analysis::tests::exposed_reset_signals_and_missing_graph_sources_are_explicit_errors ... ok
+test plot::worldedit::schematic::tests::regression::supplied_potados_preserves_all_command_blocks_and_supported_messages ... ok
+test redpiler::analysis::tests::extracted_conditional_adder_logic_matches_arithmetic ... ok
+test redpiler::analysis::tests::failed_and_cancelled_compile_preserve_world_and_scheduler ... ok
+test redpiler::analysis::tests::formerly_wave_only_gates_and_explicit_sampling_compile_read_only ... ok
+test redpiler::analysis::tests::extracted_counter_transition_matches_all_sixteen_bit_states ... ok
+test redpiler::analysis::tests::ideal::ideal_counter_commits_old_bank_atomically_every_six_steps_and_holds_when_stopped ... ok
+test redpiler::analysis::tests::ideal::ideal_rejects_combinational_feedback_with_positions_and_a_state_boundary_hint ... ok
+test redpiler::analysis::tests::ideal::ideal_rejects_uncertified_sampling_without_mutating_the_world ... ok
+test redpiler::analysis::tests::ideal::ideal_reset_restores_stored_bits_and_stationary_geometry_deterministically ... ok
+test redpiler::analysis::tests::ideal::ideal_stateless_domain_evaluates_only_after_a_dependency_changes ... ok
+test redpiler::analysis::tests::io_only_reset_preserves_containers_closed_at_activation ... ok
+test redpiler::analysis::tests::ideal::ideal_counter_recompiles_a_settled_nonzero_bank_without_resampling ... ok
+test redpiler::analysis::tests::legalization::container_support_exception_keeps_entity_movement_and_reset_guards ... ok
+test redpiler::analysis::tests::legalization::fixed_container_requires_matching_inert_conducting_material ... ok
+test redpiler::analysis::tests::legalization::fixed_inventory_main_input_ignores_conditional_power_above_the_container ... ok
+test redpiler::analysis::tests::legalization::logical_conductors_accept_retained_geometry_and_reject_entities_and_bad_heads ... ok
+test redpiler::analysis::tests::logical_candidate_preparation_preserves_shared_reset_inventory_and_ordinary_observers ... ok
+test redpiler::analysis::tests::memory::different_writers_delivered_in_one_half_tick_both_commit_their_banks ... ok
+test redpiler::analysis::tests::memory::empty_generator_pose_edges_sample_independent_data_without_periodic_writes ... ok
+test redpiler::analysis::tests::memory::generator_delivery_to_storage_head_uses_old_extended_eligibility ... ok
+test redpiler::analysis::tests::memory::independent_wire_delivery_samples_old_bank_atomically_without_collapsing_source_actions ... ok
+test redpiler::analysis::tests::observer_logical::logical_side_observer_rejects_an_exposed_pulse_and_an_independent_sampler_transactionally ... ok
+test redpiler::analysis::tests::observer_logical::logical_side_observer_return_is_derived_from_rotated_geometry_and_held_data ... ok
+test redpiler::analysis::tests::observer_logical::ordinary_observer_cannot_watch_an_omitted_owned_reset_signal ... ok
+test redpiler::analysis::tests::observer_logical::ordinary_observer_sees_only_committed_constant_logical_outputs ... ok
+test redpiler::analysis::tests::observer_logical::unobserved_lamp_presentation_keeps_live_cap_control_and_omits_reset_flashes ... ok
+test redpiler::analysis::tests::observer_logical::watched_lamp_presentation_remains_a_notification_boundary ... ok
+test redpiler::analysis::tests::observer_orientation_cap_and_head_are_context_guards ... ok
+test redpiler::analysis::tests::original_examples_and_nanotick_counterexample_are_analysis_only ... ok
+test redpiler::analysis::tests::outputs::certified_gates_use_the_same_logical_executor_with_and_without_trust ... ok
+test redpiler::analysis::tests::legalization::fixed_container_context_preserves_inventory_override_and_logical_consumer_levels ... ok
+test redpiler::analysis::tests::outputs::conditional_geometry_drives_command_outputs_without_replaying_chat_on_reset ... ok
+test redpiler::analysis::tests::outputs::conditional_geometry_drives_stationary_copper_bulbs_and_restores_the_latch ... ok
+test redpiler::analysis::tests::outputs::destructive_attachments_and_dynamic_overrides_reject_without_mutation ... ok
+test redpiler::analysis::tests::outputs::fixed_payloads_retain_dynamic_and_unknown_state_guards ... ok
+test redpiler::analysis::tests::outputs::comparator_ports_preserve_strength_and_distinguish_side_conductors ... ok
+test redpiler::analysis::tests::compiled_adder_is_derived_from_rotated_and_translated_geometry ... ok
+test redpiler::analysis::tests::outputs::ordinary_source_changes_refresh_logical_ports ... ok
+test redpiler::analysis::tests::outputs::one_bit_adder_logical_outputs_match_every_prepared_assignment ... ok
+test redpiler::analysis::tests::ports_find_real_repeater_faces_and_separate_bud_sampling ... ok
+test redpiler::analysis::tests::outputs::shared_near_outputs_use_deterministic_first_owner_geometry ... ok
+test redpiler::analysis::tests::presentation::deferred_display_preserves_memory_observers_and_scheduled_work ... ok
+test redpiler::analysis::tests::presentation::copper_bud_oxidation_uses_committed_occupancy_with_all_display_policies ... ok
+test redpiler::analysis::tests::presentation::independent_bud_display_preserves_inert_payload_material ... ok
+test redpiler::analysis::tests::presentation::independent_bud_display_follows_samples_and_respects_suppression ... ok
+test redpiler::analysis::tests::queued_work_phase_and_orphan_heads_are_admission_blockers ... ok
+test redpiler::analysis::tests::recognized_families_and_graph_ports_survive_horizontal_rotation ... ok
+test redpiler::analysis::tests::recompilation_requires_reset_and_never_reuses_stale_aliases ... ok
+test redpiler::analysis::tests::outputs::logical_conductor_outputs_preserve_material_and_fixed_contributors ... ok
+test redpiler::analysis::tests::regions::ideal_mode_skips_reset_certification_but_keeps_payload_and_geometry_guards ... ok
+test redpiler::analysis::tests::regions::empty_ordinary_clock_preserves_stationary_far_context ... ok
+test redpiler::analysis::tests::regions::ordinary_payload_cannot_treat_an_occupied_far_base_as_empty_context ... ok
+test redpiler::analysis::tests::regions::unsupported_ordinary_payload_is_rejected_instead_of_becoming_empty ... ok
+test redpiler::analysis::tests::removed_palette_entries_do_not_block_compilation ... ok
+test redpiler::analysis::tests::research::anpu::anpu_current_compile_admission ... ignored, ANPU admission matrix; opt-in larger fixture analysis
+test redpiler::analysis::tests::presentation::shared_clock_display_tracks_each_committed_bank_with_all_flags ... ok
+test redpiler::analysis::tests::research::anpu_motion_scope::anpu_native_motion_roles_distinguish_payloads_from_moving_bases ... ignored, ANPU native 5,000-tick movement-role inventory
+test redpiler::analysis::tests::research::anpu_motion_scope::ordinary_pending_movement_rejection_and_reset_preserve_interpreter_continuation ... ok
+test redpiler::analysis::tests::research::bubblesort_ideal_requires_explicit_sampling_contract ... ignored, large CPU ideal admission diagnostic; does not run the CPU
+test redpiler::analysis::tests::regions::ideal_mode_supports_repeated_arithmetic_independent_clocks_and_stored_handoff ... ok
+test redpiler::analysis::tests::research::bud_cells::investigate_counter_bud_sources ... ignored, counter comparison diagnostics; fresh output required
+test redpiler::analysis::tests::research::bud_cells::investigate_extracted_bud_cells ... ignored, read-only compiler diagnostics and native author-cell traces; fresh output required
+test redpiler::analysis::tests::research::capture_author_research_fixtures ... ignored, explicit new-file research capture; MCHPRS_PISTON_RESEARCH_OUTPUT required
+test redpiler::analysis::tests::research::capture_bubblesort_execution ... ignored, bounded CPU protocol capture; explicit new output file required
+test redpiler::analysis::tests::research::capture_corrected_fpu_input_propagation ... ignored, compiled FPU input propagation diagnostic; explicit new output file required
+test redpiler::analysis::tests::research::capture_divider_logical_sources ... ignored, logical source delta diagnostic; explicit new output file required
+test redpiler::analysis::tests::research::capture_fpu_response_extraction ... ignored, read-only FPU expression probe, not executable admission; new output file required
+test redpiler::analysis::tests::research::bubblesort_import_preserves_full_memory_and_button_protocol ... ok
+test redpiler::analysis::tests::research::anpu::anpu_rejects_mechanisms_without_certified_instant_boundaries ... ok
+test redpiler::analysis::tests::research::fpu_divider::fixed_divider_logical_execution_preserves_first_response_and_skips_stopped_domains ... ok
+test redpiler::analysis::tests::research::fpu_strict_import_preserves_the_947_analog_reference_values ... ok
+test redpiler::analysis::tests::compiled_adder_matches_arithmetic_and_holds_each_logical_transaction ... ok
+test redpiler::analysis::tests::research::fpu_material_legalization_preserves_the_author_confirmed_invalid_entries ... ok
+test redpiler::analysis::tests::research::notification_routes::bud_head_request_rechecks_restored_power_before_commit ... ok
+test redpiler::analysis::tests::research::notification_routes::pm1_missing_sampling_route_inventory_and_native_trace ... ignored, hash-checked PM1 route inventory and native trace; explicit new output required
+test redpiler::analysis::tests::research::notification_routes::sticky_base_change_rechecks_an_existing_bud_head_without_powering_its_base ... ok
+test redpiler::analysis::tests::research::pm1_clocks::pm1_compilation_1_update_generators ... ignored, fresh author PM1 update-generator inspection; explicit new output required
+test redpiler::analysis::tests::research::pm1_clocks::pm1_observer_clock_candidates_have_distinct_controls_and_native_edges ... ignored, PM1 clock-role inventory and bounded native trace; explicit new output required
+test redpiler::analysis::tests::research::potados_counter::potados_pc_counter_compile_and_native_protocol ... ignored, opt-in Potados PC counter protocol and compile matrix
+test redpiler::analysis::tests::research::potados_counter::potados_pc_counter_preserves_native_count_waveform ... ignored, 4,096-tick native/compiled Potados counter comparison across eight compile options
+test redpiler::analysis::tests::research::previous_fpu_default_requires_construction_certification_transactionally ... ok
+test redpiler::analysis::tests::research::rilax_decoder_omission_is_a_reproducible_destructive_address_change ... ok
+test redpiler::analysis::tests::research::rilax_derived_missing_torch_probe_restores_address_one_enable_gating ... ok
+test redpiler::analysis::tests::research::rilax_held_read_does_not_resample_a_later_write ... ok
+test redpiler::analysis::tests::research::rilax_logical_memory_preserves_data_until_delivered_write_and_read_events ... ok
+test redpiler::analysis::tests::research::rilax_memory_preserves_prepared_data_until_neighbor_movement_samples_it ... ok
+test redpiler::analysis::tests::research::rilax_memory_writes_are_reusable_with_independent_read_address ... ok
+test redpiler::analysis::tests::research::rilax_pico_and_game_steps_agree_at_completed_tick_boundaries ... ok
+test redpiler::analysis::tests::research::rilax_seven_update_pistons_sample_all_eight_bits_on_both_movement_edges ... ok
+test redpiler::analysis::tests::research::rilax_short_enable_pulses_are_filtered_by_the_decoder ... ok
+test redpiler::analysis::tests::research::rilax_unchanged_data_keeps_memory_but_still_samples_on_each_update ... ok
+test redpiler::analysis::tests::research::test_prefix_timing::test_prefixed_piston_handoff_preserves_pending_work ... ok
+test redpiler::analysis::tests::research::test_prefix_timing::test_prefixed_schematics_compare_interpreter_outputs ... ignored, ordered interpreter/Redpiler output comparison; explicit new output path required
+test redpiler::analysis::tests::research::test_prefix_timing::test_prefixed_schematics_have_native_timing_report ... ignored, author TEST_ schematic native timing report; requires explicit output path
+test redpiler::analysis::tests::research::corrected_fpu_compiles_in_both_admission_policies_with_and_without_optimization ... ok
+test redpiler::analysis::tests::reset_guards_reject_mutations_and_forced_power ... ok
+test redpiler::analysis::tests::retracted_bud_storage_is_unsupported_entry_without_a_false_head_mismatch ... ok
+test redpiler::analysis::tests::shared_or_payloads_form_a_group_even_when_ownership_can_transfer ... ok
+test redpiler::analysis::tests::research::test_prefix_timing::test_prefixed_schematics_keep_native_callbacks_and_motion ... ok
+test redpiler::analysis::tests::supplied_reset_families_have_return_paths_and_shared_payload_closure ... ok
+test redpiler::analysis::tests::timed::production_adders_preserve_native_arithmetic_windows ... ok
+test redpiler::analysis::tests::timed::production_assumption_keeps_movement_and_sampling_guards ... ok
+test redpiler::analysis::tests::timed::production_counter_counts_in_native_consumer_windows ... ok
+test redpiler::analysis::tests::timed::production_handoff_keeps_unchanged_container_entities ... ok
+test redpiler::analysis::tests::timed::production_timed_commands_keep_synchronous_conditional_chain_results ... ok
+test redpiler::analysis::tests::unrelated_ordinary_nodes_keep_working_in_a_compiled_piston_plot ... ok
+test redpiler::analysis::tests::unsupported_adder_payload_names_the_block_and_owner_without_mutation ... ok
+test redpiler::backend::direct::compile::tests::excessive_fan_in_is_rejected_without_overflowing_counters ... ok
+test redpiler::backend::direct::compile::tests::invalid_strength_is_rejected_before_packed_input_initialization ... ok
+test redpiler::backend::direct::compile::tests::observer_imported_deadline_and_powered_entry_complete_without_retrigger ... ok
+test redpiler::backend::direct::compile::tests::observer_sees_comparator_block_state_but_not_entity_strength_alone ... ok
+test redpiler::backend::direct::compile::tests::observer_watch_chain_preserves_pulse_delays_and_ignores_pending_retriggers ... ok
+test redpiler::backend::direct::instant::logical::tests::cached_canonical_program_matches_plain_arena_across_all_inputs ... ok
+test redpiler::backend::direct::instant::logical::tests::ignores_dead_handoff_decisions_and_unselected_branches ... ok
+test redpiler::backend::direct::instant::logical::tests::independent_snapshots_hold_old_bank_until_explicit_capture ... ok
+test redpiler::backend::direct::instant::logical::tests::local_response_conditions_share_a_dag_and_invalidate_affected_ancestors ... ok
+test redpiler::backend::direct::instant::logical::tests::rejects_computed_condition_cycles_and_malformed_response_roots ... ok
+test redpiler::backend::direct::instant::logical::tests::rejects_invalid_geometry_and_feedback_inputs_and_preserves_thresholds ... ok
+test redpiler::backend::direct::instant::logical::tests::shares_roots_and_invalidates_only_affected_paths ... ok
+test redpiler::backend::direct::instant::logical::tests::wire_display_binding_is_rejected_for_logical_execution ... ok
+test redpiler::backend::queue::tests::test_reset_queue ... ok
+test redpiler::backend::queue::tests::test_zero_tick ... ok
+test redpiler::instant::boolean::tests::actuator_composition_and_compaction_preserve_truth_tables ... ok
+test redpiler::instant::boolean::tests::complementary_paths_remove_spurious_actuator_dependencies ... ok
+test redpiler::instant::contract::tests::edge_is_decoded_after_attenuation_and_not_from_held_zero ... ok
+test redpiler::instant::contract::tests::low_initialization_and_prepared_data_do_not_create_events ... ok
+test redpiler::instant::contract::tests::malformed_strength_is_rejected_including_deserialization ... ok
+test redpiler::instant::contract::tests::requests_during_reset_are_not_replayed_when_readiness_returns ... ok
+test redpiler::instant::contract::tests::restoration_before_launch_cancels_a_request ... ok
+test redpiler::passes::constant_coalesce::tests::replacement_constant_survives_reused_graph_slot ... ok
+test redpiler::passes::tests::pipeline_preserves_required_passes_flags_progress_and_cancellation ... ok
+test redpiler::tests::compilation_budget_cannot_be_selected_by_command_flags ... ok
+test redpiler::tests::compile_statistics_publish_only_after_success ... ok
+test redpiler::tests::logical_mode_is_explicit_and_unknown_flags_fail ... ok
+test redpiler::tests::parse_options ... ok
+test redstone::adder_tests::adder_all_bit_positions_handle_carries_and_overflow ... ok
+test redstone::adder_tests::adder_arithmetic_vectors ... ok
+test redstone::adder_tests::adder_changed_inputs_calculate_correct_sum_and_match_java ... ok
+test redstone::adder_tests::adder_fixture_calculates_stored_inputs_after_tick_removal ... ok
+test redstone::adder_tests::adder_outputs_and_moving_states_match_java ... ok
+test redstone::copper_bulb::tests::compiled_oxidation_reads_virtual_state_and_notifies_observers ... ok
+test redstone::copper_bulb::tests::copper_bulb_legacy_export_is_rejected_before_writing ... ok
+test redstone::copper_bulb::tests::copper_bulb_light_updates_and_removal_cross_chunk_boundaries ... ok
+test redstone::copper_bulb::tests::copper_bulb_random_ticks_sample_only_eligible_sections ... ok
+test redstone::copper_bulb::tests::copper_bulb_save_load_retains_states_and_random_tick_counts ... ok
+test redstone::copper_bulb::tests::copper_bulb_waxing_scraping_and_oxidation_preserve_the_latch ... ok
+test redstone::copper_bulb::tests::copper_bulbs_move_physically_and_are_not_admitted_as_inert_compiled_payloads ... ok
+test redstone::copper_bulb::tests::copper_bulbs_toggle_on_the_aggregate_input_edge ... ok
+test redstone::copper_bulb::tests::every_bulb_state_has_opaque_cube_geometry_without_electrical_output ... ok
+test redstone::copper_bulb::tests::interpreter_and_compiled_bulbs_match_java_1_21_5 ... ok
+test redstone::copper_bulb::tests::powered_placement_and_same_type_state_edits_have_distinct_behavior ... ok
+test redstone::copper_bulb::tests::stale_callbacks_do_not_toggle_twice_or_schedule_a_bulb_tick ... ok
+test redstone::instant_piston_tests::adder_inhibition_changes_dust_connections_before_pending_target_validation ... ok
+test redstone::instant_piston_tests::capture_pack ... ignored, explicit deterministic artifact capture, not an oracle update
+test redstone::instant_piston_tests::chain_causality_is_fifo_retraction_then_callback_then_downstream_event ... ok
+test redstone::instant_piston_tests::conjunction_or_inhibition_and_xor_have_contextual_first_wave_tables ... ok
+test redstone::instant_piston_tests::counter_free_running_clock_increments_persistent_bud_bank ... ok
+test redstone::instant_piston_tests::downloaded_edge_case_drops_an_inflight_payload_and_later_recaptures_it ... ok
+test redstone::instant_piston_tests::exact_saved_imports_remain_ready_without_notifications ... ok
+test redstone::instant_piston_tests::frozen_java_port_waveforms_match_current_binaries_and_protocols ... ignored, requires locally generated java-projections.json; see tools/README.md
+test redstone::instant_piston_tests::io::bud_storage_survives_restored_power_and_resamples_on_the_next_update ... ok
+test redstone::instant_piston_tests::io::counter_memory_and_repeater_bank_have_distinct_valid_count_windows ... ok
+test redstone::instant_piston_tests::io::gate_consumers_have_a_delayed_projection_and_preserve_history_and_reset_effects ... ok
+test redstone::instant_piston_tests::io::independent_bud_data_changes_hold_state_until_a_qualifying_update ... ok
+test redpiler::analysis::tests::shared_reset_exposure_inventory_does_not_mutate_logical_preparation ... ok
+test redstone::instant_piston_tests::io::lever_chain_propagates_through_nested_callbacks_in_one_tick ... ok
+test redstone::instant_piston_tests::io::lever_prepared_adders_match_math_at_payload_and_consumer_windows ... ok
+test redstone::instant_piston_tests::io::lever_torch_delay_and_held_levels_do_not_create_additional_root_computations ... ok
+test redstone::instant_piston_tests::io::new_or_output_stage_preserves_shared_payload_and_illegal_reset_starvation ... ok
+test redstone::instant_piston_tests::io::observer_update_samples_instant_produced_data_after_its_wave ... ok
+test redstone::instant_piston_tests::io::output_stage_rejects_pending_retraction_after_inhibition_becomes_effective ... ok
+test redpiler::analysis::tests::research::native_regressions::production_divider_preserves_all_declared_native_episodes has been running for over 60 seconds
+test redpiler::analysis::tests::research::native_regressions::production_fpu_preserves_native_inputs_opcodes_trigger_and_outputs has been running for over 60 seconds
+test redstone::instant_piston_tests::io::io_episodes_agree_at_completed_boundaries_under_game_nano_and_pico_inspection ... ok
+test redstone::instant_piston_tests::io::strict_io_imports_remain_quiescent_and_preserve_saved_state ... ok
+test redstone::instant_piston_tests::negation_records_transient_order_and_repeater_filters_same_wave ... ok
+test redpiler::analysis::tests::research::native_regressions::production_divider_preserves_all_declared_native_episodes ... ok
+test redstone::instant_piston_tests::one_bit_and_corrected_eleven_bit_arithmetic_have_separate_valid_windows ... ok
+test redstone::instant_piston_tests::quiescent_torch_and_external_rearm_protocols_allow_another_falling_response ... ok
+test redstone::instant_piston_tests::shared_or_conserves_one_payload_and_illegal_group_starves_a_reset ... ok
+test redstone::instant_piston_tests::single_falling_responses_distinguish_autoreset_latch_and_forced_power ... ok
+test redstone::instant_piston_tests::strength_one_falls_but_positive_changes_and_held_zero_are_not_new_roots ... ok
+test redstone::instant_piston_tests::supplied_nanotick_counterexample_activates_consumer_before_inhibit_arrives ... ok
+test redstone::master_tests::all_binary_plate_variants_power_and_survive_compiler_flush ... ok
+test redstone::master_tests::compiled_handoff_preserves_pending_short_pulse ... ok
+test redstone::master_tests::downward_piston_dust_step_only_transmits_upward ... ok
+test redstone::master_tests::dust_steps_over_opaque_blocks_and_powers_the_block_below_in_both_backends ... ok
+test redstone::master_tests::ground_torch_never_weakly_powers_its_support ... ok
+test redstone::master_tests::missing_container_entity_is_empty_and_frame_eye_is_full_signal ... ok
+test redstone::master_tests::new_sign_species_require_support_and_keep_block_entities ... ok
+test redstone::master_tests::repeater_short_pulse_ends_after_selected_delay ... ok
+test redstone::master_tests::slab_tops_support_dust_without_conducting_to_the_lamp_below ... ok
+test redstone::master_tests::threshold_power_matches_analog_queries_for_every_registry_state_and_face ... ok
+test redstone::master_tests::wire_shape_keeps_raw_cross_guard_and_climbing_connection ... ok
+test redstone::observer_tests::dust_shape_notifies_its_observer_but_not_one_watching_an_unchanged_neighbor ... ok
+test redstone::observer_tests::observer_power_direction_matches_conduction_and_piston_inputs ... ok
+test redstone::piston::tests::breaking_base_during_extension_removes_owned_moving_head ... ok
+test redstone::piston::tests::breaking_moving_head_removes_base_without_resurrection ... ok
+test redstone::piston::tests::breaking_stationary_head_removes_base ... ok
+test redstone::piston::tests::bud_reference::anpu_cannot_bypass_compiled_graph_admission ... ok
+test redstone::piston::tests::bud_reference::anpu_interpreter_preserves_frozen_bud_updates_and_screen ... ignored, ANPU 50,000-tick frozen physical memory/screen replay
+test redstone::piston::tests::bud_reference::capture_anpu_bud_reference_to_new_file ... ignored, explicit new-file baseline capture; requires MCHPRS_ANPU_BUD_CAPTURE
+test redstone::piston::tests::canceled_event_rechecks_power_and_is_deduplicated ... ok
+test redstone::piston::tests::chunk_nbt_uses_previous_progress_like_java ... ok
+test redstone::piston::tests::completion_cannot_recreate_replaced_base ... ok
+test redstone::piston::tests::completion_runs_once_and_repeated_stale_work_preserves_payload ... ok
+test redstone::piston::tests::containers_cannot_be_pushed_or_pulled_in_any_state ... ok
+test redstone::piston::tests::control_front_power_is_excluded ... ok
+test redstone::piston::tests::control_quasi_connected_power_detected_after_base_update ... ok
+test redstone::piston::tests::control_single_stone_extension_all_six_directions ... ok
+test redstone::piston::tests::dust_does_not_attach_to_moving_heads_or_payloads ... ok
+test redstone::piston::tests::dust_on_downward_piston_survives_repeated_extension_and_retraction ... ok
+test redstone::piston::tests::dust_shape_change_does_not_start_piston_observer_early ... ok
+test redstone::piston::tests::extension_sets_base_state_during_event_and_does_not_schedule_a_lock ... ok
+test redstone::piston::tests::game_nano_and_pico_steps_share_event_and_movement_order ... ok
+test redstone::piston::tests::half_progress_is_exactly_representable ... ok
+test redstone::piston::tests::interrupted_waterlogged_payload_retains_waterlogging ... ok
+test redstone::piston::tests::long_payload_lines_spill_and_preserve_every_block ... ok
+test redstone::piston::tests::malformed_moving_progress_is_rejected ... ok
+test redstone::piston::tests::mismatched_head_does_not_mark_base_extended ... ok
+test redstone::piston::tests::movable_trapdoor_is_preserved ... ok
+test redstone::piston::tests::moved_observer_preserves_valid_pending_tick_at_destination ... ok
+test redstone::piston::tests::moved_powered_observer_does_not_stay_powered_forever ... ok
+test redstone::piston::tests::moved_waterlogged_stairs_are_not_still_waterlogged ... ok
+test redstone::piston::tests::movement_cannot_lose_payload_at_height_boundary ... ok
+test redstone::piston::tests::movement_cannot_lose_payload_at_plot_boundary ... ok
+test redstone::piston::tests::movement_progress_advances_before_completion ... ok
+test redstone::piston::tests::moving_payload_has_its_own_destination_entity ... ok
+test redstone::piston::tests::moving_support_breaks_torch_above_old_payload ... ok
+test redstone::piston::tests::normal_retraction_uses_moving_source_at_base ... ok
+test redstone::piston::tests::observer_piston_feedback_matches_java_for_block_and_dust_triggers ... ok
+test redstone::piston::tests::old_observer_tick_cannot_complete_new_moving_head ... ok
+test redstone::piston::tests::power_off_request_ignores_unrelated_future_base_tick ... ok
+test redstone::piston::tests::push_chain_snapshots_preserve_overlapping_payloads ... ok
+test redstone::piston::tests::redstone_update_edgecase_spits_then_recaptures_block_like_java_1_21_5 ... ok
+test redstone::piston::tests::removing_base_removes_stationary_head ... ok
+test redstone::piston::tests::removing_vertical_base_updates_support_at_removed_head ... ok
+test redstone::piston::tests::replacement_payload_cancels_old_completion ... ok
+test redstone::piston::tests::replacing_retracting_base_does_not_resurrect_it ... ok
+test redstone::piston::tests::short_pulse_drops_but_completed_extension_pulls ... ok
+test redstone::tests::test_edgecase_single_pulse_on_both_outputs ... ok
+test redstone::tests::test_memory_cell_unaligned_nanoticks ... ok
+test redstone::tests::test_updates_extend_instant ... ok
+test redstone::tests::test_updates_extend_non_instant ... ok
+test redstone::tests::test_updates_instant ... ok
+test redstone::tests::test_updates_non_instant ... ok
+test redstone::wire::turbo::spatial::tests::epochs_boundaries_and_wrap_do_not_reuse_nodes ... ok
+test redstone::wire::turbo::tests::compact_node_ids_cannot_silently_wrap - should panic ... ok
+test redstone::wire::turbo::tests::compact_node_ids_preserve_boundary_indices ... ok
+test redstone::wire::turbo::tests::omitted_wire_callbacks_are_inert_for_every_registry_state ... ok
+test redstone::wire::turbo::tests::reused_walk_scratch_observes_changed_blocks_and_other_worlds ... ok
+test tests::can_load_chungus_plot ... ok
+test redstone::instant_piston_tests::pack_completed_boundaries_agree_for_game_nano_pico ... ok
+test tests::run_mandelbrot_chungus_compiled ... ok
+test tests::run_mandelbrot_chungus_compiled_to_interpreted ... ok
+test tests::run_mandelbrot_chungus ... ok
+test velocity::tests::authenticates_identity_and_preserves_signed_skins ... ok
+test velocity::tests::rejects_authenticated_but_malformed_profiles ... ok
+test velocity::tests::rejects_spoofing_bad_signatures_and_wrong_names ... ok
+test world::storage::bitbuffer_format ... ok
+test world::storage::heightmap_tests::client_snapshots_include_pending_changes_and_project_air_height ... ok
+test world::storage::heightmap_tests::heightmap_uses_first_air_above_top_block ... ok
+test world::storage::heightmap_tests::lazy_change_tracking_survives_save_and_packet_flush ... ok
+test world::storage::heightmap_tests::loading_repairs_missing_sign_entities_in_join_snapshots ... ok
+test world::storage::heightmap_tests::palette_growth_preserves_entries_through_global_conversion ... ok
+test world::storage::heightmap_tests::sign_text_and_styles_survive_save_load_and_join_snapshots ... ok
+test world::tests::block_walkers_cross_unaligned_boundaries_and_skip_empty_sections ... ok
+test world::tests::block_walkers_visit_every_selected_position_once_while_removing_blocks ... ok
+test world::wire_cache::tests::canonical_geometry_reuses_entries_and_clear_drops_old_namespace ... ok
+test world::wire_cache::tests::every_cached_registry_fact_matches_original_block_behavior ... ok
+test tests::run_mandelbrot_chungus_interpreted_to_compiled ... ok
+test redpiler::analysis::tests::research::native_regressions::production_fpu_preserves_native_inputs_opcodes_trigger_and_outputs ... ok
+test redstone::instant_piston_tests::io::redpiler_preserves_all_small_io_episodes_and_rotations has been running for over 60 seconds
+test redstone::instant_piston_tests::io::redpiler_preserves_all_small_io_episodes_and_rotations ... ok
+
+test result: ok. 579 passed; 0 failed; 23 ignored; 0 measured; 0 filtered out; finished in 395.90s
+
+     Running tests\cpu_references.rs (target\debug\deps\cpu_references-0cce9d1065993fd8.exe)
+
+running 5 tests
+test anpu_pong_frozen_reference ... ignored, 50,000-tick CPU regression; run with --release -- --ignored
+test bubblesort_frozen_reference ... ignored, 50,000-tick CPU regression; run explicitly
+test capture_bubblesort_reference ... ignored, new-file BubbleSort baseline capture; MCHPRS_PISTON_RESEARCH_OUTPUT required
+test pm1_sort_frozen_reference ... ignored, 50,000-tick CPU regression; run with --release -- --ignored
+test frozen_cpu_inputs_and_initial_states ... ok
+
+test result: ok. 1 passed; 0 failed; 4 ignored; 0 measured; 0 filtered out; finished in 5.71s
+
+     Running unittests src\lib.rs (target\debug\deps\mchprs_network-69a7cfaeb10a3c60.exe)
+
+running 34 tests
+test connection_cleanup_tests::login_transition_does_not_revive_a_closed_connection ... ok
+test connection_cleanup_tests::closed_status_clients_are_pruned_and_idle_writer_sockets_are_released ... ok
+test acknowledgement_tests::authoritative_blocks_reach_the_wire_before_prediction_acknowledgement ... ok
+test outbound::tests::backlog_keeps_latest_state_without_crossing_packet_barriers ... ok
+test outbound::tests::chunk_snapshots_and_prediction_acks_preserve_their_place_in_the_wire_stream ... ok
+test outbound::tests::compare_no_client_synchronous_and_background_sending ... ignored, synthetic sender benchmark; run with --release -- --ignored --nocapture
+test outbound::tests::compression_transition_is_an_ordering_boundary ... ok
+test outbound::tests::background_writer_accepts_packets_without_waiting_for_client_reads ... ok
+test outbound::tests::failed_writes_close_the_connection_instead_of_skipping_reliable_packets ... ok
+test outbound::tests::dropping_last_handle_closes_shared_writer_and_overflow_closes_connection ... ok
+test outbound::tests::ordered_writer_matches_protocol_bytes_and_drains_on_close ... ok
+test packets::tests::clean_connection_closes_are_distinct_from_truncated_packet_frames ... ok
+test packets::tests::command_block_updates_validate_mode_flags_and_dispatch ... ok
+test packets::tests::compressed_payload_errors_retain_packet_identity ... ok
+test packets::tests::compressed_status_framing_round_trips ... ok
+test packets::tests::container_click_hashes_dispatch_and_validate_without_accepting_item_data ... ok
+test packets::tests::container_ids_are_varints_in_content_slot_and_close_packets ... ok
+test packets::tests::copper_bulb_light_packets_preserve_section_masks_and_nibbles ... ok
+test packets::tests::forwarding_response_keeps_login_state_until_acknowledgement ... ok
+test packets::tests::fragmented_and_interrupted_reads_preserve_frames_and_clean_closes ... ok
+test packets::tests::integer_boundaries_and_malformed_lengths ... ok
+test packets::tests::login_waits_for_acknowledgements ... ok
+test packets::tests::nested_container_patch_and_invalid_components ... ok
+test packets::components::tool_component_tests::tool_display_preserves_existing_components_and_custom_data ... ok
+test packets::tests::pick_packets_dispatch_and_reject_truncated_payloads ... ok
+test packets::tests::play_teleport_confirmations_dispatch_in_order_and_reject_invalid_ids ... ok
+test packets::tests::structured_component_patch_survives_untrusted_to_trusted_conversion ... ok
+test packets::tests::target_nbt_and_position_packet_layouts ... ok
+test packets::tests::use_item_packet_dispatches_hand_sequence_and_rotation ... ok
+test text::tests::homogeneous_lists_keep_their_original_types ... ok
+test text::tests::nested_mixed_text_lists_encode_and_keep_style_and_translation_arguments ... ok
+test text::tests::numeric_and_boolean_text_stays_text_on_roundtrip ... ok
+test inbound_tests::dropping_a_full_queue_wakes_its_reader_and_closes_the_socket ... ok
+test inbound_tests::full_incoming_queue_waits_then_delivers_play_actions_in_order ... ok
+
+test result: ok. 33 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.12s
+
+     Running unittests src\lib.rs (target\debug\deps\mchprs_proc_macros-7fde582ed2b89f17.exe)
+
+running 1 test
+test minecraft_data::tests::biome_ids_follow_input_order ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests\minecraft_data.rs (target\debug\deps\minecraft_data-6371b1a32b84185f.exe)
+
+running 3 tests
+test block_entity_ids_match_python_generated_baseline ... ok
+test protocol_constants_match_python_generated_baseline ... ok
+test tables_match_python_generated_baseline ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src\lib.rs (target\debug\deps\mchprs_save_data-eed3c4e48cf6c23a.exe)
+
+running 6 tests
+test plot_data::tests::failed_migration_preserves_original_and_does_not_create_backup ... ok
+test plot_data::tests::format_three_occupied_payload_destination_refuses_migration_without_changes ... ok
+test plot_data::tests::format_three_motion_migrates_to_destination_entities_and_keeps_backup ... ok
+test plot_data::tests::format_four_migration_preserves_original_and_command_blocks_save_in_five ... ok
+test plot_data::tests::rejects_other_minecraft_versions_and_unsupported_save_formats ... ok
+test plot_data::tests::migrates_palette_and_direct_states_with_pistons_signs_and_backup ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.04s
+
+     Running unittests src\lib.rs (target\debug\deps\mchprs_utils-57dd3704f8ef354a.exe)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src\lib.rs (target\debug\deps\mchprs_world-815d8fbea707db1e.exe)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src\lib.rs (target\debug\deps\redpiler_graph-8e19ebd57d200577.exe)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests mchprs_blocks
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests mchprs_core
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests mchprs_network
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests mchprs_proc_macros
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests mchprs_save_data
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests mchprs_utils
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests mchprs_world
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests redpiler_graph
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+

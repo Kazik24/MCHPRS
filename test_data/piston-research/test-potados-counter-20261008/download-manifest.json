@@ -1,0 +1,14 @@
+{
+  "schema_version": 1,
+  "source_host": "urmom",
+  "source_directory": "/srv/mchprs/data/schems",
+  "verified_utc": "2026-10-08T18:54:12.768673+00:00",
+  "files": [
+    {
+      "name": "TEST_POTADOS_PC_COUNTER.schem",
+      "bytes": 4537,
+      "sha256": "433add18a2a56a1c1cb3025b3c07ccc1370af4d4bca11bf5d546251feeeb7c4d",
+      "modified_utc": "2026-10-08T18:51:46.078878+00:00"
+    }
+  ]
+}

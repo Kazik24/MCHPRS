@@ -1,0 +1,318 @@
+{
+  "actual_origin": [
+    40,
+    30,
+    40
+  ],
+  "admitted_means": "compiler acceptance only; no physical or arithmetic equivalence claim",
+  "backend": "compiled",
+  "budget_multiplier": 8,
+  "changing_input_protocol": null,
+  "changing_inputs": false,
+  "component": "fpu_divider",
+  "counter_protocol": "exact IO fixture; 24 inactive ticks, lever OFF->ON, 600 active warmup ticks, then fixed active window",
+  "divider_protocol": "saved A/B held; 64 ON initialization ticks; one untimed OFF128/ON128 warm episode; repeated held OFF128/ON128 complete episodes preserving ordinary clock timing; observe response170 during OFF and verify final reset0 after ON",
+  "episodes": 8,
+  "flags": "--assume-instant",
+  "flush_every_game_ticks": 0,
+  "game_ticks": null,
+  "input_every_game_ticks": null,
+  "input_processing_scope": null,
+  "interpreter_flush_policy": null,
+  "manifest": "test_data/piston-research/fixtures/fpu_divider.json",
+  "measurement_kind": "logical_divider_episodes",
+  "median_episodes_per_second": 3.108905463586576,
+  "median_input_processing_seconds": null,
+  "median_input_processing_tps": null,
+  "median_input_sets_per_second": null,
+  "median_ns_per_tick": null,
+  "median_seconds": 2.5732529,
+  "median_tps": null,
+  "samples": [
+    {
+      "activity_confirmed": true,
+      "admitted": true,
+      "arithmetic_validity": "saved-input response/reset protocol only; no general arithmetic proof",
+      "compile_seconds_metadata": 0.3276036,
+      "compile_statistics": {
+        "backend_nodes": 0,
+        "graph": {
+          "baseline": {
+            "links": 0,
+            "nodes": 0
+          },
+          "final": {
+            "links": 0,
+            "nodes": 0
+          },
+          "wire_nodes_elided_before_baseline": false
+        },
+        "program": {
+          "arena_decisions_including_handoff": 11404,
+          "executable_output_and_sampling_decisions": 0,
+          "executable_response_decisions": 0,
+          "input_bindings": 0,
+          "output_ports": 0,
+          "output_terms": 0,
+          "response_roots": 0
+        },
+        "regions": {
+          "clocked": 0,
+          "logical": 0,
+          "memory_cells": 0,
+          "payload_groups": 1566,
+          "pistons": 2055
+        }
+      },
+      "episode_observations": [
+        [
+          1,
+          true,
+          0
+        ],
+        [
+          2,
+          true,
+          0
+        ],
+        [
+          3,
+          true,
+          0
+        ],
+        [
+          4,
+          true,
+          0
+        ],
+        [
+          5,
+          true,
+          0
+        ],
+        [
+          6,
+          true,
+          0
+        ],
+        [
+          7,
+          true,
+          0
+        ],
+        [
+          8,
+          true,
+          0
+        ]
+      ],
+      "episodes": 8,
+      "episodes_per_second": 3.108905463586576,
+      "final_reset_0_verified": true,
+      "flush_policy": "every game tick for observation, excluded",
+      "game_ticks_per_episode": 256,
+      "measurement_kind": "logical_divider_episodes",
+      "response_170_observed_each_off_window": true,
+      "seconds": 2.5732529,
+      "timed_operations": "on_use_block for both enable edges, 256 tick_with_world calls per episode, optional per-tick flush; timer overhead included",
+      "verified_episodes": 8,
+      "warmup_game_ticks": 320,
+      "warnings": [
+        "Observable piston timing uses a native physical domain; graph optimization applies to disconnected ordinary circuits."
+      ]
+    },
+    {
+      "activity_confirmed": true,
+      "admitted": true,
+      "arithmetic_validity": "saved-input response/reset protocol only; no general arithmetic proof",
+      "compile_seconds_metadata": 0.3234785,
+      "compile_statistics": {
+        "backend_nodes": 0,
+        "graph": {
+          "baseline": {
+            "links": 0,
+            "nodes": 0
+          },
+          "final": {
+            "links": 0,
+            "nodes": 0
+          },
+          "wire_nodes_elided_before_baseline": false
+        },
+        "program": {
+          "arena_decisions_including_handoff": 11404,
+          "executable_output_and_sampling_decisions": 0,
+          "executable_response_decisions": 0,
+          "input_bindings": 0,
+          "output_ports": 0,
+          "output_terms": 0,
+          "response_roots": 0
+        },
+        "regions": {
+          "clocked": 0,
+          "logical": 0,
+          "memory_cells": 0,
+          "payload_groups": 1566,
+          "pistons": 2055
+        }
+      },
+      "episode_observations": [
+        [
+          1,
+          true,
+          0
+        ],
+        [
+          2,
+          true,
+          0
+        ],
+        [
+          3,
+          true,
+          0
+        ],
+        [
+          4,
+          true,
+          0
+        ],
+        [
+          5,
+          true,
+          0
+        ],
+        [
+          6,
+          true,
+          0
+        ],
+        [
+          7,
+          true,
+          0
+        ],
+        [
+          8,
+          true,
+          0
+        ]
+      ],
+      "episodes": 8,
+      "episodes_per_second": 3.069677928624309,
+      "final_reset_0_verified": true,
+      "flush_policy": "every game tick for observation, excluded",
+      "game_ticks_per_episode": 256,
+      "measurement_kind": "logical_divider_episodes",
+      "response_170_observed_each_off_window": true,
+      "seconds": 2.6061366,
+      "timed_operations": "on_use_block for both enable edges, 256 tick_with_world calls per episode, optional per-tick flush; timer overhead included",
+      "verified_episodes": 8,
+      "warmup_game_ticks": 320,
+      "warnings": [
+        "Observable piston timing uses a native physical domain; graph optimization applies to disconnected ordinary circuits."
+      ]
+    },
+    {
+      "activity_confirmed": true,
+      "admitted": true,
+      "arithmetic_validity": "saved-input response/reset protocol only; no general arithmetic proof",
+      "compile_seconds_metadata": 0.3379752,
+      "compile_statistics": {
+        "backend_nodes": 0,
+        "graph": {
+          "baseline": {
+            "links": 0,
+            "nodes": 0
+          },
+          "final": {
+            "links": 0,
+            "nodes": 0
+          },
+          "wire_nodes_elided_before_baseline": false
+        },
+        "program": {
+          "arena_decisions_including_handoff": 11404,
+          "executable_output_and_sampling_decisions": 0,
+          "executable_response_decisions": 0,
+          "input_bindings": 0,
+          "output_ports": 0,
+          "output_terms": 0,
+          "response_roots": 0
+        },
+        "regions": {
+          "clocked": 0,
+          "logical": 0,
+          "memory_cells": 0,
+          "payload_groups": 1566,
+          "pistons": 2055
+        }
+      },
+      "episode_observations": [
+        [
+          1,
+          true,
+          0
+        ],
+        [
+          2,
+          true,
+          0
+        ],
+        [
+          3,
+          true,
+          0
+        ],
+        [
+          4,
+          true,
+          0
+        ],
+        [
+          5,
+          true,
+          0
+        ],
+        [
+          6,
+          true,
+          0
+        ],
+        [
+          7,
+          true,
+          0
+        ],
+        [
+          8,
+          true,
+          0
+        ]
+      ],
+      "episodes": 8,
+      "episodes_per_second": 3.11616579170574,
+      "final_reset_0_verified": true,
+      "flush_policy": "every game tick for observation, excluded",
+      "game_ticks_per_episode": 256,
+      "measurement_kind": "logical_divider_episodes",
+      "response_170_observed_each_off_window": true,
+      "seconds": 2.5672575,
+      "timed_operations": "on_use_block for both enable edges, 256 tick_with_world calls per episode, optional per-tick flush; timer overhead included",
+      "verified_episodes": 8,
+      "warmup_game_ticks": 320,
+      "warnings": [
+        "Observable piston timing uses a native physical domain; graph optimization applies to disconnected ordinary circuits."
+      ]
+    }
+  ],
+  "schema": 1,
+  "schematic_sha256": "c6f04b0f948a3dc5b05e42e7b1a450edefed522159f421a6dd25f891b6e5297b",
+  "scope": "actual logical workloads; BubbleSort and full FPU without --changing-inputs are admission only; no runtime fallback",
+  "seed": null,
+  "sequence_period": null,
+  "timing": "accumulated stimulus and per-tick timers include lever use, tick_with_world and optional compiled flush; initialization, one warm episode and output observations excluded",
+  "trace_validation": null,
+  "workload": null,
+  "workload_description": null
+}

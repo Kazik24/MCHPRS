@@ -1,0 +1,8 @@
+{
+  "final_file": "F:\\rustrepos\\MCHPRS\\test_data\\piston-research\\test-prefix-20261008\\output-timed-final.json",
+  "sha256": "8E372C3DCF747EDDB05B8C75EE8F8F53B13822EB88F12AE57CB018DFBAF5DBD2",
+  "repeated_asserted_replay_identical": true,
+  "attempts": 888,
+  "successful_replays": 808,
+  "mismatching_replays": 0
+}

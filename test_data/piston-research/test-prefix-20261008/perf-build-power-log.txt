@@ -1,0 +1,51 @@
+warning: linker stdout: Trwa tworzenie biblioteki F:\rustrepos\MCHPRS\target\debug\deps\mchprs_proc_macros-da997f4567e3e19f.dll.lib i obiektu F:\rustrepos\MCHPRS\target\debug\deps\mchprs_proc_macros-da997f4567e3e19f.dll.exp
+  |
+  = note: `#[warn(linker_messages)]` on by default
+
+warning: `mchprs_proc_macros` (lib) generated 1 warning
+   Compiling mchprs_core v0.1.0 (F:\rustrepos\MCHPRS\crates\core)
+warning: variable `sampled` is assigned to, but never used
+   --> crates\core\src\redpiler\backend\direct\instant.rs:596:17
+    |
+596 |             let mut sampled = false;
+    |                 ^^^^^^^^^^^
+    |
+    = note: consider using `_sampled` instead
+    = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+
+warning: value assigned to `sampled` is never read
+   --> crates\core\src\redpiler\backend\direct\instant.rs:603:29
+    |
+603 | ...                   sampled = true;
+    |                       ^^^^^^^^^^^^^^
+    |
+    = help: maybe it is overwritten before being read?
+    = note: `#[warn(unused_assignments)]` (part of `#[warn(unused)]`) on by default
+
+warning: field `response_sources` is never read
+  --> crates\core\src\redpiler\instant\logic.rs:25:9
+   |
+19 | pub(crate) struct WaveLogic {
+   |                   --------- field in this struct
+...
+25 |     pub response_sources: Vec<BlockPos>,
+   |         ^^^^^^^^^^^^^^^^
+   |
+   = note: `WaveLogic` has a derived impl for the trait `Debug`, but this is intentionally ignored during dead code analysis
+   = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: function `extract` is never used
+  --> crates\core\src\redpiler\instant\logic.rs:88:15
+   |
+88 | pub(crate) fn extract(
+   |               ^^^^^^^
+
+warning: function `extract_with_state` is never used
+  --> crates\core\src\redpiler\instant\logic.rs:96:15
+   |
+96 | pub(crate) fn extract_with_state(
+   |               ^^^^^^^^^^^^^^^^^^
+
+warning: `mchprs_core` (lib) generated 5 warnings
+    Finished `dev` profile [optimized + debuginfo] target(s) in 26.05s
+  Executable benches\instant.rs (target\debug\deps\instant-7e5d9d5e01ffc3e8.exe)
