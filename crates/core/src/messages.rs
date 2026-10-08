@@ -225,6 +225,7 @@ catalog! {
         WIRE_USAGE = "Usage: /wire [free|plane|off]";
         WIRE_ENABLED = "Wire pen: RC start/build | F plane | Sneak+F bend";
         WIRE_DISABLED = "Wire pen disabled. /wire enables it.";
+        WIRE_SELECT_START_FIRST = "Select a starting block first.";
         WIRE_START_SELECTED = "Start set | RC build | F plane | Sneak+F bend";
         WIRE_PLANE_HORIZONTAL = "Horizontal X/Z";
         WIRE_PLANE_VERTICAL_X = "Vertical X/Y";
