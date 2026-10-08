@@ -71,9 +71,9 @@ are operations in the interpreter, not fixed fractions of elapsed time.
 
 `/rp analyze` reports circuit structure; `/rp compile` starts admitted compiled
 execution and `/rp reset` hands it back to the interpreter. Read
-[redpiler architecture](docs/Redpiler.md) for flags and lifecycle contracts.
+[redpiler architecture](docs/REDPILER_ARCHITECTURE.md) for flags and lifecycle contracts.
 `/rhistory` and `/back` record and restore interpreter state.
-[Plot Git](docs/PLOT_GIT.md) saves build versions, branches, and comparisons.
+Plot Git saves build versions, branches, and comparisons.
 
 Hold any carrot on a stick to use the [wire pen](docs/WIRE_TOOL.md): right-click
 to start, aim to preview, right-click to build and continue. `/wire` supplies a

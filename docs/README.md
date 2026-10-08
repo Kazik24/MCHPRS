@@ -18,7 +18,6 @@ graph rewrites:
 | [Redpiler parser](REDPILER_PARSER.md) | Spatial extraction, recognition, ownership, boundaries, and admission. |
 | [Redpiler optimizer](REDPILER_OPTIMIZER.md) | Actual pass order, rewrite rules, and correctness conditions. |
 | [Redpiler model](REDPILER_MODEL.md) | Weighted graph execution, retained state, notifications, scheduling, and handoff contracts. |
-| [Execution generalization scope](REDPILER_PARTIAL_COMPILATION.md) | Combined BUD presentation, qualified notification execution, and native/compiled ownership proposal with separate acceptance gates. |
 | [Test suites](tests/README.md) | Checks, frozen references, capture procedures, and limits of the evidence. |
 
 For an electrical change, start with the redstone model. For a movement or
@@ -31,9 +30,7 @@ for the affected contract, including rejected admission and interpreter handoff.
 | Document | Purpose |
 | --- | --- |
 | [Permissions](MCHPRS_PERMISSIONS.md) | Permission evaluation, action gates, configurable limits, and rank metadata. |
-| [Plot Git](PLOT_GIT.md) | Commands, access, storage, checkout, and recovery. |
 | [Wire pen](WIRE_TOOL.md) | Live dust routing, controls, safety checks, and search limits. |
-| [RedstoneVC client parity](REDSTONEVC_CLIENT_PARITY.md) | Reference plugin commands, presentation, HID, and differences from Plot Git. |
 | [Client synchronization](CLIENT_SYNC.md) | Authoritative state, interaction barriers, rendering, and outgoing queues. |
 | [Minecraft data](../mc_data/README.md) | Pinned registry inputs and generated build assets. |
 
@@ -46,7 +43,7 @@ for arbitrary circuits. Put fixture setup and reproduction commands under
 `test_data/`. Keep derived inspections and traces in their ignored output paths.
 
 Implementation plans, task prompts, deployment diaries, and dated performance
-reports are not reference documents. Git history retains deleted material.
+reports belong in [notes](notes/README.md), not the active reference index.
 Existing machine-readable provenance is evidence about its recorded revision,
 not a description of the current runtime.
 

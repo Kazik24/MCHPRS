@@ -1,7 +1,7 @@
 # Redpiler execution model
 
 This document defines the mathematical meaning of the current compiler and
-Direct backend. [Redpiler.md](Redpiler.md) describes the architecture,
+Direct backend. [REDPILER_ARCHITECTURE.md](REDPILER_ARCHITECTURE.md) describes the architecture,
 [REDPILER_PARSER.md](REDPILER_PARSER.md) describes extraction, and
 [REDPILER_OPTIMIZER.md](REDPILER_OPTIMIZER.md) describes transformations and their
 limits. Physical electrical and piston execution are defined separately in
@@ -17,7 +17,7 @@ the flag relaxes construction proofs, not sampling or execution semantics.
 The former wave and sequential executors are retired. Retained sequential
 extraction helpers contribute dependency and admission proofs, not another
 active runtime. Native/compiled partial execution remains a
-[proposal](REDPILER_PARTIAL_COMPILATION.md).
+[proposal](notes/REDPILER_PARTIAL_COMPILATION.md).
 Compilation success establishes that the implementation can represent a region;
 it does not establish universal equivalence to every physical input history.
 

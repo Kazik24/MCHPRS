@@ -2,7 +2,7 @@
 
 This document specifies piston behavior implemented by the world interpreter. It includes quasi-connectivity, delivered updates, event acceptance, payload ownership, movement and the causal order often called nanoticks. The rules apply to geometry and ordered operations, independently of schematic names or particular truth tables.
 
-[REDSTONE_MODEL.md](REDSTONE_MODEL.md) defines positions, directional power, support checks, notifications and the shared scheduler. [REDPILER_MODEL.md](REDPILER_MODEL.md) defines the compiled abstraction; [Redpiler.md](Redpiler.md) describes its implementation. A derived logical gate or storage cell is valid only under the decoder and protocol stated for it. The physical interpreter continues to use the operational rules below for every input history.
+[REDSTONE_MODEL.md](REDSTONE_MODEL.md) defines positions, directional power, support checks, notifications and the shared scheduler. [REDPILER_MODEL.md](REDPILER_MODEL.md) defines the compiled abstraction; [REDPILER_ARCHITECTURE.md](REDPILER_ARCHITECTURE.md) describes its implementation. A derived logical gate or storage cell is valid only under the decoder and protocol stated for it. The physical interpreter continues to use the operational rules below for every input history.
 
 ## 1. State, notation and observables
 

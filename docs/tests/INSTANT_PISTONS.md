@@ -154,6 +154,56 @@ change inputs while OFF and hold each OFF/ON phase for `--input-every` ticks.
 Both phases contribute to timing and output checks. Compiled full-FPU input
 streams retain their continuous-OFF protocol; these are different workloads.
 
+### Native interpreter runtime certificates (2026-10-09)
+
+The native interpreter learns observer-above, single-redstone-block sticky
+retract/reset actors from completed physical cycles. It verifies both exact
+motion identities in each direction, the restored footprint and observer-driven
+reset admission. Only proven actors use the compact-address fast path, including
+the six strong-power neighbors of each queried conductor. Electrical states,
+notifications, accepted events and motion timing remain native. Mutable entity,
+chunk and piston-state access and relevant structural edits revoke certificates.
+The address set is reused across later cycles; unsupported actors use the
+ordinary interpreter.
+
+The [performance report](../../test_data/cpu-references/interpreter-20261009-performance.json)
+records frozen binary/source/fixture hashes, timer scopes, all completed samples,
+runtime admission counts and control diagnostics. Initial timings taken during
+compiler activity are excluded. The completed runs used logical CPU 2 affinity
+and Normal priority, with no own builds during timing:
+
+| Workload | Baseline seconds | Candidate seconds | Proven actors | Power-query cache hits |
+| --- | ---: | ---: | ---: | ---: |
+| FPU stimulus | 5.7658 | 5.4439 | 1,640 | 2,138,380 |
+| PC_COUNTER | 3.6367 | 3.4751 | 139 | 1,300,403 |
+| PM1_SORT | 67.3538 | 62.1117 | 1,865 | 7,580,478 |
+| ANPU Pong | 5.5633 | 4.9199 | 0 | 0 |
+| CPU BubbleSort | 75.0030 | 70.1141 | 3,187 | 13,520,186 |
+
+FPU and PC_COUNTER values are medians of two paired runs; CPU values use one
+complete pair, with an additional candidate repeat retained in the report.
+Remaining repeats stopped at the user's wrap-up request. These are preliminary
+shared-host measurements. ANPU's difference is a noise/compiler control and
+cannot be attributed to an instant-cache path it never used. Cache-hit totals
+include untimed warmup. CPU timers measure their fixed active windows while all
+50,000 replay ticks retain the frozen assertions.
+
+The FPU output stayed at 65,535 throughout this protocol. Both saved controls
+were investigated; the green trigger drives substantial native motion, while
+the other control is locally overridden by existing sources. FPU timing measures
+physical stimulus execution, without confirmed arithmetic output throughput.
+The [FPU reference](../../test_data/cpu-references/interpreter-20261009-fpu-reference.json)
+and [counter reference](../../test_data/cpu-references/interpreter-20261009-pc-counter-reference.json)
+freeze every measured output word and final world state.
+
+Validation: 122 redstone tests, 18 world tests and 268 plot tests passed; five
+existing tests remain ignored. Native cycle tests compare complete physical
+state and ordered samples/events with a cache-cleared twin, including held-zero
+resets, live strong-power changes, container-cap edits, moving-entity mutation
+and deletion, interrupted block replacement and multi-block reset exclusion.
+For the plot suite, set `MCHPRS_CONFIG` to the root `Config.toml`; an existing
+local `crates/core/Config.toml` has a WorldEdit limit below the PM1 fixture size.
+
 One ignored test records an unresolved complete-reset waveform discrepancy:
 
 ```sh

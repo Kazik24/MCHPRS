@@ -7,7 +7,7 @@ execution state. `CompilerOptions::parse` parses command flags only. Here,
 electrical and region intermediate representations.
 
 The entry point is [`Compiler::compile`](../crates/core/src/redpiler/mod.rs).
-Read the [architecture](Redpiler.md) for lifecycle and the
+Read the [architecture](REDPILER_ARCHITECTURE.md) for lifecycle and the
 [compiled model](REDPILER_MODEL.md) for the meaning of extracted functions.
 
 ## Input and analysis

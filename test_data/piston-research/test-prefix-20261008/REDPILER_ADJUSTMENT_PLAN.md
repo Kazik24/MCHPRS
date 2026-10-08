@@ -3,8 +3,8 @@
 ## Implementation update — 2026-10-08
 
 Production execution now preserves native piston timing through closed domains in
-[`redpiler/timed.rs`](../../../crates/core/src/redpiler/timed.rs). Both the domain
-and PlotWorld use the same [`world/tick.rs`](../../../crates/core/src/world/tick.rs)
+`redpiler/timed.rs`. Both the domain
+and PlotWorld use the same `world/tick.rs`
 phase driver and existing redstone functions. This retains scheduled priority/FIFO,
 same-strength callbacks, piston acceptance, transient head/payload occupancy,
 observer pulses, motion identities/progress and live reset continuation.
@@ -181,7 +181,7 @@ Replace settled-edge delivery and Boolean `delivered` coalescing at these bounda
 
 The existing Direct fanout groups targets by node type, and `set_node` suppresses equal-strength link updates. Neither establishes native notification order. Introduce ordered routes only for the affected timed/sampling boundaries, keeping ordinary maximum-strength propagation for stable purely electrical graph paths.
 
-Reach: `analysis/ports.rs`, `instant/sampling.rs`, `instant/regions.rs`, `backend/direct/compile.rs`, `backend/direct/mod.rs`, `backend/direct/update.rs`, `backend/direct/tick.rs`, and the shared queue. Retain the proposed ownership and boundary principles in [REDPILER_PARTIAL_COMPILATION.md](../../../docs/REDPILER_PARTIAL_COMPILATION.md); a full partial-compilation framework is not a prerequisite for these bounded cases.
+Reach: `analysis/ports.rs`, `instant/sampling.rs`, `instant/regions.rs`, `backend/direct/compile.rs`, `backend/direct/mod.rs`, `backend/direct/update.rs`, `backend/direct/tick.rs`, and the shared queue. Retain the proposed ownership and boundary principles in [REDPILER_PARTIAL_COMPILATION.md](../../../docs/notes/REDPILER_PARTIAL_COMPILATION.md); a full partial-compilation framework is not a prerequisite for these bounded cases.
 
 ### 4 Admit the BUD switches with default flags
 

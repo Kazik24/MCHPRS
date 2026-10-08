@@ -83,7 +83,7 @@ waive its plot or packet validation.
 | `/toggleautorp` | `mchprs.commands.toggleautorp` |
 | `/rhistory` | `mchprs.commands.rhistory` plus the requested subcommand node |
 | `/back` | `mchprs.commands.rback` |
-| `/git` | `mchprs.commands.git`; see [Plot Git](PLOT_GIT.md) for ownership/admin rules |
+| `/git` | `mchprs.commands.git` |
 
 Command spelling and permission spelling are separate: `/tps`, `/adv`, and
 `/back` retain the legacy permission-node names above. `/rtps`, `/radv`,

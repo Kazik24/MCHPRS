@@ -6,7 +6,7 @@ The [earlier inventory and replay results](ANPU_PISTON_DOMAINS.md) remain the
 behavioral reference. No schematic, frozen expectation, or production compiler
 code was changed for this investigation.
 
-The [partial compilation project scope](../REDPILER_PARTIAL_COMPILATION.md)
+The [partial compilation project scope](../notes/REDPILER_PARTIAL_COMPILATION.md)
 defines the general feature, implementation gates, and release acceptance. In
 particular, its first actuator slice precedes concrete/BUD admission, and
 native-read consumer inputs must also be refreshed at scheduled execution.

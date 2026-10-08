@@ -9,30 +9,30 @@ piston regions evaluate conditional geometry and explicitly sampled state.
 This document describes the current Rust implementation. The source is the
 authority; structural recognition, logical execution, and compatibility with a
 physical Minecraft waveform are different claims. Detailed companion references
-are the [parser](docs/REDPILER_PARSER.md),
-[optimizer](docs/REDPILER_OPTIMIZER.md),
-[compiled model](docs/REDPILER_MODEL.md), and
-[physical piston model](docs/PISTON_MODEL.md).
+are the [parser](REDPILER_PARSER.md),
+[optimizer](REDPILER_OPTIMIZER.md),
+[compiled model](REDPILER_MODEL.md), and
+[physical piston model](PISTON_MODEL.md).
 
 ## 1. Implementation map
 
 | Responsibility | Implementation | Result |
 | --- | --- | --- |
-| Compilation lifecycle | [redpiler/mod.rs](crates/core/src/redpiler/mod.rs) | Options, activation, diagnostics, statistics, reset |
-| Structural inference | [analysis/](crates/core/src/redpiler/analysis/mod.rs) | Piston geometry, payload ownership, reset candidates, power and update dependencies |
-| Region admission | [instant/program.rs](crates/core/src/redpiler/instant/program.rs), [regions.rs](crates/core/src/redpiler/instant/regions.rs) | Validated region programs and ordinary graph boundaries |
-| Conditional geometry solver | [instant/logic.rs](crates/core/src/redpiler/instant/logic.rs), [boolean.rs](crates/core/src/redpiler/instant/boolean.rs) | Boolean response DAG, guarded electrical outputs, handoff expressions |
-| Observer reset proof | [instant/observer.rs](crates/core/src/redpiler/instant/observer.rs), [logic/sequential.rs](crates/core/src/redpiler/instant/logic/sequential.rs) | Owned reset circuitry and certified response actors |
-| Clock and storage inference | [instant/clocked.rs](crates/core/src/redpiler/instant/clocked.rs), [sampling.rs](crates/core/src/redpiler/instant/sampling.rs) | Memory cells and their explicit write events |
-| Electrical graph optimization | [passes/](crates/core/src/redpiler/passes/mod.rs) | Prepared and optionally reduced `CompileGraph` |
-| Runtime lowering | [backend/direct/compile.rs](crates/core/src/redpiler/backend/direct/compile.rs) | Dense nodes, packed links, region bindings, transferred ticks |
-| Electrical execution | [backend/direct/mod.rs](crates/core/src/redpiler/backend/direct/mod.rs), [update.rs](crates/core/src/redpiler/backend/direct/update.rs), [tick.rs](crates/core/src/redpiler/backend/direct/tick.rs) | Input propagation, scheduled component transitions, world output events |
-| Logical piston execution | [backend/direct/instant.rs](crates/core/src/redpiler/backend/direct/instant.rs), [instant/logical.rs](crates/core/src/redpiler/backend/direct/instant/logical.rs) | Cached decisions, frozen snapshots, memory commits, settled geometry |
-| Independent Boolean optimizer | [redpiler_opt/src/lib.rs](crates/redpiler_opt/src/lib.rs) | Pure Boolean plans; currently separate from the server compiler |
+| Compilation lifecycle | [redpiler/mod.rs](../crates/core/src/redpiler/mod.rs) | Options, activation, diagnostics, statistics, reset |
+| Structural inference | [analysis/](../crates/core/src/redpiler/analysis/mod.rs) | Piston geometry, payload ownership, reset candidates, power and update dependencies |
+| Region admission | [instant/program.rs](../crates/core/src/redpiler/instant/program.rs), [regions.rs](../crates/core/src/redpiler/instant/regions.rs) | Validated region programs and ordinary graph boundaries |
+| Conditional geometry solver | [instant/logic.rs](../crates/core/src/redpiler/instant/logic.rs), [boolean.rs](../crates/core/src/redpiler/instant/boolean.rs) | Boolean response DAG, guarded electrical outputs, handoff expressions |
+| Observer reset proof | [instant/observer.rs](../crates/core/src/redpiler/instant/observer.rs), [logic/sequential.rs](../crates/core/src/redpiler/instant/logic/sequential.rs) | Owned reset circuitry and certified response actors |
+| Clock and storage inference | [instant/clocked.rs](../crates/core/src/redpiler/instant/clocked.rs), [sampling.rs](../crates/core/src/redpiler/instant/sampling.rs) | Memory cells and their explicit write events |
+| Electrical graph optimization | [passes/](../crates/core/src/redpiler/passes/mod.rs) | Prepared and optionally reduced `CompileGraph` |
+| Runtime lowering | [backend/direct/compile.rs](../crates/core/src/redpiler/backend/direct/compile.rs) | Dense nodes, packed links, region bindings, transferred ticks |
+| Electrical execution | [backend/direct/mod.rs](../crates/core/src/redpiler/backend/direct/mod.rs), [update.rs](../crates/core/src/redpiler/backend/direct/update.rs), [tick.rs](../crates/core/src/redpiler/backend/direct/tick.rs) | Input propagation, scheduled component transitions, world output events |
+| Logical piston execution | [backend/direct/instant.rs](../crates/core/src/redpiler/backend/direct/instant.rs), [instant/logical.rs](../crates/core/src/redpiler/backend/direct/instant/logical.rs) | Cached decisions, frozen snapshots, memory commits, settled geometry |
+| Independent Boolean optimizer | [redpiler_opt/src/lib.rs](../crates/redpiler_opt/src/lib.rs) | Pure Boolean plans; currently separate from the server compiler |
 
 ## 2. Compilation lifecycle and representations
 
-[`Compiler::compile`](crates/core/src/redpiler/mod.rs) accepts a world view,
+[`Compiler::compile`](../crates/core/src/redpiler/mod.rs) accepts a world view,
 inclusive bounds, saved `TickEntry` work, `CompilerOptions`, and a shared
 `TaskMonitor`. The server command supplies the current plot's corners.
 
@@ -75,7 +75,7 @@ command resets an existing compiler first. A failed attempt never publishes
 partial statistics or consumes interpreter scheduling ownership. Requested
 export files are separate side effects and are not rolled back on later failure.
 
-[`Plot::start_redpiler`](crates/core/src/plot/mod.rs) compiles in a scoped worker
+[`Plot::start_redpiler`](../crates/core/src/plot/mod.rs) compiles in a scoped worker
 while servicing player connections. Success transfers simulation ownership by
 clearing the world's scheduler and invalidating its tick index. The plot also
 closes containers, disables plot history when enabled, and updates its scoreboard.
@@ -89,7 +89,7 @@ schematic names, signs, known arithmetic functions, or bit coordinates.
 
 ### Geometry and ownership
 
-[`analysis::analyze`](crates/core/src/redpiler/analysis/mod.rs) normalizes bounds,
+[`analysis::analyze`](../crates/core/src/redpiler/analysis/mod.rs) normalizes bounds,
 requires loaded chunks, skips empty sections, and inventories live pistons,
 heads, observers, consumers, and pending work. Each `PistonDescriptor` records
 the base, facing, saved pose, present power, head, payload, reset seeds, and
@@ -100,20 +100,20 @@ Union-find groups pistons whose possible near/far payload positions overlap.
 This preserves one payload identity across physical aliases. An empty ordinary
 generator has a base/head footprint rather than an assumed pulled far payload.
 
-[`Topology`](crates/core/src/redpiler/analysis/topology.rs) follows directional
+[`Topology`](../crates/core/src/redpiler/analysis/topology.rs) follows directional
 weak/strong power, conductors, and dust attenuation. It labels direct versus
 quasi-connectivity routes and ordinary, constant, observer, or mobile sources.
 Mobile redstone blocks remain dynamic even when their saved strength is 15.
 
 ### Reset recognition and notification channels
 
-[`families.rs`](crates/core/src/redpiler/analysis/families.rs) recognizes observer
+[`families.rs`](../crates/core/src/redpiler/analysis/families.rs) recognizes observer
 above, torch, dust below head, and lateral dust reset paths. It records support,
 return routes, supply ownership, and failures such as active reset work or an
 additional writer. A matched path is a structural candidate, not authorization
 to execute it.
 
-[`ports.rs`](crates/core/src/redpiler/analysis/ports.rs) separately discovers
+[`ports.rs`](../crates/core/src/redpiler/analysis/ports.rs) separately discovers
 electrical inputs, wire/head/base notifications, ordinary consumer interfaces, and
 exposed reset signals. Quasi-connectivity may supply power without delivering a
 base recheck. Conversely, a qualifying update may sample unchanged low data.
@@ -123,7 +123,7 @@ Base-to-head routes carry a head-presence condition. Discovery of such a route
 does not certify its movement/reset timing or make it executable by the instant
 sampler; an unsupported route reports its source and receiver explicitly.
 
-[`regions::split`](crates/core/src/redpiler/instant/regions.rs) joins actors by
+[`regions::split`](../crates/core/src/redpiler/instant/regions.rs) joins actors by
 shared payload/reset ownership, electrical influence, observer connectivity, and
 sampling dependencies. It conservatively joins moving geometry within two cells
 of a dependency, which can merge otherwise independent nearby circuits. Sharing
@@ -131,14 +131,14 @@ an ordinary control alone does not establish shared moving ownership.
 
 ### Storage and clock inference
 
-[`clocked::recognize`](crates/core/src/redpiler/instant/clocked.rs) recognizes a
+[`clocked::recognize`](../crates/core/src/redpiler/instant/clocked.rs) recognizes a
 specific empty downward observer-clock generator and its independently sampled
 BUD bank. It requires one owned generator per such region, a sampling observer,
 and supported memory geometry. Validation requires a single ordinary torch
 control for the response network and proves that clock control is independent
 of stored data and releases when torch power disappears.
 
-[`sampling::recognize`](crates/core/src/redpiler/instant/sampling.rs) identifies
+[`sampling::recognize`](../crates/core/src/redpiler/instant/sampling.rs) identifies
 independent memory cells, empty notification generators, and delivered write
 events. A source can be a generator pose change or a strength change on static
 dust driven by one fixed writer. Head-delivered targets retain a
@@ -153,7 +153,7 @@ arbitrary feedback by searching for a fixed point.
 
 ### Extracting conditional electrical paths
 
-[`Extractor`](crates/core/src/redpiler/instant/logic.rs) maps bases, near cells,
+[`Extractor`](../crates/core/src/redpiler/instant/logic.rs) maps bases, near cells,
 and far cells to actors and payload groups. A spatial position can have several
 possible blocks, each guarded by a Boolean expression. It enumerates local owner
 assignments, merges identical block variants, derives conditional dust shapes,
@@ -178,7 +178,7 @@ while response actors can depend on other response actors.
 
 ### Decision arena and dependency solving
 
-[`BooleanArena`](crates/core/src/redpiler/instant/boolean.rs) represents false
+[`BooleanArena`](../crates/core/src/redpiler/instant/boolean.rs) represents false
 and true as expression IDs 0 and 1. Every other expression references
 `Decision { variable, low, high }`. Variables include signal thresholds,
 provisional actuator responses, memory, and geometry; the certification oracle
@@ -203,8 +203,8 @@ decisions remain in the arena but need not enter the active runtime plans.
 
 ### Observer certification as conservative inference
 
-[`observer::certify`](crates/core/src/redpiler/instant/observer.rs) uses
-[`logic::sequential::extract`](crates/core/src/redpiler/instant/logic/sequential.rs)
+[`observer::certify`](../crates/core/src/redpiler/instant/observer.rs) uses
+[`logic::sequential::extract`](../crates/core/src/redpiler/instant/logic/sequential.rs)
 as a compile-time oracle for local wire sensors, observer inputs, geometry, and
 notifications. It finds the reset influence cone, checks exposure to ordinary
 outputs and independent samplers, and identifies electrical and notification-only
@@ -223,7 +223,7 @@ dependencies. Their names do not indicate an active movement executor.
 
 ## 5. Instant piston admission and execution
 
-[`program::prepare`](crates/core/src/redpiler/instant/program.rs) prepares all
+[`program::prepare`](../crates/core/src/redpiler/instant/program.rs) prepares all
 regions before running the shared electrical graph pipeline. It requires entry
 between ticks, no active piston events/motions/movement work, and a selection
 within one plot. Region preparation validates payload identity and destination,
@@ -244,14 +244,14 @@ The two admission policies select the same logical executor:
 | `--assume-instant` | Trusts instant/BUD construction and skips selected reset/direction proofs; still validates geometry, ownership, sampling, data dependencies, and acyclicity | The same cached logical regions |
 
 Default admission does not enable movement delays or replay physical reset
-waveforms. [`Runtime::bind`](crates/core/src/redpiler/backend/direct/instant.rs)
+waveforms. [`Runtime::bind`](../crates/core/src/redpiler/backend/direct/instant.rs)
 unconditionally creates `logical::State`, and preparation always uses
 `extract_ideal_with_state`. Older first-response extraction helpers and physical
 interpreter tests exist, but do not define the active backend's piston timing.
 
 ### Connecting logical regions to the ordinary graph
 
-[`Boundaries`](crates/core/src/redpiler/instant/boundary.rs) removes owned
+[`Boundaries`](../crates/core/src/redpiler/instant/boundary.rs) removes owned
 internals from ordinary node identification, retains ordinary sources needed for
 binding, and supplies dynamic mobile aliases and projected consumer outputs.
 `MobileSource` and `InstantOutput` lower to `InstantSource` runtime nodes.
@@ -271,7 +271,7 @@ Shared groups choose the first fired actor as deterministic near-payload owner.
 
 ### Cached runtime plans
 
-[`logical::Plan`](crates/core/src/redpiler/backend/direct/instant/logical.rs)
+[`logical::Plan`](../crates/core/src/redpiler/backend/direct/instant/logical.rs)
 binds separate plans for responses, outputs, and sampling guards. Binding checks
 expression references, response order, allowed input kinds, and dependency
 cycles, then keeps only reachable decisions and deduplicates input/threshold
@@ -311,7 +311,7 @@ Boolean simplification or cached logical execution.
 
 ### Electrical graph passes
 
-[`passes::run_passes`](crates/core/src/redpiler/passes/mod.rs) uses this fixed order:
+[`passes::run_passes`](../crates/core/src/redpiler/passes/mod.rs) uses this fixed order:
 
 | Order | Pass | Enabled | Purpose |
 | --- | --- | --- | --- |
@@ -337,12 +337,12 @@ constant strength without applying side-edge attenuation or accounting for a
 larger saved comparator output. Logic coalescing does not compare sibling input
 attenuation or separately require the sibling channel to match. These passes
 are not universal equivalence proofs for arbitrary analog graphs. The
-[optimizer reference](docs/REDPILER_OPTIMIZER.md) records the actual guards and
+[optimizer reference](REDPILER_OPTIMIZER.md) records the actual guards and
 counterexamples; backend validation does not repair an incorrect rewrite.
 
 ### Independent pure Boolean optimizer
 
-[`mchprs_redpiler_opt`](crates/redpiler_opt/src/lib.rs) defines `Circuit`, `Op`,
+[`mchprs_redpiler_opt`](../crates/redpiler_opt/src/lib.rs) defines `Circuit`, `Op`,
 and a dense `Plan` for input, constant, buffer, NOT, AND, OR, XOR, and select
 operations. It validates declared inputs, operands, roots, and cycles, builds a
 topological reference, then applies one rewrite sweep, structural sharing,
@@ -357,7 +357,7 @@ server's graph passes or cached decision plans.
 
 ## 7. Direct backend and execution order
 
-[`direct::compile`](crates/core/src/redpiler/backend/direct/compile.rs) maps
+[`direct::compile`](../crates/core/src/redpiler/backend/direct/compile.rs) maps
 stable graph indices to dense `NodeId`s, initializes nodes from saved state,
 binds world positions and region outputs, builds observer/dependency tables, and
 transfers retained scheduled ticks with remaining half-tick deadlines and
@@ -371,15 +371,15 @@ bucket is occupied. Runtime execution follows compiled links instead of walking
 neighbor blocks.
 
 Lowering validates strengths and limits incoming edges to 255 per channel.
-[`ForwardLink`](crates/core/src/redpiler/backend/direct/node.rs) packs a 27-bit
+[`ForwardLink`](../crates/core/src/redpiler/backend/direct/node.rs) packs a 27-bit
 target ID, one side-channel bit, and four attenuation bits. Fixed node storage
 and validated IDs support unchecked indexing on hot paths.
 
-[`update.rs`](crates/core/src/redpiler/backend/direct/update.rs) reevaluates
-inputs and requests work; [`tick.rs`](crates/core/src/redpiler/backend/direct/tick.rs)
+[`update.rs`](../crates/core/src/redpiler/backend/direct/update.rs) reevaluates
+inputs and requests work; [`tick.rs`](../crates/core/src/redpiler/backend/direct/tick.rs)
 applies scheduled transitions and propagates new outputs. This separation
 preserves repeater locking/delay, comparator timing, observer pulses, and delayed
-lamp turn-off. [`TickScheduler`](crates/core/src/redpiler/backend/queue.rs) is a
+lamp turn-off. [`TickScheduler`](../crates/core/src/redpiler/backend/queue.rs) is a
 32-slot half-tick ring with FIFO queues per priority; redstone-tick delays are
 converted to twice as many slots. It is not an arbitrary-duration scheduler.
 
@@ -431,13 +431,13 @@ Edits that change compiler input geometry must end compiler ownership first.
 Lever/button use and pressure-plate changes have compiled input paths; other
 interaction rules live in the plot/player callers. The proposed mixed
 native/compiled ownership design in
-[partial compilation scope](docs/REDPILER_PARTIAL_COMPILATION.md) is a plan,
+[partial compilation scope](notes/REDPILER_PARTIAL_COMPILATION.md) is a plan,
 not an implemented fallback for rejected piston regions.
 
 ## 9. Commands, limits, and verification
 
 `/rp` and `/redpiler` are aliases, implemented in
-[plot/commands.rs](crates/core/src/plot/commands.rs).
+[plot/commands.rs](../crates/core/src/plot/commands.rs).
 
 | Command or flag | Behavior |
 | --- | --- |
@@ -481,7 +481,7 @@ python tools/validate_docs.py
 ```
 
 For implementation changes, select relevant checks from the
-[test guide](docs/tests/README.md). The main compiler suite is:
+[test guide](tests/README.md). The main compiler suite is:
 
 ```sh
 cargo test -p mchprs_core --lib --locked redpiler::
@@ -492,7 +492,7 @@ cancellation, shared roots, invalidation, threshold handling, and frozen memory
 snapshots. Analysis tests cover geometry admission, rejected input without world
 mutation, electrical output strengths, observer ownership, independent write
 ordering, clock banks, and reset/recompile continuity. Physical interpreter
-protocols have [separate tests](docs/tests/INSTANT_PISTONS.md); a matching logical
+protocols have [separate tests](tests/INSTANT_PISTONS.md); a matching logical
 output is not evidence that intermediate physical motion or reset pulses match.
 The isolated Boolean optimizer can be checked separately with:
 

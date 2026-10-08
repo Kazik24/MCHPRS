@@ -5,10 +5,10 @@ instant notification delivery, and partial native/compiled execution. This
 document defines their common contract, delivery order, and acceptance gates.
 BUD presentation is implemented; general notification execution and native
 boundaries remain proposed. Current changes do not extend admission or claim
-PM1 replay equivalence. The [execution model](REDPILER_MODEL.md),
-[physical piston model](PISTON_MODEL.md),
-[ANPU investigation](tests/ANPU_PISTON_DOMAINS.md), and
-[boundary design](tests/ANPU_PHYSICAL_DOMAIN_MODEL.md) provide context. Current
+PM1 replay equivalence. The [execution model](../REDPILER_MODEL.md),
+[physical piston model](../PISTON_MODEL.md),
+[ANPU investigation](../tests/ANPU_PISTON_DOMAINS.md), and
+[boundary design](../tests/ANPU_PHYSICAL_DOMAIN_MODEL.md) provide context. Current
 source and runnable regressions take precedence over historical descriptions.
 
 ## Objective
@@ -28,12 +28,12 @@ with internal effects collapsed only under a verified observation contract.
 
 ## Current implementation and actual gaps
 
-[Preparation](../crates/core/src/redpiler/instant/program.rs) unconditionally
+[Preparation](../../crates/core/src/redpiler/instant/program.rs) unconditionally
 extracts ideal logic, and the active
-[runtime](../crates/core/src/redpiler/backend/direct/instant.rs) uses cached
+[runtime](../../crates/core/src/redpiler/backend/direct/instant.rs) uses cached
 logical decisions. Default compilation and `--assume-instant` already share
 execution semantics; the flag relaxes construction proofs. The
-[counter regression](../crates/core/src/redpiler/analysis/tests/ideal.rs)
+[counter regression](../../crates/core/src/redpiler/analysis/tests/ideal.rs)
 checks the same atomic six-step commits, hold, and restart under all four
 optimization/assumption combinations. Preserve this contract.
 
@@ -44,10 +44,10 @@ do not revive a second physical simulator based on those descriptions.
 
 The relevant gaps are concrete:
 
-- [Clock recognition](../crates/core/src/redpiler/instant/clocked.rs) runs before
+- [Clock recognition](../../crates/core/src/redpiler/instant/clocked.rs) runs before
   independent sampling and rejects multiple clock-shaped candidates. A failed
   specialization currently prevents a general notification interpretation.
-- [Independent sampling](../crates/core/src/redpiler/instant/sampling.rs) already
+- [Independent sampling](../../crates/core/src/redpiler/instant/sampling.rs) already
   represents multiple generators and recipients, but restricts dust writers,
   rejects stored-state generator control, and does not establish every valid
   observer/dust route.
@@ -55,13 +55,13 @@ The relevant gaps are concrete:
   coordinate-sorted writer groups do not establish callback order. Ordinary
   graph propagation also suppresses equal-strength emissions and groups fanout
   by node type. These are correctness gaps, not generator-count limits.
-- [Flush](../crates/core/src/redpiler/backend/direct/mod.rs) now publishes
+- [Flush](../../crates/core/src/redpiler/backend/direct/mod.rs) now publishes
   committed BUD poses independently of observer bookkeeping. Manual `/adv`
   flushes compiled state and delivers block changes after nonzero advancement.
 - Native and Direct execution have separate phase drivers and scheduler
   ownership. There is no mixed callback router or operation-preserving handoff.
 
-The [recorded PM1 investigation](tests/CPU_REFERENCES.md#fresh-pm1-compilation-save-2026-10-08)
+The [recorded PM1 investigation](../tests/CPU_REFERENCES.md#fresh-pm1-compilation-save-2026-10-08)
 found 51 candidate generators in one region. Normal analysis exhausted the
 piston budget; maximum analysis reached the single-generator rejection. An
 independent classifier probe failed at selection-local `(9,51,0)` because it
@@ -72,7 +72,7 @@ route from local `(8,50,0)` to `(9,50,0)`. A queued target retraction is cancell
 when power returns before event acceptance. Discovery now records that route
 and its head eligibility, but instant execution lacks the required ordered
 movement/reset timing certificate. See the
-[route evidence](tests/CPU_REFERENCES.md#pm1-base-to-head-route-and-cancelled-request-2026-10-08).
+[route evidence](../tests/CPU_REFERENCES.md#pm1-base-to-head-route-and-cancelled-request-2026-10-08).
 
 ## Common execution contract
 

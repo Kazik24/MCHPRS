@@ -2,7 +2,7 @@
 
 This document specifies the electrical and scheduling semantics implemented by MCHPRS. Its rules apply to arbitrary supported geometry and ordered input histories; schematic names, saved coordinates and particular output traces are not semantic inputs. The implementation is authoritative when it changes.
 
-The scope is `PlotWorld::tick_interpreted` and its immediate callbacks. [PISTON_MODEL.md](PISTON_MODEL.md) adds piston transport, quasi-connectivity, BUD storage and instant ordering to the same transition system. [REDPILER_MODEL.md](REDPILER_MODEL.md) defines the compiler abstraction; [Redpiler.md](Redpiler.md) maps that abstraction to the implementation. Regression protocols belong in [tests/README.md](tests/README.md).
+The scope is `PlotWorld::tick_interpreted` and its immediate callbacks. [PISTON_MODEL.md](PISTON_MODEL.md) adds piston transport, quasi-connectivity, BUD storage and instant ordering to the same transition system. [REDPILER_MODEL.md](REDPILER_MODEL.md) defines the compiler abstraction; [REDPILER_ARCHITECTURE.md](REDPILER_ARCHITECTURE.md) maps that abstraction to the implementation. Regression protocols belong in [tests/README.md](tests/README.md).
 
 All equations describe repository behavior. They are not an exhaustive specification of every Minecraft mechanic. A derived equilibrium or Boolean formula states its assumptions explicitly and does not replace the ordered callback procedures.
 
@@ -1345,7 +1345,7 @@ This model does not assume Minecraft's general push reactions, twelve-block pist
 
 Redpiler's optimized graph can merge or remove nodes. Equality of ordinary lamp outputs alone does not establish equality of observer callbacks, transient dust states, analog overrides, piston motions, or pending-request traces. Compiled execution needs a separate equivalence argument for the selected observables.
 
-For instant-piston compilation, event values, retained storage and electrical boundary strengths need separate decoders. An internal falling event does not impose inverted polarity on every ordinary consumer. The [Redpiler model](REDPILER_MODEL.md) states the abstraction and supported execution modes; [Redpiler architecture](Redpiler.md) explains their admission and runtime paths. Those compiler choices do not alter the physical rules specified here.
+For instant-piston compilation, event values, retained storage and electrical boundary strengths need separate decoders. An internal falling event does not impose inverted polarity on every ordinary consumer. The [Redpiler model](REDPILER_MODEL.md) states the abstraction and supported execution modes; [Redpiler architecture](REDPILER_ARCHITECTURE.md) explains their admission and runtime paths. Those compiler choices do not alter the physical rules specified here.
 
 ### 16.5 Implementation distinctions to preserve
 

@@ -1,0 +1,6384 @@
+{
+  "schema": 1,
+  "environment": {
+    "date": "2026-10-09",
+    "base_commit": "382b1e20974a086abf232d538fbe1787cbfb73de",
+    "rustc": "rustc 1.98.1 (48a229cea 2026-09-01)",
+    "cpu": {
+      "Name": "AMD Ryzen 9 5950X 16-Core Processor            ",
+      "NumberOfCores": 16,
+      "NumberOfLogicalProcessors": 32
+    },
+    "os": "Microsoft Windows NT 10.0.26200.0",
+    "profile": "release/bench, fat LTO",
+    "source": "HEAD archive in target/interpreter-opt-20261009/source; unrelated Redpiler working changes excluded",
+    "timer": "native interpreted simulation; no clients; CPU validation and imports outside timers; FPU input actions included",
+    "affinity_mask": 4,
+    "process_priority": "Normal",
+    "concurrent_load": "Initial round 1 overlapped compiler activity and is excluded. Measured rounds 2-4 run sequentially with no own builds; external load on the shared host is uncontrolled. All samples use logical CPU 2 affinity and Normal priority."
+  },
+  "baseline_source_archive_sha256": "2ac86d956862eaf4b6e2ead8a5605b702aa6ad0625c0ac3dcd9ad26d90d00bc8",
+  "baseline_native_source_sha256": {
+    "crates/core/src/redstone/piston.rs": "0c7f791cb88e92c915fb24d60e34b203a17f4289a22855ec0f78d7260736950a",
+    "crates/core/src/redstone/wire/turbo.rs": "11fd6c1983e8b1e13be15a8897dcfed4284d7f703168cc2a69ba2bdfe116df98",
+    "crates/core/src/redstone/wire/turbo_tests.rs": "87fca578be144b9be336885a2b196859db65e3791aea827cf03ee0d01490b38d",
+    "crates/core/src/world/mod.rs": "96a44032ef4b47114111a4112eff17e9d58c0b5417c39b0bc6a90b3b78ede680",
+    "crates/core/src/world/storage.rs": "3d00d5ba4453f71ddf3fa02fbc54031547b9e716e0708982e84f3b8429b532dc",
+    "crates/core/src/world/wire_cache.rs": "ebe5bbbdf3406d0c121cef7fccec26087f7b070046aa0f06235ef599bff2ae23",
+    "crates/core/src/plot/mod.rs": "21b88a3a3a0d524f5495dab7103825bd32fc7e0ae66f7b0e1841541a7589efe2"
+  },
+  "candidate_native_source_sha256": {
+    "crates/core/src/plot/mod.rs": "c9075eaf06ba61f7737d78d5c8a1b85ba07c60327260907a96336f3124feb951",
+    "crates/core/src/world/mod.rs": "318f07fe340fed519c8eee6e9ad1631f5d75c56dacfc89341369eada55fd868a",
+    "crates/core/src/world/storage.rs": "eaf7292aca55b3f5e82499a849f84757ff857eacf369bb1d0aebd92feb3e13df",
+    "crates/core/src/world/instant_piston.rs": "9fd1481db631a6b99467cf1fffb4e50b78bdb777ed4f9437fd0c39c84f4e52f5",
+    "crates/core/src/redstone/piston.rs": "ab98c39114aee0a60cbac67ef30b14ab698380c41fd42dd63eeeae4cb6baa428",
+    "crates/core/src/redstone/piston/instant.rs": "f07a1bb2c236d11d7b08e1fce1d5ff6efa16c3a5e71c3285b4b87124795f0ff2"
+  },
+  "binary_sha256": {
+    "baseline": {
+      "cpus": "f6e7a123b84b5edc1e2190c146b2731a8b4bdba7f9c8de4d9ce99ab7ea0569bb",
+      "instant": "6b253f90da86507ce853769bdcde69296babbadcd3887994370c6cbbc6077d08",
+      "piston": "0eef5c496fd19f0b1eca6f2fed9a2b249859a8ddab581f4deb892ea55f4ccea8"
+    },
+    "optimized": {
+      "cpus": "f5fe59aca821067155dc87e295e713259a75538baf1d03eb1608fb4403de0e7b",
+      "instant": "c93135e3942a2c89ec8c40951b9514a631041249f261e3a27ab7449ddc127e97",
+      "piston": "cad4047a493410304eb117b8d0ad86b877bb728b19cecb688b3b31124e012c85"
+    }
+  },
+  "benchmark_source_sha256": {
+    "cpus.rs": "37632fdfa62841ad5e893bbf015b6502c6c0a5f292047cda1b57a4322762cc73",
+    "instant.rs": "9093b8154c2b21502e195d4d26629869d95fb4a1c45b9d296cfb37dddbc6340c",
+    "support/cpus.rs": "8e866f321bb9321943bf7d079fac2063c93564789eb212fb9e012d6325c6ae2b"
+  },
+  "change": "Runtime proof of an observer-above single-redstone-block retract/reset cycle enables compact addresses for the original eleven live power queries and their six strong-source inputs. One address set is reused across cycles; native electrical values, callbacks, event order and motion timing remain unchanged.",
+  "cache_stats_columns": [
+    "currently_tracked_actors",
+    "currently_proven_actors",
+    "power_route_cache_hits_including_untimed_warmup"
+  ],
+  "sample_selection": "Initial round 1 excluded because of overlapping compiler activity. One complete paired run of all five workloads, a second complete candidate repeat, and a second paired FPU/PC_COUNTER run completed. Remaining CPU baseline and round 4 stopped when the user requested wrap-up. Shared-host timing is preliminary.",
+  "execution_order": [
+    "baseline-2",
+    "optimized-2",
+    "optimized-3",
+    "baseline-3 (FPU/PC_COUNTER only)"
+  ],
+  "benchmark_difference": "Candidate reports final cache counters outside timing; timer boundaries and native stimulus are identical to the baseline.",
+  "verification": {
+    "redstone": {
+      "passed": 122,
+      "ignored": 4
+    },
+    "world": {
+      "passed": 18,
+      "ignored": 0
+    },
+    "plot": {
+      "passed": 268,
+      "ignored": 1
+    },
+    "test_config": "MCHPRS_CONFIG points at the root Config.toml; the ignored crates/core/Config.toml has a WorldEdit cap smaller than PM1 and causes its independent size-limit test to fail.",
+    "cpu_assertions": "Frozen whole-world checkpoints, ordered chat, per-tick Pong screen and BubbleSort RAM, halt boundary, all full 50000-tick replay assertions retained.",
+    "native_port_assertions": "FPU and PC_COUNTER every measured output word and final whole-world checkpoint equal the frozen baseline; PC_COUNTER peaks exactly 1..682."
+  },
+  "workloads": [
+    {
+      "workload": "fpu",
+      "samples": {
+        "baseline": [
+          {
+            "round": 2,
+            "seconds": 5.9978394999999995,
+            "report_sha256": "5987061fec588594be3e5549896de80ab956768b022140976d7987ec9cb293e3",
+            "all_assertions_passed": true,
+            "instant_piston_cache_stats": null
+          },
+          {
+            "round": 3,
+            "seconds": 5.5338234,
+            "report_sha256": "adbbd779103a41bd1e9dc29a30455bf430eb95b918b093eb5d72a43b95f25a06",
+            "all_assertions_passed": true,
+            "instant_piston_cache_stats": null
+          }
+        ],
+        "optimized": [
+          {
+            "round": 2,
+            "seconds": 5.4665019,
+            "report_sha256": "71126c49ab2637015da15b58d038f82fa10ece2f35b24f5d51fda406b3d3021d",
+            "all_assertions_passed": true,
+            "instant_piston_cache_stats": [
+              1640,
+              1640,
+              2138380
+            ]
+          },
+          {
+            "round": 3,
+            "seconds": 5.4213683,
+            "report_sha256": "dba5fa268b43ae2b09964e0848aeb774dfb113c55c253cedc01f3bad135338cb",
+            "all_assertions_passed": true,
+            "instant_piston_cache_stats": [
+              1640,
+              1640,
+              2138380
+            ]
+          }
+        ]
+      },
+      "output_activity_confirmed": false,
+      "measurement": "Native stimulus and tick cost including both OFF/ON phases; no arithmetic throughput claim.",
+      "stimulus": {
+        "workload": "random",
+        "seed": 5567373074175828006,
+        "episodes": 8,
+        "input_every_game_ticks": 128,
+        "input_protocol_id": "native-fpu-cycled-off-inputs-on-v1"
+      },
+      "baseline_median_seconds": 5.76583145,
+      "baseline_seconds_range": [
+        5.5338234,
+        5.9978394999999995
+      ],
+      "baseline_game_ticks_per_second": 355.19595356884736,
+      "optimized_median_seconds": 5.4439351,
+      "optimized_seconds_range": [
+        5.4213683,
+        5.4665019
+      ],
+      "optimized_game_ticks_per_second": 376.1984598236669,
+      "schematic_sha256": "704016b6900ec22ff0d37184de480a5c9965fd390b7bcf7c3f23d7677048c391",
+      "paired_rounds": [
+        2,
+        3
+      ],
+      "measured_game_ticks": 2048,
+      "time_reduction_percent": 5.582826220145587,
+      "speedup": 1.0591293511195605
+    },
+    {
+      "workload": "pc-counter",
+      "samples": {
+        "baseline": [
+          {
+            "round": 2,
+            "seconds": 3.6166136,
+            "report_sha256": "180b31770538f9ccdaaea474b99839b4d8d140e88832032ff6ec043d1a443225",
+            "all_assertions_passed": true,
+            "instant_piston_cache_stats": null
+          },
+          {
+            "round": 3,
+            "seconds": 3.6568072000000003,
+            "report_sha256": "5cba211cfcd7f0157c9a8782945bf8a951b5e2ca1780f1bf8adcf7889aacaac0",
+            "all_assertions_passed": true,
+            "instant_piston_cache_stats": null
+          }
+        ],
+        "optimized": [
+          {
+            "round": 2,
+            "seconds": 3.4775607,
+            "report_sha256": "ac389224ab6dfb88f6bc01478629816c39419296ee2ad46dc525a1d10b9d6545",
+            "all_assertions_passed": true,
+            "instant_piston_cache_stats": [
+              139,
+              139,
+              1300403
+            ]
+          },
+          {
+            "round": 3,
+            "seconds": 3.4725419,
+            "report_sha256": "dd8beca7edd8c46b196bc97d653ea58f663f6ffee600cd04897a0a5af26f856c",
+            "all_assertions_passed": true,
+            "instant_piston_cache_stats": [
+              139,
+              139,
+              1300403
+            ]
+          }
+        ]
+      },
+      "measurement": "4096 active native counter ticks; stimulus, observations and state checks excluded.",
+      "baseline_median_seconds": 3.6367104,
+      "baseline_seconds_range": [
+        3.6166136,
+        3.6568072000000003
+      ],
+      "baseline_game_ticks_per_second": 1126.292596737975,
+      "optimized_median_seconds": 3.4750513,
+      "optimized_seconds_range": [
+        3.4725419,
+        3.4775607
+      ],
+      "optimized_game_ticks_per_second": 1178.687635489007,
+      "schematic_sha256": "641c50d1903ccf3715759007d5b82e0f04786020d8cce80fbdbb4a3c8a3596f7",
+      "paired_rounds": [
+        2,
+        3
+      ],
+      "measured_game_ticks": 4096,
+      "time_reduction_percent": 4.445201355598726,
+      "speedup": 1.0465199175620803
+    },
+    {
+      "workload": "pm1_sort",
+      "samples": {
+        "baseline": [
+          {
+            "round": 2,
+            "seconds": 67.3538079,
+            "report_sha256": "f65ed30b23d8a3eebaee144c3b25d253780a381e0b26061d5b1aafb4fcd75ec5",
+            "all_assertions_passed": true,
+            "instant_piston_cache_stats": null,
+            "full_50000_ticks_seconds": 67.3613516
+          }
+        ],
+        "optimized": [
+          {
+            "round": 2,
+            "seconds": 62.1117006,
+            "report_sha256": "5a11a1553b1d1a8341d459943cde4a28722dd8a94c2bb0cd53cfdec2979f9c03",
+            "all_assertions_passed": true,
+            "instant_piston_cache_stats": [
+              [
+                1865,
+                1865,
+                7580478
+              ]
+            ],
+            "full_50000_ticks_seconds": 62.1188342
+          }
+        ]
+      },
+      "measurement": "Fixed active-window tick cost; full 50000-tick replay and frozen state, chat, screen/RAM and stop assertions retained.",
+      "baseline_median_seconds": 67.3538079,
+      "baseline_seconds_range": [
+        67.3538079,
+        67.3538079
+      ],
+      "baseline_game_ticks_per_second": 178.92084168265708,
+      "optimized_median_seconds": 62.1117006,
+      "optimized_seconds_range": [
+        62.1117006,
+        62.1117006
+      ],
+      "optimized_game_ticks_per_second": 194.02141438065857,
+      "schematic_sha256": "e338028d50a4400056e25037d1f43d37c08baed079edede6298f78b0a6341654",
+      "paired_rounds": [
+        2
+      ],
+      "measured_game_ticks": 12051,
+      "time_reduction_percent": 7.7829412522346875,
+      "speedup": 1.0843980642835596,
+      "additional_candidate_repeat_seconds": 63.6049199,
+      "additional_candidate_repeat_cache_stats": [
+        [
+          1865,
+          1865,
+          7580478
+        ]
+      ]
+    },
+    {
+      "workload": "anpu_pong",
+      "samples": {
+        "baseline": [
+          {
+            "round": 2,
+            "seconds": 5.5632774000000005,
+            "report_sha256": "f65ed30b23d8a3eebaee144c3b25d253780a381e0b26061d5b1aafb4fcd75ec5",
+            "all_assertions_passed": true,
+            "instant_piston_cache_stats": null,
+            "full_50000_ticks_seconds": 5.5651037
+          }
+        ],
+        "optimized": [
+          {
+            "round": 2,
+            "seconds": 4.9199401,
+            "report_sha256": "5a11a1553b1d1a8341d459943cde4a28722dd8a94c2bb0cd53cfdec2979f9c03",
+            "all_assertions_passed": true,
+            "instant_piston_cache_stats": [
+              [
+                0,
+                0,
+                0
+              ]
+            ],
+            "full_50000_ticks_seconds": 4.9217176
+          }
+        ]
+      },
+      "measurement": "Fixed active-window tick cost; full 50000-tick replay and frozen state, chat, screen/RAM and stop assertions retained.",
+      "baseline_median_seconds": 5.5632774000000005,
+      "baseline_seconds_range": [
+        5.5632774000000005,
+        5.5632774000000005
+      ],
+      "baseline_game_ticks_per_second": 898.7507975065201,
+      "optimized_median_seconds": 4.9199401,
+      "optimized_seconds_range": [
+        4.9199401,
+        4.9199401
+      ],
+      "optimized_game_ticks_per_second": 1016.2725355131864,
+      "schematic_sha256": "f4068257797399531ce31d56c972af32d0f73f7d8d496ce1b7b8cd1c178decec",
+      "paired_rounds": [
+        2
+      ],
+      "measured_game_ticks": 5000,
+      "time_reduction_percent": 11.563998228813844,
+      "speedup": 1.1307612058122416,
+      "additional_candidate_repeat_seconds": 5.1772588,
+      "additional_candidate_repeat_cache_stats": [
+        [
+          0,
+          0,
+          0
+        ]
+      ],
+      "interpretation": "No admitted observer-above actors and zero cache hits. Its timing difference is a control for noise/compiler effects; it is not evidence of instant-cache acceleration."
+    },
+    {
+      "workload": "cpu_bubblesort",
+      "samples": {
+        "baseline": [
+          {
+            "round": 2,
+            "seconds": 75.0030024,
+            "report_sha256": "f65ed30b23d8a3eebaee144c3b25d253780a381e0b26061d5b1aafb4fcd75ec5",
+            "all_assertions_passed": true,
+            "instant_piston_cache_stats": null,
+            "full_50000_ticks_seconds": 75.0049253
+          }
+        ],
+        "optimized": [
+          {
+            "round": 2,
+            "seconds": 70.114088,
+            "report_sha256": "5a11a1553b1d1a8341d459943cde4a28722dd8a94c2bb0cd53cfdec2979f9c03",
+            "all_assertions_passed": true,
+            "instant_piston_cache_stats": [
+              [
+                3187,
+                3187,
+                13520186
+              ]
+            ],
+            "full_50000_ticks_seconds": 70.1156906
+          }
+        ]
+      },
+      "measurement": "Fixed active-window tick cost; full 50000-tick replay and frozen state, chat, screen/RAM and stop assertions retained.",
+      "baseline_median_seconds": 75.0030024,
+      "baseline_seconds_range": [
+        75.0030024,
+        75.0030024
+      ],
+      "baseline_game_ticks_per_second": 133.79464393281407,
+      "optimized_median_seconds": 70.114088,
+      "optimized_seconds_range": [
+        70.114088,
+        70.114088
+      ],
+      "optimized_game_ticks_per_second": 143.1238754756391,
+      "schematic_sha256": "907e74d6c4882d4c7065d55e0f8ec4cca8885a34f7af90ca51c060953badaf2c",
+      "paired_rounds": [
+        2
+      ],
+      "measured_game_ticks": 10035,
+      "time_reduction_percent": 6.51829159308428,
+      "speedup": 1.06972798961601,
+      "additional_candidate_repeat_seconds": 70.3961455,
+      "additional_candidate_repeat_cache_stats": [
+        [
+          3187,
+          3187,
+          13520186
+        ]
+      ]
+    }
+  ],
+  "fpu_control_diagnostics": [
+    {
+      "aux_dust_transition_ticks": 0,
+      "aux_outputs": [
+        {
+          "x": 210,
+          "y": 35,
+          "z": 72
+        },
+        {
+          "x": 210,
+          "y": 35,
+          "z": 76
+        },
+        {
+          "x": 210,
+          "y": 35,
+          "z": 80
+        },
+        {
+          "x": 210,
+          "y": 35,
+          "z": 84
+        },
+        {
+          "x": 210,
+          "y": 35,
+          "z": 88
+        },
+        {
+          "x": 210,
+          "y": 35,
+          "z": 92
+        },
+        {
+          "x": 210,
+          "y": 35,
+          "z": 96
+        },
+        {
+          "x": 210,
+          "y": 35,
+          "z": 100
+        },
+        {
+          "x": 210,
+          "y": 35,
+          "z": 104
+        },
+        {
+          "x": 210,
+          "y": 35,
+          "z": 108
+        },
+        {
+          "x": 210,
+          "y": 35,
+          "z": 112
+        },
+        {
+          "x": 210,
+          "y": 35,
+          "z": 116
+        },
+        {
+          "x": 210,
+          "y": 35,
+          "z": 120
+        },
+        {
+          "x": 210,
+          "y": 35,
+          "z": 124
+        },
+        {
+          "x": 210,
+          "y": 35,
+          "z": 128
+        },
+        {
+          "x": 210,
+          "y": 35,
+          "z": 132
+        }
+      ],
+      "case": "both_cycle",
+      "control_positions": [
+        {
+          "x": 46,
+          "y": 66,
+          "z": 116
+        },
+        {
+          "x": 42,
+          "y": 68,
+          "z": 121
+        }
+      ],
+      "fixture": "test_data/piston-research/fpu-piston-correct/fpu_pistion_correct.schem",
+      "fixture_sha256": "704016b6900ec22ff0d37184de480a5c9965fd390b7bcf7c3f23d7677048c391",
+      "hold_ticks": 128,
+      "imported_controls": [
+        true,
+        false
+      ],
+      "input_levers": [
+        {
+          "x": 43,
+          "y": 65,
+          "z": 48
+        },
+        {
+          "x": 43,
+          "y": 65,
+          "z": 52
+        },
+        {
+          "x": 43,
+          "y": 65,
+          "z": 56
+        },
+        {
+          "x": 43,
+          "y": 65,
+          "z": 60
+        },
+        {
+          "x": 43,
+          "y": 65,
+          "z": 64
+        },
+        {
+          "x": 43,
+          "y": 65,
+          "z": 68
+        },
+        {
+          "x": 43,
+          "y": 65,
+          "z": 72
+        },
+        {
+          "x": 43,
+          "y": 65,
+          "z": 76
+        },
+        {
+          "x": 43,
+          "y": 65,
+          "z": 80
+        },
+        {
+          "x": 43,
+          "y": 65,
+          "z": 84
+        },
+        {
+          "x": 43,
+          "y": 65,
+          "z": 88
+        },
+        {
+          "x": 43,
+          "y": 65,
+          "z": 92
+        },
+        {
+          "x": 43,
+          "y": 65,
+          "z": 96
+        },
+        {
+          "x": 43,
+          "y": 65,
+          "z": 100
+        },
+        {
+          "x": 43,
+          "y": 65,
+          "z": 104
+        },
+        {
+          "x": 43,
+          "y": 65,
+          "z": 108
+        },
+        {
+          "x": 43,
+          "y": 65,
+          "z": 50
+        },
+        {
+          "x": 43,
+          "y": 65,
+          "z": 54
+        },
+        {
+          "x": 43,
+          "y": 65,
+          "z": 58
+        },
+        {
+          "x": 43,
+          "y": 65,
+          "z": 62
+        },
+        {
+          "x": 43,
+          "y": 65,
+          "z": 66
+        },
+        {
+          "x": 43,
+          "y": 65,
+          "z": 70
+        },
+        {
+          "x": 43,
+          "y": 65,
+          "z": 74
+        },
+        {
+          "x": 43,
+          "y": 65,
+          "z": 78
+        },
+        {
+          "x": 43,
+          "y": 65,
+          "z": 82
+        },
+        {
+          "x": 43,
+          "y": 65,
+          "z": 86
+        },
+        {
+          "x": 43,
+          "y": 65,
+          "z": 90
+        },
+        {
+          "x": 43,
+          "y": 65,
+          "z": 94
+        },
+        {
+          "x": 43,
+          "y": 65,
+          "z": 98
+        },
+        {
+          "x": 43,
+          "y": 65,
+          "z": 102
+        },
+        {
+          "x": 43,
+          "y": 65,
+          "z": 106
+        },
+        {
+          "x": 43,
+          "y": 65,
+          "z": 110
+        },
+        {
+          "x": 48,
+          "y": 65,
+          "z": 42
+        },
+        {
+          "x": 48,
+          "y": 65,
+          "z": 44
+        },
+        {
+          "x": 48,
+          "y": 65,
+          "z": 46
+        }
+      ],
+      "local_source_transition_ticks": 8,
+      "origin": [
+        40,
+        30,
+        40
+      ],
+      "output_transition_ticks": 0,
+      "primary_outputs": [
+        {
+          "x": 149,
+          "y": 60,
+          "z": 73
+        },
+        {
+          "x": 149,
+          "y": 60,
+          "z": 77
+        },
+        {
+          "x": 149,
+          "y": 60,
+          "z": 81
+        },
+        {
+          "x": 149,
+          "y": 60,
+          "z": 85
+        },
+        {
+          "x": 149,
+          "y": 60,
+          "z": 89
+        },
+        {
+          "x": 149,
+          "y": 60,
+          "z": 93
+        },
+        {
+          "x": 149,
+          "y": 60,
+          "z": 97
+        },
+        {
+          "x": 149,
+          "y": 60,
+          "z": 101
+        },
+        {
+          "x": 149,
+          "y": 60,
+          "z": 105
+        },
+        {
+          "x": 149,
+          "y": 60,
+          "z": 109
+        },
+        {
+          "x": 149,
+          "y": 60,
+          "z": 113
+        },
+        {
+          "x": 149,
+          "y": 60,
+          "z": 117
+        },
+        {
+          "x": 149,
+          "y": 60,
+          "z": 121
+        },
+        {
+          "x": 149,
+          "y": 60,
+          "z": 125
+        },
+        {
+          "x": 149,
+          "y": 60,
+          "z": 129
+        },
+        {
+          "x": 149,
+          "y": 60,
+          "z": 133
+        }
+      ],
+      "samples": [
+        {
+          "aux_dust": [
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15
+          ],
+          "controls": [
+            true,
+            false
+          ],
+          "output": 65535,
+          "phase": "entry",
+          "source_states": [
+            3757,
+            4288,
+            4154,
+            4163,
+            4172,
+            4181,
+            4190,
+            6062,
+            6062,
+            5925
+          ]
+        },
+        {
+          "aux_dust": [
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15
+          ],
+          "controls": [
+            false,
+            false
+          ],
+          "episode": 0,
+          "events": 0,
+          "motions": 1117,
+          "output": 65535,
+          "phase": "off_inputs",
+          "raw_input_mask": 0,
+          "scheduled": 482,
+          "source_states": [
+            3622,
+            4288,
+            4154,
+            4163,
+            4172,
+            4181,
+            4190,
+            6062,
+            6062,
+            5925
+          ],
+          "tick": 1
+        },
+        {
+          "aux_dust": [
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15
+          ],
+          "controls": [
+            false,
+            false
+          ],
+          "episode": 0,
+          "events": 0,
+          "motions": 1117,
+          "output": 65535,
+          "phase": "off_inputs",
+          "raw_input_mask": 0,
+          "scheduled": 513,
+          "source_states": [
+            3622,
+            4288,
+            4154,
+            4163,
+            4172,
+            4181,
+            4190,
+            6062,
+            6062,
+            5925
+          ],
+          "tick": 128
+        },
+        {
+          "aux_dust": [
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15
+          ],
+          "controls": [
+            true,
+            true
+          ],
+          "episode": 0,
+          "events": 572,
+          "motions": 0,
+          "output": 65535,
+          "phase": "on_rearm",
+          "raw_input_mask": 0,
+          "scheduled": 478,
+          "source_states": [
+            3757,
+            4288,
+            4154,
+            4163,
+            4172,
+            4181,
+            4190,
+            6062,
+            6062,
+            5925
+          ],
+          "tick": 1
+        },
+        {
+          "aux_dust": [
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15
+          ],
+          "controls": [
+            true,
+            true
+          ],
+          "episode": 0,
+          "events": 0,
+          "motions": 0,
+          "output": 65535,
+          "phase": "on_rearm",
+          "raw_input_mask": 0,
+          "scheduled": 0,
+          "source_states": [
+            3757,
+            4288,
+            4154,
+            4163,
+            4172,
+            4181,
+            4190,
+            6062,
+            6062,
+            5925
+          ],
+          "tick": 128
+        },
+        {
+          "aux_dust": [
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15
+          ],
+          "controls": [
+            false,
+            false
+          ],
+          "episode": 1,
+          "events": 0,
+          "motions": 1136,
+          "output": 65535,
+          "phase": "off_inputs",
+          "raw_input_mask": 1,
+          "scheduled": 488,
+          "source_states": [
+            3622,
+            4288,
+            4154,
+            4163,
+            4172,
+            4181,
+            4190,
+            6062,
+            6062,
+            5925
+          ],
+          "tick": 1
+        },
+        {
+          "aux_dust": [
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15
+          ],
+          "controls": [
+            false,
+            false
+          ],
+          "episode": 1,
+          "events": 0,
+          "motions": 1136,
+          "output": 65535,
+          "phase": "off_inputs",
+          "raw_input_mask": 1,
+          "scheduled": 522,
+          "source_states": [
+            3622,
+            4288,
+            4154,
+            4163,
+            4172,
+            4181,
+            4190,
+            6062,
+            6062,
+            5925
+          ],
+          "tick": 128
+        },
+        {
+          "aux_dust": [
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15
+          ],
+          "controls": [
+            true,
+            true
+          ],
+          "episode": 1,
+          "events": 581,
+          "motions": 0,
+          "output": 65535,
+          "phase": "on_rearm",
+          "raw_input_mask": 1,
+          "scheduled": 488,
+          "source_states": [
+            3757,
+            4288,
+            4154,
+            4163,
+            4172,
+            4181,
+            4190,
+            6062,
+            6062,
+            5925
+          ],
+          "tick": 1
+        },
+        {
+          "aux_dust": [
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15
+          ],
+          "controls": [
+            true,
+            true
+          ],
+          "episode": 1,
+          "events": 0,
+          "motions": 0,
+          "output": 65535,
+          "phase": "on_rearm",
+          "raw_input_mask": 1,
+          "scheduled": 0,
+          "source_states": [
+            3757,
+            4288,
+            4154,
+            4163,
+            4172,
+            4181,
+            4190,
+            6062,
+            6062,
+            5925
+          ],
+          "tick": 128
+        },
+        {
+          "aux_dust": [
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15
+          ],
+          "controls": [
+            false,
+            false
+          ],
+          "episode": 2,
+          "events": 0,
+          "motions": 36,
+          "output": 65535,
+          "phase": "off_inputs",
+          "raw_input_mask": 34359738367,
+          "scheduled": 18,
+          "source_states": [
+            3622,
+            4288,
+            4154,
+            4163,
+            4172,
+            4181,
+            4190,
+            6062,
+            6062,
+            5925
+          ],
+          "tick": 1
+        },
+        {
+          "aux_dust": [
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15
+          ],
+          "controls": [
+            false,
+            false
+          ],
+          "episode": 2,
+          "events": 0,
+          "motions": 36,
+          "output": 65535,
+          "phase": "off_inputs",
+          "raw_input_mask": 34359738367,
+          "scheduled": 18,
+          "source_states": [
+            3622,
+            4288,
+            4154,
+            4163,
+            4172,
+            4181,
+            4190,
+            6062,
+            6062,
+            5925
+          ],
+          "tick": 128
+        },
+        {
+          "aux_dust": [
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15
+          ],
+          "controls": [
+            true,
+            true
+          ],
+          "episode": 2,
+          "events": 18,
+          "motions": 0,
+          "output": 65535,
+          "phase": "on_rearm",
+          "raw_input_mask": 34359738367,
+          "scheduled": 18,
+          "source_states": [
+            3757,
+            4288,
+            4154,
+            4163,
+            4172,
+            4181,
+            4190,
+            6062,
+            6062,
+            5925
+          ],
+          "tick": 1
+        },
+        {
+          "aux_dust": [
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15
+          ],
+          "controls": [
+            true,
+            true
+          ],
+          "episode": 2,
+          "events": 0,
+          "motions": 0,
+          "output": 65535,
+          "phase": "on_rearm",
+          "raw_input_mask": 34359738367,
+          "scheduled": 0,
+          "source_states": [
+            3757,
+            4288,
+            4154,
+            4163,
+            4172,
+            4181,
+            4190,
+            6062,
+            6062,
+            5925
+          ],
+          "tick": 128
+        },
+        {
+          "aux_dust": [
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15
+          ],
+          "controls": [
+            false,
+            false
+          ],
+          "episode": 3,
+          "events": 0,
+          "motions": 48,
+          "output": 65535,
+          "phase": "off_inputs",
+          "raw_input_mask": 34359738366,
+          "scheduled": 25,
+          "source_states": [
+            3622,
+            4288,
+            4154,
+            4163,
+            4172,
+            4181,
+            4190,
+            6062,
+            6062,
+            5925
+          ],
+          "tick": 1
+        },
+        {
+          "aux_dust": [
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15
+          ],
+          "controls": [
+            false,
+            false
+          ],
+          "episode": 3,
+          "events": 0,
+          "motions": 48,
+          "output": 65535,
+          "phase": "off_inputs",
+          "raw_input_mask": 34359738366,
+          "scheduled": 25,
+          "source_states": [
+            3622,
+            4288,
+            4154,
+            4163,
+            4172,
+            4181,
+            4190,
+            6062,
+            6062,
+            5925
+          ],
+          "tick": 128
+        },
+        {
+          "aux_dust": [
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15
+          ],
+          "controls": [
+            true,
+            true
+          ],
+          "episode": 3,
+          "events": 24,
+          "motions": 0,
+          "output": 65535,
+          "phase": "on_rearm",
+          "raw_input_mask": 34359738366,
+          "scheduled": 24,
+          "source_states": [
+            3757,
+            4288,
+            4154,
+            4163,
+            4172,
+            4181,
+            4190,
+            6062,
+            6062,
+            5925
+          ],
+          "tick": 1
+        },
+        {
+          "aux_dust": [
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15
+          ],
+          "controls": [
+            true,
+            true
+          ],
+          "episode": 3,
+          "events": 0,
+          "motions": 0,
+          "output": 65535,
+          "phase": "on_rearm",
+          "raw_input_mask": 34359738366,
+          "scheduled": 0,
+          "source_states": [
+            3757,
+            4288,
+            4154,
+            4163,
+            4172,
+            4181,
+            4190,
+            6062,
+            6062,
+            5925
+          ],
+          "tick": 128
+        }
+      ],
+      "saved_startup_ticks": 0,
+      "scope": "native physical control diagnosis; no arithmetic/readiness claim",
+      "source_probe_positions": [
+        {
+          "x": 46,
+          "y": 66,
+          "z": 114
+        },
+        {
+          "x": 43,
+          "y": 68,
+          "z": 114
+        },
+        {
+          "x": 43,
+          "y": 68,
+          "z": 115
+        },
+        {
+          "x": 43,
+          "y": 68,
+          "z": 116
+        },
+        {
+          "x": 43,
+          "y": 68,
+          "z": 117
+        },
+        {
+          "x": 43,
+          "y": 68,
+          "z": 118
+        },
+        {
+          "x": 43,
+          "y": 68,
+          "z": 119
+        },
+        {
+          "x": 42,
+          "y": 68,
+          "z": 118
+        },
+        {
+          "x": 42,
+          "y": 68,
+          "z": 119
+        },
+        {
+          "x": 43,
+          "y": 68,
+          "z": 120
+        }
+      ],
+      "unique_output_words": [
+        65535
+      ]
+    },
+    {
+      "aux_dust_transition_ticks": 0,
+      "aux_outputs": [
+        {
+          "x": 210,
+          "y": 35,
+          "z": 72
+        },
+        {
+          "x": 210,
+          "y": 35,
+          "z": 76
+        },
+        {
+          "x": 210,
+          "y": 35,
+          "z": 80
+        },
+        {
+          "x": 210,
+          "y": 35,
+          "z": 84
+        },
+        {
+          "x": 210,
+          "y": 35,
+          "z": 88
+        },
+        {
+          "x": 210,
+          "y": 35,
+          "z": 92
+        },
+        {
+          "x": 210,
+          "y": 35,
+          "z": 96
+        },
+        {
+          "x": 210,
+          "y": 35,
+          "z": 100
+        },
+        {
+          "x": 210,
+          "y": 35,
+          "z": 104
+        },
+        {
+          "x": 210,
+          "y": 35,
+          "z": 108
+        },
+        {
+          "x": 210,
+          "y": 35,
+          "z": 112
+        },
+        {
+          "x": 210,
+          "y": 35,
+          "z": 116
+        },
+        {
+          "x": 210,
+          "y": 35,
+          "z": 120
+        },
+        {
+          "x": 210,
+          "y": 35,
+          "z": 124
+        },
+        {
+          "x": 210,
+          "y": 35,
+          "z": 128
+        },
+        {
+          "x": 210,
+          "y": 35,
+          "z": 132
+        }
+      ],
+      "case": "green_cycle",
+      "control_positions": [
+        {
+          "x": 46,
+          "y": 66,
+          "z": 116
+        },
+        {
+          "x": 42,
+          "y": 68,
+          "z": 121
+        }
+      ],
+      "fixture": "test_data/piston-research/fpu-piston-correct/fpu_pistion_correct.schem",
+      "fixture_sha256": "704016b6900ec22ff0d37184de480a5c9965fd390b7bcf7c3f23d7677048c391",
+      "hold_ticks": 128,
+      "imported_controls": [
+        true,
+        false
+      ],
+      "input_levers": [
+        {
+          "x": 43,
+          "y": 65,
+          "z": 48
+        },
+        {
+          "x": 43,
+          "y": 65,
+          "z": 52
+        },
+        {
+          "x": 43,
+          "y": 65,
+          "z": 56
+        },
+        {
+          "x": 43,
+          "y": 65,
+          "z": 60
+        },
+        {
+          "x": 43,
+          "y": 65,
+          "z": 64
+        },
+        {
+          "x": 43,
+          "y": 65,
+          "z": 68
+        },
+        {
+          "x": 43,
+          "y": 65,
+          "z": 72
+        },
+        {
+          "x": 43,
+          "y": 65,
+          "z": 76
+        },
+        {
+          "x": 43,
+          "y": 65,
+          "z": 80
+        },
+        {
+          "x": 43,
+          "y": 65,
+          "z": 84
+        },
+        {
+          "x": 43,
+          "y": 65,
+          "z": 88
+        },
+        {
+          "x": 43,
+          "y": 65,
+          "z": 92
+        },
+        {
+          "x": 43,
+          "y": 65,
+          "z": 96
+        },
+        {
+          "x": 43,
+          "y": 65,
+          "z": 100
+        },
+        {
+          "x": 43,
+          "y": 65,
+          "z": 104
+        },
+        {
+          "x": 43,
+          "y": 65,
+          "z": 108
+        },
+        {
+          "x": 43,
+          "y": 65,
+          "z": 50
+        },
+        {
+          "x": 43,
+          "y": 65,
+          "z": 54
+        },
+        {
+          "x": 43,
+          "y": 65,
+          "z": 58
+        },
+        {
+          "x": 43,
+          "y": 65,
+          "z": 62
+        },
+        {
+          "x": 43,
+          "y": 65,
+          "z": 66
+        },
+        {
+          "x": 43,
+          "y": 65,
+          "z": 70
+        },
+        {
+          "x": 43,
+          "y": 65,
+          "z": 74
+        },
+        {
+          "x": 43,
+          "y": 65,
+          "z": 78
+        },
+        {
+          "x": 43,
+          "y": 65,
+          "z": 82
+        },
+        {
+          "x": 43,
+          "y": 65,
+          "z": 86
+        },
+        {
+          "x": 43,
+          "y": 65,
+          "z": 90
+        },
+        {
+          "x": 43,
+          "y": 65,
+          "z": 94
+        },
+        {
+          "x": 43,
+          "y": 65,
+          "z": 98
+        },
+        {
+          "x": 43,
+          "y": 65,
+          "z": 102
+        },
+        {
+          "x": 43,
+          "y": 65,
+          "z": 106
+        },
+        {
+          "x": 43,
+          "y": 65,
+          "z": 110
+        },
+        {
+          "x": 48,
+          "y": 65,
+          "z": 42
+        },
+        {
+          "x": 48,
+          "y": 65,
+          "z": 44
+        },
+        {
+          "x": 48,
+          "y": 65,
+          "z": 46
+        }
+      ],
+      "local_source_transition_ticks": 8,
+      "origin": [
+        40,
+        30,
+        40
+      ],
+      "output_transition_ticks": 0,
+      "primary_outputs": [
+        {
+          "x": 149,
+          "y": 60,
+          "z": 73
+        },
+        {
+          "x": 149,
+          "y": 60,
+          "z": 77
+        },
+        {
+          "x": 149,
+          "y": 60,
+          "z": 81
+        },
+        {
+          "x": 149,
+          "y": 60,
+          "z": 85
+        },
+        {
+          "x": 149,
+          "y": 60,
+          "z": 89
+        },
+        {
+          "x": 149,
+          "y": 60,
+          "z": 93
+        },
+        {
+          "x": 149,
+          "y": 60,
+          "z": 97
+        },
+        {
+          "x": 149,
+          "y": 60,
+          "z": 101
+        },
+        {
+          "x": 149,
+          "y": 60,
+          "z": 105
+        },
+        {
+          "x": 149,
+          "y": 60,
+          "z": 109
+        },
+        {
+          "x": 149,
+          "y": 60,
+          "z": 113
+        },
+        {
+          "x": 149,
+          "y": 60,
+          "z": 117
+        },
+        {
+          "x": 149,
+          "y": 60,
+          "z": 121
+        },
+        {
+          "x": 149,
+          "y": 60,
+          "z": 125
+        },
+        {
+          "x": 149,
+          "y": 60,
+          "z": 129
+        },
+        {
+          "x": 149,
+          "y": 60,
+          "z": 133
+        }
+      ],
+      "samples": [
+        {
+          "aux_dust": [
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15
+          ],
+          "controls": [
+            true,
+            false
+          ],
+          "output": 65535,
+          "phase": "entry",
+          "source_states": [
+            3757,
+            4288,
+            4154,
+            4163,
+            4172,
+            4181,
+            4190,
+            6062,
+            6062,
+            5925
+          ]
+        },
+        {
+          "aux_dust": [
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15
+          ],
+          "controls": [
+            false,
+            false
+          ],
+          "episode": 0,
+          "events": 0,
+          "motions": 1117,
+          "output": 65535,
+          "phase": "off_inputs",
+          "raw_input_mask": 0,
+          "scheduled": 482,
+          "source_states": [
+            3622,
+            4288,
+            4154,
+            4163,
+            4172,
+            4181,
+            4190,
+            6062,
+            6062,
+            5925
+          ],
+          "tick": 1
+        },
+        {
+          "aux_dust": [
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15
+          ],
+          "controls": [
+            false,
+            false
+          ],
+          "episode": 0,
+          "events": 0,
+          "motions": 1117,
+          "output": 65535,
+          "phase": "off_inputs",
+          "raw_input_mask": 0,
+          "scheduled": 513,
+          "source_states": [
+            3622,
+            4288,
+            4154,
+            4163,
+            4172,
+            4181,
+            4190,
+            6062,
+            6062,
+            5925
+          ],
+          "tick": 128
+        },
+        {
+          "aux_dust": [
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15
+          ],
+          "controls": [
+            true,
+            false
+          ],
+          "episode": 0,
+          "events": 572,
+          "motions": 0,
+          "output": 65535,
+          "phase": "on_rearm",
+          "raw_input_mask": 0,
+          "scheduled": 478,
+          "source_states": [
+            3757,
+            4288,
+            4154,
+            4163,
+            4172,
+            4181,
+            4190,
+            6062,
+            6062,
+            5925
+          ],
+          "tick": 1
+        },
+        {
+          "aux_dust": [
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15
+          ],
+          "controls": [
+            true,
+            false
+          ],
+          "episode": 0,
+          "events": 0,
+          "motions": 0,
+          "output": 65535,
+          "phase": "on_rearm",
+          "raw_input_mask": 0,
+          "scheduled": 0,
+          "source_states": [
+            3757,
+            4288,
+            4154,
+            4163,
+            4172,
+            4181,
+            4190,
+            6062,
+            6062,
+            5925
+          ],
+          "tick": 128
+        },
+        {
+          "aux_dust": [
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15
+          ],
+          "controls": [
+            false,
+            false
+          ],
+          "episode": 1,
+          "events": 0,
+          "motions": 1136,
+          "output": 65535,
+          "phase": "off_inputs",
+          "raw_input_mask": 1,
+          "scheduled": 488,
+          "source_states": [
+            3622,
+            4288,
+            4154,
+            4163,
+            4172,
+            4181,
+            4190,
+            6062,
+            6062,
+            5925
+          ],
+          "tick": 1
+        },
+        {
+          "aux_dust": [
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15
+          ],
+          "controls": [
+            false,
+            false
+          ],
+          "episode": 1,
+          "events": 0,
+          "motions": 1136,
+          "output": 65535,
+          "phase": "off_inputs",
+          "raw_input_mask": 1,
+          "scheduled": 522,
+          "source_states": [
+            3622,
+            4288,
+            4154,
+            4163,
+            4172,
+            4181,
+            4190,
+            6062,
+            6062,
+            5925
+          ],
+          "tick": 128
+        },
+        {
+          "aux_dust": [
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15
+          ],
+          "controls": [
+            true,
+            false
+          ],
+          "episode": 1,
+          "events": 581,
+          "motions": 0,
+          "output": 65535,
+          "phase": "on_rearm",
+          "raw_input_mask": 1,
+          "scheduled": 488,
+          "source_states": [
+            3757,
+            4288,
+            4154,
+            4163,
+            4172,
+            4181,
+            4190,
+            6062,
+            6062,
+            5925
+          ],
+          "tick": 1
+        },
+        {
+          "aux_dust": [
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15
+          ],
+          "controls": [
+            true,
+            false
+          ],
+          "episode": 1,
+          "events": 0,
+          "motions": 0,
+          "output": 65535,
+          "phase": "on_rearm",
+          "raw_input_mask": 1,
+          "scheduled": 0,
+          "source_states": [
+            3757,
+            4288,
+            4154,
+            4163,
+            4172,
+            4181,
+            4190,
+            6062,
+            6062,
+            5925
+          ],
+          "tick": 128
+        },
+        {
+          "aux_dust": [
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15
+          ],
+          "controls": [
+            false,
+            false
+          ],
+          "episode": 2,
+          "events": 0,
+          "motions": 36,
+          "output": 65535,
+          "phase": "off_inputs",
+          "raw_input_mask": 34359738367,
+          "scheduled": 18,
+          "source_states": [
+            3622,
+            4288,
+            4154,
+            4163,
+            4172,
+            4181,
+            4190,
+            6062,
+            6062,
+            5925
+          ],
+          "tick": 1
+        },
+        {
+          "aux_dust": [
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15
+          ],
+          "controls": [
+            false,
+            false
+          ],
+          "episode": 2,
+          "events": 0,
+          "motions": 36,
+          "output": 65535,
+          "phase": "off_inputs",
+          "raw_input_mask": 34359738367,
+          "scheduled": 18,
+          "source_states": [
+            3622,
+            4288,
+            4154,
+            4163,
+            4172,
+            4181,
+            4190,
+            6062,
+            6062,
+            5925
+          ],
+          "tick": 128
+        },
+        {
+          "aux_dust": [
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15
+          ],
+          "controls": [
+            true,
+            false
+          ],
+          "episode": 2,
+          "events": 18,
+          "motions": 0,
+          "output": 65535,
+          "phase": "on_rearm",
+          "raw_input_mask": 34359738367,
+          "scheduled": 18,
+          "source_states": [
+            3757,
+            4288,
+            4154,
+            4163,
+            4172,
+            4181,
+            4190,
+            6062,
+            6062,
+            5925
+          ],
+          "tick": 1
+        },
+        {
+          "aux_dust": [
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15
+          ],
+          "controls": [
+            true,
+            false
+          ],
+          "episode": 2,
+          "events": 0,
+          "motions": 0,
+          "output": 65535,
+          "phase": "on_rearm",
+          "raw_input_mask": 34359738367,
+          "scheduled": 0,
+          "source_states": [
+            3757,
+            4288,
+            4154,
+            4163,
+            4172,
+            4181,
+            4190,
+            6062,
+            6062,
+            5925
+          ],
+          "tick": 128
+        },
+        {
+          "aux_dust": [
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15
+          ],
+          "controls": [
+            false,
+            false
+          ],
+          "episode": 3,
+          "events": 0,
+          "motions": 48,
+          "output": 65535,
+          "phase": "off_inputs",
+          "raw_input_mask": 34359738366,
+          "scheduled": 25,
+          "source_states": [
+            3622,
+            4288,
+            4154,
+            4163,
+            4172,
+            4181,
+            4190,
+            6062,
+            6062,
+            5925
+          ],
+          "tick": 1
+        },
+        {
+          "aux_dust": [
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15
+          ],
+          "controls": [
+            false,
+            false
+          ],
+          "episode": 3,
+          "events": 0,
+          "motions": 48,
+          "output": 65535,
+          "phase": "off_inputs",
+          "raw_input_mask": 34359738366,
+          "scheduled": 25,
+          "source_states": [
+            3622,
+            4288,
+            4154,
+            4163,
+            4172,
+            4181,
+            4190,
+            6062,
+            6062,
+            5925
+          ],
+          "tick": 128
+        },
+        {
+          "aux_dust": [
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15
+          ],
+          "controls": [
+            true,
+            false
+          ],
+          "episode": 3,
+          "events": 24,
+          "motions": 0,
+          "output": 65535,
+          "phase": "on_rearm",
+          "raw_input_mask": 34359738366,
+          "scheduled": 24,
+          "source_states": [
+            3757,
+            4288,
+            4154,
+            4163,
+            4172,
+            4181,
+            4190,
+            6062,
+            6062,
+            5925
+          ],
+          "tick": 1
+        },
+        {
+          "aux_dust": [
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15
+          ],
+          "controls": [
+            true,
+            false
+          ],
+          "episode": 3,
+          "events": 0,
+          "motions": 0,
+          "output": 65535,
+          "phase": "on_rearm",
+          "raw_input_mask": 34359738366,
+          "scheduled": 0,
+          "source_states": [
+            3757,
+            4288,
+            4154,
+            4163,
+            4172,
+            4181,
+            4190,
+            6062,
+            6062,
+            5925
+          ],
+          "tick": 128
+        }
+      ],
+      "saved_startup_ticks": 0,
+      "scope": "native physical control diagnosis; no arithmetic/readiness claim",
+      "source_probe_positions": [
+        {
+          "x": 46,
+          "y": 66,
+          "z": 114
+        },
+        {
+          "x": 43,
+          "y": 68,
+          "z": 114
+        },
+        {
+          "x": 43,
+          "y": 68,
+          "z": 115
+        },
+        {
+          "x": 43,
+          "y": 68,
+          "z": 116
+        },
+        {
+          "x": 43,
+          "y": 68,
+          "z": 117
+        },
+        {
+          "x": 43,
+          "y": 68,
+          "z": 118
+        },
+        {
+          "x": 43,
+          "y": 68,
+          "z": 119
+        },
+        {
+          "x": 42,
+          "y": 68,
+          "z": 118
+        },
+        {
+          "x": 42,
+          "y": 68,
+          "z": 119
+        },
+        {
+          "x": 43,
+          "y": 68,
+          "z": 120
+        }
+      ],
+      "unique_output_words": [
+        65535
+      ]
+    },
+    {
+      "aux_dust_transition_ticks": 0,
+      "aux_outputs": [
+        {
+          "x": 210,
+          "y": 35,
+          "z": 72
+        },
+        {
+          "x": 210,
+          "y": 35,
+          "z": 76
+        },
+        {
+          "x": 210,
+          "y": 35,
+          "z": 80
+        },
+        {
+          "x": 210,
+          "y": 35,
+          "z": 84
+        },
+        {
+          "x": 210,
+          "y": 35,
+          "z": 88
+        },
+        {
+          "x": 210,
+          "y": 35,
+          "z": 92
+        },
+        {
+          "x": 210,
+          "y": 35,
+          "z": 96
+        },
+        {
+          "x": 210,
+          "y": 35,
+          "z": 100
+        },
+        {
+          "x": 210,
+          "y": 35,
+          "z": 104
+        },
+        {
+          "x": 210,
+          "y": 35,
+          "z": 108
+        },
+        {
+          "x": 210,
+          "y": 35,
+          "z": 112
+        },
+        {
+          "x": 210,
+          "y": 35,
+          "z": 116
+        },
+        {
+          "x": 210,
+          "y": 35,
+          "z": 120
+        },
+        {
+          "x": 210,
+          "y": 35,
+          "z": 124
+        },
+        {
+          "x": 210,
+          "y": 35,
+          "z": 128
+        },
+        {
+          "x": 210,
+          "y": 35,
+          "z": 132
+        }
+      ],
+      "case": "green_off_other_on",
+      "control_positions": [
+        {
+          "x": 46,
+          "y": 66,
+          "z": 116
+        },
+        {
+          "x": 42,
+          "y": 68,
+          "z": 121
+        }
+      ],
+      "fixture": "test_data/piston-research/fpu-piston-correct/fpu_pistion_correct.schem",
+      "fixture_sha256": "704016b6900ec22ff0d37184de480a5c9965fd390b7bcf7c3f23d7677048c391",
+      "hold_ticks": 128,
+      "imported_controls": [
+        true,
+        false
+      ],
+      "input_levers": [
+        {
+          "x": 43,
+          "y": 65,
+          "z": 48
+        },
+        {
+          "x": 43,
+          "y": 65,
+          "z": 52
+        },
+        {
+          "x": 43,
+          "y": 65,
+          "z": 56
+        },
+        {
+          "x": 43,
+          "y": 65,
+          "z": 60
+        },
+        {
+          "x": 43,
+          "y": 65,
+          "z": 64
+        },
+        {
+          "x": 43,
+          "y": 65,
+          "z": 68
+        },
+        {
+          "x": 43,
+          "y": 65,
+          "z": 72
+        },
+        {
+          "x": 43,
+          "y": 65,
+          "z": 76
+        },
+        {
+          "x": 43,
+          "y": 65,
+          "z": 80
+        },
+        {
+          "x": 43,
+          "y": 65,
+          "z": 84
+        },
+        {
+          "x": 43,
+          "y": 65,
+          "z": 88
+        },
+        {
+          "x": 43,
+          "y": 65,
+          "z": 92
+        },
+        {
+          "x": 43,
+          "y": 65,
+          "z": 96
+        },
+        {
+          "x": 43,
+          "y": 65,
+          "z": 100
+        },
+        {
+          "x": 43,
+          "y": 65,
+          "z": 104
+        },
+        {
+          "x": 43,
+          "y": 65,
+          "z": 108
+        },
+        {
+          "x": 43,
+          "y": 65,
+          "z": 50
+        },
+        {
+          "x": 43,
+          "y": 65,
+          "z": 54
+        },
+        {
+          "x": 43,
+          "y": 65,
+          "z": 58
+        },
+        {
+          "x": 43,
+          "y": 65,
+          "z": 62
+        },
+        {
+          "x": 43,
+          "y": 65,
+          "z": 66
+        },
+        {
+          "x": 43,
+          "y": 65,
+          "z": 70
+        },
+        {
+          "x": 43,
+          "y": 65,
+          "z": 74
+        },
+        {
+          "x": 43,
+          "y": 65,
+          "z": 78
+        },
+        {
+          "x": 43,
+          "y": 65,
+          "z": 82
+        },
+        {
+          "x": 43,
+          "y": 65,
+          "z": 86
+        },
+        {
+          "x": 43,
+          "y": 65,
+          "z": 90
+        },
+        {
+          "x": 43,
+          "y": 65,
+          "z": 94
+        },
+        {
+          "x": 43,
+          "y": 65,
+          "z": 98
+        },
+        {
+          "x": 43,
+          "y": 65,
+          "z": 102
+        },
+        {
+          "x": 43,
+          "y": 65,
+          "z": 106
+        },
+        {
+          "x": 43,
+          "y": 65,
+          "z": 110
+        },
+        {
+          "x": 48,
+          "y": 65,
+          "z": 42
+        },
+        {
+          "x": 48,
+          "y": 65,
+          "z": 44
+        },
+        {
+          "x": 48,
+          "y": 65,
+          "z": 46
+        }
+      ],
+      "local_source_transition_ticks": 1,
+      "origin": [
+        40,
+        30,
+        40
+      ],
+      "output_transition_ticks": 0,
+      "primary_outputs": [
+        {
+          "x": 149,
+          "y": 60,
+          "z": 73
+        },
+        {
+          "x": 149,
+          "y": 60,
+          "z": 77
+        },
+        {
+          "x": 149,
+          "y": 60,
+          "z": 81
+        },
+        {
+          "x": 149,
+          "y": 60,
+          "z": 85
+        },
+        {
+          "x": 149,
+          "y": 60,
+          "z": 89
+        },
+        {
+          "x": 149,
+          "y": 60,
+          "z": 93
+        },
+        {
+          "x": 149,
+          "y": 60,
+          "z": 97
+        },
+        {
+          "x": 149,
+          "y": 60,
+          "z": 101
+        },
+        {
+          "x": 149,
+          "y": 60,
+          "z": 105
+        },
+        {
+          "x": 149,
+          "y": 60,
+          "z": 109
+        },
+        {
+          "x": 149,
+          "y": 60,
+          "z": 113
+        },
+        {
+          "x": 149,
+          "y": 60,
+          "z": 117
+        },
+        {
+          "x": 149,
+          "y": 60,
+          "z": 121
+        },
+        {
+          "x": 149,
+          "y": 60,
+          "z": 125
+        },
+        {
+          "x": 149,
+          "y": 60,
+          "z": 129
+        },
+        {
+          "x": 149,
+          "y": 60,
+          "z": 133
+        }
+      ],
+      "samples": [
+        {
+          "aux_dust": [
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15
+          ],
+          "controls": [
+            true,
+            true
+          ],
+          "output": 65535,
+          "phase": "entry",
+          "source_states": [
+            3757,
+            4288,
+            4154,
+            4163,
+            4172,
+            4181,
+            4190,
+            6062,
+            6062,
+            5925
+          ]
+        },
+        {
+          "aux_dust": [
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15
+          ],
+          "controls": [
+            false,
+            true
+          ],
+          "episode": 0,
+          "events": 0,
+          "motions": 1117,
+          "output": 65535,
+          "phase": "off_inputs",
+          "raw_input_mask": 0,
+          "scheduled": 482,
+          "source_states": [
+            3622,
+            4288,
+            4154,
+            4163,
+            4172,
+            4181,
+            4190,
+            6062,
+            6062,
+            5925
+          ],
+          "tick": 1
+        },
+        {
+          "aux_dust": [
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15
+          ],
+          "controls": [
+            false,
+            true
+          ],
+          "episode": 0,
+          "events": 0,
+          "motions": 1117,
+          "output": 65535,
+          "phase": "off_inputs",
+          "raw_input_mask": 0,
+          "scheduled": 513,
+          "source_states": [
+            3622,
+            4288,
+            4154,
+            4163,
+            4172,
+            4181,
+            4190,
+            6062,
+            6062,
+            5925
+          ],
+          "tick": 128
+        },
+        {
+          "aux_dust": [
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15
+          ],
+          "controls": [
+            false,
+            true
+          ],
+          "episode": 1,
+          "events": 572,
+          "motions": 0,
+          "output": 65535,
+          "phase": "off_inputs",
+          "raw_input_mask": 1,
+          "scheduled": 478,
+          "source_states": [
+            3622,
+            4288,
+            4154,
+            4163,
+            4172,
+            4181,
+            4190,
+            6062,
+            6062,
+            5925
+          ],
+          "tick": 1
+        },
+        {
+          "aux_dust": [
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15
+          ],
+          "controls": [
+            false,
+            true
+          ],
+          "episode": 1,
+          "events": 0,
+          "motions": 1136,
+          "output": 65535,
+          "phase": "off_inputs",
+          "raw_input_mask": 1,
+          "scheduled": 488,
+          "source_states": [
+            3622,
+            4288,
+            4154,
+            4163,
+            4172,
+            4181,
+            4190,
+            6062,
+            6062,
+            5925
+          ],
+          "tick": 128
+        },
+        {
+          "aux_dust": [
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15
+          ],
+          "controls": [
+            false,
+            true
+          ],
+          "episode": 2,
+          "events": 0,
+          "motions": 1136,
+          "output": 65535,
+          "phase": "off_inputs",
+          "raw_input_mask": 34359738367,
+          "scheduled": 0,
+          "source_states": [
+            3622,
+            4288,
+            4154,
+            4163,
+            4172,
+            4181,
+            4190,
+            6062,
+            6062,
+            5925
+          ],
+          "tick": 1
+        },
+        {
+          "aux_dust": [
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15
+          ],
+          "controls": [
+            false,
+            true
+          ],
+          "episode": 2,
+          "events": 1,
+          "motions": 0,
+          "output": 65535,
+          "phase": "off_inputs",
+          "raw_input_mask": 34359738367,
+          "scheduled": 0,
+          "source_states": [
+            3622,
+            4288,
+            4154,
+            4163,
+            4172,
+            4181,
+            4190,
+            6062,
+            6062,
+            5925
+          ],
+          "tick": 128
+        },
+        {
+          "aux_dust": [
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15
+          ],
+          "controls": [
+            false,
+            true
+          ],
+          "episode": 3,
+          "events": 0,
+          "motions": 48,
+          "output": 65535,
+          "phase": "off_inputs",
+          "raw_input_mask": 34359738366,
+          "scheduled": 25,
+          "source_states": [
+            3622,
+            4288,
+            4154,
+            4163,
+            4172,
+            4181,
+            4190,
+            6062,
+            6062,
+            5925
+          ],
+          "tick": 1
+        },
+        {
+          "aux_dust": [
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15
+          ],
+          "controls": [
+            false,
+            true
+          ],
+          "episode": 3,
+          "events": 0,
+          "motions": 48,
+          "output": 65535,
+          "phase": "off_inputs",
+          "raw_input_mask": 34359738366,
+          "scheduled": 25,
+          "source_states": [
+            3622,
+            4288,
+            4154,
+            4163,
+            4172,
+            4181,
+            4190,
+            6062,
+            6062,
+            5925
+          ],
+          "tick": 128
+        }
+      ],
+      "saved_startup_ticks": 0,
+      "scope": "native physical control diagnosis; no arithmetic/readiness claim",
+      "source_probe_positions": [
+        {
+          "x": 46,
+          "y": 66,
+          "z": 114
+        },
+        {
+          "x": 43,
+          "y": 68,
+          "z": 114
+        },
+        {
+          "x": 43,
+          "y": 68,
+          "z": 115
+        },
+        {
+          "x": 43,
+          "y": 68,
+          "z": 116
+        },
+        {
+          "x": 43,
+          "y": 68,
+          "z": 117
+        },
+        {
+          "x": 43,
+          "y": 68,
+          "z": 118
+        },
+        {
+          "x": 43,
+          "y": 68,
+          "z": 119
+        },
+        {
+          "x": 42,
+          "y": 68,
+          "z": 118
+        },
+        {
+          "x": 42,
+          "y": 68,
+          "z": 119
+        },
+        {
+          "x": 43,
+          "y": 68,
+          "z": 120
+        }
+      ],
+      "unique_output_words": [
+        65535
+      ]
+    },
+    {
+      "aux_dust_transition_ticks": 0,
+      "aux_outputs": [
+        {
+          "x": 210,
+          "y": 35,
+          "z": 72
+        },
+        {
+          "x": 210,
+          "y": 35,
+          "z": 76
+        },
+        {
+          "x": 210,
+          "y": 35,
+          "z": 80
+        },
+        {
+          "x": 210,
+          "y": 35,
+          "z": 84
+        },
+        {
+          "x": 210,
+          "y": 35,
+          "z": 88
+        },
+        {
+          "x": 210,
+          "y": 35,
+          "z": 92
+        },
+        {
+          "x": 210,
+          "y": 35,
+          "z": 96
+        },
+        {
+          "x": 210,
+          "y": 35,
+          "z": 100
+        },
+        {
+          "x": 210,
+          "y": 35,
+          "z": 104
+        },
+        {
+          "x": 210,
+          "y": 35,
+          "z": 108
+        },
+        {
+          "x": 210,
+          "y": 35,
+          "z": 112
+        },
+        {
+          "x": 210,
+          "y": 35,
+          "z": 116
+        },
+        {
+          "x": 210,
+          "y": 35,
+          "z": 120
+        },
+        {
+          "x": 210,
+          "y": 35,
+          "z": 124
+        },
+        {
+          "x": 210,
+          "y": 35,
+          "z": 128
+        },
+        {
+          "x": 210,
+          "y": 35,
+          "z": 132
+        }
+      ],
+      "case": "green_on_other_off",
+      "control_positions": [
+        {
+          "x": 46,
+          "y": 66,
+          "z": 116
+        },
+        {
+          "x": 42,
+          "y": 68,
+          "z": 121
+        }
+      ],
+      "fixture": "test_data/piston-research/fpu-piston-correct/fpu_pistion_correct.schem",
+      "fixture_sha256": "704016b6900ec22ff0d37184de480a5c9965fd390b7bcf7c3f23d7677048c391",
+      "hold_ticks": 128,
+      "imported_controls": [
+        true,
+        false
+      ],
+      "input_levers": [
+        {
+          "x": 43,
+          "y": 65,
+          "z": 48
+        },
+        {
+          "x": 43,
+          "y": 65,
+          "z": 52
+        },
+        {
+          "x": 43,
+          "y": 65,
+          "z": 56
+        },
+        {
+          "x": 43,
+          "y": 65,
+          "z": 60
+        },
+        {
+          "x": 43,
+          "y": 65,
+          "z": 64
+        },
+        {
+          "x": 43,
+          "y": 65,
+          "z": 68
+        },
+        {
+          "x": 43,
+          "y": 65,
+          "z": 72
+        },
+        {
+          "x": 43,
+          "y": 65,
+          "z": 76
+        },
+        {
+          "x": 43,
+          "y": 65,
+          "z": 80
+        },
+        {
+          "x": 43,
+          "y": 65,
+          "z": 84
+        },
+        {
+          "x": 43,
+          "y": 65,
+          "z": 88
+        },
+        {
+          "x": 43,
+          "y": 65,
+          "z": 92
+        },
+        {
+          "x": 43,
+          "y": 65,
+          "z": 96
+        },
+        {
+          "x": 43,
+          "y": 65,
+          "z": 100
+        },
+        {
+          "x": 43,
+          "y": 65,
+          "z": 104
+        },
+        {
+          "x": 43,
+          "y": 65,
+          "z": 108
+        },
+        {
+          "x": 43,
+          "y": 65,
+          "z": 50
+        },
+        {
+          "x": 43,
+          "y": 65,
+          "z": 54
+        },
+        {
+          "x": 43,
+          "y": 65,
+          "z": 58
+        },
+        {
+          "x": 43,
+          "y": 65,
+          "z": 62
+        },
+        {
+          "x": 43,
+          "y": 65,
+          "z": 66
+        },
+        {
+          "x": 43,
+          "y": 65,
+          "z": 70
+        },
+        {
+          "x": 43,
+          "y": 65,
+          "z": 74
+        },
+        {
+          "x": 43,
+          "y": 65,
+          "z": 78
+        },
+        {
+          "x": 43,
+          "y": 65,
+          "z": 82
+        },
+        {
+          "x": 43,
+          "y": 65,
+          "z": 86
+        },
+        {
+          "x": 43,
+          "y": 65,
+          "z": 90
+        },
+        {
+          "x": 43,
+          "y": 65,
+          "z": 94
+        },
+        {
+          "x": 43,
+          "y": 65,
+          "z": 98
+        },
+        {
+          "x": 43,
+          "y": 65,
+          "z": 102
+        },
+        {
+          "x": 43,
+          "y": 65,
+          "z": 106
+        },
+        {
+          "x": 43,
+          "y": 65,
+          "z": 110
+        },
+        {
+          "x": 48,
+          "y": 65,
+          "z": 42
+        },
+        {
+          "x": 48,
+          "y": 65,
+          "z": 44
+        },
+        {
+          "x": 48,
+          "y": 65,
+          "z": 46
+        }
+      ],
+      "local_source_transition_ticks": 0,
+      "origin": [
+        40,
+        30,
+        40
+      ],
+      "output_transition_ticks": 0,
+      "primary_outputs": [
+        {
+          "x": 149,
+          "y": 60,
+          "z": 73
+        },
+        {
+          "x": 149,
+          "y": 60,
+          "z": 77
+        },
+        {
+          "x": 149,
+          "y": 60,
+          "z": 81
+        },
+        {
+          "x": 149,
+          "y": 60,
+          "z": 85
+        },
+        {
+          "x": 149,
+          "y": 60,
+          "z": 89
+        },
+        {
+          "x": 149,
+          "y": 60,
+          "z": 93
+        },
+        {
+          "x": 149,
+          "y": 60,
+          "z": 97
+        },
+        {
+          "x": 149,
+          "y": 60,
+          "z": 101
+        },
+        {
+          "x": 149,
+          "y": 60,
+          "z": 105
+        },
+        {
+          "x": 149,
+          "y": 60,
+          "z": 109
+        },
+        {
+          "x": 149,
+          "y": 60,
+          "z": 113
+        },
+        {
+          "x": 149,
+          "y": 60,
+          "z": 117
+        },
+        {
+          "x": 149,
+          "y": 60,
+          "z": 121
+        },
+        {
+          "x": 149,
+          "y": 60,
+          "z": 125
+        },
+        {
+          "x": 149,
+          "y": 60,
+          "z": 129
+        },
+        {
+          "x": 149,
+          "y": 60,
+          "z": 133
+        }
+      ],
+      "samples": [
+        {
+          "aux_dust": [
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15
+          ],
+          "controls": [
+            true,
+            false
+          ],
+          "output": 65535,
+          "phase": "entry",
+          "source_states": [
+            3757,
+            4288,
+            4154,
+            4163,
+            4172,
+            4181,
+            4190,
+            6062,
+            6062,
+            5925
+          ]
+        },
+        {
+          "aux_dust": [
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15
+          ],
+          "controls": [
+            true,
+            false
+          ],
+          "episode": 0,
+          "events": 0,
+          "motions": 0,
+          "output": 65535,
+          "phase": "off_inputs",
+          "raw_input_mask": 0,
+          "scheduled": 4,
+          "source_states": [
+            3757,
+            4288,
+            4154,
+            4163,
+            4172,
+            4181,
+            4190,
+            6062,
+            6062,
+            5925
+          ],
+          "tick": 1
+        },
+        {
+          "aux_dust": [
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15
+          ],
+          "controls": [
+            true,
+            false
+          ],
+          "episode": 0,
+          "events": 0,
+          "motions": 0,
+          "output": 65535,
+          "phase": "off_inputs",
+          "raw_input_mask": 0,
+          "scheduled": 0,
+          "source_states": [
+            3757,
+            4288,
+            4154,
+            4163,
+            4172,
+            4181,
+            4190,
+            6062,
+            6062,
+            5925
+          ],
+          "tick": 128
+        },
+        {
+          "aux_dust": [
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15
+          ],
+          "controls": [
+            true,
+            false
+          ],
+          "episode": 1,
+          "events": 0,
+          "motions": 0,
+          "output": 65535,
+          "phase": "off_inputs",
+          "raw_input_mask": 1,
+          "scheduled": 0,
+          "source_states": [
+            3757,
+            4288,
+            4154,
+            4163,
+            4172,
+            4181,
+            4190,
+            6062,
+            6062,
+            5925
+          ],
+          "tick": 1
+        },
+        {
+          "aux_dust": [
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15
+          ],
+          "controls": [
+            true,
+            false
+          ],
+          "episode": 1,
+          "events": 0,
+          "motions": 0,
+          "output": 65535,
+          "phase": "off_inputs",
+          "raw_input_mask": 1,
+          "scheduled": 0,
+          "source_states": [
+            3757,
+            4288,
+            4154,
+            4163,
+            4172,
+            4181,
+            4190,
+            6062,
+            6062,
+            5925
+          ],
+          "tick": 128
+        },
+        {
+          "aux_dust": [
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15
+          ],
+          "controls": [
+            true,
+            false
+          ],
+          "episode": 2,
+          "events": 0,
+          "motions": 0,
+          "output": 65535,
+          "phase": "off_inputs",
+          "raw_input_mask": 34359738367,
+          "scheduled": 0,
+          "source_states": [
+            3757,
+            4288,
+            4154,
+            4163,
+            4172,
+            4181,
+            4190,
+            6062,
+            6062,
+            5925
+          ],
+          "tick": 1
+        },
+        {
+          "aux_dust": [
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15
+          ],
+          "controls": [
+            true,
+            false
+          ],
+          "episode": 2,
+          "events": 0,
+          "motions": 0,
+          "output": 65535,
+          "phase": "off_inputs",
+          "raw_input_mask": 34359738367,
+          "scheduled": 0,
+          "source_states": [
+            3757,
+            4288,
+            4154,
+            4163,
+            4172,
+            4181,
+            4190,
+            6062,
+            6062,
+            5925
+          ],
+          "tick": 128
+        },
+        {
+          "aux_dust": [
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15
+          ],
+          "controls": [
+            true,
+            false
+          ],
+          "episode": 3,
+          "events": 0,
+          "motions": 0,
+          "output": 65535,
+          "phase": "off_inputs",
+          "raw_input_mask": 34359738366,
+          "scheduled": 1,
+          "source_states": [
+            3757,
+            4288,
+            4154,
+            4163,
+            4172,
+            4181,
+            4190,
+            6062,
+            6062,
+            5925
+          ],
+          "tick": 1
+        },
+        {
+          "aux_dust": [
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15
+          ],
+          "controls": [
+            true,
+            false
+          ],
+          "episode": 3,
+          "events": 0,
+          "motions": 0,
+          "output": 65535,
+          "phase": "off_inputs",
+          "raw_input_mask": 34359738366,
+          "scheduled": 0,
+          "source_states": [
+            3757,
+            4288,
+            4154,
+            4163,
+            4172,
+            4181,
+            4190,
+            6062,
+            6062,
+            5925
+          ],
+          "tick": 128
+        }
+      ],
+      "saved_startup_ticks": 0,
+      "scope": "native physical control diagnosis; no arithmetic/readiness claim",
+      "source_probe_positions": [
+        {
+          "x": 46,
+          "y": 66,
+          "z": 114
+        },
+        {
+          "x": 43,
+          "y": 68,
+          "z": 114
+        },
+        {
+          "x": 43,
+          "y": 68,
+          "z": 115
+        },
+        {
+          "x": 43,
+          "y": 68,
+          "z": 116
+        },
+        {
+          "x": 43,
+          "y": 68,
+          "z": 117
+        },
+        {
+          "x": 43,
+          "y": 68,
+          "z": 118
+        },
+        {
+          "x": 43,
+          "y": 68,
+          "z": 119
+        },
+        {
+          "x": 42,
+          "y": 68,
+          "z": 118
+        },
+        {
+          "x": 42,
+          "y": 68,
+          "z": 119
+        },
+        {
+          "x": 43,
+          "y": 68,
+          "z": 120
+        }
+      ],
+      "unique_output_words": [
+        65535
+      ]
+    },
+    {
+      "aux_dust_transition_ticks": 0,
+      "aux_outputs": [
+        {
+          "x": 210,
+          "y": 35,
+          "z": 72
+        },
+        {
+          "x": 210,
+          "y": 35,
+          "z": 76
+        },
+        {
+          "x": 210,
+          "y": 35,
+          "z": 80
+        },
+        {
+          "x": 210,
+          "y": 35,
+          "z": 84
+        },
+        {
+          "x": 210,
+          "y": 35,
+          "z": 88
+        },
+        {
+          "x": 210,
+          "y": 35,
+          "z": 92
+        },
+        {
+          "x": 210,
+          "y": 35,
+          "z": 96
+        },
+        {
+          "x": 210,
+          "y": 35,
+          "z": 100
+        },
+        {
+          "x": 210,
+          "y": 35,
+          "z": 104
+        },
+        {
+          "x": 210,
+          "y": 35,
+          "z": 108
+        },
+        {
+          "x": 210,
+          "y": 35,
+          "z": 112
+        },
+        {
+          "x": 210,
+          "y": 35,
+          "z": 116
+        },
+        {
+          "x": 210,
+          "y": 35,
+          "z": 120
+        },
+        {
+          "x": 210,
+          "y": 35,
+          "z": 124
+        },
+        {
+          "x": 210,
+          "y": 35,
+          "z": 128
+        },
+        {
+          "x": 210,
+          "y": 35,
+          "z": 132
+        }
+      ],
+      "case": "green_stream",
+      "control_positions": [
+        {
+          "x": 46,
+          "y": 66,
+          "z": 116
+        },
+        {
+          "x": 42,
+          "y": 68,
+          "z": 121
+        }
+      ],
+      "fixture": "test_data/piston-research/fpu-piston-correct/fpu_pistion_correct.schem",
+      "fixture_sha256": "704016b6900ec22ff0d37184de480a5c9965fd390b7bcf7c3f23d7677048c391",
+      "hold_ticks": 128,
+      "imported_controls": [
+        true,
+        false
+      ],
+      "input_levers": [
+        {
+          "x": 43,
+          "y": 65,
+          "z": 48
+        },
+        {
+          "x": 43,
+          "y": 65,
+          "z": 52
+        },
+        {
+          "x": 43,
+          "y": 65,
+          "z": 56
+        },
+        {
+          "x": 43,
+          "y": 65,
+          "z": 60
+        },
+        {
+          "x": 43,
+          "y": 65,
+          "z": 64
+        },
+        {
+          "x": 43,
+          "y": 65,
+          "z": 68
+        },
+        {
+          "x": 43,
+          "y": 65,
+          "z": 72
+        },
+        {
+          "x": 43,
+          "y": 65,
+          "z": 76
+        },
+        {
+          "x": 43,
+          "y": 65,
+          "z": 80
+        },
+        {
+          "x": 43,
+          "y": 65,
+          "z": 84
+        },
+        {
+          "x": 43,
+          "y": 65,
+          "z": 88
+        },
+        {
+          "x": 43,
+          "y": 65,
+          "z": 92
+        },
+        {
+          "x": 43,
+          "y": 65,
+          "z": 96
+        },
+        {
+          "x": 43,
+          "y": 65,
+          "z": 100
+        },
+        {
+          "x": 43,
+          "y": 65,
+          "z": 104
+        },
+        {
+          "x": 43,
+          "y": 65,
+          "z": 108
+        },
+        {
+          "x": 43,
+          "y": 65,
+          "z": 50
+        },
+        {
+          "x": 43,
+          "y": 65,
+          "z": 54
+        },
+        {
+          "x": 43,
+          "y": 65,
+          "z": 58
+        },
+        {
+          "x": 43,
+          "y": 65,
+          "z": 62
+        },
+        {
+          "x": 43,
+          "y": 65,
+          "z": 66
+        },
+        {
+          "x": 43,
+          "y": 65,
+          "z": 70
+        },
+        {
+          "x": 43,
+          "y": 65,
+          "z": 74
+        },
+        {
+          "x": 43,
+          "y": 65,
+          "z": 78
+        },
+        {
+          "x": 43,
+          "y": 65,
+          "z": 82
+        },
+        {
+          "x": 43,
+          "y": 65,
+          "z": 86
+        },
+        {
+          "x": 43,
+          "y": 65,
+          "z": 90
+        },
+        {
+          "x": 43,
+          "y": 65,
+          "z": 94
+        },
+        {
+          "x": 43,
+          "y": 65,
+          "z": 98
+        },
+        {
+          "x": 43,
+          "y": 65,
+          "z": 102
+        },
+        {
+          "x": 43,
+          "y": 65,
+          "z": 106
+        },
+        {
+          "x": 43,
+          "y": 65,
+          "z": 110
+        },
+        {
+          "x": 48,
+          "y": 65,
+          "z": 42
+        },
+        {
+          "x": 48,
+          "y": 65,
+          "z": 44
+        },
+        {
+          "x": 48,
+          "y": 65,
+          "z": 46
+        }
+      ],
+      "local_source_transition_ticks": 1,
+      "origin": [
+        40,
+        30,
+        40
+      ],
+      "output_transition_ticks": 0,
+      "primary_outputs": [
+        {
+          "x": 149,
+          "y": 60,
+          "z": 73
+        },
+        {
+          "x": 149,
+          "y": 60,
+          "z": 77
+        },
+        {
+          "x": 149,
+          "y": 60,
+          "z": 81
+        },
+        {
+          "x": 149,
+          "y": 60,
+          "z": 85
+        },
+        {
+          "x": 149,
+          "y": 60,
+          "z": 89
+        },
+        {
+          "x": 149,
+          "y": 60,
+          "z": 93
+        },
+        {
+          "x": 149,
+          "y": 60,
+          "z": 97
+        },
+        {
+          "x": 149,
+          "y": 60,
+          "z": 101
+        },
+        {
+          "x": 149,
+          "y": 60,
+          "z": 105
+        },
+        {
+          "x": 149,
+          "y": 60,
+          "z": 109
+        },
+        {
+          "x": 149,
+          "y": 60,
+          "z": 113
+        },
+        {
+          "x": 149,
+          "y": 60,
+          "z": 117
+        },
+        {
+          "x": 149,
+          "y": 60,
+          "z": 121
+        },
+        {
+          "x": 149,
+          "y": 60,
+          "z": 125
+        },
+        {
+          "x": 149,
+          "y": 60,
+          "z": 129
+        },
+        {
+          "x": 149,
+          "y": 60,
+          "z": 133
+        }
+      ],
+      "samples": [
+        {
+          "aux_dust": [
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15
+          ],
+          "controls": [
+            true,
+            false
+          ],
+          "output": 65535,
+          "phase": "entry",
+          "source_states": [
+            3757,
+            4288,
+            4154,
+            4163,
+            4172,
+            4181,
+            4190,
+            6062,
+            6062,
+            5925
+          ]
+        },
+        {
+          "aux_dust": [
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15
+          ],
+          "controls": [
+            false,
+            false
+          ],
+          "episode": 0,
+          "events": 0,
+          "motions": 1117,
+          "output": 65535,
+          "phase": "off_inputs",
+          "raw_input_mask": 0,
+          "scheduled": 482,
+          "source_states": [
+            3622,
+            4288,
+            4154,
+            4163,
+            4172,
+            4181,
+            4190,
+            6062,
+            6062,
+            5925
+          ],
+          "tick": 1
+        },
+        {
+          "aux_dust": [
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15
+          ],
+          "controls": [
+            false,
+            false
+          ],
+          "episode": 0,
+          "events": 0,
+          "motions": 1117,
+          "output": 65535,
+          "phase": "off_inputs",
+          "raw_input_mask": 0,
+          "scheduled": 513,
+          "source_states": [
+            3622,
+            4288,
+            4154,
+            4163,
+            4172,
+            4181,
+            4190,
+            6062,
+            6062,
+            5925
+          ],
+          "tick": 128
+        },
+        {
+          "aux_dust": [
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15
+          ],
+          "controls": [
+            false,
+            false
+          ],
+          "episode": 1,
+          "events": 572,
+          "motions": 0,
+          "output": 65535,
+          "phase": "off_inputs",
+          "raw_input_mask": 1,
+          "scheduled": 478,
+          "source_states": [
+            3622,
+            4288,
+            4154,
+            4163,
+            4172,
+            4181,
+            4190,
+            6062,
+            6062,
+            5925
+          ],
+          "tick": 1
+        },
+        {
+          "aux_dust": [
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15
+          ],
+          "controls": [
+            false,
+            false
+          ],
+          "episode": 1,
+          "events": 0,
+          "motions": 1136,
+          "output": 65535,
+          "phase": "off_inputs",
+          "raw_input_mask": 1,
+          "scheduled": 488,
+          "source_states": [
+            3622,
+            4288,
+            4154,
+            4163,
+            4172,
+            4181,
+            4190,
+            6062,
+            6062,
+            5925
+          ],
+          "tick": 128
+        },
+        {
+          "aux_dust": [
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15
+          ],
+          "controls": [
+            false,
+            false
+          ],
+          "episode": 2,
+          "events": 0,
+          "motions": 1136,
+          "output": 65535,
+          "phase": "off_inputs",
+          "raw_input_mask": 34359738367,
+          "scheduled": 0,
+          "source_states": [
+            3622,
+            4288,
+            4154,
+            4163,
+            4172,
+            4181,
+            4190,
+            6062,
+            6062,
+            5925
+          ],
+          "tick": 1
+        },
+        {
+          "aux_dust": [
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15
+          ],
+          "controls": [
+            false,
+            false
+          ],
+          "episode": 2,
+          "events": 1,
+          "motions": 0,
+          "output": 65535,
+          "phase": "off_inputs",
+          "raw_input_mask": 34359738367,
+          "scheduled": 0,
+          "source_states": [
+            3622,
+            4288,
+            4154,
+            4163,
+            4172,
+            4181,
+            4190,
+            6062,
+            6062,
+            5925
+          ],
+          "tick": 128
+        },
+        {
+          "aux_dust": [
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15
+          ],
+          "controls": [
+            false,
+            false
+          ],
+          "episode": 3,
+          "events": 0,
+          "motions": 48,
+          "output": 65535,
+          "phase": "off_inputs",
+          "raw_input_mask": 34359738366,
+          "scheduled": 25,
+          "source_states": [
+            3622,
+            4288,
+            4154,
+            4163,
+            4172,
+            4181,
+            4190,
+            6062,
+            6062,
+            5925
+          ],
+          "tick": 1
+        },
+        {
+          "aux_dust": [
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15
+          ],
+          "controls": [
+            false,
+            false
+          ],
+          "episode": 3,
+          "events": 0,
+          "motions": 48,
+          "output": 65535,
+          "phase": "off_inputs",
+          "raw_input_mask": 34359738366,
+          "scheduled": 25,
+          "source_states": [
+            3622,
+            4288,
+            4154,
+            4163,
+            4172,
+            4181,
+            4190,
+            6062,
+            6062,
+            5925
+          ],
+          "tick": 128
+        }
+      ],
+      "saved_startup_ticks": 0,
+      "scope": "native physical control diagnosis; no arithmetic/readiness claim",
+      "source_probe_positions": [
+        {
+          "x": 46,
+          "y": 66,
+          "z": 114
+        },
+        {
+          "x": 43,
+          "y": 68,
+          "z": 114
+        },
+        {
+          "x": 43,
+          "y": 68,
+          "z": 115
+        },
+        {
+          "x": 43,
+          "y": 68,
+          "z": 116
+        },
+        {
+          "x": 43,
+          "y": 68,
+          "z": 117
+        },
+        {
+          "x": 43,
+          "y": 68,
+          "z": 118
+        },
+        {
+          "x": 43,
+          "y": 68,
+          "z": 119
+        },
+        {
+          "x": 42,
+          "y": 68,
+          "z": 118
+        },
+        {
+          "x": 42,
+          "y": 68,
+          "z": 119
+        },
+        {
+          "x": 43,
+          "y": 68,
+          "z": 120
+        }
+      ],
+      "unique_output_words": [
+        65535
+      ]
+    },
+    {
+      "aux_dust_transition_ticks": 0,
+      "aux_outputs": [
+        {
+          "x": 210,
+          "y": 35,
+          "z": 72
+        },
+        {
+          "x": 210,
+          "y": 35,
+          "z": 76
+        },
+        {
+          "x": 210,
+          "y": 35,
+          "z": 80
+        },
+        {
+          "x": 210,
+          "y": 35,
+          "z": 84
+        },
+        {
+          "x": 210,
+          "y": 35,
+          "z": 88
+        },
+        {
+          "x": 210,
+          "y": 35,
+          "z": 92
+        },
+        {
+          "x": 210,
+          "y": 35,
+          "z": 96
+        },
+        {
+          "x": 210,
+          "y": 35,
+          "z": 100
+        },
+        {
+          "x": 210,
+          "y": 35,
+          "z": 104
+        },
+        {
+          "x": 210,
+          "y": 35,
+          "z": 108
+        },
+        {
+          "x": 210,
+          "y": 35,
+          "z": 112
+        },
+        {
+          "x": 210,
+          "y": 35,
+          "z": 116
+        },
+        {
+          "x": 210,
+          "y": 35,
+          "z": 120
+        },
+        {
+          "x": 210,
+          "y": 35,
+          "z": 124
+        },
+        {
+          "x": 210,
+          "y": 35,
+          "z": 128
+        },
+        {
+          "x": 210,
+          "y": 35,
+          "z": 132
+        }
+      ],
+      "case": "other_cycle_green_off",
+      "control_positions": [
+        {
+          "x": 46,
+          "y": 66,
+          "z": 116
+        },
+        {
+          "x": 42,
+          "y": 68,
+          "z": 121
+        }
+      ],
+      "fixture": "test_data/piston-research/fpu-piston-correct/fpu_pistion_correct.schem",
+      "fixture_sha256": "704016b6900ec22ff0d37184de480a5c9965fd390b7bcf7c3f23d7677048c391",
+      "hold_ticks": 128,
+      "imported_controls": [
+        true,
+        false
+      ],
+      "input_levers": [
+        {
+          "x": 43,
+          "y": 65,
+          "z": 48
+        },
+        {
+          "x": 43,
+          "y": 65,
+          "z": 52
+        },
+        {
+          "x": 43,
+          "y": 65,
+          "z": 56
+        },
+        {
+          "x": 43,
+          "y": 65,
+          "z": 60
+        },
+        {
+          "x": 43,
+          "y": 65,
+          "z": 64
+        },
+        {
+          "x": 43,
+          "y": 65,
+          "z": 68
+        },
+        {
+          "x": 43,
+          "y": 65,
+          "z": 72
+        },
+        {
+          "x": 43,
+          "y": 65,
+          "z": 76
+        },
+        {
+          "x": 43,
+          "y": 65,
+          "z": 80
+        },
+        {
+          "x": 43,
+          "y": 65,
+          "z": 84
+        },
+        {
+          "x": 43,
+          "y": 65,
+          "z": 88
+        },
+        {
+          "x": 43,
+          "y": 65,
+          "z": 92
+        },
+        {
+          "x": 43,
+          "y": 65,
+          "z": 96
+        },
+        {
+          "x": 43,
+          "y": 65,
+          "z": 100
+        },
+        {
+          "x": 43,
+          "y": 65,
+          "z": 104
+        },
+        {
+          "x": 43,
+          "y": 65,
+          "z": 108
+        },
+        {
+          "x": 43,
+          "y": 65,
+          "z": 50
+        },
+        {
+          "x": 43,
+          "y": 65,
+          "z": 54
+        },
+        {
+          "x": 43,
+          "y": 65,
+          "z": 58
+        },
+        {
+          "x": 43,
+          "y": 65,
+          "z": 62
+        },
+        {
+          "x": 43,
+          "y": 65,
+          "z": 66
+        },
+        {
+          "x": 43,
+          "y": 65,
+          "z": 70
+        },
+        {
+          "x": 43,
+          "y": 65,
+          "z": 74
+        },
+        {
+          "x": 43,
+          "y": 65,
+          "z": 78
+        },
+        {
+          "x": 43,
+          "y": 65,
+          "z": 82
+        },
+        {
+          "x": 43,
+          "y": 65,
+          "z": 86
+        },
+        {
+          "x": 43,
+          "y": 65,
+          "z": 90
+        },
+        {
+          "x": 43,
+          "y": 65,
+          "z": 94
+        },
+        {
+          "x": 43,
+          "y": 65,
+          "z": 98
+        },
+        {
+          "x": 43,
+          "y": 65,
+          "z": 102
+        },
+        {
+          "x": 43,
+          "y": 65,
+          "z": 106
+        },
+        {
+          "x": 43,
+          "y": 65,
+          "z": 110
+        },
+        {
+          "x": 48,
+          "y": 65,
+          "z": 42
+        },
+        {
+          "x": 48,
+          "y": 65,
+          "z": 44
+        },
+        {
+          "x": 48,
+          "y": 65,
+          "z": 46
+        }
+      ],
+      "local_source_transition_ticks": 0,
+      "origin": [
+        40,
+        30,
+        40
+      ],
+      "output_transition_ticks": 0,
+      "primary_outputs": [
+        {
+          "x": 149,
+          "y": 60,
+          "z": 73
+        },
+        {
+          "x": 149,
+          "y": 60,
+          "z": 77
+        },
+        {
+          "x": 149,
+          "y": 60,
+          "z": 81
+        },
+        {
+          "x": 149,
+          "y": 60,
+          "z": 85
+        },
+        {
+          "x": 149,
+          "y": 60,
+          "z": 89
+        },
+        {
+          "x": 149,
+          "y": 60,
+          "z": 93
+        },
+        {
+          "x": 149,
+          "y": 60,
+          "z": 97
+        },
+        {
+          "x": 149,
+          "y": 60,
+          "z": 101
+        },
+        {
+          "x": 149,
+          "y": 60,
+          "z": 105
+        },
+        {
+          "x": 149,
+          "y": 60,
+          "z": 109
+        },
+        {
+          "x": 149,
+          "y": 60,
+          "z": 113
+        },
+        {
+          "x": 149,
+          "y": 60,
+          "z": 117
+        },
+        {
+          "x": 149,
+          "y": 60,
+          "z": 121
+        },
+        {
+          "x": 149,
+          "y": 60,
+          "z": 125
+        },
+        {
+          "x": 149,
+          "y": 60,
+          "z": 129
+        },
+        {
+          "x": 149,
+          "y": 60,
+          "z": 133
+        }
+      ],
+      "samples": [
+        {
+          "aux_dust": [
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15
+          ],
+          "controls": [
+            false,
+            false
+          ],
+          "output": 65535,
+          "phase": "entry",
+          "source_states": [
+            3622,
+            4288,
+            4154,
+            4163,
+            4172,
+            4181,
+            4190,
+            6062,
+            6062,
+            5925
+          ]
+        },
+        {
+          "aux_dust": [
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15
+          ],
+          "controls": [
+            false,
+            false
+          ],
+          "episode": 0,
+          "events": 0,
+          "motions": 1117,
+          "output": 65535,
+          "phase": "off_inputs",
+          "raw_input_mask": 0,
+          "scheduled": 482,
+          "source_states": [
+            3622,
+            4288,
+            4154,
+            4163,
+            4172,
+            4181,
+            4190,
+            6062,
+            6062,
+            5925
+          ],
+          "tick": 1
+        },
+        {
+          "aux_dust": [
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15
+          ],
+          "controls": [
+            false,
+            false
+          ],
+          "episode": 0,
+          "events": 0,
+          "motions": 1117,
+          "output": 65535,
+          "phase": "off_inputs",
+          "raw_input_mask": 0,
+          "scheduled": 513,
+          "source_states": [
+            3622,
+            4288,
+            4154,
+            4163,
+            4172,
+            4181,
+            4190,
+            6062,
+            6062,
+            5925
+          ],
+          "tick": 128
+        },
+        {
+          "aux_dust": [
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15
+          ],
+          "controls": [
+            false,
+            true
+          ],
+          "episode": 0,
+          "events": 572,
+          "motions": 0,
+          "output": 65535,
+          "phase": "on_rearm",
+          "raw_input_mask": 0,
+          "scheduled": 478,
+          "source_states": [
+            3622,
+            4288,
+            4154,
+            4163,
+            4172,
+            4181,
+            4190,
+            6062,
+            6062,
+            5925
+          ],
+          "tick": 1
+        },
+        {
+          "aux_dust": [
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15
+          ],
+          "controls": [
+            false,
+            true
+          ],
+          "episode": 0,
+          "events": 0,
+          "motions": 1117,
+          "output": 65535,
+          "phase": "on_rearm",
+          "raw_input_mask": 0,
+          "scheduled": 478,
+          "source_states": [
+            3622,
+            4288,
+            4154,
+            4163,
+            4172,
+            4181,
+            4190,
+            6062,
+            6062,
+            5925
+          ],
+          "tick": 128
+        },
+        {
+          "aux_dust": [
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15
+          ],
+          "controls": [
+            false,
+            false
+          ],
+          "episode": 1,
+          "events": 0,
+          "motions": 1117,
+          "output": 65535,
+          "phase": "off_inputs",
+          "raw_input_mask": 1,
+          "scheduled": 34,
+          "source_states": [
+            3622,
+            4288,
+            4154,
+            4163,
+            4172,
+            4181,
+            4190,
+            6062,
+            6062,
+            5925
+          ],
+          "tick": 1
+        },
+        {
+          "aux_dust": [
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15
+          ],
+          "controls": [
+            false,
+            false
+          ],
+          "episode": 1,
+          "events": 48,
+          "motions": 0,
+          "output": 65535,
+          "phase": "off_inputs",
+          "raw_input_mask": 1,
+          "scheduled": 34,
+          "source_states": [
+            3622,
+            4288,
+            4154,
+            4163,
+            4172,
+            4181,
+            4190,
+            6062,
+            6062,
+            5925
+          ],
+          "tick": 128
+        },
+        {
+          "aux_dust": [
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15
+          ],
+          "controls": [
+            false,
+            true
+          ],
+          "episode": 1,
+          "events": 0,
+          "motions": 1136,
+          "output": 65535,
+          "phase": "on_rearm",
+          "raw_input_mask": 1,
+          "scheduled": 522,
+          "source_states": [
+            3622,
+            4288,
+            4154,
+            4163,
+            4172,
+            4181,
+            4190,
+            6062,
+            6062,
+            5925
+          ],
+          "tick": 1
+        },
+        {
+          "aux_dust": [
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15
+          ],
+          "controls": [
+            false,
+            true
+          ],
+          "episode": 1,
+          "events": 0,
+          "motions": 1136,
+          "output": 65535,
+          "phase": "on_rearm",
+          "raw_input_mask": 1,
+          "scheduled": 522,
+          "source_states": [
+            3622,
+            4288,
+            4154,
+            4163,
+            4172,
+            4181,
+            4190,
+            6062,
+            6062,
+            5925
+          ],
+          "tick": 128
+        },
+        {
+          "aux_dust": [
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15
+          ],
+          "controls": [
+            false,
+            false
+          ],
+          "episode": 2,
+          "events": 581,
+          "motions": 0,
+          "output": 65535,
+          "phase": "off_inputs",
+          "raw_input_mask": 34359738367,
+          "scheduled": 488,
+          "source_states": [
+            3622,
+            4288,
+            4154,
+            4163,
+            4172,
+            4181,
+            4190,
+            6062,
+            6062,
+            5925
+          ],
+          "tick": 1
+        },
+        {
+          "aux_dust": [
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15
+          ],
+          "controls": [
+            false,
+            false
+          ],
+          "episode": 2,
+          "events": 0,
+          "motions": 36,
+          "output": 65535,
+          "phase": "off_inputs",
+          "raw_input_mask": 34359738367,
+          "scheduled": 18,
+          "source_states": [
+            3622,
+            4288,
+            4154,
+            4163,
+            4172,
+            4181,
+            4190,
+            6062,
+            6062,
+            5925
+          ],
+          "tick": 128
+        },
+        {
+          "aux_dust": [
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15
+          ],
+          "controls": [
+            false,
+            true
+          ],
+          "episode": 2,
+          "events": 0,
+          "motions": 36,
+          "output": 65535,
+          "phase": "on_rearm",
+          "raw_input_mask": 34359738367,
+          "scheduled": 0,
+          "source_states": [
+            3622,
+            4288,
+            4154,
+            4163,
+            4172,
+            4181,
+            4190,
+            6062,
+            6062,
+            5925
+          ],
+          "tick": 1
+        },
+        {
+          "aux_dust": [
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15
+          ],
+          "controls": [
+            false,
+            true
+          ],
+          "episode": 2,
+          "events": 1,
+          "motions": 0,
+          "output": 65535,
+          "phase": "on_rearm",
+          "raw_input_mask": 34359738367,
+          "scheduled": 0,
+          "source_states": [
+            3622,
+            4288,
+            4154,
+            4163,
+            4172,
+            4181,
+            4190,
+            6062,
+            6062,
+            5925
+          ],
+          "tick": 128
+        },
+        {
+          "aux_dust": [
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15
+          ],
+          "controls": [
+            false,
+            false
+          ],
+          "episode": 3,
+          "events": 0,
+          "motions": 48,
+          "output": 65535,
+          "phase": "off_inputs",
+          "raw_input_mask": 34359738366,
+          "scheduled": 25,
+          "source_states": [
+            3622,
+            4288,
+            4154,
+            4163,
+            4172,
+            4181,
+            4190,
+            6062,
+            6062,
+            5925
+          ],
+          "tick": 1
+        },
+        {
+          "aux_dust": [
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15
+          ],
+          "controls": [
+            false,
+            false
+          ],
+          "episode": 3,
+          "events": 0,
+          "motions": 48,
+          "output": 65535,
+          "phase": "off_inputs",
+          "raw_input_mask": 34359738366,
+          "scheduled": 25,
+          "source_states": [
+            3622,
+            4288,
+            4154,
+            4163,
+            4172,
+            4181,
+            4190,
+            6062,
+            6062,
+            5925
+          ],
+          "tick": 128
+        },
+        {
+          "aux_dust": [
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15
+          ],
+          "controls": [
+            false,
+            true
+          ],
+          "episode": 3,
+          "events": 24,
+          "motions": 0,
+          "output": 65535,
+          "phase": "on_rearm",
+          "raw_input_mask": 34359738366,
+          "scheduled": 24,
+          "source_states": [
+            3622,
+            4288,
+            4154,
+            4163,
+            4172,
+            4181,
+            4190,
+            6062,
+            6062,
+            5925
+          ],
+          "tick": 1
+        },
+        {
+          "aux_dust": [
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15
+          ],
+          "controls": [
+            false,
+            true
+          ],
+          "episode": 3,
+          "events": 0,
+          "motions": 48,
+          "output": 65535,
+          "phase": "on_rearm",
+          "raw_input_mask": 34359738366,
+          "scheduled": 24,
+          "source_states": [
+            3622,
+            4288,
+            4154,
+            4163,
+            4172,
+            4181,
+            4190,
+            6062,
+            6062,
+            5925
+          ],
+          "tick": 128
+        }
+      ],
+      "saved_startup_ticks": 0,
+      "scope": "native physical control diagnosis; no arithmetic/readiness claim",
+      "source_probe_positions": [
+        {
+          "x": 46,
+          "y": 66,
+          "z": 114
+        },
+        {
+          "x": 43,
+          "y": 68,
+          "z": 114
+        },
+        {
+          "x": 43,
+          "y": 68,
+          "z": 115
+        },
+        {
+          "x": 43,
+          "y": 68,
+          "z": 116
+        },
+        {
+          "x": 43,
+          "y": 68,
+          "z": 117
+        },
+        {
+          "x": 43,
+          "y": 68,
+          "z": 118
+        },
+        {
+          "x": 43,
+          "y": 68,
+          "z": 119
+        },
+        {
+          "x": 42,
+          "y": 68,
+          "z": 118
+        },
+        {
+          "x": 42,
+          "y": 68,
+          "z": 119
+        },
+        {
+          "x": 43,
+          "y": 68,
+          "z": 120
+        }
+      ],
+      "unique_output_words": [
+        65535
+      ]
+    }
+  ]
+}
