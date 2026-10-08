@@ -18,6 +18,7 @@ graph rewrites:
 | [Redpiler parser](REDPILER_PARSER.md) | Spatial extraction, recognition, ownership, boundaries, and admission. |
 | [Redpiler optimizer](REDPILER_OPTIMIZER.md) | Actual pass order, rewrite rules, and correctness conditions. |
 | [Redpiler model](REDPILER_MODEL.md) | Weighted graph execution and compiled instant/sequential transition systems. |
+| [Partial compilation scope](REDPILER_PARTIAL_COMPILATION.md) | Proposed native/compiled ownership, boundary contract, implementation gates, and acceptance criteria. |
 | [Test suites](tests/README.md) | Checks, frozen references, capture procedures, and limits of the evidence. |
 
 For an electrical change, start with the redstone model. For a movement or
