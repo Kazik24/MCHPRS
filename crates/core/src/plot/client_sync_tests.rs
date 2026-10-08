@@ -721,6 +721,75 @@ fn rejected_placement_and_dig_abort_finish_correct_prediction_before_ack() {
 }
 
 #[test]
+fn void_recovery_fences_stale_movement_and_preserves_coordinate_validation() {
+    for compressed in [false, true] {
+        for y in [-2047.9898847094473, -0.1] {
+            let (mut plot, mut peer) = fixture(compressed);
+            let original = PlayerPos::new(32.5, y, 35.5);
+            plot.players[0].teleport(original);
+            let (id, mut frame) = read_frame(&mut peer, compressed).unwrap();
+            assert_eq!(id, 0x41);
+            let old_id = frame.read_varint().unwrap();
+
+            plot.players[0].update();
+            let (id, mut frame) = read_frame(&mut peer, compressed).unwrap();
+            assert_eq!(id, 0x41);
+            let rescue_id = frame.read_varint().unwrap();
+            assert_ne!(rescue_id, old_id);
+            assert_eq!(
+                [
+                    frame.read_double().unwrap(),
+                    frame.read_double().unwrap(),
+                    frame.read_double().unwrap(),
+                ],
+                [original.x, 128.0, original.z]
+            );
+            plot.handle_teleport_confirm(STeleportConfirm { id: old_id }, 0);
+            assert!(plot.players[0].awaiting_teleport());
+
+            let falling = SPlayerPosition {
+                x: original.x,
+                y: -2048.22041207836,
+                z: original.z,
+                on_ground: false,
+            };
+            plot.handle_player_position(falling, 0);
+            plot.handle_player_position_and_rotation(
+                SPlayerPositionAndRotation {
+                    x: original.x,
+                    y: -2048.22041207836,
+                    z: original.z,
+                    yaw: 45.0,
+                    pitch: 10.0,
+                    on_ground: false,
+                },
+                0,
+            );
+            assert_eq!(plot.players[0].pos.y, 128.0);
+            assert!(plot.players[0].client.alive());
+            drop(mchprs_network::BlockActionAcknowledgement::new(
+                &plot.players[0].client,
+                1,
+            ));
+            read_ack(&mut peer, compressed, 1);
+
+            plot.handle_teleport_confirm(STeleportConfirm { id: rescue_id }, 0);
+            assert!(!plot.players[0].awaiting_teleport());
+            plot.handle_player_position(
+                SPlayerPosition {
+                    x: original.x,
+                    y: -2048.22041207836,
+                    z: original.z,
+                    on_ground: false,
+                },
+                0,
+            );
+            assert!(!plot.players[0].client.alive());
+        }
+    }
+}
+
+#[test]
 fn teleport_fences_movement_and_edits_until_destination_view_is_queued() {
     let compressed = true;
     let (mut plot, mut peer) = fixture(compressed);

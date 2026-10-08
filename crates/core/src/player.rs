@@ -459,6 +459,9 @@ impl Player {
             self.pos.y = 128.0;
             self.pos.z = 128.0;
         }
+        if self.pos.y < 0.0 {
+            self.teleport(PlayerPos::new(self.pos.x, 128.0, self.pos.z));
+        }
 
         let (chunk_x, chunk_z) = self.pos.chunk_pos();
         chunk_x != self.last_chunk_x || chunk_z != self.last_chunk_z

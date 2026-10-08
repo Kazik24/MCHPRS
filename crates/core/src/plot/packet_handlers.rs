@@ -51,9 +51,18 @@ impl Plot {
         on_ground: bool,
         rotation: Option<(f32, f32)>,
     ) {
+        if self.players[player].awaiting_teleport() {
+            return;
+        }
         if !new.is_valid()
             || rotation.is_some_and(|(yaw, pitch)| !yaw.is_finite() || !pitch.is_finite())
         {
+            warn!(
+                player = %self.players[player].username,
+                position = ?new,
+                ?rotation,
+                "Closing client: invalid movement"
+            );
             self.players[player].client.close_connection();
             return;
         }
@@ -923,11 +932,18 @@ impl ServerBoundPacketHandler for Plot {
     }
 
     fn handle_player_rotation(&mut self, player_rotation: SPlayerRotation, player: usize) {
-        if !player_rotation.yaw.is_finite() || !player_rotation.pitch.is_finite() {
-            self.players[player].client.close_connection();
+        if self.players[player].awaiting_teleport() {
             return;
         }
-        if self.players[player].awaiting_teleport() {
+        if !player_rotation.yaw.is_finite() || !player_rotation.pitch.is_finite() {
+            warn!(
+                player = %self.players[player].username,
+                position = ?self.players[player].pos,
+                yaw = player_rotation.yaw,
+                pitch = player_rotation.pitch,
+                "Closing client: invalid rotation"
+            );
+            self.players[player].client.close_connection();
             return;
         }
         self.players[player].yaw = player_rotation.yaw;
