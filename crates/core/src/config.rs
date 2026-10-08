@@ -121,8 +121,8 @@ gen_config! {
     git_session_seconds: u64 = 45,
     max_command_ticks: u32 = 10_000,
     command_work_time_ms: u64 = 250,
-    worldedit_max_blocks: u64 = 4_194_304,
-    worldedit_history_blocks: u64 = 8_388_608
+    worldedit_max_blocks: u64 = 67_108_864,
+    worldedit_history_blocks: u64 = 134_217_728
 }
 
 #[cfg(test)]
@@ -152,6 +152,8 @@ mod tests {
         assert_eq!(config.neighbor_update_interval_ms, 2000);
         assert_eq!(config.git_work_memory_mib, 1024);
         assert_eq!(config.git_default_plot_storage_mib, 100);
+        assert_eq!(config.worldedit_max_blocks, 67_108_864);
+        assert_eq!(config.worldedit_history_blocks, 134_217_728);
         assert!(patched.contains("neighbor_update_interval_ms"));
         assert!(patched.contains("rhistory_memory_limit_mib"));
     }

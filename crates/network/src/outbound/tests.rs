@@ -75,6 +75,7 @@ fn chunk_snapshots_and_prediction_acks_preserve_their_place_in_the_wire_stream()
             heightmaps: nbt::Blob::new(),
             chunk_sections: Vec::new(),
             block_entities: Vec::new(),
+            block_light: Vec::new(),
         }
         .encode();
         let mut ack_data = Vec::new();

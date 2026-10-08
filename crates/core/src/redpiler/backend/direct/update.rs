@@ -12,7 +12,7 @@ pub(super) fn observed_state(node: &Node) -> (bool, bool, u8) {
             NodeType::CommandBlock { .. } | NodeType::Constant | NodeType::InstantSource
         ) && node.powered,
         matches!(node.ty, NodeType::Repeater { .. }) && node.locked,
-        if matches!(node.ty, NodeType::Wire) {
+        if matches!(node.ty, NodeType::Wire | NodeType::CopperBulb) {
             node.output_power
         } else {
             0

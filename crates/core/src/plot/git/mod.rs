@@ -888,6 +888,7 @@ impl Plot {
         self.world.reset_screen_tracking();
         self.world.command_messages.clear();
         self.world.sounds.clear();
+        self.world.level_events.clear();
         self.world.open_chests.clear();
         self.set_git_tps(Tps::Limited(0));
         for player in 0..self.players.len() {

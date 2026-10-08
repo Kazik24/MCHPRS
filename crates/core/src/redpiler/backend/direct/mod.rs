@@ -36,6 +36,10 @@ enum Event {
     ButtonRelease {
         pos: BlockPos,
     },
+    CopperBulbToggle {
+        node_id: NodeId,
+        lit: bool,
+    },
 }
 
 #[derive(Default)]
@@ -46,7 +50,7 @@ pub struct DirectBackend {
     scheduler: TickScheduler<NodeId>,
     events: Vec<Event>,
     noteblock_info: Vec<(BlockPos, Instrument, u32)>,
-    command_far_comparators: FxHashMap<NodeId, Vec<NodeId>>,
+    far_comparators: FxHashMap<NodeId, Vec<NodeId>>,
     instant: Vec<instant::Runtime>,
     instant_dependencies: FxHashMap<NodeId, Vec<usize>>,
     instant_dirty: Vec<bool>,
@@ -188,6 +192,8 @@ impl DirectBackend {
         node.powered = powered;
         node.output_power = new_power;
         let update_count = node.updates.len();
+        let bulb_state_changed =
+            matches!(node.ty, NodeType::CopperBulb) && previous != update::observed_state(node);
         if previous != update::observed_state(node) {
             self.notify_observer_watchers(node_id);
         }
@@ -209,6 +215,9 @@ impl DirectBackend {
             let new_power = new_power.saturating_sub(distance);
 
             if old_power == new_power {
+                if bulb_state_changed {
+                    self.update_node(update);
+                }
                 continue;
             }
 
@@ -218,16 +227,9 @@ impl DirectBackend {
                 *inputs.strength_counts.get_unchecked_mut(new_power as usize) += 1;
             }
 
-            if update::update_node(
-                &mut self.scheduler,
-                &mut self.events,
-                &mut self.nodes,
-                update,
-            ) {
-                self.notify_observer_watchers(update);
-            }
+            self.update_node(update);
         }
-        if old_power != new_power {
+        if old_power != new_power || bulb_state_changed {
             for &region in self
                 .instant_dependencies
                 .get(&node_id)
@@ -236,12 +238,7 @@ impl DirectBackend {
             {
                 self.instant_dirty[region] = true;
             }
-            for &comparator in self
-                .command_far_comparators
-                .get(&node_id)
-                .into_iter()
-                .flatten()
-            {
+            for &comparator in self.far_comparators.get(&node_id).into_iter().flatten() {
                 if let NodeType::Comparator { far_input, .. } = &mut self.nodes[comparator].ty {
                     *far_input = node::NonMaxU8::new(new_power);
                 }
@@ -252,6 +249,23 @@ impl DirectBackend {
                     comparator,
                 );
             }
+        }
+    }
+
+    fn update_node(&mut self, id: NodeId) {
+        let node = &self.nodes[id];
+        if matches!(node.ty, NodeType::CopperBulb) {
+            let powered = has_main_input(node);
+            if powered != node.powered {
+                let lit = (node.output_power > 0) ^ powered;
+                if powered {
+                    self.events
+                        .push(Event::CopperBulbToggle { node_id: id, lit });
+                }
+                self.set_node(id, powered, bool_to_ss(lit));
+            }
+        } else if update::update_node(&mut self.scheduler, &mut self.events, &mut self.nodes, id) {
+            self.notify_observer_watchers(id);
         }
     }
 
@@ -296,6 +310,46 @@ impl DirectBackend {
         world.piston_state_mut().logical_tick += 1;
         self.tick_after_callbacks(|backend| backend.process_command_outputs(world));
         self.process_command_outputs(world);
+        use rand::Rng;
+        let mut random = rand::thread_rng();
+        for pos in world.random_tick_positions() {
+            self.oxidize_bulb(world, pos, random.gen(), random.gen());
+        }
+    }
+
+    pub(crate) fn oxidize_bulb(
+        &mut self,
+        world: &mut impl World,
+        pos: BlockPos,
+        gate: f32,
+        roll: f32,
+    ) {
+        let Some(&id) = self.pos_map.get(&pos) else {
+            return;
+        };
+        let Some((_, block)) = self.blocks[id.index()] else {
+            return;
+        };
+        let Some(live) =
+            block.with_copper_bulb_state(self.nodes[id].output_power > 0, self.nodes[id].powered)
+        else {
+            return;
+        };
+        let Some(mut next) = crate::redstone::copper_bulb::oxidation_state(world, pos, gate, roll)
+        else {
+            return;
+        };
+        let (lit, powered) = live.copper_bulb_state().unwrap();
+        next = next.with_copper_bulb_state(lit, powered).unwrap();
+        self.blocks[id.index()] = Some((pos, next));
+        self.nodes[id].changed = true;
+        self.notify_observer_watchers(id);
+        self.update_node(id);
+        world.set_block(
+            pos,
+            next.with_copper_bulb_state(self.nodes[id].output_power > 0, self.nodes[id].powered)
+                .unwrap(),
+        );
     }
 
     pub(crate) fn inspect(&mut self, pos: BlockPos) {
@@ -347,7 +401,7 @@ impl DirectBackend {
 
         self.pos_map.clear();
         self.noteblock_info.clear();
-        self.command_far_comparators.clear();
+        self.far_comparators.clear();
         self.instant_dependencies.clear();
         self.instant_dirty.clear();
         self.observer_watchers.clear();
@@ -413,6 +467,11 @@ impl DirectBackend {
         self.evaluate_instant(false);
         for event in self.events.drain(..) {
             match event {
+                Event::CopperBulbToggle { node_id, lit } => {
+                    if let Some((pos, _)) = self.blocks[node_id.index()] {
+                        crate::redstone::copper_bulb::play_toggle(world, pos, lit);
+                    }
+                }
                 Event::NoteBlockPlay { noteblock_id } => {
                     let (pos, instrument, note) = self.noteblock_info[noteblock_id as usize];
                     if noteblock::is_noteblock_unblocked(world, pos) {
@@ -441,6 +500,11 @@ impl DirectBackend {
                 }
                 if let Some(plate) = block.with_pressure_plate_power(node.powered) {
                     *block = plate;
+                }
+                if let Some(bulb) =
+                    block.with_copper_bulb_state(node.output_power > 0, node.powered)
+                {
+                    *block = bulb;
                 }
                 if let Block::RedstoneWire { wire, .. } = block {
                     wire.power = node.output_power
@@ -544,6 +608,7 @@ impl fmt::Display for DirectBackend {
                     }
                 ),
                 NodeType::Lamp => "Lamp".to_string(),
+                NodeType::CopperBulb => "CopperBulb".to_string(),
                 NodeType::Button => "Button".to_string(),
                 NodeType::Lever => "Lever".to_string(),
                 NodeType::PressurePlate => "PressurePlate".to_string(),

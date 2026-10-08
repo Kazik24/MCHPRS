@@ -61,6 +61,7 @@ fn convert_node(
                 CComparatorMode::Subtract => ComparatorMode::Subtract,
             }),
             CNodeType::Lamp => NodeType::Lamp,
+            CNodeType::CopperBulb => unreachable!("copper-bulb export rejected before lowering"),
             CNodeType::Button => NodeType::Button,
             CNodeType::Lever => NodeType::Lever,
             CNodeType::PressurePlate => NodeType::PressurePlate,
@@ -100,6 +101,12 @@ fn convert_node(
 }
 
 pub(super) fn run(graph: &mut CompileGraph) -> Result<(), super::GraphError> {
+    if graph
+        .node_weights()
+        .any(|node| node.ty == CNodeType::CopperBulb)
+    {
+        return Err(super::GraphError::UnsupportedCopperBulbExport);
+    }
     if graph
         .node_weights()
         .any(|node| matches!(node.ty, CNodeType::Observer { .. }))

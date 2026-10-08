@@ -335,6 +335,17 @@ pub(super) fn recognize<W: World>(
     Ok((matches, group_matches))
 }
 
+pub(crate) fn fixed_container(world: &impl World, pos: BlockPos) -> bool {
+    let block = world.get_block(pos);
+    block.is_solid()
+        && !redstone::has_neighbor_update(block)
+        && matches!(
+            world.get_block_entity(pos),
+            Some(BlockEntity::Container { ty, .. })
+                if ContainerType::from_block(block) == Some(*ty)
+        )
+}
+
 fn support<W: World>(
     topology: &mut Topology<'_, W>,
     pos: BlockPos,
@@ -354,19 +365,8 @@ fn support<W: World>(
         r.failures.push(RecognitionFailure::MovableSupport { pos });
         return Ok(false);
     }
-    // A stationary furnace inventory only supplies a comparator override.
-    // It does not change support conduction or the observer return path. The
-    // movement check above remains mandatory; payload entities still reject.
-    let entity = topology.world.get_block_entity(pos);
-    let fixed_furnace = matches!(block, Block::Furnace { .. })
-        && matches!(
-            entity,
-            Some(BlockEntity::Container {
-                ty: ContainerType::Furnace,
-                ..
-            })
-        );
-    if entity.is_some() && !fixed_furnace {
+    // Fixed inventories supply an analog override without changing reset conduction.
+    if topology.world.get_block_entity(pos).is_some() && !fixed_container(topology.world, pos) {
         r.failures.push(RecognitionFailure::BlockEntity { pos });
         return Ok(false);
     }

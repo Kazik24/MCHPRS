@@ -14,7 +14,7 @@ graph rewrites:
 | --- | --- |
 | [Redstone model](REDSTONE_MODEL.md) | Spatial signal algebra, component transitions, dust propagation, and scheduled work. |
 | [Piston model](PISTON_MODEL.md) | Piston events, moving payloads, quasi-connectivity, BUD sampling, instant circuits, and nano/pico stepping. |
-| [Redpiler architecture](Redpiler.md) | Compilation lifecycle, intermediate representations, backend, commands, and source map. |
+| [Redpiler architecture](../REDPILER_ARCHITECTURE.md) | Compilation lifecycle, inference, conditional geometry solver, instant pistons, optimizer, backend, and handoff. |
 | [Redpiler parser](REDPILER_PARSER.md) | Spatial extraction, recognition, ownership, boundaries, and admission. |
 | [Redpiler optimizer](REDPILER_OPTIMIZER.md) | Actual pass order, rewrite rules, and correctness conditions. |
 | [Redpiler model](REDPILER_MODEL.md) | Weighted graph execution and compiled instant/sequential transition systems. |

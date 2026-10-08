@@ -311,7 +311,8 @@ impl<'a, W: World> InputSearchState<'a, W> {
                     Block::RedstoneLamp { .. }
                         | Block::IronTrapdoor { .. }
                         | Block::NoteBlock { .. }
-                ) || block.is_command_block() =>
+                ) || block.is_command_block()
+                    || block.is_copper_bulb() =>
             {
                 for face in &BlockFace::values() {
                     let neighbor_pos = pos.offset(*face);

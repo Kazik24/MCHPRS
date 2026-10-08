@@ -29,7 +29,8 @@ fn fold(graph: &mut CompileGraph, world: &impl World) -> usize {
                 let far = pos
                     .offset(comparator.facing.block_face())
                     .offset(comparator.facing.block_face());
-                if world.get_block(far).is_command_block() {
+                if world.get_block(far).is_command_block() || world.get_block(far).is_copper_bulb()
+                {
                     continue;
                 }
             }

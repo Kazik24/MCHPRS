@@ -136,7 +136,80 @@ pub(super) fn validate_request(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::plot::PLOT_BLOCK_WIDTH;
+    use crate::plot::{PLOT_BLOCK_WIDTH, PLOT_WIDTH};
+    use crate::world::storage::Chunk;
+    #[test]
+    fn pm1_sort_and_full_plot_clipboards_fit_the_work_limit() {
+        let chunks = (0..PLOT_WIDTH)
+            .flat_map(|x| (0..PLOT_WIDTH).map(move |z| Chunk::empty(x, z)))
+            .collect();
+        let mut world = PlotWorld::from_chunks(0, 0, chunks, Default::default());
+        let connection = mchprs_network::test_support::connection(false).unwrap();
+        let mut player = Player::test_player(connection.player);
+        let cb = load_schematic(std::io::Cursor::new(include_bytes!(
+            "../../../../../test_data/PM1_SORT.schem"
+        )))
+        .unwrap();
+        assert_eq!((cb.size_x, cb.size_y, cb.size_z), (235, 202, 182));
+        assert_eq!(cb.data.entries(), 8_639_540);
+        player.pos = PlayerPos {
+            x: f64::from(cb.offset_x),
+            y: f64::from(cb.offset_y),
+            z: f64::from(cb.offset_z),
+        };
+        player.worldedit_clipboard = Some(cb);
+        let paste = &COMMANDS["/paste"];
+        assert!(validate_request(&world, &player, "/paste", paste, &[]).is_ok());
+
+        player.first_position = Some(BlockPos::zero());
+        player.second_position = Some(BlockPos::new(234, 201, 181));
+        let copy = &COMMANDS["/copy"];
+        assert!(validate_request(&world, &player, "/copy", copy, &[]).is_ok());
+        execute_copy(CommandExecuteContext {
+            plot: &mut world,
+            player: &mut player,
+            arguments: vec![],
+            flags: vec![],
+        });
+        assert_eq!(
+            player.worldedit_clipboard.as_ref().unwrap().data.entries(),
+            8_639_540
+        );
+        assert!(validate_request(&world, &player, "/paste", paste, &[]).is_ok());
+
+        player.pos = PlayerPos {
+            x: 0.0,
+            y: 0.0,
+            z: 0.0,
+        };
+        player.worldedit_clipboard = Some(WorldEditClipboard {
+            offset_x: 0,
+            offset_y: 0,
+            offset_z: 0,
+            size_x: PLOT_BLOCK_WIDTH as u32,
+            size_y: PLOT_BLOCK_HEIGHT as u32,
+            size_z: PLOT_BLOCK_WIDTH as u32,
+            data: PalettedBitBuffer::new(
+                (PLOT_BLOCK_WIDTH * PLOT_BLOCK_HEIGHT * PLOT_BLOCK_WIDTH) as usize,
+                9,
+            ),
+            block_entities: Default::default(),
+        });
+        assert!(validate_request(&world, &player, "/paste", paste, &[]).is_ok());
+        player.second_position = Some(BlockPos::new(
+            PLOT_BLOCK_WIDTH - 1,
+            PLOT_BLOCK_HEIGHT - 1,
+            PLOT_BLOCK_WIDTH - 1,
+        ));
+        assert!(validate_request(&world, &player, "/copy", copy, &[]).is_ok());
+        player.pos.x = 1.0;
+        assert!(validate_request(&world, &player, "/paste", paste, &[]).is_err());
+        player.worldedit_clipboard.as_mut().unwrap().size_x -= 1;
+        assert!(validate_request(&world, &player, "/paste", paste, &[]).is_err());
+        player.worldedit_clipboard.as_mut().unwrap().size_x += 2;
+        assert!(validate_request(&world, &player, "/paste", paste, &[]).is_err());
+    }
+
     #[test]
     fn malicious_clipboard_offsets_and_volumes_are_rejected() {
         assert!(volume(

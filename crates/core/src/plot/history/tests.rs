@@ -12,6 +12,29 @@ fn world() -> PlotWorld {
     PlotWorld::from_chunks(0, 0, vec![Chunk::empty(0, 0)], Default::default())
 }
 
+#[test]
+fn copper_bulb_rewind_restores_light_and_random_tick_eligibility() {
+    let mut world = world();
+    world.set_random_tick_speed(0);
+    let pos = BlockPos::new(4, 30, 4);
+    let bulb = Block::from_name("exposed_copper_bulb")
+        .unwrap()
+        .with_copper_bulb_state(true, false)
+        .unwrap();
+    world.set_block(pos, bulb);
+    world.enable_history(2, false).unwrap();
+    world.tick_interpreted();
+    world.set_block(pos, Block::Air);
+    world.tick_interpreted();
+    world.flush_block_changes();
+    assert_eq!(world.bulb_light_at(pos), 0);
+    assert!(world.random_tick_sections.is_empty());
+    world.rewind_ticks(2, false).unwrap();
+    assert_eq!(world.get_block(pos), bulb);
+    assert_eq!(world.bulb_light_at(pos), 12);
+    assert_eq!(world.random_tick_sections.len(), 1);
+}
+
 #[derive(Debug, PartialEq)]
 struct State {
     blocks: Vec<u32>,

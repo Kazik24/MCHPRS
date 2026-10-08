@@ -18,7 +18,7 @@ use std::io::Read;
 use std::path::Path;
 
 type Compound = std::collections::HashMap<String, nbt::Value>;
-const MAX_BLOCKS: u32 = 16_777_216;
+const MAX_BLOCKS: u32 = 67_108_864;
 
 pub(super) fn parse_block(input: &str) -> Option<Block> {
     static RE: Lazy<Regex> = Lazy::new(|| {
@@ -565,6 +565,27 @@ mod tests {
     mod regression;
     use super::*;
     use nbt::Value;
+    #[test]
+    fn full_production_arena_schematic_fits_the_block_limit() {
+        let palette = Compound::from([("minecraft:air".into(), Value::Int(0))]);
+        let encoded = vec![0; 512 * 256 * 512];
+        let mut schema = Schema {
+            version: 2,
+            data_version: 4325,
+            dimensions: [512, 256, 512],
+            offset: [0; 3],
+            palette: &palette,
+            encoded: &encoded,
+            entities: &[],
+        };
+        assert_eq!(
+            decode_schematic(&schema).unwrap().0.data.entries(),
+            67_108_864
+        );
+        schema.dimensions[1] += 1;
+        assert!(decode_schematic(&schema).is_err());
+    }
+
     fn encode(version: i32, encoded: Vec<i8>) -> Vec<u8> {
         let mut root = nbt::Blob::new();
         for key in ["Width", "Height", "Length"] {

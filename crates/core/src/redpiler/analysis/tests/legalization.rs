@@ -1,47 +1,37 @@
 //! Small executable cases for material/context issues found in FPU and RILAX.
 use super::*;
-use mchprs_blocks::block_entities::{BlockEntity, ContainerType, InventoryEntry};
+use mchprs_blocks::block_entities::{BlockEntity, ContainerType, SignalStrength};
 use mchprs_blocks::blocks::{ComparatorMode, RedstoneComparator};
+use mchprs_blocks::items::ItemStack;
 use mchprs_blocks::BlockDirection;
 
-fn furnace_inventory(strength: u8) -> BlockEntity {
-    let mut remaining = if strength == 0 {
-        0
+fn container_inventory(ty: ContainerType, strength: u8) -> BlockEntity {
+    let item = ItemStack::container_with_ss(ty, SignalStrength::new(strength).unwrap());
+    if let Some(nbt::Value::Compound(entity)) =
+        item.nbt.as_ref().and_then(|nbt| nbt.get("BlockEntityTag"))
+    {
+        BlockEntity::from_nbt(entity).unwrap()
     } else {
-        (u16::from(strength - 1) * 192).div_ceil(14).max(1)
-    };
-    let mut inventory = Vec::new();
-    for slot in 0..3 {
-        let count = remaining.min(64);
-        if count > 0 {
-            inventory.push(InventoryEntry {
-                id: 1,
-                slot,
-                count: count as i8,
-                nbt: None,
-            });
-            remaining -= count;
+        BlockEntity::Container {
+            ty,
+            comparator_override: 0,
+            inventory: Default::default(),
         }
-    }
-    BlockEntity::Container {
-        comparator_override: strength,
-        inventory: inventory.into(),
-        ty: ContainerType::Furnace,
     }
 }
 
-fn furnace_reset(strength: u8) -> (PlotWorld, BlockPos, BlockPos, BlockPos, BlockPos) {
+fn container_reset(
+    kind: ContainerType,
+    strength: u8,
+) -> (PlotWorld, BlockPos, BlockPos, BlockPos, BlockPos) {
     let (mut world, _, manifest) = fixture("instant_observer");
     let base = local_pos(&manifest["ports"]["observations"]["base"]);
     let cap = base + BlockPos::new(0, 2, 0);
     world.set_block(
         cap,
-        Block::Furnace {
-            facing: BlockDirection::North,
-            lit: false,
-        },
+        Block::from_name(kind.to_string().trim_start_matches("minecraft:")).unwrap(),
     );
-    world.set_block_entity(cap, furnace_inventory(strength));
+    world.set_block_entity(cap, container_inventory(kind, strength));
     let comparator = cap.offset(BlockFace::West);
     world.set_block(comparator.offset(BlockFace::Bottom), Block::Stone {});
     world.set_block(
@@ -73,14 +63,20 @@ fn furnace_reset(strength: u8) -> (PlotWorld, BlockPos, BlockPos, BlockPos, Bloc
 }
 
 #[test]
-fn fixed_furnace_context_preserves_inventory_override_and_logical_consumer_levels() {
-    for strength in [0, 1, 4, 6, 12, 15] {
+fn fixed_container_context_preserves_inventory_override_and_logical_consumer_levels() {
+    for (kind, strength) in [ContainerType::Furnace, ContainerType::Barrel]
+        .into_iter()
+        .flat_map(|kind| (0..=15).map(move |strength| (kind, strength)))
+    {
         for optimize in [false, true] {
             for io_only in [false, true] {
-                let (mut compiled, trigger, _, output, cap) = furnace_reset(strength);
+                let (mut compiled, trigger, _, output, cap) = container_reset(kind, strength);
                 let comparator = cap.offset(BlockFace::West);
                 let lamp = comparator.offset(BlockFace::West);
                 let inventory = json!(compiled.get_block_entity(cap));
+                let material = compiled.get_block(cap);
+                let (mut native, _, _, _, _) = container_reset(kind, strength);
+                lever_action(&mut native, trigger, true);
                 let report = analyze_world(&compiled);
                 assert!(report.recognition[0].is_matched());
                 assert!(report
@@ -104,8 +100,18 @@ fn fixed_furnace_context_preserves_inventory_override_and_logical_consumer_level
                     .unwrap();
                 compiler.on_use_block(trigger);
                 for _ in 0..24 {
+                    native.tick_interpreted();
                     compiler.tick();
                     compiler.flush(&mut compiled);
+                    assert_eq!(compiled.get_block(cap), material);
+                    assert_eq!(native.get_block(cap), material);
+                    assert_eq!(json!(compiled.get_block_entity(cap)), inventory);
+                    assert_eq!(json!(native.get_block_entity(cap)), inventory);
+                    assert_eq!(
+                        json!(compiled.get_block_entity(comparator)),
+                        json!(native.get_block_entity(comparator))
+                    );
+                    assert_eq!(compiled.get_block(lamp), native.get_block(lamp));
                 }
                 assert!(
                     matches!(compiled.get_block(output), Block::RedstoneRepeater { repeater } if !repeater.powered)
@@ -119,6 +125,7 @@ fn fixed_furnace_context_preserves_inventory_override_and_logical_consumer_level
                 let bounds = compiled.get_corners();
                 compiler.reset(&mut compiled, bounds);
                 assert_eq!(json!(compiled.get_block_entity(cap)), inventory);
+                assert_eq!(compiled.get_block(cap), material);
                 assert!(matches!(compiled.get_block_entity(comparator),
                     Some(BlockEntity::Comparator { output_strength }) if *output_strength == strength));
                 assert!(compiled.piston_state().events.is_empty());
@@ -130,7 +137,10 @@ fn fixed_furnace_context_preserves_inventory_override_and_logical_consumer_level
 
 #[test]
 fn fixed_inventory_main_input_ignores_conditional_power_above_the_container() {
-    for strength in [1, 6, 15] {
+    for (kind, strength) in [ContainerType::Furnace, ContainerType::Barrel]
+        .into_iter()
+        .flat_map(|kind| [1, 6, 15].map(|strength| (kind, strength)))
+    {
         for optimize in [false, true] {
             for io_only in [false, true] {
                 let make_world = || {
@@ -139,12 +149,10 @@ fn fixed_inventory_main_input_ignores_conditional_power_above_the_container() {
                     let container = wire.offset(BlockFace::Bottom);
                     world.set_block(
                         container,
-                        Block::Furnace {
-                            facing: BlockDirection::North,
-                            lit: false,
-                        },
+                        Block::from_name(kind.to_string().trim_start_matches("minecraft:"))
+                            .unwrap(),
                     );
-                    world.set_block_entity(container, furnace_inventory(strength));
+                    world.set_block_entity(container, container_inventory(kind, strength));
                     let comparator = container.offset(BlockFace::West);
                     world.set_block(comparator.offset(BlockFace::Bottom), Block::Stone {});
                     world.set_block(
@@ -227,20 +235,58 @@ fn fixed_inventory_main_input_ignores_conditional_power_above_the_container() {
 }
 
 #[test]
-fn furnace_support_exception_keeps_entity_movement_and_reset_guards() {
+fn fixed_container_requires_matching_inert_conducting_material() {
+    let mut world = empty();
+    for kind in [
+        ContainerType::Furnace,
+        ContainerType::Barrel,
+        ContainerType::Chest,
+        ContainerType::Hopper,
+    ] {
+        let block = Block::from_name(kind.to_string().trim_start_matches("minecraft:")).unwrap();
+        world.set_block(BASE, block);
+        world.set_block_entity(BASE, container_inventory(kind, 4));
+        assert_eq!(
+            families::fixed_container(&world, BASE),
+            matches!(kind, ContainerType::Furnace | ContainerType::Barrel)
+        );
+        world.set_block_entity(BASE, BlockEntity::Comparator { output_strength: 4 });
+        assert!(!families::fixed_container(&world, BASE));
+        let wrong_kind = if kind == ContainerType::Furnace {
+            ContainerType::Barrel
+        } else {
+            ContainerType::Furnace
+        };
+        world.set_block_entity(BASE, container_inventory(wrong_kind, 4));
+        assert!(!families::fixed_container(&world, BASE));
+    }
+}
+
+#[test]
+fn container_support_exception_keeps_entity_movement_and_reset_guards() {
     use families::RecognitionFailure;
-    for mutation in ["wrong block", "wrong entity", "moving support", "pending"] {
-        let (mut world, _, base, _, cap) = furnace_reset(4);
+    for (kind, mutation) in [ContainerType::Furnace, ContainerType::Barrel]
+        .into_iter()
+        .flat_map(|kind| {
+            ["wrong block", "wrong entity", "moving support", "pending"]
+                .map(|mutation| (kind, mutation))
+        })
+    {
+        let (mut world, _, base, _, cap) = container_reset(kind, 4);
         let expected = match mutation {
             "wrong block" => {
                 world.set_block(cap, Block::Stone {});
-                world.set_block_entity(cap, furnace_inventory(4));
+                world.set_block_entity(cap, container_inventory(kind, 4));
                 RecognitionFailure::BlockEntity { pos: cap }
             }
             "wrong entity" => {
-                let mut entity = furnace_inventory(4);
+                let mut entity = container_inventory(kind, 4);
                 if let BlockEntity::Container { ty, .. } = &mut entity {
-                    *ty = ContainerType::Barrel;
+                    *ty = if kind == ContainerType::Furnace {
+                        ContainerType::Barrel
+                    } else {
+                        ContainerType::Furnace
+                    };
                 }
                 world.set_block_entity(cap, entity);
                 RecognitionFailure::BlockEntity { pos: cap }
@@ -328,7 +374,7 @@ fn logical_conductors_accept_retained_geometry_and_reject_entities_and_bad_heads
         world.set_block(payload, Block::Quartz);
         let expected = match mutation {
             "entity" => {
-                world.set_block_entity(payload, furnace_inventory(1));
+                world.set_block_entity(payload, container_inventory(ContainerType::Furnace, 1));
                 "unsupported block entity in its movement area"
             }
             "missing head" => {

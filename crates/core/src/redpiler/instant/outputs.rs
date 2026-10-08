@@ -45,6 +45,7 @@ impl OutputPort {
 /// update behavior. These payloads have fixed material properties.
 pub(crate) fn supported_payload(block: mchprs_blocks::blocks::Block) -> bool {
     use mchprs_blocks::blocks::Block;
+    // ponytail: mobile bulbs need stateful analog bindings; reject them until the payload runtime preserves their latch and placement updates.
     block == Block::RedstoneBlock
         || (block.is_solid()
             && block.is_cube()

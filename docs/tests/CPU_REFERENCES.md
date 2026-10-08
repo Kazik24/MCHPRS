@@ -320,3 +320,23 @@ changing the single-clock executor. Continue using the interpreter for PM1.
 cargo test -p mchprs_core --lib --locked redpiler::analysis::tests:: -- --test-threads=1
 cargo run -p mchprs_core --release --locked --example pm1_sort_correction -- --probe-fixed
 ```
+
+### Fixed container support
+
+The furnace-specific reset support exception now uses one shared
+`analysis::families::fixed_container` predicate for structural recognition,
+observer certification, and ownership exclusion. It requires a solid conductor,
+no neighbor-update handler, and a container entity whose type matches
+`ContainerType::from_block`. This admits stationary barrels alongside furnaces.
+Of the four `/container` options, chest is nonconducting and hopper has a powered
+enabled-state update; neither qualifies for this exception. Their existing
+ordinary comparator support is unchanged. Container payloads remain unsupported.
+
+Regression coverage uses `/container`'s `ItemStack::container_with_ss` generator
+at all strengths 0 through 15, both optimization modes, and both I/O modes.
+Container material, complete inventory, comparator output, and lamp state agree
+with the interpreter on every tick of the reset-support case. Conditional dust
+above the container cannot replace its analog comparator main input. Flush and
+reset preserve the inventory, and mismatched entities, mobile supports, and
+pending reset work still reject. The analysis suite passed 87 tests with
+8 ignored; PM1 admission and throughput were not rerun for this container change.

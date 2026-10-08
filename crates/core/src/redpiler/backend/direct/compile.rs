@@ -107,6 +107,7 @@ fn compile_node(
             facing_diode: *facing_diode,
         },
         CNodeType::Lamp => NodeType::Lamp,
+        CNodeType::CopperBulb => NodeType::CopperBulb,
         CNodeType::Button => NodeType::Button,
         CNodeType::Lever => NodeType::Lever,
         CNodeType::PressurePlate => NodeType::PressurePlate,
@@ -330,7 +331,7 @@ pub fn compile(
         }
     }
 
-    // Track command-block overrides read through a comparator's far input.
+    // Dynamic analog overrides can be read through a conducting rear block.
     for (i, block) in backend.blocks.iter().enumerate() {
         let Some((pos, Block::RedstoneComparator { comparator })) = block else {
             continue;
@@ -349,12 +350,11 @@ pub fn compile(
             .offset(comparator.facing.block_face())
             .offset(comparator.facing.block_face());
         if let Some(&source) = backend.pos_map.get(&far) {
-            if matches!(backend.nodes[source].ty, NodeType::CommandBlock { .. }) {
-                backend
-                    .command_far_comparators
-                    .entry(source)
-                    .or_default()
-                    .push(id);
+            if matches!(
+                backend.nodes[source].ty,
+                NodeType::CommandBlock { .. } | NodeType::CopperBulb
+            ) {
+                backend.far_comparators.entry(source).or_default().push(id);
             }
         }
     }

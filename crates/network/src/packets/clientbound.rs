@@ -565,6 +565,55 @@ pub struct CChunkData {
     pub heightmaps: nbt::Blob,
     pub chunk_sections: Vec<CChunkDataSection>,
     pub block_entities: Vec<CChunkDataBlockEntity>,
+    pub block_light: Vec<Option<Vec<u8>>>,
+}
+
+fn write_block_light_masks(buf: &mut Vec<u8>, sections: &[Option<Vec<u8>>], empty: bool) {
+    assert!(sections.len() <= 64);
+    let mask = sections
+        .iter()
+        .enumerate()
+        .fold(0u64, |mask, (index, section)| {
+            mask | if section.is_none() == empty {
+                1 << index
+            } else {
+                0
+            }
+        });
+    buf.write_varint(i32::from(mask != 0));
+    if mask != 0 {
+        buf.write_long(mask as i64);
+    }
+}
+
+fn write_block_light_arrays(buf: &mut Vec<u8>, sections: &[Option<Vec<u8>>]) {
+    buf.write_varint(sections.iter().flatten().count() as i32);
+    for section in sections.iter().flatten() {
+        assert_eq!(section.len(), 2048);
+        buf.write_varint(section.len() as i32);
+        buf.write_bytes(section);
+    }
+}
+
+pub struct CUpdateLight {
+    pub chunk_x: i32,
+    pub chunk_z: i32,
+    pub block_light: Vec<Option<Vec<u8>>>,
+}
+
+impl ClientBoundPacket for CUpdateLight {
+    fn encode(&self) -> PacketEncoder {
+        let mut buf = Vec::new();
+        buf.write_varint(self.chunk_x);
+        buf.write_varint(self.chunk_z);
+        buf.write_varint(0); // Leave existing skylight unchanged.
+        write_block_light_masks(&mut buf, &self.block_light, false);
+        buf.write_varint(0);
+        write_block_light_masks(&mut buf, &self.block_light, true);
+        buf.write_varint(0);
+        write_block_light_arrays(&mut buf, &self.block_light);
+        PacketEncoder::new(buf, 0x2a)
+    }
 }
 
 fn write_light_section_mask(buf: &mut Vec<u8>, section_count: usize) {
@@ -656,11 +705,17 @@ impl ClientBoundPacket for CChunkData {
         // Sky Light Mask
         write_light_section_mask(&mut buf, light_sections);
         // Block Light Mask
-        buf.write_varint(0);
+        let block_light = if self.block_light.is_empty() {
+            vec![None; light_sections]
+        } else {
+            self.block_light.clone()
+        };
+        assert_eq!(block_light.len(), light_sections);
+        write_block_light_masks(&mut buf, &block_light, false);
         // Empty Sky Light Mask
         buf.write_varint(0);
         // Empty Block Light Mask: explicitly clear stale block lighting.
-        write_light_section_mask(&mut buf, light_sections);
+        write_block_light_masks(&mut buf, &block_light, true);
         // Sky Light array count
         buf.write_varint(light_sections as i32);
         // One nibble per block: two level-15 values in each byte.
@@ -670,7 +725,7 @@ impl ClientBoundPacket for CChunkData {
             buf.write_bytes(&FULL_SKY_LIGHT);
         }
         // Block Light array count
-        buf.write_varint(0);
+        write_block_light_arrays(&mut buf, &block_light);
 
         PacketEncoder::new(buf, 0x27)
     }

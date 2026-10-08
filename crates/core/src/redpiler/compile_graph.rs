@@ -21,6 +21,7 @@ pub enum NodeType {
         facing_diode: bool,
     },
     Lamp,
+    CopperBulb,
     Button,
     Lever,
     PressurePlate,
@@ -150,6 +151,7 @@ pub enum GraphError {
     UnsupportedInstantExport,
     UnsupportedCommandBlockExport,
     UnsupportedObserverExport,
+    UnsupportedCopperBulbExport,
     UnsupportedObserverWatch {
         observer: BlockPos,
         watched: BlockPos,
@@ -177,6 +179,9 @@ impl std::fmt::Display for GraphError {
             Self::UnsupportedObserverExport => f.write_str(
                 "observer notification links cannot be exported in the electrical graph format",
             ),
+            Self::UnsupportedCopperBulbExport => {
+                f.write_str("copper-bulb state cannot be exported in the electrical graph format")
+            }
             Self::UnsupportedObserverWatch {
                 observer,
                 watched,

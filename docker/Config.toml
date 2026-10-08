@@ -14,6 +14,8 @@ fast_render_threshold = 200
 fast_render_send_rate = 10
 rhistory_memory_limit_mib = 2048
 rhistory_work_memory_limit_mib = 256
+worldedit_max_blocks = 67108864
+worldedit_history_blocks = 134217728
 
 [velocity]
 secret_file = "/run/velocity/forwarding.secret"

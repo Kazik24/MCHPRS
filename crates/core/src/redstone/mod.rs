@@ -6,6 +6,7 @@
 mod adder_tests;
 pub(crate) mod command_block;
 pub mod comparator;
+pub(crate) mod copper_bulb;
 #[cfg(test)]
 pub(crate) mod instant_piston_tests;
 #[cfg(test)]
@@ -214,7 +215,7 @@ pub(crate) fn has_neighbor_update(block: Block) -> bool {
         | Block::NoteBlock { .. } => true,
         // Command blocks are registry states outside the modeled enum. Known
         // inert variants (especially air) do not need a registry/name lookup.
-        Block::Unknown { .. } => block.is_command_block(),
+        Block::Unknown { .. } => block.is_command_block() || block.is_copper_bulb(),
         _ => false,
     }
 }
@@ -224,6 +225,10 @@ pub fn update(block: Block, world: &mut impl World, pos: BlockPos, dir: Option<B
     let _trace = instant_piston_tests::callback(world, block, pos, dir);
     if block.is_command_block() {
         command_block::update(world, pos);
+        return;
+    }
+    if block.is_copper_bulb() {
+        copper_bulb::update(world, pos);
         return;
     }
     match block {
@@ -479,7 +484,8 @@ pub fn skipping_update_surrounding_blocks(
         // Diagonals receive power rechecks, not changes to their watched block.
         // A premature observer pulse can quasi-power a piston before its first
         // movement and leave it extended when the external source is removed.
-        if !matches!(up_block, Block::Observer { .. })
+        if (up_pos != pos || !up_block.is_copper_bulb())
+            && !matches!(up_block, Block::Observer { .. })
             && (!skip_pistons || !matches!(up_block, Block::Piston { .. }))
         {
             update(up_block, world, up_pos, Some(BlockFace::Bottom));
@@ -487,7 +493,8 @@ pub fn skipping_update_surrounding_blocks(
 
         let down_pos = neighbor_pos.offset(BlockFace::Bottom);
         let down_block = world.get_block(down_pos);
-        if !matches!(down_block, Block::Observer { .. })
+        if (down_pos != pos || !down_block.is_copper_bulb())
+            && !matches!(down_block, Block::Observer { .. })
             && (!skip_pistons || !matches!(down_block, Block::Piston { .. }))
         {
             update(down_block, world, down_pos, Some(BlockFace::Top));

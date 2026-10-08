@@ -6,6 +6,49 @@ use mchprs_blocks::blocks::{
 use mchprs_blocks::{BlockColorVariant, BlockDirection};
 
 #[test]
+fn conditional_geometry_drives_stationary_copper_bulbs_and_restores_the_latch() {
+    for optimize in [false, true] {
+        let (mut world, trigger, _, output) = conductor_output(Block::Stone {}, true, false);
+        world.set_random_tick_speed(0);
+        world.set_block(output, Block::from_name("waxed_copper_bulb").unwrap());
+        let bounds = world.get_corners();
+        let mut compiler = Compiler::default();
+        compiler
+            .compile(
+                &world,
+                bounds,
+                CompilerOptions {
+                    optimize,
+                    io_only: true,
+                    ..Default::default()
+                },
+                world.scheduler().iter_entries().collect(),
+                Default::default(),
+            )
+            .unwrap();
+        compiler.on_use_block(trigger);
+        for _ in 0..36 {
+            compiler.tick_with_world(&mut world);
+        }
+        compiler.flush(&mut world);
+        assert_eq!(
+            world.get_block(output).copper_bulb_state(),
+            Some((true, true))
+        );
+        compiler.reset(&mut world, bounds);
+        assert_eq!(
+            world.get_block(output).copper_bulb_state(),
+            Some((true, true))
+        );
+        crate::redstone::update(world.get_block(output), &mut world, output, None);
+        assert_eq!(
+            world.get_block(output).copper_bulb_state(),
+            Some((true, true))
+        );
+    }
+}
+
+#[test]
 fn fixed_payloads_retain_dynamic_and_unknown_state_guards() {
     for name in [
         "glass",

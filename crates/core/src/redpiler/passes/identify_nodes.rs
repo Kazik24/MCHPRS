@@ -196,23 +196,24 @@ fn for_pos<W: World>(
         ty,
         NodeType::Button | NodeType::Lever | NodeType::PressurePlate
     );
-    let dynamic_command_override = match block {
+    let dynamic_override = match block {
         Block::RedstoneComparator { comparator } => {
-            comparator::get_far_input(world, pos, comparator.facing).is_some()
-                && world
-                    .get_block(
-                        pos.offset(comparator.facing.block_face())
-                            .offset(comparator.facing.block_face()),
-                    )
-                    .is_command_block()
+            comparator::get_far_input(world, pos, comparator.facing).is_some() && {
+                let far = world.get_block(
+                    pos.offset(comparator.facing.block_face())
+                        .offset(comparator.facing.block_face()),
+                );
+                far.is_command_block() || far.is_copper_bulb()
+            }
         }
         _ => false,
     };
-    let is_output = dynamic_command_override
+    let is_output = dynamic_override
         || matches!(
             ty,
             NodeType::Trapdoor
                 | NodeType::Lamp
+                | NodeType::CopperBulb
                 | NodeType::NoteBlock { .. }
                 | NodeType::CommandBlock { .. }
                 | NodeType::Observer { .. }
@@ -278,6 +279,13 @@ fn identify_block<W: World>(
         Block::RedstoneWire { wire } => (NodeType::Wire, NodeState::with_strength(wire.power)),
         Block::StoneButton { button } => (NodeType::Button, NodeState::simple(button.powered)),
         Block::RedstoneLamp { lit } => (NodeType::Lamp, NodeState::simple(lit)),
+        block if block.is_copper_bulb() => {
+            let (lit, powered) = block.copper_bulb_state().unwrap();
+            (
+                NodeType::CopperBulb,
+                NodeState::comparator(powered, redstone::bool_to_ss(lit)),
+            )
+        }
         Block::Lever { lever } => (NodeType::Lever, NodeState::simple(lever.powered)),
         Block::StonePressurePlate { powered } => {
             (NodeType::PressurePlate, NodeState::simple(powered))

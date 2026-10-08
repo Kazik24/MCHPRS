@@ -31,6 +31,7 @@ impl Snapshot {
         world.invalidate_interpreter_caches();
         world.reset_screen_tracking();
         world.command_messages.clear();
+        world.level_events.clear();
     }
 }
 

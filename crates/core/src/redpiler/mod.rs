@@ -82,7 +82,7 @@ pub struct CompilerOptions {
     pub optimize: bool,
     /// Export the graph to a binary format. See the [`redpiler_graph`] crate.
     pub export: bool,
-    /// Only flush lamp, button, lever, pressure plate, or trapdoor updates.
+    /// Only flush visible outputs and controls, including lamps and copper bulbs.
     pub io_only: bool,
     /// Update all blocks in the input region after reset.
     pub update: bool,
@@ -269,6 +269,25 @@ pub struct Compiler {
 }
 
 impl Compiler {
+    #[cfg(test)]
+    pub(crate) fn ordinary_sources(&self) -> Vec<(BlockPos, u8)> {
+        self.backend.as_ref().unwrap().ordinary_sources()
+    }
+
+    #[cfg(test)]
+    pub(crate) fn oxidize_bulb(
+        &mut self,
+        world: &mut impl World,
+        pos: BlockPos,
+        gate: f32,
+        roll: f32,
+    ) {
+        self.backend
+            .as_mut()
+            .unwrap()
+            .oxidize_bulb(world, pos, gate, roll);
+    }
+
     /// Last successful compile; failed attempts never publish partial statistics.
     pub fn stats(&self) -> Option<&CompileStatistics> {
         self.statistics.as_ref()

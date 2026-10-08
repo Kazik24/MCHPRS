@@ -45,6 +45,12 @@ defined in [config.rs](crates/core/src/config.rs); Docker's example is
 | `fast_render_threshold` | `200` | Configured TPS above which visual updates are throttled. |
 | `fast_render_send_rate` | `10` | Throttled visual flush rate. |
 | `proxy_chat` | `false` | Optional authenticated Velocity chat bridge. |
+| `worldedit_max_blocks` | `67108864` | Maximum blocks per WorldEdit operation; matches the schematic import/export cap and fits a full 512 × 256 × 512 arena. |
+| `worldedit_history_blocks` | `134217728` | Maximum blocks retained in undo/redo per player. |
+
+Existing config values are preserved when the server fills defaults. For production
+Docker, update `/srv/mchprs/backend-config/Config.toml` on the host and restart the
+container; that mounted config overrides the example bundled in the image.
 
 Plot speed and rendering settings are separate. Neighbor plots appear as
 read-only snapshots; entering a plot changes the active simulation context.

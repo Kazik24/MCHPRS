@@ -251,6 +251,7 @@ impl PalettedBitBuffer {
 pub struct ChunkSection {
     buffer: PalettedBitBuffer,
     block_count: u32,
+    pub(crate) random_tick_count: u16,
     multi_block: CMultiBlockChange,
     changed_blocks: Option<Box<[i16; 16 * 16 * 16]>>,
 }
@@ -271,6 +272,11 @@ impl ChunkSection {
     /// Sets a block in the chunk sections. Returns true if a block was changed.
     fn set_block(&mut self, x: u32, y: u32, z: u32, block: u32) -> bool {
         let old_block = self.get_block(x, y, z);
+        let ticks = |id| {
+            let block = Block::from_id(id);
+            u16::from(block.is_copper_bulb() && block.copper_oxidation().is_some_and(|age| age < 3))
+        };
+        self.random_tick_count = self.random_tick_count + ticks(block) - ticks(old_block);
         if old_block == 0 && block != 0 {
             self.block_count += 1;
         } else if old_block != 0 && block == 0 {
@@ -296,8 +302,23 @@ impl ChunkSection {
         let palette = data.palette.into_iter().map(|x| x as u32).collect();
         let buffer =
             PalettedBitBuffer::load(data.entries, bits_per_entry, loaded_longs, palette, 9);
+        let random_tick_count = if buffer.use_palette
+            && !buffer.palette.iter().any(|&id| {
+                let block = Block::from_id(id);
+                block.is_copper_bulb() && block.copper_oxidation().is_some_and(|age| age < 3)
+            }) {
+            0
+        } else {
+            (0..4096)
+                .filter(|&index| {
+                    let block = Block::from_id(buffer.get_entry(index));
+                    block.is_copper_bulb() && block.copper_oxidation().is_some_and(|age| age < 3)
+                })
+                .count() as u16
+        };
         ChunkSection {
             buffer,
+            random_tick_count,
             block_count: data.block_count as u32,
             multi_block: CMultiBlockChange {
                 chunk_x: 0,
@@ -412,6 +433,7 @@ impl Default for ChunkSection {
         ChunkSection {
             buffer: PalettedBitBuffer::new(4096, 9),
             block_count: 0,
+            random_tick_count: 0,
             multi_block: CMultiBlockChange {
                 chunk_x: 0,
                 chunk_y: 0,
@@ -430,9 +452,57 @@ pub struct Chunk {
     pub block_entities: FxHashMap<BlockPos, BlockEntity>,
     instance: u64,
     revision: u64,
+    pub(crate) block_light: [Option<Vec<u8>>; PLOT_SECTIONS],
 }
 
 impl Chunk {
+    pub(crate) fn light_arrays(&self) -> Vec<Option<Vec<u8>>> {
+        std::iter::once(None)
+            .chain(self.block_light.iter().cloned())
+            .chain(std::iter::once(None))
+            .collect()
+    }
+
+    pub(crate) fn set_block_light(&mut self, light: [Option<Vec<u8>>; PLOT_SECTIONS]) -> bool {
+        if self.block_light == light {
+            return false;
+        }
+        self.block_light = light;
+        self.revision = self.revision.wrapping_add(1);
+        true
+    }
+
+    pub(crate) fn copper_bulbs(&self) -> Vec<(BlockPos, Block)> {
+        let mut bulbs = Vec::new();
+        for (y, section) in self.sections.iter().enumerate() {
+            if section.block_count == 0
+                || (section.buffer.use_palette
+                    && !section
+                        .buffer
+                        .palette
+                        .iter()
+                        .any(|&id| Block::from_id(id).is_copper_bulb()))
+            {
+                continue;
+            }
+            for index in 0..4096 {
+                let block =
+                    Block::from_id(section.get_block(index & 15, index >> 8, (index >> 4) & 15));
+                if block.is_copper_bulb() {
+                    bulbs.push((
+                        BlockPos::new(
+                            self.x * 16 + (index & 15) as i32,
+                            y as i32 * 16 + (index >> 8) as i32,
+                            self.z * 16 + ((index >> 4) & 15) as i32,
+                        ),
+                        block,
+                    ));
+                }
+            }
+        }
+        bulbs
+    }
+
     /// Independent of local packet flushes, including replacement during rewind.
     pub(crate) fn snapshot_version(&self) -> (u64, u64) {
         (self.instance, self.revision)
@@ -596,6 +666,7 @@ impl Chunk {
         }
         CChunkData {
             chunk_sections,
+            block_light: self.light_arrays(),
             chunk_x: self.x,
             chunk_z: self.z,
             heightmaps,
@@ -624,6 +695,7 @@ impl Chunk {
             chunk_z: z,
             heightmaps: nbt::Blob::new(),
             block_entities: vec![],
+            block_light: Vec::new(),
         }
         .encode()
     }
@@ -692,6 +764,7 @@ impl Chunk {
             z,
             instance: CHUNK_INSTANCE.fetch_add(1, Ordering::Relaxed),
             revision: 0,
+            block_light: std::array::from_fn(|_| None),
             sections: chunk_data.sections.map(ChunkSection::load),
             block_entities: chunk_data.block_entities,
         };
@@ -738,6 +811,7 @@ impl Chunk {
             z,
             instance: CHUNK_INSTANCE.fetch_add(1, Ordering::Relaxed),
             revision: 0,
+            block_light: std::array::from_fn(|_| None),
             block_entities: FxHashMap::default(),
         }
     }

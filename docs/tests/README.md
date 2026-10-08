@@ -24,6 +24,7 @@ cargo test -p mchprs_core --lib --locked -- --list --ignored
 | Contract | Sources | Focused command |
 | --- | --- | --- |
 | Power, dust, diodes, observers, movement | [Redstone tests](../../crates/core/src/redstone/mod.rs), [piston tests](../../crates/core/src/redstone/piston/tests.rs), [wire tests](../../crates/core/src/redstone/wire/turbo_tests.rs) | `cargo test -p mchprs_core --lib --locked redstone::` |
+| Copper bulbs: Java 1.21.5 electrical traces, transformations, storage, lighting | [Bulb tests](../../crates/core/src/redstone/copper_bulb/tests.rs), [Java reference](../../test_data/copper-bulbs/java-1.21.5.json) | `cargo test -p mchprs_core --lib --locked copper_bulb` |
 | Physical instant protocols | [Instant tests](../../crates/core/src/redstone/instant_piston_tests.rs), [I/O tests](../../crates/core/src/redstone/instant_piston_tests/io.rs) | `cargo test -p mchprs_core --lib --locked redstone::instant_piston_tests::` |
 | Recognition, admission, compiled execution, reset | [Analysis tests](../../crates/core/src/redpiler/analysis/tests.rs) and its submodules | `cargo test -p mchprs_core --lib --locked redpiler::` |
 | Scheduler, storage, cache lifetime | [World tests](../../crates/core/src/world/tests.rs) | `cargo test -p mchprs_core --lib --locked world::` |
@@ -45,6 +46,28 @@ from this checkout. Treat that job as incomplete configuration; the Rust network
 tests above are runnable. Do not invent results for the missing scripts.
 
 ## Evidence and larger runs
+
+The copper bulb reference was captured from the official Java 1.21.5 server
+with SHA-1 `e6ec2f64e6080b9b5d9b471b291c33cc7f509733`. It covers all eight
+variants and all four initial `lit`/`powered` combinations, repeated levels,
+zero-tick edges, direct/far comparators, and an observer. The interpreter and
+compiled engine (including `-O` and `-Oi`) replay the same samples. Oxidation,
+waxing, scraping, and emitted light have separate controlled tests.
+
+To capture independently into a new file (Java 21 or newer, localhost ports
+25583/25584 must be free):
+
+```sh
+python tools/capture_copper_bulbs_java.py --server-jar /path/to/server-1.21.5.jar --output /path/to/new-reference.json
+```
+
+The script uses a temporary void world and refuses to overwrite a reference.
+Piston-carried bulbs work in the interpreter; compiled piston extraction rejects
+them because its payload model cannot carry the bulb latch and analog output.
+The legacy graph export also rejects bulbs instead of writing an incompatible
+node. Bulb block light is rebuilt at visual flushes using registry attenuation;
+partial-block face occlusion and cross-plot light propagation are outside this
+lighting implementation.
 
 - [Instant piston fixtures and captures](INSTANT_PISTONS.md): physical episodes,
   Java comparisons, coordinate mappings, and compiled differential checks.

@@ -37,6 +37,7 @@ pub enum ConsumerKind {
     Comparator,
     Torch,
     Lamp,
+    CopperBulb,
     Trapdoor,
     NoteBlock,
     CommandBlock,
@@ -82,6 +83,7 @@ pub struct PortReport {
 
 pub(crate) fn is_consumer(block: Block) -> bool {
     block.is_command_block()
+        || block.is_copper_bulb()
         || matches!(
             block,
             Block::RedstoneRepeater { .. }
@@ -238,6 +240,7 @@ pub(super) fn discover<W: World>(
             Block::RedstoneComparator { .. } => ConsumerKind::Comparator,
             Block::RedstoneTorch { .. } | Block::RedstoneWallTorch { .. } => ConsumerKind::Torch,
             Block::RedstoneLamp { .. } => ConsumerKind::Lamp,
+            block if block.is_copper_bulb() => ConsumerKind::CopperBulb,
             Block::IronTrapdoor { .. } => ConsumerKind::Trapdoor,
             Block::NoteBlock { .. } => ConsumerKind::NoteBlock,
             block if block.is_command_block() => ConsumerKind::CommandBlock,

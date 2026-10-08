@@ -32,10 +32,14 @@ pub fn has_override(block: Block) -> bool {
     ) || ContainerType::from_block(block).is_some()
         || block.get_name() == "end_portal_frame"
         || block.is_command_block()
+        || block.is_copper_bulb()
 }
 
 pub fn get_override(block: Block, world: &impl World, pos: BlockPos) -> u8 {
     match block {
+        block if block.is_copper_bulb() => {
+            super::bool_to_ss(world.get_block(pos).copper_bulb_state().unwrap().0)
+        }
         block if block.is_command_block() => match world.get_block_entity(pos) {
             Some(BlockEntity::CommandBlock(entity)) => entity.success_count.clamp(0, 15) as u8,
             _ => 0,

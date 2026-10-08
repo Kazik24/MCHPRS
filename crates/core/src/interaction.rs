@@ -416,6 +416,7 @@ pub fn place_in_world(
     pos: BlockPos,
     nbt: &Option<nbt::Blob>,
 ) {
+    let previous = world.get_block(pos);
     if block.has_block_entity() {
         if let Some(nbt) = nbt {
             if let Some(nbt::Value::Compound(compound)) = nbt.get("BlockEntityTag") {
@@ -426,6 +427,9 @@ pub fn place_in_world(
         };
     }
     world.set_block(pos, block);
+    if block.is_copper_bulb() && previous.registry_id() != block.registry_id() {
+        redstone::copper_bulb::update(world, pos);
+    }
     if block.is_command_block() {
         redstone::command_block::update(world, pos);
     }
@@ -641,6 +645,25 @@ pub fn use_item_on_block(
 ) -> ItemUseResult {
     let use_pos = ctx.block_pos;
     let use_block = world.get_block(use_pos);
+    if let Some((transformed, sound, event)) =
+        redstone::copper_bulb::item_transform(use_block, item.item_type.get_name())
+    {
+        if crate::permissions::dedicated_permissions()
+            && !ctx.player.has_permission("mchprs.build.interact")
+        {
+            ctx.player.send_no_permission_message();
+            return ItemUseResult::Cancelled;
+        }
+        if let Some(sound) = sound {
+            crate::sound::play(world, use_pos, sound, 1.0, 1.0, Some(ctx.player.uuid));
+            world.level_event_for_action(use_pos, event, ctx.player.uuid);
+        }
+        place_in_world(transformed, world, use_pos, &None);
+        if sound.is_none() {
+            world.level_event_for_action(use_pos, event, ctx.player.uuid);
+        }
+        return ItemUseResult::Used;
+    }
     let block_pos = ctx.block_pos.offset(ctx.block_face);
     let mut top_pos = ctx.player.pos.block_pos();
     top_pos.y += 1;

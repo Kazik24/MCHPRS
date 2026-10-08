@@ -130,6 +130,88 @@ impl Block {
             .find_map(|&(key, value)| (key == name).then_some(value))
     }
 
+    pub fn is_copper_bulb(self) -> bool {
+        matches!(self, Self::Unknown { .. }) && self.get_name().ends_with("copper_bulb")
+    }
+
+    pub fn copper_bulb_state(self) -> Option<(bool, bool)> {
+        self.is_copper_bulb().then(|| {
+            (
+                self.property("lit") == Some("true"),
+                self.property("powered") == Some("true"),
+            )
+        })
+    }
+
+    pub fn with_copper_bulb_state(mut self, lit: bool, powered: bool) -> Option<Self> {
+        self.copper_bulb_state()?;
+        self.set_properties(HashMap::from([
+            ("lit", if lit { "true" } else { "false" }),
+            ("powered", if powered { "true" } else { "false" }),
+        ]));
+        Some(self)
+    }
+
+    pub fn is_screen(self) -> bool {
+        matches!(self, Self::RedstoneLamp { .. }) || self.is_copper_bulb()
+    }
+
+    pub fn copper_oxidation(self) -> Option<u8> {
+        let name = self.get_name();
+        let (age, base) = if let Some(base) = name.strip_prefix("exposed_") {
+            (1, base)
+        } else if let Some(base) = name.strip_prefix("weathered_") {
+            (2, base)
+        } else if let Some(base) = name.strip_prefix("oxidized_") {
+            (3, base)
+        } else {
+            (0, name)
+        };
+        matches!(
+            base,
+            "copper"
+                | "copper_block"
+                | "cut_copper"
+                | "cut_copper_slab"
+                | "cut_copper_stairs"
+                | "chiseled_copper"
+                | "copper_grate"
+                | "copper_door"
+                | "copper_trapdoor"
+                | "copper_bulb"
+        )
+        .then_some(age)
+    }
+
+    pub fn with_copper_bulb_variant(self, name: &str) -> Option<Self> {
+        let (lit, powered) = self.copper_bulb_state()?;
+        Self::from_name(name)?.with_copper_bulb_state(lit, powered)
+    }
+
+    pub fn copper_bulb_light(self) -> u8 {
+        let Some((true, _)) = self.copper_bulb_state() else {
+            return 0;
+        };
+        let name = self
+            .get_name()
+            .strip_prefix("waxed_")
+            .unwrap_or(self.get_name());
+        match name {
+            "copper_bulb" => 15,
+            "exposed_copper_bulb" => 12,
+            "weathered_copper_bulb" => 8,
+            "oxidized_copper_bulb" => 4,
+            _ => unreachable!(),
+        }
+    }
+
+    pub fn light_filter(self) -> u8 {
+        crate::generated::BLOCK_LIGHT_FILTERS
+            .get(self.registry_id() as usize)
+            .copied()
+            .unwrap_or(15)
+    }
+
     pub fn is_sign(self) -> bool {
         match self {
             Self::Sign { .. } | Self::WallSign { .. } => true,
@@ -565,6 +647,7 @@ macro_rules! blocks {
         impl Block {
             #[inline]
             pub fn is_solid(self) -> bool {
+                if self.is_copper_bulb() { return false; }
                 if let Some(slab_type) = self.slab_type() {
                     return slab_type == SlabType::Double;
                 }

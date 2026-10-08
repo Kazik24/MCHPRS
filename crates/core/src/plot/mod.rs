@@ -1,4 +1,5 @@
 use crate::messages;
+mod block_light;
 #[cfg(test)]
 mod client_sync_tests;
 #[cfg(test)]
@@ -137,6 +138,7 @@ pub struct PlotWorld {
     fast_rendering: bool,
     command_messages: Vec<crate::chat_commands::ChatCommand>,
     sounds: Vec<crate::sound::Emission>,
+    level_events: Vec<(u128, CEffect)>,
     open_chests: HashSet<BlockPos>,
     command_output_window: Instant,
     command_output_count: usize,
@@ -144,6 +146,9 @@ pub struct PlotWorld {
     command_output_limits_enabled: bool,
     history: history::TickHistory,
     update_stats: UpdateStats,
+    random_tick_sections: HashSet<(usize, usize)>,
+    random_tick_speed: u32,
+    bulb_light: block_light::BulbLight,
 }
 
 #[derive(Default)]
@@ -158,6 +163,22 @@ struct UpdateStats {
 }
 
 impl PlotWorld {
+    fn rebuild_random_tick_sections(&mut self) {
+        self.random_tick_sections.clear();
+        for (chunk_index, chunk) in self.chunks.iter().enumerate() {
+            for (section_index, section) in chunk.sections.iter().enumerate() {
+                if section.random_tick_count > 0 {
+                    self.random_tick_sections
+                        .insert((chunk_index, section_index));
+                }
+            }
+        }
+    }
+
+    pub fn set_random_tick_speed(&mut self, speed: u32) {
+        self.random_tick_speed = speed;
+    }
+
     #[inline]
     pub fn from_chunks(
         x: i32,
@@ -180,6 +201,7 @@ impl PlotWorld {
             fast_rendering: false,
             command_messages: Vec::new(),
             sounds: Vec::new(),
+            level_events: Vec::new(),
             open_chests: HashSet::new(),
             command_output_window: Instant::now(),
             command_output_count: 0,
@@ -187,6 +209,9 @@ impl PlotWorld {
             command_output_limits_enabled: true,
             history: Default::default(),
             update_stats: Default::default(),
+            random_tick_sections: Default::default(),
+            random_tick_speed: 3,
+            bulb_light: Default::default(),
         };
         // Position-only old saves bind to the loaded type once. They never
         // dispatch an observer tick into a subsequently moved/replaced block.
@@ -245,6 +270,8 @@ impl PlotWorld {
         for pos in repeating {
             redstone::command_block::update(&mut world, pos);
         }
+        world.rebuild_random_tick_sections();
+        world.rebuild_bulb_light();
         world
     }
 
@@ -264,6 +291,7 @@ impl PlotWorld {
     }
 
     pub fn flush_block_changes(&mut self) {
+        self.flush_bulb_light();
         if self.screen_only() {
             self.flush_screen_changes();
             return;
@@ -399,12 +427,16 @@ impl PlotWorld {
     }
 
     fn invalidate_interpreter_caches(&mut self) {
+        self.rebuild_random_tick_sections();
+        self.rebuild_bulb_light();
         self.tick_index.invalidate();
         self.piston_index.get_mut().invalidate();
         self.wire_topology.get_mut().clear();
     }
 
     fn clear_interpreter_caches(&mut self) {
+        self.rebuild_random_tick_sections();
+        self.rebuild_bulb_light();
         self.tick_index = Default::default();
         *self.piston_index.get_mut() = Default::default();
         self.wire_topology.get_mut().clear();
@@ -429,6 +461,9 @@ impl PlotWorld {
                         self.to_be_ticked.end_last_tick_move_next();
                         self.piston_state.scheduled_advanced = true;
                     } else {
+                        for pos in self.random_tick_positions() {
+                            redstone::copper_bulb::random_tick(self, pos);
+                        }
                         self.piston_state.phase = AdvancePhase::PistonEvents;
                     }
                 }
@@ -582,8 +617,8 @@ impl World for PlotWorld {
         let new = Block::from_id(block);
         let screen_change = self.screen_updates.as_ref().is_some_and(|updates| {
             updates.authoritative
-                || matches!(old, Block::RedstoneLamp { .. })
-                || matches!(new, Block::RedstoneLamp { .. })
+                || old.is_screen()
+                || new.is_screen()
                 || (matches!(old, Block::MovingPiston { .. }) && updates.contains(pos))
         });
         let previous_screen = screen_change.then(|| self.screen_state(pos));
@@ -608,6 +643,12 @@ impl World for PlotWorld {
             (pos.z & 0xF) as u32,
             block,
         );
+        let section = pos.y as usize / 16;
+        if chunk.sections[section].random_tick_count > 0 {
+            self.random_tick_sections.insert((chunk_index, section));
+        } else {
+            self.random_tick_sections.remove(&(chunk_index, section));
+        }
         let local_pos = BlockPos::new(pos.x & 15, pos.y, pos.z & 15);
         if let Some(ty) = mchprs_blocks::block_entities::ContainerType::from_block(new) {
             if !matches!(chunk.get_block_entity(local_pos), Some(BlockEntity::Container { ty: existing, .. }) if *existing == ty)
@@ -641,6 +682,9 @@ impl World for PlotWorld {
             if let Some(previous) = previous_screen {
                 self.track_screen_change(pos, previous);
             }
+        }
+        if changed {
+            self.track_bulb_light(pos, old, new);
         }
         changed
     }
@@ -760,12 +804,7 @@ impl World for PlotWorld {
         }
         let send_command = matches!(&block_entity, BlockEntity::CommandBlock(_));
         if let BlockEntity::MovingPiston(entity) = &block_entity {
-            if self.screen_only()
-                && matches!(
-                    Block::from_id(entity.block_state),
-                    Block::RedstoneLamp { .. }
-                )
-            {
+            if self.screen_only() && Block::from_id(entity.block_state).is_screen() {
                 // A newly moved lamp may replace a previously non-screen block.
                 // Existing tracked pixels retain their actual previous state.
                 self.track_screen_change(pos, 0);
@@ -854,6 +893,40 @@ impl World for PlotWorld {
                 }
             }
         }
+    }
+
+    fn random_tick_positions(&mut self) -> Vec<BlockPos> {
+        use rand::Rng;
+        let mut random = rand::thread_rng();
+        let mut positions = Vec::new();
+        for &(chunk_index, section) in &self.random_tick_sections {
+            let chunk = &self.chunks[chunk_index];
+            for _ in 0..self.random_tick_speed {
+                let index = random.gen_range(0..4096);
+                let pos = BlockPos::new(
+                    chunk.x * 16 + (index & 15),
+                    section as i32 * 16 + (index >> 8),
+                    chunk.z * 16 + ((index >> 4) & 15),
+                );
+                let block = self.get_block(pos);
+                if block.is_copper_bulb() && block.copper_oxidation().is_some_and(|age| age < 3) {
+                    positions.push(pos);
+                }
+            }
+        }
+        positions
+    }
+
+    fn level_event_for_action(&mut self, pos: BlockPos, event: i32, excluded: u128) {
+        self.level_events.push((
+            excluded,
+            CEffect {
+                effect_id: event,
+                pos: pos.packed(),
+                data: 0,
+                disable_relative_volume: false,
+            },
+        ));
     }
 
     fn play_sound(
@@ -1875,6 +1948,15 @@ impl Plot {
 
         self.refresh_sidebar(false);
 
+        for (excluded, event) in self.world.level_events.drain(..) {
+            let packet = event.encode();
+            for player in &self.players {
+                if player.uuid != excluded {
+                    player.send_packet(&packet);
+                }
+            }
+        }
+
         for sound in self.world.sounds.drain(..) {
             let packet = sound.packet();
             for player in &self.players {
@@ -2159,4 +2241,57 @@ fn chunk_save_and_load_test() {
     assert_eq!(loaded_chunk.get_block(13, 63, 12), 332);
     assert_eq!(loaded_chunk.get_block(13, 62, 12), 331);
     assert_eq!(loaded_chunk.get_block(13, 64, 12), 0);
+}
+
+#[test]
+fn copper_bulb_item_actions_preserve_state_and_exclude_predicted_feedback() {
+    use crate::interaction::{use_item_on_block, ItemUseResult, UseOnBlockContext};
+    use mchprs_blocks::items::{Item, ItemStack};
+    let mut world = PlotWorld::from_chunks(0, 0, vec![Chunk::empty(0, 0)], Default::default());
+    world.set_random_tick_speed(0);
+    let pos = BlockPos::new(4, 30, 4);
+    world.set_block(
+        pos,
+        Block::from_name("exposed_copper_bulb")
+            .unwrap()
+            .with_copper_bulb_state(true, false)
+            .unwrap(),
+    );
+    let connection = mchprs_network::test_support::connection(false).unwrap();
+    let mut player = Player::test_player(connection.player);
+    for (item, variant, event) in [
+        ("honeycomb", "waxed_exposed_copper_bulb", 3003),
+        ("iron_axe", "exposed_copper_bulb", 3004),
+        ("iron_axe", "copper_bulb", 3005),
+    ] {
+        let result = use_item_on_block(
+            &ItemStack {
+                item_type: Item::from_name(item).unwrap(),
+                count: 1,
+                nbt: None,
+            },
+            &mut world,
+            UseOnBlockContext {
+                block_pos: pos,
+                block_face: BlockFace::Top,
+                player: &mut player,
+                cursor_y: 0.5,
+            },
+        );
+        assert!(matches!(result, ItemUseResult::Used));
+        assert_eq!(world.get_block(pos).get_name(), variant);
+        assert_eq!(
+            world.get_block(pos).copper_bulb_state(),
+            Some((true, false))
+        );
+        let (excluded, feedback) = world.level_events.last().unwrap();
+        assert_eq!(*excluded, player.uuid);
+        assert_eq!(feedback.effect_id, event);
+    }
+    assert_eq!(world.level_events.len(), 3);
+    assert_eq!(world.sounds.len(), 2);
+    assert!(world
+        .sounds
+        .iter()
+        .all(|sound| sound.excluded == Some(player.uuid)));
 }

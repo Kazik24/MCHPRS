@@ -62,7 +62,7 @@ impl PlotWorld {
             let moving: Vec<_> = self.piston_state.motions.iter().map(|m| m.pos).collect();
             for pos in moving {
                 let state = self.screen_state(pos);
-                if matches!(Block::from_id(state), Block::RedstoneLamp { .. }) {
+                if Block::from_id(state).is_screen() {
                     self.track_screen_change(pos, self.get_block_raw(pos));
                 }
             }
@@ -95,7 +95,7 @@ impl PlotWorld {
             let moving: Vec<_> = self.piston_state.motions.iter().map(|m| m.pos).collect();
             for pos in moving {
                 let state = self.screen_state(pos);
-                if matches!(Block::from_id(state), Block::RedstoneLamp { .. }) {
+                if Block::from_id(state).is_screen() {
                     self.screen_updates
                         .as_mut()
                         .unwrap()
@@ -153,7 +153,7 @@ impl PlotWorld {
                         z: (pos.z & 15) as u8,
                     });
                 }
-                if matches!(Block::from_id(state), Block::RedstoneLamp { .. }) {
+                if Block::from_id(state).is_screen() {
                     updates.visible.insert(pos, state);
                 } else {
                     updates.visible.remove(&pos);
@@ -258,6 +258,29 @@ mod tests {
                 .collect(),
             Default::default(),
         )
+    }
+
+    #[test]
+    fn copper_bulb_power_and_light_states_are_visible_screen_updates() {
+        let mut world = world();
+        let pos = BlockPos::new(32, 20, 32);
+        let bulb = Block::from_name("waxed_copper_bulb").unwrap();
+        world.set_block(pos, bulb);
+        world.set_screen_only(true);
+        for (lit, powered) in [(true, true), (true, false), (false, true), (false, false)] {
+            let previous = world.visual_update_counts();
+            let next = bulb.with_copper_bulb_state(lit, powered).unwrap();
+            world.set_block(pos, next);
+            world.flush_block_changes();
+            assert_eq!(
+                world.visual_update_counts(),
+                (previous.0 + 1, previous.1 + 1, previous.2 + 1)
+            );
+            assert_eq!(
+                world.screen_updates.as_ref().unwrap().visible[&pos],
+                next.get_id()
+            );
+        }
     }
 
     #[test]

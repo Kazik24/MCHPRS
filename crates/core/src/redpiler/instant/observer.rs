@@ -2,12 +2,13 @@
 //! The sampled electrical extractor is an oracle here, never a runtime fallback.
 use super::boolean::{BooleanArena, Expr, Variable};
 use super::outputs::PowerTerm;
+use crate::redpiler::analysis::families::fixed_container;
 use crate::redpiler::analysis::ports::UpdateKind;
 use crate::redpiler::analysis::topology::{SourceKind, Topology};
 use crate::redpiler::analysis::{AnalysisLimits, AnalysisReport};
 use crate::redpiler::TaskMonitor;
 use crate::world::World;
-use mchprs_blocks::block_entities::{BlockEntity, ContainerType};
+use mchprs_blocks::block_entities::BlockEntity;
 use mchprs_blocks::blocks::Block;
 use mchprs_blocks::{BlockFace, BlockPos};
 use mchprs_world::TickEntry;
@@ -25,17 +26,6 @@ pub(super) struct Certification {
     pub owned: FxHashSet<BlockPos>,
     /// Electrically reset actors whose universal extension was proved.
     pub reset_actors: FxHashSet<usize>,
-}
-
-fn fixed_furnace(world: &impl World, pos: BlockPos) -> bool {
-    matches!(world.get_block(pos), Block::Furnace { .. })
-        && matches!(
-            world.get_block_entity(pos),
-            Some(BlockEntity::Container {
-                ty: ContainerType::Furnace,
-                ..
-            })
-        )
 }
 
 fn dependencies(
@@ -238,9 +228,9 @@ pub(super) fn certify<W: World>(
             ));
         }
         let cap = pos.offset(face.opposite());
-        if world.get_block_entity(cap).is_some() && !fixed_furnace(world, cap) {
+        if world.get_block_entity(cap).is_some() && !fixed_container(world, cap) {
             return Err(fail(&format!(
-                "reset output at {cap:?} has an unsupported block entity; expected a fixed furnace inventory"
+                "reset output at {cap:?} has an unsupported block entity; expected a fixed conducting container inventory"
             )));
         }
         let lamp_cap = matches!(world.get_block(cap), Block::RedstoneLamp { .. });
@@ -370,9 +360,9 @@ pub(super) fn certify<W: World>(
                 return Err(fail("reset dust contains pending work"));
             }
             let support = wire_pos.offset(BlockFace::Bottom);
-            if world.get_block_entity(support).is_some() && !fixed_furnace(world, support) {
+            if world.get_block_entity(support).is_some() && !fixed_container(world, support) {
                 return Err(fail(&format!(
-                    "reset dust support at {support:?} has an unsupported block entity; expected a fixed furnace inventory"
+                    "reset dust support at {support:?} has an unsupported block entity; expected a fixed conducting container inventory"
                 )));
             }
             if mobile.contains_key(&support)
@@ -505,7 +495,7 @@ pub(super) fn certify<W: World>(
         !presentation_caps.contains(pos)
         // Fixed inventories retain their native constant comparator owner.
         // Their analog override is independent of reset electrical power.
-        && !fixed_furnace(world, *pos)
+        && !fixed_container(world, *pos)
     });
     Ok(Certification {
         owned,

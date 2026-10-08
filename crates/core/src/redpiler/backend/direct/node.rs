@@ -122,6 +122,7 @@ pub enum NodeType {
         facing_diode: bool,
     },
     Lamp,
+    CopperBulb,
     Button,
     Lever,
     PressurePlate,

@@ -23,6 +23,7 @@ struct Block {
     max_state_id: u32,
     default_state: u32,
     states: Vec<Property>,
+    filter_light: u8,
 }
 
 #[derive(Deserialize)]
@@ -274,6 +275,7 @@ pub fn blocks() -> Result<TokenStream, String> {
             .map(|(key, value)| quote! { (#key, #value) });
         quote! { &[#(#properties),*] }
     });
+    let light_filters = blocks.iter().map(|block| block.filter_light);
     let item_rows = items.iter().map(
         |Item {
              name, stack_size, ..
@@ -299,6 +301,7 @@ pub fn blocks() -> Result<TokenStream, String> {
         pub static STATE_SLAB_TYPES: &[u8] = &[#(#slab_types),*];
         pub static STATE_DRY_IDS: &[u16] = &[#(#dry_ids),*];
         pub static BLOCKS: &[(&str, u32, u32, u32, u32)] = &[#(#block_rows),*];
+        pub static BLOCK_LIGHT_FILTERS: &[u8] = &[#(#light_filters),*];
         pub static STATE_PROPERTIES: &[&[(&str, &str)]] = &[#(#property_rows),*];
         pub static LEGACY_ITEMS: &[u32] = &[#(#legacy_items),*];
         pub static TARGET_TO_LEGACY_ITEMS: &[u32] = &[#(#reverse_items),*];

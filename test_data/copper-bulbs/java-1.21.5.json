@@ -1,0 +1,5166 @@
+{
+  "version": "1.21.5",
+  "server_sha1": "e6ec2f64e6080b9b5d9b471b291c33cc7f509733",
+  "setup": "Strict initial placement in a frozen void world; lever north, direct comparator south, far comparator east behind stone, observer west watching east. Each sample follows the declared input and game-tick advance.",
+  "columns": [
+    "lit",
+    "powered",
+    "direct_comparator_strength",
+    "far_comparator_strength",
+    "observer_powered"
+  ],
+  "cases": [
+    {
+      "variant": "copper_bulb",
+      "lit": false,
+      "powered": false,
+      "trace": [
+        {
+          "input": true,
+          "ticks": 0,
+          "state": [
+            true,
+            true,
+            0,
+            0,
+            false
+          ]
+        },
+        {
+          "input": true,
+          "ticks": 1,
+          "state": [
+            true,
+            true,
+            0,
+            0,
+            false
+          ]
+        },
+        {
+          "input": true,
+          "ticks": 1,
+          "state": [
+            true,
+            true,
+            15,
+            15,
+            true
+          ]
+        },
+        {
+          "input": true,
+          "ticks": 2,
+          "state": [
+            true,
+            true,
+            15,
+            15,
+            false
+          ]
+        },
+        {
+          "input": false,
+          "ticks": 0,
+          "state": [
+            true,
+            false,
+            15,
+            15,
+            false
+          ]
+        },
+        {
+          "input": false,
+          "ticks": 2,
+          "state": [
+            true,
+            false,
+            15,
+            15,
+            true
+          ]
+        },
+        {
+          "input": false,
+          "ticks": 2,
+          "state": [
+            true,
+            false,
+            15,
+            15,
+            false
+          ]
+        },
+        {
+          "input": true,
+          "ticks": 0,
+          "state": [
+            false,
+            true,
+            15,
+            15,
+            false
+          ]
+        },
+        {
+          "input": false,
+          "ticks": 0,
+          "state": [
+            false,
+            false,
+            15,
+            15,
+            false
+          ]
+        },
+        {
+          "input": true,
+          "ticks": 0,
+          "state": [
+            true,
+            true,
+            15,
+            15,
+            false
+          ]
+        },
+        {
+          "input": true,
+          "ticks": 2,
+          "state": [
+            true,
+            true,
+            15,
+            15,
+            true
+          ]
+        },
+        {
+          "input": true,
+          "ticks": 2,
+          "state": [
+            true,
+            true,
+            15,
+            15,
+            false
+          ]
+        },
+        {
+          "input": false,
+          "ticks": 0,
+          "state": [
+            true,
+            false,
+            15,
+            15,
+            false
+          ]
+        },
+        {
+          "input": false,
+          "ticks": 4,
+          "state": [
+            true,
+            false,
+            15,
+            15,
+            false
+          ]
+        }
+      ]
+    },
+    {
+      "variant": "copper_bulb",
+      "lit": false,
+      "powered": true,
+      "trace": [
+        {
+          "input": true,
+          "ticks": 0,
+          "state": [
+            false,
+            true,
+            0,
+            0,
+            false
+          ]
+        },
+        {
+          "input": true,
+          "ticks": 1,
+          "state": [
+            false,
+            true,
+            0,
+            0,
+            false
+          ]
+        },
+        {
+          "input": true,
+          "ticks": 1,
+          "state": [
+            false,
+            true,
+            0,
+            0,
+            false
+          ]
+        },
+        {
+          "input": true,
+          "ticks": 2,
+          "state": [
+            false,
+            true,
+            0,
+            0,
+            false
+          ]
+        },
+        {
+          "input": false,
+          "ticks": 0,
+          "state": [
+            false,
+            false,
+            0,
+            0,
+            false
+          ]
+        },
+        {
+          "input": false,
+          "ticks": 2,
+          "state": [
+            false,
+            false,
+            0,
+            0,
+            true
+          ]
+        },
+        {
+          "input": false,
+          "ticks": 2,
+          "state": [
+            false,
+            false,
+            0,
+            0,
+            false
+          ]
+        },
+        {
+          "input": true,
+          "ticks": 0,
+          "state": [
+            true,
+            true,
+            0,
+            0,
+            false
+          ]
+        },
+        {
+          "input": false,
+          "ticks": 0,
+          "state": [
+            true,
+            false,
+            0,
+            0,
+            false
+          ]
+        },
+        {
+          "input": true,
+          "ticks": 0,
+          "state": [
+            false,
+            true,
+            0,
+            0,
+            false
+          ]
+        },
+        {
+          "input": true,
+          "ticks": 2,
+          "state": [
+            false,
+            true,
+            0,
+            0,
+            true
+          ]
+        },
+        {
+          "input": true,
+          "ticks": 2,
+          "state": [
+            false,
+            true,
+            0,
+            0,
+            false
+          ]
+        },
+        {
+          "input": false,
+          "ticks": 0,
+          "state": [
+            false,
+            false,
+            0,
+            0,
+            false
+          ]
+        },
+        {
+          "input": false,
+          "ticks": 4,
+          "state": [
+            false,
+            false,
+            0,
+            0,
+            false
+          ]
+        }
+      ]
+    },
+    {
+      "variant": "copper_bulb",
+      "lit": true,
+      "powered": false,
+      "trace": [
+        {
+          "input": true,
+          "ticks": 0,
+          "state": [
+            false,
+            true,
+            0,
+            0,
+            false
+          ]
+        },
+        {
+          "input": true,
+          "ticks": 1,
+          "state": [
+            false,
+            true,
+            0,
+            0,
+            false
+          ]
+        },
+        {
+          "input": true,
+          "ticks": 1,
+          "state": [
+            false,
+            true,
+            0,
+            0,
+            true
+          ]
+        },
+        {
+          "input": true,
+          "ticks": 2,
+          "state": [
+            false,
+            true,
+            0,
+            0,
+            false
+          ]
+        },
+        {
+          "input": false,
+          "ticks": 0,
+          "state": [
+            false,
+            false,
+            0,
+            0,
+            false
+          ]
+        },
+        {
+          "input": false,
+          "ticks": 2,
+          "state": [
+            false,
+            false,
+            0,
+            0,
+            true
+          ]
+        },
+        {
+          "input": false,
+          "ticks": 2,
+          "state": [
+            false,
+            false,
+            0,
+            0,
+            false
+          ]
+        },
+        {
+          "input": true,
+          "ticks": 0,
+          "state": [
+            true,
+            true,
+            0,
+            0,
+            false
+          ]
+        },
+        {
+          "input": false,
+          "ticks": 0,
+          "state": [
+            true,
+            false,
+            0,
+            0,
+            false
+          ]
+        },
+        {
+          "input": true,
+          "ticks": 0,
+          "state": [
+            false,
+            true,
+            0,
+            0,
+            false
+          ]
+        },
+        {
+          "input": true,
+          "ticks": 2,
+          "state": [
+            false,
+            true,
+            0,
+            0,
+            true
+          ]
+        },
+        {
+          "input": true,
+          "ticks": 2,
+          "state": [
+            false,
+            true,
+            0,
+            0,
+            false
+          ]
+        },
+        {
+          "input": false,
+          "ticks": 0,
+          "state": [
+            false,
+            false,
+            0,
+            0,
+            false
+          ]
+        },
+        {
+          "input": false,
+          "ticks": 4,
+          "state": [
+            false,
+            false,
+            0,
+            0,
+            false
+          ]
+        }
+      ]
+    },
+    {
+      "variant": "copper_bulb",
+      "lit": true,
+      "powered": true,
+      "trace": [
+        {
+          "input": true,
+          "ticks": 0,
+          "state": [
+            true,
+            true,
+            0,
+            0,
+            false
+          ]
+        },
+        {
+          "input": true,
+          "ticks": 1,
+          "state": [
+            true,
+            true,
+            0,
+            0,
+            false
+          ]
+        },
+        {
+          "input": true,
+          "ticks": 1,
+          "state": [
+            true,
+            true,
+            0,
+            0,
+            false
+          ]
+        },
+        {
+          "input": true,
+          "ticks": 2,
+          "state": [
+            true,
+            true,
+            0,
+            0,
+            false
+          ]
+        },
+        {
+          "input": false,
+          "ticks": 0,
+          "state": [
+            true,
+            false,
+            0,
+            0,
+            false
+          ]
+        },
+        {
+          "input": false,
+          "ticks": 2,
+          "state": [
+            true,
+            false,
+            15,
+            15,
+            true
+          ]
+        },
+        {
+          "input": false,
+          "ticks": 2,
+          "state": [
+            true,
+            false,
+            15,
+            15,
+            false
+          ]
+        },
+        {
+          "input": true,
+          "ticks": 0,
+          "state": [
+            false,
+            true,
+            15,
+            15,
+            false
+          ]
+        },
+        {
+          "input": false,
+          "ticks": 0,
+          "state": [
+            false,
+            false,
+            15,
+            15,
+            false
+          ]
+        },
+        {
+          "input": true,
+          "ticks": 0,
+          "state": [
+            true,
+            true,
+            15,
+            15,
+            false
+          ]
+        },
+        {
+          "input": true,
+          "ticks": 2,
+          "state": [
+            true,
+            true,
+            15,
+            15,
+            true
+          ]
+        },
+        {
+          "input": true,
+          "ticks": 2,
+          "state": [
+            true,
+            true,
+            15,
+            15,
+            false
+          ]
+        },
+        {
+          "input": false,
+          "ticks": 0,
+          "state": [
+            true,
+            false,
+            15,
+            15,
+            false
+          ]
+        },
+        {
+          "input": false,
+          "ticks": 4,
+          "state": [
+            true,
+            false,
+            15,
+            15,
+            false
+          ]
+        }
+      ]
+    },
+    {
+      "variant": "exposed_copper_bulb",
+      "lit": false,
+      "powered": false,
+      "trace": [
+        {
+          "input": true,
+          "ticks": 0,
+          "state": [
+            true,
+            true,
+            0,
+            0,
+            false
+          ]
+        },
+        {
+          "input": true,
+          "ticks": 1,
+          "state": [
+            true,
+            true,
+            0,
+            0,
+            false
+          ]
+        },
+        {
+          "input": true,
+          "ticks": 1,
+          "state": [
+            true,
+            true,
+            15,
+            15,
+            true
+          ]
+        },
+        {
+          "input": true,
+          "ticks": 2,
+          "state": [
+            true,
+            true,
+            15,
+            15,
+            false
+          ]
+        },
+        {
+          "input": false,
+          "ticks": 0,
+          "state": [
+            true,
+            false,
+            15,
+            15,
+            false
+          ]
+        },
+        {
+          "input": false,
+          "ticks": 2,
+          "state": [
+            true,
+            false,
+            15,
+            15,
+            true
+          ]
+        },
+        {
+          "input": false,
+          "ticks": 2,
+          "state": [
+            true,
+            false,
+            15,
+            15,
+            false
+          ]
+        },
+        {
+          "input": true,
+          "ticks": 0,
+          "state": [
+            false,
+            true,
+            15,
+            15,
+            false
+          ]
+        },
+        {
+          "input": false,
+          "ticks": 0,
+          "state": [
+            false,
+            false,
+            15,
+            15,
+            false
+          ]
+        },
+        {
+          "input": true,
+          "ticks": 0,
+          "state": [
+            true,
+            true,
+            15,
+            15,
+            false
+          ]
+        },
+        {
+          "input": true,
+          "ticks": 2,
+          "state": [
+            true,
+            true,
+            15,
+            15,
+            true
+          ]
+        },
+        {
+          "input": true,
+          "ticks": 2,
+          "state": [
+            true,
+            true,
+            15,
+            15,
+            false
+          ]
+        },
+        {
+          "input": false,
+          "ticks": 0,
+          "state": [
+            true,
+            false,
+            15,
+            15,
+            false
+          ]
+        },
+        {
+          "input": false,
+          "ticks": 4,
+          "state": [
+            true,
+            false,
+            15,
+            15,
+            false
+          ]
+        }
+      ]
+    },
+    {
+      "variant": "exposed_copper_bulb",
+      "lit": false,
+      "powered": true,
+      "trace": [
+        {
+          "input": true,
+          "ticks": 0,
+          "state": [
+            false,
+            true,
+            0,
+            0,
+            false
+          ]
+        },
+        {
+          "input": true,
+          "ticks": 1,
+          "state": [
+            false,
+            true,
+            0,
+            0,
+            false
+          ]
+        },
+        {
+          "input": true,
+          "ticks": 1,
+          "state": [
+            false,
+            true,
+            0,
+            0,
+            false
+          ]
+        },
+        {
+          "input": true,
+          "ticks": 2,
+          "state": [
+            false,
+            true,
+            0,
+            0,
+            false
+          ]
+        },
+        {
+          "input": false,
+          "ticks": 0,
+          "state": [
+            false,
+            false,
+            0,
+            0,
+            false
+          ]
+        },
+        {
+          "input": false,
+          "ticks": 2,
+          "state": [
+            false,
+            false,
+            0,
+            0,
+            true
+          ]
+        },
+        {
+          "input": false,
+          "ticks": 2,
+          "state": [
+            false,
+            false,
+            0,
+            0,
+            false
+          ]
+        },
+        {
+          "input": true,
+          "ticks": 0,
+          "state": [
+            true,
+            true,
+            0,
+            0,
+            false
+          ]
+        },
+        {
+          "input": false,
+          "ticks": 0,
+          "state": [
+            true,
+            false,
+            0,
+            0,
+            false
+          ]
+        },
+        {
+          "input": true,
+          "ticks": 0,
+          "state": [
+            false,
+            true,
+            0,
+            0,
+            false
+          ]
+        },
+        {
+          "input": true,
+          "ticks": 2,
+          "state": [
+            false,
+            true,
+            0,
+            0,
+            true
+          ]
+        },
+        {
+          "input": true,
+          "ticks": 2,
+          "state": [
+            false,
+            true,
+            0,
+            0,
+            false
+          ]
+        },
+        {
+          "input": false,
+          "ticks": 0,
+          "state": [
+            false,
+            false,
+            0,
+            0,
+            false
+          ]
+        },
+        {
+          "input": false,
+          "ticks": 4,
+          "state": [
+            false,
+            false,
+            0,
+            0,
+            false
+          ]
+        }
+      ]
+    },
+    {
+      "variant": "exposed_copper_bulb",
+      "lit": true,
+      "powered": false,
+      "trace": [
+        {
+          "input": true,
+          "ticks": 0,
+          "state": [
+            false,
+            true,
+            0,
+            0,
+            false
+          ]
+        },
+        {
+          "input": true,
+          "ticks": 1,
+          "state": [
+            false,
+            true,
+            0,
+            0,
+            false
+          ]
+        },
+        {
+          "input": true,
+          "ticks": 1,
+          "state": [
+            false,
+            true,
+            0,
+            0,
+            true
+          ]
+        },
+        {
+          "input": true,
+          "ticks": 2,
+          "state": [
+            false,
+            true,
+            0,
+            0,
+            false
+          ]
+        },
+        {
+          "input": false,
+          "ticks": 0,
+          "state": [
+            false,
+            false,
+            0,
+            0,
+            false
+          ]
+        },
+        {
+          "input": false,
+          "ticks": 2,
+          "state": [
+            false,
+            false,
+            0,
+            0,
+            true
+          ]
+        },
+        {
+          "input": false,
+          "ticks": 2,
+          "state": [
+            false,
+            false,
+            0,
+            0,
+            false
+          ]
+        },
+        {
+          "input": true,
+          "ticks": 0,
+          "state": [
+            true,
+            true,
+            0,
+            0,
+            false
+          ]
+        },
+        {
+          "input": false,
+          "ticks": 0,
+          "state": [
+            true,
+            false,
+            0,
+            0,
+            false
+          ]
+        },
+        {
+          "input": true,
+          "ticks": 0,
+          "state": [
+            false,
+            true,
+            0,
+            0,
+            false
+          ]
+        },
+        {
+          "input": true,
+          "ticks": 2,
+          "state": [
+            false,
+            true,
+            0,
+            0,
+            true
+          ]
+        },
+        {
+          "input": true,
+          "ticks": 2,
+          "state": [
+            false,
+            true,
+            0,
+            0,
+            false
+          ]
+        },
+        {
+          "input": false,
+          "ticks": 0,
+          "state": [
+            false,
+            false,
+            0,
+            0,
+            false
+          ]
+        },
+        {
+          "input": false,
+          "ticks": 4,
+          "state": [
+            false,
+            false,
+            0,
+            0,
+            false
+          ]
+        }
+      ]
+    },
+    {
+      "variant": "exposed_copper_bulb",
+      "lit": true,
+      "powered": true,
+      "trace": [
+        {
+          "input": true,
+          "ticks": 0,
+          "state": [
+            true,
+            true,
+            0,
+            0,
+            false
+          ]
+        },
+        {
+          "input": true,
+          "ticks": 1,
+          "state": [
+            true,
+            true,
+            0,
+            0,
+            false
+          ]
+        },
+        {
+          "input": true,
+          "ticks": 1,
+          "state": [
+            true,
+            true,
+            0,
+            0,
+            false
+          ]
+        },
+        {
+          "input": true,
+          "ticks": 2,
+          "state": [
+            true,
+            true,
+            0,
+            0,
+            false
+          ]
+        },
+        {
+          "input": false,
+          "ticks": 0,
+          "state": [
+            true,
+            false,
+            0,
+            0,
+            false
+          ]
+        },
+        {
+          "input": false,
+          "ticks": 2,
+          "state": [
+            true,
+            false,
+            15,
+            15,
+            true
+          ]
+        },
+        {
+          "input": false,
+          "ticks": 2,
+          "state": [
+            true,
+            false,
+            15,
+            15,
+            false
+          ]
+        },
+        {
+          "input": true,
+          "ticks": 0,
+          "state": [
+            false,
+            true,
+            15,
+            15,
+            false
+          ]
+        },
+        {
+          "input": false,
+          "ticks": 0,
+          "state": [
+            false,
+            false,
+            15,
+            15,
+            false
+          ]
+        },
+        {
+          "input": true,
+          "ticks": 0,
+          "state": [
+            true,
+            true,
+            15,
+            15,
+            false
+          ]
+        },
+        {
+          "input": true,
+          "ticks": 2,
+          "state": [
+            true,
+            true,
+            15,
+            15,
+            true
+          ]
+        },
+        {
+          "input": true,
+          "ticks": 2,
+          "state": [
+            true,
+            true,
+            15,
+            15,
+            false
+          ]
+        },
+        {
+          "input": false,
+          "ticks": 0,
+          "state": [
+            true,
+            false,
+            15,
+            15,
+            false
+          ]
+        },
+        {
+          "input": false,
+          "ticks": 4,
+          "state": [
+            true,
+            false,
+            15,
+            15,
+            false
+          ]
+        }
+      ]
+    },
+    {
+      "variant": "weathered_copper_bulb",
+      "lit": false,
+      "powered": false,
+      "trace": [
+        {
+          "input": true,
+          "ticks": 0,
+          "state": [
+            true,
+            true,
+            0,
+            0,
+            false
+          ]
+        },
+        {
+          "input": true,
+          "ticks": 1,
+          "state": [
+            true,
+            true,
+            0,
+            0,
+            false
+          ]
+        },
+        {
+          "input": true,
+          "ticks": 1,
+          "state": [
+            true,
+            true,
+            15,
+            15,
+            true
+          ]
+        },
+        {
+          "input": true,
+          "ticks": 2,
+          "state": [
+            true,
+            true,
+            15,
+            15,
+            false
+          ]
+        },
+        {
+          "input": false,
+          "ticks": 0,
+          "state": [
+            true,
+            false,
+            15,
+            15,
+            false
+          ]
+        },
+        {
+          "input": false,
+          "ticks": 2,
+          "state": [
+            true,
+            false,
+            15,
+            15,
+            true
+          ]
+        },
+        {
+          "input": false,
+          "ticks": 2,
+          "state": [
+            true,
+            false,
+            15,
+            15,
+            false
+          ]
+        },
+        {
+          "input": true,
+          "ticks": 0,
+          "state": [
+            false,
+            true,
+            15,
+            15,
+            false
+          ]
+        },
+        {
+          "input": false,
+          "ticks": 0,
+          "state": [
+            false,
+            false,
+            15,
+            15,
+            false
+          ]
+        },
+        {
+          "input": true,
+          "ticks": 0,
+          "state": [
+            true,
+            true,
+            15,
+            15,
+            false
+          ]
+        },
+        {
+          "input": true,
+          "ticks": 2,
+          "state": [
+            true,
+            true,
+            15,
+            15,
+            true
+          ]
+        },
+        {
+          "input": true,
+          "ticks": 2,
+          "state": [
+            true,
+            true,
+            15,
+            15,
+            false
+          ]
+        },
+        {
+          "input": false,
+          "ticks": 0,
+          "state": [
+            true,
+            false,
+            15,
+            15,
+            false
+          ]
+        },
+        {
+          "input": false,
+          "ticks": 4,
+          "state": [
+            true,
+            false,
+            15,
+            15,
+            false
+          ]
+        }
+      ]
+    },
+    {
+      "variant": "weathered_copper_bulb",
+      "lit": false,
+      "powered": true,
+      "trace": [
+        {
+          "input": true,
+          "ticks": 0,
+          "state": [
+            false,
+            true,
+            0,
+            0,
+            false
+          ]
+        },
+        {
+          "input": true,
+          "ticks": 1,
+          "state": [
+            false,
+            true,
+            0,
+            0,
+            false
+          ]
+        },
+        {
+          "input": true,
+          "ticks": 1,
+          "state": [
+            false,
+            true,
+            0,
+            0,
+            false
+          ]
+        },
+        {
+          "input": true,
+          "ticks": 2,
+          "state": [
+            false,
+            true,
+            0,
+            0,
+            false
+          ]
+        },
+        {
+          "input": false,
+          "ticks": 0,
+          "state": [
+            false,
+            false,
+            0,
+            0,
+            false
+          ]
+        },
+        {
+          "input": false,
+          "ticks": 2,
+          "state": [
+            false,
+            false,
+            0,
+            0,
+            true
+          ]
+        },
+        {
+          "input": false,
+          "ticks": 2,
+          "state": [
+            false,
+            false,
+            0,
+            0,
+            false
+          ]
+        },
+        {
+          "input": true,
+          "ticks": 0,
+          "state": [
+            true,
+            true,
+            0,
+            0,
+            false
+          ]
+        },
+        {
+          "input": false,
+          "ticks": 0,
+          "state": [
+            true,
+            false,
+            0,
+            0,
+            false
+          ]
+        },
+        {
+          "input": true,
+          "ticks": 0,
+          "state": [
+            false,
+            true,
+            0,
+            0,
+            false
+          ]
+        },
+        {
+          "input": true,
+          "ticks": 2,
+          "state": [
+            false,
+            true,
+            0,
+            0,
+            true
+          ]
+        },
+        {
+          "input": true,
+          "ticks": 2,
+          "state": [
+            false,
+            true,
+            0,
+            0,
+            false
+          ]
+        },
+        {
+          "input": false,
+          "ticks": 0,
+          "state": [
+            false,
+            false,
+            0,
+            0,
+            false
+          ]
+        },
+        {
+          "input": false,
+          "ticks": 4,
+          "state": [
+            false,
+            false,
+            0,
+            0,
+            false
+          ]
+        }
+      ]
+    },
+    {
+      "variant": "weathered_copper_bulb",
+      "lit": true,
+      "powered": false,
+      "trace": [
+        {
+          "input": true,
+          "ticks": 0,
+          "state": [
+            false,
+            true,
+            0,
+            0,
+            false
+          ]
+        },
+        {
+          "input": true,
+          "ticks": 1,
+          "state": [
+            false,
+            true,
+            0,
+            0,
+            false
+          ]
+        },
+        {
+          "input": true,
+          "ticks": 1,
+          "state": [
+            false,
+            true,
+            0,
+            0,
+            true
+          ]
+        },
+        {
+          "input": true,
+          "ticks": 2,
+          "state": [
+            false,
+            true,
+            0,
+            0,
+            false
+          ]
+        },
+        {
+          "input": false,
+          "ticks": 0,
+          "state": [
+            false,
+            false,
+            0,
+            0,
+            false
+          ]
+        },
+        {
+          "input": false,
+          "ticks": 2,
+          "state": [
+            false,
+            false,
+            0,
+            0,
+            true
+          ]
+        },
+        {
+          "input": false,
+          "ticks": 2,
+          "state": [
+            false,
+            false,
+            0,
+            0,
+            false
+          ]
+        },
+        {
+          "input": true,
+          "ticks": 0,
+          "state": [
+            true,
+            true,
+            0,
+            0,
+            false
+          ]
+        },
+        {
+          "input": false,
+          "ticks": 0,
+          "state": [
+            true,
+            false,
+            0,
+            0,
+            false
+          ]
+        },
+        {
+          "input": true,
+          "ticks": 0,
+          "state": [
+            false,
+            true,
+            0,
+            0,
+            false
+          ]
+        },
+        {
+          "input": true,
+          "ticks": 2,
+          "state": [
+            false,
+            true,
+            0,
+            0,
+            true
+          ]
+        },
+        {
+          "input": true,
+          "ticks": 2,
+          "state": [
+            false,
+            true,
+            0,
+            0,
+            false
+          ]
+        },
+        {
+          "input": false,
+          "ticks": 0,
+          "state": [
+            false,
+            false,
+            0,
+            0,
+            false
+          ]
+        },
+        {
+          "input": false,
+          "ticks": 4,
+          "state": [
+            false,
+            false,
+            0,
+            0,
+            false
+          ]
+        }
+      ]
+    },
+    {
+      "variant": "weathered_copper_bulb",
+      "lit": true,
+      "powered": true,
+      "trace": [
+        {
+          "input": true,
+          "ticks": 0,
+          "state": [
+            true,
+            true,
+            0,
+            0,
+            false
+          ]
+        },
+        {
+          "input": true,
+          "ticks": 1,
+          "state": [
+            true,
+            true,
+            0,
+            0,
+            false
+          ]
+        },
+        {
+          "input": true,
+          "ticks": 1,
+          "state": [
+            true,
+            true,
+            0,
+            0,
+            false
+          ]
+        },
+        {
+          "input": true,
+          "ticks": 2,
+          "state": [
+            true,
+            true,
+            0,
+            0,
+            false
+          ]
+        },
+        {
+          "input": false,
+          "ticks": 0,
+          "state": [
+            true,
+            false,
+            0,
+            0,
+            false
+          ]
+        },
+        {
+          "input": false,
+          "ticks": 2,
+          "state": [
+            true,
+            false,
+            15,
+            15,
+            true
+          ]
+        },
+        {
+          "input": false,
+          "ticks": 2,
+          "state": [
+            true,
+            false,
+            15,
+            15,
+            false
+          ]
+        },
+        {
+          "input": true,
+          "ticks": 0,
+          "state": [
+            false,
+            true,
+            15,
+            15,
+            false
+          ]
+        },
+        {
+          "input": false,
+          "ticks": 0,
+          "state": [
+            false,
+            false,
+            15,
+            15,
+            false
+          ]
+        },
+        {
+          "input": true,
+          "ticks": 0,
+          "state": [
+            true,
+            true,
+            15,
+            15,
+            false
+          ]
+        },
+        {
+          "input": true,
+          "ticks": 2,
+          "state": [
+            true,
+            true,
+            15,
+            15,
+            true
+          ]
+        },
+        {
+          "input": true,
+          "ticks": 2,
+          "state": [
+            true,
+            true,
+            15,
+            15,
+            false
+          ]
+        },
+        {
+          "input": false,
+          "ticks": 0,
+          "state": [
+            true,
+            false,
+            15,
+            15,
+            false
+          ]
+        },
+        {
+          "input": false,
+          "ticks": 4,
+          "state": [
+            true,
+            false,
+            15,
+            15,
+            false
+          ]
+        }
+      ]
+    },
+    {
+      "variant": "oxidized_copper_bulb",
+      "lit": false,
+      "powered": false,
+      "trace": [
+        {
+          "input": true,
+          "ticks": 0,
+          "state": [
+            true,
+            true,
+            0,
+            0,
+            false
+          ]
+        },
+        {
+          "input": true,
+          "ticks": 1,
+          "state": [
+            true,
+            true,
+            0,
+            0,
+            false
+          ]
+        },
+        {
+          "input": true,
+          "ticks": 1,
+          "state": [
+            true,
+            true,
+            15,
+            15,
+            true
+          ]
+        },
+        {
+          "input": true,
+          "ticks": 2,
+          "state": [
+            true,
+            true,
+            15,
+            15,
+            false
+          ]
+        },
+        {
+          "input": false,
+          "ticks": 0,
+          "state": [
+            true,
+            false,
+            15,
+            15,
+            false
+          ]
+        },
+        {
+          "input": false,
+          "ticks": 2,
+          "state": [
+            true,
+            false,
+            15,
+            15,
+            true
+          ]
+        },
+        {
+          "input": false,
+          "ticks": 2,
+          "state": [
+            true,
+            false,
+            15,
+            15,
+            false
+          ]
+        },
+        {
+          "input": true,
+          "ticks": 0,
+          "state": [
+            false,
+            true,
+            15,
+            15,
+            false
+          ]
+        },
+        {
+          "input": false,
+          "ticks": 0,
+          "state": [
+            false,
+            false,
+            15,
+            15,
+            false
+          ]
+        },
+        {
+          "input": true,
+          "ticks": 0,
+          "state": [
+            true,
+            true,
+            15,
+            15,
+            false
+          ]
+        },
+        {
+          "input": true,
+          "ticks": 2,
+          "state": [
+            true,
+            true,
+            15,
+            15,
+            true
+          ]
+        },
+        {
+          "input": true,
+          "ticks": 2,
+          "state": [
+            true,
+            true,
+            15,
+            15,
+            false
+          ]
+        },
+        {
+          "input": false,
+          "ticks": 0,
+          "state": [
+            true,
+            false,
+            15,
+            15,
+            false
+          ]
+        },
+        {
+          "input": false,
+          "ticks": 4,
+          "state": [
+            true,
+            false,
+            15,
+            15,
+            false
+          ]
+        }
+      ]
+    },
+    {
+      "variant": "oxidized_copper_bulb",
+      "lit": false,
+      "powered": true,
+      "trace": [
+        {
+          "input": true,
+          "ticks": 0,
+          "state": [
+            false,
+            true,
+            0,
+            0,
+            false
+          ]
+        },
+        {
+          "input": true,
+          "ticks": 1,
+          "state": [
+            false,
+            true,
+            0,
+            0,
+            false
+          ]
+        },
+        {
+          "input": true,
+          "ticks": 1,
+          "state": [
+            false,
+            true,
+            0,
+            0,
+            false
+          ]
+        },
+        {
+          "input": true,
+          "ticks": 2,
+          "state": [
+            false,
+            true,
+            0,
+            0,
+            false
+          ]
+        },
+        {
+          "input": false,
+          "ticks": 0,
+          "state": [
+            false,
+            false,
+            0,
+            0,
+            false
+          ]
+        },
+        {
+          "input": false,
+          "ticks": 2,
+          "state": [
+            false,
+            false,
+            0,
+            0,
+            true
+          ]
+        },
+        {
+          "input": false,
+          "ticks": 2,
+          "state": [
+            false,
+            false,
+            0,
+            0,
+            false
+          ]
+        },
+        {
+          "input": true,
+          "ticks": 0,
+          "state": [
+            true,
+            true,
+            0,
+            0,
+            false
+          ]
+        },
+        {
+          "input": false,
+          "ticks": 0,
+          "state": [
+            true,
+            false,
+            0,
+            0,
+            false
+          ]
+        },
+        {
+          "input": true,
+          "ticks": 0,
+          "state": [
+            false,
+            true,
+            0,
+            0,
+            false
+          ]
+        },
+        {
+          "input": true,
+          "ticks": 2,
+          "state": [
+            false,
+            true,
+            0,
+            0,
+            true
+          ]
+        },
+        {
+          "input": true,
+          "ticks": 2,
+          "state": [
+            false,
+            true,
+            0,
+            0,
+            false
+          ]
+        },
+        {
+          "input": false,
+          "ticks": 0,
+          "state": [
+            false,
+            false,
+            0,
+            0,
+            false
+          ]
+        },
+        {
+          "input": false,
+          "ticks": 4,
+          "state": [
+            false,
+            false,
+            0,
+            0,
+            false
+          ]
+        }
+      ]
+    },
+    {
+      "variant": "oxidized_copper_bulb",
+      "lit": true,
+      "powered": false,
+      "trace": [
+        {
+          "input": true,
+          "ticks": 0,
+          "state": [
+            false,
+            true,
+            0,
+            0,
+            false
+          ]
+        },
+        {
+          "input": true,
+          "ticks": 1,
+          "state": [
+            false,
+            true,
+            0,
+            0,
+            false
+          ]
+        },
+        {
+          "input": true,
+          "ticks": 1,
+          "state": [
+            false,
+            true,
+            0,
+            0,
+            true
+          ]
+        },
+        {
+          "input": true,
+          "ticks": 2,
+          "state": [
+            false,
+            true,
+            0,
+            0,
+            false
+          ]
+        },
+        {
+          "input": false,
+          "ticks": 0,
+          "state": [
+            false,
+            false,
+            0,
+            0,
+            false
+          ]
+        },
+        {
+          "input": false,
+          "ticks": 2,
+          "state": [
+            false,
+            false,
+            0,
+            0,
+            true
+          ]
+        },
+        {
+          "input": false,
+          "ticks": 2,
+          "state": [
+            false,
+            false,
+            0,
+            0,
+            false
+          ]
+        },
+        {
+          "input": true,
+          "ticks": 0,
+          "state": [
+            true,
+            true,
+            0,
+            0,
+            false
+          ]
+        },
+        {
+          "input": false,
+          "ticks": 0,
+          "state": [
+            true,
+            false,
+            0,
+            0,
+            false
+          ]
+        },
+        {
+          "input": true,
+          "ticks": 0,
+          "state": [
+            false,
+            true,
+            0,
+            0,
+            false
+          ]
+        },
+        {
+          "input": true,
+          "ticks": 2,
+          "state": [
+            false,
+            true,
+            0,
+            0,
+            true
+          ]
+        },
+        {
+          "input": true,
+          "ticks": 2,
+          "state": [
+            false,
+            true,
+            0,
+            0,
+            false
+          ]
+        },
+        {
+          "input": false,
+          "ticks": 0,
+          "state": [
+            false,
+            false,
+            0,
+            0,
+            false
+          ]
+        },
+        {
+          "input": false,
+          "ticks": 4,
+          "state": [
+            false,
+            false,
+            0,
+            0,
+            false
+          ]
+        }
+      ]
+    },
+    {
+      "variant": "oxidized_copper_bulb",
+      "lit": true,
+      "powered": true,
+      "trace": [
+        {
+          "input": true,
+          "ticks": 0,
+          "state": [
+            true,
+            true,
+            0,
+            0,
+            false
+          ]
+        },
+        {
+          "input": true,
+          "ticks": 1,
+          "state": [
+            true,
+            true,
+            0,
+            0,
+            false
+          ]
+        },
+        {
+          "input": true,
+          "ticks": 1,
+          "state": [
+            true,
+            true,
+            0,
+            0,
+            false
+          ]
+        },
+        {
+          "input": true,
+          "ticks": 2,
+          "state": [
+            true,
+            true,
+            0,
+            0,
+            false
+          ]
+        },
+        {
+          "input": false,
+          "ticks": 0,
+          "state": [
+            true,
+            false,
+            0,
+            0,
+            false
+          ]
+        },
+        {
+          "input": false,
+          "ticks": 2,
+          "state": [
+            true,
+            false,
+            15,
+            15,
+            true
+          ]
+        },
+        {
+          "input": false,
+          "ticks": 2,
+          "state": [
+            true,
+            false,
+            15,
+            15,
+            false
+          ]
+        },
+        {
+          "input": true,
+          "ticks": 0,
+          "state": [
+            false,
+            true,
+            15,
+            15,
+            false
+          ]
+        },
+        {
+          "input": false,
+          "ticks": 0,
+          "state": [
+            false,
+            false,
+            15,
+            15,
+            false
+          ]
+        },
+        {
+          "input": true,
+          "ticks": 0,
+          "state": [
+            true,
+            true,
+            15,
+            15,
+            false
+          ]
+        },
+        {
+          "input": true,
+          "ticks": 2,
+          "state": [
+            true,
+            true,
+            15,
+            15,
+            true
+          ]
+        },
+        {
+          "input": true,
+          "ticks": 2,
+          "state": [
+            true,
+            true,
+            15,
+            15,
+            false
+          ]
+        },
+        {
+          "input": false,
+          "ticks": 0,
+          "state": [
+            true,
+            false,
+            15,
+            15,
+            false
+          ]
+        },
+        {
+          "input": false,
+          "ticks": 4,
+          "state": [
+            true,
+            false,
+            15,
+            15,
+            false
+          ]
+        }
+      ]
+    },
+    {
+      "variant": "waxed_copper_bulb",
+      "lit": false,
+      "powered": false,
+      "trace": [
+        {
+          "input": true,
+          "ticks": 0,
+          "state": [
+            true,
+            true,
+            0,
+            0,
+            false
+          ]
+        },
+        {
+          "input": true,
+          "ticks": 1,
+          "state": [
+            true,
+            true,
+            0,
+            0,
+            false
+          ]
+        },
+        {
+          "input": true,
+          "ticks": 1,
+          "state": [
+            true,
+            true,
+            15,
+            15,
+            true
+          ]
+        },
+        {
+          "input": true,
+          "ticks": 2,
+          "state": [
+            true,
+            true,
+            15,
+            15,
+            false
+          ]
+        },
+        {
+          "input": false,
+          "ticks": 0,
+          "state": [
+            true,
+            false,
+            15,
+            15,
+            false
+          ]
+        },
+        {
+          "input": false,
+          "ticks": 2,
+          "state": [
+            true,
+            false,
+            15,
+            15,
+            true
+          ]
+        },
+        {
+          "input": false,
+          "ticks": 2,
+          "state": [
+            true,
+            false,
+            15,
+            15,
+            false
+          ]
+        },
+        {
+          "input": true,
+          "ticks": 0,
+          "state": [
+            false,
+            true,
+            15,
+            15,
+            false
+          ]
+        },
+        {
+          "input": false,
+          "ticks": 0,
+          "state": [
+            false,
+            false,
+            15,
+            15,
+            false
+          ]
+        },
+        {
+          "input": true,
+          "ticks": 0,
+          "state": [
+            true,
+            true,
+            15,
+            15,
+            false
+          ]
+        },
+        {
+          "input": true,
+          "ticks": 2,
+          "state": [
+            true,
+            true,
+            15,
+            15,
+            true
+          ]
+        },
+        {
+          "input": true,
+          "ticks": 2,
+          "state": [
+            true,
+            true,
+            15,
+            15,
+            false
+          ]
+        },
+        {
+          "input": false,
+          "ticks": 0,
+          "state": [
+            true,
+            false,
+            15,
+            15,
+            false
+          ]
+        },
+        {
+          "input": false,
+          "ticks": 4,
+          "state": [
+            true,
+            false,
+            15,
+            15,
+            false
+          ]
+        }
+      ]
+    },
+    {
+      "variant": "waxed_copper_bulb",
+      "lit": false,
+      "powered": true,
+      "trace": [
+        {
+          "input": true,
+          "ticks": 0,
+          "state": [
+            false,
+            true,
+            0,
+            0,
+            false
+          ]
+        },
+        {
+          "input": true,
+          "ticks": 1,
+          "state": [
+            false,
+            true,
+            0,
+            0,
+            false
+          ]
+        },
+        {
+          "input": true,
+          "ticks": 1,
+          "state": [
+            false,
+            true,
+            0,
+            0,
+            false
+          ]
+        },
+        {
+          "input": true,
+          "ticks": 2,
+          "state": [
+            false,
+            true,
+            0,
+            0,
+            false
+          ]
+        },
+        {
+          "input": false,
+          "ticks": 0,
+          "state": [
+            false,
+            false,
+            0,
+            0,
+            false
+          ]
+        },
+        {
+          "input": false,
+          "ticks": 2,
+          "state": [
+            false,
+            false,
+            0,
+            0,
+            true
+          ]
+        },
+        {
+          "input": false,
+          "ticks": 2,
+          "state": [
+            false,
+            false,
+            0,
+            0,
+            false
+          ]
+        },
+        {
+          "input": true,
+          "ticks": 0,
+          "state": [
+            true,
+            true,
+            0,
+            0,
+            false
+          ]
+        },
+        {
+          "input": false,
+          "ticks": 0,
+          "state": [
+            true,
+            false,
+            0,
+            0,
+            false
+          ]
+        },
+        {
+          "input": true,
+          "ticks": 0,
+          "state": [
+            false,
+            true,
+            0,
+            0,
+            false
+          ]
+        },
+        {
+          "input": true,
+          "ticks": 2,
+          "state": [
+            false,
+            true,
+            0,
+            0,
+            true
+          ]
+        },
+        {
+          "input": true,
+          "ticks": 2,
+          "state": [
+            false,
+            true,
+            0,
+            0,
+            false
+          ]
+        },
+        {
+          "input": false,
+          "ticks": 0,
+          "state": [
+            false,
+            false,
+            0,
+            0,
+            false
+          ]
+        },
+        {
+          "input": false,
+          "ticks": 4,
+          "state": [
+            false,
+            false,
+            0,
+            0,
+            false
+          ]
+        }
+      ]
+    },
+    {
+      "variant": "waxed_copper_bulb",
+      "lit": true,
+      "powered": false,
+      "trace": [
+        {
+          "input": true,
+          "ticks": 0,
+          "state": [
+            false,
+            true,
+            0,
+            0,
+            false
+          ]
+        },
+        {
+          "input": true,
+          "ticks": 1,
+          "state": [
+            false,
+            true,
+            0,
+            0,
+            false
+          ]
+        },
+        {
+          "input": true,
+          "ticks": 1,
+          "state": [
+            false,
+            true,
+            0,
+            0,
+            true
+          ]
+        },
+        {
+          "input": true,
+          "ticks": 2,
+          "state": [
+            false,
+            true,
+            0,
+            0,
+            false
+          ]
+        },
+        {
+          "input": false,
+          "ticks": 0,
+          "state": [
+            false,
+            false,
+            0,
+            0,
+            false
+          ]
+        },
+        {
+          "input": false,
+          "ticks": 2,
+          "state": [
+            false,
+            false,
+            0,
+            0,
+            true
+          ]
+        },
+        {
+          "input": false,
+          "ticks": 2,
+          "state": [
+            false,
+            false,
+            0,
+            0,
+            false
+          ]
+        },
+        {
+          "input": true,
+          "ticks": 0,
+          "state": [
+            true,
+            true,
+            0,
+            0,
+            false
+          ]
+        },
+        {
+          "input": false,
+          "ticks": 0,
+          "state": [
+            true,
+            false,
+            0,
+            0,
+            false
+          ]
+        },
+        {
+          "input": true,
+          "ticks": 0,
+          "state": [
+            false,
+            true,
+            0,
+            0,
+            false
+          ]
+        },
+        {
+          "input": true,
+          "ticks": 2,
+          "state": [
+            false,
+            true,
+            0,
+            0,
+            true
+          ]
+        },
+        {
+          "input": true,
+          "ticks": 2,
+          "state": [
+            false,
+            true,
+            0,
+            0,
+            false
+          ]
+        },
+        {
+          "input": false,
+          "ticks": 0,
+          "state": [
+            false,
+            false,
+            0,
+            0,
+            false
+          ]
+        },
+        {
+          "input": false,
+          "ticks": 4,
+          "state": [
+            false,
+            false,
+            0,
+            0,
+            false
+          ]
+        }
+      ]
+    },
+    {
+      "variant": "waxed_copper_bulb",
+      "lit": true,
+      "powered": true,
+      "trace": [
+        {
+          "input": true,
+          "ticks": 0,
+          "state": [
+            true,
+            true,
+            0,
+            0,
+            false
+          ]
+        },
+        {
+          "input": true,
+          "ticks": 1,
+          "state": [
+            true,
+            true,
+            0,
+            0,
+            false
+          ]
+        },
+        {
+          "input": true,
+          "ticks": 1,
+          "state": [
+            true,
+            true,
+            0,
+            0,
+            false
+          ]
+        },
+        {
+          "input": true,
+          "ticks": 2,
+          "state": [
+            true,
+            true,
+            0,
+            0,
+            false
+          ]
+        },
+        {
+          "input": false,
+          "ticks": 0,
+          "state": [
+            true,
+            false,
+            0,
+            0,
+            false
+          ]
+        },
+        {
+          "input": false,
+          "ticks": 2,
+          "state": [
+            true,
+            false,
+            15,
+            15,
+            true
+          ]
+        },
+        {
+          "input": false,
+          "ticks": 2,
+          "state": [
+            true,
+            false,
+            15,
+            15,
+            false
+          ]
+        },
+        {
+          "input": true,
+          "ticks": 0,
+          "state": [
+            false,
+            true,
+            15,
+            15,
+            false
+          ]
+        },
+        {
+          "input": false,
+          "ticks": 0,
+          "state": [
+            false,
+            false,
+            15,
+            15,
+            false
+          ]
+        },
+        {
+          "input": true,
+          "ticks": 0,
+          "state": [
+            true,
+            true,
+            15,
+            15,
+            false
+          ]
+        },
+        {
+          "input": true,
+          "ticks": 2,
+          "state": [
+            true,
+            true,
+            15,
+            15,
+            true
+          ]
+        },
+        {
+          "input": true,
+          "ticks": 2,
+          "state": [
+            true,
+            true,
+            15,
+            15,
+            false
+          ]
+        },
+        {
+          "input": false,
+          "ticks": 0,
+          "state": [
+            true,
+            false,
+            15,
+            15,
+            false
+          ]
+        },
+        {
+          "input": false,
+          "ticks": 4,
+          "state": [
+            true,
+            false,
+            15,
+            15,
+            false
+          ]
+        }
+      ]
+    },
+    {
+      "variant": "waxed_exposed_copper_bulb",
+      "lit": false,
+      "powered": false,
+      "trace": [
+        {
+          "input": true,
+          "ticks": 0,
+          "state": [
+            true,
+            true,
+            0,
+            0,
+            false
+          ]
+        },
+        {
+          "input": true,
+          "ticks": 1,
+          "state": [
+            true,
+            true,
+            0,
+            0,
+            false
+          ]
+        },
+        {
+          "input": true,
+          "ticks": 1,
+          "state": [
+            true,
+            true,
+            15,
+            15,
+            true
+          ]
+        },
+        {
+          "input": true,
+          "ticks": 2,
+          "state": [
+            true,
+            true,
+            15,
+            15,
+            false
+          ]
+        },
+        {
+          "input": false,
+          "ticks": 0,
+          "state": [
+            true,
+            false,
+            15,
+            15,
+            false
+          ]
+        },
+        {
+          "input": false,
+          "ticks": 2,
+          "state": [
+            true,
+            false,
+            15,
+            15,
+            true
+          ]
+        },
+        {
+          "input": false,
+          "ticks": 2,
+          "state": [
+            true,
+            false,
+            15,
+            15,
+            false
+          ]
+        },
+        {
+          "input": true,
+          "ticks": 0,
+          "state": [
+            false,
+            true,
+            15,
+            15,
+            false
+          ]
+        },
+        {
+          "input": false,
+          "ticks": 0,
+          "state": [
+            false,
+            false,
+            15,
+            15,
+            false
+          ]
+        },
+        {
+          "input": true,
+          "ticks": 0,
+          "state": [
+            true,
+            true,
+            15,
+            15,
+            false
+          ]
+        },
+        {
+          "input": true,
+          "ticks": 2,
+          "state": [
+            true,
+            true,
+            15,
+            15,
+            true
+          ]
+        },
+        {
+          "input": true,
+          "ticks": 2,
+          "state": [
+            true,
+            true,
+            15,
+            15,
+            false
+          ]
+        },
+        {
+          "input": false,
+          "ticks": 0,
+          "state": [
+            true,
+            false,
+            15,
+            15,
+            false
+          ]
+        },
+        {
+          "input": false,
+          "ticks": 4,
+          "state": [
+            true,
+            false,
+            15,
+            15,
+            false
+          ]
+        }
+      ]
+    },
+    {
+      "variant": "waxed_exposed_copper_bulb",
+      "lit": false,
+      "powered": true,
+      "trace": [
+        {
+          "input": true,
+          "ticks": 0,
+          "state": [
+            false,
+            true,
+            0,
+            0,
+            false
+          ]
+        },
+        {
+          "input": true,
+          "ticks": 1,
+          "state": [
+            false,
+            true,
+            0,
+            0,
+            false
+          ]
+        },
+        {
+          "input": true,
+          "ticks": 1,
+          "state": [
+            false,
+            true,
+            0,
+            0,
+            false
+          ]
+        },
+        {
+          "input": true,
+          "ticks": 2,
+          "state": [
+            false,
+            true,
+            0,
+            0,
+            false
+          ]
+        },
+        {
+          "input": false,
+          "ticks": 0,
+          "state": [
+            false,
+            false,
+            0,
+            0,
+            false
+          ]
+        },
+        {
+          "input": false,
+          "ticks": 2,
+          "state": [
+            false,
+            false,
+            0,
+            0,
+            true
+          ]
+        },
+        {
+          "input": false,
+          "ticks": 2,
+          "state": [
+            false,
+            false,
+            0,
+            0,
+            false
+          ]
+        },
+        {
+          "input": true,
+          "ticks": 0,
+          "state": [
+            true,
+            true,
+            0,
+            0,
+            false
+          ]
+        },
+        {
+          "input": false,
+          "ticks": 0,
+          "state": [
+            true,
+            false,
+            0,
+            0,
+            false
+          ]
+        },
+        {
+          "input": true,
+          "ticks": 0,
+          "state": [
+            false,
+            true,
+            0,
+            0,
+            false
+          ]
+        },
+        {
+          "input": true,
+          "ticks": 2,
+          "state": [
+            false,
+            true,
+            0,
+            0,
+            true
+          ]
+        },
+        {
+          "input": true,
+          "ticks": 2,
+          "state": [
+            false,
+            true,
+            0,
+            0,
+            false
+          ]
+        },
+        {
+          "input": false,
+          "ticks": 0,
+          "state": [
+            false,
+            false,
+            0,
+            0,
+            false
+          ]
+        },
+        {
+          "input": false,
+          "ticks": 4,
+          "state": [
+            false,
+            false,
+            0,
+            0,
+            false
+          ]
+        }
+      ]
+    },
+    {
+      "variant": "waxed_exposed_copper_bulb",
+      "lit": true,
+      "powered": false,
+      "trace": [
+        {
+          "input": true,
+          "ticks": 0,
+          "state": [
+            false,
+            true,
+            0,
+            0,
+            false
+          ]
+        },
+        {
+          "input": true,
+          "ticks": 1,
+          "state": [
+            false,
+            true,
+            0,
+            0,
+            false
+          ]
+        },
+        {
+          "input": true,
+          "ticks": 1,
+          "state": [
+            false,
+            true,
+            0,
+            0,
+            true
+          ]
+        },
+        {
+          "input": true,
+          "ticks": 2,
+          "state": [
+            false,
+            true,
+            0,
+            0,
+            false
+          ]
+        },
+        {
+          "input": false,
+          "ticks": 0,
+          "state": [
+            false,
+            false,
+            0,
+            0,
+            false
+          ]
+        },
+        {
+          "input": false,
+          "ticks": 2,
+          "state": [
+            false,
+            false,
+            0,
+            0,
+            true
+          ]
+        },
+        {
+          "input": false,
+          "ticks": 2,
+          "state": [
+            false,
+            false,
+            0,
+            0,
+            false
+          ]
+        },
+        {
+          "input": true,
+          "ticks": 0,
+          "state": [
+            true,
+            true,
+            0,
+            0,
+            false
+          ]
+        },
+        {
+          "input": false,
+          "ticks": 0,
+          "state": [
+            true,
+            false,
+            0,
+            0,
+            false
+          ]
+        },
+        {
+          "input": true,
+          "ticks": 0,
+          "state": [
+            false,
+            true,
+            0,
+            0,
+            false
+          ]
+        },
+        {
+          "input": true,
+          "ticks": 2,
+          "state": [
+            false,
+            true,
+            0,
+            0,
+            true
+          ]
+        },
+        {
+          "input": true,
+          "ticks": 2,
+          "state": [
+            false,
+            true,
+            0,
+            0,
+            false
+          ]
+        },
+        {
+          "input": false,
+          "ticks": 0,
+          "state": [
+            false,
+            false,
+            0,
+            0,
+            false
+          ]
+        },
+        {
+          "input": false,
+          "ticks": 4,
+          "state": [
+            false,
+            false,
+            0,
+            0,
+            false
+          ]
+        }
+      ]
+    },
+    {
+      "variant": "waxed_exposed_copper_bulb",
+      "lit": true,
+      "powered": true,
+      "trace": [
+        {
+          "input": true,
+          "ticks": 0,
+          "state": [
+            true,
+            true,
+            0,
+            0,
+            false
+          ]
+        },
+        {
+          "input": true,
+          "ticks": 1,
+          "state": [
+            true,
+            true,
+            0,
+            0,
+            false
+          ]
+        },
+        {
+          "input": true,
+          "ticks": 1,
+          "state": [
+            true,
+            true,
+            0,
+            0,
+            false
+          ]
+        },
+        {
+          "input": true,
+          "ticks": 2,
+          "state": [
+            true,
+            true,
+            0,
+            0,
+            false
+          ]
+        },
+        {
+          "input": false,
+          "ticks": 0,
+          "state": [
+            true,
+            false,
+            0,
+            0,
+            false
+          ]
+        },
+        {
+          "input": false,
+          "ticks": 2,
+          "state": [
+            true,
+            false,
+            15,
+            15,
+            true
+          ]
+        },
+        {
+          "input": false,
+          "ticks": 2,
+          "state": [
+            true,
+            false,
+            15,
+            15,
+            false
+          ]
+        },
+        {
+          "input": true,
+          "ticks": 0,
+          "state": [
+            false,
+            true,
+            15,
+            15,
+            false
+          ]
+        },
+        {
+          "input": false,
+          "ticks": 0,
+          "state": [
+            false,
+            false,
+            15,
+            15,
+            false
+          ]
+        },
+        {
+          "input": true,
+          "ticks": 0,
+          "state": [
+            true,
+            true,
+            15,
+            15,
+            false
+          ]
+        },
+        {
+          "input": true,
+          "ticks": 2,
+          "state": [
+            true,
+            true,
+            15,
+            15,
+            true
+          ]
+        },
+        {
+          "input": true,
+          "ticks": 2,
+          "state": [
+            true,
+            true,
+            15,
+            15,
+            false
+          ]
+        },
+        {
+          "input": false,
+          "ticks": 0,
+          "state": [
+            true,
+            false,
+            15,
+            15,
+            false
+          ]
+        },
+        {
+          "input": false,
+          "ticks": 4,
+          "state": [
+            true,
+            false,
+            15,
+            15,
+            false
+          ]
+        }
+      ]
+    },
+    {
+      "variant": "waxed_weathered_copper_bulb",
+      "lit": false,
+      "powered": false,
+      "trace": [
+        {
+          "input": true,
+          "ticks": 0,
+          "state": [
+            true,
+            true,
+            0,
+            0,
+            false
+          ]
+        },
+        {
+          "input": true,
+          "ticks": 1,
+          "state": [
+            true,
+            true,
+            0,
+            0,
+            false
+          ]
+        },
+        {
+          "input": true,
+          "ticks": 1,
+          "state": [
+            true,
+            true,
+            15,
+            15,
+            true
+          ]
+        },
+        {
+          "input": true,
+          "ticks": 2,
+          "state": [
+            true,
+            true,
+            15,
+            15,
+            false
+          ]
+        },
+        {
+          "input": false,
+          "ticks": 0,
+          "state": [
+            true,
+            false,
+            15,
+            15,
+            false
+          ]
+        },
+        {
+          "input": false,
+          "ticks": 2,
+          "state": [
+            true,
+            false,
+            15,
+            15,
+            true
+          ]
+        },
+        {
+          "input": false,
+          "ticks": 2,
+          "state": [
+            true,
+            false,
+            15,
+            15,
+            false
+          ]
+        },
+        {
+          "input": true,
+          "ticks": 0,
+          "state": [
+            false,
+            true,
+            15,
+            15,
+            false
+          ]
+        },
+        {
+          "input": false,
+          "ticks": 0,
+          "state": [
+            false,
+            false,
+            15,
+            15,
+            false
+          ]
+        },
+        {
+          "input": true,
+          "ticks": 0,
+          "state": [
+            true,
+            true,
+            15,
+            15,
+            false
+          ]
+        },
+        {
+          "input": true,
+          "ticks": 2,
+          "state": [
+            true,
+            true,
+            15,
+            15,
+            true
+          ]
+        },
+        {
+          "input": true,
+          "ticks": 2,
+          "state": [
+            true,
+            true,
+            15,
+            15,
+            false
+          ]
+        },
+        {
+          "input": false,
+          "ticks": 0,
+          "state": [
+            true,
+            false,
+            15,
+            15,
+            false
+          ]
+        },
+        {
+          "input": false,
+          "ticks": 4,
+          "state": [
+            true,
+            false,
+            15,
+            15,
+            false
+          ]
+        }
+      ]
+    },
+    {
+      "variant": "waxed_weathered_copper_bulb",
+      "lit": false,
+      "powered": true,
+      "trace": [
+        {
+          "input": true,
+          "ticks": 0,
+          "state": [
+            false,
+            true,
+            0,
+            0,
+            false
+          ]
+        },
+        {
+          "input": true,
+          "ticks": 1,
+          "state": [
+            false,
+            true,
+            0,
+            0,
+            false
+          ]
+        },
+        {
+          "input": true,
+          "ticks": 1,
+          "state": [
+            false,
+            true,
+            0,
+            0,
+            false
+          ]
+        },
+        {
+          "input": true,
+          "ticks": 2,
+          "state": [
+            false,
+            true,
+            0,
+            0,
+            false
+          ]
+        },
+        {
+          "input": false,
+          "ticks": 0,
+          "state": [
+            false,
+            false,
+            0,
+            0,
+            false
+          ]
+        },
+        {
+          "input": false,
+          "ticks": 2,
+          "state": [
+            false,
+            false,
+            0,
+            0,
+            true
+          ]
+        },
+        {
+          "input": false,
+          "ticks": 2,
+          "state": [
+            false,
+            false,
+            0,
+            0,
+            false
+          ]
+        },
+        {
+          "input": true,
+          "ticks": 0,
+          "state": [
+            true,
+            true,
+            0,
+            0,
+            false
+          ]
+        },
+        {
+          "input": false,
+          "ticks": 0,
+          "state": [
+            true,
+            false,
+            0,
+            0,
+            false
+          ]
+        },
+        {
+          "input": true,
+          "ticks": 0,
+          "state": [
+            false,
+            true,
+            0,
+            0,
+            false
+          ]
+        },
+        {
+          "input": true,
+          "ticks": 2,
+          "state": [
+            false,
+            true,
+            0,
+            0,
+            true
+          ]
+        },
+        {
+          "input": true,
+          "ticks": 2,
+          "state": [
+            false,
+            true,
+            0,
+            0,
+            false
+          ]
+        },
+        {
+          "input": false,
+          "ticks": 0,
+          "state": [
+            false,
+            false,
+            0,
+            0,
+            false
+          ]
+        },
+        {
+          "input": false,
+          "ticks": 4,
+          "state": [
+            false,
+            false,
+            0,
+            0,
+            false
+          ]
+        }
+      ]
+    },
+    {
+      "variant": "waxed_weathered_copper_bulb",
+      "lit": true,
+      "powered": false,
+      "trace": [
+        {
+          "input": true,
+          "ticks": 0,
+          "state": [
+            false,
+            true,
+            0,
+            0,
+            false
+          ]
+        },
+        {
+          "input": true,
+          "ticks": 1,
+          "state": [
+            false,
+            true,
+            0,
+            0,
+            false
+          ]
+        },
+        {
+          "input": true,
+          "ticks": 1,
+          "state": [
+            false,
+            true,
+            0,
+            0,
+            true
+          ]
+        },
+        {
+          "input": true,
+          "ticks": 2,
+          "state": [
+            false,
+            true,
+            0,
+            0,
+            false
+          ]
+        },
+        {
+          "input": false,
+          "ticks": 0,
+          "state": [
+            false,
+            false,
+            0,
+            0,
+            false
+          ]
+        },
+        {
+          "input": false,
+          "ticks": 2,
+          "state": [
+            false,
+            false,
+            0,
+            0,
+            true
+          ]
+        },
+        {
+          "input": false,
+          "ticks": 2,
+          "state": [
+            false,
+            false,
+            0,
+            0,
+            false
+          ]
+        },
+        {
+          "input": true,
+          "ticks": 0,
+          "state": [
+            true,
+            true,
+            0,
+            0,
+            false
+          ]
+        },
+        {
+          "input": false,
+          "ticks": 0,
+          "state": [
+            true,
+            false,
+            0,
+            0,
+            false
+          ]
+        },
+        {
+          "input": true,
+          "ticks": 0,
+          "state": [
+            false,
+            true,
+            0,
+            0,
+            false
+          ]
+        },
+        {
+          "input": true,
+          "ticks": 2,
+          "state": [
+            false,
+            true,
+            0,
+            0,
+            true
+          ]
+        },
+        {
+          "input": true,
+          "ticks": 2,
+          "state": [
+            false,
+            true,
+            0,
+            0,
+            false
+          ]
+        },
+        {
+          "input": false,
+          "ticks": 0,
+          "state": [
+            false,
+            false,
+            0,
+            0,
+            false
+          ]
+        },
+        {
+          "input": false,
+          "ticks": 4,
+          "state": [
+            false,
+            false,
+            0,
+            0,
+            false
+          ]
+        }
+      ]
+    },
+    {
+      "variant": "waxed_weathered_copper_bulb",
+      "lit": true,
+      "powered": true,
+      "trace": [
+        {
+          "input": true,
+          "ticks": 0,
+          "state": [
+            true,
+            true,
+            0,
+            0,
+            false
+          ]
+        },
+        {
+          "input": true,
+          "ticks": 1,
+          "state": [
+            true,
+            true,
+            0,
+            0,
+            false
+          ]
+        },
+        {
+          "input": true,
+          "ticks": 1,
+          "state": [
+            true,
+            true,
+            0,
+            0,
+            false
+          ]
+        },
+        {
+          "input": true,
+          "ticks": 2,
+          "state": [
+            true,
+            true,
+            0,
+            0,
+            false
+          ]
+        },
+        {
+          "input": false,
+          "ticks": 0,
+          "state": [
+            true,
+            false,
+            0,
+            0,
+            false
+          ]
+        },
+        {
+          "input": false,
+          "ticks": 2,
+          "state": [
+            true,
+            false,
+            15,
+            15,
+            true
+          ]
+        },
+        {
+          "input": false,
+          "ticks": 2,
+          "state": [
+            true,
+            false,
+            15,
+            15,
+            false
+          ]
+        },
+        {
+          "input": true,
+          "ticks": 0,
+          "state": [
+            false,
+            true,
+            15,
+            15,
+            false
+          ]
+        },
+        {
+          "input": false,
+          "ticks": 0,
+          "state": [
+            false,
+            false,
+            15,
+            15,
+            false
+          ]
+        },
+        {
+          "input": true,
+          "ticks": 0,
+          "state": [
+            true,
+            true,
+            15,
+            15,
+            false
+          ]
+        },
+        {
+          "input": true,
+          "ticks": 2,
+          "state": [
+            true,
+            true,
+            15,
+            15,
+            true
+          ]
+        },
+        {
+          "input": true,
+          "ticks": 2,
+          "state": [
+            true,
+            true,
+            15,
+            15,
+            false
+          ]
+        },
+        {
+          "input": false,
+          "ticks": 0,
+          "state": [
+            true,
+            false,
+            15,
+            15,
+            false
+          ]
+        },
+        {
+          "input": false,
+          "ticks": 4,
+          "state": [
+            true,
+            false,
+            15,
+            15,
+            false
+          ]
+        }
+      ]
+    },
+    {
+      "variant": "waxed_oxidized_copper_bulb",
+      "lit": false,
+      "powered": false,
+      "trace": [
+        {
+          "input": true,
+          "ticks": 0,
+          "state": [
+            true,
+            true,
+            0,
+            0,
+            false
+          ]
+        },
+        {
+          "input": true,
+          "ticks": 1,
+          "state": [
+            true,
+            true,
+            0,
+            0,
+            false
+          ]
+        },
+        {
+          "input": true,
+          "ticks": 1,
+          "state": [
+            true,
+            true,
+            15,
+            15,
+            true
+          ]
+        },
+        {
+          "input": true,
+          "ticks": 2,
+          "state": [
+            true,
+            true,
+            15,
+            15,
+            false
+          ]
+        },
+        {
+          "input": false,
+          "ticks": 0,
+          "state": [
+            true,
+            false,
+            15,
+            15,
+            false
+          ]
+        },
+        {
+          "input": false,
+          "ticks": 2,
+          "state": [
+            true,
+            false,
+            15,
+            15,
+            true
+          ]
+        },
+        {
+          "input": false,
+          "ticks": 2,
+          "state": [
+            true,
+            false,
+            15,
+            15,
+            false
+          ]
+        },
+        {
+          "input": true,
+          "ticks": 0,
+          "state": [
+            false,
+            true,
+            15,
+            15,
+            false
+          ]
+        },
+        {
+          "input": false,
+          "ticks": 0,
+          "state": [
+            false,
+            false,
+            15,
+            15,
+            false
+          ]
+        },
+        {
+          "input": true,
+          "ticks": 0,
+          "state": [
+            true,
+            true,
+            15,
+            15,
+            false
+          ]
+        },
+        {
+          "input": true,
+          "ticks": 2,
+          "state": [
+            true,
+            true,
+            15,
+            15,
+            true
+          ]
+        },
+        {
+          "input": true,
+          "ticks": 2,
+          "state": [
+            true,
+            true,
+            15,
+            15,
+            false
+          ]
+        },
+        {
+          "input": false,
+          "ticks": 0,
+          "state": [
+            true,
+            false,
+            15,
+            15,
+            false
+          ]
+        },
+        {
+          "input": false,
+          "ticks": 4,
+          "state": [
+            true,
+            false,
+            15,
+            15,
+            false
+          ]
+        }
+      ]
+    },
+    {
+      "variant": "waxed_oxidized_copper_bulb",
+      "lit": false,
+      "powered": true,
+      "trace": [
+        {
+          "input": true,
+          "ticks": 0,
+          "state": [
+            false,
+            true,
+            0,
+            0,
+            false
+          ]
+        },
+        {
+          "input": true,
+          "ticks": 1,
+          "state": [
+            false,
+            true,
+            0,
+            0,
+            false
+          ]
+        },
+        {
+          "input": true,
+          "ticks": 1,
+          "state": [
+            false,
+            true,
+            0,
+            0,
+            false
+          ]
+        },
+        {
+          "input": true,
+          "ticks": 2,
+          "state": [
+            false,
+            true,
+            0,
+            0,
+            false
+          ]
+        },
+        {
+          "input": false,
+          "ticks": 0,
+          "state": [
+            false,
+            false,
+            0,
+            0,
+            false
+          ]
+        },
+        {
+          "input": false,
+          "ticks": 2,
+          "state": [
+            false,
+            false,
+            0,
+            0,
+            true
+          ]
+        },
+        {
+          "input": false,
+          "ticks": 2,
+          "state": [
+            false,
+            false,
+            0,
+            0,
+            false
+          ]
+        },
+        {
+          "input": true,
+          "ticks": 0,
+          "state": [
+            true,
+            true,
+            0,
+            0,
+            false
+          ]
+        },
+        {
+          "input": false,
+          "ticks": 0,
+          "state": [
+            true,
+            false,
+            0,
+            0,
+            false
+          ]
+        },
+        {
+          "input": true,
+          "ticks": 0,
+          "state": [
+            false,
+            true,
+            0,
+            0,
+            false
+          ]
+        },
+        {
+          "input": true,
+          "ticks": 2,
+          "state": [
+            false,
+            true,
+            0,
+            0,
+            true
+          ]
+        },
+        {
+          "input": true,
+          "ticks": 2,
+          "state": [
+            false,
+            true,
+            0,
+            0,
+            false
+          ]
+        },
+        {
+          "input": false,
+          "ticks": 0,
+          "state": [
+            false,
+            false,
+            0,
+            0,
+            false
+          ]
+        },
+        {
+          "input": false,
+          "ticks": 4,
+          "state": [
+            false,
+            false,
+            0,
+            0,
+            false
+          ]
+        }
+      ]
+    },
+    {
+      "variant": "waxed_oxidized_copper_bulb",
+      "lit": true,
+      "powered": false,
+      "trace": [
+        {
+          "input": true,
+          "ticks": 0,
+          "state": [
+            false,
+            true,
+            0,
+            0,
+            false
+          ]
+        },
+        {
+          "input": true,
+          "ticks": 1,
+          "state": [
+            false,
+            true,
+            0,
+            0,
+            false
+          ]
+        },
+        {
+          "input": true,
+          "ticks": 1,
+          "state": [
+            false,
+            true,
+            0,
+            0,
+            true
+          ]
+        },
+        {
+          "input": true,
+          "ticks": 2,
+          "state": [
+            false,
+            true,
+            0,
+            0,
+            false
+          ]
+        },
+        {
+          "input": false,
+          "ticks": 0,
+          "state": [
+            false,
+            false,
+            0,
+            0,
+            false
+          ]
+        },
+        {
+          "input": false,
+          "ticks": 2,
+          "state": [
+            false,
+            false,
+            0,
+            0,
+            true
+          ]
+        },
+        {
+          "input": false,
+          "ticks": 2,
+          "state": [
+            false,
+            false,
+            0,
+            0,
+            false
+          ]
+        },
+        {
+          "input": true,
+          "ticks": 0,
+          "state": [
+            true,
+            true,
+            0,
+            0,
+            false
+          ]
+        },
+        {
+          "input": false,
+          "ticks": 0,
+          "state": [
+            true,
+            false,
+            0,
+            0,
+            false
+          ]
+        },
+        {
+          "input": true,
+          "ticks": 0,
+          "state": [
+            false,
+            true,
+            0,
+            0,
+            false
+          ]
+        },
+        {
+          "input": true,
+          "ticks": 2,
+          "state": [
+            false,
+            true,
+            0,
+            0,
+            true
+          ]
+        },
+        {
+          "input": true,
+          "ticks": 2,
+          "state": [
+            false,
+            true,
+            0,
+            0,
+            false
+          ]
+        },
+        {
+          "input": false,
+          "ticks": 0,
+          "state": [
+            false,
+            false,
+            0,
+            0,
+            false
+          ]
+        },
+        {
+          "input": false,
+          "ticks": 4,
+          "state": [
+            false,
+            false,
+            0,
+            0,
+            false
+          ]
+        }
+      ]
+    },
+    {
+      "variant": "waxed_oxidized_copper_bulb",
+      "lit": true,
+      "powered": true,
+      "trace": [
+        {
+          "input": true,
+          "ticks": 0,
+          "state": [
+            true,
+            true,
+            0,
+            0,
+            false
+          ]
+        },
+        {
+          "input": true,
+          "ticks": 1,
+          "state": [
+            true,
+            true,
+            0,
+            0,
+            false
+          ]
+        },
+        {
+          "input": true,
+          "ticks": 1,
+          "state": [
+            true,
+            true,
+            0,
+            0,
+            false
+          ]
+        },
+        {
+          "input": true,
+          "ticks": 2,
+          "state": [
+            true,
+            true,
+            0,
+            0,
+            false
+          ]
+        },
+        {
+          "input": false,
+          "ticks": 0,
+          "state": [
+            true,
+            false,
+            0,
+            0,
+            false
+          ]
+        },
+        {
+          "input": false,
+          "ticks": 2,
+          "state": [
+            true,
+            false,
+            15,
+            15,
+            true
+          ]
+        },
+        {
+          "input": false,
+          "ticks": 2,
+          "state": [
+            true,
+            false,
+            15,
+            15,
+            false
+          ]
+        },
+        {
+          "input": true,
+          "ticks": 0,
+          "state": [
+            false,
+            true,
+            15,
+            15,
+            false
+          ]
+        },
+        {
+          "input": false,
+          "ticks": 0,
+          "state": [
+            false,
+            false,
+            15,
+            15,
+            false
+          ]
+        },
+        {
+          "input": true,
+          "ticks": 0,
+          "state": [
+            true,
+            true,
+            15,
+            15,
+            false
+          ]
+        },
+        {
+          "input": true,
+          "ticks": 2,
+          "state": [
+            true,
+            true,
+            15,
+            15,
+            true
+          ]
+        },
+        {
+          "input": true,
+          "ticks": 2,
+          "state": [
+            true,
+            true,
+            15,
+            15,
+            false
+          ]
+        },
+        {
+          "input": false,
+          "ticks": 0,
+          "state": [
+            true,
+            false,
+            15,
+            15,
+            false
+          ]
+        },
+        {
+          "input": false,
+          "ticks": 4,
+          "state": [
+            true,
+            false,
+            15,
+            15,
+            false
+          ]
+        }
+      ]
+    }
+  ]
+}
