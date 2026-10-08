@@ -184,7 +184,7 @@ fn invalid_and_offhand_use_acknowledge_without_starting_or_editing() {
 }
 
 #[test]
-fn swap_key_cycles_plane_sneak_swap_bends_and_block_dig_is_corrected() {
+fn swap_cycles_mode_drop_changes_bend_without_losing_pen_and_dig_is_corrected() {
     let (mut plot, mut peer) = fixture(false);
     equip(&mut plot);
     plot.players[0].inventory[45] = Some(ItemStack {
@@ -225,20 +225,64 @@ fn swap_key_cycles_plane_sneak_swap_bends_and_block_dig_is_corrected() {
     );
     assert_eq!(read_through_ack(&mut peer, 2), [0x04]);
     let session = plot.players[0].redstone_tools.wire.as_ref().unwrap();
-    assert_eq!(session.plane, Plane::VerticalX);
-    assert!(!session.prefer_x);
+    assert_eq!(session.plane, Plane::VerticalZ);
+    assert!(session.prefer_x);
     assert_eq!(session.generation, 2);
+    let cancel = Arc::new(AtomicBool::new(false));
+    let (_reply, receiver) = mpsc::sync_channel(1);
+    let start = pos.offset(BlockFace::Top);
+    let target = start + BlockPos::new(3, 1, 3);
+    let session = plot.players[0].redstone_tools.wire.as_mut().unwrap();
+    session.start = Some(start);
+    session.target = Some(target);
+    session.pending = Some(Pending {
+        cancel: cancel.clone(),
+        reply: receiver,
+    });
+    for (sequence, status, crouching, prefer_x) in [(3, 4, false, false), (4, 3, true, true)] {
+        plot.players[0].crouching = crouching;
+        plot.handle_player_digging(
+            SPlayerDigging {
+                status,
+                pos: pos.packed(),
+                face: 1,
+                sequence,
+            },
+            0,
+        );
+        let (id, mut frame) = read_frame(&mut peer, false).unwrap();
+        assert_eq!(id, 0x14);
+        assert_eq!(frame.read_varint().unwrap(), 0);
+        assert_eq!(frame.read_varint().unwrap(), 0);
+        assert_eq!(frame.read_short().unwrap(), 36);
+        assert_eq!(frame.read_varint().unwrap(), 1);
+        assert_eq!(frame.read_varint().unwrap(), tool_item().get_id() as i32);
+        assert_eq!(frame.read_varint().unwrap(), 0);
+        assert_eq!(frame.read_varint().unwrap(), 0);
+        assert_eq!(frame.position() as usize, frame.get_ref().len());
+        assert_eq!(read_through_ack(&mut peer, sequence), [0x04]);
+        let session = plot.players[0].redstone_tools.wire.as_ref().unwrap();
+        assert_eq!(session.plane, Plane::VerticalZ);
+        assert_eq!(session.prefer_x, prefer_x);
+        assert_eq!(session.generation, sequence as u64);
+        assert_eq!(session.start, Some(start));
+        assert_eq!(session.target, Some(target));
+        assert!(session.needs_search);
+        assert!(cancel.load(Ordering::Relaxed));
+        assert_eq!(plot.players[0].inventory[36].as_ref().unwrap().count, 1);
+        assert_eq!(plot.players[0].inventory[45].as_ref().unwrap().count, 32);
+    }
     plot.players[0].crouching = false;
     plot.handle_player_digging(
         SPlayerDigging {
             status: 0,
             pos: pos.packed(),
             face: 1,
-            sequence: 3,
+            sequence: 5,
         },
         0,
     );
-    let ids = read_through_ack(&mut peer, 3);
+    let ids = read_through_ack(&mut peer, 5);
     assert!(ids[..ids.len() - 1].contains(&0x08));
     assert_eq!(plot.world.get_block_raw(pos), before);
     assert!(plot.players[0].worldedit_undo.is_empty());
@@ -516,7 +560,7 @@ fn each_construction_plane_allows_both_coordinates_and_keeps_its_anchor() {
         Plane::Free,
         Plane::Horizontal,
     ] {
-        assert!(plot.flip_wire_route(0));
+        assert!(plot.flip_wire_route(0, false));
         let session = plot.players[0].redstone_tools.wire.as_ref().unwrap();
         assert_eq!(session.plane, expected);
         assert_eq!(session.start, Some(start));
@@ -644,7 +688,7 @@ fn mode_commands_preserve_the_start_cancel_stale_routes_and_reaim_immediately() 
         Plane::Free,
         Plane::Horizontal,
     ] {
-        assert!(plot.flip_wire_route(0));
+        assert!(plot.flip_wire_route(0, false));
         let session = plot.players[0].redstone_tools.wire.as_ref().unwrap();
         assert_eq!(session.plane, expected);
         assert_eq!(session.start, Some(start));
@@ -686,7 +730,7 @@ fn live_free_route_changes_xyz_builds_and_undoes_the_complete_segment() {
     plot.players[0].pos = PlayerPos::new(32.5, 26.0, 35.5);
     plot.players[0].yaw = 0.0;
     plot.players[0].pitch = 90.0;
-    assert!(plot.use_wire_tool(0, 0, 0.0, 90.0));
+    assert!(plot.start_wire_route(0, first_support));
     assert_eq!(
         plot.players[0].redstone_tools.wire.as_ref().unwrap().start,
         Some(start)
@@ -819,7 +863,7 @@ fn live_aim_worker_and_preview_build_a_line_on_the_generated_floor() {
     let start = BlockPos::new(32, 8, 32);
     let end = BlockPos::new(32, 8, 47);
     let drawing_started = Instant::now();
-    assert!(plot.use_wire_tool(0, 0, 0.0, 90.0));
+    assert!(plot.start_wire_route(0, BlockPos::new(32, 7, 32)));
     assert_eq!(
         plot.players[0].redstone_tools.wire.as_ref().unwrap().start,
         Some(start)
@@ -913,7 +957,7 @@ fn live_continuation_builds_several_supported_segments_then_turns_and_undoes() {
     plot.players[0].pos = PlayerPos::new(32.5, 24.0, 32.5);
     plot.players[0].yaw = 0.0;
     plot.players[0].pitch = 90.0;
-    assert!(plot.use_wire_tool(0, 0, 0.0, 90.0));
+    assert!(plot.start_wire_route(0, pillar));
     assert_eq!(
         plot.players[0].redstone_tools.wire.as_ref().unwrap().start,
         Some(start)
@@ -1047,7 +1091,7 @@ fn holding_a_pen_starts_and_restarts_drawing_without_a_command() {
     plot.players[0].pitch = 90.0;
     assert!(plot.players[0].redstone_tools.wire.is_none());
     assert!(plot.wire_tools_active());
-    assert!(plot.use_wire_tool(0, 0, 0.0, 90.0));
+    assert!(plot.start_wire_route(0, BlockPos::new(32, 20, 35)));
     assert_eq!(
         plot.players[0].redstone_tools.wire.as_ref().unwrap().start,
         Some(BlockPos::new(32, 21, 35))
@@ -1057,14 +1101,14 @@ fn holding_a_pen_starts_and_restarts_drawing_without_a_command() {
     assert!(plot.players[0].redstone_tools.wire.is_none());
     plot.handle_held_item_change(SHeldItemChange { slot: 0 }, 0);
     assert!(plot.players[0].redstone_tools.wire.is_none());
-    assert!(plot.use_wire_tool(0, 0, 0.0, 90.0));
+    assert!(plot.start_wire_route(0, BlockPos::new(32, 20, 35)));
     assert_eq!(
         plot.players[0].redstone_tools.wire.as_ref().unwrap().start,
         Some(BlockPos::new(32, 21, 35))
     );
 
     plot.clear_wire_tool(0);
-    assert!(plot.flip_wire_route(0));
+    assert!(plot.flip_wire_route(0, false));
     let session = plot.players[0].redstone_tools.wire.as_ref().unwrap();
     assert!(session.start.is_none());
     assert_eq!(session.plane, Plane::VerticalX);
@@ -1077,7 +1121,7 @@ fn holding_a_pen_starts_and_restarts_drawing_without_a_command() {
         nbt: None,
     });
     assert!(!plot.use_wire_tool(0, 0, 0.0, 90.0));
-    assert!(!plot.flip_wire_route(0));
+    assert!(!plot.flip_wire_route(0, false));
     assert!(plot.players[0].redstone_tools.wire.is_none());
 }
 
@@ -1087,7 +1131,7 @@ fn wire_off_survives_inputs_item_changes_and_route_cleanup() {
     equip(&mut plot);
     let support = BlockPos::new(32, 20, 35);
     plot.world.set_block(support, Block::Stone {});
-    assert!(plot.use_wire_tool(0, 0, 0.0, 90.0));
+    assert!(plot.start_wire_route(0, support));
     assert!(plot.handle_redstone_tools_command(0, "/wire", &["off"]));
     assert!(plot.players[0].redstone_tools.wire_disabled);
     assert!(plot.players[0].redstone_tools.wire.is_none());
@@ -1096,7 +1140,8 @@ fn wire_off_survives_inputs_item_changes_and_route_cleanup() {
     for crouching in [false, true] {
         plot.players[0].crouching = crouching;
         assert!(!plot.use_wire_tool(0, 0, 0.0, 90.0));
-        assert!(!plot.flip_wire_route(0));
+        assert!(!plot.flip_wire_route(0, false));
+        assert!(!plot.flip_wire_route(0, true));
     }
     plot.players[0].crouching = false;
     plot.handle_use_item(
@@ -1138,6 +1183,27 @@ fn wire_off_survives_inputs_item_changes_and_route_cleanup() {
         Block::Air {}
     );
     assert!(plot.players[0].worldedit_undo.is_empty());
+    plot.players[0].inventory[36].as_mut().unwrap().count = 2;
+    for (sequence, status, count) in [(3, 4, Some(1)), (4, 3, None)] {
+        plot.handle_player_digging(
+            SPlayerDigging {
+                status,
+                pos: support.packed(),
+                face: 1,
+                sequence,
+            },
+            0,
+        );
+        read_through_ack(&mut peer, sequence);
+        assert_eq!(
+            plot.players[0].inventory[36]
+                .as_ref()
+                .map(|item| item.count),
+            count
+        );
+        assert!(plot.players[0].redstone_tools.wire_disabled);
+        assert!(plot.players[0].redstone_tools.wire.is_none());
+    }
 }
 
 #[test]
@@ -1168,7 +1234,7 @@ fn each_explicit_wire_command_reenables_drawing_after_off() {
             plot.players[0].redstone_tools.wire.as_ref().unwrap().plane,
             mode
         );
-        assert!(plot.use_wire_tool(0, 0, 0.0, 90.0));
+        assert!(plot.start_wire_route(0, BlockPos::new(32, 20, 35)));
         assert_eq!(
             plot.players[0].redstone_tools.wire.as_ref().unwrap().start,
             Some(BlockPos::new(32, 21, 35))
@@ -1229,7 +1295,7 @@ fn clicking_existing_dust_preserves_its_support_and_copies_the_support_color() {
     plot.players[0].pos = PlayerPos::new(32.5, 24.0, 35.5);
     plot.players[0].yaw = 0.0;
     plot.players[0].pitch = 90.0;
-    assert!(plot.use_wire_tool(0, 0, 0.0, 90.0));
+    assert!(plot.start_wire_route(0, start));
     assert_eq!(
         plot.players[0].redstone_tools.wire.as_ref().unwrap().start,
         Some(start)
@@ -1284,6 +1350,74 @@ fn clicking_existing_dust_preserves_its_support_and_copies_the_support_color() {
 }
 
 #[test]
+fn left_click_selects_support_and_right_click_without_a_start_does_not() {
+    let (mut plot, _peer) = fixture(false);
+    equip(&mut plot);
+    let support = BlockPos::new(32, 20, 35);
+    plot.world.set_block(support, Block::Stone {});
+    plot.players[0].pos = PlayerPos::new(32.5, 24.0, 35.5);
+
+    plot.handle_player_digging(
+        SPlayerDigging {
+            status: 0,
+            pos: support.packed(),
+            face: 1,
+            sequence: 0,
+        },
+        0,
+    );
+    assert_eq!(
+        plot.players[0].redstone_tools.wire.as_ref().unwrap().start,
+        Some(support.offset(BlockFace::Top))
+    );
+    assert_eq!(plot.world.get_block(support), Block::Stone {});
+    assert!(plot.players[0].worldedit_undo.is_empty());
+
+    let (mut plot, _peer) = fixture(false);
+    equip(&mut plot);
+    let wire = support.offset(BlockFace::Top);
+    plot.world.set_block(support, Block::Stone {});
+    plot.world.set_block(
+        wire,
+        Block::RedstoneWire {
+            wire: RedstoneWire::default(),
+        },
+    );
+    plot.players[0].pos = PlayerPos::new(32.5, 24.0, 35.5);
+    plot.handle_player_digging(
+        SPlayerDigging {
+            status: 0,
+            pos: wire.packed(),
+            face: 1,
+            sequence: 0,
+        },
+        0,
+    );
+    assert_eq!(
+        plot.players[0].redstone_tools.wire.as_ref().unwrap().start,
+        Some(wire)
+    );
+    assert_eq!(plot.world.get_block(support), Block::Stone {});
+    assert!(matches!(
+        plot.world.get_block(wire),
+        Block::RedstoneWire { .. }
+    ));
+
+    let (mut plot, _peer) = fixture(false);
+    equip(&mut plot);
+    plot.world.set_block(support, Block::Stone {});
+    plot.players[0].pos = PlayerPos::new(32.5, 24.0, 35.5);
+    assert!(plot.use_wire_tool(0, 0, 0.0, 90.0));
+    assert!(plot.players[0]
+        .redstone_tools
+        .wire
+        .as_ref()
+        .unwrap()
+        .start
+        .is_none());
+}
+
+#[test]
 fn noncreative_pen_use_and_plane_switch_do_not_activate_or_edit() {
     let (mut plot, _peer) = fixture(false);
     plot.players[0].inventory[36] = Some(ItemStack {
@@ -1295,8 +1429,9 @@ fn noncreative_pen_use_and_plane_switch_do_not_activate_or_edit() {
     plot.world.set_block(platform, Block::Stone {});
     for gamemode in [Gamemode::Adventure, Gamemode::Spectator] {
         plot.players[0].gamemode = gamemode;
-        assert!(plot.use_wire_tool(0, 0, 0.0, 90.0));
-        assert!(plot.flip_wire_route(0));
+        assert!(plot.start_wire_route(0, platform));
+        assert!(plot.flip_wire_route(0, false));
+        assert!(plot.flip_wire_route(0, true));
         assert!(plot.players[0].redstone_tools.wire.is_none());
         assert!(plot.players[0].worldedit_undo.is_empty());
         assert_eq!(plot.world.get_block(platform), Block::Stone {});
@@ -1318,8 +1453,9 @@ fn denied_pen_use_and_plane_switch_do_not_activate_or_edit() {
     plot.players[0].deny_test_permissions();
     let platform = BlockPos::new(32, 20, 35);
     plot.world.set_block(platform, Block::Stone {});
-    assert!(plot.use_wire_tool(0, 0, 0.0, 90.0));
-    assert!(plot.flip_wire_route(0));
+    assert!(plot.start_wire_route(0, platform));
+    assert!(plot.flip_wire_route(0, false));
+    assert!(plot.flip_wire_route(0, true));
     assert!(plot.players[0].redstone_tools.wire.is_none());
     assert!(plot.players[0].worldedit_undo.is_empty());
     assert_eq!(plot.world.get_block(platform), Block::Stone {});
@@ -1383,12 +1519,12 @@ fn live_elevated_route_copies_stone_supports_and_undo_restores_both_platforms() 
     plot.players[0].pitch = (4.62_f64 / 4.0).atan().to_degrees() as f32;
     let start = lower_platform.offset(BlockFace::Top);
     let end = upper_platform.offset(BlockFace::Top);
-    assert!(plot.use_wire_tool(0, 0, 0.0, plot.players[0].pitch));
+    assert!(plot.start_wire_route(0, lower_platform));
     assert_eq!(
         plot.players[0].redstone_tools.wire.as_ref().unwrap().start,
         Some(start)
     );
-    assert!(plot.flip_wire_route(0));
+    assert!(plot.flip_wire_route(0, false));
     assert_eq!(
         plot.players[0].redstone_tools.wire.as_ref().unwrap().plane,
         Plane::VerticalX

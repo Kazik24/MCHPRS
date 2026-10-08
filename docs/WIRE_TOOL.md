@@ -1,31 +1,31 @@
 # Wire pen
 
-Hold any carrot on a stick and right-click to draw redstone. `/wire` is a
+Hold any carrot on a stick to draw redstone. `/wire` is a
 convenience command: it uses a held carrot on a stick or puts a named pen into an
 empty hotbar slot, and resets the current route.
 
 Leaving the plot, disconnecting, or changing the held item cancels the current
-route and clears its preview. Hold the pen and right-click to start again;
-another `/wire` command is unnecessary while the tool is enabled.
+route and clears its preview. Left-click a new start whenever needed; another
+`/wire` command is unnecessary while the tool is enabled.
 
-`/wire off` disables the tool for the current login. Right-clicking, pressing F,
-switching items, and moving between plots keep it disabled. Use `/wire`,
+`/wire off` disables the tool for the current login. Right-clicking, pressing F
+or Q, switching items, and moving between plots keep it disabled. Use `/wire`,
 `/wire free`, or `/wire plane` to explicitly enable it again.
 
 ## Controls
 
 | Action | Result |
 | --- | --- |
-| Right-click a block | Use that block as the first support, with dust directly above it. |
-| Right-click existing dust | Reuse that dust cell as the starting endpoint. |
+| Left-click a block | Use that block as the support, with dust directly above it. |
+| Left-click existing dust | Reuse that dust cell as the starting endpoint. |
 | Aim at a destination | Preview a safe route with its endpoint on the drawing plane. |
 | Aim into air | Move the endpoint where the view ray meets the selected plane. |
-| Right-click a fully displayed green route | Build the segment and continue from its endpoint. |
+| Right-click a fully displayed green route | Commit the segment and continue from its endpoint. |
 | F, the default offhand-swap key | Cycle horizontal, vertical X, vertical Z, and Free aiming. |
-| Sneak + F | Change the preferred bend order. |
+| Q, the default item-drop key | Change the preferred bend order without dropping the pen. |
 | Sneak + right-click | Cancel the current segment. |
 | Change held item | Cancel the route and remove its preview. |
-| Hold the pen again and right-click | Start a fresh route while the tool is enabled. |
+| Left-click a new support | Start a fresh route while the tool is enabled. |
 | `/wire off` | Disable the tool until an explicit enabling command. |
 | `/wire` | Enable the tool, obtain a named pen or reset the current route. |
 | `/wire free` | Enable direct aiming at pointed blocks without a drawing-plane constraint. |
@@ -74,7 +74,8 @@ Use `/wire free` to aim directly at existing blocks in any direction. Free mode
 uses the actual pointed block and preserves its endpoint height and position.
 `/wire plane` returns to horizontal aiming. Both commands retain the current
 start and refresh the preview. F includes Free after the vertical planes and
-returns to horizontal on the next press. Sneak + F changes the bend in every mode.
+returns to horizontal on the next press. Q changes the bend in every mode,
+including while sneaking.
 
 The tool neither checks signal range nor places repeaters or other tick-delay
 components. A long dust route can attenuate to zero; manage signal restoration

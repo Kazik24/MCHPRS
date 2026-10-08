@@ -344,7 +344,7 @@ impl Plot {
                 tool_item().get_id() as i32,
                 &mut blob,
                 "Wire Pen",
-                "RC draw | F plane | Sneak+F bend | Sneak+RC cancel",
+                "L start | R commit | F mode | Q bend",
             )
             .map_err(|error| anyhow::anyhow!(messages::container_components_failed(error)))?;
             self.players[player].set_inventory_slot(
@@ -405,7 +405,7 @@ impl Plot {
         }
     }
 
-    pub(in crate::plot) fn flip_wire_route(&mut self, player: usize) -> bool {
+    pub(in crate::plot) fn flip_wire_route(&mut self, player: usize, bend: bool) -> bool {
         if !self.wire_held(player) {
             return false;
         }
@@ -420,12 +420,11 @@ impl Plot {
             return true;
         }
         let slot = self.players[player].selected_slot;
-        let crouching = self.players[player].crouching;
         let session = self.players[player]
             .redstone_tools
             .wire
             .get_or_insert_with(|| Session::new(slot));
-        if crouching {
+        if bend {
             session.prefer_x = !session.prefer_x;
         } else {
             session.plane = session.plane.next();
@@ -488,6 +487,8 @@ impl Plot {
             session.invalidate();
             session.wanted.clear();
             session.set_status(messages::WIRE_ENABLED);
+        } else if session.start.is_none() {
+            session.set_status(messages::WIRE_SELECT_START_FIRST);
         } else if let Some(target) = aim(
             &self.world,
             &self.players[player],
@@ -563,6 +564,56 @@ impl Plot {
             session.set_status(messages::WIRE_NO_TARGET);
         }
         self.players[player].redstone_tools.wire = Some(session);
+        true
+    }
+
+    pub(in crate::plot) fn start_wire_route(&mut self, player: usize, clicked: BlockPos) -> bool {
+        if !self.wire_held(player) {
+            return false;
+        }
+        if self.players[player].awaiting_teleport()
+            || !matches!(self.players[player].gamemode, Gamemode::Creative)
+        {
+            return true;
+        }
+        if self.check_tool_access(player, ToolCommand::Wire).is_err()
+            || !self.players[player].can_build_action(
+                "place",
+                self.owner,
+                (self.world.x, self.world.z),
+            )
+        {
+            self.clear_wire_tool(player);
+            self.players[player].send_no_permission_message();
+            return true;
+        }
+        if !Plot::in_plot_bounds(self.world.x, self.world.z, clicked.x, clicked.z)
+            || !self.container_in_reach(player, clicked)
+            || !(0..super::PLOT_BLOCK_HEIGHT).contains(&clicked.y)
+        {
+            return true;
+        }
+        let clicked_block = self.world.get_block(clicked);
+        let start = match clicked_block {
+            Block::RedstoneWire { .. } => clicked,
+            Block::Air {} => return true,
+            _ => clicked.offset(BlockFace::Top),
+        };
+        if !self.world.contains_position(start) {
+            return true;
+        }
+
+        let slot = self.players[player].selected_slot;
+        let session = self.players[player]
+            .redstone_tools
+            .wire
+            .get_or_insert_with(|| Session::new(slot));
+        session.start = Some(start);
+        session.target = Some(start);
+        session.invalidate();
+        session.wanted.clear();
+        session.wanted.insert(start, 4);
+        session.set_status(messages::WIRE_START_SELECTED);
         true
     }
 

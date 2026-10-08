@@ -21,10 +21,12 @@ use tracing::{error, warn};
 pub(super) const ERROR_IO_ONLY: &str = messages::PLOT_CANNOT_INTERACTED_WHILE_REDPILER_ACTIVE;
 
 fn relative_movement(old: PlayerPos, new: PlayerPos) -> Option<[i16; 3]> {
+    // Quantize endpoints rather than each step, so discarded fractions do not accumulate.
+    let encode = |coordinate: f64| (coordinate * 4096.0 + 0.5).floor();
     let deltas = [
-        (new.x * 32.0 - old.x * 32.0) * 128.0,
-        (new.y * 32.0 - old.y * 32.0) * 128.0,
-        (new.z * 32.0 - old.z * 32.0) * 128.0,
+        encode(new.x) - encode(old.x),
+        encode(new.y) - encode(old.y),
+        encode(new.z) - encode(old.z),
     ];
     // The positive eight-block boundary exceeds i16::MAX; use a teleport there.
     deltas
@@ -303,9 +305,17 @@ impl Plot {
         if self.players[player].awaiting_teleport() {
             return;
         }
-        if self.wire_held(player) && matches!(player_digging.status, 0..=2 | 6) {
-            if player_digging.status == 6 {
-                self.flip_wire_route(player);
+        if self.wire_held(player) && matches!(player_digging.status, 0..=4 | 6) {
+            if player_digging.status == 0 {
+                self.start_wire_route(player, BlockPos::from_packed(player_digging.pos));
+            } else if matches!(player_digging.status, 3 | 4 | 6) {
+                self.flip_wire_route(player, player_digging.status != 6);
+                if player_digging.status != 6 {
+                    // Restore the pen after the client's predicted item drop.
+                    let slot = self.players[player].selected_slot + 36;
+                    let item = self.players[player].inventory[slot as usize].clone();
+                    self.players[player].set_inventory_slot(slot, item);
+                }
             }
             return;
         }
@@ -511,6 +521,8 @@ impl Plot {
 impl ServerBoundPacketHandler for Plot {
     fn handle_teleport_confirm(&mut self, packet: STeleportConfirm, player: usize) {
         if self.players[player].confirm_teleport(packet.id) {
+            let position = self.players[player].entity_teleport_packet();
+            self.broadcast_player_packets(player, &[&position]);
             // Establish the destination view before later packets in this batch
             // can place/break blocks there. Confirmation does not force reloads.
             self.update_view_pos_for_player(player, false);
@@ -1100,6 +1112,36 @@ impl ServerBoundPacketHandler for Plot {
 #[cfg(test)]
 mod movement_tests {
     use super::*;
+
+    #[test]
+    fn relative_movement_accumulates_fractional_steps_without_drift() {
+        for initial in [
+            PlayerPos::new(32.5, 21.0, 35.5),
+            PlayerPos::new(-32.5, -21.0, -35.5),
+        ] {
+            let mut old = initial;
+            let mut received = [0i64; 3];
+            for step in 1..=2048 {
+                let new = PlayerPos::new(
+                    initial.x + f64::from(step) * 0.0001,
+                    initial.y + f64::from(step) * 0.04153,
+                    initial.z - f64::from(step) * 0.03137,
+                );
+                let deltas = relative_movement(old, new).unwrap();
+                for (axis, distance) in [new.x - initial.x, new.y - initial.y, new.z - initial.z]
+                    .into_iter()
+                    .enumerate()
+                {
+                    received[axis] += i64::from(deltas[axis]);
+                    assert!(
+                        (received[axis] as f64 / 4096.0 - distance).abs() <= 1.0 / 4096.0,
+                        "drift at step {step}, axis {axis}"
+                    );
+                }
+                old = new;
+            }
+        }
+    }
 
     #[test]
     fn relative_movement_uses_the_signed_protocol_range_on_every_axis() {

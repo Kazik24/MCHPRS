@@ -20,6 +20,10 @@ Teleportation establishes a pending ID in
 [TeleportState](../crates/core/src/player/client_sync.rs). Movement is fenced
 until the matching confirmation arrives. Old or duplicate confirmations cannot
 release a newer teleport; retries use the same ID at one-second intervals.
+The matching confirmation sends the absolute entity position to other players
+before subsequent relative movement. Relative movement uses differences between
+quantized absolute endpoints, keeping fractional steps from accumulating a
+visible offset during flight.
 Changing plot/view context also updates the chunk states delivered to the player.
 Neighboring plots are snapshots rather than independently simulated client worlds.
 
