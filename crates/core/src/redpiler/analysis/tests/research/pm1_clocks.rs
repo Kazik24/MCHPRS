@@ -171,7 +171,7 @@ fn inspect_pm1_clocks(cpu: cpus::Cpu, require_frozen_prefix: bool) {
                 .to_string();
             let seconds = now.elapsed().as_secs_f64();
             let expected_error = if budget_multiplier == 8 {
-                "one owned generator"
+                "timed movement notifications require a proven shared-clock contract"
             } else {
                 "analysis piston budget exceeded"
             };

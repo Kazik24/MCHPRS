@@ -96,10 +96,7 @@ pub(crate) fn recognize(
         }
     }
     if clocks.len() != 1 {
-        return Err(format!(
-            "clocked instant execution needs one owned generator; found {} (first two at {:?} and {:?})",
-            clocks.len(), report.pistons[clocks[0]].pos, report.pistons[clocks[1]].pos,
-        ));
+        return Ok(None);
     }
     let clock = clocks[0];
     let p = &report.pistons[clock];

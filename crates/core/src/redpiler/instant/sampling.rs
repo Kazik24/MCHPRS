@@ -202,6 +202,18 @@ pub(crate) fn recognize(
         .collect();
     for &actor in &generators {
         let piston = &report.pistons[actor];
+        for &pos in &report.observers {
+            let Block::Observer { observer } = world.get_block(pos) else {
+                continue;
+            };
+            let watched = pos.offset(observer.facing.into());
+            if watched == piston.pos || watched == piston.head {
+                return Err(format!(
+                    "ordinary sampling generator at {:?} is watched by observer at {pos:?}; timed movement notifications require a proven shared-clock contract",
+                    piston.pos
+                ));
+            }
+        }
         let descriptor = &report.payload_groups[groups[actor]];
         let near = world.get_block(piston.head);
         let empty_near = near == Block::Air

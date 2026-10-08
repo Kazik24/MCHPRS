@@ -405,8 +405,10 @@ cell is extended in that group's old state. Same-value memory samples remain
 deliveries even when no stored bit changes. This is the current logical
 transaction contract, not a proof of arbitrary native callback ordering.
 
-Several generic generators and recipients can be represented, but a region
-with several clock-shaped candidates still fails the shared-clock recognizer.
+Several generic generators and recipients can be represented. Multiple
+clock-shaped candidates defer to independent sampling instead of failing on
+their count. Independent sampling rejects observer routes watching a generator
+base or head: settled pose edges cannot reproduce timed movement notifications.
 Stored-state generator control, multiple dust writers, and unproved
 geometry-dependent notification routes remain rejected. Delivery flags and
 writer ordering do not preserve every native callback's multiplicity and order;

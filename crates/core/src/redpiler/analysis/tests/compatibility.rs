@@ -11,6 +11,53 @@ use mchprs_blocks::BlockDirection;
 use rustc_hash::FxHashSet;
 
 #[test]
+fn multiple_clock_candidates_defer_to_sampling_and_report_the_unproved_route() {
+    use crate::redpiler::instant::{clocked, sampling};
+    let mut world = empty();
+    for dx in [0, 8] {
+        let base = BASE + BlockPos::new(dx, 0, 0);
+        world.set_block(
+            base,
+            Block::Piston {
+                piston: RedstonePiston {
+                    facing: BlockFacing::Down,
+                    sticky: false,
+                    extended: false,
+                },
+            },
+        );
+        world.set_block(
+            base.offset(BlockFace::Top),
+            Block::Observer {
+                observer: RedstoneObserver {
+                    facing: BlockFacing::Down,
+                    powered: false,
+                },
+            },
+        );
+        world.set_block(base + BlockPos::new(0, 2, 0), Block::Stone {});
+    }
+    let report = analyze_world(&world);
+    let monitor = TaskMonitor::default();
+    for assume_instant in [false, true] {
+        assert!(
+            clocked::recognize(&world, &report, &monitor, assume_instant)
+                .unwrap()
+                .is_none()
+        );
+    }
+    let error = sampling::recognize(&world, &report, &monitor, None, &FxHashSet::default())
+        .err()
+        .expect("observer movement delivery is not represented by settled pose edges");
+    assert!(error.contains("is watched by observer"), "{error}");
+    assert!(error.contains(&format!("{:?}", BASE)), "{error}");
+    assert!(
+        error.contains(&format!("{:?}", BASE.offset(BlockFace::Top))),
+        "{error}"
+    );
+}
+
+#[test]
 fn notification_geometry_matches_native_piston_rechecks_in_every_orientation() {
     let mut sources = vec![Block::RedstoneTorch { lit: true }];
     for facing in [
