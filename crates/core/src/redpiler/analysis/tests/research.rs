@@ -65,7 +65,7 @@ fn load(manifest: &Value) -> (PlotWorld, (BlockPos, BlockPos)) {
     (world, (first, last))
 }
 
-pub(super) fn compilation_fingerprint(world: &PlotWorld, bounds: (BlockPos, BlockPos)) -> Vec<u8> {
+fn compilation_fingerprint(world: &PlotWorld, bounds: (BlockPos, BlockPos)) -> Vec<u8> {
     let mut digest = Sha256::new();
     crate::world::for_each_block_optimized(world, bounds.0, bounds.1, |pos| {
         for coordinate in [pos.x, pos.y, pos.z] {

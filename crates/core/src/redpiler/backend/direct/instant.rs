@@ -120,6 +120,12 @@ enum Supply {
 }
 
 impl Runtime {
+    pub(super) fn mark_source_dirty(&mut self, source: NodeId) {
+        if let Some(state) = &mut self.logical {
+            state.mark_dirty(Input::Source(source));
+        }
+    }
+
     pub(super) fn use_native_sampling(&mut self, owns: impl Fn(BlockPos) -> bool) {
         for (event, prepared) in self.sampling.iter_mut().zip(&self.program.sampling) {
             event.native = match prepared.source {
@@ -182,7 +188,7 @@ impl Runtime {
         let mut state = self.logical.take().unwrap();
         state
             .responses
-            .capture(|input, threshold| self.read_input(input, threshold, nodes));
+            .capture_dirty(|input, threshold| self.read_input(input, threshold, nodes));
         let captured = targets
             .into_iter()
             .filter_map(|mut target| {
@@ -206,7 +212,17 @@ impl Runtime {
 
     pub(super) fn commit_samples(&mut self, samples: &[Sample]) {
         for sample in samples {
+            let changed = self.memory[sample.actor] != sample.power.unwrap();
             self.memory[sample.actor] = sample.power.unwrap();
+            if changed {
+                let group = self.actor_groups[sample.actor];
+                if let Some(state) = &mut self.logical {
+                    state.mark_dirty(Input::Memory(sample.actor));
+                    for &actor in &self.program.groups[group] {
+                        state.mark_geometry_actor_dirty(actor);
+                    }
+                }
+            }
         }
         #[cfg(test)]
         if !samples.is_empty() {
@@ -637,6 +653,9 @@ impl Runtime {
             .responses
             .capture(|input, threshold| runtime.read_input(input, threshold, nodes));
         state
+            .outputs
+            .capture(|input, threshold| runtime.read_input(input, threshold, nodes));
+        state
             .sampling
             .capture(|input, threshold| runtime.read_input(input, threshold, nodes));
         for event in &mut runtime.sampling {
@@ -714,11 +733,6 @@ impl Runtime {
     }
 
     #[cfg(test)]
-    pub(super) fn parallel_response_batches(&self) -> usize {
-        self.logical.as_ref().unwrap().responses.parallel_batches
-    }
-
-    #[cfg(test)]
     pub(crate) fn logical_stats(&self) -> Option<(u64, u64, Vec<(BlockPos, bool)>)> {
         self.logical.as_ref().map(|state| {
             (
@@ -771,7 +785,6 @@ impl Runtime {
         nodes: &Nodes,
         sources_changed: bool,
         clock_event: bool,
-        parallel: bool,
     ) -> Vec<(NodeId, u8)> {
         let boundary_due = clock_event
             && self
@@ -807,22 +820,42 @@ impl Runtime {
                 .iter()
                 .zip(&self.bank_values)
             {
+                let previous = self.memory[cell.actor];
                 self.memory[cell.actor] = value;
+                if value != previous {
+                    state.mark_dirty(Input::Memory(cell.actor));
+                    for &actor in &self.program.groups[self.actor_groups[cell.actor]] {
+                        state.mark_geometry_actor_dirty(actor);
+                    }
+                }
             }
             #[cfg(test)]
             {
                 state.samples += 1;
             }
         }
-        state
-            .responses
-            .capture(|input, threshold| self.read_input(input, threshold, nodes));
+        if state.initialized {
+            state
+                .responses
+                .capture_dirty(|input, threshold| self.read_input(input, threshold, nodes));
+        } else {
+            state
+                .responses
+                .capture(|input, threshold| self.read_input(input, threshold, nodes));
+        }
         let sample = if let Some(clock) = self.program.clocked.as_ref().map(|clock| clock.clock) {
             // Control pose follows the source independently of bank sampling;
             // stopping the clock preserves memory and the last data response.
             let active = state.responses.evaluate(clock);
+            let control_group = self.actor_groups[clock];
+            let control_changed = self.fired[clock] != active;
             self.fired[clock] = active;
-            self.group_fired[self.actor_groups[clock]] = active;
+            self.group_fired[control_group] = active;
+            if control_changed {
+                for &actor in &self.program.groups[control_group] {
+                    state.responses.mark_geometry_actor_dirty(actor);
+                }
+            }
             if !active {
                 state.next_sample = None;
                 false
@@ -834,9 +867,21 @@ impl Runtime {
         };
         if sample {
             // Every response reads the same frozen old bank before any write.
-            state
-                .responses
-                .evaluate_dirty(parallel, |actor, value| self.fired[actor] = value);
+            let mut changed_groups = Vec::new();
+            state.responses.evaluate_dirty(|actor, value| {
+                if self.fired[actor] != value {
+                    let group = self.actor_groups[actor];
+                    if !changed_groups.contains(&group) {
+                        changed_groups.push(group);
+                    }
+                }
+                self.fired[actor] = value;
+            });
+            for group in changed_groups {
+                for &actor in &self.program.groups[group] {
+                    state.responses.mark_geometry_actor_dirty(actor);
+                }
+            }
             self.group_fired.fill(false);
             for (actor, &fired) in self.fired.iter().enumerate() {
                 self.group_fired[self.actor_groups[actor]] |= fired;
@@ -850,9 +895,15 @@ impl Runtime {
                 state.next_sample = Some(launch + 6);
             }
         }
-        state
-            .sampling
-            .capture(|input, threshold| self.read_input(input, threshold, nodes));
+        if state.initialized {
+            state
+                .sampling
+                .capture_dirty(|input, threshold| self.read_input(input, threshold, nodes));
+        } else {
+            state
+                .sampling
+                .capture(|input, threshold| self.read_input(input, threshold, nodes));
+        }
         for (index, event) in self.sampling.iter_mut().enumerate() {
             let strength = Self::sample_strength(event, &mut state, nodes);
             let changed = std::mem::replace(&mut event.previous, strength) != strength;
@@ -906,6 +957,7 @@ impl Runtime {
             .as_ref()
             .is_none_or(|clock| self.fired[clock.clock]);
         let mut changed = false;
+        let mut changed_groups = Vec::new();
         for boundary in &mut self.boundaries {
             let previous = boundary.phase;
             if launch {
@@ -919,7 +971,13 @@ impl Runtime {
             let resetting =
                 clock_active && boundary.reset_owners.iter().any(|&owner| self.fired[owner]);
             boundary.advance(self.elapsed, resetting);
-            changed |= previous != boundary.phase;
+            if previous != boundary.phase {
+                changed = true;
+                let group = self.actor_groups[boundary.actor];
+                if !changed_groups.contains(&group) {
+                    changed_groups.push(group);
+                }
+            }
         }
         self.next_boundary = self
             .boundaries
@@ -927,6 +985,13 @@ impl Runtime {
             .filter_map(|boundary| boundary.deadline)
             .min();
         self.observations_dirty |= changed;
+        if let Some(state) = &mut self.logical {
+            for group in changed_groups {
+                for &actor in &self.program.groups[group] {
+                    state.mark_geometry_actor_dirty(actor);
+                }
+            }
+        }
         changed
     }
 
@@ -1195,7 +1260,7 @@ impl Runtime {
         let mut state = self.logical.take().unwrap();
         state
             .outputs
-            .capture(|input, threshold| self.read_input(input, threshold, nodes));
+            .capture_dirty(|input, threshold| self.read_input(input, threshold, nodes));
         let mut root = 0;
         let changes = self
             .outputs

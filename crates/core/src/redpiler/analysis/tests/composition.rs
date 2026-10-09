@@ -249,6 +249,12 @@ fn private_assembly_wires_have_no_ordinary_graph_nodes() {
             Default::default(),
         )
         .unwrap();
+    for &pos in &private_wires {
+        assert!(
+            !compiler.native_owns(pos),
+            "private assembly wire {pos:?} became natively executable"
+        );
+    }
     let private_states: Vec<_> = private_wires
         .iter()
         .map(|&pos| (pos, world.get_block(pos)))
@@ -566,17 +572,28 @@ fn unchanged_comparator_outputs_deliver_the_same_callbacks_through_unchanged_dus
 }
 
 #[test]
-fn certified_geometry_delivers_both_comparator_channels_and_native_dust_callbacks() {
+fn private_geometry_does_not_notify_external_dust_or_remove_decorations() {
     for optimize in [false, true] {
         for io_only in [false, true] {
             let (mut mixed, trigger, base, old_output) =
                 super::outputs::conductor_output(Block::Stone {}, false, false);
             let far = base + BlockPos::new(0, 0, 2);
+            let sign = base + BlockPos::new(1, 0, 1);
             let main = far.offset(BlockFace::East);
             let side = far.offset(BlockFace::South);
             let consumer = main.offset(BlockFace::South);
             mixed.set_block(old_output, Block::Air);
             mixed.set_block(far + BlockPos::new(2, 0, 0), Block::Air);
+            mixed.set_block(
+                sign,
+                Block::WallSign {
+                    sign_type: mchprs_blocks::SignType(0),
+                    facing: BlockDirection::East,
+                },
+            );
+            mixed.set_block_entity(sign, BlockEntity::Sign(Box::default()));
+            let sign_state = mixed.get_block(sign);
+            let sign_entity = json!(mixed.get_block_entity(sign));
             let source = far.offset(BlockFace::West);
             mixed.set_block(source.offset(BlockFace::Bottom), Block::Stone {});
             mixed.set_block(
@@ -618,22 +635,6 @@ fn certified_geometry_delivers_both_comparator_channels_and_native_dust_callback
                     },
                 );
             }
-            let mut ordinary = empty();
-            for pos in [
-                far,
-                source,
-                source.offset(BlockFace::West),
-                main,
-                side,
-                consumer,
-            ] {
-                ordinary.set_block(pos, mixed.get_block(pos));
-                ordinary.set_block(
-                    pos.offset(BlockFace::Bottom),
-                    mixed.get_block(pos.offset(BlockFace::Bottom)),
-                );
-            }
-            ordinary.set_block_entity(consumer, BlockEntity::Comparator { output_strength: 0 });
             let mut compiler = Compiler::default();
             compiler
                 .compile(
@@ -649,54 +650,24 @@ fn certified_geometry_delivers_both_comparator_channels_and_native_dust_callback
                 )
                 .unwrap();
             compiler.on_use_block(trigger);
-            let moving = match mixed.get_block(base) {
-                Block::Piston { piston } => Block::MovingPiston {
-                    moving: piston.into(),
-                },
-                _ => unreachable!(),
-            };
             let positions = [main, side, consumer];
             for tick in 1..=32 {
-                let expected = callbacks(crate::redstone::instant_piston_tests::capture_at(
-                    &positions,
-                    || {
-                        ordinary.tick_interpreted();
-                        // Certified reset cycle: retract at 2, settle at 4, extend at 5,
-                        // settle at 7; repeat every six half ticks.
-                        let payload = if tick < 2 {
-                            Block::Stone {}
-                        } else {
-                            match (tick - 2) % 6 {
-                                0..=2 => Block::Air,
-                                3..=4 => moving,
-                                _ => Block::Stone {},
-                            }
-                        };
-                        if ordinary.set_block(far, payload) {
-                            ordinary.piston_state_mut().phase =
-                                mchprs_world::AdvancePhase::PistonEvents;
-                            crate::redstone::piston::notify(&mut ordinary, far);
-                            ordinary.piston_state_mut().phase =
-                                mchprs_world::AdvancePhase::BetweenTicks;
-                        }
-                    },
-                ));
                 let actual = callbacks(crate::redstone::instant_piston_tests::capture_at(
                     &positions,
                     || {
                         compiler.tick_with_world(&mut mixed);
                     },
                 ));
-                assert_eq!(
-                    actual, expected,
-                    "boundary callback trace at {tick}, optimize {optimize}, IO {io_only}"
+                assert!(
+                    actual.is_empty(),
+                    "private geometry notified external blocks at {tick}, optimize {optimize}, IO {io_only}"
                 );
                 if tick % 5 == 0 {
                     compiler.flush(&mut mixed);
-                    assert_eq!(
-                        json!(mixed.get_block_entity(consumer)),
-                        json!(ordinary.get_block_entity(consumer))
-                    );
+                    if !io_only {
+                        assert_eq!(mixed.get_block(sign), sign_state);
+                        assert_eq!(json!(mixed.get_block_entity(sign)), sign_entity);
+                    }
                 }
             }
         }

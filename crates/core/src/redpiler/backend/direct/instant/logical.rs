@@ -1,12 +1,8 @@
 //! Cached decision programs over frozen Boolean inputs, with no physical work.
 use super::{Decision, Input};
 use crate::redpiler::backend::BackendError;
-use crate::redpiler::instant::boolean::{Expr, TRUE};
-use rayon::prelude::*;
+use crate::redpiler::instant::boolean::{Expr, GeometryPart, TRUE};
 use rustc_hash::FxHashMap;
-#[cfg(test)]
-use std::sync::atomic::AtomicU64;
-use std::sync::atomic::{AtomicU8, Ordering};
 
 #[derive(Clone, Copy)]
 enum Condition {
@@ -24,6 +20,10 @@ struct BoundDecision {
 pub(super) struct Plan {
     roots: Vec<Expr>,
     inputs: Vec<(Input, u8)>,
+    bindings_by_input: FxHashMap<Input, Vec<usize>>,
+    dirty_inputs: Vec<usize>,
+    input_dirty: Vec<bool>,
+    captured_values: Vec<(usize, bool)>,
     snapshot: Vec<bool>,
     decisions: Vec<BoundDecision>,
     users: Vec<Vec<usize>>,
@@ -32,12 +32,10 @@ pub(super) struct Plan {
     dirty_roots: Vec<usize>,
     root_dirty: Vec<bool>,
     root_queued: Vec<bool>,
-    cached: Vec<AtomicU8>,
+    cached: Vec<Option<bool>>,
     stack: Vec<usize>,
     #[cfg(test)]
-    evaluations: AtomicU64,
-    #[cfg(test)]
-    pub(super) parallel_batches: usize,
+    evaluations: u64,
 }
 
 impl Plan {
@@ -193,9 +191,17 @@ impl Plan {
             }
         }
         let root_count = roots.len();
+        let mut bindings_by_input = FxHashMap::<Input, Vec<usize>>::default();
+        for (binding, &(input, _)) in inputs.iter().enumerate() {
+            bindings_by_input.entry(input).or_default().push(binding);
+        }
         Ok(Self {
             roots,
             snapshot: vec![false; inputs.len()],
+            input_dirty: vec![false; inputs.len()],
+            dirty_inputs: Vec::new(),
+            captured_values: Vec::new(),
+            bindings_by_input,
             inputs,
             decisions: bound,
             users,
@@ -204,55 +210,102 @@ impl Plan {
             dirty_roots: (0..root_count).rev().collect(),
             root_dirty: vec![true; root_count],
             root_queued: vec![true; root_count],
-            cached: (0..count).map(|_| AtomicU8::new(2)).collect(),
+            cached: vec![None; count],
             stack: Vec::with_capacity(count),
             #[cfg(test)]
-            evaluations: AtomicU64::new(0),
-            #[cfg(test)]
-            parallel_batches: 0,
+            evaluations: 0,
         })
     }
 
     pub(super) fn capture(&mut self, mut read: impl FnMut(Input, u8) -> bool) {
+        self.dirty_inputs.clear();
+        self.captured_values.clear();
         for input in 0..self.inputs.len() {
-            self.capture_input(input, &mut read);
+            self.input_dirty[input] = false;
+            let (binding, threshold) = self.inputs[input];
+            self.captured_values.push((input, read(binding, threshold)));
+        }
+        let captured = std::mem::take(&mut self.captured_values);
+        self.apply_capture(&captured);
+        self.captured_values = captured;
+    }
+
+    pub(super) fn mark_dirty(&mut self, input: Input) {
+        if let Some(bindings) = self.bindings_by_input.get(&input) {
+            for &binding in bindings {
+                if !self.input_dirty[binding] {
+                    self.input_dirty[binding] = true;
+                    self.dirty_inputs.push(binding);
+                }
+            }
         }
     }
 
-    fn capture_input(&mut self, input: usize, read: &mut impl FnMut(Input, u8) -> bool) {
-        let (binding, threshold) = self.inputs[input];
-        let value = read(binding, threshold);
-        if self.snapshot[input] == value {
-            return;
+    pub(super) fn mark_geometry_actor_dirty(&mut self, actor: usize) {
+        for part in [
+            GeometryPart::Head,
+            GeometryPart::NearPayload,
+            GeometryPart::FarPayload,
+            GeometryPart::RetractedBase,
+            GeometryPart::MovingBase,
+        ] {
+            self.mark_dirty(Input::Geometry { actor, part });
         }
-        self.snapshot[input] = value;
-        for index in 0..self.users[input].len() {
-            let user = self.users[input][index];
-            if std::mem::replace(self.cached[user].get_mut(), 2) != 2 {
-                self.mark_roots_dirty(user);
-                self.stack.push(user);
+    }
+
+    pub(super) fn capture_dirty(&mut self, mut read: impl FnMut(Input, u8) -> bool) {
+        self.captured_values.clear();
+        for index in 0..self.dirty_inputs.len() {
+            let binding_id = self.dirty_inputs[index];
+            self.input_dirty[binding_id] = false;
+            let (binding, threshold) = self.inputs[binding_id];
+            self.captured_values
+                .push((binding_id, read(binding, threshold)));
+        }
+        self.dirty_inputs.clear();
+        let captured = std::mem::take(&mut self.captured_values);
+        self.apply_capture(&captured);
+        self.captured_values = captured;
+    }
+
+    fn apply_capture(&mut self, captured: &[(usize, bool)]) {
+        let mut changed = Vec::new();
+        for &(input, value) in captured {
+            if self.snapshot[input] != value {
+                self.snapshot[input] = value;
+                changed.push(input);
             }
         }
-        while let Some(child) = self.stack.pop() {
-            for index in 0..self.parents[child].len() {
-                let parent = self.parents[child][index];
-                let decision = &self.decisions[parent];
-                let child = (child + 2) as Expr;
-                let condition_changed =
-                    matches!(decision.condition, Condition::Response(root) if root == child);
-                let selected = self.condition(decision.condition).map(|high| {
-                    if high {
-                        decision.high
-                    } else {
-                        decision.low
-                    }
-                });
-                if !condition_changed && selected.is_some_and(|selected| selected != child) {
-                    continue;
+
+        for input in changed {
+            for index in 0..self.users[input].len() {
+                let user = self.users[input][index];
+                if self.cached[user].take().is_some() {
+                    self.mark_roots_dirty(user);
+                    self.stack.push(user);
                 }
-                if std::mem::replace(self.cached[parent].get_mut(), 2) != 2 {
-                    self.mark_roots_dirty(parent);
-                    self.stack.push(parent);
+            }
+            while let Some(child) = self.stack.pop() {
+                for index in 0..self.parents[child].len() {
+                    let parent = self.parents[child][index];
+                    let decision = &self.decisions[parent];
+                    let child = (child + 2) as Expr;
+                    let condition_changed =
+                        matches!(decision.condition, Condition::Response(root) if root == child);
+                    let selected = self.condition(decision.condition).map(|high| {
+                        if high {
+                            decision.high
+                        } else {
+                            decision.low
+                        }
+                    });
+                    if !condition_changed && selected.is_some_and(|selected| selected != child) {
+                        continue;
+                    }
+                    if self.cached[parent].take().is_some() {
+                        self.mark_roots_dirty(parent);
+                        self.stack.push(parent);
+                    }
                 }
             }
         }
@@ -262,11 +315,7 @@ impl Plan {
         if expression <= TRUE {
             Some(expression == TRUE)
         } else {
-            match self.cached[(expression - 2) as usize].load(Ordering::Relaxed) {
-                0 => Some(false),
-                1 => Some(true),
-                _ => None,
-            }
+            self.cached[(expression - 2) as usize]
         }
     }
 
@@ -299,84 +348,45 @@ impl Plan {
     }
 
     pub(super) fn evaluate(&mut self, root: usize) -> bool {
-        let mut stack = std::mem::take(&mut self.stack);
-        let value = self.evaluate_frozen(root, &mut stack);
-        self.stack = stack;
         self.root_dirty[root] = false;
-        value
-    }
-
-    pub(super) fn evaluate_dirty(&mut self, parallel: bool, mut publish: impl FnMut(usize, bool)) {
-        let parallel = parallel
-            && self.decisions.len() >= 4096
-            && self.dirty_roots.len() >= 128
-            && self
-                .dirty_roots
-                .iter()
-                .filter(|&&root| self.root_dirty[root] && self.value(self.roots[root]).is_none())
-                .take(128)
-                .count()
-                == 128
-            && rayon::current_num_threads() > 1;
-        if !parallel {
-            while let Some(root) = self.pop_dirty_root() {
-                publish(root, self.evaluate(root));
-            }
-            return;
-        }
-        #[cfg(test)]
-        {
-            self.parallel_batches += 1;
-        }
-        let mut roots = Vec::new();
-        while let Some(root) = self.pop_dirty_root() {
-            roots.push(root);
-        }
-        // Inputs stay frozen; racing workers may compute the same Boolean, never a different value.
-        let values: Vec<_> = roots
-            .par_iter()
-            .with_min_len(32)
-            .map_init(Vec::new, |stack, &root| self.evaluate_frozen(root, stack))
-            .collect();
-        for (root, value) in roots.into_iter().zip(values) {
-            self.root_dirty[root] = false;
-            publish(root, value);
-        }
-    }
-
-    fn evaluate_frozen(&self, root: usize, stack: &mut Vec<usize>) -> bool {
         let expression = self.roots[root];
         if let Some(value) = self.value(expression) {
             return value;
         }
-        stack.push((expression - 2) as usize);
-        while let Some(&id) = stack.last() {
+        self.stack.push((expression - 2) as usize);
+        while let Some(&id) = self.stack.last() {
             let decision = self.decisions[id];
             let Some(high) = self.condition(decision.condition) else {
                 let Condition::Response(condition) = decision.condition else {
                     unreachable!()
                 };
-                stack.push((condition - 2) as usize);
+                self.stack.push((condition - 2) as usize);
                 continue;
             };
             let child = if high { decision.high } else { decision.low };
             if let Some(value) = self.value(child) {
-                self.cached[id].store(u8::from(value), Ordering::Relaxed);
-                stack.pop();
+                self.cached[id] = Some(value);
+                self.stack.pop();
                 #[cfg(test)]
                 {
-                    self.evaluations.fetch_add(1, Ordering::Relaxed);
+                    self.evaluations += 1;
                 }
             } else {
-                stack.push((child - 2) as usize);
+                self.stack.push((child - 2) as usize);
             }
         }
         self.value(expression).unwrap()
     }
 
+    pub(super) fn evaluate_dirty(&mut self, mut publish: impl FnMut(usize, bool)) {
+        while let Some(root) = self.pop_dirty_root() {
+            publish(root, self.evaluate(root));
+        }
+    }
+
     #[cfg(test)]
     pub(super) fn evaluations(&self) -> u64 {
-        self.evaluations.load(Ordering::Relaxed)
+        self.evaluations
     }
 }
 
@@ -406,6 +416,18 @@ impl State {
             })
     }
 
+    pub(super) fn mark_dirty(&mut self, input: Input) {
+        self.responses.mark_dirty(input);
+        self.outputs.mark_dirty(input);
+        self.sampling.mark_dirty(input);
+    }
+
+    pub(super) fn mark_geometry_actor_dirty(&mut self, actor: usize) {
+        self.responses.mark_geometry_actor_dirty(actor);
+        self.outputs.mark_geometry_actor_dirty(actor);
+        self.sampling.mark_geometry_actor_dirty(actor);
+    }
+
     pub(super) fn bind(
         decisions: &[Decision],
         responses: Vec<Expr>,
@@ -432,89 +454,6 @@ mod tests {
 
     fn source(id: usize) -> Input {
         Input::Source(unsafe { NodeId::from_index(id) })
-    }
-
-    #[test]
-    fn parallel_dirty_responses_preserve_shared_conditions_and_frozen_inputs() {
-        let mut decisions = vec![Decision {
-            input: Input::Memory(0),
-            threshold: 0,
-            low: 0,
-            high: 1,
-        }];
-        let mut roots = Vec::new();
-        for group in 0..256 {
-            let mut root = 2;
-            for depth in 0..32 {
-                decisions.push(Decision {
-                    input: source((group + depth) % 64),
-                    threshold: (depth % 8) as u8,
-                    low: 0,
-                    high: root,
-                });
-                root = decisions.len() as Expr + 1;
-            }
-            roots.push(root);
-            decisions.push(Decision {
-                input: Input::Response(roots.len() - 1),
-                threshold: 0,
-                low: 0,
-                high: root,
-            });
-            roots.push(decisions.len() as Expr + 1);
-        }
-        roots.extend([0, 1, roots[0]]);
-        for workers in [1, 2, 4] {
-            let pool = rayon::ThreadPoolBuilder::new()
-                .num_threads(workers)
-                .build()
-                .unwrap();
-            pool.install(|| {
-                let mut actual = Plan::bind(&decisions, roots.clone(), true, &[]).unwrap();
-                let mut expected = Plan::bind(&decisions, roots.clone(), true, &[]).unwrap();
-                let mut values = vec![false; roots.len()];
-                let mut reference = values.clone();
-                for step in 0..32 {
-                    let memory = step % 3 != 1;
-                    let power = |source: usize| match step % 4 {
-                        0 => 15,
-                        1 => {
-                            if source == step % 64 {
-                                0
-                            } else {
-                                15
-                            }
-                        }
-                        _ => (step * 13 + source * 7) % 16,
-                    };
-                    for plan in [&mut actual, &mut expected] {
-                        plan.capture(|binding, threshold| match binding {
-                            Input::Memory(0) => memory,
-                            Input::Source(node) => power(node.index()) > usize::from(threshold),
-                            _ => unreachable!(),
-                        });
-                    }
-                    actual.evaluate_dirty(true, |root, value| values[root] = value);
-                    expected.evaluate_dirty(false, |root, value| reference[root] = value);
-                    assert_eq!(values, reference, "workers={workers}, step={step}");
-                    for group in 0..256 {
-                        let expected =
-                            memory && (0..32).all(|depth| power((group + depth) % 64) > depth % 8);
-                        assert_eq!(values[group * 2], expected);
-                        assert_eq!(values[group * 2 + 1], expected);
-                    }
-                    assert_eq!(actual.root_dirty, expected.root_dirty);
-                    assert!(actual.stack.is_empty());
-                    assert_eq!(actual.pop_dirty_root(), None);
-                    let evaluations = actual.evaluations();
-                    for (root, &value) in values.iter().enumerate() {
-                        assert_eq!(actual.evaluate(root), value);
-                    }
-                    assert_eq!(actual.evaluations(), evaluations);
-                }
-                assert_eq!(actual.parallel_batches > 0, workers > 1);
-            });
-        }
     }
 
     #[test]
@@ -560,6 +499,129 @@ mod tests {
         dirty.sort_unstable();
         assert_eq!(dirty, [0, 1]);
         assert_eq!(plan.evaluations(), 5);
+    }
+
+    #[test]
+    fn selective_capture_matches_full_capture_and_reads_only_changed_sources() {
+        let decisions = [
+            Decision {
+                input: source(0),
+                threshold: 0,
+                low: 0,
+                high: 1,
+            },
+            Decision {
+                input: source(0),
+                threshold: 7,
+                low: 0,
+                high: 1,
+            },
+            Decision {
+                input: source(1),
+                threshold: 0,
+                low: 0,
+                high: 1,
+            },
+        ];
+        let mut selective = Plan::bind(&decisions, vec![2, 3, 4], true, &[]).unwrap();
+        let mut full = Plan::bind(&decisions, vec![2, 3, 4], true, &[]).unwrap();
+        let mut powers = [5u8, 0];
+        for plan in [&mut selective, &mut full] {
+            plan.capture(|input, threshold| match input {
+                Input::Source(node) => powers[node.index()] > threshold,
+                _ => unreachable!(),
+            });
+        }
+        for plan in [&mut selective, &mut full] {
+            plan.evaluate_dirty(|_, _| {});
+        }
+
+        powers[0] = 10;
+        selective.mark_dirty(source(0));
+        selective.mark_dirty(source(0));
+        let mut reads = 0;
+        selective.capture_dirty(|input, threshold| {
+            reads += 1;
+            match input {
+                Input::Source(node) => powers[node.index()] > threshold,
+                _ => unreachable!(),
+            }
+        });
+        full.capture(|input, threshold| match input {
+            Input::Source(node) => powers[node.index()] > threshold,
+            _ => unreachable!(),
+        });
+
+        let mut selective_values = Vec::new();
+        let mut full_values = Vec::new();
+        selective.evaluate_dirty(|root, value| selective_values.push((root, value)));
+        full.evaluate_dirty(|root, value| full_values.push((root, value)));
+        selective_values.sort_unstable();
+        full_values.sort_unstable();
+        assert_eq!(selective_values, full_values);
+        assert_eq!(reads, 2, "both thresholds for source zero are dependencies");
+        assert!(selective.dirty_inputs.is_empty());
+    }
+
+    #[test]
+    fn selective_capture_indexes_memory_and_geometry_dependencies() {
+        let geometry = Input::Geometry {
+            actor: 9,
+            part: GeometryPart::Head,
+        };
+        let decisions = [
+            Decision {
+                input: Input::Memory(3),
+                threshold: 0,
+                low: 0,
+                high: 1,
+            },
+            Decision {
+                input: geometry,
+                threshold: 0,
+                low: 0,
+                high: 1,
+            },
+        ];
+        let mut selective = Plan::bind(&decisions, vec![2, 3], false, &[]).unwrap();
+        let mut full = Plan::bind(&decisions, vec![2, 3], false, &[]).unwrap();
+        let (memory, head) = (std::cell::Cell::new(false), std::cell::Cell::new(false));
+        let read = |input, _| match input {
+            Input::Memory(3) => memory.get(),
+            Input::Geometry {
+                actor: 9,
+                part: GeometryPart::Head,
+            } => head.get(),
+            _ => false,
+        };
+        selective.capture(read);
+        full.capture(read);
+        assert_eq!(selective.evaluate(0), full.evaluate(0));
+        assert_eq!(selective.evaluate(1), full.evaluate(1));
+
+        memory.set(true);
+        selective.mark_dirty(Input::Memory(3));
+        let mut reads = 0;
+        selective.capture_dirty(|input, threshold| {
+            reads += 1;
+            read(input, threshold)
+        });
+        full.capture(read);
+        assert_eq!(reads, 1);
+        assert_eq!(selective.evaluate(0), full.evaluate(0));
+        assert_eq!(selective.evaluate(1), full.evaluate(1));
+
+        head.set(true);
+        selective.mark_geometry_actor_dirty(9);
+        reads = 0;
+        selective.capture_dirty(|input, threshold| {
+            reads += 1;
+            read(input, threshold)
+        });
+        full.capture(read);
+        assert_eq!(reads, 1, "only the bound geometry part is read");
+        assert_eq!(selective.evaluate(0), full.evaluate(0));
+        assert_eq!(selective.evaluate(1), full.evaluate(1));
     }
 
     #[test]

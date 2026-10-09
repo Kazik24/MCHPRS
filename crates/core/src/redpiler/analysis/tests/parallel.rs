@@ -1,50 +1,6 @@
 use super::*;
 use rayon::ThreadPoolBuilder;
 
-#[test]
-fn single_region_fpu_evaluates_responses_in_parallel_and_preserves_handoff() {
-    let pool = ThreadPoolBuilder::new().num_threads(4).build().unwrap();
-    pool.install(|| {
-        let path = root().join("test_data/piston-research/fpu-full-20261009/manifest.json");
-        let (mut actual, bounds, manifest) = load_fixture(&path);
-        let (mut expected, _, _) = load_fixture(&path);
-        let mut compiler = Compiler::default();
-        let mut reference = Compiler::default();
-        for (compiler, world, parallel) in [(&mut compiler, &actual, true), (&mut reference, &expected, false)] {
-            compiler.compile(world, world.get_corners(), CompilerOptions {
-                optimize: true, assume_instant: true, budget_multiplier: 8, ..Default::default()
-            }, vec![], Default::default()).unwrap();
-            assert_eq!(compiler.stats().unwrap().regions.logical_regions, 1);
-            compiler.backend.as_mut().unwrap().instant_parallel = Some(parallel);
-        }
-        let trigger = local_pos(&manifest["observations"]["trigger"][0]);
-        let inputs: Vec<_> = ["light_blue_operand_inputs", "red_operand_inputs", "opcode_levers_by_sign_weight_4_2_1"]
-            .into_iter().flat_map(|key| manifest["ports"][key].as_array().unwrap()).map(local_pos).collect();
-        for step in 0..4 {
-            for (compiler, world) in [(&mut compiler, &mut actual), (&mut reference, &mut expected)] {
-                compiler.on_use_block(trigger);
-                for (index, &pos) in inputs.iter().enumerate() {
-                    if (index + step) % 4 == 0 { compiler.on_use_block(pos); }
-                }
-                for _ in 0..8 { compiler.tick_with_world(world); }
-                compiler.flush(world);
-            }
-            assert_eq!(super::research::compilation_fingerprint(&actual, bounds),
-                       super::research::compilation_fingerprint(&expected, bounds));
-        }
-        assert!(compiler.backend.as_ref().unwrap().parallel_response_batches() > 0);
-        assert_eq!(reference.backend.as_ref().unwrap().parallel_response_batches(), 0);
-        compiler.reset(&mut actual, bounds);
-        reference.reset(&mut expected, bounds);
-        for _ in 0..8 {
-            actual.tick_interpreted();
-            expected.tick_interpreted();
-            assert_eq!(super::research::compilation_fingerprint(&actual, bounds),
-                       super::research::compilation_fingerprint(&expected, bounds));
-        }
-    });
-}
-
 fn banks(
     optimize: bool,
     io_only: bool,

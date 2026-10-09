@@ -334,7 +334,7 @@ fn extract_with_options(
     #[cfg(test)]
     response_sources.sort_by_key(|pos| (pos.y, pos.z, pos.x));
     let mut consumer_wires = FxHashSet::default();
-    let mut unprojected_consumer_wires = FxHashSet::default();
+    let unprojected_consumer_wires = FxHashSet::default();
     let mut outputs = Vec::new();
     extractor.output_mode = true;
     for (pos, block) in blocks {
@@ -366,14 +366,8 @@ fn extract_with_options(
             }
             extractor.walk_wires(usize::MAX, power, queue)?;
             consumer_wires.extend(extractor.wires.iter().copied());
-            if !extractor.terms.iter().any(|term| term.guard > TRUE) {
-                unprojected_consumer_wires.extend(
-                    extractor
-                        .wires
-                        .iter()
-                        .filter(|wire| wires.contains(wire))
-                        .copied(),
-                );
+            let crosses_assembly = extractor.wires.iter().any(|wire| wires.contains(wire));
+            if !extractor.terms.iter().any(|term| term.guard > TRUE) && !crosses_assembly {
                 continue;
             }
             // Comparator overrides need their own occupancy-dependent read

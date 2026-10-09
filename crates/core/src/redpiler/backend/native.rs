@@ -13,7 +13,6 @@ use rustc_hash::{FxHashMap, FxHashSet};
 pub(crate) struct NativePropagation {
     owned: FxHashSet<BlockPos>,
     restored: FxHashSet<BlockPos>,
-    geometry: FxHashSet<BlockPos>,
     composed: bool,
     blocks: FxHashMap<BlockPos, u32>,
     entities: FxHashMap<BlockPos, BlockEntity>,
@@ -47,7 +46,6 @@ impl NativePropagation {
                 })
                 .filter_map(|node| node.block.map(|(pos, _)| pos))
                 .collect(),
-            geometry: Default::default(),
             composed: false,
             io: graph
                 .node_weights()
@@ -103,39 +101,38 @@ impl NativePropagation {
             })
         })
     }
-    pub(crate) fn watch_geometry(&mut self, pos: BlockPos) {
-        self.geometry.insert(pos);
-    }
     pub(crate) fn bind_boundary(&mut self, owned: &FxHashSet<BlockPos>) {
         self.composed |= owned.iter().any(|&pos| self.near(pos));
     }
 }
 
 impl DirectBackend {
-    pub(super) fn native_geometry_notification(&mut self, pos: BlockPos) {
-        if self
-            .native
-            .as_ref()
-            .is_some_and(|native| native.geometry.contains(&pos))
-        {
-            let mut world = NativeWorld {
-                backend: self,
-                output: None,
-                resolving_ports: false,
-            };
-            world.refresh_ports(pos);
-            redstone::piston::notify(&mut world, pos);
-            world.backend.finish_native_delivery();
+    pub(super) fn native_geometry_ports(&mut self, pos: BlockPos) {
+        if self.native.is_none() {
+            return;
         }
+        let mut world = NativeWorld {
+            backend: self,
+            output: None,
+            resolving_ports: true,
+            geometry_port_capture: true,
+        };
+        world.refresh_ports(pos);
+        world.backend.begin_native_callback_batch();
+        redstone::piston::notify(&mut world, pos);
+        world.backend.end_native_callback_batch();
+        world.backend.finish_native_delivery();
     }
     pub(super) fn native_update(&mut self, pos: BlockPos) {
         let mut world = NativeWorld {
             backend: self,
             output: None,
             resolving_ports: true,
+            geometry_port_capture: false,
         };
+        world.backend.begin_native_callback_batch();
         redstone::update(world.get_block(pos), &mut world, pos, None);
-        world.backend.finish_native_delivery();
+        world.backend.end_native_callback_batch();
     }
     pub(crate) fn attach_native(
         &mut self,
@@ -155,6 +152,7 @@ impl DirectBackend {
             backend: self,
             output: None,
             resolving_ports: true,
+            geometry_port_capture: false,
         };
         let support = match world.get_block(pos) {
             Block::Lever { mut lever } => {
@@ -186,6 +184,7 @@ impl DirectBackend {
             backend: self,
             output: None,
             resolving_ports: true,
+            geometry_port_capture: false,
         };
         if let Some(block) = world.get_block(pos).with_pressure_plate_power(powered) {
             if world.set_block(pos, block) {
@@ -203,6 +202,7 @@ impl DirectBackend {
             backend: self,
             output,
             resolving_ports: true,
+            geometry_port_capture: false,
         };
         let block = world.get_block(entry.pos);
         if entry
@@ -244,6 +244,7 @@ impl DirectBackend {
             backend: self,
             output: Some(output),
             resolving_ports: true,
+            geometry_port_capture: false,
         }
         .publish_commands();
     }
@@ -281,6 +282,7 @@ struct NativeWorld<'a, 'b> {
     backend: &'a mut DirectBackend,
     output: Option<&'b mut dyn World>,
     resolving_ports: bool,
+    geometry_port_capture: bool,
 }
 
 impl NativeWorld<'_, '_> {
@@ -343,6 +345,8 @@ impl World for NativeWorld<'_, '_> {
     }
     fn dispatch_neighbor_shape_update(&mut self, pos: BlockPos, _: BlockFace) -> bool {
         self.backend.assembly_owners.contains_key(&pos)
+            || (self.geometry_port_capture
+                && !matches!(self.get_block(pos), Block::RedstoneWire { .. }))
     }
     fn resolved_redstone_input(&self, pos: BlockPos, side: bool) -> Option<u8> {
         self.resolving_ports
@@ -355,6 +359,9 @@ impl World for NativeWorld<'_, '_> {
         dir: Option<BlockFace>,
         source: Option<BlockPos>,
     ) -> bool {
+        if self.geometry_port_capture && matches!(self.get_block(pos), Block::Observer { .. }) {
+            return true;
+        }
         if !self.backend.native.as_ref().unwrap().composed
             && self.backend.native.as_ref().unwrap().owns(pos)
         {
@@ -365,16 +372,8 @@ impl World for NativeWorld<'_, '_> {
     }
     fn get_block_raw(&self, pos: BlockPos) -> u32 {
         let native = self.backend.native.as_ref().unwrap();
-        if self.backend.assembly_owners.contains_key(&pos)
-            && matches!(
-                native.blocks.get(&pos).copied().map(Block::from_id),
-                Some(Block::RedstoneWire { .. })
-            )
-        {
-            return self.backend.runtime_block_at(pos).map_or(0, Block::get_id);
-        }
-        if !native.geometry.is_empty() && native.geometry.contains(&pos) {
-            if let Some(block) = self.backend.runtime_block_at(pos) {
+        if self.geometry_port_capture {
+            if let Some(block) = self.backend.geometry_port_block_at(pos) {
                 return block.get_id();
             }
         }

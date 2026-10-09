@@ -232,11 +232,10 @@ pub struct CompileStatistics {
     pub regions: RegionStatistics,
     pub backend_nodes: usize,
     pub candidate_wires: usize,
+    pub compiled_internal_wires: usize,
+    pub external_boundary_wires: usize,
     pub retained_wire_nodes: usize,
     pub native_wire_nodes: usize,
-    /// Retained wires by reason: unprojected channel, sampling, piston update,
-    /// shared ownership, observer, external callback, and dependency closure.
-    pub wire_retention_reasons: [usize; 7],
     pub analysis_duration: Duration,
     pub preparation_duration: Duration,
     pub backend_duration: Duration,
@@ -254,13 +253,9 @@ impl CompileStatistics {
         lines.extend(self.graph.summary_lines().into_iter().take(2));
         if self.candidate_wires != 0 {
             lines.push(format!(
-                "Assembly wiring: {} candidate dust positions; {} retained graph wires, {} using native propagation",
-                self.candidate_wires, self.retained_wire_nodes, self.native_wire_nodes,
-            ));
-            let [unprojected, sampling, piston, shared, observer, callback, closure] =
-                self.wire_retention_reasons;
-            lines.push(format!(
-                "Wire retention reasons: unprojected channel {unprojected}, sampling {sampling}, piston updates {piston}, shared {shared}, observer {observer}, external callbacks {callback}, dependency closure {closure}",
+                "Assembly wiring: {} candidates; {} compiled internally; {} external input boundary wires; {} ordinary graph wires ({} native)",
+                self.candidate_wires, self.compiled_internal_wires, self.external_boundary_wires,
+                self.retained_wire_nodes, self.native_wire_nodes,
             ));
         }
         let regions = &self.regions;
@@ -385,15 +380,20 @@ impl Compiler {
             .iter()
             .map(|program| program.candidate_wire_count)
             .sum();
-        let mut wire_retention_reasons = [0; 7];
-        for program in &instant {
-            for (total, count) in wire_retention_reasons
-                .iter_mut()
-                .zip(program.wire_retention_reasons)
-            {
-                *total += count;
-            }
-        }
+        let compiled_internal_wires = instant
+            .iter()
+            .map(|program| {
+                program
+                    .logic
+                    .wires
+                    .difference(&program.propagation_wires)
+                    .count()
+            })
+            .sum();
+        let external_boundary_wires = instant
+            .iter()
+            .map(|program| program.propagation_wires.len())
+            .sum();
         let retained_wire_nodes = graph
             .node_weights()
             .filter(|node| node.ty == compile_graph::NodeType::Wire)
@@ -444,9 +444,10 @@ impl Compiler {
             regions: backend.region_statistics(),
             backend_nodes: backend.node_count(),
             candidate_wires,
+            compiled_internal_wires,
+            external_boundary_wires,
             retained_wire_nodes,
             native_wire_nodes,
-            wire_retention_reasons,
             analysis_duration,
             preparation_duration,
             backend_duration,

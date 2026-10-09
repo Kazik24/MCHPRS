@@ -329,15 +329,15 @@ pub fn compile(
                     return Err(BackendError::DuplicateInstantOwner { pos });
                 }
             }
-            let watched: Vec<_> = program
+            let port_geometry: Vec<_> = program
                 .pistons
                 .iter()
                 .flat_map(|piston| [piston.pos, piston.head, piston.payload])
-                .filter(|pos| {
+                .filter(|&pos| {
                     backend
                         .native
                         .as_ref()
-                        .is_some_and(|native| native.near(*pos))
+                        .is_some_and(|native| native.near(pos))
                 })
                 .collect();
             let mut runtime =
@@ -349,10 +349,8 @@ pub fn compile(
                     .as_ref()
                     .is_some_and(|native| native.owns(pos))
             });
-            for pos in watched {
-                if runtime.watch_geometry(pos) {
-                    backend.native.as_mut().unwrap().watch_geometry(pos);
-                }
+            for pos in port_geometry {
+                runtime.watch_geometry(pos);
             }
             backend.instant.push(runtime);
         }
@@ -388,9 +386,6 @@ pub fn compile(
         let crate::redpiler::compile_graph::NodeType::Observer { watched } = graph[idx].ty else {
             continue;
         };
-        if graph[idx].native {
-            continue;
-        }
         let observer = backend.nodes.get(nodes_map[&idx]);
         if geometry_positions.contains(&watched) {
             backend

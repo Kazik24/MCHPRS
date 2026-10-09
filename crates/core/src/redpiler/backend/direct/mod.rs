@@ -61,6 +61,12 @@ struct BoundaryDelivery {
     recipients: Vec<(usize, Vec<instant::Sample>)>,
 }
 
+enum PendingUpdate {
+    Node(NodeId),
+    FarComparator { id: NodeId, power: u8 },
+    FinishNativeDelivery,
+}
+
 #[derive(Default)]
 pub struct DirectBackend {
     nodes: Nodes,
@@ -76,6 +82,9 @@ pub struct DirectBackend {
     pub(super) assembly_owners: FxHashMap<BlockPos, usize>,
     evaluating_instant: bool,
     instant_changes: Vec<CommittedChange>,
+    pending_updates: Vec<PendingUpdate>,
+    dispatching_updates: bool,
+    native_callback_marker: Option<usize>,
     boundary_deliveries: VecDeque<BoundaryDelivery>,
     native_delivery: Option<BoundaryDelivery>,
     instant_phases: VecDeque<(usize, u64)>,
@@ -102,6 +111,11 @@ impl DirectBackend {
             .get(&(pos, side))
             .map(|&id| self.nodes[id].output_power)
     }
+    pub(super) fn geometry_port_block_at(&self, pos: BlockPos) -> Option<Block> {
+        self.assembly_owners
+            .get(&pos)
+            .and_then(|&region| self.instant[region].geometry_block_at(pos))
+    }
 
     pub(super) fn dispatch_owned_update(
         &mut self,
@@ -112,6 +126,9 @@ impl DirectBackend {
         if let Some(&region) = self.assembly_owners.get(&pos) {
             if let Some((source, targets)) = self.instant[region].notification_targets(pos, source)
             {
+                if let Some(&source) = self.pos_map.get(&source) {
+                    self.instant[region].mark_source_dirty(source);
+                }
                 if self
                     .native_delivery
                     .as_ref()
@@ -167,38 +184,6 @@ impl DirectBackend {
         }
     }
 
-    pub(super) fn runtime_block_at(&self, pos: BlockPos) -> Option<Block> {
-        if self.instant.is_empty() {
-            return None;
-        }
-        if let Some(&region) = self.assembly_owners.get(&pos) {
-            if let Some(block) = self.instant[region].geometry_block_at(pos) {
-                return Some(block);
-            }
-        }
-        if self.native.as_ref().is_some_and(|native| native.owns(pos)) {
-            return None;
-        }
-        let &id = self.pos_map.get(&pos)?;
-        let (_, mut block) = self.blocks[id.index()]?;
-        let node = &self.nodes[id];
-        if let Some(powered) = block_powered_mut(&mut block) {
-            *powered = node.powered;
-        }
-        if let Some(plate) = block.with_pressure_plate_power(node.powered) {
-            block = plate;
-        }
-        if let Some(bulb) = block.with_copper_bulb_state(node.output_power > 0, node.powered) {
-            block = bulb;
-        }
-        if let Block::RedstoneWire { wire } = &mut block {
-            wire.power = node.output_power;
-        }
-        if let Block::RedstoneRepeater { repeater } = &mut block {
-            repeater.locked = node.locked;
-        }
-        Some(block)
-    }
     pub(super) fn record_native(&mut self, pos: BlockPos, block: Block, strength: u8) {
         let Some(&id) = self.pos_map.get(&pos) else {
             return;
@@ -235,11 +220,6 @@ impl DirectBackend {
             runtime.collect_statistics(&mut statistics);
         }
         statistics
-    }
-
-    #[cfg(test)]
-    pub(crate) fn parallel_response_batches(&self) -> usize {
-        self.instant.iter().map(|runtime| runtime.parallel_response_batches()).sum()
     }
 
     #[cfg(test)]
@@ -420,6 +400,7 @@ impl DirectBackend {
                 .into_iter()
                 .flatten()
             {
+                self.instant[region].mark_source_dirty(node_id);
                 self.instant_dirty[region] = true;
             }
         }
@@ -436,36 +417,84 @@ impl DirectBackend {
         if change.observed_changed {
             self.notify_observer_watchers(change.id);
         }
-        for i in 0..self.nodes[change.id].updates.len() {
+        if change.old_power != change.new_power || change.bulb_state_changed {
+            for &id in self
+                .far_comparators
+                .get(&change.id)
+                .into_iter()
+                .flatten()
+                .rev()
+            {
+                self.pending_updates.push(PendingUpdate::FarComparator {
+                    id,
+                    power: change.new_power,
+                });
+            }
+        }
+        for i in (0..self.nodes[change.id].updates.len()).rev() {
             let update_link = self.nodes[change.id].updates[i];
             let distance = update_link.attenuation();
             if change.old_power.saturating_sub(distance)
                 != change.new_power.saturating_sub(distance)
                 || change.bulb_state_changed
             {
-                self.update_node(update_link.node());
+                self.pending_updates
+                    .push(PendingUpdate::Node(update_link.node()));
             }
         }
-        if change.old_power != change.new_power || change.bulb_state_changed {
-            for &comparator in self.far_comparators.get(&change.id).into_iter().flatten() {
-                if let NodeType::Comparator { far_input, .. } = &mut self.nodes[comparator].ty {
-                    *far_input = node::NonMaxU8::new(change.new_power);
-                }
-                update::update_node(
-                    &mut self.scheduler,
-                    &mut self.events,
-                    &mut self.nodes,
-                    comparator,
-                );
-            }
-        }
+        self.drain_pending_updates();
     }
 
     /// Apply an input change and capture effects that depend on its arrival time.
     /// Bulb latches update immediately; note eligibility reads committed memory.
     fn update_node(&mut self, id: NodeId) {
+        if let Some(marker) = self.native_callback_marker {
+            self.pending_updates
+                .insert(marker + 1, PendingUpdate::Node(id));
+        } else {
+            self.pending_updates.push(PendingUpdate::Node(id));
+        }
+        self.drain_pending_updates();
+    }
+
+    pub(super) fn begin_native_callback_batch(&mut self) {
+        self.native_callback_marker = self.pending_updates.len().checked_sub(1).filter(|&index| {
+            matches!(
+                &self.pending_updates[index],
+                PendingUpdate::FinishNativeDelivery
+            )
+        });
+    }
+
+    pub(super) fn end_native_callback_batch(&mut self) {
+        self.native_callback_marker = None;
+    }
+
+    fn drain_pending_updates(&mut self) {
+        if self.dispatching_updates {
+            return;
+        }
+        self.dispatching_updates = true;
+        while let Some(update) = self.pending_updates.pop() {
+            match update {
+                PendingUpdate::Node(id) => self.apply_update_node(id),
+                PendingUpdate::FarComparator { id, power } => {
+                    if let NodeType::Comparator { far_input, .. } = &mut self.nodes[id].ty {
+                        *far_input = node::NonMaxU8::new(power);
+                    }
+                    update::update_node(&mut self.scheduler, &mut self.events, &mut self.nodes, id);
+                }
+                PendingUpdate::FinishNativeDelivery => self.finish_native_delivery(),
+            }
+        }
+        self.dispatching_updates = false;
+    }
+
+    fn apply_update_node(&mut self, id: NodeId) {
         if let Some(native) = &self.native {
             if let Some((pos, _)) = self.blocks[id.index()].filter(|(pos, _)| native.owns(*pos)) {
+                self.pending_updates
+                    .push(PendingUpdate::FinishNativeDelivery);
                 self.native_update(pos);
                 return;
             }
@@ -562,10 +591,6 @@ impl DirectBackend {
             >= 4096;
         #[cfg(test)]
         let enough_work = self.instant_parallel.unwrap_or(enough_work);
-        #[cfg(not(test))]
-        let parallel_roots = true;
-        #[cfg(test)]
-        let parallel_roots = self.instant_parallel.unwrap_or(true);
         let parallel = regions.len() > 1 && enough_work && rayon::current_num_threads() > 1;
         let mut evaluated = if parallel {
             #[cfg(test)]
@@ -590,11 +615,7 @@ impl DirectBackend {
             let mut results: Vec<_> = jobs
                 .into_par_iter()
                 .map(|(order, region, runtime, changed)| {
-                    (
-                        order,
-                        region,
-                        runtime.advance(nodes, changed, clock_event, parallel_roots),
-                    )
+                    (order, region, runtime.advance(nodes, changed, clock_event))
                 })
                 .collect();
             results.sort_unstable_by_key(|&(order, _, _)| order);
@@ -609,7 +630,7 @@ impl DirectBackend {
                 evaluated.next().unwrap().2
             } else {
                 let changed = std::mem::replace(&mut self.instant_dirty[region], false);
-                self.instant[region].advance(&self.nodes, changed, clock_event, parallel_roots)
+                self.instant[region].advance(&self.nodes, changed, clock_event)
             };
             if outputs.is_empty() {
                 outputs = changes;
@@ -651,7 +672,7 @@ impl DirectBackend {
             if let Some(observers) = self.instant_observers.get(&pos) {
                 update::notify_observers(&mut self.scheduler, &mut self.nodes, observers);
             }
-            self.native_geometry_notification(pos);
+            self.native_geometry_ports(pos);
         }
     }
 
