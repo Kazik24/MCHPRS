@@ -6,7 +6,7 @@ pub mod node;
 mod tick;
 mod update;
 
-use super::{BackendError, TickScheduler};
+use super::{BackendError, RuntimeTick, TickScheduler};
 use crate::redpiler::compile_graph::CompileGraph;
 use crate::redpiler::{block_powered_mut, CompilerOptions};
 use crate::redstone::bool_to_ss;
@@ -18,6 +18,7 @@ use mchprs_blocks::{BlockFace, BlockPos};
 use mchprs_world::{TickEntry, TickPriority};
 use node::{Node, NodeId, NodeType, Nodes};
 use rustc_hash::FxHashMap;
+use std::collections::VecDeque;
 use std::fmt;
 use tracing::{debug, warn};
 
@@ -43,13 +44,37 @@ enum Event {
     },
 }
 
+struct CommittedChange {
+    id: NodeId,
+    old_power: u8,
+    new_power: u8,
+    observed_changed: bool,
+    bulb_state_changed: bool,
+}
+
+struct BoundaryDelivery {
+    source: BlockPos,
+    recipients: Vec<(usize, Vec<instant::Sample>)>,
+}
+
 #[derive(Default)]
 pub struct DirectBackend {
     nodes: Nodes,
     blocks: Vec<Option<(BlockPos, Block)>>,
     block_aliases: FxHashMap<usize, Vec<(BlockPos, Block)>>,
     pos_map: FxHashMap<BlockPos, NodeId>,
-    scheduler: TickScheduler<NodeId>,
+    pub(super) scheduler: TickScheduler<RuntimeTick>,
+    pub(super) native: Option<super::native::NativePropagation>,
+    pub(super) piston_state: mchprs_world::PistonState,
+    resolved_inputs: FxHashMap<(BlockPos, bool), NodeId>,
+    native_ports: Vec<(BlockPos, bool, NodeId)>,
+    native_port_updates: FxHashMap<BlockPos, Vec<usize>>,
+    pub(super) assembly_owners: FxHashMap<BlockPos, usize>,
+    evaluating_instant: bool,
+    instant_changes: Vec<CommittedChange>,
+    boundary_deliveries: VecDeque<BoundaryDelivery>,
+    native_delivery: Option<BoundaryDelivery>,
+    instant_phases: VecDeque<(usize, u64)>,
     events: Vec<Event>,
     noteblock_info: Vec<(BlockPos, Instrument, u32)>,
     far_comparators: FxHashMap<NodeId, Vec<NodeId>>,
@@ -61,6 +86,137 @@ pub struct DirectBackend {
 }
 
 impl DirectBackend {
+    pub(super) fn native_ports_affected_by(&self, pos: BlockPos) -> Option<&[usize]> {
+        self.native_port_updates.get(&pos).map(Vec::as_slice)
+    }
+    pub(super) fn resolved_input(&self, pos: BlockPos, side: bool) -> Option<u8> {
+        self.resolved_inputs
+            .get(&(pos, side))
+            .map(|&id| self.nodes[id].output_power)
+    }
+
+    pub(super) fn dispatch_owned_update(
+        &mut self,
+        pos: BlockPos,
+        _dir: Option<BlockFace>,
+        source: Option<BlockPos>,
+    ) -> bool {
+        if let Some(&region) = self.assembly_owners.get(&pos) {
+            if let Some((source, targets)) = self.instant[region].notification_targets(pos, source)
+            {
+                if self
+                    .native_delivery
+                    .as_ref()
+                    .is_some_and(|batch| batch.source != source)
+                {
+                    self.finish_native_delivery();
+                }
+                let captured = self.instant[region].capture_samples(&self.nodes, targets);
+                let batch = self
+                    .native_delivery
+                    .get_or_insert_with(|| BoundaryDelivery {
+                        source,
+                        recipients: Vec::new(),
+                    });
+                if let Some((_, samples)) =
+                    batch.recipients.iter_mut().find(|(id, _)| *id == region)
+                {
+                    samples.extend(captured);
+                } else {
+                    batch.recipients.push((region, captured));
+                }
+            }
+            return true;
+        }
+        if self.native.as_ref().is_some_and(|native| native.owns(pos)) {
+            return false;
+        }
+        if let Some(&id) = self.pos_map.get(&pos) {
+            self.update_node(id);
+        }
+        true
+    }
+
+    pub(super) fn finish_native_delivery(&mut self) {
+        if let Some(batch) = self.native_delivery.take() {
+            self.boundary_deliveries.push_back(batch);
+        }
+        while let Some(mut batch) = self.boundary_deliveries.pop_front() {
+            // Capture complete fanout against the old bank, then commit every recipient.
+            for (region, samples) in &mut batch.recipients {
+                *samples =
+                    self.instant[*region].capture_samples(&self.nodes, std::mem::take(samples));
+            }
+            let mut regions = Vec::new();
+            for (region, samples) in &batch.recipients {
+                self.instant[*region].commit_samples(samples);
+                if !regions.contains(region) {
+                    regions.push(*region);
+                }
+                self.instant_dirty[*region] = true;
+            }
+            self.publish_instant_regions(regions.into_iter(), false);
+        }
+    }
+
+    pub(super) fn runtime_block_at(&self, pos: BlockPos) -> Option<Block> {
+        if self.instant.is_empty() {
+            return None;
+        }
+        if let Some(&region) = self.assembly_owners.get(&pos) {
+            if let Some(block) = self.instant[region].geometry_block_at(pos) {
+                return Some(block);
+            }
+        }
+        if self.native.as_ref().is_some_and(|native| native.owns(pos)) {
+            return None;
+        }
+        let &id = self.pos_map.get(&pos)?;
+        let (_, mut block) = self.blocks[id.index()]?;
+        let node = &self.nodes[id];
+        if let Some(powered) = block_powered_mut(&mut block) {
+            *powered = node.powered;
+        }
+        if let Some(plate) = block.with_pressure_plate_power(node.powered) {
+            block = plate;
+        }
+        if let Some(bulb) = block.with_copper_bulb_state(node.output_power > 0, node.powered) {
+            block = bulb;
+        }
+        if let Block::RedstoneWire { wire } = &mut block {
+            wire.power = node.output_power;
+        }
+        if let Block::RedstoneRepeater { repeater } = &mut block {
+            repeater.locked = node.locked;
+        }
+        Some(block)
+    }
+    pub(super) fn record_native(&mut self, pos: BlockPos, block: Block, strength: u8) {
+        let Some(&id) = self.pos_map.get(&pos) else {
+            return;
+        };
+        let powered = match block {
+            Block::RedstoneRepeater { repeater } => {
+                self.nodes[id].locked = repeater.locked;
+                repeater.powered
+            }
+            _ => crate::redpiler::block_powered_mut(&mut block.clone())
+                .copied()
+                .or_else(|| block.pressure_plate_powered())
+                .unwrap_or(false),
+        };
+        self.commit_node(id, powered, strength);
+    }
+
+    pub(super) fn native_port_bindings(&self) -> &[(BlockPos, bool, NodeId)] {
+        &self.native_ports
+    }
+
+    pub(super) fn commit_native_ports(&mut self, values: Vec<(NodeId, u8)>) {
+        for (id, strength) in values {
+            self.commit_node(id, strength > 0, strength);
+        }
+    }
     pub(crate) fn node_count(&self) -> usize {
         self.blocks.len()
     }
@@ -79,6 +235,17 @@ impl DirectBackend {
             .iter()
             .filter_map(|runtime| runtime.logical_stats())
             .collect()
+    }
+    #[cfg(test)]
+    pub(crate) fn deliver_notifications(&mut self, notifications: &[(BlockPos, BlockPos)]) {
+        for &(recipient, source) in notifications {
+            self.dispatch_owned_update(recipient, None, Some(source));
+        }
+        self.finish_native_delivery();
+    }
+    #[cfg(test)]
+    pub(crate) fn native_owns(&self, pos: BlockPos) -> bool {
+        self.native.as_ref().is_some_and(|native| native.owns(pos))
     }
     #[cfg(test)]
     pub(crate) fn ordinary_sources(&self) -> Vec<(BlockPos, u8)> {
@@ -152,8 +319,11 @@ impl DirectBackend {
                                 && !self.nodes[node_id].pending_tick
                             {
                                 self.nodes[node_id].pending_tick = true;
-                                self.scheduler
-                                    .schedule_half_tick(node_id, 1, TickPriority::Normal);
+                                self.scheduler.schedule_half_tick(
+                                    node_id.into(),
+                                    1,
+                                    TickPriority::Normal,
+                                );
                                 crate::redstone::command_block::set_output_power(
                                     world,
                                     pos,
@@ -182,10 +352,16 @@ impl DirectBackend {
     }
     #[inline]
     fn schedule_tick(&mut self, node_id: NodeId, delay: usize, priority: TickPriority) {
-        self.scheduler.schedule_tick(node_id, delay, priority);
+        self.scheduler
+            .schedule_tick(node_id.into(), delay, priority);
     }
 
     fn set_node(&mut self, node_id: NodeId, powered: bool, new_power: u8) {
+        let change = self.commit_node(node_id, powered, new_power);
+        self.notify_change(change);
+    }
+
+    fn commit_node(&mut self, node_id: NodeId, powered: bool, new_power: u8) -> CommittedChange {
         let node = &mut self.nodes[node_id];
         let previous = update::observed_state(node);
         let old_power = node.output_power;
@@ -196,9 +372,6 @@ impl DirectBackend {
         let update_count = node.updates.len();
         let state_changed = previous != update::observed_state(node);
         let bulb_state_changed = matches!(node.ty, NodeType::CopperBulb) && state_changed;
-        if state_changed {
-            self.notify_observer_watchers(node_id);
-        }
         // A source can feed both consumer channels; publish all strengths before callbacks.
         for i in 0..update_count {
             let node = &self.nodes[node_id];
@@ -227,15 +400,6 @@ impl DirectBackend {
                 *inputs.strength_counts.get_unchecked_mut(new_power as usize) += 1;
             }
         }
-        for i in 0..update_count {
-            let update_link = unsafe { *self.nodes[node_id].updates.get_unchecked(i) };
-            let distance = update_link.attenuation();
-            if old_power.saturating_sub(distance) != new_power.saturating_sub(distance)
-                || bulb_state_changed
-            {
-                self.update_node(update_link.node());
-            }
-        }
         if old_power != new_power || bulb_state_changed {
             for &region in self
                 .instant_dependencies
@@ -245,9 +409,34 @@ impl DirectBackend {
             {
                 self.instant_dirty[region] = true;
             }
-            for &comparator in self.far_comparators.get(&node_id).into_iter().flatten() {
+        }
+        CommittedChange {
+            id: node_id,
+            old_power,
+            new_power,
+            observed_changed: state_changed,
+            bulb_state_changed,
+        }
+    }
+
+    fn notify_change(&mut self, change: CommittedChange) {
+        if change.observed_changed {
+            self.notify_observer_watchers(change.id);
+        }
+        for i in 0..self.nodes[change.id].updates.len() {
+            let update_link = self.nodes[change.id].updates[i];
+            let distance = update_link.attenuation();
+            if change.old_power.saturating_sub(distance)
+                != change.new_power.saturating_sub(distance)
+                || change.bulb_state_changed
+            {
+                self.update_node(update_link.node());
+            }
+        }
+        if change.old_power != change.new_power || change.bulb_state_changed {
+            for &comparator in self.far_comparators.get(&change.id).into_iter().flatten() {
                 if let NodeType::Comparator { far_input, .. } = &mut self.nodes[comparator].ty {
-                    *far_input = node::NonMaxU8::new(new_power);
+                    *far_input = node::NonMaxU8::new(change.new_power);
                 }
                 update::update_node(
                     &mut self.scheduler,
@@ -262,6 +451,12 @@ impl DirectBackend {
     /// Apply an input change and capture effects that depend on its arrival time.
     /// Bulb latches update immediately; note eligibility reads committed memory.
     fn update_node(&mut self, id: NodeId) {
+        if let Some(native) = &self.native {
+            if let Some((pos, _)) = self.blocks[id.index()].filter(|(pos, _)| native.owns(*pos)) {
+                self.native_update(pos);
+                return;
+            }
+        }
         let event_start = self.events.len();
         let node = &self.nodes[id];
         if matches!(node.ty, NodeType::CopperBulb) {
@@ -302,40 +497,99 @@ impl DirectBackend {
 
     /// Propagate region outputs until no source changes or delivered samples remain.
     /// Each pass commits one writer's samples before processing the next writer.
-    fn evaluate_instant(&mut self, clock_event: bool) {
+    pub(super) fn evaluate_instant(&mut self, clock_event: bool) {
+        if self.evaluating_instant {
+            return;
+        }
+        self.evaluating_instant = true;
+        if clock_event {
+            let elapsed = self.instant.first().map_or(0, |runtime| runtime.elapsed());
+            while let Some(index) = self
+                .instant_phases
+                .iter()
+                .position(|&(_, deadline)| deadline <= elapsed)
+            {
+                let (region, _) = self.instant_phases.remove(index).unwrap();
+                self.publish_instant_regions(std::iter::once(region), true);
+                self.finish_native_delivery();
+            }
+        }
         loop {
-            let mut runtimes = std::mem::take(&mut self.instant);
-            let mut changes = Vec::new();
-            for (region, runtime) in runtimes.iter_mut().enumerate() {
-                let changed = std::mem::replace(&mut self.instant_dirty[region], false);
-                changes.extend(runtime.advance(&self.nodes, changed, clock_event));
-                for pos in runtime.geometry_changes() {
-                    if let Some(observers) = self.instant_observers.get(&pos) {
-                        update::notify_observers(&mut self.scheduler, &mut self.nodes, observers);
-                    }
-                }
-            }
-            self.instant = runtimes;
-            for (id, strength) in changes {
-                if self.nodes[id].output_power != strength {
-                    self.set_node(id, strength != 0, strength);
-                }
-            }
+            self.finish_native_delivery();
+            self.publish_instant_regions(0..self.instant.len(), false);
             if !self.instant_dirty.iter().any(|&dirty| dirty)
-                && !self
-                    .instant
-                    .iter()
-                    .any(|runtime| runtime.has_pending_samples())
+                && self.boundary_deliveries.is_empty()
+                && self.native_delivery.is_none()
             {
                 break;
             }
         }
+        self.evaluating_instant = false;
+    }
+
+    fn publish_instant_regions(
+        &mut self,
+        regions: impl IntoIterator<Item = usize>,
+        clock_event: bool,
+    ) {
+        let mut outputs = Vec::new();
+        let mut geometry = Vec::new();
+        for region in regions {
+            let changed = std::mem::replace(&mut self.instant_dirty[region], false);
+            if !changed && !clock_event {
+                continue;
+            }
+            let changes = self.instant[region].advance(&self.nodes, changed, clock_event);
+            if outputs.is_empty() {
+                outputs = changes;
+            } else {
+                outputs.extend(changes);
+            }
+            geometry.extend(self.instant[region].geometry_changes());
+            let deadline = self.instant[region].next_phase_deadline();
+            let scheduled = self
+                .instant_phases
+                .iter()
+                .find(|&&(id, _)| id == region)
+                .map(|&(_, deadline)| deadline);
+            if scheduled != deadline {
+                self.instant_phases.retain(|&(id, _)| id != region);
+                if let Some(deadline) = deadline {
+                    self.instant_phases.push_back((region, deadline));
+                }
+            }
+            for (source, targets) in self.instant[region].take_deliveries() {
+                self.boundary_deliveries.push_back(BoundaryDelivery {
+                    source,
+                    recipients: vec![(region, targets)],
+                });
+            }
+        }
+        let mut committed = std::mem::take(&mut self.instant_changes);
+        committed.extend(
+            outputs
+                .into_iter()
+                .map(|(id, strength)| self.commit_node(id, strength != 0, strength)),
+        );
+        // Commit the complete response before any consumer reads either channel.
+        for change in committed.drain(..) {
+            self.notify_change(change);
+        }
+        self.instant_changes = committed;
+        for pos in geometry {
+            if let Some(observers) = self.instant_observers.get(&pos) {
+                update::notify_observers(&mut self.scheduler, &mut self.nodes, observers);
+            }
+            self.native_geometry_notification(pos);
+        }
     }
 
     pub(crate) fn tick_with_world<W: World>(&mut self, world: &mut W) {
+        self.native_commands(world);
         self.process_command_outputs(world);
         world.piston_state_mut().logical_tick += 1;
-        self.tick_after_callbacks(|backend| backend.process_command_outputs(world));
+        self.piston_state.logical_tick = world.piston_state().logical_tick;
+        self.tick_after_callbacks(Some(world));
         self.process_command_outputs(world);
     }
 
@@ -349,6 +603,7 @@ impl DirectBackend {
     }
 
     pub(crate) fn reset<W: World>(&mut self, world: &mut W, io_only: bool) {
+        self.restore_native(world);
         // Display flushing can clear dirty flags without writing hidden nodes.
         // Handoff must materialize their current strengths, including ordinary
         // dust between a virtual region supply and its consumer.
@@ -366,6 +621,9 @@ impl DirectBackend {
             let Some((pos, block)) = self.blocks[i] else {
                 continue;
             };
+            if self.native.as_ref().is_some_and(|native| native.owns(pos)) {
+                continue;
+            }
             if matches!(node.ty, NodeType::Comparator { .. }) {
                 let block_entity = BlockEntity::Comparator {
                     output_strength: node.output_power,
@@ -385,7 +643,7 @@ impl DirectBackend {
             runtime.materialize(world);
         }
         self.scheduler
-            .reset(world, &self.blocks, &self.block_aliases);
+            .reset_runtime(world, &self.blocks, &self.block_aliases);
 
         self.pos_map.clear();
         self.block_aliases.clear();
@@ -399,6 +657,11 @@ impl DirectBackend {
     }
 
     pub(crate) fn on_use_block(&mut self, pos: BlockPos) {
+        if self.native.as_ref().is_some_and(|native| native.owns(pos)) {
+            self.native_on_use(pos);
+            self.evaluate_instant(false);
+            return;
+        }
         let node_id = self.pos_map[&pos];
         let node = &self.nodes[node_id];
         match node.ty {
@@ -406,7 +669,7 @@ impl DirectBackend {
                 if node.powered {
                     return;
                 }
-                self.schedule_tick(node_id, 10, TickPriority::Normal);
+                self.schedule_tick(node_id.into(), 10, TickPriority::Normal);
                 self.set_node(node_id, true, 15);
             }
             NodeType::Lever => {
@@ -418,6 +681,11 @@ impl DirectBackend {
     }
 
     pub(crate) fn set_pressure_plate(&mut self, pos: BlockPos, powered: bool) {
+        if self.native.as_ref().is_some_and(|native| native.owns(pos)) {
+            self.native_pressure_plate(pos, powered);
+            self.evaluate_instant(false);
+            return;
+        }
         let node_id = self.pos_map[&pos];
         let node = &self.nodes[node_id];
         match node.ty {
@@ -430,10 +698,12 @@ impl DirectBackend {
     }
 
     pub(crate) fn tick(&mut self) {
-        self.tick_after_callbacks(|_| {});
+        self.piston_state.logical_tick += 1;
+        self.tick_after_callbacks::<crate::plot::PlotWorld>(None);
     }
 
-    fn tick_after_callbacks(&mut self, mut after_callback: impl FnMut(&mut Self)) {
+    fn tick_after_callbacks<W: World>(&mut self, mut output: Option<&mut W>) {
+        self.piston_state.phase = mchprs_world::AdvancePhase::ScheduledTicks;
         for runtime in &mut self.instant {
             runtime.begin_tick();
         }
@@ -442,21 +712,36 @@ impl DirectBackend {
             if advance {
                 self.scheduler.end_last_tick_move_next();
             }
-            while let Some(node_id) = self.scheduler.this_tick().pop_first() {
-                self.tick_node(node_id);
-                after_callback(self);
+            while let Some(entry) = self.scheduler.this_tick().pop_first() {
+                match entry {
+                    RuntimeTick::Node(node_id) => self.tick_node(node_id),
+                    RuntimeTick::Block(entry) => {
+                        if let Some(output) = output.as_deref_mut() {
+                            self.native_tick(entry, Some(output));
+                        } else {
+                            self.native_tick(entry, None);
+                        }
+                    }
+                }
+                if let Some(output) = output.as_deref_mut() {
+                    self.process_command_outputs(output);
+                }
                 // Separate delivered events retain scheduler order and committed memory.
                 self.evaluate_instant(false);
             }
         }
         // Owned periodic clocks sample after ordinary events at this deadline.
+        self.piston_state.phase = mchprs_world::AdvancePhase::PistonEvents;
+        self.evaluate_instant(false);
         self.evaluate_instant(true);
         for runtime in &mut self.instant {
             runtime.end_tick();
         }
+        self.piston_state.phase = mchprs_world::AdvancePhase::BetweenTicks;
     }
 
     pub(crate) fn flush<W: World>(&mut self, world: &mut W, io_only: bool) {
+        self.flush_native(world, io_only);
         self.process_command_outputs(world);
         self.evaluate_instant(false);
         for event in self.events.drain(..) {
@@ -488,6 +773,12 @@ impl DirectBackend {
             }
         }
         for (i, node) in self.nodes.inner_mut().iter_mut().enumerate() {
+            if self.blocks[i]
+                .is_some_and(|(pos, _)| self.native.as_ref().is_some_and(|native| native.owns(pos)))
+            {
+                node.changed = false;
+                continue;
+            }
             if node.changed && (!io_only || node.is_io) {
                 for (pos, block) in self.blocks[i]
                     .iter_mut()
@@ -537,14 +828,14 @@ fn set_node_locked(node: &mut Node, locked: bool) {
 
 #[inline]
 fn schedule_tick(
-    scheduler: &mut TickScheduler<NodeId>,
+    scheduler: &mut TickScheduler<RuntimeTick>,
     node_id: NodeId,
     node: &mut Node,
     delay: usize,
     priority: TickPriority,
 ) {
     node.pending_tick = true;
-    scheduler.schedule_tick(node_id, delay, priority);
+    scheduler.schedule_tick(node_id.into(), delay, priority);
 }
 
 // Ignore strength zero; any nonzero counter at strengths 1..15 means powered.

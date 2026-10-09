@@ -28,7 +28,7 @@ on reset. Matching a final Boolean truth table alone does not prove that trace
 equivalence.
 
 [`CompileNode::is_removable`](../crates/core/src/redpiler/compile_graph.rs)
-returns false for graph inputs, graph outputs, pending-tick nodes, and all
+returns false for native-owned components, graph inputs, graph outputs, pending-tick nodes, and all
 `InstantInput`, `MobileSource` and `InstantOutput` nodes. Required region graph
 sources and receiving components are marked as retained interfaces before
 optimization. Constant folding has its own conditions; it does not use
@@ -40,7 +40,7 @@ optimization. Constant folding has its own conditions; it does not use
 | --- | --- | --- |
 | 1 | Identify nodes | Always |
 | 2 | Search inputs | Always |
-| 3 | Clamp weights | Always |
+| 3 | Clamp weights, select ordinary groups, remove eligible wire display nodes | Always |
 | 4 | Deduplicate links | `--optimize` |
 | 5 | Fold constants | `--optimize` |
 | 6 | Prune unreachable comparator outputs | `--optimize` |
@@ -58,10 +58,11 @@ step. Enabled passes check cancellation before starting.
 ## Identification, input search and weight clamping
 
 [`identify_nodes`](../crates/core/src/redpiler/passes/identify_nodes.rs)
-omits ordinary wire display nodes when optimization is enabled. Input search
-still traverses physical dust, so this removes display work rather than dust's
-attenuation. It is observable in world presentation: intermediate wire powers
-are not maintained by removed graph nodes.
+initially retains ordinary wire nodes so input search and execution planning can
+see shared physical dependencies. After planning, optimization removes eligible
+wire display nodes only from collapsed groups. Native groups retain physical dust
+and live strengths. Removing display nodes preserves attenuation in input links;
+those removed nodes do not maintain intermediate wire powers in world presentation.
 
 [`input_search`](../crates/core/src/redpiler/passes/input_search.rs) creates
 attenuated main/side links and respects region ownership. Boundary sources stay
@@ -72,22 +73,24 @@ dynamic even when their initial strength is 15. Wire searches stop at distance
 removes every edge with `w >= 15`. This follows directly from `s <= 15`, so
 such an edge contributes zero for every permitted strength.
 
-After clamping, ordinary selections containing any comparator or directed cycle
-select native propagation and skip optional rewrites. Collapsed dust links cannot
+Before destructive rewrites, ordinary groups containing a comparator, causal cycle,
+wire observation or declared assembly sampling callback
+select exact propagation and skip optional rewrites. Collapsed dust links cannot
 represent intermediate dust states, unchanged-strength comparator notifications,
 or the native order of callbacks with equal deadlines and priorities. The native
-backend retains physical components, dust topology and live strengths, and runs
+propagation support retains physical components, dust topology and live strengths, and runs
 the existing interpreter logic over a private snapshot. This supports comparator
 feedback, acyclic shared-input forks and torch oscillators with either setting
 of `-O`. Flush frequency and `--io-only` affect display only; reset restores all
 physical state and pending work.
 
-The initial selector is deliberately broad: the complete ordinary selection uses
-one native queue if it contains comparators or feedback. Statistics report this
-choice. Acyclic selections without comparators retain the fast graph path.
-Native selections reject graph export, whose format cannot preserve these event
-semantics. Instant piston compilation retains the comparator cycle/shared-input
-guards until native propagation can share its scheduler and geometry changes.
+The selector conservatively joins electrical and physical interactions within
+two cells, including shared dust, notifications, observer watches, far inputs
+and commands. Exact groups and optimized graph groups share the runtime's queue
+with instant assemblies. A disconnected assembly does not change the ordinary
+selection policy. Statistics include physical dust in the baseline; removable
+display dust is discarded after planning. Graph export rejects exact propagation,
+whose callback semantics cannot be represented by collapsed electrical links.
 
 A supported feedback example, viewed from above with west on the left:
 

@@ -138,22 +138,36 @@ pub fn prepare_candidate_graph(
         super::AnalysisLimits::for_budget(monitor.budget_multiplier()),
     )
     .map_err(GraphPreparationError::Analysis)?;
+    let ticks: Vec<_> = ticks
+        .iter()
+        .cloned()
+        .filter(|entry| {
+            entry
+                .block_type
+                .is_none_or(|kind| world.get_block(entry.pos).registry_id() == kind)
+        })
+        .collect();
     let graph = if report.pistons.is_empty() {
         let input = CompilerInput {
             world,
             bounds: report.bounds,
-            ticks,
+            ticks: &ticks,
             boundaries: None,
         };
         crate::redpiler::passes::run_passes(options, &input, &monitor)
             .map_err(GraphPreparationError::Graph)?
     } else {
-        crate::redpiler::instant::program::prepare(world, &report, ticks, options, monitor.clone())
+        crate::redpiler::instant::program::prepare(world, &report, &ticks, options, monitor.clone())
             .map_err(GraphPreparationError::Execution)?
             .0
     };
     if monitor.cancelled() {
         return Err(GraphPreparationError::Analysis(AnalysisError::Cancelled));
+    }
+    if options.export_dot_graph && graph.node_weights().any(|node| node.native) {
+        return Err(GraphPreparationError::Graph(
+            GraphError::UnsupportedNativeExport,
+        ));
     }
     Ok(CandidateGraph { graph, report })
 }

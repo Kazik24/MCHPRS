@@ -91,8 +91,18 @@ pub(crate) fn split(
             regions.union(group.members[0], member);
         }
     }
+    let mut channels = FxHashMap::default();
     for output in &report.ports.outputs {
         let actor = report.payload_groups[output.group].members[0];
+        if let Some(other) = channels.insert(
+            (
+                output.consumer,
+                output.input == crate::redpiler::analysis::ports::ConsumerInput::ComparatorSide,
+            ),
+            actor,
+        ) {
+            regions.union(actor, other);
+        }
         for pos in output
             .dependencies
             .wires

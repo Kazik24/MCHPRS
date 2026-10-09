@@ -8,12 +8,31 @@ pub use wire_cache::Neighbor as WireNeighbor;
 use crate::messages;
 use mchprs_blocks::block_entities::{BlockEntity, ContainerType};
 use mchprs_blocks::blocks::{Block, RedstonePiston};
-use mchprs_blocks::BlockPos;
+use mchprs_blocks::{BlockFace, BlockPos};
 pub use mchprs_world::PistonAction;
 use mchprs_world::TickPriority;
 use storage::Chunk;
 
 pub trait World {
+    /// Stateful assemblies handle their own geometry and attachment changes.
+    fn dispatch_neighbor_shape_update(&mut self, _pos: BlockPos, _direction: BlockFace) -> bool {
+        false
+    }
+    /// A compiled consumer channel replaces physical electrical input, not analog overrides.
+    fn resolved_redstone_input(&self, _pos: BlockPos, _side: bool) -> Option<u8> {
+        None
+    }
+
+    /// Return true when a compiled owner has delivered or suppressed this callback.
+    fn dispatch_redstone_update(
+        &mut self,
+        _pos: BlockPos,
+        _dir: Option<mchprs_blocks::BlockFace>,
+        _source: Option<BlockPos>,
+    ) -> bool {
+        false
+    }
+
     /// Returns the block located at `pos`
     fn get_block(&self, pos: BlockPos) -> Block {
         Block::from_id(self.get_block_raw(pos))

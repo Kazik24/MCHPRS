@@ -47,6 +47,7 @@ fn advance(compiler: &mut Compiler, world: &mut PlotWorld, ticks: usize) {
 fn coalescing_retains_transitive_physical_aliases() {
     let mut graph = CompileGraph::new();
     let source = graph.add_node(CompileNode {
+        native: false,
         ty: NodeType::Lever,
         block: None,
         block_aliases: Vec::new(),
@@ -62,6 +63,7 @@ fn coalescing_retains_transitive_physical_aliases() {
     let alias = BlockPos::new(4, 30, 1);
     for (i, pos) in positions.into_iter().enumerate() {
         let id = graph.add_node(CompileNode {
+            native: false,
             ty: NodeType::Repeater {
                 delay: 2,
                 facing_diode: false,
@@ -148,6 +150,7 @@ fn attenuated_constant_side_preserves_comparator_lamp_output() {
 fn comparator_pruning_preserves_a_larger_saved_output() {
     let mut graph = CompileGraph::new();
     let node = |ty, strength| CompileNode {
+        native: false,
         ty,
         block: None,
         block_aliases: Vec::new(),
@@ -384,6 +387,7 @@ fn graph_coalescing_preserves_input_channel_and_attenuation() {
     ] {
         let mut graph = CompileGraph::new();
         let node = |ty, is_input| CompileNode {
+            native: false,
             ty,
             block: None,
             block_aliases: Vec::new(),

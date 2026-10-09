@@ -44,6 +44,7 @@ pub(super) fn run<W: World>(
                     continue;
                 }
                 graph.add_node(CompileNode {
+                    native: false,
                     ty: NodeType::MobileSource { group, alias },
                     block: None,
                     block_aliases: Vec::new(),
@@ -75,6 +76,7 @@ pub(super) fn run<W: World>(
                 .max()
                 .unwrap_or(0);
             graph.add_node(CompileNode {
+                native: false,
                 ty: NodeType::InstantInput { piston },
                 block: None,
                 block_aliases: Vec::new(),
@@ -125,15 +127,6 @@ pub(super) fn run<W: World>(
                 reason: "the watched cell is outside the compiled selection",
             });
         }
-        if input
-            .boundaries
-            .is_some_and(|boundaries| boundaries.is_owned(watched))
-            && matches!(plot.get_block(watched), Block::RedstoneWire { .. })
-        {
-            return Err(super::GraphError::UnsupportedObserverWatch {
-                observer, watched, reason: "conditional logical dust needs an explicit compiled observation of its strength and shape",
-            });
-        }
     }
 
     if let Some(boundaries) = input.boundaries {
@@ -158,6 +151,7 @@ pub(super) fn run<W: World>(
                 },
             )?;
             let source = graph.add_node(CompileNode {
+                native: false,
                 ty: NodeType::InstantOutput { port },
                 block: None,
                 block_aliases: Vec::new(),
@@ -179,6 +173,23 @@ pub(super) fn run<W: World>(
         }
     }
     Ok(())
+}
+
+pub(super) fn retain_wires(graph: &mut CompileGraph, input: &CompilerInput<'_, impl World>) {
+    let mut positions: FxHashMap<_, _> = graph
+        .node_indices()
+        .filter_map(|id| graph[id].block.map(|(pos, _)| (pos, id)))
+        .collect();
+    for_each_block_optimized(input.world, input.bounds.0, input.bounds.1, |pos| {
+        if !positions.contains_key(&pos)
+            && !input
+                .boundaries
+                .is_some_and(|b| b.is_owned(pos) && !b.is_propagation_wire(pos))
+            && matches!(input.world.get_block(pos), Block::RedstoneWire { .. })
+        {
+            for_pos(graph, &mut positions, false, input.world, pos);
+        }
+    });
 }
 
 fn for_pos<W: World>(
@@ -226,6 +237,7 @@ fn for_pos<W: World>(
     }
 
     let node_idx = graph.add_node(CompileNode {
+        native: false,
         ty,
         block: Some((pos, id)),
         block_aliases: Vec::new(),

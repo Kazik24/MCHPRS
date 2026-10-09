@@ -27,6 +27,8 @@ pub(crate) struct PreparedInstant {
     pub groups: Vec<Vec<usize>>,
     pub aliases: Vec<(usize, BlockPos, bool)>,
     pub owned: FxHashSet<BlockPos>,
+    /// Ordinary dust surrounding output channels and external sampling writers.
+    pub propagation_wires: FxHashSet<BlockPos>,
     pub template: Vec<(BlockPos, Block, Option<BlockEntity>)>,
     pub logical_tick: u64,
 }
@@ -66,8 +68,9 @@ pub(crate) fn prepare(
     let mut programs = Vec::new();
     for region in super::regions::split(world, report, &monitor).map_err(&admission_error)? {
         programs.push(
-            prepare_region(world, &region, ticks, options, monitor.clone())
-                .map_err(&admission_error)?,
+            prepare_region(world, &region, ticks, options, monitor.clone()).map_err(|error| {
+                admission_error(format!("assembly at {:?}: {error}", region.pistons[0].pos))
+            })?,
         );
     }
     let wires = programs
@@ -87,6 +90,10 @@ pub(crate) fn prepare(
         .iter()
         .flat_map(|program| program.owned.iter().copied())
         .collect();
+    let propagation_wires = programs
+        .iter()
+        .flat_map(|program| program.propagation_wires.iter().copied())
+        .collect();
     let empty_far = programs
         .iter()
         .flat_map(|program| {
@@ -102,7 +109,21 @@ pub(crate) fn prepare(
         .filter(|pos| world.get_block(*pos) == Block::Air)
         .filter(|pos| !report.pistons.iter().any(|piston| piston.head == *pos))
         .collect();
-    let boundaries = Boundaries::executable(report, &wires, &sources, &outputs, &owned, &empty_far);
+    let mut boundaries = Boundaries::executable(
+        report,
+        &wires,
+        &sources,
+        &outputs,
+        &owned,
+        &empty_far,
+        &propagation_wires,
+    )?;
+    for event in programs.iter().flat_map(|program| &program.sampling) {
+        if let super::sampling::SamplingSource::Power { writer, pos, .. } = event.source {
+            boundaries.require_callbacks(writer);
+            boundaries.require_callbacks(pos);
+        }
+    }
     let input = CompilerInput {
         world,
         bounds: report.bounds,
@@ -192,6 +213,17 @@ fn prepare_region(
     options: &CompilerOptions,
     monitor: Arc<TaskMonitor>,
 ) -> Result<PreparedInstant, String> {
+    prepare_region_inner(world, report, ticks, options, monitor, true)
+}
+
+fn prepare_region_inner(
+    world: &impl World,
+    report: &AnalysisReport,
+    ticks: &[TickEntry],
+    options: &CompilerOptions,
+    monitor: Arc<TaskMonitor>,
+    try_shared_clock: bool,
+) -> Result<PreparedInstant, String> {
     if monitor.cancelled() {
         return Err("instant compilation cancelled".into());
     }
@@ -220,7 +252,11 @@ fn prepare_region(
             }
         }
     }
-    let clocked = super::clocked::recognize(world, report, &monitor, options.assume_instant)?;
+    let clocked = if try_shared_clock {
+        super::clocked::recognize(world, report, &monitor, options.assume_instant)?
+    } else {
+        None
+    };
     let candidates = super::sampling::reset_candidates(world, report);
     let mut independent =
         super::sampling::recognize(world, report, &monitor, clocked.as_ref(), &candidates)?;
@@ -442,7 +478,10 @@ fn prepare_region(
     )?;
     super::sampling::validate(&independent.events, &logic, report)?;
     if let Some(clocked) = &clocked {
-        clocked.validate(world, &logic)?;
+        if clocked.validate(world, &logic).is_err() {
+            // A watched generator need not be periodic; prove independent sampling instead.
+            return prepare_region_inner(world, report, ticks, options, monitor, false);
+        }
     }
     for &(actor, observer) in &certification.notifying_returns {
         if logic.responses[actor] != super::boolean::FALSE {
@@ -507,8 +546,7 @@ fn prepare_region(
         }
     }
     if let Some(exposure) = report.ports.reset_exposures.iter().find(|e| {
-        !options.assume_instant
-            && !report.pistons.iter().any(|p| p.pos == e.consumer)
+        !report.pistons.iter().any(|p| p.pos == e.consumer)
             && !(reset_owners.contains(&e.source)
                 && super::observer::is_presentation_output(world, report, e.source, e.consumer))
     }) {
@@ -535,6 +573,33 @@ fn prepare_region(
     owned.extend(crate::redpiler::analysis::families::reset_internals(
         &report.recognition,
     ));
+    let mut propagation_wires: FxHashSet<_> = logic.wires.iter().chain(&logic.consumer_wires).copied().collect();
+    let mut topology = crate::redpiler::analysis::topology::Topology::new(
+        world,
+        report.bounds,
+        &monitor,
+        crate::redpiler::analysis::AnalysisLimits::for_budget(monitor.budget_multiplier())
+            .max_dependency_steps,
+        report
+            .payload_groups
+            .iter()
+            .enumerate()
+            .flat_map(|(group, payload)| payload.positions.iter().map(move |&pos| (pos, group)))
+            .collect(),
+    );
+    for event in &independent.events {
+        if let super::sampling::SamplingSource::Power { pos, .. } = event.source {
+            propagation_wires.extend(
+                topology
+                    .wire_inputs(pos)
+                    .map_err(|error| error.to_string())?
+                    .wires,
+            );
+        }
+    }
+    let internals = crate::redpiler::analysis::families::reset_internals(&report.recognition);
+    propagation_wires.retain(|pos| !internals.contains(pos));
+    owned.retain(|pos| !propagation_wires.contains(pos));
     // A provisional reset label must not hide or reset a live ordinary leaf.
     owned.retain(|pos| !logic.sources.contains(pos));
     let mut template = Vec::new();
@@ -569,6 +634,7 @@ fn prepare_region(
         piston.payload = far;
     }
     Ok(PreparedInstant {
+        propagation_wires,
         pistons,
         output_offset: 0,
         clocked,

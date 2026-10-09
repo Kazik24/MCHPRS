@@ -451,7 +451,7 @@ fn shape_changed(world: &mut impl World, pos: BlockPos) {
         // Observers watch shape/state changes, not ordinary neighbor power callbacks.
         let block = world.get_block(neighbor);
         if matches!(block, Block::Observer { .. }) {
-            super::update(block, world, neighbor, Some(face.opposite()));
+            super::update_from(block, world, neighbor, Some(face.opposite()), pos);
         }
     }
 }
@@ -462,7 +462,7 @@ pub(crate) fn notify(world: &mut impl World, pos: BlockPos) {
         let neighbor = pos.offset(face);
         let block = world.get_block(neighbor);
         if !matches!(block, Block::Observer { .. }) {
-            super::update(block, world, neighbor, Some(face.opposite()));
+            super::update_from(block, world, neighbor, Some(face.opposite()), pos);
         }
     }
 }

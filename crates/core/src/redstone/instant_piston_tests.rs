@@ -45,6 +45,7 @@ pub(crate) fn callback(
     block: Block,
     pos: BlockPos,
     dir: Option<BlockFace>,
+    source: Option<BlockPos>,
 ) -> CallbackGuard {
     let active = RECORDER.with(|r| {
         r.borrow().as_ref().is_some_and(|r| {
@@ -57,7 +58,8 @@ pub(crate) fn callback(
         record_operation(
             world,
             "callback",
-            json!({"pos":pos,"block":block.get_name(),"dir":dir,
+            json!({"pos":pos,"block":block.get_name(),"dir":dir,"source":source,
+            "electrical_inputs": match block { Block::RedstoneComparator { .. } => Some([super::consumer_input(world,pos,false),super::consumer_input(world,pos,true)]), _ => None },
             "piston_power": match block { Block::Piston { piston } => Some(super::piston::should_piston_extend(world,piston.facing,pos)), _ => None }}),
         );
         RECORDER.with(|r| r.borrow_mut().as_mut().unwrap().depth += 1);

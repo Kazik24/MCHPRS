@@ -139,6 +139,9 @@ fn get_redstone_power_no_dust(
 }
 
 pub fn torch_should_be_off(world: &impl World, pos: BlockPos) -> bool {
+    if let Some(input) = world.resolved_redstone_input(pos, false) {
+        return input > 0;
+    }
     let bottom_pos = pos.offset(BlockFace::Bottom);
     let bottom_block = world.get_block(bottom_pos);
     has_redstone_power(bottom_block, world, bottom_pos, BlockFace::Top)
@@ -146,12 +149,17 @@ pub fn torch_should_be_off(world: &impl World, pos: BlockPos) -> bool {
 
 pub fn on_state_change(facing: BlockFacing, world: &mut impl World, pos: BlockPos) {
     let front_pos = pos.offset(facing.opposite().into());
-    update_output_neighbors(world, front_pos, facing.into());
+    update_output_neighbors(world, front_pos, facing.into(), pos);
 }
 
-fn update_output_neighbors(world: &mut impl World, front_pos: BlockPos, source_face: BlockFace) {
+fn update_output_neighbors(
+    world: &mut impl World,
+    front_pos: BlockPos,
+    source_face: BlockFace,
+    source: BlockPos,
+) {
     diode_notifications(front_pos, source_face, |pos, dir| {
-        update(world.get_block(pos), world, pos, dir)
+        update_from(world.get_block(pos), world, pos, dir, source)
     });
 }
 
@@ -171,6 +179,9 @@ pub fn wall_torch_should_be_off(
     pos: BlockPos,
     direction: BlockDirection,
 ) -> bool {
+    if let Some(input) = world.resolved_redstone_input(pos, false) {
+        return input > 0;
+    }
     let wall_pos = pos.offset(direction.opposite().block_face());
     let wall_block = world.get_block(wall_pos);
     has_redstone_power(
@@ -182,6 +193,9 @@ pub fn wall_torch_should_be_off(
 }
 
 pub fn redstone_lamp_should_be_lit(world: &impl World, pos: BlockPos) -> bool {
+    if let Some(input) = world.resolved_redstone_input(pos, false) {
+        return input > 0;
+    }
     for face in &BlockFace::values() {
         let neighbor_pos = pos.offset(*face);
         if has_redstone_power(world.get_block(neighbor_pos), world, neighbor_pos, *face) {
@@ -192,6 +206,9 @@ pub fn redstone_lamp_should_be_lit(world: &impl World, pos: BlockPos) -> bool {
 }
 
 fn diode_get_input_strength(world: &impl World, pos: BlockPos, facing: BlockDirection) -> u8 {
+    if let Some(input) = world.resolved_redstone_input(pos, false) {
+        return input;
+    }
     let input_pos = pos.offset(facing.block_face());
     let input_block = world.get_block(input_pos);
     let mut power = get_redstone_power(input_block, world, input_pos, facing.block_face());
@@ -201,6 +218,26 @@ fn diode_get_input_strength(world: &impl World, pos: BlockPos, facing: BlockDire
         }
     }
     power
+}
+
+/// Electrical input only; comparator inventory precedence is applied separately.
+pub(crate) fn consumer_input(world: &impl World, pos: BlockPos, side: bool) -> u8 {
+    match world.get_block(pos) {
+        Block::RedstoneComparator { comparator } if side => {
+            comparator::get_power_on_sides(comparator, world, pos)
+        }
+        Block::RedstoneComparator { comparator } => {
+            diode_get_input_strength(world, pos, comparator.facing)
+        }
+        Block::RedstoneRepeater { repeater } => {
+            diode_get_input_strength(world, pos, repeater.facing)
+        }
+        Block::RedstoneTorch { .. } => bool_to_ss(torch_should_be_off(world, pos)),
+        Block::RedstoneWallTorch { facing, .. } => {
+            bool_to_ss(wall_torch_should_be_off(world, pos, facing))
+        }
+        _ => bool_to_ss(redstone_lamp_should_be_lit(world, pos)),
+    }
 }
 
 /// Whether `update` can do any work for this cached block state. Wire walks use
@@ -228,8 +265,31 @@ pub(crate) fn has_neighbor_update(block: Block) -> bool {
 }
 
 pub fn update(block: Block, world: &mut impl World, pos: BlockPos, dir: Option<BlockFace>) {
+    update_inner(block, world, pos, dir, None);
+}
+
+pub(crate) fn update_from(
+    block: Block,
+    world: &mut impl World,
+    pos: BlockPos,
+    dir: Option<BlockFace>,
+    source: BlockPos,
+) {
+    update_inner(block, world, pos, dir, Some(source));
+}
+
+fn update_inner(
+    block: Block,
+    world: &mut impl World,
+    pos: BlockPos,
+    dir: Option<BlockFace>,
+    source: Option<BlockPos>,
+) {
     #[cfg(test)]
-    let _trace = instant_piston_tests::callback(world, block, pos, dir);
+    let _trace = instant_piston_tests::callback(world, block, pos, dir, source);
+    if world.dispatch_redstone_update(pos, dir, source) {
+        return;
+    }
     if block.is_command_block() {
         command_block::update(world, pos);
         return;
@@ -434,8 +494,8 @@ pub fn tick(block: Block, world: &mut impl World, pos: BlockPos) {
 }
 
 fn on_observer_state_change(facing: BlockFacing, world: &mut impl World, pos: BlockPos) {
-    observer_notifications(facing, pos, |pos, dir| {
-        update(world.get_block(pos), world, pos, dir)
+    observer_notifications(facing, pos, |target, dir| {
+        update_from(world.get_block(target), world, target, dir, pos)
     });
 }
 
@@ -458,7 +518,7 @@ pub fn update_wire_neighbors(world: &mut impl World, pos: BlockPos) {
     for direction in &BlockFace::values() {
         let neighbor_pos = pos.offset(*direction);
         let block = world.get_block(neighbor_pos);
-        update(block, world, neighbor_pos, Some(direction.opposite()));
+        update_from(block, world, neighbor_pos, Some(direction.opposite()), pos);
         for n_direction in &BlockFace::values() {
             let n_neighbor_pos = neighbor_pos.offset(*n_direction);
             let block = world.get_block(n_neighbor_pos);
@@ -466,7 +526,13 @@ pub fn update_wire_neighbors(world: &mut impl World, pos: BlockPos) {
             // state did not change, so an observer watching it must not pulse.
             // Observers adjacent to the changed wire are notified above.
             if !matches!(block, Block::Observer { .. }) {
-                update(block, world, n_neighbor_pos, Some(n_direction.opposite()));
+                update_from(
+                    block,
+                    world,
+                    n_neighbor_pos,
+                    Some(n_direction.opposite()),
+                    pos,
+                );
             }
         }
     }
@@ -495,7 +561,7 @@ pub fn skipping_update_surrounding_blocks(
         {
             return;
         }
-        update(block, world, target, Some(dir));
+        update_from(block, world, target, Some(dir), pos);
     });
 }
 

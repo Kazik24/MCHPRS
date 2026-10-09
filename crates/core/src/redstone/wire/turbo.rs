@@ -102,7 +102,7 @@ pub(super) struct RedstoneWireTurbo {
     neighbor_lists: Vec<Neighborhood>,
     spatial: spatial::SpatialNodes,
     node_cache: FxHashMap<BlockPos, NodeId>,
-    update_queue: Vec<Vec<NodeId>>,
+    update_queue: Vec<Vec<(NodeId, BlockPos)>>,
     current_walk_layer: u32,
 }
 
@@ -305,6 +305,7 @@ impl RedstoneWireTurbo {
     }
 
     fn propagate_changes(&mut self, world: &mut impl World, upd1: NodeId, layer: u32) {
+        let source = self.nodes[upd1.index()].pos;
         if self.nodes[upd1.index()].neighbors.is_none() {
             self.identify_neighbors(world, upd1);
         }
@@ -318,7 +319,7 @@ impl RedstoneWireTurbo {
             if layer1 > neighbor.layer {
                 neighbor.layer = layer1;
                 if neighbor.facts.updates {
-                    self.update_queue[1].push(neighbor_id);
+                    self.update_queue[1].push((neighbor_id, source));
                 }
             }
         }
@@ -330,7 +331,7 @@ impl RedstoneWireTurbo {
             if layer2 > neighbor.layer {
                 neighbor.layer = layer2;
                 if neighbor.facts.updates {
-                    self.update_queue[2].push(*neighbor_id);
+                    self.update_queue[2].push((*neighbor_id, source));
                 }
             }
         }
@@ -346,7 +347,7 @@ impl RedstoneWireTurbo {
             // layer in place and process its original length in the original order.
             let count = self.update_queue[0].len();
             for index in 0..count {
-                let node_id = self.update_queue[0][index];
+                let (node_id, source) = self.update_queue[0][index];
                 match self.nodes[node_id.index()].state {
                     Block::RedstoneWire { .. } => {
                         self.update_node(world, node_id, self.current_walk_layer);
@@ -356,7 +357,13 @@ impl RedstoneWireTurbo {
                     // This only works because updating any other block than a wire will
                     // never change the state of the block. If that changes in the future,
                     // the cached state will need to be updated
-                    block => redstone::update(block, world, self.nodes[node_id.index()].pos, None),
+                    block => redstone::update_from(
+                        block,
+                        world,
+                        self.nodes[node_id.index()].pos,
+                        None,
+                        source,
+                    ),
                 }
             }
 

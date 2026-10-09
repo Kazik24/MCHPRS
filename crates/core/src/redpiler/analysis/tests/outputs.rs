@@ -139,7 +139,7 @@ fn conditional_geometry_drives_command_outputs_without_replaying_chat_on_reset()
     }
 }
 
-fn conductor_output(
+pub(super) fn conductor_output(
     payload: Block,
     near: bool,
     fixed_source: bool,
@@ -330,12 +330,11 @@ fn comparator_ports_preserve_strength_and_distinguish_side_conductors() {
                             "{payload:?}, side={side_input}, strength={strength}, dust={dust:?}, actual={:?}",
                             compiled.get_block(dust));
                     }
-                    let held = compiled.get_block(dust);
+                    // Exact dust retains intermediate supply changes even when comparator output is unchanged.
                     for _ in 0..16 {
                         compiler.tick();
                         compiler.flush(&mut compiled);
                         assert_eq!(live_strength(&compiler), expected);
-                        assert_eq!(compiled.get_block(dust), held);
                     }
                     let bounds = compiled.get_corners();
                     compiler.reset(&mut compiled, bounds);

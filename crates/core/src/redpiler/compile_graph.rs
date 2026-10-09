@@ -99,19 +99,19 @@ impl NodeState {
 
 #[derive(Debug)]
 pub struct CompileNode {
+    pub native: bool,
     pub ty: NodeType,
     pub block: Option<(BlockPos, u32)>,
-    /// Physical blocks sharing this node after logic coalescing.
     pub block_aliases: Vec<(BlockPos, u32)>,
     pub state: NodeState,
-
     pub is_input: bool,
     pub is_output: bool,
 }
 
 impl CompileNode {
     pub fn is_removable(&self) -> bool {
-        !self.is_input
+        !self.native
+            && !self.is_input
             && !self.is_output
             && !self.state.pending_tick
             && !matches!(
@@ -155,12 +155,6 @@ pub enum GraphError {
     UnsupportedCommandBlockExport,
     UnsupportedObserverExport,
     UnsupportedCopperBulbExport,
-    UnsupportedComparatorFeedback {
-        pos: BlockPos,
-    },
-    UnsupportedComparatorOrdering {
-        pos: BlockPos,
-    },
     UnsupportedObserverWatch {
         observer: BlockPos,
         watched: BlockPos,
@@ -182,7 +176,9 @@ impl std::fmt::Display for GraphError {
             Self::UnsupportedInstantExport => {
                 f.write_str("instant graph export is not implemented")
             }
-            Self::UnsupportedNativeExport => f.write_str("native propagation cannot be exported as a collapsed electrical graph"),
+            Self::UnsupportedNativeExport => {
+                f.write_str("native propagation cannot be exported as a collapsed electrical graph")
+            }
             Self::UnsupportedCommandBlockExport => {
                 f.write_str("command-block output export is not implemented")
             }
@@ -192,14 +188,6 @@ impl std::fmt::Display for GraphError {
             Self::UnsupportedCopperBulbExport => {
                 f.write_str("copper-bulb state cannot be exported in the electrical graph format")
             }
-            Self::UnsupportedComparatorFeedback { pos } => write!(
-                f,
-                "comparator feedback at {pos:?} requires native dust callback ordering; keep this circuit interpreted"
-            ),
-            Self::UnsupportedComparatorOrdering { pos } => write!(
-                f,
-                "shared-input diode/comparator paths at {pos:?} require native dust callback ordering; keep this circuit interpreted"
-            ),
             Self::UnsupportedObserverWatch {
                 observer,
                 watched,

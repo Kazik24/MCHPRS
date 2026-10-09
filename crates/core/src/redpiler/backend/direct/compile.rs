@@ -44,7 +44,10 @@ fn compile_node(
         strength_counts: [0; 16],
     };
     // Strengths and channel sizes were validated before lowering.
-    for edge in graph.edges_directed(node_idx, Direction::Incoming) {
+    for edge in graph
+        .edges_directed(node_idx, Direction::Incoming)
+        .filter(|_| !node.native)
+    {
         let weight = edge.weight();
         let distance = weight.attenuation;
         let source = edge.source();
@@ -67,6 +70,7 @@ fn compile_node(
     let updates = if node.ty != CNodeType::Constant {
         graph
             .edges_directed(node_idx, Direction::Outgoing)
+            .filter(|edge| !graph[edge.target()].native)
             .sorted_by_key(|edge| nodes_map[&edge.target()])
             .into_group_map_by(|edge| std::mem::discriminant(&graph[edge.target()].ty))
             .into_values()
@@ -185,6 +189,9 @@ pub fn compile(
     super::super::validate_strengths(&graph)?;
     for id in graph.node_indices() {
         let node = &graph[id];
+        if node.native {
+            continue;
+        }
         let pos = node.block.map(|(pos, _)| pos);
         let mut default_inputs = 0;
         let mut side_inputs = 0;
@@ -246,6 +253,48 @@ pub fn compile(
         })
         .collect();
     backend.nodes = Nodes::new(nodes);
+    for idx in graph.node_indices() {
+        if let crate::redpiler::compile_graph::NodeType::InstantOutput { .. } = graph[idx].ty {
+            for edge in graph.edges_directed(idx, Direction::Outgoing) {
+                if let Some((pos, _)) = graph[edge.target()].block {
+                    if backend
+                        .resolved_inputs
+                        .insert(
+                            (pos, edge.weight().ty == LinkType::Side),
+                            backend.nodes.get(nodes_map[&idx]),
+                        )
+                        .is_some()
+                    {
+                        return Err(BackendError::DuplicateInstantChannel { pos });
+                    }
+                }
+            }
+        }
+    }
+    backend.native_ports = backend
+        .resolved_inputs
+        .iter()
+        .filter_map(|(&(pos, side), &id)| {
+            backend
+                .native
+                .as_ref()
+                .is_some_and(|native| native.owns(pos))
+                .then_some((pos, side, id))
+        })
+        .collect();
+    for (index, &(pos, _, _)) in backend.native_ports.iter().enumerate() {
+        // Physical electrical reads reach two cells; always refresh both consumer channels.
+        for x in -2i32..=2 {
+            for y in -2i32..=2 {
+                for z in -2i32..=2 {
+                    if x.abs() + y.abs() + z.abs() <= 2 {
+                        backend.native_port_updates.entry(pos + BlockPos::new(x, y, z))
+                            .or_default().push(index);
+                    }
+                }
+            }
+        }
+    }
     if !instant.is_empty() {
         let bindings = graph
             .node_indices()
@@ -268,12 +317,41 @@ pub fn compile(
             })
             .collect::<FxHashMap<_, _>>();
         for program in instant {
-            backend.instant.push(super::instant::Runtime::bind(
-                program,
-                &bindings,
-                &outputs,
-                &backend.nodes,
-            )?);
+            let region = backend.instant.len();
+            if let Some(native) = &mut backend.native {
+                native.bind_boundary(&program.owned);
+            }
+            for &pos in &program.owned {
+                if backend.assembly_owners.insert(pos, region).is_some() {
+                    return Err(BackendError::DuplicateInstantOwner { pos });
+                }
+            }
+            let watched: Vec<_> = program
+                .pistons
+                .iter()
+                .flat_map(|piston| [piston.pos, piston.head, piston.payload])
+                .filter(|pos| {
+                    backend
+                        .native
+                        .as_ref()
+                        .is_some_and(|native| native.near(*pos))
+                })
+                .collect();
+            let mut runtime =
+                super::instant::Runtime::bind(program, &bindings, &outputs, &backend.nodes)?;
+            runtime.use_native_outputs(backend.native_ports.iter().map(|&(_, _, id)| id));
+            runtime.use_native_sampling(|pos| {
+                backend
+                    .native
+                    .as_ref()
+                    .is_some_and(|native| native.owns(pos))
+            });
+            for pos in watched {
+                if runtime.watch_geometry(pos) {
+                    backend.native.as_mut().unwrap().watch_geometry(pos);
+                }
+            }
+            backend.instant.push(runtime);
         }
         backend.instant_dirty = vec![true; backend.instant.len()];
         for (region, runtime) in backend.instant.iter().enumerate() {
@@ -307,6 +385,9 @@ pub fn compile(
         let crate::redpiler::compile_graph::NodeType::Observer { watched } = graph[idx].ty else {
             continue;
         };
+        if graph[idx].native {
+            continue;
+        }
         let observer = backend.nodes.get(nodes_map[&idx]);
         if geometry_positions.contains(&watched) {
             backend
@@ -347,6 +428,13 @@ pub fn compile(
         let Some((pos, Block::RedstoneComparator { comparator })) = block else {
             continue;
         };
+        if backend
+            .native
+            .as_ref()
+            .is_some_and(|native| native.owns(*pos))
+        {
+            continue;
+        }
         let id = backend.nodes.get(i);
         if !matches!(
             backend.nodes[id].ty,
@@ -372,9 +460,24 @@ pub fn compile(
 
     // Preserve pending tick deadlines, priorities and input order.
     for entry in ticks {
+        if backend
+            .native
+            .as_ref()
+            .is_some_and(|native| native.owns(entry.pos))
+        {
+            backend.scheduler.schedule_half_tick(
+                super::RuntimeTick::Block(crate::redpiler::backend::ScheduledBlockTick {
+                    pos: entry.pos,
+                    block_type: entry.block_type,
+                }),
+                entry.ticks_left as usize,
+                entry.tick_priority,
+            );
+            continue;
+        }
         if let Some(node) = backend.pos_map.get(&entry.pos) {
             backend.scheduler.schedule_half_tick(
-                *node,
+                (*node).into(),
                 entry.ticks_left as usize,
                 entry.tick_priority,
             );
@@ -384,10 +487,14 @@ pub fn compile(
 
     // A powered saved observer with no surviving off deadline still needs to
     // finish its pulse. Imported pending deadlines take precedence.
-    for i in 0..backend.nodes.inner().len() {
+    for (i, graph_node) in graph.node_weights().enumerate() {
         let id = backend.nodes.get(i);
         let node = &mut backend.nodes[id];
-        if matches!(node.ty, NodeType::Observer) && node.powered && !node.pending_tick {
+        if !graph_node.native
+            && matches!(node.ty, NodeType::Observer)
+            && node.powered
+            && !node.pending_tick
+        {
             super::schedule_tick(
                 &mut backend.scheduler,
                 id,
@@ -400,6 +507,9 @@ pub fn compile(
 
     // Initialize command-block power and automatic execution requests.
     for idx in graph.node_indices() {
+        if graph[idx].native {
+            continue;
+        }
         if let crate::redpiler::compile_graph::NodeType::CommandBlock {
             initial_tick,
             chain,
@@ -428,7 +538,7 @@ fn update_command_output(backend: &mut DirectBackend, id: NodeId, initial_tick: 
         backend.nodes[id].pending_tick = true;
         backend
             .scheduler
-            .schedule_half_tick(id, 1, mchprs_world::TickPriority::Normal);
+            .schedule_half_tick(id.into(), 1, mchprs_world::TickPriority::Normal);
         backend.events.push(super::Event::CommandBlockPower {
             node_id: id,
             powered: backend.nodes[id].powered,
@@ -444,6 +554,7 @@ mod tests {
 
     fn node(ty: NodeType, strength: u8) -> CompileNode {
         CompileNode {
+            native: false,
             ty,
             block: None,
             block_aliases: Vec::new(),

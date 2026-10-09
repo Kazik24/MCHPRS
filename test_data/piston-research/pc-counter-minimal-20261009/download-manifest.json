@@ -1,0 +1,14 @@
+{
+  "schema_version": 1,
+  "source_host": "urmom",
+  "source_directory": "/srv/mchprs/data/schems",
+  "verified_utc": "2026-10-09T18:32:13.294410+00:00",
+  "files": [
+    {
+      "name": "PC_COUNTER_MINIMAL_FAIL.schem",
+      "bytes": 884,
+      "sha256": "2b2df49a3bd2f9bf7049126f751a67e9d251a3ecd4e2234e867634d51887ea8b",
+      "modified_utc": "2026-10-09T18:26:28.166738+00:00"
+    }
+  ]
+}

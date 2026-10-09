@@ -4,6 +4,7 @@ mod coalesce;
 mod constant_coalesce;
 mod constant_fold;
 mod dedup_links;
+mod execution;
 mod export_graph;
 mod identify_nodes;
 mod input_search;
@@ -23,19 +24,19 @@ pub(super) fn run_passes<W: World>(
     input: &CompilerInput<'_, W>,
     monitor: &TaskMonitor,
 ) -> Result<CompileGraph, GraphError> {
-    prepare(options, input, monitor, false).map(|(graph, _)| graph)
+    prepare(options, input, monitor).map(|(graph, _)| graph)
 }
 
 pub(super) fn prepare<W: World>(
     options: &CompilerOptions,
     input: &CompilerInput<'_, W>,
     monitor: &TaskMonitor,
-    allow_native: bool,
 ) -> Result<(CompileGraph, bool), GraphError> {
     let mut graph = CompileGraph::new();
     let native = std::cell::Cell::new(false);
+    let collapsed = std::cell::Cell::new(false);
     let pipeline_start = Instant::now();
-    monitor.begin_graph_statistics(options.optimize);
+    monitor.begin_graph_statistics(false);
     // Ten passes (including skipped ones), followed by backend compilation.
     monitor.set_max_progress(11);
 
@@ -73,23 +74,59 @@ pub(super) fn prepare<W: World>(
 
     // These three passes establish the nodes, inputs and valid link weights.
     run("Identifying nodes", true, &|graph| {
-        identify_nodes::run(graph, options, input)
+        identify_nodes::run(graph, options, input)?;
+        // Plan before destructive rewrites, including dust normally elided by -O.
+        identify_nodes::retain_wires(graph, input);
+        Ok(())
     })?;
     run("Searching for links", true, &|graph| {
         input_search::run(graph, input)
     })?;
     run("Clamping weights", true, &|graph| {
         clamp_weights::run(graph)?;
-        if allow_native {
-            native.set(requires_native_propagation(graph));
-            Ok(())
-        } else {
-            reject_comparator_ordering(graph)
+        execution::plan(graph, |pos| {
+            input.boundaries.is_some_and(|b| b.needs_callbacks(pos))
+        });
+        for node in graph.node_weights() {
+            let super::compile_graph::NodeType::Observer { watched } = node.ty else {
+                continue;
+            };
+            if input
+                .boundaries
+                .is_some_and(|boundary| boundary.is_owned(watched))
+                && matches!(
+                    input.world.get_block(watched),
+                    mchprs_blocks::blocks::Block::RedstoneWire { .. }
+                )
+                && !graph
+                    .node_weights()
+                    .any(|wire| wire.native && wire.block.is_some_and(|(pos, _)| pos == watched))
+            {
+                return Err(GraphError::UnsupportedObserverWatch {
+                    observer: node.block.unwrap().0,
+                    watched,
+                    reason: "conditional logical dust needs an explicit compiled observation of its strength and shape",
+                });
+            }
         }
+        native.set(graph.node_weights().any(|node| node.native));
+        collapsed.set(
+            graph
+                .node_weights()
+                .any(|node| node.block.is_some() && !node.native),
+        );
+        graph.retain_nodes(|graph, id| {
+            graph[id].native
+                || graph[id].ty != super::compile_graph::NodeType::Wire
+                || (!input
+                    .boundaries
+                    .is_some_and(|b| graph[id].block.is_some_and(|(pos, _)| b.is_owned(pos)))
+                    && (!options.optimize || graph[id].is_input || graph[id].is_output))
+        });
+        Ok(())
     })?;
 
-    // Keep a complete selection together: crossing executors would lose callback order.
-    let optimize = options.optimize && !native.get();
+    let optimize = options.optimize && collapsed.get();
 
     run("Deduplicating links", optimize, &dedup_links::run)?;
     run("Constant folding", optimize, &|graph| {
@@ -119,60 +156,6 @@ pub(super) fn prepare<W: World>(
     Ok((graph, native.get()))
 }
 
-pub(super) fn requires_native_propagation(graph: &CompileGraph) -> bool {
-    // shortcut: retain all comparator selections, narrow this after broader ordering fuzzing.
-    graph
-        .node_weights()
-        .any(|node| matches!(node.ty, super::compile_graph::NodeType::Comparator { .. }))
-        || petgraph::algo::is_cyclic_directed(graph)
-}
-
-fn reject_comparator_ordering(graph: &CompileGraph) -> Result<(), GraphError> {
-    use super::compile_graph::NodeType;
-    use petgraph::Direction;
-    use rustc_hash::FxHashSet;
-
-    if !graph
-        .node_weights()
-        .any(|node| matches!(node.ty, NodeType::Comparator { .. }))
-    {
-        return Ok(());
-    }
-    // Collapsed dust links cannot preserve native callback order around feedback.
-    for component in petgraph::algo::kosaraju_scc(graph) {
-        for &id in &component {
-            if matches!(graph[id].ty, NodeType::Comparator { .. })
-                && (component.len() > 1 || graph.contains_edge(id, id))
-            {
-                return Err(GraphError::UnsupportedComparatorFeedback {
-                    pos: graph[id].block.expect("ordinary comparator has a block").0,
-                });
-            }
-        }
-    }
-    // shortcut: reject direct shared-input forks; extend to deeper reconvergence if it diverges.
-    for id in graph.node_indices() {
-        if !matches!(graph[id].ty, NodeType::Comparator { .. }) {
-            continue;
-        }
-        let inputs: FxHashSet<_> = graph.neighbors_directed(id, Direction::Incoming).collect();
-        for &source in &inputs {
-            if matches!(
-                graph[source].ty,
-                NodeType::Repeater { .. } | NodeType::Comparator { .. } | NodeType::Torch
-            ) && graph
-                .neighbors_directed(source, Direction::Incoming)
-                .any(|shared| inputs.contains(&shared) && graph[shared].ty != NodeType::Constant)
-            {
-                return Err(GraphError::UnsupportedComparatorOrdering {
-                    pos: graph[id].block.expect("ordinary comparator has a block").0,
-                });
-            }
-        }
-    }
-    Ok(())
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -183,7 +166,7 @@ mod tests {
     use mchprs_blocks::{BlockDirection, BlockPos};
 
     #[test]
-    fn feedback_guard_rejects_comparator_cycles_but_accepts_feedforward_logic() {
+    fn ordinary_planning_retains_comparators_and_all_feedback() {
         use crate::redpiler::compile_graph::{
             CompileLink, CompileNode, LinkType, NodeState, NodeType,
         };
@@ -192,6 +175,7 @@ mod tests {
             for cycle in [0, 1, 2] {
                 let mut graph = CompileGraph::new();
                 let node = |pos, ty| CompileNode {
+                    native: false,
                     ty,
                     block: Some((pos, 0)),
                     block_aliases: Vec::new(),
@@ -219,21 +203,15 @@ mod tests {
                 } else if cycle == 2 {
                     graph.add_edge(second, first, CompileLink::new(LinkType::Default, 0));
                 }
-                let result = reject_comparator_ordering(&graph);
-                if comparator && cycle > 0 {
-                    assert!(matches!(
-                        result,
-                        Err(GraphError::UnsupportedComparatorFeedback { .. })
-                    ));
-                } else {
-                    result.unwrap();
-                }
+                execution::plan(&mut graph, |_| false);
+                assert_eq!(graph[first].native, comparator || cycle > 0);
+                assert_eq!(graph[second].native, comparator || cycle > 0);
             }
         }
     }
 
     #[test]
-    fn ordering_guard_rejects_shared_inputs_but_preserves_chains_and_constants() {
+    fn ordinary_planning_retains_acyclic_comparator_forks() {
         use crate::redpiler::compile_graph::{CompileLink, CompileNode, LinkType, NodeState};
         let comparator = NodeType::Comparator {
             mode: mchprs_blocks::blocks::ComparatorMode::Subtract,
@@ -252,6 +230,7 @@ mod tests {
                 for fork in [false, true] {
                     let mut graph = CompileGraph::new();
                     let node = |pos, ty| CompileNode {
+                        native: false,
                         ty,
                         block: Some((pos, 0)),
                         block_aliases: Vec::new(),
@@ -259,7 +238,6 @@ mod tests {
                         is_input: false,
                         is_output: false,
                     };
-                    let dynamic = shared_type != NodeType::Constant;
                     let source = graph.add_node(node(BlockPos::new(1, 30, 1), shared_type.clone()));
                     let first = graph.add_node(node(BlockPos::new(2, 30, 1), timed.clone()));
                     let target = graph.add_node(node(BlockPos::new(3, 30, 1), comparator.clone()));
@@ -268,15 +246,9 @@ mod tests {
                     if fork {
                         graph.add_edge(source, target, CompileLink::new(LinkType::Side, 0));
                     }
-                    let result = reject_comparator_ordering(&graph);
-                    if fork && dynamic {
-                        assert!(matches!(
-                            result,
-                            Err(GraphError::UnsupportedComparatorOrdering { .. })
-                        ));
-                    } else {
-                        result.unwrap();
-                    }
+                    execution::plan(&mut graph, |_| false);
+                    assert!(graph[source].native);
+                    assert!(graph[first].native);
                 }
             }
         }
@@ -341,7 +313,7 @@ mod tests {
             assert_eq!(monitor.max_progress(), 11);
             let statistics = monitor.graph_statistics();
             assert_eq!(statistics.passes.len(), 10);
-            assert_eq!(statistics.wire_nodes_elided, optimize);
+            assert!(!statistics.wire_nodes_elided);
             assert_eq!(statistics.passes[0].before, GraphCounts::default());
             assert_eq!(
                 statistics.baseline().unwrap().nodes,

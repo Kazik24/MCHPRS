@@ -20,6 +20,7 @@ pub(super) struct Runtime {
     fired: Vec<bool>,
     elapsed: u64,
     outputs: Vec<Output>,
+    native_outputs: FxHashSet<NodeId>,
     output_sources: FxHashSet<NodeId>,
     actor_groups: Vec<usize>,
     group_fired: Vec<bool>,
@@ -27,9 +28,11 @@ pub(super) struct Runtime {
     memory: Vec<bool>,
     published_memory: Vec<bool>,
     memory_geometry: FxHashMap<BlockPos, Observation>,
+    geometry_index: FxHashMap<BlockPos, Observation>,
     sampling: Vec<SamplingEvent>,
     sampling_groups: Vec<Vec<usize>>,
-    sampling_pending: bool,
+    sampling_changes: Vec<bool>,
+    deliveries: Vec<(BlockPos, Vec<Sample>)>,
     observations: Vec<(BlockPos, Observation, Block)>,
     observations_dirty: bool,
     boundaries: Vec<timing::Boundary>,
@@ -54,13 +57,18 @@ struct SamplingEvent {
     source: SampleSource,
     writer: SampleWriter,
     previous: u8,
-    delivered: bool,
+    native: bool,
 }
 
 struct SamplingTarget {
     actor: usize,
     requires_extended: bool,
-    eligible: bool,
+}
+
+pub(super) struct Sample {
+    pub actor: usize,
+    pub requires_extended: bool,
+    pub power: Option<bool>,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -112,6 +120,103 @@ enum Supply {
 }
 
 impl Runtime {
+    pub(super) fn use_native_sampling(&mut self, owns: impl Fn(BlockPos) -> bool) {
+        for (event, prepared) in self.sampling.iter_mut().zip(&self.program.sampling) {
+            event.native = match prepared.source {
+                SamplingSource::Power { writer, pos, .. } => owns(writer) || owns(pos),
+                _ => false,
+            };
+        }
+    }
+    pub(super) fn use_native_outputs(&mut self, outputs: impl Iterator<Item = NodeId>) {
+        self.native_outputs.extend(outputs);
+    }
+    pub(super) fn geometry_block_at(&self, pos: BlockPos) -> Option<Block> {
+        self.geometry_index
+            .get(&pos)
+            .map(|&observation| self.observed_block(observation))
+    }
+
+    pub(super) fn notification_targets(
+        &mut self,
+        pos: BlockPos,
+        source: Option<BlockPos>,
+    ) -> Option<(BlockPos, Vec<Sample>)> {
+        let Some(source) = source else {
+            return None;
+        };
+        let mut targets = Vec::new();
+        let mut delivery_writer = None;
+        for prepared in &self.program.sampling {
+            let SamplingSource::Power {
+                writer,
+                pos: sampling_pos,
+                ..
+            } = prepared.source
+            else {
+                continue;
+            };
+            if source != writer && source != sampling_pos {
+                continue;
+            }
+            for target in &prepared.targets {
+                let piston = &self.program.pistons[target.actor];
+                if (pos == piston.pos || (target.requires_extended && pos == piston.head))
+                    && !targets
+                        .iter()
+                        .any(|sample: &Sample| sample.actor == target.actor)
+                {
+                    delivery_writer = Some(writer);
+                    targets.push(Sample {
+                        actor: target.actor,
+                        requires_extended: pos == piston.head,
+                        power: None,
+                    });
+                }
+            }
+        }
+        delivery_writer.map(|writer| (writer, targets))
+    }
+
+    pub(super) fn capture_samples(&mut self, nodes: &Nodes, targets: Vec<Sample>) -> Vec<Sample> {
+        let mut state = self.logical.take().unwrap();
+        state
+            .responses
+            .capture(|input, threshold| self.read_input(input, threshold, nodes));
+        let captured = targets
+            .into_iter()
+            .filter_map(|mut target| {
+                if target.power.is_none() {
+                    if target.requires_extended
+                        && !matches!(
+                            self.geometry_block_at(self.program.pistons[target.actor].head),
+                            Some(Block::PistonHead { .. })
+                        )
+                    {
+                        return None;
+                    }
+                    target.power = Some(state.responses.evaluate(target.actor));
+                }
+                Some(target)
+            })
+            .collect();
+        self.logical = Some(state);
+        captured
+    }
+
+    pub(super) fn commit_samples(&mut self, samples: &[Sample]) {
+        for sample in samples {
+            self.memory[sample.actor] = sample.power.unwrap();
+        }
+        #[cfg(test)]
+        if !samples.is_empty() {
+            self.logical.as_mut().unwrap().samples += 1;
+        }
+    }
+
+    pub(super) fn take_deliveries(&mut self) -> Vec<(BlockPos, Vec<Sample>)> {
+        std::mem::take(&mut self.deliveries)
+    }
     /// Bind prepared positions and expressions to backend nodes before activation.
     /// Missing bindings reject the staged runtime instead of publishing partial state.
     pub(super) fn bind(
@@ -318,14 +423,13 @@ impl Runtime {
                 source,
                 writer,
                 previous,
-                delivered: false,
+                native: false,
                 targets: event
                     .targets
                     .iter()
                     .map(|target| SamplingTarget {
                         actor: target.actor,
                         requires_extended: target.requires_extended,
-                        eligible: false,
                     })
                     .collect(),
             });
@@ -481,23 +585,41 @@ impl Runtime {
                 .as_ref()
                 .map_or(0, |clock| clock.memory.len())
         ];
+        let mut geometry_index = FxHashMap::default();
+        for (actor, piston) in program.pistons.iter().enumerate() {
+            for (pos, observation) in [
+                (piston.pos, Observation::Base(actor)),
+                (piston.head, Observation::Near(actor)),
+            ]
+            .into_iter()
+            .chain(
+                (program.payloads[actor_groups[actor]] != Block::Air)
+                    .then_some((piston.payload, Observation::Far(actor))),
+            ) {
+                // Shared physical aliases keep the original first actor's observation.
+                geometry_index.entry(pos).or_insert(observation);
+            }
+        }
         let mut runtime = Self {
             logical,
             fired,
             published_memory: memory.clone(),
             memory,
             memory_geometry,
+            geometry_index,
             group_fired,
             program,
             aliases,
             elapsed: 0,
             outputs,
+            native_outputs: Default::default(),
             output_sources,
             actor_groups,
             memory_actors,
+            sampling_changes: vec![false; sampling.len()],
             sampling,
             sampling_groups,
-            sampling_pending: false,
+            deliveries: Vec::new(),
             observations: Vec::new(),
             observations_dirty: false,
             boundaries,
@@ -548,13 +670,25 @@ impl Runtime {
         stats.logical_input_bindings += response_inputs + output_inputs + sampling_inputs;
     }
 
-    pub(super) fn has_pending_samples(&self) -> bool {
-        self.sampling_pending
-    }
-
     pub(super) fn begin_tick(&mut self) {
         self.elapsed += 1;
         self.in_tick = true;
+    }
+
+    pub(super) fn next_phase_deadline(&self) -> Option<u64> {
+        self.next_boundary
+            .into_iter()
+            .chain(self.bank_deadline)
+            .chain(self.logical.as_ref().unwrap().next_sample)
+            .chain(
+                self.pending_launch
+                    .then_some(self.elapsed + u64::from(!self.in_tick)),
+            )
+            .min()
+    }
+
+    pub(super) fn elapsed(&self) -> u64 {
+        self.elapsed
     }
 
     pub(super) fn end_tick(&mut self) {
@@ -637,7 +771,7 @@ impl Runtime {
             && state
                 .next_sample
                 .is_some_and(|deadline| deadline <= self.elapsed);
-        if state.initialized && !sources_changed && !due && !self.sampling_pending && !bank_due {
+        if state.initialized && !sources_changed && !due && !bank_due {
             if boundary_due || launch_due {
                 if self.advance_boundaries(launch_due) {
                     return self.supply_changes(nodes);
@@ -703,62 +837,32 @@ impl Runtime {
         state
             .sampling
             .capture(|input, threshold| self.read_input(input, threshold, nodes));
-        for event in &mut self.sampling {
+        for (index, event) in self.sampling.iter_mut().enumerate() {
             let strength = Self::sample_strength(event, &mut state, nodes);
-            event.delivered |= std::mem::replace(&mut event.previous, strength) != strength;
+            let changed = std::mem::replace(&mut event.previous, strength) != strength;
+            self.sampling_changes[index] = changed && !event.native;
         }
-        if let Some(events) = self
-            .sampling_groups
-            .iter()
-            .find(|events| events.iter().any(|&event| self.sampling[event].delivered))
-        {
-            // All notifications delivered by one source read one old bank.
-            // Separate source events read the preceding event's committed bank.
-            state
-                .responses
-                .capture(|input, threshold| self.read_input(input, threshold, nodes));
+        for events in &self.sampling_groups {
+            if !events.iter().any(|&event| self.sampling_changes[event]) {
+                continue;
+            }
+            let writer = match self.sampling[events[0]].writer {
+                SampleWriter::Generator(actor) => self.program.pistons[actor].pos,
+                SampleWriter::Power(pos) => pos,
+            };
+            let mut targets = Vec::new();
             for &event in events {
-                let notification = &mut self.sampling[event];
-                if notification.delivered {
-                    for target in &mut notification.targets {
-                        target.eligible = !target.requires_extended || !self.memory[target.actor];
-                        if target.eligible {
-                            self.fired[target.actor] = state.responses.evaluate(target.actor);
-                        }
-                    }
+                if !self.sampling_changes[event] {
+                    continue;
                 }
+                targets.extend(self.sampling[event].targets.iter().map(|target| Sample {
+                    actor: target.actor,
+                    requires_extended: target.requires_extended,
+                    power: None,
+                }));
             }
-            #[cfg(test)]
-            let mut sampled = false;
-            for &event in events {
-                let notification = &mut self.sampling[event];
-                if notification.delivered {
-                    for target in &notification.targets {
-                        if target.eligible {
-                            self.memory[target.actor] = self.fired[target.actor];
-                            #[cfg(test)]
-                            {
-                                sampled = true;
-                            }
-                        }
-                    }
-                    notification.delivered = false;
-                }
-            }
-            #[cfg(test)]
-            {
-                state.samples += u64::from(sampled);
-            }
-            state
-                .responses
-                .capture(|input, threshold| self.read_input(input, threshold, nodes));
-            for actor in 0..self.fired.len() {
-                if !self.memory_actors[actor] {
-                    self.fired[actor] = state.responses.evaluate(actor);
-                }
-            }
+            self.deliveries.push((writer, targets));
         }
-        self.sampling_pending = self.sampling.iter().any(|event| event.delivered);
         self.group_fired.fill(false);
         for (actor, &fired) in self.fired.iter().enumerate() {
             self.group_fired[self.actor_groups[actor]] |= if self.memory_actors[actor] {
@@ -999,6 +1103,13 @@ impl Runtime {
     }
 
     pub(super) fn watch_geometry(&mut self, pos: BlockPos) -> bool {
+        if self
+            .observations
+            .iter()
+            .any(|&(watched, _, _)| watched == pos)
+        {
+            return true;
+        }
         let observation = self
             .program
             .pistons
@@ -1086,7 +1197,9 @@ impl Runtime {
                         strength = candidate;
                     }
                 }
-                (strength != nodes[output.node].output_power).then_some((output.node, strength))
+                (!self.native_outputs.contains(&output.node)
+                    && strength != nodes[output.node].output_power)
+                    .then_some((output.node, strength))
             })
             .collect();
         self.logical = Some(state);

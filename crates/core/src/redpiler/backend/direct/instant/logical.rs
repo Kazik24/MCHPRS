@@ -628,6 +628,7 @@ mod tests {
                 groups: Vec::new(),
                 aliases: Vec::new(),
                 owned: Default::default(),
+                propagation_wires: Default::default(),
                 template: Vec::new(),
                 logical_tick: 0,
                 logic: WaveLogic {

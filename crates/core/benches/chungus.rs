@@ -24,10 +24,30 @@ fn load_world(path: impl AsRef<Path>) -> PlotWorld {
 }
 
 fn init_compiler() -> Compiler {
-    let world = load_world("./benches/chungus_mandelbrot_plot");
+    let mut world = load_world("./benches/chungus_mandelbrot_plot");
     let mut compiler: Compiler = Default::default();
+    if std::env::var_os("MCHPRS_BENCH_INSTANT").is_some() {
+        let fixture =
+            std::fs::File::open("../../test_data/instant-pistons-io/INSTANT_OBSERVER.schem")
+                .unwrap();
+        let clipboard = mchprs_core::plot::worldedit::load_schematic(fixture).unwrap();
+        mchprs_core::plot::worldedit::paste_clipboard(
+            &mut world,
+            &clipboard,
+            BlockPos::new(
+                4 + clipboard.offset_x,
+                220 + clipboard.offset_y,
+                4 + clipboard.offset_z,
+            ),
+            false,
+        );
+    }
 
-    let options = CompilerOptions::parse("-O").unwrap();
+    let mut options = CompilerOptions::parse("-O").unwrap();
+    if std::env::var_os("MCHPRS_BENCH_INSTANT").is_some() {
+        // Port discovery also traverses the ordinary CPU's large dust network.
+        options.budget_multiplier = 8;
+    }
     let bounds = world.get_corners();
     let monitor = Default::default();
     compiler

@@ -16,7 +16,7 @@ pub(crate) fn update_far_neighbors(world: &mut impl World, pos: BlockPos) {
             let far = adjacent.offset(face);
             let block = world.get_block(far);
             if matches!(block, Block::RedstoneComparator { .. }) {
-                super::update(block, world, far, None);
+                super::update_from(block, world, far, None, pos);
             }
         }
     }
@@ -36,7 +36,14 @@ fn get_power_on_side(world: &impl World, pos: BlockPos, side: BlockDirection) ->
     }
 }
 
-fn get_power_on_sides(comp: RedstoneComparator, world: &impl World, pos: BlockPos) -> u8 {
+pub(crate) fn get_power_on_sides(
+    comp: RedstoneComparator,
+    world: &impl World,
+    pos: BlockPos,
+) -> u8 {
+    if let Some(input) = world.resolved_redstone_input(pos, true) {
+        return input;
+    }
     std::cmp::max(
         get_power_on_side(world, pos, comp.facing.rotate()),
         get_power_on_side(world, pos, comp.facing.rotate_ccw()),
@@ -146,7 +153,7 @@ fn calculate_output_strength(
 
 fn on_state_change(comp: RedstoneComparator, world: &mut impl World, pos: BlockPos) {
     let output_face = comp.facing.opposite().block_face();
-    super::update_output_neighbors(world, pos.offset(output_face), output_face);
+    super::update_output_neighbors(world, pos.offset(output_face), output_face, pos);
 }
 
 pub fn update(comp: RedstoneComparator, world: &mut impl World, pos: BlockPos) {

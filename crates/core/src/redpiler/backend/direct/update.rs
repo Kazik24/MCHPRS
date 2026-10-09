@@ -21,7 +21,7 @@ pub(super) fn observed_state(node: &Node) -> (bool, bool, u8) {
 }
 
 pub(super) fn notify_observers(
-    scheduler: &mut TickScheduler<NodeId>,
+    scheduler: &mut TickScheduler<RuntimeTick>,
     nodes: &mut Nodes,
     observers: &[NodeId],
 ) {
@@ -35,7 +35,7 @@ pub(super) fn notify_observers(
 
 #[inline(always)]
 pub(super) fn update_node(
-    scheduler: &mut TickScheduler<NodeId>,
+    scheduler: &mut TickScheduler<RuntimeTick>,
     events: &mut Vec<Event>,
     nodes: &mut Nodes,
     node_id: NodeId,
@@ -46,7 +46,7 @@ pub(super) fn update_node(
 }
 
 fn update_node_inner(
-    scheduler: &mut TickScheduler<NodeId>,
+    scheduler: &mut TickScheduler<RuntimeTick>,
     events: &mut Vec<Event>,
     nodes: &mut Nodes,
     node_id: NodeId,
@@ -73,7 +73,7 @@ fn update_node_inner(
             }
             if schedule {
                 node.pending_tick = true;
-                scheduler.schedule_half_tick(node_id, 1, TickPriority::Normal);
+                scheduler.schedule_half_tick(node_id.into(), 1, TickPriority::Normal);
             }
         }
         NodeType::Repeater {

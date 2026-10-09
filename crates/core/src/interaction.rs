@@ -616,6 +616,9 @@ pub fn is_valid_position(block: Block, world: &impl World, pos: BlockPos) -> boo
 }
 
 pub fn change(block: Block, world: &mut impl World, pos: BlockPos, direction: BlockFace) {
+    if world.dispatch_neighbor_shape_update(pos, direction) {
+        return;
+    }
     if !is_valid_position(block, world, pos) {
         destroy(block, world, pos);
         return;

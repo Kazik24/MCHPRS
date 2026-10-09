@@ -119,6 +119,44 @@ pub struct ScheduledBlockTick {
     pub block_type: Option<u32>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum RuntimeTick {
+    Node(NodeId),
+    Block(ScheduledBlockTick),
+}
+
+impl From<NodeId> for RuntimeTick {
+    fn from(node: NodeId) -> Self {
+        Self::Node(node)
+    }
+}
+
+impl TickScheduler<RuntimeTick> {
+    pub(crate) fn reset_runtime(
+        &mut self,
+        world: &mut impl World,
+        blocks: &[Option<(BlockPos, Block)>],
+        aliases: &FxHashMap<usize, Vec<(BlockPos, Block)>>,
+    ) {
+        for (entry, delay, priority) in self.iter() {
+            match entry {
+                RuntimeTick::Block(entry) => {
+                    world.schedule_half_tick(entry.pos, delay as u32, priority)
+                }
+                RuntimeTick::Node(node) => {
+                    if let Some((pos, _)) = blocks[node.index()] {
+                        world.schedule_half_tick(pos, delay as u32, priority);
+                        for &(pos, _) in aliases.get(&node.index()).into_iter().flatten() {
+                            world.schedule_half_tick(pos, delay as u32, priority);
+                        }
+                    }
+                }
+            }
+        }
+        self.clear();
+    }
+}
+
 impl TickScheduler<ScheduledBlockTick> {
     pub fn iter_entries(&self) -> impl Iterator<Item = TickEntry> + '_ {
         self.iter().map(|(node, d, p)| TickEntry {

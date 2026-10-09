@@ -84,6 +84,21 @@ fn load(blocks: &[(BlockPos, Block)], warmup: u32) -> PlotWorld {
 }
 
 fn compare(seed: u64, optimize: bool) -> Result<(), String> {
+    compare_mixed(seed, optimize, None)
+}
+
+fn attach_assembly(world: &mut PlotWorld, name: &str) {
+    let (source, bounds, _) = fixture(name);
+    let shift = BlockPos::new(80, 0, 80);
+    crate::world::for_each_block_optimized(&source, bounds.0, bounds.1, |pos| {
+        world.set_block(pos + shift, source.get_block(pos));
+        if let Some(entity) = source.get_block_entity(pos) {
+            world.set_block_entity(pos + shift, entity.clone());
+        }
+    });
+}
+
+fn compare_mixed(seed: u64, optimize: bool, assembly: Option<&str>) -> Result<(), String> {
     let mut rng = StdRng::seed_from_u64(seed);
     let blocks = circuit(&mut rng);
     let warmup = rng.gen_range(0..=16);
@@ -98,6 +113,10 @@ fn compare(seed: u64, optimize: bool) -> Result<(), String> {
         .collect();
     let mut native = load(&blocks, warmup);
     let mut compiled = load(&blocks, warmup);
+    if let Some(name) = assembly {
+        attach_assembly(&mut native, name);
+        attach_assembly(&mut compiled, name);
+    }
     let bounds = compiled.get_corners();
     let mut compiler = Compiler::default();
     match compiler.compile(
@@ -118,7 +137,6 @@ fn compare(seed: u64, optimize: bool) -> Result<(), String> {
         }
     }
     compiled.clear_scheduled_ticks();
-    let native_propagation = compiler.stats().unwrap().graph.native_propagation;
 
     for (step, &(z, powered, wait)) in actions.iter().enumerate() {
         let input = BASE + BlockPos::new(0, 0, z);
@@ -147,7 +165,7 @@ fn compare(seed: u64, optimize: bool) -> Result<(), String> {
             for &(pos, block) in &blocks {
                 // The native executor retains dust even when optimization is requested.
                 if block != Block::Air
-                    && (native_propagation || !matches!(block, Block::RedstoneWire { .. }))
+                    && (compiler.native_owns(pos) || !matches!(block, Block::RedstoneWire { .. }))
                 {
                     let actual = compiled.get_block(pos);
                     let expected = native.get_block(pos);
@@ -218,6 +236,35 @@ fn feedback_fuzz_seeds_compile_and_match_native_callback_order() {
     for seed in [121, 844, 2791, 7604, 8039, 9037, 9545] {
         for optimize in [false, true] {
             compare(seed, optimize).unwrap();
+        }
+    }
+}
+
+#[test]
+fn disconnected_assembly_preserves_ordinary_ordering_seeds() {
+    for seed in [121, 844, 2791, 7604, 8039, 9037, 9545] {
+        for optimize in [false, true] {
+            compare_mixed(seed, optimize, Some("instant_observer")).unwrap();
+        }
+    }
+}
+
+#[test]
+fn known_valid_assemblies_extend_generated_ordinary_networks() {
+    for name in [
+        "instant_chain",
+        "instant_observer",
+        "instant_torch",
+        "adder_1bit",
+        "counter_basic",
+        "bud_noninstantinputs",
+        "bud_instantmemorycellobserverupdate",
+    ] {
+        for seed in 0..8 {
+            for optimize in [false, true] {
+                compare_mixed(seed, optimize, Some(name))
+                    .unwrap_or_else(|error| panic!("{name}: {error}"));
+            }
         }
     }
 }

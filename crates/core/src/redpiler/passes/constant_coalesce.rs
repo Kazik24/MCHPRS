@@ -38,6 +38,7 @@ pub(super) fn run(graph: &mut CompileGraph) -> Result<(), super::GraphError> {
                 Entry::Occupied(entry) => *entry.get(),
                 Entry::Vacant(entry) => {
                     let constant_idx = graph.add_node(CompileNode {
+                        native: false,
                         ty: NodeType::Constant,
                         block: None,
                         block_aliases: Vec::new(),
@@ -65,6 +66,7 @@ mod tests {
     fn replacement_constant_survives_reused_graph_slot() {
         let mut graph = CompileGraph::new();
         let node = |ty, state, is_output| CompileNode {
+            native: false,
             ty,
             state,
             is_output,

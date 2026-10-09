@@ -275,6 +275,10 @@ pub struct Compiler {
 
 impl Compiler {
     #[cfg(test)]
+    pub(crate) fn native_owns(&self, pos: BlockPos) -> bool {
+        self.backend.as_ref().unwrap().native_owns(pos)
+    }
+    #[cfg(test)]
     pub(crate) fn ordinary_sources(&self) -> Vec<(BlockPos, u8)> {
         self.backend.as_ref().unwrap().ordinary_sources()
     }
@@ -346,13 +350,14 @@ impl Compiler {
         let preparation_start = Instant::now();
         let (graph, instant, native) = if report.pistons.is_empty() {
             let (graph, native) =
-                passes::prepare(&options, &input, &monitor, true).map_err(CompileError::Graph)?;
+                passes::prepare(&options, &input, &monitor).map_err(CompileError::Graph)?;
             (graph, Vec::new(), native)
         } else {
             let (graph, program) =
                 instant::program::prepare(world, &report, &ticks, &options, monitor.clone())
                     .map_err(CompileError::Instant)?;
-            (graph, program, false)
+            let native = graph.node_weights().any(|node| node.native);
+            (graph, program, native)
         };
         let preparation_and_graph_duration = preparation_start.elapsed();
         let graph_statistics = monitor.graph_statistics();
@@ -371,20 +376,16 @@ impl Compiler {
         trace!("Compiling backend");
         monitor.set_message("Compiling backend".to_string());
         let backend_start = Instant::now();
-        let backend = if native {
-            if options.export_dot_graph {
-                return Err(CompileError::Graph(
-                    compile_graph::GraphError::UnsupportedNativeExport,
-                ));
-            }
-            Runtime::native(world, bounds, &graph, ticks, &monitor)?
-        } else {
-            let mut backend = DirectBackend::default();
-            backend
-                .compile(graph, ticks, &options, instant)
-                .map_err(CompileError::Backend)?;
-            Runtime::Direct(backend)
-        };
+        if native && options.export_dot_graph {
+            return Err(CompileError::Graph(
+                compile_graph::GraphError::UnsupportedNativeExport,
+            ));
+        }
+        let mut backend = DirectBackend::default();
+        backend.attach_native(world, bounds, &graph, &monitor)?;
+        backend
+            .compile(graph, ticks, &options, instant)
+            .map_err(CompileError::Backend)?;
         let backend_duration = backend_start.elapsed();
         if monitor.cancelled() {
             return Err(CompileError::Cancelled);

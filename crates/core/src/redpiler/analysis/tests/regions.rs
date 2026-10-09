@@ -1,6 +1,43 @@
 use super::*;
 
 #[test]
+fn overlapping_consumer_channels_merge_regions_before_lowering() {
+    let (mut world, _, _) = fixture("instant_observer");
+    let (second, bounds, _) = fixture("instant_observer");
+    let shift = BlockPos::new(64, 0, 48);
+    crate::world::for_each_block_optimized(&second, bounds.0, bounds.1, |pos| {
+        let block = second.get_block(pos);
+        if block != Block::Air {
+            world.set_block(pos + shift, block);
+        }
+    });
+    let mut report = analyze_world(&world);
+    let monitor = Default::default();
+    assert_eq!(
+        crate::redpiler::instant::regions::split(&world, &report, &monitor)
+            .unwrap()
+            .len(),
+        2
+    );
+    let first = report.ports.outputs[0].clone();
+    let other = report
+        .ports
+        .outputs
+        .iter_mut()
+        .find(|output| output.consumer.x >= BASE.x + shift.x)
+        .unwrap();
+    other.consumer = first.consumer;
+    other.input = first.input;
+    // No shared electrical dependency is needed: channel ownership itself merges.
+    assert_eq!(
+        crate::redpiler::instant::regions::split(&world, &report, &monitor)
+            .unwrap()
+            .len(),
+        1
+    );
+}
+
+#[test]
 fn empty_ordinary_clock_preserves_stationary_far_context() {
     for assume_instant in [false, true] {
         for optimize in [false, true] {

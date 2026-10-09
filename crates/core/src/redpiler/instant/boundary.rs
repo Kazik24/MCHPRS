@@ -17,6 +17,8 @@ pub(crate) struct Boundaries<'a> {
     consumers: FxHashSet<BlockPos>,
     hidden: FxHashSet<BlockPos>,
     retained: FxHashSet<BlockPos>,
+    propagation_wires: FxHashSet<BlockPos>,
+    callback_writers: FxHashSet<BlockPos>,
     pub executable: bool,
     pub outputs: &'a [OutputPort],
     output_channels: FxHashMap<(BlockPos, bool), usize>,
@@ -39,6 +41,8 @@ impl<'a> Boundaries<'a> {
             consumers,
             hidden: Default::default(),
             retained: Default::default(),
+            propagation_wires: Default::default(),
+            callback_writers: Default::default(),
             executable: false,
             outputs: &[],
             output_channels: Default::default(),
@@ -52,25 +56,33 @@ impl<'a> Boundaries<'a> {
         outputs: &'a [OutputPort],
         owned: &FxHashSet<BlockPos>,
         empty_far: &FxHashSet<BlockPos>,
-    ) -> Self {
+        propagation_wires: &FxHashSet<BlockPos>,
+    ) -> Result<Self, String> {
         let mut result = Self::new(report);
         result.executable = true;
         result.outputs = outputs;
-        result.output_channels = outputs
-            .iter()
-            .enumerate()
-            .map(|(id, port)| {
-                (
+        for (id, port) in outputs.iter().enumerate() {
+            if result
+                .output_channels
+                .insert(
                     (port.consumer, port.input == ConsumerInput::ComparatorSide),
                     id,
                 )
-            })
-            .collect();
+                .is_some()
+            {
+                return Err(format!(
+                    "consumer at {:?} has duplicate instant output channel ownership",
+                    port.consumer
+                ));
+            }
+        }
         result
             .consumers
             .extend(outputs.iter().map(|port| port.consumer));
         result.hidden.extend(wires.iter().copied());
         result.hidden.extend(owned.iter().copied());
+        result.propagation_wires = propagation_wires.clone();
+        result.hidden.retain(|pos| !propagation_wires.contains(pos));
         // Compile-owned reset/clock observers have no ordinary graph source;
         // electrical search must omit them just as logical extraction does.
         result.internals.extend(
@@ -88,12 +100,24 @@ impl<'a> Boundaries<'a> {
             .internals
             .retain(|pos| !result.retained.contains(pos));
         result.hidden.retain(|pos| !result.retained.contains(pos));
-        result
+        Ok(result)
     }
 
     pub fn projects(&self, pos: BlockPos, input: LinkType) -> bool {
         self.output_channels
             .contains_key(&(pos, input == LinkType::Side))
+    }
+
+    pub fn is_propagation_wire(&self, pos: BlockPos) -> bool {
+        self.propagation_wires.contains(&pos)
+    }
+
+    pub fn require_callbacks(&mut self, writer: BlockPos) {
+        self.callback_writers.insert(writer);
+    }
+
+    pub fn needs_callbacks(&self, pos: BlockPos) -> bool {
+        self.callback_writers.contains(&pos)
     }
 
     pub fn is_retained(&self, pos: BlockPos) -> bool {

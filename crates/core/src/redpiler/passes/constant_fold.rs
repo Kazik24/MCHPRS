@@ -21,7 +21,7 @@ fn fold(graph: &mut CompileGraph, world: &impl World) -> usize {
 
     'nodes: for i in 0..graph.node_bound() {
         let idx = NodeIdx::new(i);
-        if !graph.contains_node(idx) || graph[idx].state.pending_tick {
+        if !graph.contains_node(idx) || graph[idx].native || graph[idx].state.pending_tick {
             continue;
         }
         if let Some((pos, id)) = graph[idx].block {
