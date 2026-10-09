@@ -68,7 +68,10 @@ pub(super) fn run_passes<W: World>(
     run("Searching for links", true, &|graph| {
         input_search::run(graph, input)
     })?;
-    run("Clamping weights", true, &clamp_weights::run)?;
+    run("Clamping weights", true, &|graph| {
+        clamp_weights::run(graph)?;
+        reject_comparator_ordering(graph)
+    })?;
 
     run("Deduplicating links", options.optimize, &dedup_links::run)?;
     run("Constant folding", options.optimize, &|graph| {
@@ -99,6 +102,52 @@ pub(super) fn run_passes<W: World>(
     Ok(graph)
 }
 
+fn reject_comparator_ordering(graph: &CompileGraph) -> Result<(), GraphError> {
+    use super::compile_graph::NodeType;
+    use petgraph::Direction;
+    use rustc_hash::FxHashSet;
+
+    if !graph
+        .node_weights()
+        .any(|node| matches!(node.ty, NodeType::Comparator { .. }))
+    {
+        return Ok(());
+    }
+    // Collapsed dust links cannot preserve native callback order around feedback.
+    for component in petgraph::algo::kosaraju_scc(graph) {
+        for &id in &component {
+            if matches!(graph[id].ty, NodeType::Comparator { .. })
+                && (component.len() > 1 || graph.contains_edge(id, id))
+            {
+                return Err(GraphError::UnsupportedComparatorFeedback {
+                    pos: graph[id].block.expect("ordinary comparator has a block").0,
+                });
+            }
+        }
+    }
+    // shortcut: reject direct shared-input forks; extend to deeper reconvergence if it diverges.
+    for id in graph.node_indices() {
+        if !matches!(graph[id].ty, NodeType::Comparator { .. }) {
+            continue;
+        }
+        let inputs: FxHashSet<_> = graph.neighbors_directed(id, Direction::Incoming).collect();
+        for &source in &inputs {
+            if matches!(
+                graph[source].ty,
+                NodeType::Repeater { .. } | NodeType::Comparator { .. } | NodeType::Torch
+            ) && graph
+                .neighbors_directed(source, Direction::Incoming)
+                .any(|shared| inputs.contains(&shared) && graph[shared].ty != NodeType::Constant)
+            {
+                return Err(GraphError::UnsupportedComparatorOrdering {
+                    pos: graph[id].block.expect("ordinary comparator has a block").0,
+                });
+            }
+        }
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -107,6 +156,106 @@ mod tests {
     use crate::world::storage::Chunk;
     use mchprs_blocks::blocks::{Block, Lever, LeverFace, RedstoneRepeater, RedstoneWire};
     use mchprs_blocks::{BlockDirection, BlockPos};
+
+    #[test]
+    fn feedback_guard_rejects_comparator_cycles_but_accepts_feedforward_logic() {
+        use crate::redpiler::compile_graph::{
+            CompileLink, CompileNode, LinkType, NodeState, NodeType,
+        };
+
+        for comparator in [false, true] {
+            for cycle in [0, 1, 2] {
+                let mut graph = CompileGraph::new();
+                let node = |pos, ty| CompileNode {
+                    ty,
+                    block: Some((pos, 0)),
+                    block_aliases: Vec::new(),
+                    state: NodeState::default(),
+                    is_input: false,
+                    is_output: false,
+                };
+                let ty = if comparator {
+                    NodeType::Comparator {
+                        mode: mchprs_blocks::blocks::ComparatorMode::Subtract,
+                        far_input: None,
+                        facing_diode: false,
+                    }
+                } else {
+                    NodeType::Repeater {
+                        delay: 1,
+                        facing_diode: false,
+                    }
+                };
+                let first = graph.add_node(node(BlockPos::new(1, 30, 1), ty));
+                let second = graph.add_node(node(BlockPos::new(2, 30, 1), NodeType::Torch));
+                graph.add_edge(first, second, CompileLink::new(LinkType::Default, 0));
+                if cycle == 1 {
+                    graph.add_edge(first, first, CompileLink::new(LinkType::Side, 1));
+                } else if cycle == 2 {
+                    graph.add_edge(second, first, CompileLink::new(LinkType::Default, 0));
+                }
+                let result = reject_comparator_ordering(&graph);
+                if comparator && cycle > 0 {
+                    assert!(matches!(
+                        result,
+                        Err(GraphError::UnsupportedComparatorFeedback { .. })
+                    ));
+                } else {
+                    result.unwrap();
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn ordering_guard_rejects_shared_inputs_but_preserves_chains_and_constants() {
+        use crate::redpiler::compile_graph::{CompileLink, CompileNode, LinkType, NodeState};
+        let comparator = NodeType::Comparator {
+            mode: mchprs_blocks::blocks::ComparatorMode::Subtract,
+            far_input: None,
+            facing_diode: false,
+        };
+        for timed in [
+            comparator.clone(),
+            NodeType::Repeater {
+                delay: 1,
+                facing_diode: false,
+            },
+            NodeType::Torch,
+        ] {
+            for shared_type in [NodeType::Lever, NodeType::Constant] {
+                for fork in [false, true] {
+                    let mut graph = CompileGraph::new();
+                    let node = |pos, ty| CompileNode {
+                        ty,
+                        block: Some((pos, 0)),
+                        block_aliases: Vec::new(),
+                        state: NodeState::default(),
+                        is_input: false,
+                        is_output: false,
+                    };
+                    let dynamic = shared_type != NodeType::Constant;
+                    let source = graph.add_node(node(BlockPos::new(1, 30, 1), shared_type.clone()));
+                    let first = graph.add_node(node(BlockPos::new(2, 30, 1), timed.clone()));
+                    let target = graph.add_node(node(BlockPos::new(3, 30, 1), comparator.clone()));
+                    graph.add_edge(source, first, CompileLink::new(LinkType::Side, 0));
+                    graph.add_edge(first, target, CompileLink::new(LinkType::Default, 0));
+                    if fork {
+                        graph.add_edge(source, target, CompileLink::new(LinkType::Side, 0));
+                    }
+                    let result = reject_comparator_ordering(&graph);
+                    if fork && dynamic {
+                        assert!(matches!(
+                            result,
+                            Err(GraphError::UnsupportedComparatorOrdering { .. })
+                        ));
+                    } else {
+                        result.unwrap();
+                    }
+                }
+            }
+        }
+    }
 
     #[test]
     fn pipeline_preserves_required_passes_flags_progress_and_cancellation() {

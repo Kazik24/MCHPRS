@@ -239,6 +239,20 @@ pub fn compile(
         .node_weights()
         .map(|node| node.block.map(|(pos, id)| (pos, Block::from_id(id))))
         .collect();
+    backend.block_aliases = graph
+        .node_indices()
+        .filter(|&idx| !graph[idx].block_aliases.is_empty())
+        .map(|idx| {
+            (
+                nodes_map[&idx],
+                graph[idx]
+                    .block_aliases
+                    .iter()
+                    .map(|&(pos, id)| (pos, Block::from_id(id)))
+                    .collect(),
+            )
+        })
+        .collect();
     backend.nodes = Nodes::new(nodes);
     if !instant.is_empty() {
         let bindings = graph
@@ -288,6 +302,11 @@ pub fn compile(
     // Create a mapping from block pos to backend NodeId
     for i in 0..backend.blocks.len() {
         if let Some((pos, _)) = backend.blocks[i] {
+            backend.pos_map.insert(pos, backend.nodes.get(i));
+        }
+    }
+    for (&i, aliases) in &backend.block_aliases {
+        for &(pos, _) in aliases {
             backend.pos_map.insert(pos, backend.nodes.get(i));
         }
     }
@@ -435,6 +454,7 @@ mod tests {
         CompileNode {
             ty,
             block: None,
+            block_aliases: Vec::new(),
             state: NodeState::with_strength(strength),
             is_input: false,
             is_output: false,

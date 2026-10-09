@@ -101,6 +101,8 @@ impl NodeState {
 pub struct CompileNode {
     pub ty: NodeType,
     pub block: Option<(BlockPos, u32)>,
+    /// Physical blocks sharing this node after logic coalescing.
+    pub block_aliases: Vec<(BlockPos, u32)>,
     pub state: NodeState,
 
     pub is_input: bool,
@@ -152,6 +154,12 @@ pub enum GraphError {
     UnsupportedCommandBlockExport,
     UnsupportedObserverExport,
     UnsupportedCopperBulbExport,
+    UnsupportedComparatorFeedback {
+        pos: BlockPos,
+    },
+    UnsupportedComparatorOrdering {
+        pos: BlockPos,
+    },
     UnsupportedObserverWatch {
         observer: BlockPos,
         watched: BlockPos,
@@ -182,6 +190,14 @@ impl std::fmt::Display for GraphError {
             Self::UnsupportedCopperBulbExport => {
                 f.write_str("copper-bulb state cannot be exported in the electrical graph format")
             }
+            Self::UnsupportedComparatorFeedback { pos } => write!(
+                f,
+                "comparator feedback at {pos:?} requires native dust callback ordering; keep this circuit interpreted"
+            ),
+            Self::UnsupportedComparatorOrdering { pos } => write!(
+                f,
+                "shared-input diode/comparator paths at {pos:?} require native dust callback ordering; keep this circuit interpreted"
+            ),
             Self::UnsupportedObserverWatch {
                 observer,
                 watched,

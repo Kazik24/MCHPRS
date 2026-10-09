@@ -47,6 +47,7 @@ enum Event {
 pub struct DirectBackend {
     nodes: Nodes,
     blocks: Vec<Option<(BlockPos, Block)>>,
+    block_aliases: FxHashMap<usize, Vec<(BlockPos, Block)>>,
     pos_map: FxHashMap<BlockPos, NodeId>,
     scheduler: TickScheduler<NodeId>,
     events: Vec<Event>,
@@ -383,9 +384,11 @@ impl DirectBackend {
         for runtime in std::mem::take(&mut self.instant) {
             runtime.materialize(world);
         }
-        self.scheduler.reset(world, &self.blocks);
+        self.scheduler
+            .reset(world, &self.blocks, &self.block_aliases);
 
         self.pos_map.clear();
+        self.block_aliases.clear();
         self.noteblock_info.clear();
         self.far_comparators.clear();
         self.instant_dependencies.clear();
@@ -485,28 +488,30 @@ impl DirectBackend {
             }
         }
         for (i, node) in self.nodes.inner_mut().iter_mut().enumerate() {
-            let Some((pos, block)) = &mut self.blocks[i] else {
-                continue;
-            };
             if node.changed && (!io_only || node.is_io) {
-                if let Some(powered) = block_powered_mut(block) {
-                    *powered = node.powered
-                }
-                if let Some(plate) = block.with_pressure_plate_power(node.powered) {
-                    *block = plate;
-                }
-                if let Some(bulb) =
-                    block.with_copper_bulb_state(node.output_power > 0, node.powered)
+                for (pos, block) in self.blocks[i]
+                    .iter_mut()
+                    .chain(self.block_aliases.get_mut(&i).into_iter().flatten())
                 {
-                    *block = bulb;
+                    if let Some(powered) = block_powered_mut(block) {
+                        *powered = node.powered
+                    }
+                    if let Some(plate) = block.with_pressure_plate_power(node.powered) {
+                        *block = plate;
+                    }
+                    if let Some(bulb) =
+                        block.with_copper_bulb_state(node.output_power > 0, node.powered)
+                    {
+                        *block = bulb;
+                    }
+                    if let Block::RedstoneWire { wire, .. } = block {
+                        wire.power = node.output_power
+                    };
+                    if let Block::RedstoneRepeater { repeater } = block {
+                        repeater.locked = node.locked;
+                    }
+                    world.set_block(*pos, *block);
                 }
-                if let Block::RedstoneWire { wire, .. } = block {
-                    wire.power = node.output_power
-                };
-                if let Block::RedstoneRepeater { repeater } = block {
-                    repeater.locked = node.locked;
-                }
-                world.set_block(*pos, *block);
             }
             node.changed = false;
         }

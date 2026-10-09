@@ -332,10 +332,19 @@ inputs, outputs, and pending work protect nodes from ordinary removal. With
 optimization, removed dust display nodes no longer maintain their world powers,
 although physical dust still determines link attenuation during compilation.
 
+After weight clamping, directed cycles containing an ordinary comparator
+(including self-feedback) reject compilation. The interpreter keeps scheduler
+ownership: native dust callback ordering is not represented by collapsed graph
+links. This applies with optimization enabled or disabled.
+A direct shared nonconstant input to a diode and its downstream comparator is
+also rejected: equal-deadline callback ordering can diverge without a cycle.
+
 Comparator-output pruning applies side-edge attenuation and includes the saved
 comparator output in its bound. Logic coalescing requires equal incoming
 channels, equivalent attenuation, and equal type and state. Boolean consumers
 of 0/15 sources can share inputs with different attenuations below 15. The
+coalesced node retains every physical block alias for display flushing and reset,
+including pending native deadlines at each alias position. The
 [optimizer reference](REDPILER_OPTIMIZER.md) records each pass's guards;
 backend validation does not repair an incorrect rewrite.
 

@@ -40,6 +40,7 @@ pub(super) fn run(graph: &mut CompileGraph) -> Result<(), super::GraphError> {
                     let constant_idx = graph.add_node(CompileNode {
                         ty: NodeType::Constant,
                         block: None,
+                        block_aliases: Vec::new(),
                         state: NodeState::with_strength(strength),
                         is_input: false,
                         is_output: false,
@@ -69,6 +70,7 @@ mod tests {
             is_output,
             is_input: false,
             block: None,
+            block_aliases: Vec::new(),
         };
         let constant = graph.add_node(node(
             NodeType::Constant,

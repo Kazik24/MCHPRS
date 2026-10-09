@@ -44,6 +44,53 @@ fn advance(compiler: &mut Compiler, world: &mut PlotWorld, ticks: usize) {
 }
 
 #[test]
+fn coalescing_retains_transitive_physical_aliases() {
+    let mut graph = CompileGraph::new();
+    let source = graph.add_node(CompileNode {
+        ty: NodeType::Lever,
+        block: None,
+        block_aliases: Vec::new(),
+        state: NodeState::default(),
+        is_input: true,
+        is_output: false,
+    });
+    let positions = [
+        BlockPos::new(1, 30, 1),
+        BlockPos::new(2, 30, 1),
+        BlockPos::new(3, 30, 1),
+    ];
+    let alias = BlockPos::new(4, 30, 1);
+    for (i, pos) in positions.into_iter().enumerate() {
+        let id = graph.add_node(CompileNode {
+            ty: NodeType::Repeater {
+                delay: 2,
+                facing_diode: false,
+            },
+            block: Some((pos, 0)),
+            block_aliases: if i == 0 { vec![(alias, 0)] } else { Vec::new() },
+            state: NodeState::default(),
+            is_input: false,
+            is_output: false,
+        });
+        graph.add_edge(source, id, CompileLink::new(LinkType::Default, 0));
+    }
+    super::coalesce::run(&mut graph).unwrap();
+    assert_eq!(graph.node_count(), 2);
+    let repeater = graph.node_weights().find(|node| !node.is_input).unwrap();
+    let mut restored = repeater
+        .block
+        .into_iter()
+        .chain(repeater.block_aliases.iter().copied())
+        .map(|(pos, _)| pos)
+        .collect::<Vec<_>>();
+    restored.sort_by_key(|pos| pos.x);
+    assert_eq!(
+        restored,
+        positions.into_iter().chain([alias]).collect::<Vec<_>>()
+    );
+}
+
+#[test]
 fn attenuated_constant_side_preserves_comparator_lamp_output() {
     let run = |optimize| {
         let mut world = world();
@@ -103,6 +150,7 @@ fn comparator_pruning_preserves_a_larger_saved_output() {
     let node = |ty, strength| CompileNode {
         ty,
         block: None,
+        block_aliases: Vec::new(),
         state: NodeState::comparator(strength > 0, strength),
         is_input: false,
         is_output: true,
@@ -338,6 +386,7 @@ fn graph_coalescing_preserves_input_channel_and_attenuation() {
         let node = |ty, is_input| CompileNode {
             ty,
             block: None,
+            block_aliases: Vec::new(),
             state: NodeState::default(),
             is_input,
             is_output: false,

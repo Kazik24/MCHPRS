@@ -1,6 +1,7 @@
 //! Deterministic differential fuzzing. MCHPRS_REDSTONE_FUZZ_SEED selects the first
 //! case; MCHPRS_REDSTONE_FUZZ_CASES sets the count (defaults: 0 and 64).
 use super::*;
+use crate::redpiler::compile_graph::GraphError;
 use mchprs_blocks::block_entities::BlockEntity;
 use mchprs_blocks::blocks::{
     ComparatorMode, Lever, LeverFace, RedstoneComparator, RedstoneRepeater, RedstoneWire,
@@ -83,7 +84,7 @@ fn load(blocks: &[(BlockPos, Block)], warmup: u32) -> PlotWorld {
     world
 }
 
-fn compare(seed: u64, optimize: bool) -> Result<(), String> {
+fn compare(seed: u64, optimize: bool) -> Result<bool, String> {
     let mut rng = StdRng::seed_from_u64(seed);
     let blocks = circuit(&mut rng);
     let warmup = rng.gen_range(0..=16);
@@ -100,18 +101,30 @@ fn compare(seed: u64, optimize: bool) -> Result<(), String> {
     let mut compiled = load(&blocks, warmup);
     let bounds = compiled.get_corners();
     let mut compiler = Compiler::default();
-    compiler
-        .compile(
-            &compiled,
-            bounds,
-            CompilerOptions {
-                optimize,
-                ..Default::default()
-            },
-            compiled.scheduler().iter_entries().collect(),
-            Default::default(),
-        )
-        .map_err(|error| format!("seed={seed} optimize={optimize} compile error: {error}"))?;
+    match compiler.compile(
+        &compiled,
+        bounds,
+        CompilerOptions {
+            optimize,
+            ..Default::default()
+        },
+        compiled.scheduler().iter_entries().collect(),
+        Default::default(),
+    ) {
+        Ok(()) => (),
+        Err(CompileError::Graph(
+            GraphError::UnsupportedComparatorFeedback { .. }
+            | GraphError::UnsupportedComparatorOrdering { .. },
+        )) => {
+            assert!(!compiler.is_active());
+            return Ok(false);
+        }
+        Err(error) => {
+            return Err(format!(
+                "seed={seed} optimize={optimize} compile error: {error}"
+            ))
+        }
+    }
     compiled.clear_scheduled_ticks();
 
     for (step, &(z, powered, wait)) in actions.iter().enumerate() {
@@ -126,6 +139,18 @@ fn compare(seed: u64, optimize: bool) -> Result<(), String> {
                 compiler.tick_with_world(&mut compiled);
             }
             compiler.flush(&mut compiled);
+            for (pos, actual) in compiler.ordinary_sources() {
+                if matches!(native.get_block(pos), Block::RedstoneComparator { .. }) {
+                    let expected =
+                        crate::redstone::source_strength(native.get_block(pos), &native, pos);
+                    if actual != expected {
+                        return Err(format!(
+                            "seed={seed} optimize={optimize} warmup={warmup} step={step} tick={tick} comparator strength at {pos:?} actual={actual} expected={expected}; circuit={blocks:?}; actions={:?}",
+                            &actions[..=step],
+                        ));
+                    }
+                }
+            }
             for &(pos, block) in &blocks {
                 // Optimization omits dust display nodes; compare component states.
                 if !matches!(block, Block::Air | Block::RedstoneWire { .. }) {
@@ -154,7 +179,7 @@ fn compare(seed: u64, optimize: bool) -> Result<(), String> {
             }
         }
     }
-    Ok(())
+    Ok(true)
 }
 
 #[test]
@@ -171,12 +196,17 @@ fn normal_redstone_matches_interpreter() {
     );
 
     let mut failures = 0;
+    let mut rejected = 0;
     for offset in 0..cases {
         let seed = first_seed.wrapping_add(offset);
         for optimize in [false, true] {
-            if let Err(error) = compare(seed, optimize) {
-                eprintln!("{error}");
-                failures += 1;
+            match compare(seed, optimize) {
+                Ok(true) => (),
+                Ok(false) => rejected += 1,
+                Err(error) => {
+                    eprintln!("{error}");
+                    failures += 1;
+                }
             }
         }
         if (offset + 1) % 1000 == 0 {
@@ -186,8 +216,80 @@ fn normal_redstone_matches_interpreter() {
             );
         }
     }
-    eprintln!("Fuzz summary: {cases} circuits, optimization off/on, {failures} failing runs");
+    eprintln!("Fuzz summary: {cases} circuits, optimization off/on, {rejected} compilation rejections, {failures} failing runs");
     assert_eq!(failures, 0, "see the replayable failures above");
+}
+
+#[test]
+fn feedback_fuzz_seeds_keep_native_state_and_pending_ticks() {
+    for seed in [121, 844, 2791, 7604, 8039, 9037, 9545] {
+        for optimize in [false, true] {
+            let mut rng = StdRng::seed_from_u64(seed);
+            let blocks = circuit(&mut rng);
+            let warmup = rng.gen_range(0..=16);
+            let mut native = load(&blocks, warmup);
+            let mut rejected = load(&blocks, warmup);
+            let before = rejected.scheduler().iter_entries().collect::<Vec<_>>();
+            let mut compiler = Compiler::default();
+            let error = compiler
+                .compile(
+                    &rejected,
+                    rejected.get_corners(),
+                    CompilerOptions {
+                        optimize,
+                        ..Default::default()
+                    },
+                    before.clone(),
+                    Default::default(),
+                )
+                .unwrap_err();
+            assert!(
+                matches!(
+                    error,
+                    CompileError::Graph(
+                        GraphError::UnsupportedComparatorFeedback { .. }
+                            | GraphError::UnsupportedComparatorOrdering { .. }
+                    )
+                ),
+                "seed={seed} {error}"
+            );
+            assert!(!compiler.is_active());
+            assert_eq!(
+                rejected.scheduler().iter_entries().collect::<Vec<_>>(),
+                before
+            );
+            for _ in 0..64 {
+                let z = rng.gen_range(0..DEPTH);
+                let powered = rng.gen::<bool>();
+                let wait = rng.gen_range(0..=8);
+                let input = BASE + BlockPos::new(0, 0, z);
+                lever_action(&mut native, input, powered);
+                lever_action(&mut rejected, input, powered);
+                for tick in 0..=wait {
+                    if tick > 0 {
+                        native.tick_interpreted();
+                        rejected.tick_interpreted();
+                    }
+                    for &(pos, _) in &blocks {
+                        assert_eq!(
+                            rejected.get_block(pos),
+                            native.get_block(pos),
+                            "seed={seed} pos={pos:?}"
+                        );
+                        assert_eq!(
+                            crate::redstone::source_strength(
+                                rejected.get_block(pos),
+                                &rejected,
+                                pos
+                            ),
+                            crate::redstone::source_strength(native.get_block(pos), &native, pos),
+                            "seed={seed} strength at {pos:?}"
+                        );
+                    }
+                }
+            }
+        }
+    }
 }
 
 #[test]

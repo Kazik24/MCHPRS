@@ -92,5 +92,7 @@ fn coalesce(graph: &mut CompileGraph, node: NodeIdx, into: NodeIdx) {
         let weight = graph.remove_edge(edge_idx).unwrap();
         graph.add_edge(into, dest, weight);
     }
-    graph.remove_node(node);
+    let removed = graph.remove_node(node).unwrap();
+    graph[into].block_aliases.extend(removed.block);
+    graph[into].block_aliases.extend(removed.block_aliases);
 }

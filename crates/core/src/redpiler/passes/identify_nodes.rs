@@ -46,6 +46,7 @@ pub(super) fn run<W: World>(
                 graph.add_node(CompileNode {
                     ty: NodeType::MobileSource { group, alias },
                     block: None,
+                    block_aliases: Vec::new(),
                     state: NodeState::with_strength(
                         if plot.get_block(alias) == Block::RedstoneBlock {
                             15
@@ -76,6 +77,7 @@ pub(super) fn run<W: World>(
             graph.add_node(CompileNode {
                 ty: NodeType::InstantInput { piston },
                 block: None,
+                block_aliases: Vec::new(),
                 state: NodeState::with_strength(strength),
                 is_input: false,
                 is_output: false,
@@ -158,6 +160,7 @@ pub(super) fn run<W: World>(
             let source = graph.add_node(CompileNode {
                 ty: NodeType::InstantOutput { port },
                 block: None,
+                block_aliases: Vec::new(),
                 state: NodeState::with_strength(output.initial_strength),
                 is_input: false,
                 is_output: false,
@@ -225,6 +228,7 @@ fn for_pos<W: World>(
     let node_idx = graph.add_node(CompileNode {
         ty,
         block: Some((pos, id)),
+        block_aliases: Vec::new(),
         state,
 
         is_input,

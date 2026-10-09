@@ -72,6 +72,34 @@ dynamic even when their initial strength is 15. Wire searches stop at distance
 removes every edge with `w >= 15`. This follows directly from `s <= 15`, so
 such an edge contributes zero for every permitted strength.
 
+After clamping, graph preparation rejects directed cycles containing an ordinary
+comparator, including a comparator's self-edge. Collapsed dust links do not
+preserve native notification order for callbacks with equal deadlines and
+priorities. Rejection happens before optional rewrites and scheduler transfer,
+so the circuit continues in the interpreter. This conservative guard can also
+reject feedback layouts whose current state happens to match compiled execution.
+
+Preparation also rejects a diode-to-comparator path when the source diode and
+receiving comparator have a direct shared nonconstant input. That acyclic fork
+can schedule both callbacks for the same deadline and priority, making their
+order observable. Comparators, repeaters and torches are checked as source
+diodes; ordinary chains and shared immutable constants remain supported.
+Deeper reconvergent paths are not currently covered by this guard.
+
+A small example, viewed from above with west on the left:
+
+```text
+       x0 x1 x2 x3
+z=-1    .  W  W  .
+z= 0    V  A  W  .
+z= 1    .  T  B  L
+```
+
+Place all blocks on stone supports. `W` is dust, `V` a floor lever, `T` a standing
+redstone torch, and `L` an optional lamp. Both comparators point east (rear input
+on the west, block-state `facing=west`) and use subtract mode. Turn the lever on.
+A's output returns through dust to its own side and also drives B's side input.
+
 ## Link deduplication
 
 [`dedup_links`](../crates/core/src/redpiler/passes/dedup_links.rs) removes
@@ -165,7 +193,10 @@ outputs of that source and merges a sibling when:
 - its incoming edge is `Default` and has equivalent attenuation.
 
 The sibling's outgoing edges are moved to the representative and the sibling
-is removed. Type equality includes repeater delay/facing-diode information;
+is removed. Its physical block and any prior aliases stay attached to the
+representative. Display flushing writes every alias; reset restores their current
+states and exports pending ticks to every original position with the same
+remaining delay and priority. Type equality includes repeater delay/facing-diode information;
 state equality includes powered, locked, strength and pending-tick state.
 Distinct command-block and note-block outputs are protected from merging.
 
