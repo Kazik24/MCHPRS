@@ -8,8 +8,8 @@ view_distance = 8
 neighbor_update_interval_ms = 2000
 bungeecord = false
 whitelist = false
-# Use schems/<player UUID>/ instead of the shared schems/ directory.
 schemati = false
+schematic_save_prefix = "./mroww/"
 block_in_hitbox = true
 auto_redpiler = true
 default_tps = 20

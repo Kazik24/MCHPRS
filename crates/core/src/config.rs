@@ -109,6 +109,7 @@ gen_config! {
     velocity: Option<VelocityConfig> = None,
     whitelist: bool = false,
     schemati: bool = false,
+    schematic_save_prefix: String = String::new(),
     luckperms: Option<PermissionsConfig> = None,
     block_in_hitbox: bool = true,
     auto_redpiler: bool = false,
@@ -185,7 +186,23 @@ mod tests {
         assert_eq!(config.git_default_plot_storage_mib, 100);
         assert_eq!(config.worldedit_max_blocks, 67_108_864);
         assert_eq!(config.worldedit_history_blocks, 134_217_728);
+        assert_eq!(config.schematic_save_prefix, "");
+        assert!(patched.contains("schematic_save_prefix = \"\""));
         assert!(patched.contains("neighbor_update_interval_ms"));
         assert!(patched.contains("rhistory_memory_limit_mib"));
+    }
+
+    #[test]
+    fn preserves_configured_schematic_save_prefix() {
+        let path = std::env::temp_dir().join(format!(
+            "mchprs-schematic-prefix-{}.toml",
+            std::process::id()
+        ));
+        for prefix in ["./mroww/", "aaa@", "./mroww/aaa@"] {
+            fs::write(&path, format!("schematic_save_prefix = {prefix:?}\n")).unwrap();
+            assert_eq!(ServerConfig::load(&path).schematic_save_prefix, prefix);
+            assert_eq!(ServerConfig::load(&path).schematic_save_prefix, prefix);
+        }
+        fs::remove_file(path).unwrap();
     }
 }

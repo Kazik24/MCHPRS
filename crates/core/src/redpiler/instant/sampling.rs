@@ -462,6 +462,16 @@ pub(crate) fn validate_feedback(
     targets: &FxHashSet<BlockPos>,
     internally_driven: &FxHashSet<BlockPos>,
 ) -> Result<(), String> {
+    if targets.is_empty() || internally_driven.is_empty() {
+        return Ok(());
+    }
+    let feedback = super::logic::sequential::feedback_sources(
+        world,
+        report,
+        monitor,
+        targets,
+        internally_driven,
+    )?;
     let mut groups = vec![0; report.pistons.len()];
     let mut mobile = FxHashMap::default();
     for (group, descriptor) in report.payload_groups.iter().enumerate() {
@@ -484,15 +494,10 @@ pub(crate) fn validate_feedback(
         if !targets.contains(&piston.pos) {
             continue;
         }
-        for data in &report.recognition[actor].inputs.sources {
-            if data.kind != SourceKind::Ordinary
-                || data.route != crate::redpiler::analysis::topology::PowerRoute::QuasiConnectivity
-                || !internally_driven.contains(&data.source)
-                || data_notifies(world, data.source, piston.pos)
-            {
+        for &data in &feedback[&piston.pos] {
+            if data_notifies(world, data, piston.pos) {
                 continue;
             }
-            let mut notified = false;
             let mut mobile_writer = false;
             for update in &report.ports.pistons[actor].updates {
                 if update.kind != UpdateKind::WireNotification {
@@ -507,12 +512,11 @@ pub(crate) fn validate_feedback(
                     );
                 }
                 for source in &wires[&update.source].sources {
-                    notified |= source.source == data.source;
                     mobile_writer |= matches!(source.kind, SourceKind::MobilePayload { group } if group != groups[actor]);
                 }
             }
-            if !notified && mobile_writer {
-                return Err(format!("unsupported internally driven QC sampling interface at {:?}: data source {:?} does not notify the base; a movable writer delivers updates without an explicit sampled boundary", piston.pos, data.source));
+            if mobile_writer {
+                return Err(format!("unsupported internally driven QC sampling interface at {:?}: data source {:?} does not notify the base; a movable writer delivers updates without an explicit sampled boundary", piston.pos, data));
             }
         }
     }

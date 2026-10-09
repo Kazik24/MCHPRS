@@ -349,6 +349,26 @@ mod tests {
     }
 
     #[test]
+    fn prefixed_names_support_folders_and_remain_within_the_library() {
+        let library = Library::new();
+        for (prefix, relative) in [
+            ("", "schemname.schem"),
+            ("./mroww/", "mroww/schemname.schem"),
+            ("aaa@", "aaa@schemname.schem"),
+            ("./mroww/aaa@", "mroww/aaa@schemname.schem"),
+        ] {
+            let name = format!("{prefix}schemname.schem");
+            let path = save_path(&library.0, &name).unwrap();
+            assert_eq!(path, library.0.canonicalize().unwrap().join(relative));
+            library.file(relative);
+            assert_eq!(load_path(&library.0, relative).unwrap(), path);
+        }
+        for prefix in ["../", "/", "rf/", "rf/../"] {
+            assert!(save_path(&library.0, &format!("{prefix}schemname.schem")).is_err());
+        }
+    }
+
+    #[test]
     fn shared_schematics_cannot_be_created_or_overwritten() {
         let library = Library::new();
         library.file("rf/original.schem");

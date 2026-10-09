@@ -181,7 +181,14 @@ fn capture_divider_cross_dot_comparison() {
         let mut cases = Vec::new();
         for case in protocol["cases"].as_array().unwrap() {
             let mut variants = Vec::new();
-            for (dot, compiled) in [(false, false), (true, false), (true, true)] {
+            for (dot, compiled, optimize) in [
+                (false, false, false),
+                (true, false, false),
+                (false, true, false),
+                (true, true, false),
+                (false, true, true),
+                (true, true, true),
+            ] {
                 let mut world = load_variant(dot);
                 let mut compiler = Compiler::default();
                 if compiled {
@@ -190,7 +197,7 @@ fn capture_divider_cross_dot_comparison() {
                             &world,
                             world.get_corners(),
                             CompilerOptions {
-                                optimize: true,
+                                optimize,
                                 ..Default::default()
                             },
                             vec![],
@@ -243,15 +250,20 @@ fn capture_divider_cross_dot_comparison() {
                     (cross != dot).then(|| json!({"frame": index, "cross": cross, "dot": dot}))
                 })
                 .collect();
-            let compiled_output_differences: Vec<_> = variants[1]
-                .iter()
-                .zip(&variants[2])
-                .enumerate()
-                .filter_map(|(index, (native, compiled))| {
-                    let native = &native["state"]["ports"]["output_msb_first"];
-                    let compiled = &compiled["state"]["ports"]["output_msb_first"];
-                    (native != compiled)
-                        .then(|| json!({"frame": index, "native": native, "compiled": compiled}))
+            let compiled_output_differences: Vec<_> = (2..variants.len())
+                .flat_map(|variant| {
+                    variants[variant % 2]
+                        .iter()
+                        .zip(&variants[variant])
+                        .enumerate()
+                        .filter_map(move |(index, (native, compiled))| {
+                            let native = &native["state"]["ports"]["output_msb_first"];
+                            let compiled = &compiled["state"]["ports"]["output_msb_first"];
+                            (native != compiled).then(|| {
+                                json!({"dot": variant % 2 == 1, "optimize": variant >= 4,
+                        "frame": index, "native": native, "compiled": compiled})
+                            })
+                        })
                 })
                 .collect();
             println!(
@@ -270,10 +282,29 @@ fn capture_divider_cross_dot_comparison() {
             .push(json!({"fixture": fixture, "dots": dots, "compile": compile, "cases": cases}));
     }
     serde_json::to_writer(std::io::BufWriter::new(file), &evidence).unwrap();
+    assert!(evidence.iter().all(|fixture| fixture["compile"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .all(|attempt| attempt["error"].is_null())));
+    assert!(
+        evidence.iter().all(
+            |fixture| fixture["cases"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .all(|case| case["differences"].as_array().unwrap().is_empty()
+                    && case["compiled_output_differences"]
+                        .as_array()
+                        .unwrap()
+                        .is_empty())
+        ),
+        "cross/dot and compiled interpreter comparisons must agree"
+    );
 }
 
 #[test]
-fn rotated_divider_reproduces_the_reported_qc_coordinates() {
+fn rotated_divider_admits_notified_qc_at_the_reported_coordinates() {
     use crate::redpiler::instant::sampling;
     use mchprs_blocks::blocks::RotateAmt;
 
@@ -306,20 +337,25 @@ fn rotated_divider_reproduces_the_reported_qc_coordinates() {
         Block::RedstoneComparator { .. }
     ));
     let report = analyze_world(&world);
-    let error = sampling::validate_feedback(
+    let actor = report.pistons.iter().position(|p| p.pos == base).unwrap();
+    for route in [
+        crate::redpiler::analysis::topology::PowerRoute::Direct,
+        crate::redpiler::analysis::topology::PowerRoute::QuasiConnectivity,
+    ] {
+        assert!(report.recognition[actor]
+            .inputs
+            .sources
+            .iter()
+            .any(|source| source.source == data && source.route == route));
+    }
+    sampling::validate_feedback(
         &world,
         &report,
         &TaskMonitor::default(),
         &[base].into_iter().collect(),
         &[data].into_iter().collect(),
     )
-    .unwrap_err();
-    assert!(
-        error.contains(&format!("interface at {base:?}:")),
-        "{error}"
-    );
-    assert!(error.contains(&format!("data source {data:?}")), "{error}");
-    println!("{error}");
+    .unwrap();
 }
 
 #[test]
@@ -420,35 +456,89 @@ fn divider_comparator_is_saturated_and_notifies_through_the_movable_conductor() 
 }
 
 #[test]
-fn fixed_divider_rejects_unrepresented_feedback_sampling_transactionally() {
-    let fixture = manifest("fpu_divider");
-    for assume_instant in [false, true] {
+fn divider_crosses_compile_without_mutating_the_imported_world() {
+    for name in ["fpu_divider", "divider_explanation"] {
+        let fixture = manifest(name);
+        for assume_instant in [false, true] {
+            for optimize in [false, true] {
+                let (world, bounds) = load(&fixture);
+                let before = compilation_fingerprint(&world, bounds);
+                let mut compiler = Compiler::default();
+                compiler
+                    .compile(
+                        &world,
+                        world.get_corners(),
+                        CompilerOptions {
+                            assume_instant,
+                            optimize,
+                            ..Default::default()
+                        },
+                        vec![],
+                        Default::default(),
+                    )
+                    .unwrap();
+                assert!(compiler.is_active());
+                assert!(compiler.current_flags().is_some());
+                assert_eq!(compilation_fingerprint(&world, bounds), before);
+            }
+        }
+    }
+}
+
+#[test]
+fn divider_preserves_interpreter_outputs_when_power_returns_during_retraction() {
+    let protocol = manifest("fpu_divider");
+    let case = protocol["cases"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|case| case["id"] == "enable-falling")
+        .unwrap();
+    for name in ["fpu_divider", "divider_explanation"] {
         for optimize in [false, true] {
-            let (world, bounds) = load(&fixture);
-            let before = compilation_fingerprint(&world, bounds);
+            let (mut native, _) = load(&manifest(name));
+            let (mut compiled, _) = load(&manifest(name));
             let mut compiler = Compiler::default();
-            let error = compiler
+            compiler
                 .compile(
-                    &world,
-                    world.get_corners(),
+                    &compiled,
+                    compiled.get_corners(),
                     CompilerOptions {
-                        assume_instant,
                         optimize,
                         ..Default::default()
                     },
                     vec![],
                     Default::default(),
                 )
-                .unwrap_err()
-                .to_string();
-            assert!(
-                error.contains("unsupported internally driven QC sampling interface"),
-                "{error}"
-            );
-            assert!(error.contains("data source"), "{error}");
-            assert!(!compiler.is_active());
-            assert!(compiler.current_flags().is_none());
-            assert_eq!(compilation_fingerprint(&world, bounds), before);
+                .unwrap();
+            for step in case["steps"].as_array().unwrap() {
+                if step.get("diagnose").is_some() {
+                    continue;
+                }
+                if let Some(ticks) = step["advance"].as_u64() {
+                    for _ in 0..ticks {
+                        native.tick_interpreted();
+                        compiler.tick_with_world(&mut compiled);
+                        compiler.flush(&mut compiled);
+                        assert_eq!(
+                            observations(&native, &protocol)["ports"]["output_msb_first"],
+                            observations(&compiled, &protocol)["ports"]["output_msb_first"],
+                            "{name}, optimize={optimize}, tick={}",
+                            native.piston_state().logical_tick
+                        );
+                    }
+                } else {
+                    action(&mut native, &protocol, step);
+                    compiler.flush(&mut compiled);
+                    let pos = local_pos(&step["pos"]) - BASE + origin(&protocol);
+                    let Block::Lever { lever } = compiled.get_block(pos) else {
+                        panic!("missing input lever");
+                    };
+                    if lever.powered != step["powered"].as_bool().unwrap() {
+                        compiler.on_use_block(pos);
+                    }
+                }
+            }
         }
     }
 }
@@ -466,7 +556,8 @@ fn capture_divider_qc_sampling() {
     let fixture = manifest("fpu_divider");
     let (world, _) = load(&fixture);
     let report = analyze_world(&world);
-    let error = Compiler::default()
+    let mut compiler = Compiler::default();
+    compiler
         .compile(
             &world,
             world.get_corners(),
@@ -474,23 +565,11 @@ fn capture_divider_qc_sampling() {
             vec![],
             Default::default(),
         )
-        .unwrap_err()
-        .to_string();
-    println!("{error}");
-    assert!(error.contains("unsupported internally driven QC sampling interface"));
-    let actor = report
-        .pistons
-        .iter()
-        .position(|p| error.contains(&format!("interface at {:?}:", p.pos)))
         .unwrap();
+    let base = origin(&fixture) + BlockPos::new(14, 9, 2);
+    let data = origin(&fixture) + BlockPos::new(15, 10, 4);
+    let actor = report.pistons.iter().position(|p| p.pos == base).unwrap();
     let piston = &report.pistons[actor];
-    let data = report.recognition[actor]
-        .inputs
-        .sources
-        .iter()
-        .find(|s| error.contains(&format!("data source {:?} does not", s.source)))
-        .unwrap()
-        .source;
     assert!(!sampling::data_notifies(&world, data, piston.pos));
     let monitor = TaskMonitor::default();
     let mut topology = Topology::new(
@@ -605,7 +684,7 @@ fn capture_divider_qc_sampling() {
         "protocol must exercise the reported piston"
     );
     let evidence = json!({"fixture": fixture["fixture"], "sha256": fixture["sha256"],
-        "origin": origin(&fixture), "error": error, "piston": piston,
+        "origin": origin(&fixture), "compiles": true, "piston": piston,
         "recognition": report.recognition[actor], "ports": report.ports.pistons[actor],
         "data": block_state(&world, data, origin(&fixture)), "wires": wires,
         "writers": writer_inventory, "initial": initial, "cases": cases});

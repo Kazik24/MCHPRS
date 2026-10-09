@@ -234,6 +234,28 @@ other.
 See [outputs.rs](../crates/core/src/redpiler/instant/outputs.rs) and
 [boundary.rs](../crates/core/src/redpiler/instant/boundary.rs).
 
+### QC influence and sampling admission
+
+Let $D(g,\mathbf s)$ be direct piston power and $Q_t(g,\mathbf s)$ one QC
+contribution. Feedback admission uses the same guarded physical geometry to
+prove whether
+
+$$
+Q_t\land\neg D\equiv 0.
+$$
+
+When this holds for every assignment, that contribution cannot change the
+piston's power and does not require a separate sampling boundary. Receiving
+dust positions retain independent strength variables during this proof. Two
+wires sharing an upstream emitter can have different transient strengths, so
+their settled source identity cannot establish this implication.
+
+Remaining QC contributions are followed through every possible conductor pose
+to recover internally driven data sources, including paths absent at import.
+Data delivery and qualifying update writers remain separate channels; an
+independent interface still needs represented sampled state. Incomplete context,
+cancellation, and exhausted proof budgets fail admission.
+
 ## 5. Extracted Boolean functions
 
 For each actuator, extraction collects guarded power paths. A contribution from

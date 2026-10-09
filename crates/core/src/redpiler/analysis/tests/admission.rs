@@ -253,3 +253,242 @@ fn prepared_qc_data_is_allowed_but_unrepresented_internal_feedback_is_rejected()
     )
     .unwrap();
 }
+
+// A repeater feeds one receiving dust through a separately movable conductor.
+fn redundant_qc_feedback_fixture() -> (PlotWorld, BlockPos) {
+    use mchprs_blocks::blocks::{RedstoneRepeater, RedstoneWire, RedstoneWireSide};
+    use mchprs_blocks::BlockDirection;
+    let mut world = empty();
+    for (pos, facing, payload) in [
+        (BASE, BlockFacing::Down, Block::RedstoneBlock),
+        (
+            BASE + BlockPos::new(0, 1, 4),
+            BlockFacing::North,
+            Block::Stone {},
+        ),
+    ] {
+        let piston = RedstonePiston {
+            facing,
+            sticky: true,
+            extended: true,
+        };
+        world.set_block(pos, Block::Piston { piston });
+        let head = pos.offset(facing.into());
+        world.set_block(
+            head,
+            Block::PistonHead {
+                head: piston.into(),
+            },
+        );
+        world.set_block(head.offset(facing.into()), payload);
+    }
+    world.set_block(BASE + BlockPos::new(0, 0, 1), Block::Stone {});
+    world.set_block(
+        BASE + BlockPos::new(0, 1, 1),
+        Block::RedstoneWire {
+            wire: RedstoneWire::new(
+                RedstoneWireSide::Side,
+                RedstoneWireSide::Side,
+                RedstoneWireSide::Side,
+                RedstoneWireSide::Side,
+                15,
+            ),
+        },
+    );
+    let data = BASE + BlockPos::new(1, 1, 2);
+    world.set_block(data.offset(BlockFace::Bottom), Block::Stone {});
+    world.set_block(
+        data,
+        Block::RedstoneRepeater {
+            repeater: RedstoneRepeater {
+                facing: BlockDirection::East,
+                powered: true,
+                ..Default::default()
+            },
+        },
+    );
+    (world, data)
+}
+
+fn validate_redundant_qc_fixture(world: &PlotWorld, data: BlockPos) -> Result<(), String> {
+    sampling::validate_feedback(
+        world,
+        &analyze_world(world),
+        &TaskMonitor::default(),
+        &[BASE].into_iter().collect(),
+        &[data].into_iter().collect(),
+    )
+}
+
+#[test]
+fn same_dust_direct_power_dominates_redundant_qc_through_fixed_support() {
+    use crate::redpiler::analysis::topology::PowerRoute;
+    let (world, data) = redundant_qc_feedback_fixture();
+    let report = analyze_world(&world);
+    let actor = report.pistons.iter().position(|p| p.pos == BASE).unwrap();
+    for route in [PowerRoute::Direct, PowerRoute::QuasiConnectivity] {
+        assert!(report.recognition[actor]
+            .inputs
+            .sources
+            .iter()
+            .any(|s| s.source == data && s.route == route));
+    }
+    validate_redundant_qc_fixture(&world, data).unwrap();
+}
+
+#[test]
+fn same_dust_requires_conducting_stationary_support_outside_front_face() {
+    for condition in ["glass", "mobile", "front"] {
+        let (mut world, data) = redundant_qc_feedback_fixture();
+        match condition {
+            "glass" => {
+                world.set_block(BASE + BlockPos::new(0, 0, 1), Block::Glass {});
+            }
+            "mobile" => {
+                let pos = BASE + BlockPos::new(2, 0, 1);
+                let piston = RedstonePiston {
+                    facing: BlockFacing::West,
+                    sticky: true,
+                    extended: true,
+                };
+                world.set_block(pos, Block::Piston { piston });
+                world.set_block(
+                    pos.offset(BlockFace::West),
+                    Block::PistonHead {
+                        head: piston.into(),
+                    },
+                );
+            }
+            "front" => {
+                world.set_block(BASE.offset(BlockFace::Bottom), Block::Air);
+                world.set_block(
+                    BASE,
+                    Block::Piston {
+                        piston: RedstonePiston {
+                            facing: BlockFacing::South,
+                            sticky: true,
+                            extended: false,
+                        },
+                    },
+                );
+            }
+            _ => unreachable!(),
+        }
+        let error = validate_redundant_qc_fixture(&world, data).unwrap_err();
+        assert!(
+            error.contains("QC sampling interface"),
+            "{condition}: {error}"
+        );
+    }
+}
+
+#[test]
+fn shared_upstream_source_does_not_merge_distinct_receiving_dust_roots() {
+    use mchprs_blocks::blocks::{RedstoneWire, RedstoneWireSide};
+    let (mut world, data) = redundant_qc_feedback_fixture();
+    // The upper QC root is outside the base's notification neighborhood.
+    for delta in [
+        (-1, 1, 2),
+        (-2, 2, 2),
+        (-3, 3, 2),
+        (-3, 3, 1),
+        (-3, 3, 0),
+        (-2, 3, 0),
+        (-1, 3, 0),
+        (0, 3, 0),
+    ] {
+        let pos = BASE + BlockPos::new(delta.0, delta.1, delta.2);
+        world.set_block(pos.offset(BlockFace::Bottom), Block::Stone {});
+        world.set_block(
+            pos,
+            Block::RedstoneWire {
+                wire: RedstoneWire::new(
+                    RedstoneWireSide::Side,
+                    RedstoneWireSide::Side,
+                    RedstoneWireSide::Side,
+                    RedstoneWireSide::Side,
+                    15,
+                ),
+            },
+        );
+    }
+    let report = analyze_world(&world);
+    let actor = report.pistons.iter().position(|p| p.pos == BASE).unwrap();
+    assert!(report.recognition[actor]
+        .inputs
+        .wires
+        .contains(&(BASE + BlockPos::new(0, 3, 0))));
+    let error = validate_redundant_qc_fixture(&world, data).unwrap_err();
+    assert!(error.contains("QC sampling interface"), "{error}");
+}
+
+#[test]
+fn future_qc_conductor_must_not_hide_an_independent_data_path_at_entry() {
+    use mchprs_blocks::blocks::RedstoneRepeater;
+    use mchprs_blocks::BlockDirection;
+    let (mut world, notified_data) = redundant_qc_feedback_fixture();
+    let moving_base = BASE + BlockPos::new(0, 2, -2);
+    world.set_block(
+        moving_base,
+        Block::Piston {
+            piston: RedstonePiston {
+                facing: BlockFacing::South,
+                sticky: true,
+                extended: false,
+            },
+        },
+    );
+    world.set_block(moving_base.offset(BlockFace::South), Block::Stone {});
+    let hidden_data = BASE + BlockPos::new(1, 2, 0);
+    world.set_block(
+        hidden_data,
+        Block::RedstoneRepeater {
+            repeater: RedstoneRepeater {
+                facing: BlockDirection::East,
+                powered: true,
+                ..Default::default()
+            },
+        },
+    );
+    let report = analyze_world(&world);
+    let actor = report.pistons.iter().position(|p| p.pos == BASE).unwrap();
+    assert!(!report.recognition[actor]
+        .inputs
+        .sources
+        .iter()
+        .any(|s| s.source == hidden_data));
+    let error = sampling::validate_feedback(
+        &world,
+        &report,
+        &TaskMonitor::default(),
+        &[BASE].into_iter().collect(),
+        &[notified_data, hidden_data].into_iter().collect(),
+    )
+    .unwrap_err();
+    assert!(error.contains("QC sampling interface"), "{error}");
+    assert!(error.contains(&format!("{hidden_data:?}")), "{error}");
+}
+
+#[test]
+fn qc_coupling_proof_requires_complete_context_and_an_active_monitor() {
+    let (world, data) = redundant_qc_feedback_fixture();
+    let mut report = analyze_world(&world);
+    let targets = [BASE].into_iter().collect();
+    let internal = [data].into_iter().collect();
+    let monitor = TaskMonitor::default();
+    monitor.cancel();
+    let error =
+        sampling::validate_feedback(&world, &report, &monitor, &targets, &internal).unwrap_err();
+    assert!(error.contains("cancelled"), "{error}");
+
+    report.bounds.1 = BASE + BlockPos::new(1, 1, 1);
+    let error = sampling::validate_feedback(
+        &world,
+        &report,
+        &TaskMonitor::default(),
+        &targets,
+        &internal,
+    )
+    .unwrap_err();
+    assert!(error.contains("outside the selection"), "{error}");
+}

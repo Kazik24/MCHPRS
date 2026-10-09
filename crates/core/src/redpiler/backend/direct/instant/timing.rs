@@ -37,9 +37,8 @@ impl Boundary {
             return;
         }
         self.requested = retracted;
-        if (retracted && self.phase == Phase::Retracting)
-            || (!retracted && self.phase == Phase::Extending)
-        {
+        // A moving base cannot extend until its retraction finishes.
+        if self.phase == Phase::Retracting || (!retracted && self.phase == Phase::Extending) {
             return;
         }
         if (!retracted && self.phase == Phase::Extended)
@@ -61,7 +60,10 @@ impl Boundary {
             return;
         }
         let (phase, delay) = match self.phase {
-            Phase::Retracting => (Phase::Retracted, resetting.then_some(1)),
+            Phase::Retracting => (
+                Phase::Retracted,
+                (resetting || !self.requested).then_some(1),
+            ),
             Phase::Retracted => (Phase::Extending, Some(2)),
             Phase::Extending => (Phase::Extended, (resetting && self.requested).then_some(1)),
             Phase::Extended => (Phase::Retracting, Some(2)),
@@ -130,6 +132,26 @@ mod tests {
         boundary.request(false, 6);
         boundary.advance(7, false);
         assert!(boundary.phase == Phase::Extended);
+        assert!(boundary.deadline.is_none());
+    }
+
+    #[test]
+    fn restored_power_waits_for_retraction_completion_before_extending() {
+        let mut boundary = Boundary::new(0, vec![0], false);
+        boundary.request(true, 1);
+        boundary.request(false, 2);
+        assert!(boundary.phase == Phase::Retracting);
+        assert_eq!(boundary.deadline, Some(3));
+        for (tick, phase) in [
+            (3, Phase::Retracted),
+            (4, Phase::Extending),
+            (5, Phase::Extending),
+            (6, Phase::Extended),
+        ] {
+            boundary.advance(tick, false);
+            assert!(boundary.phase == phase, "tick {tick}");
+            assert_eq!(boundary.geometry(GeometryPart::FarPayload), tick == 6);
+        }
         assert!(boundary.deadline.is_none());
     }
 }

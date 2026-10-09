@@ -81,6 +81,8 @@ struct Extractor<'a, W: World> {
     context: FxHashSet<BlockPos>,
     memory: FxHashSet<usize>,
     sequential: bool,
+    /// Keep each receiving dust strength independent of upstream propagation.
+    wire_signals: bool,
     ideal: bool,
     observers: FxHashMap<BlockPos, usize>,
     owned_reset: FxHashSet<BlockPos>,
@@ -190,6 +192,7 @@ fn extract_with_options(
         context: Default::default(),
         memory,
         sequential: false,
+        wire_signals: false,
         ideal: handoff,
         observers: Default::default(),
         // The standalone first-response oracle historically excludes reset
@@ -998,7 +1001,7 @@ impl<W: World> Extractor<'_, W> {
             };
             if reaches {
                 let condition = self.arena.and(guard, shape_guard);
-                if self.sequential {
+                if self.wire_signals {
                     let mut ignored = FALSE;
                     self.source(
                         actor,
@@ -1076,7 +1079,7 @@ impl<W: World> Extractor<'_, W> {
         if input == ConsumerInput::ComparatorSide {
             for (block, guard) in self.variants(pos, usize::MAX)? {
                 if matches!(block, Block::RedstoneWire { .. }) {
-                    if self.sequential {
+                    if self.wire_signals {
                         self.source(usize::MAX, pos, block, 0, guard, result);
                     } else {
                         roots.push_back((pos, 0, guard));
@@ -1091,7 +1094,7 @@ impl<W: World> Extractor<'_, W> {
         } else if redstone::is_diode(consumer)
             && matches!(self.read(pos)?, Block::RedstoneWire { .. })
         {
-            if self.sequential {
+            if self.wire_signals {
                 self.source(usize::MAX, pos, self.world.get_block(pos), 0, TRUE, result);
             } else {
                 roots.push_back((pos, 0, TRUE));
@@ -1118,6 +1121,27 @@ impl<W: World> Extractor<'_, W> {
             )?;
         }
         self.walk_wires(actor, result, queue)
+    }
+
+    fn terms_power(&mut self, terms: &[PowerTerm]) -> Expr {
+        let mut power = FALSE;
+        for term in terms {
+            let source = if let Some(pos) = term.source {
+                self.sources.insert(pos);
+                let next = self.signal_order.len();
+                let order = *self.signal_order.entry(pos).or_insert(next);
+                self.arena.variable(Variable::Signal {
+                    pos,
+                    threshold: term.attenuation,
+                    order,
+                })
+            } else {
+                TRUE
+            };
+            let powered = self.arena.and(term.guard, source);
+            power = self.arena.or(power, powered);
+        }
+        power
     }
 
     fn walk_wires(
@@ -1171,7 +1195,7 @@ impl<W: World> Extractor<'_, W> {
                         self.source(actor, neighbor, block, distance, guard, &mut result);
                     }
                     if matches!(block, Block::RedstoneWire { .. }) {
-                        if self.sequential {
+                        if self.wire_signals {
                             self.source(actor, neighbor, block, distance + 1, guard, &mut result);
                         } else {
                             queue.push_back((neighbor, distance + 1, guard));
@@ -1188,7 +1212,7 @@ impl<W: World> Extractor<'_, W> {
                                 if !block.is_solid() {
                                     let guard = self.arena.and(guard, above_guard);
                                     let wire_pos = neighbor.offset(BlockFace::Top);
-                                    if self.sequential {
+                                    if self.wire_signals {
                                         self.source(
                                             actor,
                                             wire_pos,
@@ -1210,7 +1234,7 @@ impl<W: World> Extractor<'_, W> {
                             )
                         {
                             let wire_pos = neighbor.offset(BlockFace::Bottom);
-                            if self.sequential {
+                            if self.wire_signals {
                                 self.source(
                                     actor,
                                     wire_pos,

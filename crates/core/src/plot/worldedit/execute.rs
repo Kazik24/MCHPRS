@@ -256,6 +256,7 @@ pub(super) fn execute_save(ctx: CommandExecuteContext<'_>) {
     let start_time = Instant::now();
 
     let mut file_name = ctx.arguments[0].unwrap_string().clone();
+    file_name.insert_str(0, &CONFIG.schematic_save_prefix);
     if CONFIG.schemati {
         let prefix = HyphenatedUUID(ctx.player.uuid).to_string() + "/";
         file_name.insert_str(0, &prefix);

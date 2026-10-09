@@ -13,11 +13,11 @@ pub(crate) struct Extraction {
     )>,
 }
 
-pub(crate) fn extract(
-    world: &impl World,
-    report: &AnalysisReport,
-    monitor: &TaskMonitor,
-) -> Result<Extraction, String> {
+fn extractor<'a, W: World>(
+    world: &'a W,
+    report: &'a AnalysisReport,
+    monitor: &'a TaskMonitor,
+) -> Result<Extractor<'a, W>, String> {
     let mut extractor = Extractor {
         world,
         report,
@@ -39,6 +39,7 @@ pub(crate) fn extract(
         context: Default::default(),
         memory: Default::default(),
         sequential: true,
+        wire_signals: true,
         ideal: false,
         observers: report
             .observers
@@ -129,28 +130,111 @@ pub(crate) fn extract(
             extractor.group_of[actor] = group;
         }
     }
+    Ok(extractor)
+}
+
+/// QC needs a sampling boundary only where it can add power beyond the direct
+/// inputs. Keep receiving dust signals distinct while proving this across poses.
+pub(crate) fn feedback_sources(
+    world: &impl World,
+    report: &AnalysisReport,
+    monitor: &TaskMonitor,
+    targets: &FxHashSet<BlockPos>,
+    internally_driven: &FxHashSet<BlockPos>,
+) -> Result<FxHashMap<BlockPos, Vec<BlockPos>>, String> {
+    let mut extractor = extractor(world, report, monitor)?;
+    let mut feedback = FxHashMap::default();
+    for (actor, piston) in report.pistons.iter().enumerate() {
+        if !targets.contains(&piston.pos) {
+            continue;
+        }
+        extractor.terms.clear();
+        let mut ignored = FALSE;
+        let mut roots = VecDeque::new();
+        for side in BlockFace::values() {
+            if side != BlockFace::from(piston.piston.facing) {
+                extractor.signal(
+                    actor,
+                    piston.pos.offset(side),
+                    side,
+                    &mut ignored,
+                    &mut roots,
+                )?;
+            }
+        }
+        let direct = std::mem::take(&mut extractor.terms);
+        let direct = extractor.terms_power(&direct);
+        let no_direct = extractor.arena.not(direct);
+        let mut sources = FxHashSet::default();
+        for side in BlockFace::values() {
+            extractor.terms.clear();
+            extractor.signal(
+                actor,
+                piston.pos.offset(BlockFace::Top).offset(side),
+                side,
+                &mut ignored,
+                &mut roots,
+            )?;
+            let qc = std::mem::take(&mut extractor.terms);
+            for term in qc {
+                let power = extractor.terms_power(std::slice::from_ref(&term));
+                let independent = extractor.arena.and(power, no_direct);
+                extractor.check()?;
+                if independent == FALSE {
+                    continue;
+                }
+                let Some(source) = term.source else {
+                    continue;
+                };
+                if matches!(world.get_block(source), Block::RedstoneWire { .. }) {
+                    // After proving local coupling, recover upstream data through
+                    // every conductor pose, rather than the saved occupancy alone.
+                    extractor.terms.clear();
+                    extractor.wire_signals = false;
+                    extractor.walk_wires(
+                        actor,
+                        FALSE,
+                        VecDeque::from([(source, 0, term.guard)]),
+                    )?;
+                    extractor.wire_signals = true;
+                    for input in std::mem::take(&mut extractor.terms) {
+                        let possible = extractor.arena.and(input.guard, independent);
+                        extractor.check()?;
+                        if possible != FALSE {
+                            sources.extend(input.source);
+                        }
+                    }
+                } else {
+                    sources.insert(source);
+                }
+            }
+        }
+        let mut sources: Vec<_> = sources
+            .into_iter()
+            .filter(|pos| {
+                internally_driven.contains(pos)
+                    && !matches!(world.get_block(*pos), Block::Observer { .. })
+            })
+            .collect();
+        sources.sort_by_key(|pos| (pos.y, pos.z, pos.x));
+        feedback.insert(piston.pos, sources);
+    }
+    extractor.check()?;
+    Ok(feedback)
+}
+
+pub(crate) fn extract(
+    world: &impl World,
+    report: &AnalysisReport,
+    monitor: &TaskMonitor,
+) -> Result<Extraction, String> {
+    let mut extractor = extractor(world, report, monitor)?;
     let mut responses = Vec::with_capacity(report.pistons.len());
     for (actor, p) in report.pistons.iter().enumerate() {
         extractor.terms.clear();
         extractor.piston_power(actor, p)?;
         let terms = std::mem::take(&mut extractor.terms);
-        let mut power = FALSE;
-        for term in terms {
-            let source = if let Some(pos) = term.source {
-                extractor.sources.insert(pos);
-                let next = extractor.signal_order.len();
-                let order = *extractor.signal_order.entry(pos).or_insert(next);
-                extractor.arena.variable(Variable::Signal {
-                    pos,
-                    threshold: term.attenuation,
-                    order,
-                })
-            } else {
-                TRUE
-            };
-            let powered = extractor.arena.and(term.guard, source);
-            power = extractor.arena.or(power, powered);
-        }
+        let power = extractor.terms_power(&terms);
         responses.push(extractor.arena.not(power));
     }
     let mut wires = extractor.wires.clone();

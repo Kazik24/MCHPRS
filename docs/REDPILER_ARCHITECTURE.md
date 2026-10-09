@@ -130,6 +130,13 @@ Base-to-head routes carry a head-presence condition. Discovery of such a route
 does not certify its movement/reset timing or make it executable by the instant
 sampler; an unsupported route reports its source and receiver explicitly.
 
+Feedback admission uses the conditional physical-power extractor to remove QC
+contributions proved unable to add power beyond direct inputs across all poses.
+Receiving dust strengths remain independent during this implication proof.
+Unresolved contributions retain upstream provenance through movable conductors,
+including paths hidden by the imported occupancy. This proof does not equate
+different dust wires merely because they share an emitter.
+
 [`regions::split`](../crates/core/src/redpiler/instant/regions.rs) joins actors by
 shared payload/reset ownership, electrical influence, observer connectivity, and
 sampling dependencies. It conservatively joins moving geometry within two cells
@@ -292,6 +299,11 @@ Repeated roots share cached results. Unchanged sources, no due clock, and no
 pending sample allow an initialized region to skip evaluation.
 
 ### Memory and event ordering
+
+A power return during retraction updates the requested pose without reversing
+the in-flight movement. Retraction finishes first; a pending extension starts
+one tick later and finishes two ticks after that. Extension cancellation keeps
+its separate transition semantics.
 
 Compilation seeds stored bits from saved piston geometry and establishes event
 baselines. Activation itself is not a write event. Changing prepared data alone
