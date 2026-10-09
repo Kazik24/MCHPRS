@@ -36,7 +36,20 @@ pub const PROTOCOL_VERSION: i32 = 770;
 #[cfg(test)]
 mod chat_tests;
 #[cfg(test)]
+mod inference_pool_tests;
+#[cfg(test)]
 mod skin_tests;
+
+fn init_inference_pool() {
+    let workers = std::env::var("RAYON_NUM_THREADS")
+        .ok()
+        .and_then(|value| value.parse().ok())
+        .unwrap_or(8);
+    rayon::ThreadPoolBuilder::new()
+        .num_threads(workers)
+        .build_global()
+        .expect("Cannot initialize Rayon worker pool");
+}
 
 pub fn version_string() -> String {
     format!(
@@ -165,6 +178,7 @@ impl MinecraftServer {
 
         info!("Starting MROWW server...");
         let start_time = Instant::now();
+        init_inference_pool();
 
         // Create world folders if they don't exist yet
         fs::create_dir_all("./world/players").unwrap();

@@ -126,7 +126,7 @@ pub fn prepare_candidate_graph(
     options: &CompilerOptions,
     monitor: Arc<TaskMonitor>,
 ) -> Result<CandidateGraph, GraphPreparationError> {
-    if options.export {
+    if options.export || options.export_nodes {
         return Err(GraphPreparationError::UnsupportedExport);
     }
     monitor.set_budget_multiplier(options.budget_multiplier);

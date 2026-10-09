@@ -7,6 +7,7 @@ mod legalization;
 mod memory;
 mod observer_logical;
 mod outputs;
+mod parallel;
 mod pc_counter_minimal;
 mod piston_contract;
 mod presentation;

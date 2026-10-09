@@ -5,6 +5,7 @@ pub mod analysis;
 pub(crate) mod backend;
 mod compile_graph;
 pub mod instant;
+mod node_export;
 mod passes;
 mod task_monitor;
 
@@ -88,6 +89,8 @@ pub struct CompilerOptions {
     pub update: bool,
     /// Export a dot file of the backend graph after compilation.
     pub export_dot_graph: bool,
+    /// Export a readable node and edge listing after graph preparation.
+    pub export_nodes: bool,
 }
 
 impl CompilerOptions {
@@ -99,6 +102,7 @@ impl CompilerOptions {
                     "--assume-instant" => options.assume_instant = true,
                     "--optimize" => options.optimize = true,
                     "--export" => options.export = true,
+                    "--export-nodes" => options.export_nodes = true,
                     "--io-only" => options.io_only = true,
                     "--update" => options.update = true,
                     "--export-dot" => options.export_dot_graph = true,
@@ -409,6 +413,11 @@ impl Compiler {
             return Err(CompileError::Cancelled);
         }
 
+        if options.export_nodes {
+            node_export::write(&graph, &instant)
+                .map_err(|error| CompileError::Graph(compile_graph::GraphError::Export(error)))?;
+        }
+
         // Stage a fresh backend. Reusing one can leave aliases, scheduler work
         // or side tables from a previous compilation. Publish only on success.
         trace!("Compiling backend");
@@ -523,7 +532,7 @@ mod tests {
 
     #[test]
     fn parse_options() {
-        let input = "-iO -U --export";
+        let input = "-iO -U --export --export-nodes";
         let expected_options = CompilerOptions {
             assume_instant: false,
             budget_multiplier: 0,
@@ -532,6 +541,7 @@ mod tests {
             export: true,
             update: true,
             export_dot_graph: false,
+            export_nodes: true,
         };
         let options = CompilerOptions::parse(input).unwrap();
 

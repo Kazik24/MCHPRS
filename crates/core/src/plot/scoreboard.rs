@@ -319,6 +319,9 @@ impl Scoreboard {
         if options.export_dot_graph {
             self.compiler_flags.push("export-dot".to_owned());
         }
+        if options.export_nodes {
+            self.compiler_flags.push("export-nodes".to_owned());
+        }
         self.refresh_lines(players);
     }
 

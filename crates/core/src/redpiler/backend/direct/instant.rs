@@ -670,6 +670,16 @@ impl Runtime {
         stats.logical_input_bindings += response_inputs + output_inputs + sampling_inputs;
     }
 
+    pub(super) fn parallel_work(&self) -> usize {
+        let state = self.logical.as_ref().unwrap();
+        state.responses.compile_counts().0
+            + state.outputs.compile_counts().0
+            + state.sampling.compile_counts().0
+            + self.fired.len()
+            + self.outputs.len()
+            + self.sampling.len()
+    }
+
     pub(super) fn begin_tick(&mut self) {
         self.elapsed += 1;
         self.in_tick = true;
@@ -701,6 +711,11 @@ impl Runtime {
                 .source_nodes()
                 .chain(self.output_sources.iter().copied())
         })
+    }
+
+    #[cfg(test)]
+    pub(super) fn parallel_response_batches(&self) -> usize {
+        self.logical.as_ref().unwrap().responses.parallel_batches
     }
 
     #[cfg(test)]
@@ -756,6 +771,7 @@ impl Runtime {
         nodes: &Nodes,
         sources_changed: bool,
         clock_event: bool,
+        parallel: bool,
     ) -> Vec<(NodeId, u8)> {
         let boundary_due = clock_event
             && self
@@ -818,9 +834,9 @@ impl Runtime {
         };
         if sample {
             // Every response reads the same frozen old bank before any write.
-            for actor in 0..self.fired.len() {
-                self.fired[actor] = state.responses.evaluate(actor);
-            }
+            state
+                .responses
+                .evaluate_dirty(parallel, |actor, value| self.fired[actor] = value);
             self.group_fired.fill(false);
             for (actor, &fired) in self.fired.iter().enumerate() {
                 self.group_fired[self.actor_groups[actor]] |= fired;

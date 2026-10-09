@@ -3,6 +3,8 @@
 mod compile;
 mod instant;
 pub mod node;
+#[cfg(test)]
+mod parallel_tests;
 mod tick;
 mod update;
 
@@ -17,11 +19,13 @@ use mchprs_blocks::blocks::{Block, ComparatorMode, Instrument};
 use mchprs_blocks::{BlockFace, BlockPos};
 use mchprs_world::{TickEntry, TickPriority};
 use node::{Node, NodeId, NodeType, Nodes};
+use rayon::prelude::*;
 use rustc_hash::FxHashMap;
 use std::collections::VecDeque;
 use std::fmt;
 use tracing::{debug, warn};
 
+#[cfg_attr(test, derive(Debug, PartialEq))]
 enum Event {
     CommandBlockPower {
         node_id: NodeId,
@@ -83,6 +87,10 @@ pub struct DirectBackend {
     instant_dirty: Vec<bool>,
     observer_watchers: FxHashMap<NodeId, Vec<NodeId>>,
     instant_observers: FxHashMap<BlockPos, Vec<NodeId>>,
+    #[cfg(test)]
+    pub(crate) instant_parallel: Option<bool>,
+    #[cfg(test)]
+    pub(crate) instant_parallel_batches: usize,
 }
 
 impl DirectBackend {
@@ -227,6 +235,11 @@ impl DirectBackend {
             runtime.collect_statistics(&mut statistics);
         }
         statistics
+    }
+
+    #[cfg(test)]
+    pub(crate) fn parallel_response_batches(&self) -> usize {
+        self.instant.iter().map(|runtime| runtime.parallel_response_batches()).sum()
     }
 
     #[cfg(test)]
@@ -532,14 +545,72 @@ impl DirectBackend {
         regions: impl IntoIterator<Item = usize>,
         clock_event: bool,
     ) {
+        let regions: Vec<_> = regions
+            .into_iter()
+            .filter(|&region| self.instant_dirty[region] || clock_event)
+            .enumerate()
+            .collect();
+        if regions.is_empty() {
+            return;
+        }
+        // Measured small batches spend more time dispatching than evaluating.
+        // shortcut: cached decisions count as work; refine if cached batches regress.
+        let enough_work = regions
+            .iter()
+            .map(|&(_, region)| self.instant[region].parallel_work())
+            .sum::<usize>()
+            >= 4096;
+        #[cfg(test)]
+        let enough_work = self.instant_parallel.unwrap_or(enough_work);
+        #[cfg(not(test))]
+        let parallel_roots = true;
+        #[cfg(test)]
+        let parallel_roots = self.instant_parallel.unwrap_or(true);
+        let parallel = regions.len() > 1 && enough_work && rayon::current_num_threads() > 1;
+        let mut evaluated = if parallel {
+            #[cfg(test)]
+            {
+                self.instant_parallel_batches += 1;
+            }
+            let mut storage_order = regions.clone();
+            storage_order.sort_unstable_by_key(|&(_, region)| region);
+            let mut remaining = self.instant.as_mut_slice();
+            let mut start = 0;
+            let mut jobs = Vec::with_capacity(regions.len());
+            // Split in storage order for exclusive borrows; publish in delivery order.
+            for (order, region) in storage_order {
+                let (_, tail) = remaining.split_at_mut(region - start);
+                let (runtime, tail) = tail.split_first_mut().unwrap();
+                remaining = tail;
+                start = region + 1;
+                let changed = std::mem::replace(&mut self.instant_dirty[region], false);
+                jobs.push((order, region, runtime, changed));
+            }
+            let nodes = &self.nodes;
+            let mut results: Vec<_> = jobs
+                .into_par_iter()
+                .map(|(order, region, runtime, changed)| {
+                    (
+                        order,
+                        region,
+                        runtime.advance(nodes, changed, clock_event, parallel_roots),
+                    )
+                })
+                .collect();
+            results.sort_unstable_by_key(|&(order, _, _)| order);
+            results.into_iter()
+        } else {
+            Vec::new().into_iter()
+        };
         let mut outputs = Vec::new();
         let mut geometry = Vec::new();
-        for region in regions {
-            let changed = std::mem::replace(&mut self.instant_dirty[region], false);
-            if !changed && !clock_event {
-                continue;
-            }
-            let changes = self.instant[region].advance(&self.nodes, changed, clock_event);
+        for (_, region) in regions {
+            let changes = if parallel {
+                evaluated.next().unwrap().2
+            } else {
+                let changed = std::mem::replace(&mut self.instant_dirty[region], false);
+                self.instant[region].advance(&self.nodes, changed, clock_event, parallel_roots)
+            };
             if outputs.is_empty() {
                 outputs = changes;
             } else {

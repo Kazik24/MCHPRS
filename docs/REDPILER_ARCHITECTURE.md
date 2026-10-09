@@ -297,6 +297,23 @@ cached. `evaluate` uses an explicit stack and evaluates only the selected paths.
 Repeated roots share cached results. Unchanged sources, no due clock, and no
 pending sample allow an initialized region to skip evaluation.
 
+The coordinator evaluates batches with multiple active regions on Rayon's shared
+worker pool. Each worker exclusively borrows a region and reads the same immutable
+backend node strengths; decision caches stay with the region. Sparse batches are
+borrowed in storage order and restored to delivery order before publication.
+Empty batches, single-region batches and pools with one worker stay sequential.
+Small batches also stay sequential: parallel dispatch requires at least 4096
+bound decisions, actors, output ports and sampling events across active regions.
+This estimate avoids dispatch overhead; cached decisions can reduce actual work.
+Production startup initializes the shared pool with four workers by default.
+`RAYON_NUM_THREADS` overrides this count; unset or invalid values use four workers,
+and zero retains Rayon's automatic CPU-based sizing.
+
+Clock phase deadlines and memory deliveries remain ordered on the plot thread.
+After a parallel batch finishes, the coordinator updates phase and sampling queues,
+commits the complete electrical response, then dispatches consumer and geometry
+notifications in the existing order. A single large region remains sequential.
+
 ### Memory and event ordering
 
 A power return during retraction updates the requested pose without reversing

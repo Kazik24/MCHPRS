@@ -74,7 +74,7 @@ waive its plot or packet validation.
 | --- | --- |
 | `/help`, `/version` | `mchprs.commands.help`, `.version` |
 | `/tp`, `/warp`, `/setwarp`, `/speed` | `mchprs.commands.teleport`, `.warp`, `.setwarp`, `.speed` |
-| `/small [on|off]` | `mchprs.commands.small` |
+| `/small [on|off|wolf|fox|cat|ocelot]` | `mchprs.commands.small` |
 | `/gm cat` | `mchprs.commands.gamemode`, `.gamemode.creative`, and `.small` |
 | `/tps` | `mchprs.commands.rtps.view` or `.set` |
 | `/adv` | `mchprs.commands.radvance` |

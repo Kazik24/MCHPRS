@@ -2,7 +2,11 @@
 use super::{Decision, Input};
 use crate::redpiler::backend::BackendError;
 use crate::redpiler::instant::boolean::{Expr, TRUE};
+use rayon::prelude::*;
 use rustc_hash::FxHashMap;
+#[cfg(test)]
+use std::sync::atomic::AtomicU64;
+use std::sync::atomic::{AtomicU8, Ordering};
 
 #[derive(Clone, Copy)]
 enum Condition {
@@ -24,10 +28,16 @@ pub(super) struct Plan {
     decisions: Vec<BoundDecision>,
     users: Vec<Vec<usize>>,
     parents: Vec<Vec<usize>>,
-    cached: Vec<Option<bool>>,
+    roots_by_decision: Vec<Vec<usize>>,
+    dirty_roots: Vec<usize>,
+    root_dirty: Vec<bool>,
+    root_queued: Vec<bool>,
+    cached: Vec<AtomicU8>,
     stack: Vec<usize>,
     #[cfg(test)]
-    evaluations: u64,
+    evaluations: AtomicU64,
+    #[cfg(test)]
+    pub(super) parallel_batches: usize,
 }
 
 impl Plan {
@@ -165,7 +175,7 @@ impl Plan {
             });
             remap[id] = Some((next + 2) as Expr);
         }
-        let roots = roots
+        let roots: Vec<_> = roots
             .into_iter()
             .map(|root| {
                 if root <= TRUE {
@@ -176,6 +186,13 @@ impl Plan {
             })
             .collect();
         let count = bound.len();
+        let mut roots_by_decision = vec![Vec::new(); count];
+        for (root, &expression) in roots.iter().enumerate() {
+            if expression > TRUE {
+                roots_by_decision[(expression - 2) as usize].push(root);
+            }
+        }
+        let root_count = roots.len();
         Ok(Self {
             roots,
             snapshot: vec![false; inputs.len()],
@@ -183,45 +200,59 @@ impl Plan {
             decisions: bound,
             users,
             parents,
-            cached: vec![None; count],
+            roots_by_decision,
+            dirty_roots: (0..root_count).rev().collect(),
+            root_dirty: vec![true; root_count],
+            root_queued: vec![true; root_count],
+            cached: (0..count).map(|_| AtomicU8::new(2)).collect(),
             stack: Vec::with_capacity(count),
             #[cfg(test)]
-            evaluations: 0,
+            evaluations: AtomicU64::new(0),
+            #[cfg(test)]
+            parallel_batches: 0,
         })
     }
 
     pub(super) fn capture(&mut self, mut read: impl FnMut(Input, u8) -> bool) {
         for input in 0..self.inputs.len() {
-            let (binding, threshold) = self.inputs[input];
-            let value = read(binding, threshold);
-            if self.snapshot[input] == value {
-                continue;
+            self.capture_input(input, &mut read);
+        }
+    }
+
+    fn capture_input(&mut self, input: usize, read: &mut impl FnMut(Input, u8) -> bool) {
+        let (binding, threshold) = self.inputs[input];
+        let value = read(binding, threshold);
+        if self.snapshot[input] == value {
+            return;
+        }
+        self.snapshot[input] = value;
+        for index in 0..self.users[input].len() {
+            let user = self.users[input][index];
+            if std::mem::replace(self.cached[user].get_mut(), 2) != 2 {
+                self.mark_roots_dirty(user);
+                self.stack.push(user);
             }
-            self.snapshot[input] = value;
-            for &user in &self.users[input] {
-                if self.cached[user].take().is_some() {
-                    self.stack.push(user);
+        }
+        while let Some(child) = self.stack.pop() {
+            for index in 0..self.parents[child].len() {
+                let parent = self.parents[child][index];
+                let decision = &self.decisions[parent];
+                let child = (child + 2) as Expr;
+                let condition_changed =
+                    matches!(decision.condition, Condition::Response(root) if root == child);
+                let selected = self.condition(decision.condition).map(|high| {
+                    if high {
+                        decision.high
+                    } else {
+                        decision.low
+                    }
+                });
+                if !condition_changed && selected.is_some_and(|selected| selected != child) {
+                    continue;
                 }
-            }
-            while let Some(child) = self.stack.pop() {
-                for &parent in &self.parents[child] {
-                    let decision = &self.decisions[parent];
-                    let child = (child + 2) as Expr;
-                    let condition_changed =
-                        matches!(decision.condition, Condition::Response(root) if root == child);
-                    let selected = self.condition(decision.condition).map(|high| {
-                        if high {
-                            decision.high
-                        } else {
-                            decision.low
-                        }
-                    });
-                    if !condition_changed && selected.is_some_and(|selected| selected != child) {
-                        continue;
-                    }
-                    if self.cached[parent].take().is_some() {
-                        self.stack.push(parent);
-                    }
+                if std::mem::replace(self.cached[parent].get_mut(), 2) != 2 {
+                    self.mark_roots_dirty(parent);
+                    self.stack.push(parent);
                 }
             }
         }
@@ -231,7 +262,11 @@ impl Plan {
         if expression <= TRUE {
             Some(expression == TRUE)
         } else {
-            self.cached[(expression - 2) as usize]
+            match self.cached[(expression - 2) as usize].load(Ordering::Relaxed) {
+                0 => Some(false),
+                1 => Some(true),
+                _ => None,
+            }
         }
     }
 
@@ -242,31 +277,98 @@ impl Plan {
         }
     }
 
+    fn mark_roots_dirty(&mut self, decision: usize) {
+        for index in 0..self.roots_by_decision[decision].len() {
+            let root = self.roots_by_decision[decision][index];
+            self.root_dirty[root] = true;
+            if !self.root_queued[root] {
+                self.root_queued[root] = true;
+                self.dirty_roots.push(root);
+            }
+        }
+    }
+
+    pub(super) fn pop_dirty_root(&mut self) -> Option<usize> {
+        while let Some(root) = self.dirty_roots.pop() {
+            self.root_queued[root] = false;
+            if self.root_dirty[root] {
+                return Some(root);
+            }
+        }
+        None
+    }
+
     pub(super) fn evaluate(&mut self, root: usize) -> bool {
+        let mut stack = std::mem::take(&mut self.stack);
+        let value = self.evaluate_frozen(root, &mut stack);
+        self.stack = stack;
+        self.root_dirty[root] = false;
+        value
+    }
+
+    pub(super) fn evaluate_dirty(&mut self, parallel: bool, mut publish: impl FnMut(usize, bool)) {
+        let parallel = parallel
+            && self.decisions.len() >= 4096
+            && self.dirty_roots.len() >= 128
+            && self
+                .dirty_roots
+                .iter()
+                .filter(|&&root| self.root_dirty[root] && self.value(self.roots[root]).is_none())
+                .take(128)
+                .count()
+                == 128
+            && rayon::current_num_threads() > 1;
+        if !parallel {
+            while let Some(root) = self.pop_dirty_root() {
+                publish(root, self.evaluate(root));
+            }
+            return;
+        }
+        #[cfg(test)]
+        {
+            self.parallel_batches += 1;
+        }
+        let mut roots = Vec::new();
+        while let Some(root) = self.pop_dirty_root() {
+            roots.push(root);
+        }
+        // Inputs stay frozen; racing workers may compute the same Boolean, never a different value.
+        let values: Vec<_> = roots
+            .par_iter()
+            .with_min_len(32)
+            .map_init(Vec::new, |stack, &root| self.evaluate_frozen(root, stack))
+            .collect();
+        for (root, value) in roots.into_iter().zip(values) {
+            self.root_dirty[root] = false;
+            publish(root, value);
+        }
+    }
+
+    fn evaluate_frozen(&self, root: usize, stack: &mut Vec<usize>) -> bool {
         let expression = self.roots[root];
         if let Some(value) = self.value(expression) {
             return value;
         }
-        self.stack.push((expression - 2) as usize);
-        while let Some(&id) = self.stack.last() {
+        stack.push((expression - 2) as usize);
+        while let Some(&id) = stack.last() {
             let decision = self.decisions[id];
             let Some(high) = self.condition(decision.condition) else {
                 let Condition::Response(condition) = decision.condition else {
                     unreachable!()
                 };
-                self.stack.push((condition - 2) as usize);
+                stack.push((condition - 2) as usize);
                 continue;
             };
             let child = if high { decision.high } else { decision.low };
             if let Some(value) = self.value(child) {
-                self.cached[id] = Some(value);
-                self.stack.pop();
+                self.cached[id].store(u8::from(value), Ordering::Relaxed);
+                stack.pop();
                 #[cfg(test)]
                 {
-                    self.evaluations += 1;
+                    self.evaluations.fetch_add(1, Ordering::Relaxed);
                 }
             } else {
-                self.stack.push((child - 2) as usize);
+                stack.push((child - 2) as usize);
             }
         }
         self.value(expression).unwrap()
@@ -274,7 +376,7 @@ impl Plan {
 
     #[cfg(test)]
     pub(super) fn evaluations(&self) -> u64 {
-        self.evaluations
+        self.evaluations.load(Ordering::Relaxed)
     }
 }
 
@@ -333,6 +435,89 @@ mod tests {
     }
 
     #[test]
+    fn parallel_dirty_responses_preserve_shared_conditions_and_frozen_inputs() {
+        let mut decisions = vec![Decision {
+            input: Input::Memory(0),
+            threshold: 0,
+            low: 0,
+            high: 1,
+        }];
+        let mut roots = Vec::new();
+        for group in 0..256 {
+            let mut root = 2;
+            for depth in 0..32 {
+                decisions.push(Decision {
+                    input: source((group + depth) % 64),
+                    threshold: (depth % 8) as u8,
+                    low: 0,
+                    high: root,
+                });
+                root = decisions.len() as Expr + 1;
+            }
+            roots.push(root);
+            decisions.push(Decision {
+                input: Input::Response(roots.len() - 1),
+                threshold: 0,
+                low: 0,
+                high: root,
+            });
+            roots.push(decisions.len() as Expr + 1);
+        }
+        roots.extend([0, 1, roots[0]]);
+        for workers in [1, 2, 4] {
+            let pool = rayon::ThreadPoolBuilder::new()
+                .num_threads(workers)
+                .build()
+                .unwrap();
+            pool.install(|| {
+                let mut actual = Plan::bind(&decisions, roots.clone(), true, &[]).unwrap();
+                let mut expected = Plan::bind(&decisions, roots.clone(), true, &[]).unwrap();
+                let mut values = vec![false; roots.len()];
+                let mut reference = values.clone();
+                for step in 0..32 {
+                    let memory = step % 3 != 1;
+                    let power = |source: usize| match step % 4 {
+                        0 => 15,
+                        1 => {
+                            if source == step % 64 {
+                                0
+                            } else {
+                                15
+                            }
+                        }
+                        _ => (step * 13 + source * 7) % 16,
+                    };
+                    for plan in [&mut actual, &mut expected] {
+                        plan.capture(|binding, threshold| match binding {
+                            Input::Memory(0) => memory,
+                            Input::Source(node) => power(node.index()) > usize::from(threshold),
+                            _ => unreachable!(),
+                        });
+                    }
+                    actual.evaluate_dirty(true, |root, value| values[root] = value);
+                    expected.evaluate_dirty(false, |root, value| reference[root] = value);
+                    assert_eq!(values, reference, "workers={workers}, step={step}");
+                    for group in 0..256 {
+                        let expected =
+                            memory && (0..32).all(|depth| power((group + depth) % 64) > depth % 8);
+                        assert_eq!(values[group * 2], expected);
+                        assert_eq!(values[group * 2 + 1], expected);
+                    }
+                    assert_eq!(actual.root_dirty, expected.root_dirty);
+                    assert!(actual.stack.is_empty());
+                    assert_eq!(actual.pop_dirty_root(), None);
+                    let evaluations = actual.evaluations();
+                    for (root, &value) in values.iter().enumerate() {
+                        assert_eq!(actual.evaluate(root), value);
+                    }
+                    assert_eq!(actual.evaluations(), evaluations);
+                }
+                assert_eq!(actual.parallel_batches > 0, workers > 1);
+            });
+        }
+    }
+
+    #[test]
     fn shares_roots_and_invalidates_only_affected_paths() {
         let decisions = [
             Decision {
@@ -356,20 +541,24 @@ mod tests {
         ];
         let mut plan = Plan::bind(&decisions, vec![3, 3, 4, 0, 1], true, &[]).unwrap();
         plan.capture(|_, _| true);
-        assert!(plan.evaluate(0));
-        assert!(plan.evaluate(1));
-        assert!(plan.evaluate(2));
-        assert!(!plan.evaluate(3));
-        assert!(plan.evaluate(4));
+        while let Some(root) = plan.pop_dirty_root() {
+            plan.evaluate(root);
+        }
         assert_eq!(plan.evaluations(), 3);
         plan.capture(|_, _| true);
+        assert_eq!(plan.pop_dirty_root(), None);
         assert!(plan.evaluate(0));
         assert_eq!(plan.evaluations(), 3);
         plan.capture(|input, _| input != source(0));
         assert!(plan.evaluate(2));
         assert_eq!(plan.evaluations(), 3);
-        assert!(!plan.evaluate(0));
-        assert!(!plan.evaluate(1));
+        let mut dirty = Vec::new();
+        while let Some(root) = plan.pop_dirty_root() {
+            dirty.push(root);
+            assert!(!plan.evaluate(root));
+        }
+        dirty.sort_unstable();
+        assert_eq!(dirty, [0, 1]);
         assert_eq!(plan.evaluations(), 5);
     }
 
@@ -719,6 +908,7 @@ mod tests {
         .unwrap();
         assert_eq!(plan.decisions.len(), 5);
         assert_eq!(plan.inputs.len(), 3);
+        let mut cached = vec![false; 7];
         for round in 0..3 {
             for assignment in 0..8usize {
                 let bits = (assignment * 5 + round) & 7;
@@ -728,6 +918,9 @@ mod tests {
                     };
                     bits & (1 << id.index()) != 0
                 });
+                while let Some(root) = plan.pop_dirty_root() {
+                    cached[root] = plan.evaluate(root);
+                }
                 let (a, b, c) = (bits & 1 != 0, bits & 2 != 0, bits & 4 != 0);
                 let interior = if a { c } else { b };
                 let output = if interior { b } else { a };
@@ -736,8 +929,7 @@ mod tests {
                     .enumerate()
                 {
                     assert_eq!(
-                        plan.evaluate(root),
-                        expected,
+                        cached[root], expected,
                         "round {round}, inputs {bits}, root {root}"
                     );
                 }
@@ -746,6 +938,7 @@ mod tests {
                     plan.evaluate(root);
                 }
                 assert_eq!(plan.evaluations(), evaluations);
+                assert_eq!(plan.pop_dirty_root(), None);
             }
         }
         // Both branches were cached during the sweep. An inactive branch

@@ -192,6 +192,86 @@ fn comparator_oscillator_compiles_with_an_active_instant_circuit() {
 }
 
 #[test]
+fn private_assembly_wires_have_no_ordinary_graph_nodes() {
+    let (mut world, _, manifest) = fixture("instant_chain");
+    let report = analyze_world(&world);
+    let options = CompilerOptions {
+        assume_instant: true,
+        optimize: true,
+        ..Default::default()
+    };
+    let (graph, programs) = crate::redpiler::instant::program::prepare(
+        &world,
+        &report,
+        &world.scheduler().iter_entries().collect::<Vec<_>>(),
+        &options,
+        std::sync::Arc::new(crate::redpiler::TaskMonitor::default()),
+    )
+    .unwrap();
+    let private_wires: Vec<_> = programs
+        .iter()
+        .flat_map(|program| {
+            program
+                .logic
+                .wires
+                .iter()
+                .filter(|wire| !program.propagation_wires.contains(wire))
+                .copied()
+        })
+        .collect();
+    assert!(
+        !private_wires.is_empty(),
+        "fixture needs private assembly dust"
+    );
+    for &pos in &private_wires {
+        assert!(
+            graph
+                .node_weights()
+                .all(|node| !node.block.is_some_and(|(node_pos, _)| node_pos == pos)),
+            "private assembly wire {pos:?} became an ordinary graph node"
+        );
+    }
+
+    let controls: Vec<_> = manifest["ports"]["inputs"]
+        .as_object()
+        .unwrap()
+        .values()
+        .map(local_pos)
+        .collect();
+    let mut compiler = Compiler::default();
+    let bounds = world.get_corners();
+    compiler
+        .compile(
+            &world,
+            bounds,
+            options,
+            world.scheduler().iter_entries().collect(),
+            Default::default(),
+        )
+        .unwrap();
+    let private_states: Vec<_> = private_wires
+        .iter()
+        .map(|&pos| (pos, world.get_block(pos)))
+        .collect();
+    for tick in 0..32 {
+        if tick % 4 == 0 {
+            for &control in &controls {
+                compiler.on_use_block(control);
+            }
+        }
+        compiler.tick_with_world(&mut world);
+        compiler.flush(&mut world);
+        for &(pos, block) in &private_states {
+            assert_eq!(
+                world.get_block(pos),
+                block,
+                "private assembly wire {pos:?} received a physical update at tick {tick}"
+            );
+        }
+    }
+}
+
+#[test]
 fn ordinary_feedback_preserves_all_mandatory_instant_fixtures() {
     for name in [
         "instant_chain",
@@ -315,10 +395,14 @@ fn delayed_ordinary_feedback_through_an_assembly_is_event_driven_and_flush_indep
         // Imported callback at 1, three delay-four repeaters (8 each), comparator (2).
         // The returning edge then crosses the input torch (2) and output comparator (2).
         for half_tick in 1..=40 {
-            assert_eq!(trace[half_tick - 1], [
-                if half_tick < 27 { 0 } else { 15 },
-                if half_tick < 31 { 15 } else { 0 },
-            ], "independent connected-loop timing at half tick {half_tick}");
+            assert_eq!(
+                trace[half_tick - 1],
+                [
+                    if half_tick < 27 { 0 } else { 15 },
+                    if half_tick < 31 { 15 } else { 0 },
+                ],
+                "independent connected-loop timing at half tick {half_tick}"
+            );
         }
         compiler.reset(&mut world, bounds);
         let pending: Vec<_> = world.scheduler().iter_entries().collect();

@@ -24,11 +24,11 @@ macro_rules! catalog {
 
 catalog! {
     fixed {
-        USAGE_SMALL = "Usage: /small [on|off]";
+        USAGE_SMALL = "Usage: /small [on|off|wolf|fox|cat|ocelot]";
         SMALL_ENABLED = "Smol paws mode on";
         SMALL_DISABLED = "Small mode off. You're back to your normal size.";
         SMALL_NO_ROOM = "There isn't room to return to full size here. Move into an open space first.";
-        HELP_SMALL = "Small mode\n/small toggles half-size movement and an ocelot appearance for other players.\n/small on and /small off select the mode explicitly.\n/gm cat enables creative play in small mode; other gamemodes restore normal size.\nYour own view stays a scaled player so the preview cannot block your clicks.\nMove into an open space before turning it off. Your mode follows you between plots and is saved when you leave.";
+        HELP_SMALL = "Small mode\n/small toggles half-size movement and an animal appearance for other players.\n/small on and /small off select the mode explicitly.\n/small wolf|fox|cat|ocelot changes your saved animal; ocelot is the default.\n/gm cat enables creative play in small mode; other gamemodes restore normal size.\nYour own view stays a scaled player so the preview cannot block your clicks.\nMove into an open space before turning it off. Your mode and animal follow you between plots and are saved when you leave.";
         USAGE_SETWARP = "Usage: /setwarp <name> (creates or replaces a shared warp)";
         USAGE_WARP = "Usage: /warp [name] (omit the name to list shared warps)";
         INVALID_WARP_NAME = "Warp names must be 1-32 letters, digits, underscores or hyphens.";
@@ -223,7 +223,7 @@ catalog! {
         HELP_PISTONS = "Piston animation and updates\n/piston_anim [auto|on|off] controls animations. /bisdon_anim is an alias.\n/wsr [rate|0] shows or sets the update rate; 0 stops periodic updates.\nAbove the server TPS threshold (200 by default), updates cap at 10 Hz. A lower /wsr still applies.";
         HELP_PLOTS = "Plots\n/p auto claims an empty plot; /p claim claims the plot you're in.\n/p info shows the owner; /p middle goes to the centre.\n/p home visits your first plot; /p visit <player> [number] visits a plot.\n/p add <nick> and /p remove <nick> manage plot members.\n/p tp <x> <z> uses plot coordinates.\n/p lock and /p unlock control leaving. /p select selects the plot for WorldEdit.";
         HELP_QUICK_START = "MROWW — Minecraft Redstone o Wysokiej Wydajności\n/p auto claims a plot.\n/help plots - Claim and visit plots.\n/help warps - Save and visit shared destinations.\n/help tps - Control and step simulation.\n/help we - WorldEdit.\n/help tools - Redstone tools.\n/help wire - Draw redstone wires.\n/help schematics - Load and save builds.\n/help screenonly - Reduce visual updates.\n/help pistons - Animations and update rate.\n/help rewind - Tick history.\n/help git - Plot commits, branches and glowing diffs.\n/help chat - Chat and command blocks.\n/help redpiler - Compiled simulation.";
-        HELP_REDPILER = "Compiled simulation\n/rp compile enables compiled mode; /rp reset returns to the interpreter.\nAdd --assume-instant for logical piston behavior without movement delays or reset pulses; memory still updates only when sampled.\n/rp inspect checks the targeted block. /toggleautorp toggles automatic compilation.\n/rp analyze checks whether the plot can compile. It accepts the same flags, including --assume-instant.\n/rp analyze --graph prepares a read-only candidate graph; optional --optimize and --io-only check optimization.\nUse /tps 0 and /adv 1 to step compiled execution. Nano/pico stepping requires /rp reset first.";
+        HELP_REDPILER = "Compiled simulation\n/rp compile enables compiled mode; /rp reset returns to the interpreter.\nAdd --assume-instant for logical piston behavior without movement delays or reset pulses; memory still updates only when sampled.\n/rp inspect checks the targeted block. /toggleautorp toggles automatic compilation.\n/rp compile --export-nodes writes redpiler_nodes.txt with ordinary nodes, wires, and instant logic decisions.\n/rp analyze checks whether the plot can compile. It accepts the same flags, including --assume-instant.\n/rp analyze --graph prepares a read-only candidate graph; optional --optimize and --io-only check optimization.\nUse /tps 0 and /adv 1 to step compiled execution. Nano/pico stepping requires /rp reset first.";
         HELP_REDSTONE_TOOLS = "Redstone tools\n//find <block> searches your selection.\n//ss <regex> searches signs; -p <page> shows more.\n//rs [direction] [count] [spacing] stacks copies; -e expands selection; -w includes air.\n/autostack [direction] [count] [spacing] [-e] automatically stacks your placements and removals in the selected region; /autostack off stops it. Leaving the plot stops it.\n/wire draws dust with a live preview; /help wire explains controls and safety limits.\n/container <type> <0..15> creates a comparator container.\n/cursel toggles the selection sidebar.";
         HELP_WIRE = "Wire pen\nHold any carrot on a stick and right-click to draw. /wire gives a named pen or resets your route.\nRight-click a block to use it as the first support, with dust directly above, or existing dust to reuse that endpoint.\nAim on the drawing plane. Right-click builds the green preview and continues from its end.\nF cycles horizontal (X/Z), vertical X (X/Y), vertical Z (Y/Z), then Free aiming. Sneak + F changes the preferred bend. The action bar shows the aiming mode.\n/wire free aims directly at blocks in any direction; /wire plane restores horizontal aiming. These commands keep your current start. F returns from Free to horizontal.\nPlanes control aiming; the router can take safe 3D detours. Vertical dust routes use staircases. Build an intermediate point, then change plane to draw in 3D.\nSneak + right-click or changing held item cancels the route. Hold the pen and right-click to start again while enabled.\n/wire off disables the pen for this login, including after item or plot changes. /wire, /wire free, or /wire plane enables it again.\nNew supports copy the starting support's passive material and color. Clicking dust samples the block below it. Active blocks or blocks with stored data fall back to glass; transparent materials may need white wool on steps.\nNo repeaters or signal-range check. Unsafe or unsupported circuit interactions are refused.\n//undo restores the last segment's geometry; it does not rewind simulation.";
         WIRE_USAGE = "Usage: /wire [free|plane|off]";
@@ -440,6 +440,7 @@ catalog! {
         YOU_NOT_WHITELISTED_ON_SERVER = "You are not whitelisted on this server";
     }
     formatted {
+        small_animal(animal: impl Display) = "Small appearance set to {animal}.";
         warp_saved(name: impl Display) = "Saved shared warp '{name}'. Visit it with /warp {name}.";
         warp_not_found(name: impl Display) = "Warp '{name}' was not found. Use /warp to list destinations.";
         warp_teleport(name: impl Display) = "Teleporting to warp '{name}'.";
@@ -708,11 +709,15 @@ mod tests {
         );
         assert_eq!(
             click.get("command"),
-            Some(&nbt::Value::String("/tp -19.5 30.5 40.5 --highlight-only".into()))
+            Some(&nbt::Value::String(
+                "/tp -19.5 30.5 40.5 --highlight-only".into()
+            ))
         );
         assert_eq!(
             coordinates.get("insertion"),
-            Some(&nbt::Value::String("/tp -19.5 30.5 40.5 --highlight".into()))
+            Some(&nbt::Value::String(
+                "/tp -19.5 30.5 40.5 --highlight".into()
+            ))
         );
     }
 }

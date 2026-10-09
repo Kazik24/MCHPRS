@@ -93,13 +93,15 @@ supported command forms.
 
 `/small` toggles a half-size player (0.3 blocks wide, 0.9 blocks tall), fitting
 through one-block gaps. `/small on|off` selects the mode explicitly. Other players
-see an ocelot following you; your own view stays a scaled player so block clicks,
+see an ocelot following you by default; `/small wolf|fox|cat|ocelot` selects and
+saves its appearance. Your own view stays a scaled player so block clicks,
 inventory, and tools work normally. `/gm cat` enables creative play in this mode;
 other gamemodes restore normal size. Restoring normal size requires headroom.
-The mode follows you between plots and survives reconnects. Dedicated permissions
-use `mchprs.commands.small`; `/gm cat` also requires the usual creative gamemode
-permissions. `/help small` explains the command. Player saves upgrade to version 4;
-older saves load normally, but older server builds cannot read upgraded saves.
+The mode and animal follow you between plots and survive reconnects. Dedicated
+permissions use `mchprs.commands.small`; `/gm cat` also requires the usual creative
+gamemode permissions. `/help small` explains the command. Player saves upgrade to
+version 5; older saves load normally, but older server builds cannot read upgraded
+saves.
 
 Common simulation commands are `/tps 0` to pause, `/adv <ticks>` to advance game
 ticks, and `/adv nano <count>` or `/adv pico <count>` to inspect partial

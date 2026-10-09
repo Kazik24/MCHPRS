@@ -65,6 +65,7 @@ pub struct PlayerData {
     walk_speed: f32,
     gamemode: Gamemode,
     small: bool,
+    small_animal: SmallAnimal,
 }
 
 impl Default for PlayerData {
@@ -81,6 +82,7 @@ impl Default for PlayerData {
             walk_speed: 1.0,
             gamemode: Gamemode::Creative,
             small: false,
+            small_animal: SmallAnimal::Ocelot,
         }
     }
 }
@@ -95,7 +97,7 @@ impl PlayerData {
                 anyhow::bail!("unsupported player save version");
             }
             let version = u32::from_le_bytes(data[7..11].try_into()?);
-            if !matches!(version, 3 | 4) {
+            if !matches!(version, 3 | 4 | 5) {
                 anyhow::bail!("unsupported player save version");
             }
             if u32::from_le_bytes(data[11..15].try_into()?) != crate::server::MC_DATA_VERSION as u32
@@ -109,7 +111,39 @@ impl PlayerData {
             // Older bincode records predate the final small-mode flag.
             data.push(0);
         }
+        if version < 5 {
+            data.extend_from_slice(&bincode::serialize(&SmallAnimal::Ocelot)?);
+        }
         Ok((bincode::deserialize(&data)?, legacy))
+    }
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub(crate) enum SmallAnimal {
+    Wolf,
+    Fox,
+    Cat,
+    #[default]
+    Ocelot,
+}
+
+impl SmallAnimal {
+    pub(crate) fn entity_type(self) -> i32 {
+        match self {
+            Self::Wolf => mchprs_network::generated::WOLF_ENTITY,
+            Self::Fox => mchprs_network::generated::FOX_ENTITY,
+            Self::Cat => mchprs_network::generated::CAT_ENTITY,
+            Self::Ocelot => mchprs_network::generated::OCELOT_ENTITY,
+        }
+    }
+
+    pub(crate) fn name(self) -> &'static str {
+        match self {
+            Self::Wolf => "wolf",
+            Self::Fox => "fox",
+            Self::Cat => "cat",
+            Self::Ocelot => "ocelot",
+        }
     }
 }
 
@@ -197,6 +231,7 @@ pub struct Player {
     pub sprinting: bool,
     pub crouching: bool,
     pub(crate) small_model: Option<SmallModel>,
+    pub(crate) small_animal: SmallAnimal,
     pub(crate) last_compass_use: Option<Instant>,
     pub on_ground: bool,
     pub fly_speed: f32,
@@ -231,6 +266,7 @@ pub(crate) struct SmallModel {
     pub entity_id: EntityId,
     pub uuid: u128,
     pub last_pose: Option<[f64; 5]>,
+    pub last_mouth_item: Option<Vec<u8>>,
 }
 
 impl SmallModel {
@@ -239,6 +275,7 @@ impl SmallModel {
             entity_id: allocate_entity_id(),
             uuid: rand::random(),
             last_pose: None,
+            last_mouth_item: None,
         }
     }
 }
@@ -390,6 +427,7 @@ impl Player {
             sprinting: false,
             crouching: false,
             small_model: player_data.small.then(SmallModel::new),
+            small_animal: player_data.small_animal,
             last_compass_use: None,
             gamemode: if permissions::dedicated_permissions()
                 && !permissions_cache
@@ -466,7 +504,7 @@ impl Player {
             }
             if legacy {
                 let mut bytes = b"MCHPLY\0".to_vec();
-                bytes.extend_from_slice(&4u32.to_le_bytes());
+                bytes.extend_from_slice(&5u32.to_le_bytes());
                 bytes.extend_from_slice(&(crate::server::MC_DATA_VERSION as u32).to_le_bytes());
                 bytes.extend_from_slice(&bincode::serialize(&player)?);
                 mchprs_save_data::atomic::backup(path)?;
@@ -525,10 +563,11 @@ impl Player {
             selected_item_slot: self.selected_slot as i32,
             walk_speed: self.walk_speed,
             small: self.small_model.is_some(),
+            small_animal: self.small_animal,
         })
         .unwrap();
         let mut bytes = b"MCHPLY\0".to_vec();
-        bytes.extend_from_slice(&4u32.to_le_bytes());
+        bytes.extend_from_slice(&5u32.to_le_bytes());
         bytes.extend_from_slice(&(crate::server::MC_DATA_VERSION as u32).to_le_bytes());
         bytes.extend_from_slice(&data);
         let filename = format!("./world/players/{:032x}", self.uuid);
@@ -1054,7 +1093,7 @@ mod coordinate_security_tests {
             data.extend(body);
             data
         };
-        let (data, legacy) = PlayerData::decode(envelope(4, &payload)).unwrap();
+        let (data, legacy) = PlayerData::decode(envelope(5, &payload)).unwrap();
         assert!(data.small);
         assert!(!legacy);
         let conn = mchprs_network::test_support::connection(false).unwrap();
@@ -1064,7 +1103,11 @@ mod coordinate_security_tests {
             player.entity_id,
             player.small_model.as_ref().unwrap().entity_id
         );
-        let old_payload = &payload[..payload.len() - 1];
+        let version4_payload = &payload[..payload.len() - 4];
+        let (data, _) = PlayerData::decode(envelope(4, version4_payload)).unwrap();
+        assert!(data.small);
+
+        let old_payload = &payload[..payload.len() - 5];
         for (bytes, expected_legacy) in [
             (old_payload.to_vec(), true),
             (envelope(3, old_payload), false),
@@ -1075,7 +1118,7 @@ mod coordinate_security_tests {
         }
         for invalid in [
             b"MCHPLY\0".to_vec(),
-            envelope(5, &payload),
+            envelope(4, &payload),
             envelope(4, old_payload),
             envelope(3, &old_payload[..old_payload.len() - 1]),
         ] {
