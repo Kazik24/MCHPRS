@@ -299,8 +299,6 @@ catalog! {
         CANNOT_ADVANCE_PICO_TICKS_WHILE_REDPILER = "Can't take pico-tick pawsteps while Redpiler is active. Run /redpiler reset first.";
         CANNOT_REDO_OUTSIDE_CURRENT_PLOT = "Redo can't fetch changes from outside your current plot. Return to that plot first.";
         CANNOT_UNDO_OUTSIDE_CURRENT_PLOT = "Undo can't follow pawprints outside your current plot. Return to that plot first.";
-        CAN_T_BREAK_BLOCKS_OUTSIDE_PLOT = "Can't break blocks outside this plot. Keep your digging paws inside its bounds.";
-        CAN_T_INTERACT_BLOCKS_OUTSIDE_PLOT = "Can't interact with blocks outside this plot. Bring those paws back inside.";
         CLIPBOARD_EMPTY = "Nothing in the clipboard for these paws to fetch. Use //copy first.";
         CLIPBOARD_EMPTY_PASTE = "Can't paste from an empty clipboard—fetch a selection with //copy first.";
         COMMAND_BLOCK_EXECUTED = "Command executed";

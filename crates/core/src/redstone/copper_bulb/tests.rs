@@ -18,9 +18,7 @@ fn world() -> PlotWorld {
     let chunks = (0..PLOT_WIDTH)
         .flat_map(|x| (0..PLOT_WIDTH).map(move |z| Chunk::empty(x, z)))
         .collect();
-    let mut world = PlotWorld::from_chunks(0, 0, chunks, Default::default());
-    world.set_random_tick_speed(0);
-    world
+    PlotWorld::from_chunks(0, 0, chunks, Default::default())
 }
 
 fn circuit(name: &str, lit: bool, powered: bool) -> PlotWorld {
@@ -251,7 +249,7 @@ fn interpreter_and_compiled_bulbs_match_java_1_21_5() {
 }
 
 #[test]
-fn copper_bulb_waxing_scraping_and_oxidation_preserve_the_latch() {
+fn copper_bulb_waxing_and_scraping_preserve_the_latch() {
     for &(name, _, first, last, _) in mchprs_blocks::generated::BLOCKS {
         if !name.ends_with("copper_bulb") {
             continue;
@@ -283,52 +281,6 @@ fn copper_bulb_waxing_scraping_and_oxidation_preserve_the_latch() {
             }
             assert!(item_transform(block, "stick").is_none());
         }
-    }
-    let mut world = world();
-    let bulb = Block::from_name("copper_bulb")
-        .unwrap()
-        .with_copper_bulb_state(true, true)
-        .unwrap();
-    world.set_block(BULB, bulb);
-    assert!(oxidation_state(&world, BULB, 0.057, 0.0).is_none());
-    assert!(oxidation_state(&world, BULB, 0.0, 0.75).is_none());
-    let next = oxidation_state(&world, BULB, 0.0, 0.749).unwrap();
-    assert_eq!(next.get_name(), "exposed_copper_bulb");
-    assert_eq!(next.copper_bulb_state(), Some((true, true)));
-    world.set_block(BULB, next);
-    world.set_block(
-        BULB + BlockPos::new(2, 1, 1),
-        Block::from_name("copper_grate").unwrap(),
-    );
-    assert!(
-        oxidation_state(&world, BULB, 0.0, 0.0).is_none(),
-        "younger copper within Manhattan distance four blocks oxidation"
-    );
-    world.set_block(BULB + BlockPos::new(2, 1, 1), Block::Air);
-    world.set_block(
-        BULB + BlockPos::new(3, 1, 1),
-        Block::from_name("copper_grate").unwrap(),
-    );
-    world.set_block(
-        BULB.offset(BlockFace::North),
-        Block::from_name("waxed_copper_block").unwrap(),
-    );
-    assert_eq!(
-        oxidation_state(&world, BULB, 0.0, 0.9).unwrap().get_name(),
-        "weathered_copper_bulb"
-    );
-    world.set_block(
-        BULB.offset(BlockFace::South),
-        Block::from_name("exposed_cut_copper_slab").unwrap(),
-    );
-    assert!(
-        oxidation_state(&world, BULB, 0.0, 0.25).is_none(),
-        "same-age copper reduces chance to one quarter"
-    );
-    assert!(oxidation_state(&world, BULB, 0.0, 0.249).is_some());
-    for name in ["waxed_copper_bulb", "oxidized_copper_bulb"] {
-        world.set_block(BULB, Block::from_name(name).unwrap());
-        assert!(oxidation_state(&world, BULB, 0.0, 0.0).is_none());
     }
 }
 
@@ -384,35 +336,45 @@ fn copper_bulbs_toggle_on_the_aggregate_input_edge() {
 }
 
 #[test]
-fn copper_bulb_random_ticks_sample_only_eligible_sections() {
-    let mut chunk = Chunk::empty(0, 0);
-    let bulb = Block::from_name("copper_bulb").unwrap();
-    for index in 0..4096 {
-        chunk.set_block(
-            index & 15,
-            32 + (index >> 8),
-            (index >> 4) & 15,
-            bulb.get_id(),
-        );
+fn copper_bulb_variants_do_not_age_during_simulation() {
+    for &(name, _, _, _, _) in mchprs_blocks::generated::BLOCKS {
+        if !name.ends_with("copper_bulb") {
+            continue;
+        }
+        for flags in [None, Some(""), Some("-O"), Some("-Oi")] {
+            let mut world = circuit(name, false, false);
+            let mut compiler = Compiler::default();
+            let bounds = (BlockPos::new(36, 28, 36), BlockPos::new(46, 34, 46));
+            if let Some(flags) = flags {
+                compiler
+                    .compile(
+                        &world,
+                        bounds,
+                        CompilerOptions::parse(flags).unwrap(),
+                        vec![],
+                        Default::default(),
+                    )
+                    .unwrap();
+                compiler.on_use_block(INPUT);
+            } else {
+                world.set_block(INPUT, Block::RedstoneBlock);
+                crate::redstone::update_surrounding_blocks(&mut world, INPUT);
+            }
+            for _ in 0..64 {
+                if flags.is_some() {
+                    compiler.tick_with_world(&mut world);
+                } else {
+                    world.tick_interpreted();
+                }
+                assert_eq!(world.get_block(BULB).get_name(), name, "flags={flags:?}");
+            }
+            if flags.is_some() {
+                compiler.reset(&mut world, bounds);
+            }
+            assert_eq!(world.get_block(BULB).get_name(), name, "flags={flags:?}");
+            assert_eq!(world.get_block(BULB).copper_bulb_state(), Some((true, true)));
+        }
     }
-    let mut world = PlotWorld::from_chunks(0, 0, vec![chunk], Default::default());
-    for _ in 0..4 {
-        let samples = world.random_tick_positions();
-        assert_eq!(samples.len(), 3);
-        assert!(samples
-            .iter()
-            .all(|&pos| (32..48).contains(&pos.y) && world.get_block(pos) == bulb));
-    }
-    world.set_random_tick_speed(0);
-    assert!(world.random_tick_positions().is_empty());
-    world.set_random_tick_speed(3);
-    for index in 0..4096 {
-        world.set_block(
-            BlockPos::new(index & 15, 32 + (index >> 8), (index >> 4) & 15),
-            Block::from_name("waxed_copper_bulb").unwrap(),
-        );
-    }
-    assert!(world.random_tick_positions().is_empty());
 }
 
 #[test]
@@ -436,48 +398,6 @@ fn copper_bulb_legacy_export_is_rejected_before_writing() {
         error.to_string(),
         "copper-bulb state cannot be exported in the electrical graph format"
     );
-}
-
-#[test]
-fn compiled_oxidation_reads_virtual_state_and_notifies_observers() {
-    let mut world = circuit("copper_bulb", false, false);
-    let mut compiler = Compiler::default();
-    let bounds = (BlockPos::new(36, 28, 36), BlockPos::new(46, 34, 46));
-    compiler
-        .compile(
-            &world,
-            bounds,
-            CompilerOptions::parse("-Oi").unwrap(),
-            vec![],
-            Default::default(),
-        )
-        .unwrap();
-    compiler.on_use_block(INPUT);
-    assert_eq!(
-        world.get_block(BULB).copper_bulb_state(),
-        Some((false, false))
-    );
-    compiler.oxidize_bulb(&mut world, BULB, 0.0, 0.0);
-    assert_eq!(world.get_block(BULB).get_name(), "exposed_copper_bulb");
-    assert_eq!(
-        world.get_block(BULB).copper_bulb_state(),
-        Some((true, true))
-    );
-    for _ in 0..4 {
-        compiler.tick_with_world(&mut world);
-    }
-    compiler.reset(&mut world, bounds);
-    assert_eq!(world.get_block(BULB).get_name(), "exposed_copper_bulb");
-    assert_eq!(
-        world.get_block(BULB).copper_bulb_state(),
-        Some((true, true))
-    );
-    assert!(matches!(
-        world.get_block_entity(DIRECT),
-        Some(BlockEntity::Comparator {
-            output_strength: 15
-        })
-    ));
 }
 
 #[test]
@@ -518,7 +438,7 @@ fn copper_bulb_light_updates_and_removal_cross_chunk_boundaries() {
 }
 
 #[test]
-fn copper_bulb_save_load_retains_states_and_random_tick_counts() {
+fn copper_bulb_save_load_retains_states() {
     let mut chunk = Chunk::empty(2, 2);
     let mut states = Vec::new();
     for &(name, _, first, last, _) in mchprs_blocks::generated::BLOCKS {
@@ -529,18 +449,14 @@ fn copper_bulb_save_load_retains_states_and_random_tick_counts() {
     for (index, &state) in states.iter().enumerate() {
         chunk.set_block(index as u32 & 15, 30, index as u32 >> 4, state);
     }
-    assert_eq!(chunk.sections[1].random_tick_count, 12);
     let saved = chunk.save();
-    let mut loaded = Chunk::load(2, 2, saved);
-    assert_eq!(loaded.sections[1].random_tick_count, 12);
+    let loaded = Chunk::load(2, 2, saved);
     for (index, &state) in states.iter().enumerate() {
         assert_eq!(
             loaded.get_block(index as u32 & 15, 30, index as u32 >> 4),
             state
         );
-        loaded.set_block(index as u32 & 15, 30, index as u32 >> 4, 0);
     }
-    assert_eq!(loaded.sections[1].random_tick_count, 0);
 }
 
 #[test]

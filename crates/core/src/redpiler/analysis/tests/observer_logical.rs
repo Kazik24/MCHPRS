@@ -508,12 +508,20 @@ fn unobserved_lamp_presentation_keeps_live_cap_control_and_omits_reset_flashes()
             }
             compiler.reset(&mut world, bounds);
             assert_eq!(world.get_block(lamp), Block::RedstoneLamp { lit: false });
-            assert!(
-                matches!(world.get_block(base), Block::Piston { piston } if !piston.extended),
-                "the logical owner actually responded"
-            );
-            assert!(world.piston_state().events.is_empty());
-            assert!(world.piston_state().motions.is_empty());
+            if assume_instant {
+                assert!(
+                    matches!(world.get_block(base), Block::Piston { piston } if !piston.extended),
+                    "the logical owner actually responded"
+                );
+                assert!(world.piston_state().events.is_empty());
+                assert!(world.piston_state().motions.is_empty());
+            } else {
+                assert!(
+                    !world.piston_state().motions.is_empty()
+                        || !world.piston_state().events.is_empty(),
+                    "the active physical reset must retain its continuation work"
+                );
+            }
         }
     }
 }

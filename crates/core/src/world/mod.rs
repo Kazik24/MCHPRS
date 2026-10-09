@@ -156,9 +156,6 @@ pub trait World {
         self.play_sound(pos, sound_id, category, volume, pitch);
     }
     fn container_opened(&mut self, _pos: BlockPos, _ty: ContainerType) {}
-    fn random_tick_positions(&mut self) -> Vec<BlockPos> {
-        Vec::new()
-    }
     fn level_event_for_action(&mut self, _pos: BlockPos, _event: i32, _excluded: u128) {}
 }
 

@@ -497,12 +497,7 @@ impl Plot {
             session.start,
             session.plane,
         ) {
-            if session.start.is_none() {
-                session.start = Some(target);
-                session.target = Some(target);
-                session.invalidate();
-                session.set_status(messages::WIRE_START_SELECTED);
-            } else if session.target != Some(target) {
+            if session.target != Some(target) {
                 session.retarget(Some(target));
                 session.set_status(messages::WIRE_PENDING);
             } else if !session.displayed {

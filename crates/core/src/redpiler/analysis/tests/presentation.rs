@@ -146,69 +146,6 @@ fn independent_bud_display_preserves_inert_payload_material() {
 }
 
 #[test]
-fn copper_bud_oxidation_uses_committed_occupancy_with_all_display_policies() {
-    let payload = Block::from_name("copper_block").unwrap();
-    for assume_instant in [false, true] {
-        for optimize in [false, true] {
-            for io_only in [false, true] {
-                for frequent in [false, true] {
-                    let (mut world, cell, _, _, sample) = generator_cell(false);
-                    world.set_block(cell + BlockPos::new(0, -2, 0), payload);
-                    let bulb = cell + BlockPos::new(0, -6, 0);
-                    world.set_block(bulb, Block::from_name("exposed_copper_bulb").unwrap());
-                    world.set_random_tick_speed(0);
-                    let bounds = world.get_corners();
-                    let mut compiler = Compiler::default();
-                    compiler
-                        .compile(
-                            &world,
-                            bounds,
-                            CompilerOptions {
-                                assume_instant,
-                                optimize,
-                                io_only,
-                                ..Default::default()
-                            },
-                            vec![],
-                            Default::default(),
-                        )
-                        .unwrap();
-                    compiler.flush(&mut world);
-                    let initial = compiler.backend.as_ref().unwrap().logical_stats();
-                    compiler.oxidize_bulb(&mut world, bulb, 0.0, 0.0);
-                    assert_eq!(world.get_block(bulb).get_name(), "exposed_copper_bulb");
-                    assert_eq!(compiler.backend.as_ref().unwrap().logical_stats(), initial);
-
-                    compiler.on_use_block(sample);
-                    if frequent {
-                        compiler.flush(&mut world);
-                    }
-                    assert_pose(&world, cell, frequent && !io_only, payload);
-                    if !frequent || io_only {
-                        assert!(
-                            crate::redstone::copper_bulb::oxidation_state(&world, bulb, 0.0, 0.0)
-                                .is_none(),
-                            "the unpublished far copper still blocks a raw world read"
-                        );
-                    }
-                    let committed = compiler.backend.as_ref().unwrap().logical_stats();
-                    compiler.oxidize_bulb(&mut world, bulb, 0.0, 0.0);
-                    assert_eq!(world.get_block(bulb).get_name(), "weathered_copper_bulb");
-                    assert_eq!(
-                        compiler.backend.as_ref().unwrap().logical_stats(),
-                        committed
-                    );
-                    compiler.reset(&mut world, bounds);
-                    assert!(world.scheduler().iter_entries().next().is_none());
-                    assert!(world.piston_state().events.is_empty());
-                    assert!(world.piston_state().motions.is_empty());
-                }
-            }
-        }
-    }
-}
-
-#[test]
 fn shared_clock_display_tracks_each_committed_bank_with_all_flags() {
     for assume_instant in [false, true] {
         for optimize in [false, true] {

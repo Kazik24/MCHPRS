@@ -23,6 +23,8 @@ pub(crate) struct ClockedProgram {
 }
 
 impl ClockedProgram {
+    /// Prove that one ordinary torch controls the clock without stored feedback.
+    /// Full power must hold the generator extended; losing power must release it.
     pub fn validate(&self, world: &impl World, logic: &WaveLogic) -> Result<(), String> {
         let mut pending = vec![logic.responses[self.clock]];
         let mut visited = FxHashSet::default();
@@ -61,6 +63,8 @@ impl ClockedProgram {
     }
 }
 
+/// Find a ready observer clock and the BUD bank sampled only by its observer.
+/// Return no match when this shape is absent; reject a matching but unsafe bank.
 pub(crate) fn recognize(
     world: &impl World,
     report: &AnalysisReport,

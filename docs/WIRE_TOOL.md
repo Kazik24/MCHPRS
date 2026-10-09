@@ -121,7 +121,7 @@ total lengths, it favors progress toward the endpoint, then fewer bends. Search
 keeps each path prefix distinct because its proposed supports and dust affect
 safe continuations.
 
-Each routing request stops when the first applicable limit is reached:
+Each routing request has these limits:
 
 | Resource | Initial limit |
 | --- | ---: |
@@ -132,6 +132,9 @@ Each routing request stops when the first applicable limit is reached:
 | Block-state and sparse-tail storage reservation | 16 MiB per snapshot |
 | Shared retained snapshot storage reservation | 64 MiB |
 | Planned dust/support placements | 512 |
+
+The placement limit rejects individual candidates; a detour can fit by reusing
+existing supports. The other limits stop the request.
 
 These are construction and resource limits, not signal-range limits. Reaching a
 budget does not prove that no safe path exists. Try a closer intermediate point

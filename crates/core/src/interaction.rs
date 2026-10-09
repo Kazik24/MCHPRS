@@ -690,12 +690,9 @@ pub fn use_item_on_block(
         }
         if let Some(sound) = sound {
             crate::sound::play(world, use_pos, sound, 1.0, 1.0, Some(ctx.player.uuid));
-            world.level_event_for_action(use_pos, event, ctx.player.uuid);
         }
+        world.level_event_for_action(use_pos, event, ctx.player.uuid);
         place_in_world(transformed, world, use_pos, &None);
-        if sound.is_none() {
-            world.level_event_for_action(use_pos, event, ctx.player.uuid);
-        }
         return ItemUseResult::Used;
     }
     let block_pos = ctx.block_pos.offset(ctx.block_face);

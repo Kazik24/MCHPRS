@@ -488,16 +488,20 @@ pub fn skipping_update_surrounding_blocks(
 ) {
     surrounding_notifications(pos, |target, dir, diagonal| {
         let block = world.get_block(target);
-        if !diagonal
-            || ((target != pos || !block.is_copper_bulb())
-                && !matches!(block, Block::Observer { .. })
-                && (!skip_pistons || !matches!(block, Block::Piston { .. })))
+        if diagonal
+            && ((target == pos && block.is_copper_bulb())
+                || matches!(block, Block::Observer { .. })
+                || (skip_pistons && matches!(block, Block::Piston { .. })))
         {
-            update(block, world, target, Some(dir));
+            return;
         }
+        update(block, world, target, Some(dir));
     });
 }
 
+/// Visit direct neighbors and their vertical diagonals in interpreter order.
+/// Keep repeated positions, including the origin: these are ordered callbacks.
+/// Callers filter recipients because diagonal rechecks are not watched-block changes.
 pub(crate) fn surrounding_notifications(
     pos: BlockPos,
     mut visit: impl FnMut(BlockPos, BlockFace, bool),

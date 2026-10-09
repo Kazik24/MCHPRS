@@ -407,8 +407,6 @@ effects and visible dirty block states are emitted by `flush`. Notes beneath
 owned BUD geometry capture canonical obstruction at their power rise, so
 deferred rendering cannot change sound eligibility. Other notes retain the
 existing live-world obstruction check.
-Compiled copper-bulb oxidation likewise reads committed memory occupancy when
-scanning neighboring copper ages, independently of displayed payload positions.
 
 `--io-only` restricts display writes to input/output nodes. It retains the
 electrical dependencies they need. Supported BUD memory publishes its committed
@@ -422,9 +420,12 @@ notification reads committed settled state independently of presentation.
 `Compiler::reset` removes the active backend, flushes surviving hidden node
 state, exports comparator entities, materializes region geometry and stored bits,
 and returns remaining ordinary scheduled ticks to the interpreter. Region
-materialization writes bases, stationary heads, deterministic payload positions,
-dormant owned reset observers, and compiled settled dust strengths/shapes. It
-does not replay piston movement or synthesize the physical reset episode.
+materialization in physically compatible mode restores current piston movement,
+payload positions, observer power, and their remaining continuation work. Hidden
+actors retain phase tracking so stopping compilation cannot strand a running
+reset loop. Owned dust is recalculated without update callbacks. Assumption mode
+instead writes settled logical occupancy with dormant reset observers; it does
+not promise physical continuation of the ideal protocol.
 `--update` explicitly runs interpreter updates over the bounds afterwards.
 
 Edits that change compiler input geometry must end compiler ownership first.

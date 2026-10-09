@@ -13,9 +13,8 @@ fn world() -> PlotWorld {
 }
 
 #[test]
-fn copper_bulb_rewind_restores_light_and_random_tick_eligibility() {
+fn copper_bulb_rewind_restores_state_and_light() {
     let mut world = world();
-    world.set_random_tick_speed(0);
     let pos = BlockPos::new(4, 30, 4);
     let bulb = Block::from_name("exposed_copper_bulb")
         .unwrap()
@@ -28,11 +27,9 @@ fn copper_bulb_rewind_restores_light_and_random_tick_eligibility() {
     world.tick_interpreted();
     world.flush_block_changes();
     assert_eq!(world.bulb_light_at(pos), 0);
-    assert!(world.random_tick_sections.is_empty());
     world.rewind_ticks(2, false).unwrap();
     assert_eq!(world.get_block(pos), bulb);
     assert_eq!(world.bulb_light_at(pos), 12);
-    assert_eq!(world.random_tick_sections.len(), 1);
 }
 
 #[derive(Debug, PartialEq)]

@@ -6,7 +6,7 @@ use crate::player::{PacketSender, PlayerPos, SkinParts};
 use crate::server::Message;
 use crate::utils::HyphenatedUUID;
 use crate::world::World;
-use mchprs_blocks::block_entities::{BlockEntity, SignBlockEntity};
+use mchprs_blocks::block_entities::BlockEntity;
 use mchprs_blocks::blocks::Block;
 use mchprs_blocks::items::{Item, ItemStack};
 use mchprs_blocks::{BlockFace, BlockPos};
@@ -197,12 +197,6 @@ impl Plot {
             self.players[player].inventory[45].clone()
         };
 
-        if !Plot::in_plot_bounds(self.world.x, self.world.z, block_pos.x, block_pos.z) {
-            self.players[player].send_system_message(messages::CAN_T_INTERACT_BLOCKS_OUTSIDE_PLOT);
-            cancel(self);
-            return;
-        }
-
         if let Some(item) = &item_in_hand {
             let has_permission = self.players[player].has_permission("worldedit.selection.pos");
             if item.item_type == (Item::WEWand {}) && has_permission {
@@ -259,13 +253,6 @@ impl Plot {
             }
         }
 
-        if mchprs_blocks::block_entities::ContainerType::from_block(self.world.get_block(block_pos))
-            .is_some()
-            && !self.container_in_reach(player, block_pos)
-        {
-            cancel(self);
-            return;
-        }
         self.close_open_container(player);
 
         if let Some(item) = item_in_hand {
@@ -340,11 +327,6 @@ impl Plot {
                 return;
             }
             let block = self.world.get_block(block_pos);
-
-            if !Plot::in_plot_bounds(self.world.x, self.world.z, block_pos.x, block_pos.z) {
-                self.players[player].send_system_message(messages::CAN_T_BREAK_BLOCKS_OUTSIDE_PLOT);
-                return;
-            }
 
             // This worldedit wand stuff should probably be done in another file. It's good enough for now.
             let item_in_hand = self.players[player].inventory
@@ -1078,27 +1060,17 @@ impl ServerBoundPacketHandler for Plot {
             || !Plot::in_plot_bounds(self.world.x, self.world.z, pos.x, pos.z)
             || !(0..super::PLOT_BLOCK_HEIGHT).contains(&pos.y)
             || !self.container_in_reach(player, pos)
-            || !matches!(self.world.get_block_entity(pos), Some(BlockEntity::Sign(_)))
         {
             return;
         }
-        let mut rows = packet
-            .lines
-            .iter()
-            .map(|line| json!({ "text": line }).to_string());
-        let mut sign = match self.world.get_block_entity(pos) {
-            Some(BlockEntity::Sign(sign)) => (**sign).clone(),
-            _ => SignBlockEntity::default(),
+        let Some(BlockEntity::Sign(sign)) = self.world.get_block_entity(pos) else {
+            return;
         };
         if sign.waxed {
             return;
         }
-        let updated = [
-            rows.next().unwrap(),
-            rows.next().unwrap(),
-            rows.next().unwrap(),
-            rows.next().unwrap(),
-        ];
+        let mut sign = (**sign).clone();
+        let updated = packet.lines.map(|line| json!({ "text": line }).to_string());
         if packet.front {
             sign.rows = updated;
         } else {

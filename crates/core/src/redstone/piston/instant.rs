@@ -437,8 +437,6 @@ mod tests {
     fn proven_pair() -> (PlotWorld, PlotWorld, BlockPos) {
         let (mut cached, base, _) = cell();
         let (mut native, _, _) = cell();
-        cached.set_random_tick_speed(0);
-        native.set_random_tick_speed(0);
         paired_source(&mut cached, &mut native, base, true);
         paired_source(&mut cached, &mut native, base, false);
         let mut reset_seen = false;
@@ -560,8 +558,6 @@ mod tests {
     fn observer_reset_pushing_multiple_blocks_is_never_proven() {
         let (mut cached, base, _) = cell();
         let (mut native, _, _) = cell();
-        cached.set_random_tick_speed(0);
-        native.set_random_tick_speed(0);
         paired_source(&mut cached, &mut native, base, true);
         paired_source(&mut cached, &mut native, base, false);
         for _ in 0..12 {
@@ -610,8 +606,6 @@ mod tests {
     fn native_observer_cycle_learns_only_after_complete_reset_and_reuses_live_routes() {
         let (mut cached, base, _) = cell();
         let (mut native, _, _) = cell();
-        cached.set_random_tick_speed(0);
-        native.set_random_tick_speed(0);
         source(&mut cached, base, true);
         source(&mut native, base, true);
         assert_eq!(cached.instant_piston_cache().unwrap().stats(), (0, 0, 0));
@@ -649,8 +643,6 @@ mod tests {
     fn held_zero_observer_cycle_learns_and_preserves_every_native_reset() {
         let (mut cached, base, _) = cell();
         let (mut native, _, _) = cell();
-        cached.set_random_tick_speed(0);
-        native.set_random_tick_speed(0);
         source(&mut cached, base, true);
         source(&mut native, base, true);
         paired_source(&mut cached, &mut native, base, false);
@@ -672,7 +664,6 @@ mod tests {
     #[test]
     fn manually_rearmed_piston_without_observer_is_never_learned() {
         let (mut world, base, _) = cell();
-        world.set_random_tick_speed(0);
         world.set_block(base.offset(BlockFace::Top), Block::Air);
         source(&mut world, base, true);
         for powered in [false, true, false, true] {

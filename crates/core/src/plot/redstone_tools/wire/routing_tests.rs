@@ -765,12 +765,7 @@ fn endpoint_near_machinery_can_route_along_an_unchanged_connection_side() {
     let snapshot = capture_world(&world, start, end);
     let cancel = AtomicBool::new(false);
     let budget = Budget::new(&snapshot, start, &cancel).unwrap_or_else(|_| panic!("budget"));
-    let before = View {
-        snapshot: &snapshot,
-        edits: FxHashMap::default(),
-        budget: &budget,
-        piston_state: PistonState::default(),
-    };
+    let before = View::new(&snapshot, &budget);
     assert!(failure(&before, start, true).is_some());
     let SearchResult::Found(plan) = search(snapshot, start, end, true, &cancel) else {
         panic!("An unchanged endpoint was blanket-refused near machinery")
@@ -1196,6 +1191,39 @@ fn astar_routes_around_unselected_wire_contacts_and_consumer_inputs() {
         }));
         assert!(plan.path.iter().any(|p| p.z == 20 || p.z == 24));
     }
+}
+
+#[test]
+fn oversized_direct_candidate_does_not_hide_a_supported_detour() {
+    let start = BlockPos::new(32, 7, 32);
+    let end = BlockPos::new(289, 7, 32);
+    let gaps: Vec<_> = (start.x + 1..end.x)
+        .map(|x| (BlockPos::new(x, start.y - 1, start.z), Block::Air {}))
+        .collect();
+    let snapshot = snapshot(
+        (start - BlockPos::new(0, 0, 1), end + BlockPos::new(0, 0, 1)),
+        &gaps,
+    );
+    let cancel = AtomicBool::new(false);
+    let budget = Budget::new(&snapshot, start, &cancel).unwrap_or_else(|_| panic!("budget"));
+    let direct: Vec<_> = (start.x..=end.x)
+        .map(|x| BlockPos::new(x, start.y, start.z))
+        .collect();
+    let direct = proposed(&snapshot, &direct, &budget).unwrap();
+    assert!(direct.supports.len() + direct.dust.len() > MAX_PLACEMENTS);
+
+    let mut detour = vec![start];
+    detour.extend((start.x..=end.x).map(|x| BlockPos::new(x, start.y, start.z + 1)));
+    detour.push(end);
+    let plan = make_plan(&snapshot, &detour, &budget)
+        .unwrap_or_else(|_| panic!("budget"))
+        .unwrap();
+    assert_eq!(plan.placements.len(), 260);
+
+    assert!(matches!(
+        search(snapshot, start, end, true, &cancel),
+        SearchResult::Found(_)
+    ));
 }
 
 #[test]

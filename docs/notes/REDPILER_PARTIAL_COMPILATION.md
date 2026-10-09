@@ -173,9 +173,6 @@ committed geometry at the power-rise event, before any later pose changes or
 flush. Ordinary notes preserve their live-world fallback. Deferred sound
 delivery therefore retains eligibility across multiple intervening commits,
 including when `--io-only` suppresses geometry writes.
-Compiled copper-bulb oxidation also resolves neighboring copper payloads through
-committed memory geometry. A bind-time position lookup avoids scanning the bank
-for every oxidation-neighborhood read.
 
 Acceptance covers both memory mechanisms and poses, data-only changes without
 notifications, repeated/no-change flushes, stop/recompile, chunk reload, paused

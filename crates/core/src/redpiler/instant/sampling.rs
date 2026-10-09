@@ -94,22 +94,14 @@ pub(crate) fn data_notifies(world: &impl World, source: BlockPos, base: BlockPos
         });
         return notified;
     }
-    let output = match block {
-        Block::RedstoneComparator { comparator } => {
-            Some(source.offset(comparator.facing.opposite().block_face()))
-        }
-        Block::RedstoneRepeater { repeater } => {
-            Some(source.offset(repeater.facing.opposite().block_face()))
-        }
+    let facing = match block {
+        Block::RedstoneComparator { comparator } => Some(comparator.facing.block_face()),
+        Block::RedstoneRepeater { repeater } => Some(repeater.facing.block_face()),
         _ => None,
     };
-    if let Some(output) = output {
+    if let Some(facing) = facing {
+        let output = source.offset(facing.opposite());
         let mut notified = false;
-        let facing = match block {
-            Block::RedstoneComparator { comparator } => comparator.facing.block_face(),
-            Block::RedstoneRepeater { repeater } => repeater.facing.block_face(),
-            _ => unreachable!(),
-        };
         crate::redstone::diode_notifications(output, facing, |pos, _| notified |= pos == base);
         return notified;
     }
@@ -148,6 +140,10 @@ pub(crate) fn reset_candidates(world: &impl World, report: &AnalysisReport) -> F
         .collect()
 }
 
+/// Classify fixed pistons, empty notification generators, and retained BUD cells
+/// (pistons that store their response until a separate notification arrives).
+/// A cell needs a proven writer separate from its data; electrical power alone
+/// does not prove that a callback will commit the new value.
 pub(crate) fn recognize(
     world: &impl World,
     report: &AnalysisReport,
@@ -251,9 +247,18 @@ pub(crate) fn recognize(
             ));
         }
     }
-    let reset_actors: FxHashSet<_> = report.pistons.iter().enumerate().filter_map(|(actor, piston)| {
-        resets.iter().any(|&pos| matches!(world.get_block(pos), Block::Observer { observer } if pos.offset(observer.facing.into()) == piston.pos)).then_some(actor)
-    }).collect();
+    let reset_actors: FxHashSet<_> = report
+        .pistons
+        .iter()
+        .enumerate()
+        .filter_map(|(actor, piston)| {
+            let watched_by_reset = resets.iter().any(|&pos| {
+                matches!(world.get_block(pos), Block::Observer { observer }
+                    if pos.offset(observer.facing.into()) == piston.pos)
+            });
+            watched_by_reset.then_some(actor)
+        })
+        .collect();
     let mut memory = Vec::new();
     let mut events: Vec<SamplingEvent> = Vec::new();
     for (actor, piston) in report.pistons.iter().enumerate() {
@@ -285,9 +290,17 @@ pub(crate) fn recognize(
                     requires_extended: !base,
                 };
                 found = true;
-                if let Some(event) = events.iter_mut().find(|event| matches!(event.source, SamplingSource::Generator(id) if id == generator)) {
+                let event = events.iter_mut().find(|event| {
+                    matches!(event.source, SamplingSource::Generator(id) if id == generator)
+                });
+                if let Some(event) = event {
                     event.targets.push(target);
-                } else { events.push(SamplingEvent { source: SamplingSource::Generator(generator), targets: vec![target] }); }
+                } else {
+                    events.push(SamplingEvent {
+                        source: SamplingSource::Generator(generator),
+                        targets: vec![target],
+                    });
+                }
             }
         }
         let data = &report.recognition[actor].inputs;
@@ -331,11 +344,28 @@ pub(crate) fn recognize(
                 return Err(format!("BUD at {:?} uses {:?} as both data and notification writer; independent sampling is required", piston.pos, writer));
             }
             found = true;
-            if let Some(event) = events.iter_mut().find(|event| matches!(event.source, SamplingSource::Power { pos, .. } if pos == update.source)) {
-                event.targets.push(SamplingTarget { actor, requires_extended: false });
+            let target = SamplingTarget {
+                actor,
+                requires_extended: false,
+            };
+            let event = events.iter_mut().find(|event| {
+                matches!(event.source, SamplingSource::Power { pos, .. } if pos == update.source)
+            });
+            if let Some(event) = event {
+                event.targets.push(target);
             } else {
-                let Block::RedstoneWire { wire } = world.get_block(update.source) else { unreachable!() };
-                events.push(SamplingEvent { source: SamplingSource::Power { writer, pos: update.source, initial: wire.power, terms: Vec::new() }, targets: vec![SamplingTarget { actor, requires_extended: false }] });
+                let Block::RedstoneWire { wire } = world.get_block(update.source) else {
+                    unreachable!()
+                };
+                events.push(SamplingEvent {
+                    source: SamplingSource::Power {
+                        writer,
+                        pos: update.source,
+                        initial: wire.power,
+                        terms: Vec::new(),
+                    },
+                    targets: vec![target],
+                });
             }
         }
         if !found {
@@ -387,6 +417,8 @@ pub(crate) fn recognize(
     })
 }
 
+/// Reject sampling controls that depend on stored memory or physical state.
+/// Follow pure actuator responses so indirect feedback receives the same check.
 pub(crate) fn validate(
     events: &[SamplingEvent],
     logic: &WaveLogic,

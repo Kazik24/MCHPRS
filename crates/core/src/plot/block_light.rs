@@ -18,7 +18,8 @@ impl PlotWorld {
             .iter()
             .flat_map(|chunk| chunk.copper_bulbs())
             .filter_map(|(pos, block)| {
-                (block.copper_bulb_light() > 0).then_some((pos, block.copper_bulb_light()))
+                let strength = block.copper_bulb_light();
+                (strength > 0).then_some((pos, strength))
             })
             .collect();
         self.bulb_light.dirty = true;

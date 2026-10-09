@@ -25,6 +25,12 @@ fn vector(value: f32) -> Vec<u8> {
 
 pub(in crate::plot) fn metadata(entity_id: i32, kind: u8) -> CEntityMetadata {
     // Minecraft 1.21.5 block_display keys/types, from mc_data/1.21.5.
+    let (color, glow_color) = match kind {
+        0 => (BlockColorVariant::Lime, 0x39ff14),
+        1 => (BlockColorVariant::Red, 0xff2d2d),
+        4 => (BlockColorVariant::White, 0xffffff),
+        _ => (BlockColorVariant::Yellow, 0xffe23d),
+    };
     let entry = |index, metadata_type, value| CEntityMetadataEntry {
         index,
         metadata_type,
@@ -40,30 +46,11 @@ pub(in crate::plot) fn metadata(entity_id: i32, kind: u8) -> CEntityMetadata {
             entry(12, 33, vector(1.01)),
             entry(16, 1, varint((15 << 4) | (15 << 20))), // Full block/sky brightness.
             entry(17, 3, 2.0f32.to_be_bytes().to_vec()),
-            entry(
-                22,
-                1,
-                varint(match kind {
-                    0 => 0x39ff14,
-                    1 => 0xff2d2d,
-                    4 => 0xffffff,
-                    _ => 0xffe23d,
-                }),
-            ),
+            entry(22, 1, varint(glow_color)),
             entry(
                 23,
                 14,
-                varint(
-                    Block::StainedGlass {
-                        color: match kind {
-                            0 => BlockColorVariant::Lime,
-                            1 => BlockColorVariant::Red,
-                            4 => BlockColorVariant::White,
-                            _ => BlockColorVariant::Yellow,
-                        },
-                    }
-                    .get_id() as i32,
-                ),
+                varint(Block::StainedGlass { color }.get_id() as i32),
             ),
         ],
     }

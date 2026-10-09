@@ -346,7 +346,6 @@ fn potados_pc_counter_preserves_native_count_waveform() {
         "641c50d1903ccf3715759007d5b82e0f04786020d8cce80fbdbb4a3c8a3596f7"
     );
     let (mut native, bounds) = load_counter();
-    native.set_random_tick_speed(0);
     turn_on_all_levers(&mut native, bounds);
     let mut expected = Vec::new();
     let mut peaks = Vec::new();
@@ -374,7 +373,6 @@ fn potados_pc_counter_preserves_native_count_waveform() {
         for optimize in [false, true] {
             for assume_instant in [false, true] {
                 let (mut world, bounds) = load_counter();
-                world.set_random_tick_speed(0);
                 turn_on_all_levers(&mut world, bounds);
                 let initial = block_state(&world, candidate, BASE);
                 let mut compiler = Compiler::default();

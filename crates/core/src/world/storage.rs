@@ -251,7 +251,6 @@ impl PalettedBitBuffer {
 pub struct ChunkSection {
     buffer: PalettedBitBuffer,
     block_count: u32,
-    pub(crate) random_tick_count: u16,
     multi_block: CMultiBlockChange,
     changed_blocks: Option<Box<[i16; 16 * 16 * 16]>>,
 }
@@ -275,11 +274,6 @@ impl ChunkSection {
     /// Sets a block in the chunk sections. Returns true if a block was changed.
     fn set_block(&mut self, x: u32, y: u32, z: u32, block: u32) -> bool {
         let old_block = self.get_block(x, y, z);
-        let ticks = |id| {
-            let block = Block::from_id(id);
-            u16::from(block.is_copper_bulb() && block.copper_oxidation().is_some_and(|age| age < 3))
-        };
-        self.random_tick_count = self.random_tick_count + ticks(block) - ticks(old_block);
         if old_block == 0 && block != 0 {
             self.block_count += 1;
         } else if old_block != 0 && block == 0 {
@@ -305,23 +299,8 @@ impl ChunkSection {
         let palette = data.palette.into_iter().map(|x| x as u32).collect();
         let buffer =
             PalettedBitBuffer::load(data.entries, bits_per_entry, loaded_longs, palette, 9);
-        let random_tick_count = if buffer.use_palette
-            && !buffer.palette.iter().any(|&id| {
-                let block = Block::from_id(id);
-                block.is_copper_bulb() && block.copper_oxidation().is_some_and(|age| age < 3)
-            }) {
-            0
-        } else {
-            (0..4096)
-                .filter(|&index| {
-                    let block = Block::from_id(buffer.get_entry(index));
-                    block.is_copper_bulb() && block.copper_oxidation().is_some_and(|age| age < 3)
-                })
-                .count() as u16
-        };
         ChunkSection {
             buffer,
-            random_tick_count,
             block_count: data.block_count as u32,
             multi_block: CMultiBlockChange {
                 chunk_x: 0,
@@ -436,7 +415,6 @@ impl Default for ChunkSection {
         ChunkSection {
             buffer: PalettedBitBuffer::new(4096, 9),
             block_count: 0,
-            random_tick_count: 0,
             multi_block: CMultiBlockChange {
                 chunk_x: 0,
                 chunk_y: 0,

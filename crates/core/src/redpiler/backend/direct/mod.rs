@@ -193,9 +193,9 @@ impl DirectBackend {
         node.powered = powered;
         node.output_power = new_power;
         let update_count = node.updates.len();
-        let bulb_state_changed =
-            matches!(node.ty, NodeType::CopperBulb) && previous != update::observed_state(node);
-        if previous != update::observed_state(node) {
+        let state_changed = previous != update::observed_state(node);
+        let bulb_state_changed = matches!(node.ty, NodeType::CopperBulb) && state_changed;
+        if state_changed {
             self.notify_observer_watchers(node_id);
         }
         for i in 0..update_count {
@@ -253,6 +253,8 @@ impl DirectBackend {
         }
     }
 
+    /// Apply an input change and capture effects that depend on its arrival time.
+    /// Bulb latches update immediately; note eligibility reads committed memory.
     fn update_node(&mut self, id: NodeId) {
         let event_start = self.events.len();
         let node = &self.nodes[id];
@@ -292,6 +294,8 @@ impl DirectBackend {
         }
     }
 
+    /// Propagate region outputs until no source changes or delivered samples remain.
+    /// Each pass commits one writer's samples before processing the next writer.
     fn evaluate_instant(&mut self, clock_event: bool) {
         loop {
             let mut runtimes = std::mem::take(&mut self.instant);
@@ -327,55 +331,6 @@ impl DirectBackend {
         world.piston_state_mut().logical_tick += 1;
         self.tick_after_callbacks(|backend| backend.process_command_outputs(world));
         self.process_command_outputs(world);
-        use rand::Rng;
-        let mut random = rand::thread_rng();
-        for pos in world.random_tick_positions() {
-            self.oxidize_bulb(world, pos, random.gen(), random.gen());
-        }
-    }
-
-    pub(crate) fn oxidize_bulb(
-        &mut self,
-        world: &mut impl World,
-        pos: BlockPos,
-        gate: f32,
-        roll: f32,
-    ) {
-        let Some(&id) = self.pos_map.get(&pos) else {
-            return;
-        };
-        let Some((_, block)) = self.blocks[id.index()] else {
-            return;
-        };
-        let Some(live) =
-            block.with_copper_bulb_state(self.nodes[id].output_power > 0, self.nodes[id].powered)
-        else {
-            return;
-        };
-        let Some(mut next) = crate::redstone::copper_bulb::oxidation_state_with(
-            |pos| {
-                self.instant
-                    .iter()
-                    .find_map(|runtime| runtime.memory_block_at(pos))
-                    .unwrap_or_else(|| world.get_block(pos))
-            },
-            pos,
-            gate,
-            roll,
-        ) else {
-            return;
-        };
-        let (lit, powered) = live.copper_bulb_state().unwrap();
-        next = next.with_copper_bulb_state(lit, powered).unwrap();
-        self.blocks[id.index()] = Some((pos, next));
-        self.nodes[id].changed = true;
-        self.notify_observer_watchers(id);
-        self.update_node(id);
-        world.set_block(
-            pos,
-            next.with_copper_bulb_state(self.nodes[id].output_power > 0, self.nodes[id].powered)
-                .unwrap(),
-        );
     }
 
     pub(crate) fn inspect(&mut self, pos: BlockPos) {
@@ -387,7 +342,7 @@ impl DirectBackend {
         debug!("Node {:?}: {:#?}", node_id, self.nodes[*node_id]);
     }
 
-    pub(crate) fn reset<W: World>(&mut self, world: &mut W, io_only: bool) {
+    pub(crate) fn reset<W: World>(&mut self, world: &mut W, io_only: bool, assume_instant: bool) {
         // Display flushing can clear dirty flags without writing hidden nodes.
         // Handoff must materialize their current strengths, including ordinary
         // dust between a virtual region supply and its consumer.
@@ -421,7 +376,7 @@ impl DirectBackend {
         }
 
         for runtime in std::mem::take(&mut self.instant) {
-            runtime.materialize(world);
+            runtime.materialize(world, !assume_instant);
         }
         self.scheduler.reset(world, &self.blocks);
 

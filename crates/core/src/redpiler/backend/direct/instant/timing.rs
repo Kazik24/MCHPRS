@@ -1,5 +1,6 @@
 //! Electrical occupancy at a compiled piston boundary; no world callbacks.
 use crate::redpiler::instant::boolean::GeometryPart;
+use mchprs_blocks::BlockPos;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub(super) enum Phase {
@@ -14,7 +15,36 @@ pub(super) struct Boundary {
     pub reset_owners: Vec<usize>,
     pub phase: Phase,
     pub deadline: Option<u64>,
-    requested: bool,
+    pub observers: Vec<(BlockPos, ObserverPulse)>,
+    pub requested: bool,
+}
+
+/// Native observers pulse two half ticks after a watched base changes.
+pub(super) struct ObserverPulse {
+    pub powered: bool,
+    pub deadline: Option<u64>,
+}
+
+impl ObserverPulse {
+    pub fn new(powered: bool) -> Self {
+        Self {
+            powered,
+            deadline: None,
+        }
+    }
+
+    fn notify(&mut self, now: u64) {
+        if !self.powered && self.deadline.is_none() {
+            self.deadline = Some(now + 2);
+        }
+    }
+
+    fn advance(&mut self, now: u64) {
+        if self.deadline.is_some_and(|deadline| deadline <= now) {
+            self.powered = !self.powered;
+            self.deadline = self.powered.then_some(now + 2);
+        }
+    }
 }
 
 impl Boundary {
@@ -28,6 +58,7 @@ impl Boundary {
                 Phase::Extended
             },
             deadline: None,
+            observers: Vec::new(),
             requested: retracted,
         }
     }
@@ -48,12 +79,34 @@ impl Boundary {
             self.deadline = None;
             return;
         }
+        let previous = self.phase;
         self.phase = if retracted {
             Phase::Retracting
         } else {
             Phase::Extending
         };
         self.deadline = Some(now + 2);
+        self.notify_observers(previous, now);
+    }
+
+    pub fn advance_observers(&mut self, now: u64) {
+        for (_, observer) in &mut self.observers {
+            observer.advance(now);
+        }
+    }
+
+    fn notify_observers(&mut self, previous: Phase, now: u64) {
+        // Extension completion changes the head, while the base stays extended.
+        let base_changed = previous != self.phase
+            && !matches!(
+                (previous, self.phase),
+                (Phase::Extending, Phase::Extended) | (Phase::Extended, Phase::Extending)
+            );
+        if base_changed {
+            for (_, observer) in &mut self.observers {
+                observer.notify(now);
+            }
+        }
     }
 
     pub fn advance(&mut self, now: u64, resetting: bool) {
@@ -66,8 +119,10 @@ impl Boundary {
             Phase::Extending => (Phase::Extended, (resetting && self.requested).then_some(1)),
             Phase::Extended => (Phase::Retracting, Some(2)),
         };
+        let previous = self.phase;
         self.phase = phase;
         self.deadline = delay.map(|delay| now + delay);
+        self.notify_observers(previous, now);
     }
 
     pub fn geometry(&self, part: GeometryPart) -> bool {
@@ -84,6 +139,29 @@ impl Boundary {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn reset_observers_keep_native_pulse_deadlines() {
+        let mut boundary = Boundary::new(0, vec![0], false);
+        boundary
+            .observers
+            .push((BlockPos::new(0, 1, 0), ObserverPulse::new(false)));
+        boundary.request(true, 2);
+        for (tick, powered, deadline) in [
+            (2, false, Some(4)),
+            (3, false, Some(4)),
+            (4, true, Some(6)),
+            (5, true, Some(6)),
+            (6, false, None),
+            (7, false, None),
+            (8, false, Some(10)),
+        ] {
+            boundary.advance_observers(tick);
+            boundary.advance(tick, true);
+            let observer = &boundary.observers[0].1;
+            assert_eq!((observer.powered, observer.deadline), (powered, deadline));
+        }
+    }
 
     #[test]
     fn reset_boundary_repeats_its_certified_six_tick_cycle() {

@@ -178,10 +178,6 @@ memory commits therefore cannot change eligibility for an already queued note.
 Electrical input identity therefore does not depend on whether a sound can play
 at compilation entry.
 
-Compiled copper-bulb oxidation reads neighboring copper ages through committed
-memory occupancy as well. Moving a copper payload in the display cannot alter
-the oxidation decision; ordinary world positions retain their existing reads.
-
 Each ordinary scheduled callback is followed by region evaluation and publication
 through ordinary `set_node` propagation; shared-clock deadlines run after the
 ordinary due work. Interactions also evaluate affected regions immediately.
@@ -486,9 +482,8 @@ pose. At high TPS, client batching can skip short-lived intermediate poses.
 
 Other virtual region internals keep their saved appearance until handoff.
 There is no smooth movement, internal dust/reset animation, or new admission
-from these display writes. Note-block obstruction and copper-bulb oxidation over
-BUD-owned geometry use canonical committed occupancy even when visual writes
-are suppressed or deferred.
+from these display writes. Note-block obstruction over BUD-owned geometry uses
+canonical committed occupancy even when visual writes are suppressed or deferred.
 
 See [Direct flush](../crates/core/src/redpiler/backend/direct/mod.rs),
 [manual advancement](../crates/core/src/plot/commands.rs), and
@@ -555,15 +550,20 @@ region can intentionally differ from physical execution, so materializing it
 does not promise continuing ideal/interpreter equality.
 
 Reset first flushes ordinary hidden state and events, including comparator
-entity strengths. Logical handoff writes stationary occupancy and the last
-committed bank. Shared payload ownership uses the first firing actor in stored
-group order. Owned reset observers are off; other owned reset components retain
-their saved presentation. Owned dust receives settled shape and strength from
-compiled guarded paths; saved reset-source strengths are fixed only for this
-restoration. Handoff creates no movement entities, piston events or reset
-callbacks and invokes no electrical update propagation. The ordinary scheduler
-retains its pending work. This is a deterministic settled snapshot, not replay
-of a historical physical reset wave.
+entity strengths. In physically compatible mode, handoff preserves each actor's
+current movement phase and remaining deadline, including actors hidden from
+compiled output. It restores moving piston entities, owned observer power and
+pending ticks, and base rechecks that would otherwise be lost between movements.
+Payload ownership and stored cells follow the last committed bank. Owned dust
+is recalculated against that restored geometry without invoking update callbacks.
+The ordinary scheduler retains its pending work.
+
+With `--assume-instant`, handoff instead exports a deterministic settled snapshot
+of logical occupancy and stored bits. Shared payload ownership uses the first
+firing actor in stored group order. Owned reset observers are off, dust receives
+settled shape and strength from compiled guarded paths, and no movement or reset
+episode is synthesized. This preserves the intentional ideal-mode distinction
+from physical execution.
 
 Finally ordinary scheduler entries return to the world with relative deadlines,
 priority and FIFO order. Constants preserve current physical presentation
@@ -573,9 +573,11 @@ handoff exports the current bank regardless of the display cadence. Other
 virtual internal components may have remained at entry presentation.
 
 Explicit reset-with-update additionally invokes the requested physical updates;
-ordinary handoff does not synthesize them. Settled materialization is not a
-proof of all edit/save/load/recompile histories. Required new lifecycle
-support needs continuation tests at the affected state boundaries.
+ordinary handoff exports continuation work without invoking them. Compilation
+still requires stationary entry geometry with no pending piston events. Repeated
+handoff tests compare outputs tick by tick, resume interpretation, and settle
+before recompiling. This does not prove all edit/save/load histories; new
+lifecycle support needs continuation tests at the affected state boundaries.
 
 ## 12. Generalization, admission and known gaps
 

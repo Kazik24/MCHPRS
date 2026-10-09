@@ -32,8 +32,6 @@ fn production_adders_preserve_native_arithmetic_windows() {
                 for assume_instant in [false, true] {
                     let (mut native, _, _) = fixture(name);
                     let (mut world, _, _) = fixture(name);
-                    native.set_random_tick_speed(0);
-                    world.set_random_tick_speed(0);
                     let mut compiler = Compiler::default();
                     compiler
                         .compile(
@@ -109,8 +107,6 @@ fn production_counter_counts_in_native_consumer_windows() {
         for assume_instant in [false, true] {
             let (mut native, _, manifest) = fixture("counter_basic");
             let (mut world, _, _) = fixture("counter_basic");
-            native.set_random_tick_speed(0);
-            world.set_random_tick_speed(0);
             let mut compiler = Compiler::default();
             compiler
                 .compile(

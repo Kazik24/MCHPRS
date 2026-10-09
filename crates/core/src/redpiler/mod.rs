@@ -274,20 +274,6 @@ impl Compiler {
         self.backend.as_ref().unwrap().ordinary_sources()
     }
 
-    #[cfg(test)]
-    pub(crate) fn oxidize_bulb(
-        &mut self,
-        world: &mut impl World,
-        pos: BlockPos,
-        gate: f32,
-        roll: f32,
-    ) {
-        self.backend
-            .as_mut()
-            .unwrap()
-            .oxidize_bulb(world, pos, gate, roll);
-    }
-
     /// Last successful compile; failed attempts never publish partial statistics.
     pub fn stats(&self) -> Option<&CompileStatistics> {
         self.statistics.as_ref()
@@ -418,7 +404,7 @@ impl Compiler {
     pub fn reset<W: World>(&mut self, world: &mut W, bounds: (BlockPos, BlockPos)) {
         self.warnings.clear();
         if let Some(mut backend) = self.backend.take() {
-            backend.reset(world, self.options.io_only);
+            backend.reset(world, self.options.io_only, self.options.assume_instant);
         }
 
         if self.options.update {

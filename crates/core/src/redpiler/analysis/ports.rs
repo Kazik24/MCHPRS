@@ -133,6 +133,8 @@ pub(crate) fn consumer_roots(
     }
 }
 
+/// Discover electrical consumers and physical callback routes separately.
+/// Shared reset exposure prevents one region from taking another region's updates.
 pub(super) fn discover<W: World>(
     topology: &mut Topology<'_, W>,
     pistons: &[PistonDescriptor],
@@ -230,27 +232,21 @@ pub(super) fn discover<W: World>(
         for (receiver, requires_extended) in [(p.pos, false), (p.head, true)] {
             for face in BlockFace::values() {
                 let source = receiver.offset(face);
-                if piston_bases
-                    .get(&source)
-                    .is_some_and(|&actor| actor != index)
-                {
-                    ports.updates.push(UpdateDependency {
-                        source,
-                        kind: UpdateKind::PistonBaseChange,
-                        independent_of_power: !inputs.sources.iter().any(|d| d.source == source),
-                        requires_extended,
-                    });
-                }
-                if piston_heads
-                    .get(&source)
-                    .is_some_and(|&actor| actor != index)
-                {
-                    ports.updates.push(UpdateDependency {
-                        source,
-                        kind: UpdateKind::AdjacentHeadChange,
-                        independent_of_power: !inputs.sources.iter().any(|d| d.source == source),
-                        requires_extended,
-                    });
+                for (actors, kind) in [
+                    (&piston_bases, UpdateKind::PistonBaseChange),
+                    (&piston_heads, UpdateKind::AdjacentHeadChange),
+                ] {
+                    if actors.get(&source).is_some_and(|&actor| actor != index) {
+                        ports.updates.push(UpdateDependency {
+                            source,
+                            kind,
+                            independent_of_power: !inputs
+                                .sources
+                                .iter()
+                                .any(|d| d.source == source),
+                            requires_extended,
+                        });
+                    }
                 }
             }
         }

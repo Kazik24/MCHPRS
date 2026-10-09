@@ -310,9 +310,6 @@ fn main() -> Result<()> {
         for checked_optimize in [false, optimize] {
             let mut world = load(&descriptor)?;
             let probes = fpu_probes(&mut world, &descriptor)?;
-            if interpreted {
-                world.set_random_tick_speed(0);
-            }
             let mut compiler = (!interpreted).then(Compiler::default);
             if let Some(compiler) = &mut compiler {
                 compiler
@@ -370,9 +367,6 @@ fn main() -> Result<()> {
     for index in 1..=iterations {
         println!("{backend} {component} sample {index}/{iterations}");
         let mut world = load(&descriptor)?;
-        if interpreted {
-            world.set_random_tick_speed(0);
-        }
         let probes = if changing_inputs {
             fpu_probes(&mut world, &descriptor)?
         } else {
@@ -540,7 +534,7 @@ fn main() -> Result<()> {
         "actual_origin": [origin(&descriptor).x, origin(&descriptor).y, origin(&descriptor).z],
         "flags": if interpreted { None } else { Some(if optimize { "-O --assume-instant" } else { "--assume-instant" }) }, "budget_multiplier": (!interpreted).then_some(8),
         "admitted_means": (!interpreted).then_some("compiler acceptance only; no physical or arithmetic equivalence claim"),
-        "scope": if interpreted { "native interpreter with random ticks disabled; per-tick outputs and final whole-world checkpoint compared with --reference" } else { "actual logical workloads; BubbleSort and full FPU without --changing-inputs are admission only; no runtime fallback" },
+        "scope": if interpreted { "native interpreter; per-tick outputs and final whole-world checkpoint compared with --reference" } else { "actual logical workloads; BubbleSort and full FPU without --changing-inputs are admission only; no runtime fallback" },
         "measurement_kind": if changing_inputs { if component == "fpu_legal" { "full_fpu_raw_changing_inputs" } else { "divider_raw_changing_inputs" } } else { match (component.as_str(), interpreted) { ("pc_counter", true) => "interpreted_pc_counter_runtime", ("counter_basic", true) => "interpreted_counter_runtime", ("counter_basic", false) => "logical_counter_runtime", ("fpu_divider", true) => "interpreted_divider_episodes", ("fpu_divider", false) => "logical_divider_episodes", _ => "admission_only" } },
         "timing": if changing_inputs {
             format!("timers include lever stimulus, {tick_operation} and optional compiled flush; observations, preparation and independent validation excluded")
@@ -554,7 +548,6 @@ fn main() -> Result<()> {
         "interpreter_flush_policy": interpreted.then_some("no-op: interpreter block state is already published"),
         "counter_protocol": "exact IO fixture; 24 inactive ticks, lever OFF->ON, 600 active warmup ticks, then fixed active window",
         "pc_counter_protocol": (component == "pc_counter").then_some("revised saved fixture; all 23 OFF levers enabled in Y/Z/X order; one untimed activation tick; 4096 measured ticks; exact decoded pulse peaks 1..682 and final count 682"),
-        "random_tick_speed": interpreted.then_some(0),
         "game_ticks": if component == "pc_counter" { Some(4096) } else if changing_inputs { Some(changing_game_ticks) } else if component == "counter_basic" { Some(u64::from(ticks)) } else { None }, "flush_every_game_ticks": flush_every,
         "divider_protocol": (component == "fpu_divider" && !changing_inputs).then_some("saved A/B held; 64 ON initialization ticks; one untimed OFF128/ON128 warm episode; repeated held OFF128/ON128 complete episodes preserving ordinary clock timing; observe response170 during OFF and verify final reset0 after ON"),
         "episodes": (component == "fpu_divider" || changing_inputs).then_some(episodes),

@@ -149,8 +149,6 @@ pub struct PlotWorld {
     command_output_limits_enabled: bool,
     history: history::TickHistory,
     update_stats: UpdateStats,
-    random_tick_sections: HashSet<(usize, usize)>,
-    random_tick_speed: u32,
     bulb_light: block_light::BulbLight,
 }
 
@@ -166,22 +164,6 @@ struct UpdateStats {
 }
 
 impl PlotWorld {
-    fn rebuild_random_tick_sections(&mut self) {
-        self.random_tick_sections.clear();
-        for (chunk_index, chunk) in self.chunks.iter().enumerate() {
-            for (section_index, section) in chunk.sections.iter().enumerate() {
-                if section.random_tick_count > 0 {
-                    self.random_tick_sections
-                        .insert((chunk_index, section_index));
-                }
-            }
-        }
-    }
-
-    pub fn set_random_tick_speed(&mut self, speed: u32) {
-        self.random_tick_speed = speed;
-    }
-
     #[inline]
     pub fn from_chunks(
         x: i32,
@@ -213,8 +195,6 @@ impl PlotWorld {
             command_output_limits_enabled: true,
             history: Default::default(),
             update_stats: Default::default(),
-            random_tick_sections: Default::default(),
-            random_tick_speed: 3,
             bulb_light: Default::default(),
         };
         // Position-only old saves bind to the loaded type once. They never
@@ -274,7 +254,6 @@ impl PlotWorld {
         for pos in repeating {
             redstone::command_block::update(&mut world, pos);
         }
-        world.rebuild_random_tick_sections();
         world.rebuild_bulb_light();
         world
     }
@@ -385,6 +364,11 @@ impl PlotWorld {
         &self.to_be_ticked
     }
 
+    pub(crate) fn clear_scheduled_ticks(&mut self) {
+        self.to_be_ticked.clear();
+        self.tick_index.invalidate();
+    }
+
     /// Queued command-block chat, in emission order.
     pub fn command_output(&self) -> impl Iterator<Item = &str> {
         self.command_messages
@@ -431,7 +415,6 @@ impl PlotWorld {
     }
 
     fn invalidate_interpreter_caches(&mut self) {
-        self.rebuild_random_tick_sections();
         self.rebuild_bulb_light();
         self.tick_index.invalidate();
         self.piston_index.get_mut().invalidate();
@@ -440,7 +423,6 @@ impl PlotWorld {
     }
 
     fn clear_interpreter_caches(&mut self) {
-        self.rebuild_random_tick_sections();
         self.rebuild_bulb_light();
         self.tick_index = Default::default();
         *self.piston_index.get_mut() = Default::default();
@@ -467,9 +449,6 @@ impl PlotWorld {
                         self.to_be_ticked.end_last_tick_move_next();
                         self.piston_state.scheduled_advanced = true;
                     } else {
-                        for pos in self.random_tick_positions() {
-                            redstone::copper_bulb::random_tick(self, pos);
-                        }
                         self.piston_state.phase = AdvancePhase::PistonEvents;
                     }
                 }
@@ -649,12 +628,6 @@ impl World for PlotWorld {
             (pos.z & 0xF) as u32,
             block,
         );
-        let section = pos.y as usize / 16;
-        if chunk.sections[section].random_tick_count > 0 {
-            self.random_tick_sections.insert((chunk_index, section));
-        } else {
-            self.random_tick_sections.remove(&(chunk_index, section));
-        }
         let local_pos = BlockPos::new(pos.x & 15, pos.y, pos.z & 15);
         if let Some(ty) = mchprs_blocks::block_entities::ContainerType::from_block(new) {
             if !matches!(chunk.get_block_entity(local_pos), Some(BlockEntity::Container { ty: existing, .. }) if *existing == ty)
@@ -947,28 +920,6 @@ impl World for PlotWorld {
                 }
             }
         }
-    }
-
-    fn random_tick_positions(&mut self) -> Vec<BlockPos> {
-        use rand::Rng;
-        let mut random = rand::thread_rng();
-        let mut positions = Vec::new();
-        for &(chunk_index, section) in &self.random_tick_sections {
-            let chunk = &self.chunks[chunk_index];
-            for _ in 0..self.random_tick_speed {
-                let index = random.gen_range(0..4096);
-                let pos = BlockPos::new(
-                    chunk.x * 16 + (index & 15),
-                    section as i32 * 16 + (index >> 8),
-                    chunk.z * 16 + ((index >> 4) & 15),
-                );
-                let block = self.get_block(pos);
-                if block.is_copper_bulb() && block.copper_oxidation().is_some_and(|age| age < 3) {
-                    positions.push(pos);
-                }
-            }
-        }
-        positions
     }
 
     fn level_event_for_action(&mut self, pos: BlockPos, event: i32, excluded: u128) {
@@ -1551,8 +1502,7 @@ impl Plot {
                     }
                 }
                 // Transfer scheduled work only after the complete backend exists.
-                self.world.to_be_ticked.clear();
-                self.world.tick_index.invalidate();
+                self.world.clear_scheduled_ticks();
                 self.close_all_containers();
                 if self.world.history.enabled() {
                     let bytes = self.world.history.disable();
@@ -1613,10 +1563,8 @@ impl Plot {
     }
 
     fn leave_plot(&mut self, uuid: u128) -> Player {
-        if let Some(player) = self.players.iter().position(|player| player.uuid == uuid) {
-            self.clear_wire_tool(player);
-        }
         let player_idx = self.players.iter().position(|p| p.uuid == uuid).unwrap();
+        self.clear_wire_tool(player_idx);
         self.hide_git(player_idx, true);
         self.close_open_container(player_idx);
         self.world.packet_senders.remove(player_idx);
@@ -2323,7 +2271,6 @@ fn copper_bulb_item_actions_preserve_state_and_exclude_predicted_feedback() {
     use crate::interaction::{use_item_on_block, ItemUseResult, UseOnBlockContext};
     use mchprs_blocks::items::{Item, ItemStack};
     let mut world = PlotWorld::from_chunks(0, 0, vec![Chunk::empty(0, 0)], Default::default());
-    world.set_random_tick_speed(0);
     let pos = BlockPos::new(4, 30, 4);
     world.set_block(
         pos,

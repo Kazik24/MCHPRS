@@ -550,12 +550,7 @@ impl<'a> Budget<'a> {
             strong_inputs: RefCell::new(FxHashMap::default()),
         };
         let sources = {
-            let before = View {
-                snapshot,
-                edits: FxHashMap::default(),
-                budget: &budget,
-                piston_state: PistonState::default(),
-            };
+            let before = View::new(snapshot, &budget);
             let mut sources = FxHashSet::default();
             for face in BlockFace::values() {
                 let neighbor = start.offset(face);
@@ -624,7 +619,16 @@ struct View<'a> {
     piston_state: PistonState,
 }
 
-impl View<'_> {
+impl<'a> View<'a> {
+    fn new(snapshot: &'a Snapshot, budget: &'a Budget<'a>) -> Self {
+        Self {
+            snapshot,
+            edits: FxHashMap::default(),
+            budget,
+            piston_state: PistonState::default(),
+        }
+    }
+
     fn original(&self, pos: BlockPos) -> Block {
         self.budget.visits.set(self.budget.visits.get() + 1);
         if let Some(id) = self.snapshot.data.cell(pos) {
@@ -854,12 +858,7 @@ fn original_support_input(
 ) -> Option<BlockPos> {
     let cached = view.budget.strong_inputs.borrow().get(&pos).copied();
     let mask = cached.unwrap_or_else(|| {
-        let before = View {
-            snapshot: view.snapshot,
-            edits: FxHashMap::default(),
-            budget: view.budget,
-            piston_state: PistonState::default(),
-        };
+        let before = View::new(view.snapshot, view.budget);
         let mut mask = 0;
         for (index, face) in BlockFace::values().into_iter().enumerate() {
             let source = pos.offset(face);
@@ -904,12 +903,7 @@ fn endpoint_edge_failure(
         (0, -1) => BlockDirection::North,
         _ => return None,
     };
-    let before = View {
-        snapshot: view.snapshot,
-        edits: FxHashMap::default(),
-        budget: view.budget,
-        piston_state: PistonState::default(),
-    };
+    let before = View::new(view.snapshot, view.budget);
     let original = wire::get_regulated_sides(original, &before, endpoint);
     (wire::get_current_side(original, direction) != wire::get_side(view, endpoint, direction))
         .then(|| failure(view, endpoint, true))
@@ -1059,12 +1053,7 @@ fn proposed<'a>(
             })
         })
         .collect();
-    let mut view = View {
-        snapshot,
-        edits: FxHashMap::default(),
-        budget,
-        piston_state: PistonState::default(),
-    };
+    let mut view = View::new(snapshot, budget);
     let mut supports = Vec::new();
     let mut dust = Vec::new();
     let material = passive_support(view.original(start.offset(BlockFace::Bottom)));
@@ -1124,19 +1113,14 @@ fn make_plan(
         Err(reason) => return Ok(Err(reason)),
     };
     if supports.len() + dust.len() > MAX_PLACEMENTS {
-        return Err(SearchResult::BudgetExceeded);
+        return Ok(Err(
+            "The route needs too many placements; place a shorter segment.".into(),
+        ));
     }
-    let before = View {
-        snapshot,
-        edits: FxHashMap::default(),
-        budget,
-        piston_state: PistonState::default(),
-    };
+    let before = View::new(snapshot, budget);
     let support_view = View {
-        snapshot,
         edits: supports.iter().copied().collect(),
-        budget,
-        piston_state: PistonState::default(),
+        ..View::new(snapshot, budget)
     };
     for &(pos, support) in &supports {
         budget.check()?;
@@ -1375,12 +1359,7 @@ pub(super) fn search(
     }
     // Every completion must place these new endpoint cells. Immutable hazards
     // there are infeasibility, rather than a reason to enumerate more prefixes.
-    let before = View {
-        snapshot: &snapshot,
-        edits: FxHashMap::default(),
-        budget: &budget,
-        piston_state: PistonState::default(),
-    };
+    let before = View::new(&snapshot, &budget);
     for pos in [start, end] {
         match before.original(pos) {
             Block::Air {} => {
@@ -1502,14 +1481,9 @@ pub(super) fn search(
             BlockDirection::West,
         ]
     };
-    let mut expanded = 0;
     while let Some(Reverse((_, _, _, id))) = frontier.pop() {
         if let Err(result) = budget.check() {
             return result;
-        }
-        expanded += 1;
-        if expanded > MAX_STATES {
-            return SearchResult::BudgetExceeded;
         }
         let mut path = Vec::new();
         let mut cursor = Some(id);

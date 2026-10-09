@@ -130,8 +130,18 @@ fn fixed_container_context_preserves_inventory_override_and_logical_consumer_lev
                 assert_eq!(compiled.get_block(cap), material);
                 assert!(matches!(compiled.get_block_entity(comparator),
                     Some(BlockEntity::Comparator { output_strength }) if *output_strength == strength));
-                assert!(compiled.piston_state().events.is_empty());
-                assert!(compiled.piston_state().motions.is_empty());
+                for _ in 0..12 {
+                    native.tick_interpreted();
+                    compiled.tick_interpreted();
+                    assert_eq!(compiled.get_block(output), native.get_block(output));
+                    assert_eq!(compiled.get_block(lamp), native.get_block(lamp));
+                    assert_eq!(compiled.get_block(cap), material);
+                    assert_eq!(json!(compiled.get_block_entity(cap)), inventory);
+                    assert_eq!(
+                        json!(compiled.get_block_entity(comparator)),
+                        json!(native.get_block_entity(comparator))
+                    );
+                }
             }
         }
     }
@@ -229,8 +239,15 @@ fn fixed_inventory_main_input_ignores_conditional_power_above_the_container() {
                 );
                 assert!(matches!(compiled.get_block_entity(comparator),
                     Some(BlockEntity::Comparator { output_strength }) if *output_strength == strength));
-                assert!(compiled.piston_state().events.is_empty());
-                assert!(compiled.piston_state().motions.is_empty());
+                for _ in 0..12 {
+                    compiled.tick_interpreted();
+                    assert_eq!(
+                        json!(compiled.get_block_entity(wire.offset(BlockFace::Bottom))),
+                        inventory
+                    );
+                    assert!(matches!(compiled.get_block_entity(comparator),
+                        Some(BlockEntity::Comparator { output_strength }) if *output_strength == strength));
+                }
             }
         }
     }
@@ -428,8 +445,17 @@ fn logical_conductors_accept_retained_geometry_and_reject_entities_and_bad_heads
                 compiler.tick();
             }
             compiler.reset(&mut world, bounds);
-            assert!(world.piston_state().events.is_empty());
-            assert!(world.piston_state().motions.is_empty());
+            assert!(!compiler.is_active());
+            let payload_count = [head_pos, payload]
+                .into_iter()
+                .filter(|&pos| {
+                    world.get_block(pos) == Block::Quartz
+                        || matches!(world.get_block_entity(pos),
+                            Some(BlockEntity::MovingPiston(entity))
+                                if entity.block_state == Block::Quartz.get_id())
+                })
+                .count();
+            assert_eq!(payload_count, 1);
             continue;
         }
         let message = compiler

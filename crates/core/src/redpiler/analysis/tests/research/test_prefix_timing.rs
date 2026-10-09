@@ -286,7 +286,6 @@ fn replay_outputs(
     flags: Option<(bool, bool)>,
 ) -> Result<Value, String> {
     let (mut world, _, _) = comparison_fixture(name);
-    world.set_random_tick_speed(0);
     let mut compiler = Compiler::default();
     if let Some((optimize, assume_instant)) = flags {
         compiler
@@ -532,8 +531,6 @@ fn test_prefixed_schematics_keep_native_callbacks_and_motion() {
         {
             let (mut native, levers, traced) = comparison_fixture(name);
             let (mut compiled, _, _) = comparison_fixture(name);
-            native.set_random_tick_speed(0);
-            compiled.set_random_tick_speed(0);
             let mut compiler = Compiler::default();
             let result = compiler.compile(
                 &compiled,
@@ -612,8 +609,6 @@ fn test_prefixed_piston_handoff_preserves_pending_work() {
         for handoff in [2, 7] {
             let (mut native, levers, traced) = comparison_fixture(name);
             let (mut compiled, _, _) = comparison_fixture(name);
-            native.set_random_tick_speed(0);
-            compiled.set_random_tick_speed(0);
             let options = || CompilerOptions {
                 assume_instant: true,
                 ..Default::default()

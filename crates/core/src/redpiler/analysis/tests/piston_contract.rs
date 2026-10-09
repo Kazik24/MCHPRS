@@ -6,7 +6,6 @@ const EXAMPLES: &str = "test_data/piston-research/test-prefix-20261008";
 fn schematic(path: &Path) -> (PlotWorld, (BlockPos, BlockPos)) {
     let clipboard = load_schematic(std::io::Cursor::new(std::fs::read(path).unwrap())).unwrap();
     let mut world = empty();
-    world.set_random_tick_speed(0);
     paste_clipboard(
         &mut world,
         &clipboard,
@@ -236,8 +235,6 @@ fn prepared_adders_preserve_sum_and_carry_output_ticks() {
             for optimize in [false, true] {
                 let (mut native, _, _) = fixture(name);
                 let (mut world, _, _) = fixture(name);
-                native.set_random_tick_speed(0);
-                world.set_random_tick_speed(0);
                 let mut compiler = compile(&world, false, optimize);
                 let mut outputs = Vec::new();
                 for key in ["sum_repeater", "carry_repeater"] {
@@ -282,8 +279,6 @@ fn bud_data_hold_and_resampling_preserve_output_ticks() {
             for optimize in [false, true] {
                 let (mut native, _, _) = fixture(name);
                 let (mut world, _, _) = fixture(name);
-                native.set_random_tick_speed(0);
-                world.set_random_tick_speed(0);
                 let mut compiler = compile(&world, false, optimize);
                 let output = local_pos(&manifest["ports"]["observations"]["repeater"]);
                 let label = format!("{name} {} O={optimize}", case["id"]);
@@ -331,8 +326,6 @@ fn counter_preserves_native_output_waveform_when_started_stopped_and_resumed() {
     for optimize in [false, true] {
         let (mut native, _, manifest) = fixture("counter_basic");
         let (mut world, _, _) = fixture("counter_basic");
-        native.set_random_tick_speed(0);
-        world.set_random_tick_speed(0);
         let mut compiler = compile(&world, false, optimize);
         let trigger = &manifest["ports"]["inputs"]["trigger"];
         let outputs: Vec<_> = manifest["ports"]["observations"]["repeater"]
@@ -359,6 +352,107 @@ fn counter_preserves_native_output_waveform_when_started_stopped_and_resumed() {
 }
 
 #[test]
+fn running_counter_preserves_output_ticks_across_repeated_domain_changes() {
+    for optimize in [false, true] {
+        for io_only in [false, true] {
+            let (mut native, _, manifest) = fixture("counter_basic");
+            let (mut world, fixture_bounds, _) = fixture("counter_basic");
+            let bounds = world.get_corners();
+            let options = || CompilerOptions {
+                optimize,
+                io_only,
+                ..Default::default()
+            };
+            let mut compiler = Compiler::default();
+            compiler
+                .compile(&world, bounds, options(), vec![], Default::default())
+                .unwrap();
+            world.clear_scheduled_ticks();
+            let outputs: Vec<_> = manifest["ports"]["observations"]["repeater"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(local_pos)
+                .collect();
+            let label = format!("counter handoff O={optimize} i={io_only}");
+            let mut tick = 0;
+            for _ in 0..24 {
+                tick_pair(&mut native, &mut world, &mut compiler);
+                tick += 1;
+            }
+            use_pair(
+                &mut native,
+                &mut world,
+                &mut compiler,
+                &json!({"pos": manifest["ports"]["inputs"]["trigger"], "powered": true}),
+            );
+            // Vary the reset point through every phase of the six-tick clock.
+            for run_ticks in 6..12 {
+                for _ in 0..run_ticks {
+                    tick_pair(&mut native, &mut world, &mut compiler);
+                    tick += 1;
+                    assert_ports(&native, &world, &outputs, &label, tick);
+                }
+                compiler.reset(&mut world, bounds);
+                assert!(!compiler.is_active());
+                assert_ports(&native, &world, &outputs, &label, tick);
+                for _ in 0..24 {
+                    native.tick_interpreted();
+                    world.tick_interpreted();
+                    tick += 1;
+                    assert_ports(&native, &world, &outputs, &label, tick);
+                }
+                let before = snapshot(&world, fixture_bounds);
+                assert!(
+                    compiler
+                        .compile(
+                            &world,
+                            bounds,
+                            options(),
+                            world.scheduler().iter_entries().collect(),
+                            Default::default(),
+                        )
+                        .is_err(),
+                    "active movement must stay in the interpreter"
+                );
+                assert_eq!(snapshot(&world, fixture_bounds), before);
+                assert!(!compiler.is_active());
+                let trigger = local_pos(&manifest["ports"]["inputs"]["trigger"]);
+                lever_action(&mut native, trigger, false);
+                lever_action(&mut world, trigger, false);
+                for _ in 0..24 {
+                    native.tick_interpreted();
+                    world.tick_interpreted();
+                    tick += 1;
+                    assert_ports(&native, &world, &outputs, &label, tick);
+                }
+                compiler
+                    .compile(
+                        &world,
+                        bounds,
+                        options(),
+                        world.scheduler().iter_entries().collect(),
+                        Default::default(),
+                    )
+                    .unwrap();
+                world.clear_scheduled_ticks();
+                for _ in 0..12 {
+                    tick_pair(&mut native, &mut world, &mut compiler);
+                    tick += 1;
+                    assert_ports(&native, &world, &outputs, &label, tick);
+                }
+                use_pair(
+                    &mut native,
+                    &mut world,
+                    &mut compiler,
+                    &json!({"pos": manifest["ports"]["inputs"]["trigger"], "powered": true}),
+                );
+            }
+        }
+    }
+}
+
+#[test]
 fn activated_pc_counter_rejects_unmodeled_sampling_transactionally() {
     let path = root().join(
         "test_data/piston-research/test-potados-counter-revised-20261008/TEST_POTADOS_PC_COUNTER.schem",
@@ -377,4 +471,91 @@ fn activated_pc_counter_rejects_unmodeled_sampling_transactionally() {
     }
     world.tick_interpreted();
     reject_pc_feedback(&world, bounds);
+}
+
+#[test]
+fn held_instant_circuits_preserve_output_ticks_across_repeated_domain_changes() {
+    for name in ["TEST_INSTANT_3", "TEST_OR1", "TEST_OR2"] {
+        let path = root().join(EXAMPLES).join(format!("{name}.schem"));
+        for optimize in [false, true] {
+            for io_only in [false, true] {
+                let (mut native, fixture_bounds) = schematic(&path);
+                let (mut world, _) = schematic(&path);
+                let bounds = world.get_corners();
+                let options = || CompilerOptions {
+                    optimize,
+                    io_only,
+                    ..Default::default()
+                };
+                let mut inputs = Vec::new();
+                let mut outputs = Vec::new();
+                crate::world::for_each_block_optimized(
+                    &native,
+                    fixture_bounds.0,
+                    fixture_bounds.1,
+                    |pos| {
+                        let block = native.get_block(pos);
+                        if let Block::Lever { lever } = block {
+                            inputs.push((pos, lever.powered));
+                        }
+                        if matches!(block, Block::RedstoneRepeater { .. }) || block.is_copper_bulb()
+                        {
+                            outputs.push(pos);
+                        }
+                    },
+                );
+                assert!(!inputs.is_empty() && !outputs.is_empty());
+                let label = format!("{name} handoff O={optimize} i={io_only}");
+                let mut compiler = Compiler::default();
+                compiler
+                    .compile(&world, bounds, options(), vec![], Default::default())
+                    .unwrap();
+                world.clear_scheduled_ticks();
+                let mut tick = 0;
+                for _ in 0..32 {
+                    tick_pair(&mut native, &mut world, &mut compiler);
+                    tick += 1;
+                    assert_ports(&native, &world, &outputs, &label, tick);
+                }
+                for handoff_at in 1..=6 {
+                    for &(pos, powered) in &inputs {
+                        lever_action(&mut native, pos, !powered);
+                        compiler.on_use_block(pos);
+                    }
+                    compiler.flush(&mut world);
+                    for step in 1..=handoff_at + 56 {
+                        if step == handoff_at + 1 {
+                            compiler.reset(&mut world, bounds);
+                            assert_ports(&native, &world, &outputs, &label, tick);
+                        }
+                        // Hold inputs through continuation, then settle before recompiling.
+                        if step == handoff_at + 25 {
+                            for &(pos, powered) in &inputs {
+                                lever_action(&mut native, pos, powered);
+                                lever_action(&mut world, pos, powered);
+                            }
+                        }
+                        if compiler.is_active() {
+                            tick_pair(&mut native, &mut world, &mut compiler);
+                        } else {
+                            native.tick_interpreted();
+                            world.tick_interpreted();
+                        }
+                        tick += 1;
+                        assert_ports(&native, &world, &outputs, &label, tick);
+                    }
+                    compiler
+                        .compile(
+                            &world,
+                            bounds,
+                            options(),
+                            world.scheduler().iter_entries().collect(),
+                            Default::default(),
+                        )
+                        .unwrap();
+                    world.clear_scheduled_ticks();
+                }
+            }
+        }
+    }
 }

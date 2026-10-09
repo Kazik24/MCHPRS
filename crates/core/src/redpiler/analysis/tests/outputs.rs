@@ -9,13 +9,11 @@ use mchprs_blocks::{BlockColorVariant, BlockDirection};
 fn conditional_geometry_drives_stationary_copper_bulbs_and_restores_the_latch() {
     for optimize in [false, true] {
         let (mut native, _, _, native_output) = conductor_output(Block::Stone {}, true, false);
-        native.set_random_tick_speed(0);
         native.set_block(
             native_output,
             Block::from_name("waxed_copper_bulb").unwrap(),
         );
         let (mut world, trigger, _, output) = conductor_output(Block::Stone {}, true, false);
-        world.set_random_tick_speed(0);
         world.set_block(output, Block::from_name("waxed_copper_bulb").unwrap());
         let bounds = world.get_corners();
         let mut compiler = Compiler::default();
@@ -524,18 +522,31 @@ fn shared_near_outputs_use_deterministic_first_owner_geometry() {
                     compiler.on_use_block(pos);
                 }
             }
+            let mut trace = Vec::new();
             for _ in 0..24 {
                 compiler.tick();
                 compiler.flush(&mut world);
+                trace.push(world.get_block(output));
             }
             let held = world.get_block(output);
             for _ in 0..18 {
                 compiler.tick();
                 compiler.flush(&mut world);
+                trace.push(world.get_block(output));
             }
             assert_eq!(world.get_block(output), held);
             compiler.reset(&mut world, bounds);
             assert_eq!(world.get_block(output), held);
+            variants.push(trace);
+            if !assume_instant {
+                let material_count = group.positions.iter().filter(|&&pos| {
+                    world.get_block(pos) == Block::RedstoneBlock
+                        || matches!(world.get_block_entity(pos), Some(BlockEntity::MovingPiston(entity))
+                            if Block::from_id(entity.block_state) == Block::RedstoneBlock)
+                }).count();
+                assert_eq!(material_count, 1, "physical handoff retains the shared payload");
+                continue;
+            }
             let material: Vec<_> = group
                 .positions
                 .iter()
@@ -564,7 +575,6 @@ fn shared_near_outputs_use_deterministic_first_owner_geometry() {
                 .iter()
                 .map(|&pos| (pos, world.get_block(pos)))
                 .collect();
-            variants.push(restored.clone());
             let result = compiler.compile(
                 &world,
                 world.get_corners(),
@@ -588,6 +598,7 @@ fn shared_near_outputs_use_deterministic_first_owner_geometry() {
                 ));
                 continue;
             }
+            world.clear_scheduled_ticks();
             for _ in 0..8 {
                 compiler.tick();
                 compiler.flush(&mut world);
@@ -640,7 +651,7 @@ fn logical_conductor_outputs_preserve_material_and_fixed_contributors() {
         for (near, fixed_source) in [(false, false), (false, true), (true, false)] {
             for optimize in [false, true] {
                 for io_only in [false, true] {
-                    let (mut world, trigger, _, output) =
+                    let (mut world, trigger, base, output) =
                         conductor_output(payload, near, fixed_source);
                     let (mut native, _, _, _) = conductor_output(payload, near, fixed_source);
                     let bounds = world.get_corners();
@@ -680,8 +691,22 @@ fn logical_conductor_outputs_preserve_material_and_fixed_contributors() {
                     let held = world.get_block(output);
                     compiler.reset(&mut world, bounds);
                     assert_eq!(world.get_block(output), held);
-                    assert!(world.piston_state().events.is_empty());
-                    assert!(world.piston_state().motions.is_empty());
+                    for tick in 1..=12 {
+                        native.tick_interpreted();
+                        world.tick_interpreted();
+                        assert_eq!(
+                            world.get_block(output), native.get_block(output),
+                            "{payload:?} near={near} fixed={fixed_source} handoff tick {tick}"
+                        );
+                        for pos in [base.offset(BlockFace::South), base + BlockPos::new(0, 0, 2)] {
+                            assert_eq!(world.get_block(pos), native.get_block(pos), "payload at {pos:?}");
+                            assert_eq!(
+                                json!(world.get_block_entity(pos)),
+                                json!(native.get_block_entity(pos)),
+                                "payload entity at {pos:?}"
+                            );
+                        }
+                    }
                 }
             }
         }
@@ -744,9 +769,16 @@ fn certified_gates_use_the_same_logical_executor_with_and_without_trust() {
                     );
                 }
                 compiler.reset(&mut world, bounds);
-                assert!(world.piston_state().events.is_empty());
-                assert!(world.piston_state().motions.is_empty());
-                variants.push((trace, snapshot(&world, bounds)));
+                assert_eq!(
+                    ports.iter().map(|&pos| world.get_block(pos)).collect::<Vec<_>>(),
+                    *trace.last().unwrap(),
+                    "{name} {} handoff preserves current outputs", case["id"]
+                );
+                if assume_instant {
+                    assert!(world.piston_state().events.is_empty());
+                    assert!(world.piston_state().motions.is_empty());
+                }
+                variants.push(trace);
             }
             assert_eq!(variants[0], variants[1], "{name} {}", case["id"]);
         }

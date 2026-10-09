@@ -19,7 +19,6 @@ fn compare(name: &str, cases: &[Value]) {
     let fixture = manifest(name);
     for case in cases {
         let (mut native, _) = load(&fixture);
-        native.set_random_tick_speed(0);
         native.disable_command_output_limits_for_replay();
         let mut watched = FxHashSet::default();
         let bounds = native.get_corners();
@@ -56,7 +55,6 @@ fn compare(name: &str, cases: &[Value]) {
             [(false, false), (true, false), (false, true), (true, true)]
         {
             let (mut world, _) = load(&fixture);
-            world.set_random_tick_speed(0);
             world.disable_command_output_limits_for_replay();
             let mut compiler = Compiler::default();
             compiler
