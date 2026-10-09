@@ -95,7 +95,7 @@ gen_config! {
     bind_address: String = "0.0.0.0:25565".to_string(),
     motd: String = "§4§lmroww.redstoneFUN.pl §r§71.21.5\n§cMinecraft Redstone o Wysokiej Wydajności".to_string(),
     chat_format: String = "<{username}> {message}".to_string(),
-    proxy_chat: bool = false,
+    signed_velocity: bool = false,
     max_players: i64 = 99999,
     view_distance: i64 = 8,
     neighbor_update_interval_ms: u64 = 2000,
@@ -149,6 +149,7 @@ mod tests {
         fs::remove_file(&path).unwrap();
         assert_eq!(config.motd, "Selected container config");
         assert_eq!(config.fast_render_send_rate, 10);
+        assert!(!config.signed_velocity);
         assert_eq!(config.neighbor_update_interval_ms, 2000);
         assert_eq!(config.git_work_memory_mib, 1024);
         assert_eq!(config.git_default_plot_storage_mib, 100);

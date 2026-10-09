@@ -15,11 +15,11 @@ mod permissions;
 mod player;
 pub mod plot;
 mod profile;
-mod proxy_chat;
 pub mod redpiler;
 pub mod redstone;
 pub mod server;
 mod sound;
+mod signed_velocity;
 mod velocity;
 pub mod world;
 

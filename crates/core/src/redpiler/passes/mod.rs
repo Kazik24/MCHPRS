@@ -7,6 +7,8 @@ mod dedup_links;
 mod export_graph;
 mod identify_nodes;
 mod input_search;
+#[cfg(test)]
+mod legacy_regressions;
 mod prune_orphans;
 mod unreachable_output;
 

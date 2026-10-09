@@ -1704,9 +1704,8 @@ impl Plot {
                     }
                 }
                 BroadcastMessage::PlayerJoinedInfo(player_join_info) => {
-                    let join_message = (crate::permissions::ranked_chat()
-                        && !crate::proxy_chat::enabled())
-                    .then(|| ChatComponent::player_joined(&player_join_info.username));
+                    let join_message = crate::permissions::ranked_chat()
+                        .then(|| ChatComponent::player_joined(&player_join_info.username));
                     let player_info = CPlayerInfo::AddPlayer(vec![CPlayerInfoAddPlayer {
                         name: player_join_info.username,
                         properties: player_join_info.properties,

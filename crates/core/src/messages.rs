@@ -162,7 +162,6 @@ catalog! {
         ADV_NANO_TICKS_LABEL = "nano-ticks";
         ADV_PICO_TICKS_LABEL = "pico-ticks";
         COMPASS_NO_SAFE_DESTINATION = "No safe landing spot for these paws in sight. Aim somewhere else.";
-        SHARED_CHAT_UNAVAILABLE = "Shared chat lost the scent, or this message is invalid. Please try again, pup.";
         SELECTION_OUTSIDE_WORLD_HEIGHT = "Your selection reaches beyond the world height, pup. Keep those paws inside the build range.";
         AUTHENTICATED_PROXY_REQUIRED = "This den needs the authenticated Velocity proxy. Connect through it, pup.";
         HISTORY_INVALID_MEMORY_LIMIT = "Give the pawprint store a nonnegative, representable number of MiB.";

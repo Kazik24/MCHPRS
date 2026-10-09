@@ -36,6 +36,48 @@ fn relative_movement(old: PlayerPos, new: PlayerPos) -> Option<[i16; 3]> {
 }
 
 impl Plot {
+    fn handle_signed_velocity_result(
+        &mut self,
+        result: anyhow::Result<Option<String>>,
+        player: usize,
+    ) {
+        match result {
+            Ok(Some(message)) => self.handle_approved_chat_message(message, player),
+            Ok(None) => {}
+            Err(error) => {
+                warn!(player = %self.players[player].username, %error, "Invalid SignedVelocity input; closing connection");
+                self.players[player].client.close_connection();
+            }
+        }
+    }
+
+    fn handle_approved_chat_message(&mut self, message: String, player: usize) {
+        let max_length = if message.starts_with('/') { 32767 } else { 256 };
+        if message.encode_utf16().count() > max_length
+            || message.chars().any(|c| c.is_control())
+            || !self.players[player].accept_chat_message()
+        {
+            return;
+        }
+        if message.starts_with('/') {
+            if self.players[player].command_queue.len() >= 16 {
+                return;
+            }
+            self.players[player].command_queue.push(message);
+        } else {
+            let player = &mut self.players[player];
+            if crate::permissions::dedicated_permissions()
+                && !player.has_permission("mchprs.access.chat")
+            {
+                player.send_no_permission_message();
+                return;
+            }
+            let broadcast_message =
+                Message::ChatInfo(player.uuid, player.username.clone(), message);
+            self.message_sender.send(broadcast_message).unwrap();
+        }
+    }
+
     pub(super) fn broadcast_player_packets(&self, player: usize, packets: &[&PacketEncoder]) {
         for (index, viewer) in self.players.iter().enumerate() {
             if index != player {
@@ -819,34 +861,13 @@ impl ServerBoundPacketHandler for Plot {
     }
 
     fn handle_chat_message(&mut self, chat_message: SChatMessage, player: usize) {
-        let message = chat_message.message;
-        let max_length = if message.starts_with('/') { 32767 } else { 256 };
-        if message.encode_utf16().count() > max_length
-            || message.chars().any(|c| c.is_control())
-            || !self.players[player].accept_chat_message()
-        {
-            return;
-        }
-        if message.starts_with('/') {
-            if self.players[player].command_queue.len() >= 16 {
-                return;
-            }
-            self.players[player].command_queue.push(message);
+        if CONFIG.signed_velocity {
+            let result = self.players[player]
+                .signed_velocity
+                .submit(chat_message.message);
+            self.handle_signed_velocity_result(result, player);
         } else {
-            let player = &mut self.players[player];
-            if crate::permissions::dedicated_permissions()
-                && !player.has_permission("mchprs.access.chat")
-            {
-                player.send_no_permission_message();
-                return;
-            }
-            if crate::proxy_chat::enabled() {
-                crate::proxy_chat::send(player, &message);
-                return;
-            }
-            let broadcast_message =
-                Message::ChatInfo(player.uuid, player.username.clone(), message);
-            self.message_sender.send(broadcast_message).unwrap();
+            self.handle_approved_chat_message(chat_message.message, player);
         }
     }
 
@@ -859,11 +880,14 @@ impl ServerBoundPacketHandler for Plot {
     }
 
     fn handle_plugin_message(&mut self, plugin_message: SPluginMessage, player: usize) {
-        if plugin_message.channel == crate::proxy_chat::CHANNEL {
-            let player = &mut self.players[player];
-            player
-                .proxy_chat
-                .receive(&plugin_message.data, &player.client);
+        if plugin_message.channel == crate::signed_velocity::CHANNEL {
+            if CONFIG.signed_velocity {
+                let sender = &mut self.players[player];
+                let result = sender
+                    .signed_velocity
+                    .receive(&plugin_message.data, sender.uuid);
+                self.handle_signed_velocity_result(result, player);
+            }
             return;
         }
         if plugin_message.channel == "worldedit:cui" {
@@ -1018,6 +1042,56 @@ impl ServerBoundPacketHandler for Plot {
 #[cfg(test)]
 mod movement_tests {
     use super::*;
+
+    #[test]
+    fn signed_velocity_decisions_gate_chat_broadcast_and_command_dispatch() {
+        use crate::signed_velocity::tests::payload;
+        let (mut plot, _peer) = crate::plot::client_sync_tests::fixture(false);
+        let (sender, receiver) = std::sync::mpsc::channel();
+        plot.message_sender = sender;
+        let uuid = plot.players[0].uuid;
+
+        let result = plot.players[0].signed_velocity.submit("blocked".into());
+        plot.handle_signed_velocity_result(result, 0);
+        assert!(receiver.try_recv().is_err());
+        let result = plot.players[0]
+            .signed_velocity
+            .receive(&payload(uuid, "CHAT_RESULT", "CANCEL", None), uuid);
+        plot.handle_signed_velocity_result(result, 0);
+        assert!(receiver.try_recv().is_err());
+
+        for (source, original, replacement) in [
+            ("CHAT_RESULT", "original", "approved"),
+            ("COMMAND_RESULT", "/help", "adv 1"),
+        ] {
+            let result = plot.players[0]
+                .signed_velocity
+                .receive(&payload(uuid, source, "MODIFY", Some(replacement)), uuid);
+            plot.handle_signed_velocity_result(result, 0);
+            let result = plot.players[0].signed_velocity.submit(original.into());
+            plot.handle_signed_velocity_result(result, 0);
+        }
+        assert!(
+            matches!(receiver.try_recv().unwrap(), Message::ChatInfo(id, _, text) if id == uuid && text == "approved")
+        );
+        assert_eq!(plot.players[0].command_queue, ["/adv 1"]);
+
+        let result = plot.players[0]
+            .signed_velocity
+            .submit("/say blocked".into());
+        plot.handle_signed_velocity_result(result, 0);
+        let result = plot.players[0]
+            .signed_velocity
+            .receive(&payload(uuid, "COMMAND_RESULT", "CANCEL", None), uuid);
+        plot.handle_signed_velocity_result(result, 0);
+        assert_eq!(plot.players[0].command_queue, ["/adv 1"]);
+        assert!(receiver.try_recv().is_err());
+
+        plot.handle_approved_chat_message("native".into(), 0);
+        assert!(
+            matches!(receiver.try_recv().unwrap(), Message::ChatInfo(_, _, text) if text == "native")
+        );
+    }
 
     #[test]
     fn relative_movement_accumulates_fractional_steps_without_drift() {

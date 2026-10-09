@@ -44,13 +44,31 @@ defined in [config.rs](crates/core/src/config.rs); Docker's example is
 | `auto_redpiler` | `false` | Automatic compilation. |
 | `fast_render_threshold` | `200` | Configured TPS above which visual updates are throttled. |
 | `fast_render_send_rate` | `10` | Throttled visual flush rate. |
-| `proxy_chat` | `false` | Optional authenticated Velocity chat bridge. |
+| `signed_velocity` | `false` | Honor SignedVelocity chat and command decisions; requires authenticated `[velocity]` forwarding. |
 | `worldedit_max_blocks` | `67108864` | Maximum blocks per WorldEdit operation; matches the schematic import/export cap and fits a full 512 × 256 × 512 arena. |
 | `worldedit_history_blocks` | `134217728` | Maximum blocks retained in undo/redo per player. |
 
 Existing config values are preserved when the server fills defaults. For production
 Docker, update `/srv/mchprs/backend-config/Config.toml` on the host and restart the
 container; that mounted config overrides the example bundled in the image.
+
+Native chat uses `signed_velocity = false`. With `signed_velocity = true`,
+the backend honors the proxy's allow, cancel, and replacement decisions for
+chat and commands using the
+[SignedVelocity 1.5.0 protocol](https://github.com/4drian3d/SignedVelocity/tree/1.5.0).
+This supports the current Velocity proxy's ChatRegulator moderation. The backend
+still formats and delivers approved chat to its players; these plugins do not
+provide a cross-server chat relay. Input waits for its proxy decision and is never
+allowed without one; exceeding 16 pending inputs or decisions of either kind
+closes the connection. Both modes retain backend permissions and input limits.
+The old `proxy_chat` / `redstonefun:chat` relay has been removed.
+
+The root and Docker configs enable SignedVelocity and refer to the current
+read-only secret mount at `/run/velocity/forwarding.secret`. A native launch
+must supply that same proxy secret at a readable local path, or disable
+SignedVelocity and remove `[velocity]` for standalone use. Keep the production
+config's existing `[luckperms]` section and credentials; the commented example
+documents its non-secret options without including credentials.
 
 Plot speed and rendering settings are separate. Neighbor plots appear as
 read-only snapshots; entering a plot changes the active simulation context.

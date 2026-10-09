@@ -203,8 +203,8 @@ impl MinecraftServer {
             velocity::init(config).expect("Cannot initialize Velocity forwarding");
         }
         assert!(
-            !CONFIG.proxy_chat || CONFIG.velocity.is_some(),
-            "proxy_chat requires authenticated Velocity modern forwarding"
+            !CONFIG.signed_velocity || CONFIG.velocity.is_some(),
+            "signed_velocity requires authenticated Velocity modern forwarding"
         );
 
         // Create server struct
@@ -582,7 +582,7 @@ impl MinecraftServer {
             }
             Message::PlayerJoined(mut player) => {
                 info!(player = %player.username, uuid = %format_args!("{:032x}", player.uuid), "Player joined");
-                if permissions::ranked_chat() && !crate::proxy_chat::enabled() {
+                if permissions::ranked_chat() {
                     player.send_chat_message(0, &ChatComponent::player_joined(&player.username));
                 }
                 // Send player info to plots
@@ -606,12 +606,10 @@ impl MinecraftServer {
             Message::PlayerLeft(uuid) => {
                 if let Some((_, player)) = self.online_players.remove_entry(&uuid) {
                     info!(player = %player.username, uuid = %format_args!("{uuid:032x}"), "Player left");
-                    if !crate::proxy_chat::enabled() {
-                        self.broadcaster.broadcast(BroadcastMessage::Chat(
-                            0,
-                            ChatComponent::player_left(&player.username),
-                        ));
-                    }
+                    self.broadcaster.broadcast(BroadcastMessage::Chat(
+                        0,
+                        ChatComponent::player_left(&player.username),
+                    ));
                 }
                 self.broadcaster
                     .broadcast(BroadcastMessage::PlayerLeft(uuid));
