@@ -1709,6 +1709,38 @@ fn another_players_commands_and_diff_never_steal_viewer_markers() {
 }
 
 #[test]
+fn error_coordinate_highlights_share_cleanup_without_requiring_git_access() {
+    let (mut plot, _peer) = super::super::client_sync_tests::fixture(false);
+    plot.owner = Some(2);
+    assert!(!plot.git_access(0, "read"));
+    let uuid = plot.players[0].uuid;
+    let target = BlockPos::new(32, 21, 35);
+    plot.show_block_highlight(0, target, false);
+    let first_id = plot.git.inspections[&uuid].1;
+    plot.update_git();
+    assert_eq!(plot.git.inspections[&uuid].0, target);
+
+    let replacement = BlockPos::new(33, 21, 35);
+    plot.show_block_highlight(0, replacement, false);
+    assert_eq!(plot.git.inspections.len(), 1);
+    assert_ne!(plot.git.inspections[&uuid].1, first_id);
+    plot.git.inspections.get_mut(&uuid).unwrap().2 = Instant::now();
+    plot.update_git();
+    assert!(plot.git.inspections.is_empty());
+
+    plot.show_block_highlight(0, target, false);
+    plot.unload_git_chunk(0, 2, 2);
+    assert!(plot.git.inspections.is_empty());
+    plot.show_block_highlight(0, target, false);
+    plot.hide_git(0, true);
+    assert!(plot.git.inspections.is_empty());
+
+    plot.show_git_inspection(0, target);
+    plot.update_git();
+    assert!(plot.git.inspections.is_empty());
+}
+
+#[test]
 fn default_master_updates_unborn_repositories_without_renaming_saved_branches() {
     let root = TempRoot::new();
     let repo = root.repo();

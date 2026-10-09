@@ -52,6 +52,9 @@ impl Plot {
     }
 
     fn handle_approved_chat_message(&mut self, message: String, player: usize) {
+        if !CONFIG.native_chat && !message.starts_with('/') {
+            return;
+        }
         let max_length = if message.starts_with('/') { 32767 } else { 256 };
         if message.encode_utf16().count() > max_length
             || message.chars().any(|c| c.is_control())
@@ -861,7 +864,7 @@ impl ServerBoundPacketHandler for Plot {
     }
 
     fn handle_chat_message(&mut self, chat_message: SChatMessage, player: usize) {
-        if CONFIG.signed_velocity {
+        if CONFIG.velocity.is_some() {
             let result = self.players[player]
                 .signed_velocity
                 .submit(chat_message.message);
@@ -881,7 +884,7 @@ impl ServerBoundPacketHandler for Plot {
 
     fn handle_plugin_message(&mut self, plugin_message: SPluginMessage, player: usize) {
         if plugin_message.channel == crate::signed_velocity::CHANNEL {
-            if CONFIG.signed_velocity {
+            if CONFIG.velocity.is_some() {
                 let sender = &mut self.players[player];
                 let result = sender
                     .signed_velocity
@@ -1044,7 +1047,7 @@ mod movement_tests {
     use super::*;
 
     #[test]
-    fn chat_packet_handlers_use_signed_velocity_only_when_configured() {
+    fn native_chat_and_proxy_moderation_respect_configured_mode() {
         use crate::signed_velocity::tests::payload;
         for input_first in [false, true] {
             let (mut plot, _peer) = crate::plot::client_sync_tests::fixture(false);
@@ -1084,11 +1087,25 @@ mod movement_tests {
                     _ => panic!("Unexpected server message"),
                 })
                 .collect();
-            if CONFIG.signed_velocity {
-                assert_eq!(chat, ["approved"]);
+            if CONFIG.velocity.is_some() {
+                assert_eq!(
+                    chat,
+                    if CONFIG.native_chat {
+                        vec!["approved"]
+                    } else {
+                        vec![]
+                    }
+                );
                 assert_eq!(plot.players[0].command_queue, ["//load build.schem"]);
             } else {
-                assert_eq!(chat, ["blocked", "original"]);
+                assert_eq!(
+                    chat,
+                    if CONFIG.native_chat {
+                        vec!["blocked", "original"]
+                    } else {
+                        vec![]
+                    }
+                );
                 assert_eq!(plot.players[0].command_queue, ["/help", "/say blocked"]);
             }
         }
@@ -1122,9 +1139,13 @@ mod movement_tests {
             let result = plot.players[0].signed_velocity.submit(original.into());
             plot.handle_signed_velocity_result(result, 0);
         }
-        assert!(
-            matches!(receiver.try_recv().unwrap(), Message::ChatInfo(id, _, text) if id == uuid && text == "approved")
-        );
+        if CONFIG.native_chat {
+            assert!(
+                matches!(receiver.try_recv().unwrap(), Message::ChatInfo(id, _, text) if id == uuid && text == "approved")
+            );
+        } else {
+            assert!(receiver.try_recv().is_err());
+        }
         assert_eq!(plot.players[0].command_queue, ["/adv 1"]);
 
         let result = plot.players[0]
@@ -1139,9 +1160,13 @@ mod movement_tests {
         assert!(receiver.try_recv().is_err());
 
         plot.handle_approved_chat_message("native".into(), 0);
-        assert!(
-            matches!(receiver.try_recv().unwrap(), Message::ChatInfo(_, _, text) if text == "native")
-        );
+        if CONFIG.native_chat {
+            assert!(
+                matches!(receiver.try_recv().unwrap(), Message::ChatInfo(_, _, text) if text == "native")
+            );
+        } else {
+            assert!(receiver.try_recv().is_err());
+        }
     }
 
     #[test]

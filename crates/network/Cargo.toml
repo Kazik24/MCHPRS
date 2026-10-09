@@ -1,6 +1,7 @@
 [package]
 name = "mchprs_network"
 version = "0.1.0"
+authors = ["kazik24", "lord225"]
 edition = "2021"
 
 [features]

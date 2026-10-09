@@ -202,7 +202,7 @@ pub(super) struct State {
     sessions: HashMap<u128, Session>,
     names: Vec<String>,
     commits: Vec<String>,
-    inspections: HashMap<u128, (BlockPos, i32, Instant)>,
+    inspections: HashMap<u128, (BlockPos, i32, Instant, bool)>,
     clicks: HashMap<u128, Instant>,
 }
 
@@ -785,8 +785,9 @@ impl Plot {
                 self.git
                     .inspections
                     .get(&self.players[player].uuid)
-                    .is_some_and(|(_, _, expires)| {
-                        *expires <= Instant::now() || !self.git_access(player, "read")
+                    .is_some_and(|(_, _, expires, requires_git_access)| {
+                        *expires <= Instant::now()
+                            || (*requires_git_access && !self.git_access(player, "read"))
                     })
             })
             .collect();

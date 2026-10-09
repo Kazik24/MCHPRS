@@ -1,7 +1,7 @@
 [package]
 name = "mchprs_proc_macros"
 version = "0.1.0"
-authors = ["StackDoubleFlow <ojaslandge@gmail.com>"]
+authors = ["kazik24", "lord225"]
 edition = "2018"
 
 [lib]

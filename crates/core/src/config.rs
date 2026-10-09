@@ -75,6 +75,12 @@ macro_rules! gen_config {
                 let str = fs::read_to_string(config_file).unwrap_or_default();
                 let mut doc = str.parse::<Document>().unwrap();
 
+                if let Some(old_mode) = doc.remove("signed_velocity") {
+                    let old_mode = old_mode.as_bool().expect("signed_velocity must be a boolean");
+                    doc.entry("native_chat").or_insert_with(|| value(!old_mode));
+                }
+                doc.remove("proxy_chat");
+
                 $(
                     <$type as ConfigSerializeDefault>::fix_config($default, stringify!($name), &mut doc);
                 )*
@@ -95,7 +101,7 @@ gen_config! {
     bind_address: String = "0.0.0.0:25565".to_string(),
     motd: String = "§4§lmroww.redstoneFUN.pl §r§71.21.5\n§cMinecraft Redstone o Wysokiej Wydajności".to_string(),
     chat_format: String = "<{username}> {message}".to_string(),
-    signed_velocity: bool = false,
+    native_chat: bool = true,
     max_players: i64 = 99999,
     view_distance: i64 = 8,
     neighbor_update_interval_ms: u64 = 2000,
@@ -130,6 +136,30 @@ mod tests {
     use super::*;
 
     #[test]
+    fn migrates_old_chat_switch_without_overriding_explicit_native_mode() {
+        for (index, (text, expected)) in [
+            ("signed_velocity = true\nproxy_chat = true\n", false),
+            ("signed_velocity = false\n", true),
+            ("signed_velocity = true\nnative_chat = true\n", true),
+            ("signed_velocity = false\nnative_chat = false\n", false),
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            let path = std::env::temp_dir().join(format!(
+                "mchprs-chat-migration-{}-{index}.toml",
+                std::process::id()
+            ));
+            fs::write(&path, text).unwrap();
+            assert_eq!(ServerConfig::load(&path).native_chat, expected);
+            let patched = fs::read_to_string(&path).unwrap();
+            fs::remove_file(&path).unwrap();
+            assert!(!patched.contains("signed_velocity"));
+            assert!(!patched.contains("proxy_chat"));
+        }
+    }
+
+    #[test]
     fn reads_and_patches_the_selected_config_file() {
         let unique = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
@@ -149,7 +179,7 @@ mod tests {
         fs::remove_file(&path).unwrap();
         assert_eq!(config.motd, "Selected container config");
         assert_eq!(config.fast_render_send_rate, 10);
-        assert!(!config.signed_velocity);
+        assert!(config.native_chat);
         assert_eq!(config.neighbor_update_interval_ms, 2000);
         assert_eq!(config.git_work_memory_mib, 1024);
         assert_eq!(config.git_default_plot_storage_mib, 100);

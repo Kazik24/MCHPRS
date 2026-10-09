@@ -2,6 +2,8 @@
 
 **Minecraft Redstone o Wysokiej Wydajności**
 
+Authors: **kazik24** and **lord225**.
+
 MROWW is a creative redstone server based on
 [MCHPRS](https://github.com/MCHPR/MCHPRS). This checkout targets Minecraft Java
 1.21.5, protocol 770, DataVersion 4325. Each plot has its own simulation thread.
@@ -19,12 +21,12 @@ Install Rust, then run from the repository root:
 
 ```sh
 cargo build --release --locked
-./target/release/mchprs
+./target/release/mroww
 ```
 
-On Windows the executable is `target/release/mchprs.exe`. Required Minecraft
+On Windows the executable is `target/release/mroww.exe`. Required Minecraft
 registry inputs are checked in; [their reference](mc_data/README.md) explains
-generation and provenance. Executable/crate names and the `MCHPRS_CONFIG` and
+generation and provenance. Internal crate names and the `MCHPRS_CONFIG` and
 `MCHPRS_LOG` environment variables retain their existing identifiers.
 
 ## Configuration
@@ -44,7 +46,7 @@ defined in [config.rs](crates/core/src/config.rs); Docker's example is
 | `auto_redpiler` | `false` | Automatic compilation. |
 | `fast_render_threshold` | `200` | Configured TPS above which visual updates are throttled. |
 | `fast_render_send_rate` | `10` | Throttled visual flush rate. |
-| `signed_velocity` | `false` | Honor SignedVelocity chat and command decisions; requires authenticated `[velocity]` forwarding. |
+| `native_chat` | `true` | Render public chat and join/leave notices; false leaves public chat entirely to an external provider. |
 | `worldedit_max_blocks` | `67108864` | Maximum blocks per WorldEdit operation; matches the schematic import/export cap and fits a full 512 × 256 × 512 arena. |
 | `worldedit_history_blocks` | `134217728` | Maximum blocks retained in undo/redo per player. |
 
@@ -52,23 +54,29 @@ Existing config values are preserved when the server fills defaults. For product
 Docker, update `/srv/mchprs/backend-config/Config.toml` on the host and restart the
 container; that mounted config overrides the example bundled in the image.
 
-Native chat uses `signed_velocity = false`. With `signed_velocity = true`,
-the backend honors the proxy's allow, cancel, and replacement decisions for
-chat and commands using the
-[SignedVelocity 1.5.0 protocol](https://github.com/4drian3d/SignedVelocity/tree/1.5.0).
-This supports the current Velocity proxy's ChatRegulator moderation. The backend
-still formats and delivers approved chat to its players; these plugins do not
-provide a cross-server chat relay. Input waits for its proxy decision and is never
-allowed without one; exceeding 16 pending inputs or decisions of either kind
-closes the connection. Both modes retain backend permissions and input limits.
-The old `proxy_chat` / `redstonefun:chat` relay has been removed.
+With `native_chat = false`, MROWW discards public chat and emits no chat formatting
+or join/leave notices. It does not relay approved messages or format external
+messages. `/say`, `/tellraw`, and command-block chat remain visible only to matching
+players on the plot where they execute, regardless of `native_chat`. Other command
+feedback and player-list updates still work.
 
-The root and Docker configs enable SignedVelocity and refer to the current
-read-only secret mount at `/run/velocity/forwarding.secret`. A native launch
-must supply that same proxy secret at a readable local path, or disable
-SignedVelocity and remove `[velocity]` for standalone use. Keep the production
-config's existing `[luckperms]` section and credentials; the commented example
-documents its non-secret options without including credentials.
+Authenticated `[velocity]` forwarding automatically honors the proxy's allow,
+cancel, and replacement decisions for chat and commands using the
+[SignedVelocity 1.5.0 protocol](https://github.com/4drian3d/SignedVelocity/tree/1.5.0).
+The proxy must run SignedVelocity. Input waits for its decision; exceeding 16
+pending inputs or decisions of either kind closes the connection. With
+`native_chat = true`, approved public messages use backend rendering, as on the
+main Paper server. Backend command permissions and input limits still apply.
+The old `signed_velocity` switch migrates to its inverse `native_chat` value;
+an explicit `native_chat` wins. The obsolete `proxy_chat` setting is removed.
+
+The root and Docker configs set `native_chat = false` and refer to the current
+read-only secret mount at `/run/velocity/forwarding.secret`. The current proxy's
+ChatRegulator and SignedVelocity plugins moderate messages but do not relay
+public chat; an external broadcaster is needed to make public chat visible in
+this mode. For a standalone launch, remove `[velocity]` and set
+`native_chat = true`. Keep the production config's existing `[luckperms]` section
+and credentials; the commented example documents its non-secret options.
 
 Plot speed and rendering settings are separate. Neighbor plots appear as
 read-only snapshots; entering a plot changes the active simulation context.

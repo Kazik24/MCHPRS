@@ -683,7 +683,7 @@ mod tests {
     }
 
     #[test]
-    fn error_coordinate_teleport_links_survive_network_nbt_encoding() {
+    fn error_coordinate_highlight_links_survive_network_nbt_encoding() {
         let capture = Capture::default();
         capture.send_error_message(
             "Redpiler: source at BlockPos { x: -20, y: 30, z: 40 } is unsupported.",
@@ -708,7 +708,11 @@ mod tests {
         );
         assert_eq!(
             click.get("command"),
-            Some(&nbt::Value::String("/tp -19.5 31 40.5".into()))
+            Some(&nbt::Value::String("/tp -19.5 30.5 40.5 --highlight-only".into()))
+        );
+        assert_eq!(
+            coordinates.get("insertion"),
+            Some(&nbt::Value::String("/tp -19.5 30.5 40.5 --highlight".into()))
         );
     }
 }

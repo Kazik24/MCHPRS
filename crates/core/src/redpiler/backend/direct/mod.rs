@@ -198,6 +198,7 @@ impl DirectBackend {
         if state_changed {
             self.notify_observer_watchers(node_id);
         }
+        // A source can feed both consumer channels; publish all strengths before callbacks.
         for i in 0..update_count {
             let node = &self.nodes[node_id];
             let update_link = unsafe { *node.updates.get_unchecked(i) };
@@ -216,9 +217,6 @@ impl DirectBackend {
             let new_power = new_power.saturating_sub(distance);
 
             if old_power == new_power {
-                if bulb_state_changed {
-                    self.update_node(update);
-                }
                 continue;
             }
 
@@ -227,8 +225,15 @@ impl DirectBackend {
                 *inputs.strength_counts.get_unchecked_mut(old_power as usize) -= 1;
                 *inputs.strength_counts.get_unchecked_mut(new_power as usize) += 1;
             }
-
-            self.update_node(update);
+        }
+        for i in 0..update_count {
+            let update_link = unsafe { *self.nodes[node_id].updates.get_unchecked(i) };
+            let distance = update_link.attenuation();
+            if old_power.saturating_sub(distance) != new_power.saturating_sub(distance)
+                || bulb_state_changed
+            {
+                self.update_node(update_link.node());
+            }
         }
         if old_power != new_power || bulb_state_changed {
             for &region in self

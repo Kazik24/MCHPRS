@@ -12,7 +12,8 @@ use std::time::{Duration, Instant};
 
 impl Plot {
     pub(super) fn clear_git_inspection(&mut self, player: usize) {
-        if let Some((_, entity_id, _)) = self.git.inspections.remove(&self.players[player].uuid) {
+        if let Some((_, entity_id, _, _)) = self.git.inspections.remove(&self.players[player].uuid)
+        {
             self.players[player].send_packet(
                 &CDestroyEntities {
                     entity_ids: vec![entity_id],
@@ -23,12 +24,26 @@ impl Plot {
     }
 
     pub(super) fn show_git_inspection(&mut self, player: usize, pos: mchprs_blocks::BlockPos) {
+        self.show_block_highlight(player, pos, true);
+    }
+
+    pub(in crate::plot) fn show_block_highlight(
+        &mut self,
+        player: usize,
+        pos: mchprs_blocks::BlockPos,
+        requires_git_access: bool,
+    ) {
         self.clear_git_inspection(player);
         let viewer = &self.players[player];
         let entity_id = preview::spawn_marker(viewer, pos, 4);
         self.git.inspections.insert(
             viewer.uuid,
-            (pos, entity_id, Instant::now() + Duration::from_secs(3)),
+            (
+                pos,
+                entity_id,
+                Instant::now() + Duration::from_secs(3),
+                requires_git_access,
+            ),
         );
     }
 
@@ -37,7 +52,7 @@ impl Plot {
             .git
             .inspections
             .get(&self.players[player].uuid)
-            .is_some_and(|(pos, _, _)| pos.x >> 4 == chunk_x && pos.z >> 4 == chunk_z)
+            .is_some_and(|(pos, _, _, _)| pos.x >> 4 == chunk_x && pos.z >> 4 == chunk_z)
         {
             self.clear_git_inspection(player);
         }

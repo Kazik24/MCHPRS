@@ -751,9 +751,11 @@ impl Plot {
                     Some(source),
                 ) {
                     Ok(message) => {
-                        self.message_sender
-                            .send(Message::CommandChat(message))
-                            .unwrap();
+                        for player in &self.players {
+                            if message.recipient.matches(&player.username) {
+                                player.send_raw_system_message(message.message.clone());
+                            }
+                        }
                     }
                     Err(error) => self.players[player].send_error_message(&error),
                 }
@@ -971,6 +973,11 @@ impl Plot {
                 }
             }
             "/teleport" | "/tp" => {
+                let highlight_only = args.len() == 4 && args[3] == "--highlight-only";
+                let highlight = highlight_only || (args.len() == 4 && args[3] == "--highlight");
+                if highlight {
+                    args.pop();
+                }
                 if args.len() == 3 {
                     let player_pos = self.players[player].pos;
                     let x;
@@ -994,9 +1001,25 @@ impl Plot {
                         self.players[player].send_error_message(messages::INVALID_Z_COORDINATE);
                         return false;
                     }
-                    self.players[player]
-                        .send_system_message(&messages::teleport_coordinates(x, y, z));
-                    self.players[player].teleport(PlayerPos::new(x, y, z));
+                    let target = PlayerPos::new(x, y, z);
+                    let mut destination = target;
+                    if highlight && !highlight_only {
+                        // Error links target the block center with the viewer's current head height.
+                        destination.y -= self.players[player].eye_position().y - player_pos.y;
+                    }
+                    if !destination.is_valid() {
+                        self.players[player]
+                            .send_error_message(messages::INVALID_TELEPORT_COORDINATES);
+                        return false;
+                    }
+                    if !highlight_only {
+                        self.players[player]
+                            .send_system_message(&messages::teleport_coordinates(x, y, z));
+                        self.players[player].teleport(destination);
+                    }
+                    if highlight {
+                        self.show_block_highlight(player, target.block_pos(), false);
+                    }
                 } else if args.len() == 1 {
                     self.players[player].send_system_message(&messages::teleport_player(args[0]));
                     let uuid = self.players[player].uuid;
@@ -1226,7 +1249,7 @@ fn declared_command_nodes() -> Vec<Node<'static>> {
         // 1: /teleport
         Node::literal("teleport", &[3, 2]),
         // 2: /teleport [x, y, z]
-        Node::argument("x, y, z", Parser::Vec3, &[]).executable(),
+        Node::argument("x, y, z", Parser::Vec3, &[169, 170]).executable(),
         // 3: /teleport [player]
         Node::argument("player", Parser::String(0), &[])
             .executable()
@@ -1532,6 +1555,9 @@ fn declared_command_nodes() -> Vec<Node<'static>> {
         Node::literal("off", &[]).executable(),
         // 168: /gm cat selects creative play with the small ocelot disguise.
         Node::literal("cat", &[]).executable(),
+        // 169: error-coordinate links reuse teleportation and the existing block outline.
+        Node::literal("--highlight", &[]).executable(),
+        Node::literal("--highlight-only", &[]).executable(),
     ]
 }
 
@@ -1546,6 +1572,136 @@ pub static DECLARE_COMMANDS: Lazy<PacketEncoder> = Lazy::new(|| {
 #[cfg(test)]
 mod security_tests {
     use super::*;
+
+    #[test]
+    fn say_and_tellraw_deliver_only_to_matching_players_on_the_executing_plot() {
+        use mchprs_network::packets::clientbound::CChatMessage;
+        use mchprs_network::test_support::{connection, read_frame};
+        use std::io::Read;
+
+        let (mut plot, mut actor_peer) = super::super::client_sync_tests::fixture(false);
+        plot.players[0].set_test_permissions(&[
+            "mchprs.access.commands",
+            "commands.say",
+            "commands.tellraw",
+        ]);
+        let viewer = connection(false).unwrap();
+        let mut viewer_peer = viewer.peer;
+        let mut player = crate::player::Player::test_player(viewer.player);
+        player.uuid = 2;
+        player.username = "Viewer".into();
+        plot.players.push(player);
+        let (mut other_plot, mut other_peer) = super::super::client_sync_tests::fixture(false);
+        other_plot.world.x = 1;
+        other_plot.players[0].username = "OtherPlot".into();
+        let (sender, receiver) = std::sync::mpsc::channel();
+        plot.message_sender = sender;
+
+        for (command, args) in [
+            ("/say", vec!["hello"]),
+            ("/tellraw", vec!["@a", "{\"text\":\"hello\"}"]),
+        ] {
+            let expected = crate::chat_commands::parse(
+                &format!("{command} {}", args.join(" ")),
+                "SyncTest",
+                Some("SyncTest"),
+            )
+            .unwrap();
+            let packet = CChatMessage {
+                message: expected.message,
+                position: 1,
+                sender: 0,
+            }
+            .encode();
+            assert!(!plot.handle_command(0, command, args));
+            for peer in [&mut actor_peer, &mut viewer_peer] {
+                let (id, frame) = read_frame(peer, false).unwrap();
+                assert_eq!(id, 0x72);
+                assert_eq!(&frame.get_ref()[frame.position() as usize..], packet.buffer);
+            }
+            assert!(receiver.try_recv().is_err());
+        }
+        plot.handle_command(0, "/tellraw", vec!["Viewer", "\"targeted\""]);
+        assert_eq!(read_frame(&mut viewer_peer, false).unwrap().0, 0x72);
+        plot.handle_command(0, "/tellraw", vec!["OtherPlot", "\"hidden\""]);
+        assert!(receiver.try_recv().is_err());
+        for peer in [&mut actor_peer, &mut viewer_peer, &mut other_peer] {
+            peer.set_nonblocking(true).unwrap();
+            assert_eq!(
+                peer.read(&mut [0]).unwrap_err().kind(),
+                std::io::ErrorKind::WouldBlock
+            );
+        }
+    }
+
+    #[test]
+    fn error_coordinate_teleport_centers_the_head_and_highlights_the_exact_block() {
+        use mchprs_network::packets::PacketDecoderExt;
+        use mchprs_network::test_support::read_frame;
+
+        for (crouching, small) in [(false, false), (true, false), (false, true), (true, true)] {
+            let (mut plot, mut peer) = super::super::client_sync_tests::fixture(false);
+            plot.players[0].crouching = crouching;
+            plot.players[0].small_model = small.then(crate::player::SmallModel::new);
+            let before = plot.players[0].pos;
+            assert!(!plot.handle_command(
+                0,
+                "/tp",
+                vec!["33.5", "21.5", "35.5", "--highlight-only"],
+            ));
+            let after = plot.players[0].pos;
+            assert_eq!((after.x, after.y, after.z), (before.x, before.y, before.z));
+            assert!(!plot.players[0].awaiting_teleport());
+            assert_eq!(read_frame(&mut peer, false).unwrap().0, 0x01);
+            assert_eq!(read_frame(&mut peer, false).unwrap().0, 0x5c);
+            assert!(!plot.handle_command(0, "/tp", vec!["33.5", "21.5", "35.5", "--highlight"],));
+            let head = plot.players[0].eye_position();
+            assert_eq!((head.x, head.z), (33.5, 35.5));
+            assert!((head.y - 21.5).abs() < 1e-9);
+            assert_eq!(read_frame(&mut peer, false).unwrap().0, 0x72);
+            assert_eq!(read_frame(&mut peer, false).unwrap().0, 0x41);
+            assert_eq!(read_frame(&mut peer, false).unwrap().0, 0x46);
+            let (packet_id, mut spawn) = read_frame(&mut peer, false).unwrap();
+            assert_eq!(packet_id, 0x01);
+            spawn.read_varint().unwrap();
+            spawn.read_uuid().unwrap();
+            assert_eq!(spawn.read_varint().unwrap(), 15);
+            assert_eq!(spawn.read_double().unwrap(), 33.0);
+            assert_eq!(spawn.read_double().unwrap(), 21.0);
+            assert_eq!(spawn.read_double().unwrap(), 35.0);
+            assert_eq!(read_frame(&mut peer, false).unwrap().0, 0x5c);
+
+            // Ordinary teleport coordinates still position the player's feet.
+            plot.handle_command(0, "/tp", vec!["33.5", "21.5", "35.5"]);
+            assert_eq!(plot.players[0].pos.y, 21.5);
+            assert_eq!(read_frame(&mut peer, false).unwrap().0, 0x72);
+            assert_eq!(read_frame(&mut peer, false).unwrap().0, 0x41);
+
+            for args in [
+                vec!["invalid", "21.5", "35.5", "--highlight"],
+                vec!["1e309", "21.5", "35.5", "--highlight"],
+                vec!["30000001.5", "21.5", "35.5", "--highlight"],
+                vec!["33.5", "-2048", "35.5", "--highlight"],
+                vec!["invalid", "21.5", "35.5", "--highlight-only"],
+                vec!["30000001.5", "21.5", "35.5", "--highlight-only"],
+                vec!["33.5", "-2049", "35.5", "--highlight-only"],
+            ] {
+                assert!(!plot.handle_command(0, "/tp", args));
+                assert_eq!(read_frame(&mut peer, false).unwrap().0, 0x72);
+                assert_eq!(plot.players[0].pos.y, 21.5);
+            }
+        }
+        assert_eq!(
+            native_command_permission("/tp", &["33.5", "21.5", "35.5", "--highlight"]).as_deref(),
+            Some("commands.teleport")
+        );
+        assert!(!changes_plot(
+            "/tp",
+            &["33.5", "21.5", "35.5", "--highlight"]
+        ));
+        assert!(declared_command_nodes()[68].children.is_empty());
+    }
+
     #[test]
     fn small_and_cat_commands_have_permissions_and_completion() {
         assert_eq!(
@@ -1648,7 +1804,7 @@ mod security_tests {
     #[test]
     fn command_declarations_have_valid_edges_and_no_legacy_tick_aliases() {
         let nodes = declared_command_nodes();
-        assert_eq!(nodes.len(), 169);
+        assert_eq!(nodes.len(), 171);
         for node in &nodes {
             for edge in node.children.iter().copied().chain(node.redirect_node) {
                 assert!(edge >= 0 && (edge as usize) < nodes.len());

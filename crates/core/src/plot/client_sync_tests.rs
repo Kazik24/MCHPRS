@@ -342,6 +342,7 @@ fn warp_restores_exact_position_and_facing_and_transfers_out_of_locked_plots() {
 fn redpiler_flag_suggestions_reach_the_chat_client() {
     for compressed in [false, true] {
         let (mut plot, mut peer) = fixture(compressed);
+        plot.players[0].set_test_permissions(&["mchprs.access.commands"]);
         let text = "/rp c --optimize --ass";
         plot.handle_tab_complete(
             STabComplete {

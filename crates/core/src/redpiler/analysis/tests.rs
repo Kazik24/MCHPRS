@@ -8,6 +8,7 @@ mod observer_logical;
 mod outputs;
 mod piston_contract;
 mod presentation;
+mod redstone_fuzz;
 mod regions;
 mod research;
 use crate::plot::worldedit::{load_schematic, paste_clipboard};

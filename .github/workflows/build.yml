@@ -46,8 +46,8 @@ jobs:
     - name: Upload
       uses: actions/upload-artifact@v2
       with:
-        name: mchprs-${{ matrix.target }}
-        path: target/${{ matrix.target }}/release/mchprs${{ matrix.ext }}
+        name: mroww-${{ matrix.target }}
+        path: target/${{ matrix.target }}/release/mroww${{ matrix.ext }}
 
   build-macos-universal:
     needs: build
@@ -55,18 +55,18 @@ jobs:
     steps:
       - uses: actions/download-artifact@v3
         with:
-          name: mchprs-x86_64-apple-darwin
+          name: mroww-x86_64-apple-darwin
           path: x86_64
       - uses: actions/download-artifact@v3
         with:
-          name: mchprs-aarch64-apple-darwin
+          name: mroww-aarch64-apple-darwin
           path: aarch64
 
       - name: Build
-        run: lipo -create -output mchprs x86_64/mchprs aarch64/mchprs
+        run: lipo -create -output mroww x86_64/mroww aarch64/mroww
 
       - name: Upload
         uses: actions/upload-artifact@v2
         with:
-          name: mchprs-universal-apple-darwin
-          path: mchprs
+          name: mroww-universal-apple-darwin
+          path: mroww

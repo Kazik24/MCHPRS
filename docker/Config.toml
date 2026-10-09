@@ -1,7 +1,8 @@
 bind_address = "0.0.0.0:25565"
 motd = "§4§lmroww.redstoneFUN.pl §r§71.21.5\n§cMinecraft Redstone o Wysokiej Wydajności"
 chat_format = "<{username}> {message}"
-signed_velocity = true
+# Leave public chat and join/leave notices to an external provider.
+native_chat = false
 max_players = 100
 view_distance = 8
 neighbor_update_interval_ms = 2000

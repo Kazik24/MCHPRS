@@ -478,6 +478,77 @@ mod tests {
         assert!(backend.nodes.inner().is_empty());
     }
 
+    #[test]
+    fn source_changes_publish_all_inputs_before_notifying_comparators() {
+        for side_first in [false, true] {
+            let mut graph = CompileGraph::new();
+            let source = graph.add_node(node(NodeType::Lever, 0));
+            let rear_source = graph.add_node(node(NodeType::Lever, 0));
+            let comparator = graph.add_node(node(
+                NodeType::Comparator {
+                    mode: mchprs_blocks::blocks::ComparatorMode::Compare,
+                    far_input: None,
+                    facing_diode: false,
+                },
+                0,
+            ));
+            graph.add_edge(source, comparator, CompileLink::new(LinkType::Default, 3));
+            graph.add_edge(source, comparator, CompileLink::new(LinkType::Side, 1));
+            graph.add_edge(
+                rear_source,
+                comparator,
+                CompileLink::new(LinkType::Default, 1),
+            );
+            let mut backend = DirectBackend::default();
+            backend
+                .compile(graph, vec![], &Default::default(), vec![])
+                .unwrap();
+            let source = backend.nodes.get(0);
+            let rear_source = backend.nodes.get(1);
+            let comparator = backend.nodes.get(2);
+            backend.nodes[source]
+                .updates
+                .sort_by_key(|link| link.side());
+            if side_first {
+                backend.nodes[source].updates.reverse();
+            }
+
+            backend.set_node(source, true, 15);
+            assert_eq!(
+                super::super::input_strengths(&backend.nodes[comparator]),
+                (12, 14)
+            );
+            assert!(
+                !backend.nodes[comparator].pending_tick,
+                "side_first={side_first}"
+            );
+            backend.tick();
+            backend.tick();
+            assert_eq!(backend.nodes[comparator].output_power, 0);
+
+            backend.set_node(rear_source, true, 15);
+            assert!(backend.nodes[comparator].pending_tick);
+            backend.tick();
+            assert_eq!(backend.nodes[comparator].output_power, 0);
+            backend.tick();
+            assert_eq!(backend.nodes[comparator].output_power, 14);
+
+            backend.set_node(rear_source, false, 0);
+            backend.tick();
+            backend.tick();
+            assert_eq!(backend.nodes[comparator].output_power, 0);
+            backend.set_node(source, false, 0);
+            assert_eq!(
+                super::super::input_strengths(&backend.nodes[comparator]),
+                (0, 0)
+            );
+            assert!(
+                !backend.nodes[comparator].pending_tick,
+                "side_first={side_first}"
+            );
+        }
+    }
+
     fn observer_chain(
         ticks: Vec<TickEntry>,
         powered: bool,

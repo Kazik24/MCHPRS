@@ -2,16 +2,16 @@
 members = ["crates/proc_macros", "crates/redpiler_graph"]
 
 [package]
-name = "mchprs"
+name = "mroww"
 version = "0.4.1"
-authors = ["StackDoubleFlow <ojaslandge@gmail.com>"]
+authors = ["kazik24", "lord225"]
 edition = "2018"
 description = "MROWW — Minecraft Redstone o Wysokiej Wydajności. A multithreaded redstone server based on MCHPRS."
 readme = "README.md"
 license = "MIT"
 keywords = ["minecraft", "server", "redstone"]
-repository = "https://github.com/MCHPR/MCHPRS"
-homepage = "https://github.com/MCHPR/MCHPRS"
+repository = "https://github.com/Kazik24/MCHPRS"
+homepage = "https://github.com/Kazik24/MCHPRS"
 
 include = [
     "**/*.rs",

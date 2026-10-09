@@ -26,10 +26,17 @@ pub(super) fn component(message: &str) -> Value {
         let [x, y, z] = coordinates.as_slice() else {
             unreachable!()
         };
+        let teleport = format!(
+            "/tp {} {} {} --highlight",
+            f64::from(*x) + 0.5,
+            f64::from(*y) + 0.5,
+            f64::from(*z) + 0.5
+        );
         extra.push(json!({
             "text": span.as_str(), "color": "aqua", "underlined": true,
-            "click_event": {"action": "run_command", "command": format!("/tp {} {} {}", f64::from(*x) + 0.5, i64::from(*y) + 1, f64::from(*z) + 0.5)},
-            "hover_event": {"action": "show_text", "value": {"text": "Teleport above this block"}}
+            "click_event": {"action": "run_command", "command": format!("{teleport}-only")},
+            "insertion": teleport,
+            "hover_event": {"action": "show_text", "value": {"text": "Click to highlight. Shift-click, then Enter to teleport."}}
         }));
         end = span.end();
     }
@@ -45,7 +52,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn every_coordinate_links_to_its_own_position_without_changing_the_error() {
+    fn error_coordinate_links_preserve_the_message_and_each_position() {
         let message = "Source BlockPos { x: -20, y: 30, z: 40 } conflicts with (5, 6, -7).";
         let result = component(message);
         let parts = result["extra"].as_array().unwrap();
@@ -56,8 +63,20 @@ mod tests {
                 .collect::<String>(),
             message
         );
-        assert_eq!(parts[1]["click_event"]["command"], "/tp -19.5 31 40.5");
-        assert_eq!(parts[3]["click_event"]["command"], "/tp 5.5 7 -6.5");
+        assert_eq!(
+            parts[1]["click_event"]["command"],
+            "/tp -19.5 30.5 40.5 --highlight-only"
+        );
+        assert_eq!(
+            parts[3]["click_event"]["command"],
+            "/tp 5.5 6.5 -6.5 --highlight-only"
+        );
+        assert_eq!(parts[1]["insertion"], "/tp -19.5 30.5 40.5 --highlight");
+        assert_eq!(parts[3]["insertion"], "/tp 5.5 6.5 -6.5 --highlight");
+        assert_eq!(
+            parts[1]["hover_event"]["value"]["text"],
+            "Click to highlight. Shift-click, then Enter to teleport."
+        );
         assert_eq!(
             component("No coordinates"),
             json!({"text": "No coordinates", "color": "red"})

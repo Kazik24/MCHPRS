@@ -34,6 +34,8 @@ pub const MC_DATA_VERSION: i32 = 4325;
 pub const PROTOCOL_VERSION: i32 = 770;
 
 #[cfg(test)]
+mod chat_tests;
+#[cfg(test)]
 mod skin_tests;
 
 pub fn version_string() -> String {
@@ -51,7 +53,6 @@ pub enum Message {
     /// This message is sent to the server thread when a player sends a chat message,
     /// It contains the uuid and name of the player and the raw message the player sent.
     ChatInfo(u128, String, String),
-    CommandChat(crate::chat_commands::ChatCommand),
     /// This message is sent to the server thread when a player joins the server.
     PlayerJoined(Player),
     /// This message is sent to the server thread when a player leaves the server.
@@ -89,7 +90,6 @@ pub enum BroadcastMessage {
     /// This message is broadcasted for chat messages. It contains the uuid of the player and
     /// the raw json data to send to the clients.
     Chat(u128, Vec<ChatComponent>),
-    CommandChat(crate::chat_commands::ChatCommand),
     /// This message is broadcasted when a player joins the server. It is used to update
     /// the tab-list on all connected clients.
     PlayerJoinedInfo(PlayerJoinInfo),
@@ -205,10 +205,6 @@ impl MinecraftServer {
             );
             velocity::init(config).expect("Cannot initialize Velocity forwarding");
         }
-        assert!(
-            !CONFIG.signed_velocity || CONFIG.velocity.is_some(),
-            "signed_velocity requires authenticated Velocity modern forwarding"
-        );
 
         // Create server struct
         let mut server = MinecraftServer {
@@ -587,7 +583,7 @@ impl MinecraftServer {
             }
             Message::PlayerJoined(mut player) => {
                 info!(player = %player.username, uuid = %format_args!("{:032x}", player.uuid), "Player joined");
-                if permissions::ranked_chat() {
+                if CONFIG.native_chat && permissions::ranked_chat() {
                     player.send_chat_message(0, &ChatComponent::player_joined(&player.username));
                 }
                 // Send player info to plots
@@ -611,10 +607,12 @@ impl MinecraftServer {
             Message::PlayerLeft(uuid) => {
                 if let Some((_, player)) = self.online_players.remove_entry(&uuid) {
                     info!(player = %player.username, uuid = %format_args!("{uuid:032x}"), "Player left");
-                    self.broadcaster.broadcast(BroadcastMessage::Chat(
-                        0,
-                        ChatComponent::player_left(&player.username),
-                    ));
+                    if CONFIG.native_chat {
+                        self.broadcaster.broadcast(BroadcastMessage::Chat(
+                            0,
+                            ChatComponent::player_left(&player.username),
+                        ));
+                    }
                 }
                 self.broadcaster
                     .broadcast(BroadcastMessage::PlayerLeft(uuid));
@@ -643,11 +641,10 @@ impl MinecraftServer {
                     self.handle_message(Message::PlayerLeft(player.uuid));
                 }
             }
-            Message::CommandChat(command) => {
-                self.broadcaster
-                    .broadcast(BroadcastMessage::CommandChat(command));
-            }
             Message::ChatInfo(uuid, username, message) => {
+                if !CONFIG.native_chat {
+                    return;
+                }
                 info!("<{}> {}", username, message);
                 let components = self
                     .online_players

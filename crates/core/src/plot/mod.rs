@@ -1691,20 +1691,13 @@ impl Plot {
     fn handle_messages(&mut self) {
         while let Ok(message) = self.message_receiver.try_recv() {
             match message {
-                BroadcastMessage::CommandChat(command) => {
-                    for player in &self.players {
-                        if command.recipient.matches(&player.username) {
-                            player.send_raw_system_message(command.message.clone());
-                        }
-                    }
-                }
                 BroadcastMessage::Chat(sender, message) => {
                     for player in &mut self.players {
                         player.send_chat_message(sender, &message);
                     }
                 }
                 BroadcastMessage::PlayerJoinedInfo(player_join_info) => {
-                    let join_message = crate::permissions::ranked_chat()
+                    let join_message = (CONFIG.native_chat && crate::permissions::ranked_chat())
                         .then(|| ChatComponent::player_joined(&player_join_info.username));
                     let player_info = CPlayerInfo::AddPlayer(vec![CPlayerInfoAddPlayer {
                         name: player_join_info.username,
