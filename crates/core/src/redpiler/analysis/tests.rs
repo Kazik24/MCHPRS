@@ -6,6 +6,7 @@ mod legalization;
 mod memory;
 mod observer_logical;
 mod outputs;
+mod pc_counter_minimal;
 mod piston_contract;
 mod presentation;
 mod redstone_fuzz;
