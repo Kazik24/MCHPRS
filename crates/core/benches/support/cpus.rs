@@ -351,10 +351,6 @@ pub struct RunTiming {
     pub instant_piston_cache_stats: Option<(usize, usize, u64)>,
 }
 
-pub fn replay(cpu: Cpu, expected: &Reference) -> RunTiming {
-    replay_with_visuals(cpu, expected, false, 0)
-}
-
 pub fn replay_with_visuals(
     cpu: Cpu,
     expected: &Reference,

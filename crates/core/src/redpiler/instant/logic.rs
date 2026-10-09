@@ -22,6 +22,7 @@ pub(crate) struct WaveLogic {
     /// Dependency order for local logical responses; roots keep actor order.
     pub response_order: Vec<usize>,
     pub sources: Vec<BlockPos>,
+    #[cfg(test)]
     pub response_sources: Vec<BlockPos>,
     pub wires: FxHashSet<BlockPos>,
     pub consumer_wires: FxHashSet<BlockPos>,
@@ -85,6 +86,7 @@ struct Extractor<'a, W: World> {
     owned_reset: FxHashSet<BlockPos>,
 }
 
+#[cfg(test)]
 pub(crate) fn extract(
     world: &impl World,
     report: &AnalysisReport,
@@ -93,6 +95,7 @@ pub(crate) fn extract(
     extract_with_state(world, report, monitor, FxHashSet::default(), None)
 }
 
+#[cfg(test)]
 pub(crate) fn extract_with_state(
     world: &impl World,
     report: &AnalysisReport,
@@ -318,7 +321,9 @@ fn extract_with_options(
         }
     });
     let wires = extractor.wires.clone();
+    #[cfg(test)]
     let mut response_sources: Vec<_> = extractor.sources.iter().copied().collect();
+    #[cfg(test)]
     response_sources.sort_by_key(|pos| (pos.y, pos.z, pos.x));
     let mut consumer_wires = FxHashSet::default();
     let mut outputs = Vec::new();
@@ -505,6 +510,7 @@ fn extract_with_options(
         responses,
         response_order,
         sources,
+        #[cfg(test)]
         response_sources,
         wires: extractor.wires,
         consumer_wires,

@@ -728,6 +728,7 @@ impl Runtime {
                     }
                 }
             }
+            #[cfg(test)]
             let mut sampled = false;
             for &event in events {
                 let notification = &mut self.sampling[event];
@@ -735,7 +736,10 @@ impl Runtime {
                     for target in &notification.targets {
                         if target.eligible {
                             self.memory[target.actor] = self.fired[target.actor];
-                            sampled = true;
+                            #[cfg(test)]
+                            {
+                                sampled = true;
+                            }
                         }
                     }
                     notification.delivered = false;

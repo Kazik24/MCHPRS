@@ -14,19 +14,19 @@ fn frozen_cpu_inputs_and_initial_states() {
 #[test]
 #[ignore = "50,000-tick CPU regression; run with --release -- --ignored"]
 fn pm1_sort_frozen_reference() {
-    cpus::replay(cpus::CPUS[0], &cpus::reference(cpus::CPUS[0]));
+    cpus::replay_with_visuals(cpus::CPUS[0], &cpus::reference(cpus::CPUS[0]), false, 0);
 }
 
 #[test]
 #[ignore = "50,000-tick CPU regression; run with --release -- --ignored"]
 fn anpu_pong_frozen_reference() {
-    cpus::replay(cpus::CPUS[1], &cpus::reference(cpus::CPUS[1]));
+    cpus::replay_with_visuals(cpus::CPUS[1], &cpus::reference(cpus::CPUS[1]), false, 0);
 }
 
 #[test]
 #[ignore = "50,000-tick CPU regression; run explicitly"]
 fn bubblesort_frozen_reference() {
-    cpus::replay(cpus::CPUS[2], &cpus::reference(cpus::CPUS[2]));
+    cpus::replay_with_visuals(cpus::CPUS[2], &cpus::reference(cpus::CPUS[2]), false, 0);
 }
 
 #[test]

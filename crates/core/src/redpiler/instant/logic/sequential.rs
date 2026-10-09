@@ -347,6 +347,7 @@ pub(crate) fn extract(
             arena,
             responses: roots,
             response_order: Vec::new(),
+            #[cfg(test)]
             response_sources: sources.clone(),
             sources,
             wires: indexed,
