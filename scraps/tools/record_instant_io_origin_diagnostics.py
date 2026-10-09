@@ -3,6 +3,9 @@ import argparse
 import json
 import shutil
 from pathlib import Path
+import sys
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "tools"))
 from inspect_instant_pistons import ROOT
 from analyze_instant_pistons import projection, matches
 from validate_instant_pistons import load, sha

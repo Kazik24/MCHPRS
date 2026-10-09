@@ -2,7 +2,7 @@
 
 Requires Java 21, Python 3, and prismarine-nbt in tools/node_modules. Runs an
 isolated frozen void world; never opens the live MCHPRS world. Example:
-  py tools/capture_piston_oscillator.py --server-jar <server.jar> --output <new.json>
+  py scraps/tools/capture_piston_oscillator.py --server-jar <server.jar> --output <new.json>
 """
 import argparse
 import hashlib
@@ -15,7 +15,7 @@ import subprocess
 import tempfile
 import time
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[2]
 SERVER_SHA1 = "e6ec2f64e6080b9b5d9b471b291c33cc7f509733"
 DECODE = r"""
 const fs = require('fs'), nbt = require('prismarine-nbt');

@@ -1,15 +1,17 @@
 """Create PM1's corrected copy; preserve every NBT byte except two block entries.
 
-Run: py tools/fix_pm1_sort.py
+Run: py scraps/tools/fix_pm1_sort.py
 """
 import gzip
 import hashlib
 import struct
 from pathlib import Path
+import sys
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "tools"))
 from inspect_instant_pistons import NBT, inspect
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[2]
 SOURCE = ROOT / "test_data/PM1_SORT.schem"
 TARGET = ROOT / "test_data/PM1_SORT_FIXED.schem"
 REMOVED = {

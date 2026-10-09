@@ -32,6 +32,26 @@ A longer interpreted probe records READA fanout from dust `(2,3,3)` to both rece
 
 ## Why Redpiler rejects the circuit
 
+### Architecture correction: current `redpiler/piston-1.21.5` checkout
+
+The original reproduction below is historical evidence. The source review on
+2026-10-10 did not rerun it. The report previously described the merged-domain
+runtime; that dispatch path does not exist in this checkout.
+
+The current backend selects `Runtime::Direct` or `Runtime::Native`. Instant
+programs execute in Direct alongside the ordinary collapsed graph, without an
+attached native executor. `PreparedInstant` carries sampling events and actual
+memory cells, but no separate response activation policy or ordered activation
+routes. `Runtime::advance` derives sampling delivery from a change in generator
+or power strength, records a Boolean `delivered` flag, and processes a writer
+group against an old memory snapshot. This cannot encode repeated unchanged
+READA/READB callbacks. Source-driven response reevaluation also cannot express
+a receiver whose available power changes without activating it.
+
+Selective input capture is present in the reviewed worktree. It changes cache
+maintenance, not activation semantics. Existing uncommitted runtime changes were
+not modified by this documentation review.
+
 Redpiler already records two different facts about a piston:
 
 1. `recognition.inputs` and topology describe the electrical power function, including direct and QC routes.
@@ -42,7 +62,7 @@ The admission path does not yet combine those facts into an activation model for
 1. `instant/sampling.rs::recognize` classifies fixed actors, empty generators, and independent-memory/BUD candidates. It excludes actors watched by reset observers from the independent-memory class. That exclusion is sensible for real storage BUDs, but this fixture's receivers are instant/QC-instant actors and need a separate classification path.
 2. `instant/program.rs::prepare` walks the ordinary graph descendants of each instant output. The upper input instant makes repeater `(1,6,4)` internally driven. It then calls `sampling::validate_feedback` for response actors.
 3. `sampling::validate_feedback` sees the repeater as a QC data source that does not notify the receiving base. It also finds a movable writer feeding wire-notification routes to that receiver. Since there is no prepared activation model for those deliveries, it rejects the case at the diagnostic above.
-4. At runtime, `DirectBackend::dispatch_owned_update` consumes callbacks delivered to assembly-owned positions. It only captures a target when `Runtime::notification_targets` finds a prepared `SamplingSource::Power` event, currently the path used for existing sampled-memory events. Ordinary instant/QC-instant actors have no callback-triggered response entry, so their deliveries do not reevaluate the actor.
+4. On the current branch, runtime sampling detects changes in prepared source values and groups deliveries by writer. It has no ordered callback-triggered response entry for ordinary instant/QC-instant actors. The merged branch's `dispatch_owned_update` and `notification_targets` are historical implementation references, not available hooks to extend here.
 5. Conversely, `Runtime::advance` reevaluates dirty logical responses when ordinary sources change. If the admission guard were simply removed, a repeater/QC power change could change the actor response without a callback to its base. That would accept the fixture by changing its semantics.
 
 The guard therefore exposes a real model gap, even though the circuit's callback and power routes are legal. The correct response is not to remove the guard or classify these pistons as memory. Redpiler must represent when an instant actor checks its current power.
@@ -56,6 +76,24 @@ The compiler should derive each actor's activation routes from the physical upda
 At runtime, dispatch each qualifying callback to the affected instant actor in delivery order. Refresh the actor's electrical inputs, evaluate its response at that callback, and advance its existing piston/reset phase state. A source-strength change may refresh cached inputs, but it must not activate a notification-gated actor on its own. Keep repeated callbacks as separate events. For a shared fanout, preserve the engine's established callback order and phase semantics rather than deduplicating by source or actor.
 
 The feedback validator should accept an internally driven QC data path when it can prove a valid activation route for the receiver and the route's delivery semantics are represented. It should continue rejecting unresolved routes, including the reduced case where READB's moving payload is removed and the receiver has no independent activation. Run this validation across the union of connected assembly routes; a per-program descendant check cannot establish a trigger path that crosses a program cut.
+
+For this branch, compile activation-connected assemblies into one region where
+ownership and reset certificates permit it. Otherwise reject an unresolved cut
+until explicit inter-region event delivery is supported. Ordinary repeaters
+remain delayed graph components. Internal dust stays compiled; an activation
+route must generate its ordered notifications without restoring physical dust
+execution. External decoration shape callbacks are outside this interface.
+
+Implementation requires a targeted notification/event adapter for the collapsed
+graph and compiled assembly routes. Copying the merged backend wholesale is not
+required. Current computed electrical responses and committed actor responses
+must become distinct: downstream geometry reads use committed actor state, not
+an unactivated candidate. Do not emulate this distinction by adding a memory
+cell or merely suppressing assignment to `fired`.
+
+The proposed formal extension and current implementation limits are documented
+in [the execution model](../../../docs/REDPILER_MODEL.md#13-proposed-notification-gated-instant-responses).
+The code scope is in [the implementation plan](../../../scraps/PC_COUNTER_ACTIVATION_PLAN.md).
 
 This is a model-level change, not a fixture exception: it applies to any instant/QC-instant actor with separated data and notification paths. It should retain reset geometry and phase certificates, use the ordinary response function for current power, and reserve logical stored state for actual memory circuits. `--assume-instant` must not bypass route or phase validation.
 

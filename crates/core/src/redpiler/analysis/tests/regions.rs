@@ -1,6 +1,58 @@
 use super::*;
 
 #[test]
+fn shared_consumer_channels_merge_regions_but_comparator_inputs_stay_distinct() {
+    let (mut world, _, _) = fixture("instant_observer");
+    let (second, bounds, _) = fixture("instant_observer");
+    let shift = BlockPos::new(64, 0, 48);
+    crate::world::for_each_block_optimized(&second, bounds.0, bounds.1, |pos| {
+        let block = second.get_block(pos);
+        if block != Block::Air {
+            world.set_block(pos + shift, block);
+        }
+    });
+    let monitor = Default::default();
+    let mut report = analyze_world(&world);
+    assert_eq!(
+        crate::redpiler::instant::regions::split(&world, &report, &monitor)
+            .unwrap()
+            .len(),
+        2,
+        "disconnected circuits begin in separate regions"
+    );
+    let first = report.ports.outputs[0].clone();
+    let other = report
+        .ports
+        .outputs
+        .iter()
+        .position(|output| output.consumer.x >= BASE.x + shift.x)
+        .unwrap();
+    report.ports.outputs[other].consumer = first.consumer;
+    report.ports.outputs[other].input = first.input;
+    assert_eq!(
+        crate::redpiler::instant::regions::split(&world, &report, &monitor)
+            .unwrap()
+            .len(),
+        1,
+        "the same consumer input is evaluated in one region"
+    );
+
+    report.ports.outputs[other].input =
+        if first.input == crate::redpiler::analysis::ports::ConsumerInput::Main {
+            crate::redpiler::analysis::ports::ConsumerInput::ComparatorSide
+        } else {
+            crate::redpiler::analysis::ports::ConsumerInput::Main
+        };
+    assert_eq!(
+        crate::redpiler::instant::regions::split(&world, &report, &monitor)
+            .unwrap()
+            .len(),
+        2,
+        "comparator main and side channels remain independent"
+    );
+}
+
+#[test]
 fn empty_ordinary_clock_preserves_stationary_far_context() {
     for assume_instant in [false, true] {
         for optimize in [false, true] {

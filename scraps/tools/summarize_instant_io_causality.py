@@ -1,6 +1,9 @@
 """Print measured piston operations, not an inferred order from pico snapshots."""
 import argparse
 from pathlib import Path
+import sys
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "tools"))
 from validate_instant_pistons import load
 
 

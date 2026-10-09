@@ -2,7 +2,7 @@
 
 Requires Java 21, Python 3, and prismarine-nbt in tools/node_modules. Runs an
 isolated frozen void world. Example:
-  py tools/capture_adder.py --server-jar <server.jar> --output-directory <new-dir>
+  py scraps/tools/capture_adder.py --server-jar <server.jar> --output-directory <new-dir>
 """
 import argparse
 import hashlib
@@ -15,7 +15,7 @@ import time
 
 from capture_piston_oscillator import Rcon, SERVER_SHA1
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[2]
 ORIGIN = [100, 26, 56]
 PORTS = {"a": [3, 5, 43], "b": [3, 5, 41], "out": [20, 2, 41], "tick": [2, 4, 45]}
 WIDTH = 11

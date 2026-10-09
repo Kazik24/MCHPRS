@@ -1,7 +1,7 @@
 """Capture observer/piston feedback on the official SHA-pinned Java 1.21.5 server.
 
 Requires Java 21 and Python 3. Runs an isolated frozen void world. Example:
-  py tools/capture_observer_piston_feedback.py --server-jar <server.jar> --output <new.json>
+  py scraps/tools/capture_observer_piston_feedback.py --server-jar <server.jar> --output <new.json>
 """
 import argparse
 import hashlib

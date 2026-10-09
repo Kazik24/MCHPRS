@@ -18,6 +18,9 @@ The former wave and sequential executors are retired. Retained sequential
 extraction helpers contribute dependency and admission proofs, not another
 active runtime. Native/compiled partial execution remains a
 [proposal](notes/REDPILER_PARTIAL_COMPILATION.md).
+Ordinary selections can instead use the separate Native backend; the equations
+below describe Direct execution, not Turbo's physical callback traversal.
+Section 13 specifies a proposed activation extension which is not implemented.
 Compilation success establishes that the implementation can represent a region;
 it does not establish universal equivalence to every physical input history.
 
@@ -341,7 +344,11 @@ once. Response, output, and sampling domains have separate snapshots and
 caches. Changed inputs invalidate dependent decisions; evaluation walks needed
 branches and shares cached subexpressions, including computed actuator
 conditions in the local response DAG. Ordinary source dependencies are indexed,
-so unchanged unclocked regions need no Boolean reevaluation. Electrical output
+and the reviewed worktree captures dirty binding values before applying their
+invalidation, with full capture at initialization. Dirty roots restrict response
+evaluation. These cache optimizations preserve the response equations only if
+every source, memory, and geometry mutation marks its affected bindings.
+Unchanged unclocked regions need no Boolean reevaluation. Electrical output
 guards instead read a small scheduled boundary phase. Only actors used by
 ordinary consumers or observers need this state; a shared payload includes all
 its possible owners. No native piston events, movement entities, world scans,
@@ -632,7 +639,8 @@ The following limits must remain explicit:
 - Independent sampling currently compares source values and groups recipients
   by writer. It does not preserve every native repeated notification or callback
   order. Stored-state control and multiple dust writers remain unsupported.
-- The logical executor omits physical movement and reset episodes. Native hybrid
+- The logical executor omits native movement entities and piston events, but
+  models certified electrical movement/reset phases for boundary outputs. Native hybrid
   ownership, ordered boundary callbacks, and operation-preserving fallback are
   proposed work, not a current continuation guarantee.
 - Ordinary optimization contains specialized binary/attenuation assumptions.
@@ -650,3 +658,101 @@ a new material rule belongs in geometry extraction; a retained analog value
 belongs in the appropriate channel. Adding a fixture-specific arithmetic
 instruction or globally changing power into notification hides the actual
 contract and breaks composition.
+
+## 13. Proposed notification-gated instant responses
+
+Status: specification for the minimal PC counter extension, not current runtime
+support. Sections 5–8 describe the existing response and storage mechanisms.
+This section adds activation state without reclassifying instant receivers as
+storage BUDs. Route and phase certification remain required with either flag.
+
+### State and activation
+
+Partition response actors into signal-driven actors $A_s$ and notification-gated
+actors $A_e$. Actual storage actors remain a separate class $A_m$. For $a\in A_e$
+retain committed response $c_a$ (one means retracted), initialized from admitted
+entry state, and certified phase state $\phi_a$. The expression cache is derived
+state; it is not $c_a$ and is not a stored circuit memory bit $q_a$.
+
+Let $H_a(\mathbf s,\mathbf q,\mathbf c)$ be the candidate response obtained from
+the existing guarded power equation $R_a=\neg P_a$. References to gated actor
+occupancy use committed $c_b$, while signal-driven dependencies use their
+acyclic candidate functions. Cut substitution at gated references; do not inline
+their newly computed candidates into downstream geometry. An event-mediated
+dependency cycle needs its own admission proof; the cut alone does not certify it.
+
+An activation event is
+
+$$
+e=(\tau,k,w,p,d,a),
+$$
+
+where $\tau$ is its supported time/phase, $k$ its delivery order, $w$ the writer,
+$p$ the recipient position, $d$ the callback direction (possibly absent), and
+$a$ the target actor. A certified route determines eligibility, including whether
+a head exists at delivery. Distinct callbacks retain distinct $k$, even when
+their writer, target, and electrical values agree.
+
+For a data-only change $\Delta\mathbf s$:
+
+$$
+\mathbf s^+=\mathbf s+\Delta\mathbf s,\qquad c_a^+=c_a,
+\qquad \phi_a^+=\phi_a \quad(a\in A_e).
+$$
+
+This transition invalidates affected electrical caches but does not launch the
+gated actor. Previously scheduled phase work can still execute at its deadline.
+
+For an eligible delivered event targeting $a$, use its pre-event state:
+
+$$
+v=H_a(\mathbf s^-,\mathbf q^-,\mathbf c^-),\qquad
+c_a^+=v,\qquad c_b^+=c_b\ (b\ne a),
+$$
+
+$$
+(\phi^+,Q^+,E^+)=\operatorname{ActivateCertified}
+ (\phi^-,Q^-,E^-,a,v,e).
+$$
+
+`ActivateCertified` applies the existing admitted phase/event acceptance rules.
+It does not mean restart a cycle on every callback. Same-value activations still
+reach this transition; its phase/pending checks determine their effects.
+An ineligible callback changes neither response nor phase state.
+
+Process activations in delivery order, publishing effects required before the
+next event. Shared writer identity does not imply an atomic batch. Only an
+explicit certificate can authorize old-state fanout batching. Storage writes
+retain their separate old-bank sampling contract from sections 7–8.
+
+### Boundary and selective-capture contract
+
+Internal dust has no physical runtime executor. Compiled notification routes
+produce activation events; ordinary sources provide live electrical inputs.
+Generic external placement/shape callbacks and destruction of decorative blocks
+are not part of an assembly's interface. Supported electrical and observer
+events require explicit ports. Intermediate geometry remains internal to those
+certified expressions; physical state is materialized on handoff.
+
+For each plan, let $B(x)$ be the binding IDs depending on input identity $x$.
+A changed dependency marks $D\gets D\cup B(x)$. At an evaluation boundary read
+all bindings in $D$ against one coherent state, then update snapshots and
+invalidate affected decisions. Initialization captures all bindings. Source,
+memory, committed response, and scheduled geometry changes must mark their
+respective dependencies. An activation is not discarded because $D$ is empty.
+
+### Current Rust correspondence and gaps (2026-10-10)
+
+| Formal operation | Current implementation | Status |
+| --- | --- | --- |
+| Guarded power and candidate response | `instant/logic.rs`, Boolean arena, bound response plan | Present for existing admitted families |
+| True stored state $q$ and old-bank writes | `MemoryCell`, `memory`, clocked/independent sampling | Present; must remain distinct |
+| Selective coherent capture and dirty roots | `backend/direct/instant/logical.rs`; mutation marking in runtime | Present in worktree; source review, not fresh validation |
+| Separate $c$ and candidate $H$ | `fired` currently updated from dirty candidate responses | Missing for gated actors |
+| Ordered activation events | Sampling uses value changes and Boolean `delivered` flags | Missing; multiplicity/order not represented |
+| Route certification for gated responses | `PistonPorts.updates`, reset proofs, QC feedback rejection | Discovery exists; executable activation proof missing |
+| Certified phase state | `backend/direct/instant/timing.rs` | Existing machinery; event acceptance adaptation required |
+
+Thus the current runtime matches the restricted signal-driven model and cannot
+claim conformance to this extension. Successful admission must wait for its route,
+commit, delivery, and continuation implementation and differential validation.

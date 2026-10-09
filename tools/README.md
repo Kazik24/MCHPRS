@@ -25,7 +25,6 @@ indices are ignored local outputs. Use fresh destinations for captures and retai
 their source identities. Generated artifacts cannot replace independent expected
 outputs simply because a comparison fails.
 
-Historical narrative catalog generators were removed with their stale reports.
 Capture, inspection, protocol, analysis, and validation tools remain the supported
-workflow; they do not recreate implementation plans or case-specific reference
-documents.
+workflow. One-off experiment captures and diagnostics are archived under
+`../scraps/tools/`.

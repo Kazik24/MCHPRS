@@ -244,6 +244,7 @@ impl DirectBackend {
                 .flatten()
             {
                 self.instant_dirty[region] = true;
+                self.instant[region].mark_source_dirty(node_id);
             }
             for &comparator in self.far_comparators.get(&node_id).into_iter().flatten() {
                 if let NodeType::Comparator { far_input, .. } = &mut self.nodes[comparator].ty {

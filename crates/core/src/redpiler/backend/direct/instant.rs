@@ -27,6 +27,7 @@ pub(super) struct Runtime {
     memory: Vec<bool>,
     published_memory: Vec<bool>,
     memory_geometry: FxHashMap<BlockPos, Observation>,
+    geometry_index: FxHashMap<BlockPos, (Observation, bool)>,
     sampling: Vec<SamplingEvent>,
     sampling_groups: Vec<Vec<usize>>,
     sampling_pending: bool,
@@ -42,7 +43,7 @@ pub(super) struct Runtime {
     bank_values: Vec<bool>,
 }
 
-#[derive(Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Observation {
     Base(usize),
     Near(usize),
@@ -112,6 +113,12 @@ enum Supply {
 }
 
 impl Runtime {
+    pub(super) fn mark_source_dirty(&mut self, source: NodeId) {
+        if let Some(state) = &mut self.logical {
+            state.mark_dirty(Input::Source(source));
+        }
+    }
+
     /// Bind prepared positions and expressions to backend nodes before activation.
     /// Missing bindings reject the staged runtime instead of publishing partial state.
     pub(super) fn bind(
@@ -481,12 +488,28 @@ impl Runtime {
                 .as_ref()
                 .map_or(0, |clock| clock.memory.len())
         ];
+        let geometry_candidates: Vec<_> = program
+            .pistons
+            .iter()
+            .enumerate()
+            .map(|(actor, piston)| {
+                (
+                    piston.pos,
+                    piston.head,
+                    (piston.head != piston.payload
+                        && program.payloads[actor_groups[actor]] != Block::Air)
+                        .then_some(piston.payload),
+                )
+            })
+            .collect();
+        let geometry_index = Self::build_geometry_index(&geometry_candidates);
         let mut runtime = Self {
             logical,
             fired,
             published_memory: memory.clone(),
             memory,
             memory_geometry,
+            geometry_index,
             group_fired,
             program,
             aliases,
@@ -513,6 +536,9 @@ impl Runtime {
         let mut state = runtime.logical.take().unwrap();
         state
             .responses
+            .capture(|input, threshold| runtime.read_input(input, threshold, nodes));
+        state
+            .outputs
             .capture(|input, threshold| runtime.read_input(input, threshold, nodes));
         state
             .sampling
@@ -657,22 +683,43 @@ impl Runtime {
                 .iter()
                 .zip(&self.bank_values)
             {
+                let previous = self.memory[cell.actor];
                 self.memory[cell.actor] = value;
+                if value != previous {
+                    state.mark_dirty(Input::Memory(cell.actor));
+                    for &actor in &self.program.groups[self.actor_groups[cell.actor]] {
+                        state.mark_geometry_actor_dirty(actor);
+                    }
+                }
             }
             #[cfg(test)]
             {
                 state.samples += 1;
             }
         }
-        state
-            .responses
-            .capture(|input, threshold| self.read_input(input, threshold, nodes));
+        if state.initialized {
+            state
+                .responses
+                .capture_dirty(|input, threshold| self.read_input(input, threshold, nodes));
+        } else {
+            state
+                .responses
+                .capture(|input, threshold| self.read_input(input, threshold, nodes));
+        }
         let sample = if let Some(clock) = self.program.clocked.as_ref().map(|clock| clock.clock) {
             // Control pose follows the source independently of bank sampling;
             // stopping the clock preserves memory and the last data response.
             let active = state.responses.evaluate(clock);
+            let control_group = self.actor_groups[clock];
+            let control_changed = self.fired[clock] != active;
             self.fired[clock] = active;
-            self.group_fired[self.actor_groups[clock]] = active;
+            self.group_fired[control_group] = active;
+            if control_changed {
+                state.mark_dirty(Input::Response(clock));
+                for &actor in &self.program.groups[control_group] {
+                    state.mark_geometry_actor_dirty(actor);
+                }
+            }
             if !active {
                 state.next_sample = None;
                 false
@@ -684,8 +731,18 @@ impl Runtime {
         };
         if sample {
             // Every response reads the same frozen old bank before any write.
-            for actor in 0..self.fired.len() {
-                self.fired[actor] = state.responses.evaluate(actor);
+            let mut changed_actors = Vec::new();
+            state.responses.evaluate_dirty(|actor, value| {
+                if self.fired[actor] != value {
+                    changed_actors.push(actor);
+                }
+                self.fired[actor] = value;
+            });
+            for actor in changed_actors {
+                state.mark_dirty(Input::Response(actor));
+                for &member in &self.program.groups[self.actor_groups[actor]] {
+                    state.mark_geometry_actor_dirty(member);
+                }
             }
             self.group_fired.fill(false);
             for (actor, &fired) in self.fired.iter().enumerate() {
@@ -700,9 +757,15 @@ impl Runtime {
                 state.next_sample = Some(launch + 6);
             }
         }
-        state
-            .sampling
-            .capture(|input, threshold| self.read_input(input, threshold, nodes));
+        if state.initialized {
+            state
+                .sampling
+                .capture_dirty(|input, threshold| self.read_input(input, threshold, nodes));
+        } else {
+            state
+                .sampling
+                .capture(|input, threshold| self.read_input(input, threshold, nodes));
+        }
         for event in &mut self.sampling {
             let strength = Self::sample_strength(event, &mut state, nodes);
             event.delivered |= std::mem::replace(&mut event.previous, strength) != strength;
@@ -716,14 +779,22 @@ impl Runtime {
             // Separate source events read the preceding event's committed bank.
             state
                 .responses
-                .capture(|input, threshold| self.read_input(input, threshold, nodes));
+                .capture_dirty(|input, threshold| self.read_input(input, threshold, nodes));
             for &event in events {
                 let notification = &mut self.sampling[event];
                 if notification.delivered {
                     for target in &mut notification.targets {
                         target.eligible = !target.requires_extended || !self.memory[target.actor];
                         if target.eligible {
-                            self.fired[target.actor] = state.responses.evaluate(target.actor);
+                            let value = state.responses.evaluate(target.actor);
+                            if self.fired[target.actor] != value {
+                                let group = self.actor_groups[target.actor];
+                                state.mark_dirty(Input::Response(target.actor));
+                                for &actor in &self.program.groups[group] {
+                                    state.mark_geometry_actor_dirty(actor);
+                                }
+                            }
+                            self.fired[target.actor] = value;
                         }
                     }
                 }
@@ -735,7 +806,15 @@ impl Runtime {
                 if notification.delivered {
                     for target in &notification.targets {
                         if target.eligible {
+                            let changed = self.memory[target.actor] != self.fired[target.actor];
                             self.memory[target.actor] = self.fired[target.actor];
+                            if changed {
+                                let group = self.actor_groups[target.actor];
+                                state.mark_dirty(Input::Memory(target.actor));
+                                for &actor in &self.program.groups[group] {
+                                    state.mark_geometry_actor_dirty(actor);
+                                }
+                            }
                             #[cfg(test)]
                             {
                                 sampled = true;
@@ -751,10 +830,20 @@ impl Runtime {
             }
             state
                 .responses
-                .capture(|input, threshold| self.read_input(input, threshold, nodes));
-            for actor in 0..self.fired.len() {
+                .capture_dirty(|input, threshold| self.read_input(input, threshold, nodes));
+            let mut changed_actors = Vec::new();
+            state.responses.evaluate_dirty(|actor, value| {
                 if !self.memory_actors[actor] {
-                    self.fired[actor] = state.responses.evaluate(actor);
+                    if self.fired[actor] != value {
+                        changed_actors.push(actor);
+                    }
+                    self.fired[actor] = value;
+                }
+            });
+            for actor in changed_actors {
+                state.mark_dirty(Input::Response(actor));
+                for &member in &self.program.groups[self.actor_groups[actor]] {
+                    state.mark_geometry_actor_dirty(member);
                 }
             }
         }
@@ -786,6 +875,7 @@ impl Runtime {
             .as_ref()
             .is_none_or(|clock| self.fired[clock.clock]);
         let mut changed = false;
+        let mut changed_groups = Vec::new();
         for boundary in &mut self.boundaries {
             let previous = boundary.phase;
             if launch {
@@ -799,7 +889,13 @@ impl Runtime {
             let resetting =
                 clock_active && boundary.reset_owners.iter().any(|&owner| self.fired[owner]);
             boundary.advance(self.elapsed, resetting);
-            changed |= previous != boundary.phase;
+            if previous != boundary.phase {
+                changed = true;
+                let group = self.actor_groups[boundary.actor];
+                if !changed_groups.contains(&group) {
+                    changed_groups.push(group);
+                }
+            }
         }
         self.next_boundary = self
             .boundaries
@@ -807,6 +903,13 @@ impl Runtime {
             .filter_map(|boundary| boundary.deadline)
             .min();
         self.observations_dirty |= changed;
+        if let Some(state) = &mut self.logical {
+            for group in changed_groups {
+                for &actor in &self.program.groups[group] {
+                    state.mark_geometry_actor_dirty(actor);
+                }
+            }
+        }
         changed
     }
 
@@ -999,33 +1102,15 @@ impl Runtime {
     }
 
     pub(super) fn watch_geometry(&mut self, pos: BlockPos) -> bool {
-        let observation = self
-            .program
-            .pistons
-            .iter()
-            .enumerate()
-            .find(|(_, piston)| piston.pos == pos)
-            .map(|(actor, _)| Observation::Base(actor))
-            .or_else(|| {
-                self.program
-                    .pistons
-                    .iter()
-                    .enumerate()
-                    .find_map(|(actor, piston)| {
-                        if piston.head == pos {
-                            Some(Observation::Near(actor))
-                        } else if self.program.payloads[self.actor_groups[actor]] != Block::Air
-                            && piston.payload == pos
-                        {
-                            Some(Observation::Far(actor))
-                        } else {
-                            None
-                        }
-                    })
-            });
-        let Some(observation) = observation else {
+        let Some(&(observation, ambiguous)) = self.geometry_index.get(&pos) else {
             return false;
         };
+        if ambiguous {
+            tracing::debug!(
+                "overlapping instant geometry at {:?}; preserving first match",
+                pos
+            );
+        }
         let actor = match observation {
             Observation::Base(actor) | Observation::Near(actor) | Observation::Far(actor) => actor,
         };
@@ -1048,6 +1133,34 @@ impl Runtime {
         true
     }
 
+    fn index_geometry(
+        index: &mut FxHashMap<BlockPos, (Observation, bool)>,
+        pos: BlockPos,
+        observation: Observation,
+    ) {
+        if let Some((first, ambiguous)) = index.get_mut(&pos) {
+            *ambiguous |= *first != observation;
+        } else {
+            index.insert(pos, (observation, false));
+        }
+    }
+
+    fn build_geometry_index(
+        candidates: &[(BlockPos, BlockPos, Option<BlockPos>)],
+    ) -> FxHashMap<BlockPos, (Observation, bool)> {
+        let mut index = FxHashMap::default();
+        for (actor, &(base, _, _)) in candidates.iter().enumerate() {
+            Self::index_geometry(&mut index, base, Observation::Base(actor));
+        }
+        for (actor, &(_, head, far)) in candidates.iter().enumerate() {
+            Self::index_geometry(&mut index, head, Observation::Near(actor));
+            if let Some(far) = far {
+                Self::index_geometry(&mut index, far, Observation::Far(actor));
+            }
+        }
+        index
+    }
+
     pub(super) fn geometry_changes(&mut self) -> Vec<BlockPos> {
         let mut changes = Vec::new();
         if !std::mem::replace(&mut self.observations_dirty, false) {
@@ -1068,7 +1181,7 @@ impl Runtime {
         let mut state = self.logical.take().unwrap();
         state
             .outputs
-            .capture(|input, threshold| self.read_input(input, threshold, nodes));
+            .capture_dirty(|input, threshold| self.read_input(input, threshold, nodes));
         let mut root = 0;
         let changes = self
             .outputs
@@ -1256,5 +1369,50 @@ impl Runtime {
                 }
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{Observation, Runtime};
+    use mchprs_blocks::BlockPos;
+
+    #[test]
+    fn geometry_index_matches_legacy_lookup_and_marks_overlaps() {
+        let positions = [
+            BlockPos::new(0, 0, 0),
+            BlockPos::new(1, 0, 0),
+            BlockPos::new(2, 0, 0),
+            BlockPos::new(3, 0, 0),
+        ];
+        let candidates = [
+            (positions[0], positions[1], Some(positions[2])),
+            (positions[1], positions[3], Some(positions[2])),
+        ];
+        let index = Runtime::build_geometry_index(&candidates);
+        for pos in positions {
+            let expected = candidates
+                .iter()
+                .enumerate()
+                .find(|(_, (base, _, _))| *base == pos)
+                .map(|(actor, _)| Observation::Base(actor))
+                .or_else(|| {
+                    candidates
+                        .iter()
+                        .enumerate()
+                        .find_map(|(actor, (_, head, far))| {
+                            if *head == pos {
+                                Some(Observation::Near(actor))
+                            } else if *far == Some(pos) {
+                                Some(Observation::Far(actor))
+                            } else {
+                                None
+                            }
+                        })
+                });
+            assert_eq!(index.get(&pos).map(|entry| entry.0), expected);
+        }
+        assert_eq!(index[&positions[1]], (Observation::Base(1), true));
+        assert_eq!(index[&positions[2]], (Observation::Far(0), true));
     }
 }
