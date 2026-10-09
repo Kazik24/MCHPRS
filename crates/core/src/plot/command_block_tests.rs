@@ -262,6 +262,39 @@ fn compiled_commands_preserve_allowlist_and_update_comparator_success_output() {
 }
 
 #[test]
+fn command_success_changes_notify_comparators_through_a_solid_block() {
+    let (mut world, pos, _) = output_fixture("command_block", true);
+    world.set_block(pos.offset(BlockFace::East), Block::Stone {});
+    let comparator = pos + BlockPos::new(2, 0, 0);
+    let mut block = Block::from_name("comparator").unwrap();
+    block.set_properties(std::collections::HashMap::from([("facing", "west")]));
+    world.set_block(comparator, block);
+    let lamp = comparator.offset(BlockFace::East);
+    world.set_block(lamp, Block::RedstoneLamp { lit: false });
+    redstone::command_block::update(&mut world, pos);
+    advance(&mut world, 4);
+    assert_eq!(
+        redstone::source_strength(world.get_block(comparator), &world, comparator),
+        1
+    );
+    assert_eq!(world.get_block(lamp), Block::RedstoneLamp { lit: true });
+
+    let Some(BlockEntity::CommandBlock(entity)) = world.get_block_entity_mut(pos) else {
+        panic!()
+    };
+    entity.command = "stop".into();
+    entity.last_execution = -1;
+    redstone::command_block::update(&mut world, pos);
+    advance(&mut world, 12);
+    assert_eq!(success(&world, pos), 0);
+    assert_eq!(
+        redstone::source_strength(world.get_block(comparator), &world, comparator),
+        0
+    );
+    assert_eq!(world.get_block(lamp), Block::RedstoneLamp { lit: false });
+}
+
+#[test]
 fn command_block_impulse_runs_once_per_edge_and_survives_short_pulses() {
     let mut world = world();
     let pos = BlockPos::new(40, 30, 40);

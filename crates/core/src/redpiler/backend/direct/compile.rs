@@ -182,18 +182,10 @@ pub fn compile(
     }
     // Validate before filling packed input counters or creating unchecked
     // runtime references. Failure must leave the staged backend untouched.
+    super::super::validate_strengths(&graph)?;
     for id in graph.node_indices() {
         let node = &graph[id];
         let pos = node.block.map(|(pos, _)| pos);
-        let far_input = match node.ty {
-            crate::redpiler::compile_graph::NodeType::Comparator { far_input, .. } => far_input,
-            _ => None,
-        };
-        for strength in std::iter::once(node.state.output_strength).chain(far_input) {
-            if strength > 15 {
-                return Err(BackendError::InvalidStrength { pos, strength });
-            }
-        }
         let mut default_inputs = 0;
         let mut side_inputs = 0;
         for edge in graph.edges_directed(id, Direction::Incoming) {

@@ -1,8 +1,26 @@
 use crate::world::World;
 use mchprs_blocks::block_entities::{BlockEntity, ContainerType};
 use mchprs_blocks::blocks::{Block, ComparatorMode, RedstoneComparator};
-use mchprs_blocks::{BlockDirection, BlockPos};
+use mchprs_blocks::{BlockDirection, BlockFace, BlockPos};
 use mchprs_world::TickPriority;
+
+pub(crate) fn update_far_neighbors(world: &mut impl World, pos: BlockPos) {
+    for face in [
+        BlockFace::North,
+        BlockFace::South,
+        BlockFace::East,
+        BlockFace::West,
+    ] {
+        let adjacent = pos.offset(face);
+        if world.get_block(adjacent).is_solid() {
+            let far = adjacent.offset(face);
+            let block = world.get_block(far);
+            if matches!(block, Block::RedstoneComparator { .. }) {
+                super::update(block, world, far, None);
+            }
+        }
+    }
+}
 
 fn get_power_on_side(world: &impl World, pos: BlockPos, side: BlockDirection) -> u8 {
     let side_pos = pos.offset(side.block_face());

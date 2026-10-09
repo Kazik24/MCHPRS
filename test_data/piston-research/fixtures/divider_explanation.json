@@ -1,0 +1,9 @@
+{
+  "schema_version": 1,
+  "fixture": "test_data/piston-research/divider-explanation-20261009/DIVIDER_EXPLANATION.schem",
+  "sha256": "02f10748135bc03ef75ddf1eeb131ba5db7ceb7587f7989b6525fe086cf90b25",
+  "dimensions": [73, 26, 49],
+  "loader_offset": [72, 1, 0],
+  "origin": [40, 30, 40],
+  "purpose": "User-annotated divider wiring comparison; no arithmetic equivalence asserted."
+}

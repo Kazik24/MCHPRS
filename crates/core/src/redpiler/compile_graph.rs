@@ -151,6 +151,7 @@ pub enum GraphError {
         pos: BlockPos,
     },
     UnsupportedInstantExport,
+    UnsupportedNativeExport,
     UnsupportedCommandBlockExport,
     UnsupportedObserverExport,
     UnsupportedCopperBulbExport,
@@ -181,6 +182,7 @@ impl std::fmt::Display for GraphError {
             Self::UnsupportedInstantExport => {
                 f.write_str("instant graph export is not implemented")
             }
+            Self::UnsupportedNativeExport => f.write_str("native propagation cannot be exported as a collapsed electrical graph"),
             Self::UnsupportedCommandBlockExport => {
                 f.write_str("command-block output export is not implemented")
             }

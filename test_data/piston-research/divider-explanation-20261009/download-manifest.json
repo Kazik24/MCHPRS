@@ -1,0 +1,14 @@
+{
+  "schema_version": 1,
+  "source_host": "urmom",
+  "source_directory": "/srv/mchprs/data/schems",
+  "verified_utc": "2026-10-09T14:38:17.862829+00:00",
+  "files": [
+    {
+      "name": "DIVIDER_EXPLANATION.schem",
+      "bytes": 7115,
+      "sha256": "02f10748135bc03ef75ddf1eeb131ba5db7ceb7587f7989b6525fe086cf90b25",
+      "modified_utc": "2026-10-09T14:35:44.647559+00:00"
+    }
+  ]
+}

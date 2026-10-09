@@ -23,7 +23,17 @@ pub(super) fn run_passes<W: World>(
     input: &CompilerInput<'_, W>,
     monitor: &TaskMonitor,
 ) -> Result<CompileGraph, GraphError> {
+    prepare(options, input, monitor, false).map(|(graph, _)| graph)
+}
+
+pub(super) fn prepare<W: World>(
+    options: &CompilerOptions,
+    input: &CompilerInput<'_, W>,
+    monitor: &TaskMonitor,
+    allow_native: bool,
+) -> Result<(CompileGraph, bool), GraphError> {
     let mut graph = CompileGraph::new();
+    let native = std::cell::Cell::new(false);
     let pipeline_start = Instant::now();
     monitor.begin_graph_statistics(options.optimize);
     // Ten passes (including skipped ones), followed by backend compilation.
@@ -70,36 +80,51 @@ pub(super) fn run_passes<W: World>(
     })?;
     run("Clamping weights", true, &|graph| {
         clamp_weights::run(graph)?;
-        reject_comparator_ordering(graph)
+        if allow_native {
+            native.set(requires_native_propagation(graph));
+            Ok(())
+        } else {
+            reject_comparator_ordering(graph)
+        }
     })?;
 
-    run("Deduplicating links", options.optimize, &dedup_links::run)?;
-    run("Constant folding", options.optimize, &|graph| {
+    // Keep a complete selection together: crossing executors would lose callback order.
+    let optimize = options.optimize && !native.get();
+
+    run("Deduplicating links", optimize, &dedup_links::run)?;
+    run("Constant folding", optimize, &|graph| {
         constant_fold::run(graph, input.world)
     })?;
     run(
         "Pruning unreachable comparator outputs",
-        options.optimize,
+        optimize,
         &unreachable_output::run,
     )?;
-    run(
-        "Coalescing constants",
-        options.optimize,
-        &constant_coalesce::run,
-    )?;
-    run(
-        "Combining duplicate logic",
-        options.optimize,
-        &coalesce::run,
-    )?;
+    run("Coalescing constants", optimize, &constant_coalesce::run)?;
+    run("Combining duplicate logic", optimize, &coalesce::run)?;
     run(
         "Pruning orphans",
-        options.optimize && options.io_only,
+        optimize && options.io_only,
         &prune_orphans::run,
     )?;
-    run("Exporting graph", options.export, &export_graph::run)?;
+    run("Exporting graph", options.export, &|graph| {
+        if native.get() {
+            export_graph::validate(graph)?;
+            return Err(GraphError::UnsupportedNativeExport);
+        }
+        export_graph::run(graph)
+    })?;
     monitor.finish_graph_statistics(pipeline_start.elapsed());
-    Ok(graph)
+    monitor.set_native_propagation(native.get());
+    Ok((graph, native.get()))
+}
+
+pub(super) fn requires_native_propagation(graph: &CompileGraph) -> bool {
+    // shortcut: retain all comparator selections, narrow this after broader ordering fuzzing.
+    graph
+        .node_weights()
+        .any(|node| matches!(node.ty, super::compile_graph::NodeType::Comparator { .. }))
+        || petgraph::algo::is_cyclic_directed(graph)
 }
 
 fn reject_comparator_ordering(graph: &CompileGraph) -> Result<(), GraphError> {

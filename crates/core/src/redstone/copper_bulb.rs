@@ -1,6 +1,6 @@
 use crate::world::World;
 use mchprs_blocks::blocks::Block;
-use mchprs_blocks::{BlockFace, BlockPos};
+use mchprs_blocks::BlockPos;
 
 pub(crate) fn update(world: &mut impl World, pos: BlockPos) {
     // Dust callbacks can carry stale states; only the live latch can detect an edge.
@@ -18,7 +18,7 @@ pub(crate) fn update(world: &mut impl World, pos: BlockPos) {
     }
     world.set_block(pos, block.with_copper_bulb_state(lit, input).unwrap());
     super::skipping_update_surrounding_blocks(world, pos, false);
-    update_comparators(world, pos);
+    super::comparator::update_far_neighbors(world, pos);
 }
 
 pub(crate) fn play_toggle(world: &mut impl World, pos: BlockPos, lit: bool) {
@@ -33,24 +33,6 @@ pub(crate) fn play_toggle(world: &mut impl World, pos: BlockPos, lit: bool) {
         1.0,
         1.0,
     );
-}
-
-pub(crate) fn update_comparators(world: &mut impl World, pos: BlockPos) {
-    for face in [
-        BlockFace::North,
-        BlockFace::South,
-        BlockFace::East,
-        BlockFace::West,
-    ] {
-        let adjacent = pos.offset(face);
-        if world.get_block(adjacent).is_solid() {
-            let far = adjacent.offset(face);
-            let block = world.get_block(far);
-            if matches!(block, Block::RedstoneComparator { .. }) {
-                super::update(block, world, far, None);
-            }
-        }
-    }
 }
 
 pub(crate) fn item_transform(

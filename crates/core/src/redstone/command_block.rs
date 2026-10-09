@@ -120,6 +120,7 @@ fn execute(world: &mut impl World, pos: BlockPos, notify: bool) -> bool {
     }
     if notify {
         super::update_surrounding_blocks(world, pos);
+        super::comparator::update_far_neighbors(world, pos);
     }
     true
 }

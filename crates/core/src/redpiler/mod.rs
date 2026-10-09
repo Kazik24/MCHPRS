@@ -10,7 +10,7 @@ mod task_monitor;
 
 use crate::redstone;
 use crate::world::{for_each_block_mut_optimized, World};
-use backend::direct::DirectBackend;
+use backend::{direct::DirectBackend, Runtime};
 use mchprs_blocks::blocks::Block;
 use mchprs_blocks::BlockPos;
 use mchprs_world::TickEntry;
@@ -151,6 +151,8 @@ pub struct PassStatistics {
 
 #[derive(Clone, Debug, Default)]
 pub struct GraphStatistics {
+    /// Native dust/component execution retains physical identities and skips rewrites.
+    pub native_propagation: bool,
     /// Ordinary wire nodes are omitted by identify_nodes when -O is enabled.
     /// This occurs before the optimization baseline, not in an optional pass.
     pub wire_nodes_elided: bool,
@@ -169,6 +171,9 @@ impl GraphStatistics {
 
     pub fn summary_lines(&self) -> Vec<String> {
         let mut lines = Vec::new();
+        if self.native_propagation {
+            lines.push("Execution: native redstone propagation over a private snapshot; graph optimization skipped.".into());
+        }
         if let (Some(before), Some(after)) = (self.baseline(), self.final_graph()) {
             lines.push(format!(
                 "Graph after required preparation: {} nodes / {} links; after passes: {} nodes / {} links (change {:+} nodes / {:+} links)",
@@ -262,7 +267,7 @@ impl CompileStatistics {
 
 #[derive(Default)]
 pub struct Compiler {
-    backend: Option<DirectBackend>,
+    backend: Option<Runtime>,
     options: CompilerOptions,
     warnings: Vec<String>,
     statistics: Option<CompileStatistics>,
@@ -339,16 +344,15 @@ impl Compiler {
             boundaries: None,
         };
         let preparation_start = Instant::now();
-        let (graph, instant) = if report.pistons.is_empty() {
-            (
-                passes::run_passes(&options, &input, &monitor).map_err(CompileError::Graph)?,
-                Vec::new(),
-            )
+        let (graph, instant, native) = if report.pistons.is_empty() {
+            let (graph, native) =
+                passes::prepare(&options, &input, &monitor, true).map_err(CompileError::Graph)?;
+            (graph, Vec::new(), native)
         } else {
             let (graph, program) =
                 instant::program::prepare(world, &report, &ticks, &options, monitor.clone())
                     .map_err(CompileError::Instant)?;
-            (graph, program)
+            (graph, program, false)
         };
         let preparation_and_graph_duration = preparation_start.elapsed();
         let graph_statistics = monitor.graph_statistics();
@@ -364,13 +368,23 @@ impl Compiler {
 
         // Stage a fresh backend. Reusing one can leave aliases, scheduler work
         // or side tables from a previous compilation. Publish only on success.
-        let mut backend = DirectBackend::default();
         trace!("Compiling backend");
         monitor.set_message("Compiling backend".to_string());
         let backend_start = Instant::now();
-        backend
-            .compile(graph, ticks, &options, instant)
-            .map_err(CompileError::Backend)?;
+        let backend = if native {
+            if options.export_dot_graph {
+                return Err(CompileError::Graph(
+                    compile_graph::GraphError::UnsupportedNativeExport,
+                ));
+            }
+            Runtime::native(world, bounds, &graph, ticks, &monitor)?
+        } else {
+            let mut backend = DirectBackend::default();
+            backend
+                .compile(graph, ticks, &options, instant)
+                .map_err(CompileError::Backend)?;
+            Runtime::Direct(backend)
+        };
         let backend_duration = backend_start.elapsed();
         if monitor.cancelled() {
             return Err(CompileError::Cancelled);
@@ -417,7 +431,7 @@ impl Compiler {
         self.options = Default::default();
     }
 
-    fn backend(&mut self) -> &mut DirectBackend {
+    fn backend(&mut self) -> &mut Runtime {
         self.backend
             .as_mut()
             .expect("tried to get redpiler backend when inactive")

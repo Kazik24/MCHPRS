@@ -37,6 +37,10 @@ impl TaskMonitor {
         self.graph_statistics.lock().unwrap().duration = duration;
     }
 
+    pub(crate) fn set_native_propagation(&self, native: bool) {
+        self.graph_statistics.lock().unwrap().native_propagation = native;
+    }
+
     pub fn set_budget_multiplier(&self, multiplier: usize) {
         self.budget_multiplier
             .store(multiplier.clamp(1, 8), Ordering::Relaxed);

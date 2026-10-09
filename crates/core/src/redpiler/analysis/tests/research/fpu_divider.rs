@@ -1,6 +1,278 @@
 use super::*;
 
 #[test]
+fn divider_cross_and_dot_sample_the_same_power_on_comparator_edges() {
+    use crate::redpiler::analysis::topology::PowerRoute;
+
+    for name in ["fpu_divider", "divider_explanation"] {
+        let fixture = manifest(name);
+        let base = origin(&fixture) + BlockPos::new(26, 9, 2);
+        let data = base + BlockPos::new(1, 1, 2);
+        let wire_pos = base + BlockPos::new(0, 1, 1);
+        let conductor = base + BlockPos::new(0, 1, 2);
+        let mut traces = Vec::new();
+        for dot in [false, true] {
+            let (mut world, _) = load(&fixture);
+            let Block::RedstoneWire { wire } = world.get_block(wire_pos) else {
+                panic!("missing cross");
+            };
+            assert!(crate::redstone::wire::is_cross(wire));
+            if dot {
+                crate::redstone::wire::on_use(wire, &mut world, wire_pos);
+                let Block::RedstoneWire { wire } = world.get_block(wire_pos) else {
+                    unreachable!();
+                };
+                assert!(
+                    crate::redstone::wire::is_dot(wire),
+                    "click must produce a valid dot"
+                );
+            }
+            let report = analyze_world(&world);
+            let actor = report.pistons.iter().position(|p| p.pos == base).unwrap();
+            let inputs = &report.recognition[actor].inputs.sources;
+            assert!(inputs
+                .iter()
+                .any(|s| s.source == data && s.route == PowerRoute::Direct));
+            assert_eq!(
+                inputs
+                    .iter()
+                    .any(|s| s.source == data && s.route == PowerRoute::QuasiConnectivity),
+                !dot
+            );
+            let mut edges = Vec::new();
+            for present in [true, false] {
+                if !present {
+                    world.set_block(conductor, Block::Air);
+                    crate::redstone::update_wire_neighbors(&mut world, conductor);
+                }
+                for strength in [0, 15] {
+                    let Block::RedstoneComparator { comparator } = world.get_block(data) else {
+                        unreachable!();
+                    };
+                    world.set_block(
+                        data.offset(comparator.facing.block_face()),
+                        if strength == 0 {
+                            Block::Air
+                        } else {
+                            Block::RedstoneBlock
+                        },
+                    );
+                    let samples: Vec<_> = trace::capture(|| crate::redstone::comparator::tick(comparator, &mut world, data))
+                        .into_iter().filter(|e| matches!(e.operation, trace::Operation::Sample { pos, .. } if pos == base)).collect();
+                    let Block::RedstoneWire { wire } = world.get_block(wire_pos) else {
+                        unreachable!();
+                    };
+                    let expected = if present { strength } else { 0 };
+                    assert_eq!(wire.power, expected);
+                    assert_eq!(
+                        crate::redstone::get_redstone_power(
+                            world.get_block(wire_pos.offset(BlockFace::Bottom)),
+                            &world,
+                            wire_pos.offset(BlockFace::Bottom),
+                            BlockFace::South
+                        ),
+                        expected
+                    );
+                    assert_eq!(
+                        crate::redstone::get_redstone_power(
+                            world.get_block(wire_pos),
+                            &world,
+                            wire_pos,
+                            BlockFace::South
+                        ),
+                        if dot { 0 } else { expected }
+                    );
+                    assert_eq!(samples.is_empty(), !present);
+                    edges.push(samples);
+                }
+            }
+            traces.push(edges);
+        }
+        assert_eq!(
+            traces[0], traces[1],
+            "{name}: ordered piston samples must match"
+        );
+    }
+}
+
+#[test]
+#[ignore = "cross/dot interpreter comparison; new MCHPRS_PISTON_RESEARCH_OUTPUT required"]
+fn capture_divider_cross_dot_comparison() {
+    use mchprs_blocks::blocks::RedstoneWire;
+
+    let output = std::env::var("MCHPRS_PISTON_RESEARCH_OUTPUT").unwrap();
+    let file = std::fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(&output)
+        .unwrap();
+    let protocol = manifest("fpu_divider");
+    let mut evidence = Vec::new();
+    for name in ["fpu_divider", "divider_explanation"] {
+        let fixture = manifest(name);
+        let (world, _) = load(&fixture);
+        let report = analyze_world(&world);
+        let dots: Vec<_> = report
+            .pistons
+            .iter()
+            .filter_map(|p| {
+                if p.piston.facing != BlockFacing::Down {
+                    return None;
+                }
+                let pos = p.pos + BlockPos::new(0, 1, 1);
+                let Block::RedstoneWire { wire } = world.get_block(pos) else {
+                    return None;
+                };
+                let dot = RedstoneWire {
+                    power: wire.power,
+                    ..Default::default()
+                };
+                (crate::redstone::wire::is_cross(wire)
+                    && crate::redstone::wire::is_dot(crate::redstone::wire::get_regulated_sides(
+                        dot, &world, pos,
+                    )))
+                .then_some(pos)
+            })
+            .collect();
+        assert!(!dots.is_empty());
+        let load_variant = |dot: bool| {
+            let (mut world, _) = load(&fixture);
+            if dot {
+                for &pos in &dots {
+                    let Block::RedstoneWire { wire } = world.get_block(pos) else {
+                        unreachable!();
+                    };
+                    world.set_block(
+                        pos,
+                        Block::RedstoneWire {
+                            wire: RedstoneWire {
+                                power: wire.power,
+                                ..Default::default()
+                            },
+                        },
+                    );
+                }
+            }
+            world
+        };
+        let mut compile = Vec::new();
+        for dot in [false, true] {
+            let world = load_variant(dot);
+            for optimize in [false, true] {
+                for assume_instant in [false, true] {
+                    let error = Compiler::default()
+                        .compile(
+                            &world,
+                            world.get_corners(),
+                            CompilerOptions {
+                                optimize,
+                                assume_instant,
+                                ..Default::default()
+                            },
+                            vec![],
+                            Default::default(),
+                        )
+                        .err()
+                        .map(|e| e.to_string());
+                    compile.push(json!({"dot": dot, "optimize": optimize, "assume_instant": assume_instant, "error": error}));
+                }
+            }
+        }
+        let mut cases = Vec::new();
+        for case in protocol["cases"].as_array().unwrap() {
+            let mut variants = Vec::new();
+            for (dot, compiled) in [(false, false), (true, false), (true, true)] {
+                let mut world = load_variant(dot);
+                let mut compiler = Compiler::default();
+                if compiled {
+                    compiler
+                        .compile(
+                            &world,
+                            world.get_corners(),
+                            CompilerOptions {
+                                optimize: true,
+                                ..Default::default()
+                            },
+                            vec![],
+                            Default::default(),
+                        )
+                        .unwrap();
+                    compiler.flush(&mut world);
+                }
+                let mut frames = Vec::new();
+                for (step_index, step) in case["steps"].as_array().unwrap().iter().enumerate() {
+                    if step.get("diagnose").is_some() {
+                        continue;
+                    }
+                    for _ in 0..step["advance"].as_u64().unwrap_or(1) {
+                        let operations = trace::capture(|| {
+                            if step.get("advance").is_some() {
+                                if compiled {
+                                    compiler.tick_with_world(&mut world);
+                                } else {
+                                    world.tick_interpreted();
+                                }
+                            } else if compiled {
+                                assert_eq!(step["op"], "lever");
+                                let pos = local_pos(&step["pos"]) - BASE + origin(&protocol);
+                                let Block::Lever { lever } = world.get_block(pos) else {
+                                    panic!("missing lever");
+                                };
+                                if lever.powered != step["powered"].as_bool().unwrap() {
+                                    compiler.on_use_block(pos);
+                                }
+                            } else {
+                                action(&mut world, &protocol, step);
+                            }
+                            if compiled {
+                                compiler.flush(&mut world);
+                            }
+                        });
+                        frames.push(json!({"step": step_index, "state": observations(&world, &protocol), "operations": operations,
+                            "pistons": report.pistons.iter().map(|p| world.get_block_raw(p.pos)).collect::<Vec<_>>()}));
+                    }
+                }
+                variants.push(frames);
+            }
+            assert_eq!(variants[0].len(), variants[1].len());
+            let differences: Vec<_> = variants[0]
+                .iter()
+                .zip(&variants[1])
+                .enumerate()
+                .filter_map(|(index, (cross, dot))| {
+                    (cross != dot).then(|| json!({"frame": index, "cross": cross, "dot": dot}))
+                })
+                .collect();
+            let compiled_output_differences: Vec<_> = variants[1]
+                .iter()
+                .zip(&variants[2])
+                .enumerate()
+                .filter_map(|(index, (native, compiled))| {
+                    let native = &native["state"]["ports"]["output_msb_first"];
+                    let compiled = &compiled["state"]["ports"]["output_msb_first"];
+                    (native != compiled)
+                        .then(|| json!({"frame": index, "native": native, "compiled": compiled}))
+                })
+                .collect();
+            println!(
+                "{name} {}: {} frames, {} cross/dot differences, {} compiled output differences",
+                case["id"],
+                variants[0].len(),
+                differences.len(),
+                compiled_output_differences.len()
+            );
+            cases.push(
+                json!({"id": case["id"], "frames": variants[0].len(), "differences": differences, "compiled_output_differences": compiled_output_differences}),
+            );
+        }
+        println!("{name}: {} dots; compilation {compile:?}", dots.len());
+        evidence
+            .push(json!({"fixture": fixture, "dots": dots, "compile": compile, "cases": cases}));
+    }
+    serde_json::to_writer(std::io::BufWriter::new(file), &evidence).unwrap();
+}
+
+#[test]
 fn rotated_divider_reproduces_the_reported_qc_coordinates() {
     use crate::redpiler::instant::sampling;
     use mchprs_blocks::blocks::RotateAmt;

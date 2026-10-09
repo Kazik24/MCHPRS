@@ -72,21 +72,24 @@ dynamic even when their initial strength is 15. Wire searches stop at distance
 removes every edge with `w >= 15`. This follows directly from `s <= 15`, so
 such an edge contributes zero for every permitted strength.
 
-After clamping, graph preparation rejects directed cycles containing an ordinary
-comparator, including a comparator's self-edge. Collapsed dust links do not
-preserve native notification order for callbacks with equal deadlines and
-priorities. Rejection happens before optional rewrites and scheduler transfer,
-so the circuit continues in the interpreter. This conservative guard can also
-reject feedback layouts whose current state happens to match compiled execution.
+After clamping, ordinary selections containing any comparator or directed cycle
+select native propagation and skip optional rewrites. Collapsed dust links cannot
+represent intermediate dust states, unchanged-strength comparator notifications,
+or the native order of callbacks with equal deadlines and priorities. The native
+backend retains physical components, dust topology and live strengths, and runs
+the existing interpreter logic over a private snapshot. This supports comparator
+feedback, acyclic shared-input forks and torch oscillators with either setting
+of `-O`. Flush frequency and `--io-only` affect display only; reset restores all
+physical state and pending work.
 
-Preparation also rejects a diode-to-comparator path when the source diode and
-receiving comparator have a direct shared nonconstant input. That acyclic fork
-can schedule both callbacks for the same deadline and priority, making their
-order observable. Comparators, repeaters and torches are checked as source
-diodes; ordinary chains and shared immutable constants remain supported.
-Deeper reconvergent paths are not currently covered by this guard.
+The initial selector is deliberately broad: the complete ordinary selection uses
+one native queue if it contains comparators or feedback. Statistics report this
+choice. Acyclic selections without comparators retain the fast graph path.
+Native selections reject graph export, whose format cannot preserve these event
+semantics. Instant piston compilation retains the comparator cycle/shared-input
+guards until native propagation can share its scheduler and geometry changes.
 
-A small example, viewed from above with west on the left:
+A supported feedback example, viewed from above with west on the left:
 
 ```text
        x0 x1 x2 x3

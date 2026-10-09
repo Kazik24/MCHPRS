@@ -100,7 +100,7 @@ fn convert_node(
     }
 }
 
-pub(super) fn run(graph: &mut CompileGraph) -> Result<(), super::GraphError> {
+pub(super) fn validate(graph: &CompileGraph) -> Result<(), super::GraphError> {
     if graph
         .node_weights()
         .any(|node| node.ty == CNodeType::CopperBulb)
@@ -129,6 +129,11 @@ pub(super) fn run(graph: &mut CompileGraph) -> Result<(), super::GraphError> {
     }) {
         return Err(super::GraphError::UnsupportedInstantExport);
     }
+    Ok(())
+}
+
+pub(super) fn run(graph: &mut CompileGraph) -> Result<(), super::GraphError> {
+    validate(graph)?;
     let mut nodes_map = FxHashMap::with_capacity_and_hasher(graph.node_count(), Default::default());
     for node in graph.node_indices() {
         nodes_map.insert(node, nodes_map.len());

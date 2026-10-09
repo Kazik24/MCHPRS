@@ -5,6 +5,8 @@ pistons are present, logical region programs. The direct backend executes those
 representations without repeating spatial power searches or interpreting piston
 movement on each step. Ordinary components keep their scheduled timing; admitted
 piston regions evaluate conditional geometry and explicitly sampled state.
+Ordinary selections with comparators or feedback instead retain physical
+geometry and execute native redstone propagation over a private snapshot.
 
 This document describes the current Rust implementation. The source is the
 authority; structural recognition, logical execution, and compatibility with a
@@ -27,6 +29,7 @@ are the [parser](REDPILER_PARSER.md),
 | Electrical graph optimization | [passes/](../crates/core/src/redpiler/passes/mod.rs) | Prepared and optionally reduced `CompileGraph` |
 | Runtime lowering | [backend/direct/compile.rs](../crates/core/src/redpiler/backend/direct/compile.rs) | Dense nodes, packed links, region bindings, transferred ticks |
 | Electrical execution | [backend/direct/mod.rs](../crates/core/src/redpiler/backend/direct/mod.rs), [update.rs](../crates/core/src/redpiler/backend/direct/update.rs), [tick.rs](../crates/core/src/redpiler/backend/direct/tick.rs) | Input propagation, scheduled component transitions, world output events |
+| Native ordinary execution | [backend/native.rs](../crates/core/src/redpiler/backend/native.rs) | Private geometry/state snapshot, interpreter callbacks and dust walk, one native scheduler |
 | Logical piston execution | [backend/direct/instant.rs](../crates/core/src/redpiler/backend/direct/instant.rs), [instant/logical.rs](../crates/core/src/redpiler/backend/direct/instant/logical.rs) | Cached decisions, frozen snapshots, memory commits, settled geometry |
 | Independent Boolean optimizer | [redpiler_opt/src/lib.rs](../crates/redpiler_opt/src/lib.rs) | Pure Boolean plans; currently separate from the server compiler |
 
@@ -45,10 +48,13 @@ flowchart TD
     I --> C[Certify construction and sampling boundaries]
     C --> S[Extract conditional geometry and response DAG]
     S --> G
-    G --> O[Optional electrical graph passes]
+    G --> N{Ordinary selection with comparators or feedback?}
+    N -->|Yes| V[Capture native geometry and scheduled work]
+    N -->|No| O[Optional electrical graph passes]
     O --> B[Lower fresh direct backend and bind logical plans]
     B --> R[Publish active compiler]
-    R --> T[Scheduled electrical work and logical region evaluation]
+    V --> R
+    R --> T[Native propagation or graph and logical region execution]
     T --> H[Reset: export settled state and return remaining ticks]
     H --> W
 ```
@@ -67,6 +73,7 @@ current block are filtered out before graph construction.
 | `PreparedInstant` | Pistons, payload groups, aliases, owned positions, `WaveLogic`, clocks, memory, sampling, handoff context | Only after binding |
 | `WaveLogic` | Decision arena, response roots/order, sources, output terms and settled dust expressions | Compiler representation |
 | `DirectBackend` | Fixed nodes, packed forward links, tick scheduler, event queues and bound region runtimes | Yes |
+| `NativeBackend` | Physical block/entity snapshot, native dust and component callbacks, priority/FIFO scheduler | Yes |
 
 The compiler stages a fresh backend and publishes it only after all preparation,
 binding, and cancellation checks succeed. `backend.is_some()` defines active
@@ -332,12 +339,23 @@ inputs, outputs, and pending work protect nodes from ordinary removal. With
 optimization, removed dust display nodes no longer maintain their world powers,
 although physical dust still determines link attenuation during compilation.
 
-After weight clamping, directed cycles containing an ordinary comparator
-(including self-feedback) reject compilation. The interpreter keeps scheduler
-ownership: native dust callback ordering is not represented by collapsed graph
-links. This applies with optimization enabled or disabled.
-A direct shared nonconstant input to a diode and its downstream comparator is
-also rejected: equal-deadline callback ordering can diverge without a cycle.
+Ordinary selections containing comparators or directed feedback cycles use the
+native propagation backend. It captures physical geometry, dust powers and block
+entities in a private snapshot, and reuses the interpreter's dust walker and
+component callbacks with one priority/FIFO tick queue. Torch oscillators and
+shared-input comparator paths are legal. Compilation does not deliver updates
+or restart pending deadlines. Display flushing is separate from simulation;
+reset materializes all hidden state and transfers pending ticks in queue order.
+Command entities are published after callbacks even when display flushes are
+deferred. Snapshot reads include a two-block halo for fixed outside dependencies;
+only positions inside the selection can change or schedule new work.
+
+Initially the whole affected selection stays together and optional graph
+rewrites are skipped, even with `-O`. Acyclic selections without comparators use
+the direct graph backend. Statistics identify native execution. Native selections
+cannot be exported as collapsed electrical graphs (`--export`/`--export-dot`).
+Instant piston programs still use the direct backend and retain the comparator
+ordering guards; native propagation is currently limited to ordinary selections.
 
 Comparator-output pruning applies side-edge attenuation and includes the saved
 comparator output in its bound. Logic coalescing requires equal incoming
