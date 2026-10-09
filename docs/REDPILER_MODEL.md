@@ -136,7 +136,7 @@ The important ordinary component rules are:
 | Repeater | $l_v\gets[I_{v,\mathrm{side}}>0]$. When unlocked and without pending work, schedule if $b_v\ne\operatorname{nz}(I_{v,\mathrm{main}})$, at $n+2d$. On execution, an unlocked powered repeater with low input turns off; an unpowered repeater turns on even if its input has already fallen, scheduling a later turn-off in that case. |
 | Torch | If not pending and $b_v\ne\neg\operatorname{nz}(I_{v,\mathrm{main}})$, schedule at $n+2$. On execution, apply the current inverted input. The compiled torch rule has no burnout state. |
 | Comparator | Compute the analog function below. If output differs and no work is pending, schedule at $n+2$; recompute at execution. |
-| Lamp | Rise immediately when input becomes positive. When lit and input is zero, schedule extinguishing at $n+4$; on execution, extinguish only if still unpowered. |
+| Lamp | Rise immediately when input becomes positive. When lit, input is zero, and no work is pending, schedule extinguishing at $n+4$; on execution, extinguish only if still unpowered. |
 | Trapdoor | Apply current input positivity immediately. |
 | Note block | Apply current input positivity immediately; emit a play event on a rising transition. |
 | Button | A use of an unpowered button sets strength fifteen and schedules release after twenty steps. A due release sets strength zero. |

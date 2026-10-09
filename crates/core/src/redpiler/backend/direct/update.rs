@@ -137,7 +137,7 @@ fn update_node_inner(
         NodeType::Lamp => {
             let should_be_lit = has_main_input(node);
             let lit = node.powered;
-            if lit && !should_be_lit {
+            if lit && !should_be_lit && !node.pending_tick {
                 schedule_tick(scheduler, node_id, node, 2, TickPriority::Normal);
             } else if !lit && should_be_lit {
                 set_node(node, true);

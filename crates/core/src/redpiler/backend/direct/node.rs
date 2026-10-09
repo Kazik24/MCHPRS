@@ -136,7 +136,7 @@ pub enum NodeType {
     },
     InstantSource,
     NoteBlock {
-        noteblock_id: u16,
+        noteblock_id: u32,
     },
 }
 

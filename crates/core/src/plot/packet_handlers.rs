@@ -1044,6 +1044,57 @@ mod movement_tests {
     use super::*;
 
     #[test]
+    fn chat_packet_handlers_use_signed_velocity_only_when_configured() {
+        use crate::signed_velocity::tests::payload;
+        for input_first in [false, true] {
+            let (mut plot, _peer) = crate::plot::client_sync_tests::fixture(false);
+            let (sender, receiver) = std::sync::mpsc::channel();
+            plot.message_sender = sender;
+            let uuid = plot.players[0].uuid;
+            for (source, input, decision, replacement) in [
+                ("CHAT_RESULT", "blocked", "CANCEL", None),
+                ("CHAT_RESULT", "original", "MODIFY", Some("approved")),
+                (
+                    "COMMAND_RESULT",
+                    "/help",
+                    "MODIFY",
+                    Some("/load build.schem"),
+                ),
+                ("COMMAND_RESULT", "/say blocked", "CANCEL", None),
+            ] {
+                let message = SChatMessage {
+                    message: input.into(),
+                };
+                let decision = SPluginMessage {
+                    channel: crate::signed_velocity::CHANNEL.into(),
+                    data: payload(uuid, source, decision, replacement),
+                };
+                if input_first {
+                    plot.handle_chat_message(message, 0);
+                    plot.handle_plugin_message(decision, 0);
+                } else {
+                    plot.handle_plugin_message(decision, 0);
+                    plot.handle_chat_message(message, 0);
+                }
+            }
+            let chat: Vec<_> = receiver
+                .try_iter()
+                .map(|message| match message {
+                    Message::ChatInfo(_, _, text) => text,
+                    _ => panic!("Unexpected server message"),
+                })
+                .collect();
+            if CONFIG.signed_velocity {
+                assert_eq!(chat, ["approved"]);
+                assert_eq!(plot.players[0].command_queue, ["//load build.schem"]);
+            } else {
+                assert_eq!(chat, ["blocked", "original"]);
+                assert_eq!(plot.players[0].command_queue, ["/help", "/say blocked"]);
+            }
+        }
+    }
+
+    #[test]
     fn signed_velocity_decisions_gate_chat_broadcast_and_command_dispatch() {
         use crate::signed_velocity::tests::payload;
         let (mut plot, _peer) = crate::plot::client_sync_tests::fixture(false);

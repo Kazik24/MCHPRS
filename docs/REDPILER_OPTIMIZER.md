@@ -124,23 +124,17 @@ implicit world-normalization operation.
 
 [`unreachable_output`](../crates/core/src/redpiler/passes/unreachable_output.rs)
 considers subtract-mode comparators without pending ticks and with exactly one
-incoming side edge whose source is a constant. It assumes a maximum main input
-of 15, sets `M = max(0,15-k)` using that source's saved strength `k`, and removes
-outgoing links with attenuation at least `M`.
-
-The universal bound for a side edge of attenuation `w_s` would instead be
+incoming side edge whose source is a constant. For source strength `k`, side
+attenuation `w_s`, and saved comparator output `s`, its output bound is
 
 $$
-d=\max(0,k-w_s),\qquad M=\max(0,15-d).
+d=\max(0,k-w_s),\qquad M=\max(s,15-d).
 $$
 
-The current pass does **not** subtract `w_s` and does **not** check that it is
-zero. For example, a constant 15 reaching the side with attenuation 1 supplies
-14, allowing comparator output 1, while the implemented bound is zero. It also
-does not include a possibly larger saved current comparator output in its
-bound. Its pruning claim is therefore restricted to unattenuated side inputs
-and compatible saved state; the existing guards do not establish those
-conditions for every graph.
+Outgoing links with attenuation at least `M` cannot carry either the current
+output or a future output and are removed. A constant 15 reaching the side with
+attenuation 1 supplies 14, so an outgoing link of attenuation zero is retained.
+Including `s` preserves an existing output that has not yet settled.
 
 ## Constant coalescing
 
@@ -167,24 +161,20 @@ outputs of that source and merges a sibling when:
 
 - its node type exactly equals the representative's type;
 - its entire `NodeState` equals the representative's state;
-- it is removable and has exactly one incoming edge.
+- it is removable and has exactly one incoming edge;
+- its incoming edge is `Default` and has equivalent attenuation.
 
 The sibling's outgoing edges are moved to the representative and the sibling
 is removed. Type equality includes repeater delay/facing-diode information;
 state equality includes powered, locked, strength and pending-tick state.
 Distinct command-block and note-block outputs are protected from merging.
 
-The implemented comparison omits incoming attenuation and does not separately
-check the sibling's edge channel. Excluding comparator sources reflects a
-full-strength Boolean-source assumption, but constants, mobile sources and
-instant outputs can also be analog. Two consumers of source strength 1 with
-input attenuations 0 and 1 receive different values; equal initial states do
-not make their future transitions equivalent. A universal merge criterion must
-establish equal receiving functions and timing, not only equal type and state.
-The present pass's guards do not establish that for arbitrary analog sources
-or differing incoming channels. A binary source can also drive one repeater's
-main input and a sibling's locking input: equal initial type/state then leads
-to different future behavior despite full-strength source power.
+Attenuation must match unless both nodes are Boolean consumers (repeaters or
+torches) of a source that only outputs 0 or 15, and both attenuations are below
+15. Those inputs have the same on/off behavior. Analog inputs and wire outputs
+require equal attenuation. Equal initial states alone would not justify
+merging different receiving functions, or a repeater's main input with another
+repeater's locking input.
 
 ## Orphan pruning
 

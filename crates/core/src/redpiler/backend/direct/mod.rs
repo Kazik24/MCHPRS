@@ -31,7 +31,7 @@ enum Event {
         node_id: NodeId,
     },
     NoteBlockPlay {
-        noteblock_id: u16,
+        noteblock_id: u32,
         unblocked: Option<bool>,
     },
     ButtonRelease {
@@ -429,16 +429,18 @@ impl DirectBackend {
         for runtime in &mut self.instant {
             runtime.begin_tick();
         }
-        let mut queues = self.scheduler.queues_this_tick_move_next();
-
-        for node_id in queues.drain_iter() {
-            self.tick_node(node_id);
-            after_callback(self);
-            // Separate delivered events retain scheduler order and committed memory.
-            self.evaluate_instant(false);
+        // Imported work at the current deadline runs before advancing, as in the interpreter.
+        for advance in [false, true] {
+            if advance {
+                self.scheduler.end_last_tick_move_next();
+            }
+            while let Some(node_id) = self.scheduler.this_tick().pop_first() {
+                self.tick_node(node_id);
+                after_callback(self);
+                // Separate delivered events retain scheduler order and committed memory.
+                self.evaluate_instant(false);
+            }
         }
-
-        self.scheduler.end_tick(queues);
         // Owned periodic clocks sample after ordinary events at this deadline.
         self.evaluate_instant(true);
         for runtime in &mut self.instant {

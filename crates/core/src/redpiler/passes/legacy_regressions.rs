@@ -2,12 +2,12 @@ use crate::plot::{PlotWorld, PLOT_WIDTH};
 use crate::redpiler::compile_graph::{
     CompileGraph, CompileLink, CompileNode, LinkType, NodeState, NodeType,
 };
-use crate::redpiler::{CompileError, Compiler, CompilerOptions};
+use crate::redpiler::{Compiler, CompilerOptions};
 use crate::redstone;
 use crate::world::{storage::Chunk, World};
 use mchprs_blocks::blocks::{
-    Block, ComparatorMode, Instrument, Lever, LeverFace, RedstoneComparator, RedstoneWire,
-    StoneButton,
+    Block, ComparatorMode, Instrument, Lever, LeverFace, RedstoneComparator, RedstoneRepeater,
+    RedstoneWire, StoneButton,
 };
 use mchprs_blocks::{BlockDirection, BlockFace, BlockPos};
 use mchprs_world::{TickEntry, TickPriority};
@@ -95,6 +95,40 @@ fn attenuated_constant_side_preserves_comparator_lamp_output() {
     let unoptimized = run(false);
     assert_eq!(unoptimized, Block::RedstoneLamp { lit: true });
     assert_eq!(run(true), unoptimized);
+}
+
+#[test]
+fn comparator_pruning_preserves_a_larger_saved_output() {
+    let mut graph = CompileGraph::new();
+    let node = |ty, strength| CompileNode {
+        ty,
+        block: None,
+        state: NodeState::comparator(strength > 0, strength),
+        is_input: false,
+        is_output: true,
+    };
+    let side = graph.add_node(node(NodeType::Constant, 15));
+    let comparator = graph.add_node(node(
+        NodeType::Comparator {
+            mode: ComparatorMode::Subtract,
+            far_input: None,
+            facing_diode: false,
+        },
+        5,
+    ));
+    let lamp = graph.add_node(node(NodeType::Lamp, 0));
+    graph.add_edge(side, comparator, CompileLink::new(LinkType::Side, 0));
+    let live = graph.add_edge(comparator, lamp, CompileLink::new(LinkType::Default, 4));
+    let dead = graph.add_edge(comparator, lamp, CompileLink::new(LinkType::Default, 5));
+    super::unreachable_output::run(&mut graph).unwrap();
+    assert!(
+        graph.edge_weight(live).is_some(),
+        "saved strength 5 still supplies 1"
+    );
+    assert!(
+        graph.edge_weight(dead).is_none(),
+        "attenuation 5 cannot carry power"
+    );
 }
 
 #[test]
@@ -193,6 +227,57 @@ fn already_due_imported_tick_runs_on_the_first_compiled_step() {
 }
 
 #[test]
+fn already_due_callback_preserves_subsequent_repeater_deadline() {
+    let button = BlockPos::new(8, 30, 8);
+    let repeater = BlockPos::new(7, 30, 8);
+    let run = |compiled: bool| {
+        let mut world = world();
+        world.set_block(
+            button,
+            Block::StoneButton {
+                button: StoneButton {
+                    powered: true,
+                    ..Default::default()
+                },
+            },
+        );
+        world.set_block(
+            repeater,
+            Block::RedstoneRepeater {
+                repeater: RedstoneRepeater {
+                    delay: 1,
+                    facing: BlockDirection::East,
+                    powered: true,
+                    locked: false,
+                },
+            },
+        );
+        world.schedule_half_tick(button, 0, TickPriority::NanoTick);
+        let ticks = world.scheduler().iter_entries().collect();
+        let mut compiler = compiled.then(|| start(&world, true, ticks));
+        if compiled {
+            world.clear_scheduled_ticks();
+        }
+        let mut trace = Vec::new();
+        for _ in 0..3 {
+            if let Some(compiler) = &mut compiler {
+                advance(compiler, &mut world, 1);
+            } else {
+                world.tick_interpreted();
+            }
+            trace.push(matches!(
+                world.get_block(repeater),
+                Block::RedstoneRepeater { repeater } if repeater.powered
+            ));
+        }
+        trace
+    };
+    let native = run(false);
+    assert_eq!(native, vec![true, false, false]);
+    assert_eq!(run(true), native);
+}
+
+#[test]
 fn compiling_more_than_u16_note_blocks_returns_without_panicking() {
     let mut world = world();
     for i in 0..=65536 {
@@ -205,33 +290,49 @@ fn compiling_more_than_u16_note_blocks_returns_without_panicking() {
             },
         );
     }
-    let result = Compiler::default().compile(
-        &world,
-        (BlockPos::new(0, 0, 0), BlockPos::new(31, 65, 31)),
-        Default::default(),
-        vec![],
-        Default::default(),
-    );
-    // Widening the ID or explicitly rejecting its capacity both prevent the panic.
-    assert!(
-        matches!(&result, Ok(()) | Err(CompileError::Backend(_))),
-        "unexpected compile failure: {result:?}"
-    );
+    Compiler::default()
+        .compile(
+            &world,
+            (BlockPos::new(0, 0, 0), BlockPos::new(31, 65, 31)),
+            Default::default(),
+            vec![],
+            Default::default(),
+        )
+        .unwrap();
 }
 
 #[test]
 fn graph_coalescing_preserves_input_channel_and_attenuation() {
     // These are graph counterexamples; classic physical-layout reachability is unverified.
-    for (source_type, channel, attenuation) in [
+    let repeater = NodeType::Repeater {
+        delay: 1,
+        facing_diode: false,
+    };
+    for (source_type, target_type, channel, attenuation, should_merge) in [
+        (repeater.clone(), repeater.clone(), LinkType::Side, 0, false),
         (
-            NodeType::Repeater {
-                delay: 1,
-                facing_diode: false,
-            },
-            LinkType::Side,
-            0,
+            NodeType::InstantOutput { port: 0 },
+            repeater.clone(),
+            LinkType::Default,
+            1,
+            false,
         ),
-        (NodeType::InstantOutput { port: 0 }, LinkType::Default, 1),
+        (
+            NodeType::InstantOutput { port: 0 },
+            repeater.clone(),
+            LinkType::Default,
+            0,
+            true,
+        ),
+        (
+            NodeType::Lever,
+            repeater.clone(),
+            LinkType::Default,
+            14,
+            true,
+        ),
+        (NodeType::Lever, repeater, LinkType::Default, 15, false),
+        (NodeType::Lever, NodeType::Wire, LinkType::Default, 1, false),
     ] {
         let mut graph = CompileGraph::new();
         let node = |ty, is_input| CompileNode {
@@ -242,18 +343,18 @@ fn graph_coalescing_preserves_input_channel_and_attenuation() {
             is_output: false,
         };
         let source = graph.add_node(node(source_type, true));
-        let repeater = NodeType::Repeater {
-            delay: 1,
-            facing_diode: false,
-        };
-        let first = graph.add_node(node(repeater.clone(), false));
-        let second = graph.add_node(node(repeater, false));
+        let first = graph.add_node(node(target_type.clone(), false));
+        let second = graph.add_node(node(target_type, false));
         graph.add_edge(source, first, CompileLink::new(LinkType::Default, 0));
         graph.add_edge(source, second, CompileLink::new(channel, attenuation));
         super::coalesce::run(&mut graph).unwrap();
-        assert!(
-            graph.contains_node(first) && graph.contains_node(second),
-            "distinct {channel:?} input with attenuation {attenuation} was merged"
-        );
+        if should_merge {
+            assert_eq!(graph.node_count(), 2, "equivalent input should still merge");
+        } else {
+            assert!(
+                graph.contains_node(first) && graph.contains_node(second),
+                "distinct {channel:?} input with attenuation {attenuation} was merged"
+            );
+        }
     }
 }

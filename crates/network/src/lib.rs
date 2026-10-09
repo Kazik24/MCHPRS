@@ -212,6 +212,27 @@ pub mod test_support {
         let id = frame.read_varint()?;
         Ok((id, frame))
     }
+
+    pub fn handshaking_connection(compressed: bool) -> io::Result<(NetworkServer, TcpStream)> {
+        let conn = connection(compressed)?;
+        let (_, client_receiver) = mpsc::channel();
+        Ok((
+            NetworkServer {
+                client_receiver,
+                handshaking_clients: vec![HandshakingConn {
+                    client: conn.player.client,
+                    alive: true,
+                    username: None,
+                    uuid: None,
+                    profile_properties: Vec::new(),
+                    displayed_skin_parts: 0,
+                    forwarding_pending: false,
+                    protocol_phase: 0,
+                }],
+            },
+            conn.peer,
+        ))
+    }
 }
 
 #[cfg(test)]
@@ -244,6 +265,7 @@ mod connection_cleanup_tests {
                 username: None,
                 uuid: None,
                 profile_properties: Vec::new(),
+                displayed_skin_parts: 0,
                 forwarding_pending: false,
                 protocol_phase: 0,
             },
@@ -292,6 +314,7 @@ pub struct HandshakingConn {
     pub username: Option<String>,
     pub uuid: Option<u128>,
     pub profile_properties: Vec<packets::clientbound::CPlayerInfoAddPlayerProperty>,
+    pub displayed_skin_parts: u8,
     pub forwarding_pending: bool,
     pub protocol_phase: u8,
 }
@@ -473,6 +496,7 @@ impl NetworkServer {
                     username: None,
                     uuid: None,
                     profile_properties: Vec::new(),
+                    displayed_skin_parts: 0,
                     forwarding_pending: false,
                     protocol_phase: 0,
                 }),

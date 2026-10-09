@@ -18,8 +18,8 @@ mod profile;
 pub mod redpiler;
 pub mod redstone;
 pub mod server;
-mod sound;
 mod signed_velocity;
+mod sound;
 mod velocity;
 pub mod world;
 

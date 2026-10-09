@@ -332,13 +332,12 @@ inputs, outputs, and pending work protect nodes from ordinary removal. With
 optimization, removed dust display nodes no longer maintain their world powers,
 although physical dust still determines link attenuation during compilation.
 
-Some rewrite guards have known limits. Comparator-output pruning uses the saved
-constant strength without applying side-edge attenuation or accounting for a
-larger saved comparator output. Logic coalescing does not compare sibling input
-attenuation or separately require the sibling channel to match. These passes
-are not universal equivalence proofs for arbitrary analog graphs. The
-[optimizer reference](REDPILER_OPTIMIZER.md) records the actual guards and
-counterexamples; backend validation does not repair an incorrect rewrite.
+Comparator-output pruning applies side-edge attenuation and includes the saved
+comparator output in its bound. Logic coalescing requires equal incoming
+channels, equivalent attenuation, and equal type and state. Boolean consumers
+of 0/15 sources can share inputs with different attenuations below 15. The
+[optimizer reference](REDPILER_OPTIMIZER.md) records each pass's guards;
+backend validation does not repair an incorrect rewrite.
 
 ### Independent pure Boolean optimizer
 
@@ -385,9 +384,11 @@ converted to twice as many slots. It is not an arbitrary-duration scheduler.
 
 One compiled advance proceeds as follows:
 
-1. Increment each region's elapsed half-tick and advance the scheduler slot.
-2. Execute ordinary callbacks in priority/FIFO order. Process command outputs
-   when a world is available, then evaluate affected regions after each callback.
+1. Increment each region's elapsed half-tick, deliver already-due ordinary work,
+   then advance the scheduler slot.
+2. Execute the new slot's ordinary callbacks in priority/FIFO order. Process
+   command outputs when a world is available, then evaluate affected regions
+   after each callback, including already-due work.
 3. After ordinary callbacks, evaluate due owned periodic clocks.
 4. Publish changed aliases/output strengths through `set_node`, mark dependent
    regions dirty, and notify ordinary observers of committed geometry changes.

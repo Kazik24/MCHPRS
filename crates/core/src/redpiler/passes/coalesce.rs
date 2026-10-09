@@ -30,12 +30,33 @@ pub(super) fn run(graph: &mut CompileGraph) -> Result<(), super::GraphError> {
         if matches!(graph[source].ty, NodeType::Comparator { .. }) {
             continue;
         }
-        coalesce_outgoing(graph, source, idx);
+        let attenuation = edge.weight().attenuation;
+        coalesce_outgoing(graph, source, idx, attenuation);
     }
     Ok(())
 }
 
-fn coalesce_outgoing(graph: &mut CompileGraph, source_idx: NodeIdx, into_idx: NodeIdx) {
+fn coalesce_outgoing(
+    graph: &mut CompileGraph,
+    source_idx: NodeIdx,
+    into_idx: NodeIdx,
+    attenuation: u8,
+) {
+    // Boolean consumers of 0/15 sources ignore attenuation below 15.
+    let binary_inputs = matches!(
+        graph[into_idx].ty,
+        NodeType::Repeater { .. } | NodeType::Torch
+    ) && matches!(
+        graph[source_idx].ty,
+        NodeType::Repeater { .. }
+            | NodeType::Torch
+            | NodeType::Observer { .. }
+            | NodeType::CopperBulb
+            | NodeType::Button
+            | NodeType::Lever
+            | NodeType::PressurePlate
+            | NodeType::Trapdoor
+    ) && matches!(graph[source_idx].state.output_strength, 0 | 15);
     let mut walk_outgoing = graph
         .neighbors_directed(source_idx, Direction::Outgoing)
         .detach();
@@ -51,6 +72,9 @@ fn coalesce_outgoing(graph: &mut CompileGraph, source_idx: NodeIdx, into_idx: No
         if dest.ty == into.ty
             && dest.state == into.state
             && dest.is_removable()
+            && graph[edge_idx].ty == LinkType::Default
+            && (graph[edge_idx].attenuation == attenuation
+                || (binary_inputs && attenuation < 15 && graph[edge_idx].attenuation < 15))
             && graph
                 .neighbors_directed(dest_idx, Direction::Incoming)
                 .count()

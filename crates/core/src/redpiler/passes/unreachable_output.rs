@@ -1,7 +1,6 @@
-//! If the side of a comparator in subtract mode is constant, then the maximum output of the
-//! comparator is equal to the difference of the maximum side input and the maximum default input.
-//! Outgoing edges that have a weight greater than or equal to the maxiumum output of the
-//! comparator can be safely removed.
+//! A constant side input bounds a subtract comparator's output after side-edge attenuation.
+//! The bound also includes its saved output until the comparator reevaluates.
+//! Outgoing edges with attenuation at least that bound can be safely removed.
 //!
 //! Basically, links from comparators that could never possibly output a signal great enough that
 //! it won't be zero'd out by the weight of the link get removed.
@@ -50,8 +49,13 @@ pub(super) fn run(graph: &mut CompileGraph) -> Result<(), super::GraphError> {
             continue;
         }
 
-        let constant = graph[constant_idx].state.output_strength;
-        let max_output = max_input.saturating_sub(constant);
+        let side_power = graph[constant_idx]
+            .state
+            .output_strength
+            .saturating_sub(constant_edge.weight().attenuation);
+        let max_output = max_input
+            .saturating_sub(side_power)
+            .max(graph[idx].state.output_strength);
 
         // Now we can go through all the outgoing nodes and remove the ones with a weight that
         // is too high.

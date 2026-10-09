@@ -2,7 +2,7 @@ use crate::chat::ChatComponent;
 use crate::config::CONFIG;
 use crate::messages;
 use crate::permissions;
-use crate::player::{Gamemode, PacketSender, Player};
+use crate::player::{Gamemode, PacketSender, Player, SkinParts};
 use crate::plot::commands::DECLARE_COMMANDS;
 use crate::plot::{self, database, Plot};
 use crate::utils::HyphenatedUUID;
@@ -32,6 +32,9 @@ use tracing::{debug, error, info, warn};
 pub const MC_VERSION: &str = "1.21.5";
 pub const MC_DATA_VERSION: i32 = 4325;
 pub const PROTOCOL_VERSION: i32 = 770;
+
+#[cfg(test)]
+mod skin_tests;
 
 pub fn version_string() -> String {
     format!(
@@ -403,11 +406,13 @@ impl MinecraftServer {
         let username = client.username.clone().unwrap();
         let uuid = client.uuid.unwrap();
         let properties = client.profile_properties.clone();
+        let skin_parts = SkinParts::from_bits_truncate(client.displayed_skin_parts as u32);
 
         let Some(mut player) = Player::load_player(uuid, username, client.into()) else {
             return;
         };
         player.profile_properties = properties;
+        player.skin_parts = skin_parts;
         if permissions::dedicated_permissions() && !player.has_permission("mchprs.access.join") {
             player.kick(json!({"text": messages::PERMISSION_DENIED}).to_string());
             player.client.close_connection();
@@ -784,6 +789,13 @@ impl MinecraftServer {
 }
 
 impl ServerBoundPacketHandler for MinecraftServer {
+    fn handle_client_settings(
+        &mut self,
+        packet: mchprs_network::packets::serverbound::SClientSettings,
+        idx: usize,
+    ) {
+        self.network.handshaking_clients[idx].displayed_skin_parts = packet.displayed_skin_parts;
+    }
     fn handle_login_plugin_response(&mut self, packet: SLoginPluginResponse, idx: usize) {
         let client = &mut self.network.handshaking_clients[idx];
         if CONFIG.velocity.is_none() || !client.forwarding_pending || packet.message_id != 0 {
