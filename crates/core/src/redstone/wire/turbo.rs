@@ -277,6 +277,10 @@ impl RedstoneWireTurbo {
 
     /// This is the start of a great adventure
     pub fn update_surrounding_neighbors(world: &mut impl World, pos: BlockPos) {
+        if world.owns_redstone_update(pos) {
+            world.dispatch_redstone_update(pos, None, None);
+            return;
+        }
         let mut turbo = SCRATCH
             .with(|scratch| scratch.borrow_mut().take())
             .unwrap_or_else(RedstoneWireTurbo::new);
@@ -348,6 +352,11 @@ impl RedstoneWireTurbo {
             let count = self.update_queue[0].len();
             for index in 0..count {
                 let (node_id, source) = self.update_queue[0][index];
+                let pos = self.nodes[node_id.index()].pos;
+                if world.owns_redstone_update(pos) {
+                    world.dispatch_redstone_update(pos, None, Some(source));
+                    continue;
+                }
                 match self.nodes[node_id.index()].state {
                     Block::RedstoneWire { .. } => {
                         self.update_node(world, node_id, self.current_walk_layer);

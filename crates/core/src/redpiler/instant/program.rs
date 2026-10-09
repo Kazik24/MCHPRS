@@ -11,7 +11,8 @@ use mchprs_blocks::block_entities::BlockEntity;
 use mchprs_blocks::blocks::Block;
 use mchprs_blocks::{BlockFace, BlockFacing, BlockPos};
 use mchprs_world::TickEntry;
-use rustc_hash::FxHashSet;
+use petgraph::unionfind::UnionFind;
+use rustc_hash::{FxHashMap, FxHashSet};
 use std::sync::Arc;
 
 pub(crate) struct PreparedInstant {
@@ -29,6 +30,11 @@ pub(crate) struct PreparedInstant {
     pub owned: FxHashSet<BlockPos>,
     /// Ordinary dust surrounding output channels and external sampling writers.
     pub propagation_wires: FxHashSet<BlockPos>,
+    /// Dust positions whose electrical or callback behavior crosses the assembly boundary.
+    pub observable_wires: FxHashSet<BlockPos>,
+    pub sampling_wires: FxHashSet<BlockPos>,
+    pub candidate_wire_count: usize,
+    pub wire_retention_reasons: [usize; 7],
     pub template: Vec<(BlockPos, Block, Option<BlockEntity>)>,
     pub logical_tick: u64,
 }
@@ -72,6 +78,19 @@ pub(crate) fn prepare(
                 admission_error(format!("assembly at {:?}: {error}", region.pistons[0].pos))
             })?,
         );
+    }
+    let classification = classify_boundary_wires(world, report, &programs);
+    if let Some(program) = programs.first_mut() {
+        program.wire_retention_reasons = classification.reason_counts;
+    }
+    for program in &mut programs {
+        program.candidate_wire_count = program.logic.wires.len();
+        program
+            .propagation_wires
+            .retain(|pos| classification.retained.contains(pos));
+        program
+            .owned
+            .retain(|pos| !program.propagation_wires.contains(pos));
     }
     let wires = programs
         .iter()
@@ -569,11 +588,12 @@ fn prepare_region_inner(
         }
     }
     owned.extend(logic.wires.iter().copied());
-    owned.extend(logic.consumer_wires.iter().copied());
     owned.extend(crate::redpiler::analysis::families::reset_internals(
         &report.recognition,
     ));
-    let mut propagation_wires: FxHashSet<_> = logic.wires.iter().chain(&logic.consumer_wires).copied().collect();
+    let mut propagation_wires = logic.wires.clone();
+    let observable_wires = logic.unprojected_consumer_wires.clone();
+    let mut sampling_wires = FxHashSet::default();
     let mut topology = crate::redpiler::analysis::topology::Topology::new(
         world,
         report.bounds,
@@ -589,17 +609,17 @@ fn prepare_region_inner(
     );
     for event in &independent.events {
         if let super::sampling::SamplingSource::Power { pos, .. } = event.source {
-            propagation_wires.extend(
-                topology
-                    .wire_inputs(pos)
-                    .map_err(|error| error.to_string())?
-                    .wires,
-            );
+            let wires: FxHashSet<_> = topology
+                .wire_inputs(pos)
+                .map_err(|error| error.to_string())?
+                .wires
+                .into_iter()
+                .collect();
+            sampling_wires.extend(wires.into_iter().filter(|wire| logic.wires.contains(wire)));
         }
     }
     let internals = crate::redpiler::analysis::families::reset_internals(&report.recognition);
     propagation_wires.retain(|pos| !internals.contains(pos));
-    owned.retain(|pos| !propagation_wires.contains(pos));
     // A provisional reset label must not hide or reset a live ordinary leaf.
     owned.retain(|pos| !logic.sources.contains(pos));
     let mut template = Vec::new();
@@ -635,6 +655,10 @@ fn prepare_region_inner(
     }
     Ok(PreparedInstant {
         propagation_wires,
+        observable_wires,
+        sampling_wires,
+        candidate_wire_count: 0,
+        wire_retention_reasons: [0; 7],
         pistons,
         output_offset: 0,
         clocked,
@@ -654,4 +678,136 @@ fn prepare_region_inner(
         template,
         logical_tick: world.piston_state().logical_tick,
     })
+}
+
+struct WireClassification {
+    retained: FxHashSet<BlockPos>,
+    reason_counts: [usize; 7],
+}
+
+fn classify_boundary_wires(
+    world: &impl World,
+    report: &AnalysisReport,
+    programs: &[PreparedInstant],
+) -> WireClassification {
+    let mut candidates = FxHashSet::default();
+    let mut assembly_owned = FxHashSet::default();
+    let mut owners = FxHashMap::<BlockPos, (usize, bool)>::default();
+    for (region, program) in programs.iter().enumerate() {
+        for &pos in &program.propagation_wires {
+            candidates.insert(pos);
+            owners
+                .entry(pos)
+                .and_modify(|(_, shared)| *shared = true)
+                .or_insert((region, false));
+        }
+        assembly_owned.extend(program.owned.iter().copied());
+    }
+
+    let positions: Vec<_> = candidates.iter().copied().collect();
+    let live_inputs: FxHashSet<_> = programs
+        .iter()
+        .flat_map(|program| program.logic.sources.iter().copied())
+        .collect();
+    let indices: FxHashMap<_, _> = positions
+        .iter()
+        .enumerate()
+        .map(|(index, &pos)| (pos, index))
+        .collect();
+    let mut connected = UnionFind::new(positions.len());
+    let mut reasons = FxHashMap::<BlockPos, u8>::default();
+    let mut mark = |pos: BlockPos, reason: u8| {
+        if candidates.contains(&pos) {
+            *reasons.entry(pos).or_default() |= reason;
+        }
+    };
+    for program in programs {
+        for &pos in &program.observable_wires {
+            mark(pos, 1 << 0);
+        }
+        for &pos in &program.sampling_wires {
+            mark(pos, 1 << 1);
+        }
+        for &(a, b) in &program.logic.wire_links {
+            if let (Some(&a), Some(&b)) = (indices.get(&a), indices.get(&b)) {
+                connected.union(a, b);
+            }
+        }
+        for piston in &program.pistons {
+            if let Some(actor) = report
+                .pistons
+                .iter()
+                .position(|candidate| candidate.pos == piston.pos)
+            {
+                for update in &report.ports.pistons[actor].updates {
+                    if !assembly_owned.contains(&update.source) {
+                        mark(update.source, 1 << 2);
+                    }
+                }
+            }
+        }
+    }
+    for (&pos, &(_, shared)) in &owners {
+        if shared {
+            mark(pos, 1 << 3);
+        }
+    }
+
+    for &observer_pos in &report.observers {
+        if assembly_owned.contains(&observer_pos) {
+            continue;
+        }
+        if let Block::Observer { observer } = world.get_block(observer_pos) {
+            let watched = observer_pos.offset(observer.facing.into());
+            if candidates.contains(&watched) {
+                mark(watched, 1 << 4);
+            }
+        }
+    }
+
+    for &wire in &positions {
+        for neighbor in crate::world::wire_cache::positions(wire) {
+            if assembly_owned.contains(&neighbor) {
+                continue;
+            }
+            if let Some(&(owner, _)) = owners.get(&neighbor) {
+                if owners[&wire].0 != owner {
+                    mark(wire, 1 << 3);
+                    mark(neighbor, 1 << 3);
+                }
+            } else if !live_inputs.contains(&neighbor)
+                && crate::redstone::has_neighbor_update(world.get_block(neighbor))
+            {
+                mark(wire, 1 << 5);
+            }
+        }
+    }
+
+    drop(mark);
+    let mut boundary_components = FxHashSet::default();
+    for &pos in reasons.keys() {
+        if let Some(&index) = indices.get(&pos) {
+            boundary_components.insert(connected.find(index));
+        }
+    }
+    let retained: FxHashSet<_> = positions
+        .into_iter()
+        .enumerate()
+        .filter_map(|(index, pos)| {
+            boundary_components
+                .contains(&connected.find(index))
+                .then_some(pos)
+        })
+        .collect();
+    let mut reason_counts = [0; 7];
+    for &pos in &retained {
+        let reason = reasons.get(&pos).copied().unwrap_or(1 << 6);
+        for (index, count) in reason_counts.iter_mut().enumerate() {
+            *count += usize::from(reason & (1 << index) != 0);
+        }
+    }
+    WireClassification {
+        retained,
+        reason_counts,
+    }
 }

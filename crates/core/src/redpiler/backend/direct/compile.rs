@@ -288,8 +288,11 @@ pub fn compile(
             for y in -2i32..=2 {
                 for z in -2i32..=2 {
                     if x.abs() + y.abs() + z.abs() <= 2 {
-                        backend.native_port_updates.entry(pos + BlockPos::new(x, y, z))
-                            .or_default().push(index);
+                        backend
+                            .native_port_updates
+                            .entry(pos + BlockPos::new(x, y, z))
+                            .or_default()
+                            .push(index);
                     }
                 }
             }

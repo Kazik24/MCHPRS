@@ -8,7 +8,7 @@ mod cpu_support;
 use anyhow::{bail, ensure, Context, Result};
 use mchprs_blocks::{
     blocks::{Block, LeverFace, RedstoneRepeater},
-    BlockDirection, BlockFace, BlockPos,
+    BlockColorVariant, BlockDirection, BlockFace, BlockPos,
 };
 use mchprs_core::{
     plot::{
@@ -152,6 +152,7 @@ fn main() -> Result<()> {
     let mut input_every = 1usize;
     let mut output = None;
     let mut reference_path = None;
+    let mut manifest_override = None;
     let mut args = std::env::args().skip(1);
     while let Some(arg) = args.next() {
         match arg.as_str() {
@@ -173,7 +174,7 @@ fn main() -> Result<()> {
                 return Ok(());
             }
             "--help" => {
-                println!("instant [--component counter_basic|pc_counter|cpu_bubblesort|fpu_divider|fpu_legal] [--changing-inputs | --workload random|random-walk|sequence] [--seed integer] [--input-every ticks] [--interpreted | --optimize] [--iterations 3] [--episodes 32] [--ticks 60000] [--flush-every 0|1] [--output path.json] [--reference frozen-native-report.json]\n--workload implies --changing-inputs. Sequence repeats 128 fixed raw port pairs with opcode zero.\n--check-workloads verifies generators without loading a schematic.");
+                println!("instant [--component counter_basic|pc_counter|cpu_bubblesort|fpu_divider|fpu_legal] [--manifest path.json] [--changing-inputs | --workload random|random-walk|sequence] [--seed integer] [--input-every ticks] [--interpreted | --optimize] [--iterations 3] [--episodes 32] [--ticks 60000] [--flush-every 0|1] [--output path.json] [--reference frozen-native-report.json]\n--workload implies --changing-inputs. Sequence repeats 128 fixed raw port pairs with opcode zero.\n--check-workloads verifies generators without loading a schematic.");
                 return Ok(());
             }
             _ => {}
@@ -189,6 +190,7 @@ fn main() -> Result<()> {
             "--flush-every" => flush_every = value.parse()?,
             "--output" => output = Some(value),
             "--reference" => reference_path = Some(value),
+            "--manifest" => manifest_override = Some(value),
             "--seed" => seed = value.parse()?,
             "--input-every" => input_every = value.parse()?,
             "--workload" => {
@@ -237,8 +239,8 @@ fn main() -> Result<()> {
         "interpreted full FPU requires --changing-inputs or --workload"
     );
     ensure!(
-        reference_path.is_none() || (interpreted && (changing_inputs || component == "pc_counter")),
-        "--reference requires an interpreted FPU input workload or pc_counter"
+        reference_path.is_none() || changing_inputs || (interpreted && component == "pc_counter"),
+        "--reference requires a changing-input workload or interpreted pc_counter"
     );
     let frozen: Option<Value> = reference_path
         .as_ref()
@@ -246,7 +248,7 @@ fn main() -> Result<()> {
             Ok(serde_json::from_slice(&std::fs::read(root().join(path))?)?)
         })
         .transpose()?;
-    let manifest_path = match component.as_str() {
+    let default_manifest_path = match component.as_str() {
         "counter_basic" => "test_data/instant-pistons-io/fixtures/counter_basic.json",
         "pc_counter" => "inline revised Potados PC counter protocol",
         "cpu_bubblesort" => "test_data/piston-research/fixtures/cpu_bubblesort.json",
@@ -254,12 +256,13 @@ fn main() -> Result<()> {
         "fpu_legal" => "test_data/piston-research/fixtures/fpu_legal.json",
         _ => bail!("unknown component {component}"),
     };
+    let manifest_path = manifest_override.unwrap_or_else(|| default_manifest_path.to_owned());
     let mut descriptor: Value = if component == "pc_counter" {
         json!({"fixture":"test_data/piston-research/test-potados-counter-revised-20261008/TEST_POTADOS_PC_COUNTER.schem",
             "sha256":"641c50d1903ccf3715759007d5b82e0f04786020d8cce80fbdbb4a3c8a3596f7",
             "dimensions":[24,19,75], "origin":[40,30,40]})
     } else {
-        serde_json::from_slice(&std::fs::read(root().join(manifest_path))?)?
+        serde_json::from_slice(&std::fs::read(root().join(&manifest_path))?)?
     };
     if let Some(frozen) = &frozen {
         ensure!(
@@ -272,7 +275,7 @@ fn main() -> Result<()> {
         if changing_inputs {
             ensure!(
                 component != "fpu_legal"
-                    || frozen["input_protocol_id"] == "native-fpu-cycled-off-inputs-on-v1",
+                    || frozen["input_protocol_id"] == "fpu-green-trigger-cycled-off-inputs-on-v1",
                 "frozen FPU report uses a different trigger protocol"
             );
             ensure!(
@@ -525,7 +528,7 @@ fn main() -> Result<()> {
     let input_median = input_elapsed.get(input_elapsed.len() / 2).copied();
     let changing_game_ticks = episodes as u64
         * if component == "fpu_legal" {
-            input_every as u64 * if interpreted { 2 } else { 1 }
+            input_every as u64 * 2
         } else {
             256
         };
@@ -557,11 +560,9 @@ fn main() -> Result<()> {
         "sequence_period": (changing_inputs && workload == Workload::Sequence).then_some(128),
         "seed": changing_inputs.then_some(seed),
         "input_every_game_ticks": (changing_inputs && component == "fpu_legal").then_some(input_every),
-        "input_protocol_id": (changing_inputs && component == "fpu_legal" && interpreted).then_some("native-fpu-cycled-off-inputs-on-v1"),
-        "changing_input_protocol": changing_inputs.then_some(if component == "fpu_legal" && interpreted {
-            "cycled native raw-port stream: trigger ensured ON for 64 initial ticks; eight untimed warm vectors; each vector sets trigger OFF, delivers ordered changed-lever updates, holds OFF for input-every ticks, then ON for input-every reset ticks; no arithmetic or readiness oracle"
-        } else if component == "fpu_legal" {
-            "continuous OFF raw-port stream: trigger ensured OFF before warmup and held OFF; 1024 initial ticks and untimed workload warmup (128 vectors for sequence, 32 otherwise); each measured vector delivers ordered changed-lever updates then input-every native game ticks; no arithmetic or readiness oracle"
+        "input_protocol_id": (changing_inputs && component == "fpu_legal").then_some("fpu-green-trigger-cycled-off-inputs-on-v1"),
+        "changing_input_protocol": changing_inputs.then_some(if component == "fpu_legal" {
+            "raw-port stream using the green-wool control: trigger ensured ON for 64 initial ticks; eight untimed warm vectors; each vector sets trigger OFF, delivers ordered changed-lever updates, holds OFF for input-every ticks, then ON for input-every reset ticks; no arithmetic or readiness oracle"
         } else {
             "fixed-window raw-port benchmark: 64 initial ON ticks; untimed workload warmup (128 vectors for sequence, eight otherwise); ordered lever updates set operand port masks while ON, then hold all inputs ON64, OFF128, ON64; no arithmetic or readiness oracle"
         }),
@@ -927,7 +928,7 @@ fn fpu_changing_inputs(
 ) -> Result<(Value, Vec<Vec<u16>>)> {
     let origin = origin(descriptor);
     let full_fpu = descriptor["ports"]["light_blue_operand_inputs"].is_array();
-    let cycled_full_fpu = full_fpu && compiler.is_none();
+    let cycled_full_fpu = full_fpu;
     let warm_episodes = if cycled_full_fpu {
         8
     } else if workload == Workload::Sequence {
@@ -968,6 +969,16 @@ fn fpu_changing_inputs(
     else {
         bail!("missing FPU trigger lever at {trigger:?}");
     };
+    let trigger_support = match trigger_lever.face {
+        LeverFace::Floor => trigger.offset(BlockFace::Bottom),
+        LeverFace::Ceiling => trigger.offset(BlockFace::Top),
+        LeverFace::Wall => trigger.offset(trigger_lever.facing.opposite().block_face()),
+    };
+    ensure!(
+        matches!(world.get_block(trigger_support), Block::Wool { color: BlockColorVariant::Green }),
+        "FPU trigger at {trigger:?} must be attached to green wool; found {:?} at {trigger_support:?}",
+        world.get_block(trigger_support)
+    );
     ensure!(
         full_fpu || trigger_lever.powered,
         "saved divider trigger must be ON at {trigger:?}"
@@ -1063,7 +1074,7 @@ fn fpu_changing_inputs(
             let started = Instant::now();
             if phase == 0 {
                 // The public API delivers these source changes separately.
-                // Native FPU rearms between vectors; compiled FPU stays OFF.
+                // Hold the green-wool control OFF while changing inputs.
                 if cycled_full_fpu {
                     use_lever(compiler, world, trigger);
                 }

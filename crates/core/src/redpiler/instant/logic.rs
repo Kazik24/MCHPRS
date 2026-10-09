@@ -25,7 +25,10 @@ pub(crate) struct WaveLogic {
     #[cfg(test)]
     pub response_sources: Vec<BlockPos>,
     pub wires: FxHashSet<BlockPos>,
-    pub consumer_wires: FxHashSet<BlockPos>,
+    /// Possible physical dust connections across every admitted geometry state.
+    pub wire_links: FxHashSet<(BlockPos, BlockPos)>,
+    /// Response wires read by ordinary channels that have no compiled port.
+    pub unprojected_consumer_wires: FxHashSet<BlockPos>,
     pub outputs: Vec<OutputPort>,
     /// Settled logical dust strengths used only when exporting a snapshot.
     pub handoff_wires: Vec<(BlockPos, Vec<PowerTerm>)>,
@@ -73,6 +76,7 @@ struct Extractor<'a, W: World> {
     payloads: Vec<Block>,
     shapes: FxHashMap<(usize, BlockPos), Vec<(Expr, RedstoneWire)>>,
     wires: FxHashSet<BlockPos>,
+    wire_links: FxHashSet<(BlockPos, BlockPos)>,
     sources: FxHashSet<BlockPos>,
     steps: usize,
     signal_order: FxHashMap<BlockPos, usize>,
@@ -184,6 +188,7 @@ fn extract_with_options(
         payloads: Vec::new(),
         shapes: Default::default(),
         wires: Default::default(),
+        wire_links: Default::default(),
         sources: Default::default(),
         steps: 0,
         signal_order: Default::default(),
@@ -329,6 +334,7 @@ fn extract_with_options(
     #[cfg(test)]
     response_sources.sort_by_key(|pos| (pos.y, pos.z, pos.x));
     let mut consumer_wires = FxHashSet::default();
+    let mut unprojected_consumer_wires = FxHashSet::default();
     let mut outputs = Vec::new();
     extractor.output_mode = true;
     for (pos, block) in blocks {
@@ -359,7 +365,15 @@ fn extract_with_options(
                 }
             }
             extractor.walk_wires(usize::MAX, power, queue)?;
+            consumer_wires.extend(extractor.wires.iter().copied());
             if !extractor.terms.iter().any(|term| term.guard > TRUE) {
+                unprojected_consumer_wires.extend(
+                    extractor
+                        .wires
+                        .iter()
+                        .filter(|wire| wires.contains(wire))
+                        .copied(),
+                );
                 continue;
             }
             // Comparator overrides need their own occupancy-dependent read
@@ -378,7 +392,6 @@ fn extract_with_options(
                     return Err(format!("comparator at {pos:?} reads an analog override through moving blocks; this is unsupported"));
                 }
             }
-            consumer_wires.extend(extractor.wires.iter().copied());
             let mut output = OutputPort {
                 consumer: pos,
                 input,
@@ -516,7 +529,8 @@ fn extract_with_options(
         #[cfg(test)]
         response_sources,
         wires: extractor.wires,
-        consumer_wires,
+        wire_links: extractor.wire_links,
+        unprojected_consumer_wires,
         outputs,
         handoff_wires,
         follows_payload,
@@ -1195,6 +1209,7 @@ impl<W: World> Extractor<'_, W> {
                         self.source(actor, neighbor, block, distance, guard, &mut result);
                     }
                     if matches!(block, Block::RedstoneWire { .. }) {
+                        self.wire_links.insert((pos, neighbor));
                         if self.wire_signals {
                             self.source(actor, neighbor, block, distance + 1, guard, &mut result);
                         } else {
@@ -1208,6 +1223,8 @@ impl<W: World> Extractor<'_, W> {
                                 Block::RedstoneWire { .. }
                             )
                         {
+                            self.wire_links
+                                .insert((pos, neighbor.offset(BlockFace::Top)));
                             for &(block, above_guard) in &above {
                                 if !block.is_solid() {
                                     let guard = self.arena.and(guard, above_guard);
@@ -1234,6 +1251,7 @@ impl<W: World> Extractor<'_, W> {
                             )
                         {
                             let wire_pos = neighbor.offset(BlockFace::Bottom);
+                            self.wire_links.insert((pos, wire_pos));
                             if self.wire_signals {
                                 self.source(
                                     actor,

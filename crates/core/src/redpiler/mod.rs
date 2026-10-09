@@ -227,6 +227,12 @@ pub struct CompileStatistics {
     pub graph: GraphStatistics,
     pub regions: RegionStatistics,
     pub backend_nodes: usize,
+    pub candidate_wires: usize,
+    pub retained_wire_nodes: usize,
+    pub native_wire_nodes: usize,
+    /// Retained wires by reason: unprojected channel, sampling, piston update,
+    /// shared ownership, observer, external callback, and dependency closure.
+    pub wire_retention_reasons: [usize; 7],
     pub analysis_duration: Duration,
     pub preparation_duration: Duration,
     pub backend_duration: Duration,
@@ -242,6 +248,17 @@ impl CompileStatistics {
             ms(self.graph.duration), ms(self.backend_duration), self.backend_nodes,
         )];
         lines.extend(self.graph.summary_lines().into_iter().take(2));
+        if self.candidate_wires != 0 {
+            lines.push(format!(
+                "Assembly wiring: {} candidate dust positions; {} retained graph wires, {} using native propagation",
+                self.candidate_wires, self.retained_wire_nodes, self.native_wire_nodes,
+            ));
+            let [unprojected, sampling, piston, shared, observer, callback, closure] =
+                self.wire_retention_reasons;
+            lines.push(format!(
+                "Wire retention reasons: unprojected channel {unprojected}, sampling {sampling}, piston updates {piston}, shared {shared}, observer {observer}, external callbacks {callback}, dependency closure {closure}",
+            ));
+        }
         let regions = &self.regions;
         if regions.pistons != 0 {
             lines.push(format!(
@@ -360,6 +377,27 @@ impl Compiler {
             (graph, program, native)
         };
         let preparation_and_graph_duration = preparation_start.elapsed();
+        let candidate_wires = instant
+            .iter()
+            .map(|program| program.candidate_wire_count)
+            .sum();
+        let mut wire_retention_reasons = [0; 7];
+        for program in &instant {
+            for (total, count) in wire_retention_reasons
+                .iter_mut()
+                .zip(program.wire_retention_reasons)
+            {
+                *total += count;
+            }
+        }
+        let retained_wire_nodes = graph
+            .node_weights()
+            .filter(|node| node.ty == compile_graph::NodeType::Wire)
+            .count();
+        let native_wire_nodes = graph
+            .node_weights()
+            .filter(|node| node.native && node.ty == compile_graph::NodeType::Wire)
+            .count();
         let graph_statistics = monitor.graph_statistics();
         let preparation_duration = if report.pistons.is_empty() {
             Duration::ZERO
@@ -396,6 +434,10 @@ impl Compiler {
             graph: graph_statistics,
             regions: backend.region_statistics(),
             backend_nodes: backend.node_count(),
+            candidate_wires,
+            retained_wire_nodes,
+            native_wire_nodes,
+            wire_retention_reasons,
             analysis_duration,
             preparation_duration,
             backend_duration,

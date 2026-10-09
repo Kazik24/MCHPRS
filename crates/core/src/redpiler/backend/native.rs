@@ -285,18 +285,21 @@ struct NativeWorld<'a, 'b> {
 
 impl NativeWorld<'_, '_> {
     fn refresh_ports(&mut self, changed: BlockPos) {
-        let Some(indices) = self.backend.native_ports_affected_by(changed) else {
+        let Some(indices) = self
+            .backend
+            .native_ports_affected_by(changed)
+            .map(|indices| indices.to_vec())
+        else {
             return;
         };
+        let bindings: Vec<_> = indices
+            .into_iter()
+            .map(|index| self.backend.native_port_bindings()[index])
+            .collect();
         self.resolving_ports = false;
-        let values = self
-            .backend
-            .native_ports_affected_by(changed).unwrap()
-            .iter()
-            .map(|&index| {
-                let (pos, side, id) = self.backend.native_port_bindings()[index];
-                (id, redstone::consumer_input(self, pos, side))
-            })
+        let values = bindings
+            .into_iter()
+            .map(|(pos, side, id)| (id, redstone::consumer_input(self, pos, side)))
             .collect();
         self.resolving_ports = true;
         self.backend.commit_native_ports(values);
@@ -335,6 +338,9 @@ impl NativeWorld<'_, '_> {
 }
 
 impl World for NativeWorld<'_, '_> {
+    fn owns_redstone_update(&self, pos: BlockPos) -> bool {
+        self.backend.assembly_owners.contains_key(&pos)
+    }
     fn dispatch_neighbor_shape_update(&mut self, pos: BlockPos, _: BlockFace) -> bool {
         self.backend.assembly_owners.contains_key(&pos)
     }
@@ -359,6 +365,14 @@ impl World for NativeWorld<'_, '_> {
     }
     fn get_block_raw(&self, pos: BlockPos) -> u32 {
         let native = self.backend.native.as_ref().unwrap();
+        if self.backend.assembly_owners.contains_key(&pos)
+            && matches!(
+                native.blocks.get(&pos).copied().map(Block::from_id),
+                Some(Block::RedstoneWire { .. })
+            )
+        {
+            return self.backend.runtime_block_at(pos).map_or(0, Block::get_id);
+        }
         if !native.geometry.is_empty() && native.geometry.contains(&pos) {
             if let Some(block) = self.backend.runtime_block_at(pos) {
                 return block.get_id();

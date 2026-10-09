@@ -18,6 +18,10 @@ pub trait World {
     fn dispatch_neighbor_shape_update(&mut self, _pos: BlockPos, _direction: BlockFace) -> bool {
         false
     }
+    /// Whether a compiled assembly owns redstone callbacks at this position.
+    fn owns_redstone_update(&self, _pos: BlockPos) -> bool {
+        false
+    }
     /// A compiled consumer channel replaces physical electrical input, not analog overrides.
     fn resolved_redstone_input(&self, _pos: BlockPos, _side: bool) -> Option<u8> {
         None
