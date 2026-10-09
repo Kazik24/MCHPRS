@@ -24,11 +24,11 @@ macro_rules! catalog {
 
 catalog! {
     fixed {
-        USAGE_SMALL = "Usage: /small [on|off]";
+        USAGE_SMALL = "Usage: /small [on|off|wolf|fox|cat|ocelot]";
         SMALL_ENABLED = "Smol paws mode on";
         SMALL_DISABLED = "Small mode off. You're back to your normal size.";
         SMALL_NO_ROOM = "There isn't room to return to full size here. Move into an open space first.";
-        HELP_SMALL = "Small mode\n/small toggles half-size movement and an ocelot appearance for other players.\n/small on and /small off select the mode explicitly.\n/gm cat enables creative play in small mode; other gamemodes restore normal size.\nYour own view stays a scaled player so the preview cannot block your clicks.\nMove into an open space before turning it off. Your mode follows you between plots and is saved when you leave.";
+        HELP_SMALL = "Small mode\n/small toggles half-size movement and an animal appearance for other players.\n/small on and /small off select the mode explicitly.\n/small wolf|fox|cat|ocelot changes your saved animal; ocelot is the default.\n/gm cat enables creative play in small mode; other gamemodes restore normal size.\nYour own view stays a scaled player so the preview cannot block your clicks.\nMove into an open space before turning it off. Your mode and animal follow you between plots and are saved when you leave.";
         USAGE_SETWARP = "Usage: /setwarp <name> (creates or replaces a shared warp)";
         USAGE_WARP = "Usage: /warp [name] (omit the name to list shared warps)";
         INVALID_WARP_NAME = "Warp names must be 1-32 letters, digits, underscores or hyphens.";
@@ -440,6 +440,7 @@ catalog! {
         YOU_NOT_WHITELISTED_ON_SERVER = "You are not whitelisted on this server";
     }
     formatted {
+        small_animal(animal: impl Display) = "Small appearance set to {animal}.";
         warp_saved(name: impl Display) = "Saved shared warp '{name}'. Visit it with /warp {name}.";
         warp_not_found(name: impl Display) = "Warp '{name}' was not found. Use /warp to list destinations.";
         warp_teleport(name: impl Display) = "Teleporting to warp '{name}'.";
@@ -708,11 +709,15 @@ mod tests {
         );
         assert_eq!(
             click.get("command"),
-            Some(&nbt::Value::String("/tp -19.5 30.5 40.5 --highlight-only".into()))
+            Some(&nbt::Value::String(
+                "/tp -19.5 30.5 40.5 --highlight-only".into()
+            ))
         );
         assert_eq!(
             coordinates.get("insertion"),
-            Some(&nbt::Value::String("/tp -19.5 30.5 40.5 --highlight".into()))
+            Some(&nbt::Value::String(
+                "/tp -19.5 30.5 40.5 --highlight".into()
+            ))
         );
     }
 }

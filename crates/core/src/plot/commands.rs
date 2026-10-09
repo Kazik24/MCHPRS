@@ -1057,6 +1057,16 @@ impl Plot {
                     [] => self.players[player].small_model.is_none(),
                     ["on"] => true,
                     ["off"] => false,
+                    ["wolf" | "fox" | "cat" | "ocelot"] => {
+                        let animal = match args[0] {
+                            "wolf" => crate::player::SmallAnimal::Wolf,
+                            "fox" => crate::player::SmallAnimal::Fox,
+                            "cat" => crate::player::SmallAnimal::Cat,
+                            _ => crate::player::SmallAnimal::Ocelot,
+                        };
+                        self.set_small_animal(player, animal);
+                        return false;
+                    }
                     _ => {
                         self.players[player].send_error_message(messages::USAGE_SMALL);
                         return false;
@@ -1550,7 +1560,7 @@ fn declared_command_nodes() -> Vec<Node<'static>> {
         // 164: /rv shares the server-completed git arguments.
         Node::literal("rv", &[109]).executable(),
         // 165-167: /small and its explicit states.
-        Node::literal("small", &[166, 167]).executable(),
+        Node::literal("small", &[166, 167, 171, 172, 173, 174]).executable(),
         Node::literal("on", &[]).executable(),
         Node::literal("off", &[]).executable(),
         // 168: /gm cat selects creative play with the small ocelot disguise.
@@ -1558,6 +1568,11 @@ fn declared_command_nodes() -> Vec<Node<'static>> {
         // 169: error-coordinate links reuse teleportation and the existing block outline.
         Node::literal("--highlight", &[]).executable(),
         Node::literal("--highlight-only", &[]).executable(),
+        // 171-174: saved small-mode animal choices.
+        Node::literal("wolf", &[]).executable(),
+        Node::literal("fox", &[]).executable(),
+        Node::literal("cat", &[]).executable(),
+        Node::literal("ocelot", &[]).executable(),
     ]
 }
 
@@ -1724,7 +1739,7 @@ mod security_tests {
                 .iter()
                 .map(|&id| nodes[id as usize].name.unwrap())
                 .collect::<Vec<_>>(),
-            ["on", "off"]
+            ["on", "off", "wolf", "fox", "cat", "ocelot"]
         );
         let gm = nodes
             .iter()

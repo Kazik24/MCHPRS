@@ -1,8 +1,22 @@
 use super::Plot;
 use crate::messages;
-use crate::player::{PacketSender, Player, SmallModel};
+use crate::player::{PacketSender, Player, SmallAnimal, SmallModel};
 use crate::world::World;
 use mchprs_network::packets::clientbound::*;
+use mchprs_network::packets::PacketEncoder;
+
+fn fox_mouth_equipment(player: &Player, entity_id: u32) -> PacketEncoder {
+    CEntityEquipment {
+        entity_id: entity_id as i32,
+        equipment: vec![CEntityEquipmentEquipment {
+            slot: 0,
+            item: player.inventory[player.selected_slot as usize + 36]
+                .as_ref()
+                .map(crate::container::slot_data),
+        }],
+    }
+    .encode()
+}
 
 pub(super) fn spawn_model(viewer: &impl PacketSender, player: &Player) {
     let Some(model) = &player.small_model else {
@@ -12,7 +26,7 @@ pub(super) fn spawn_model(viewer: &impl PacketSender, player: &Player) {
         &CSpawnEntity {
             entity_id: model.entity_id as i32,
             object_uuid: model.uuid,
-            entity_type: mchprs_network::generated::OCELOT_ENTITY,
+            entity_type: player.small_animal.entity_type(),
             x: player.pos.x,
             y: player.pos.y,
             z: player.pos.z,
@@ -36,9 +50,30 @@ pub(super) fn spawn_model(viewer: &impl PacketSender, player: &Player) {
         }
         .encode(),
     );
+    if player.small_animal == SmallAnimal::Fox {
+        viewer.send_packet(&fox_mouth_equipment(player, model.entity_id));
+    }
 }
 
 impl Plot {
+    pub(super) fn set_small_animal(&mut self, player: usize, animal: SmallAnimal) {
+        if self.players[player].small_animal == animal {
+            self.players[player].send_system_message(&messages::small_animal(animal.name()));
+            return;
+        }
+        self.players[player].small_animal = animal;
+        if let Some(model) = self.players[player].small_model.take() {
+            self.destroy_entity(model.entity_id);
+            self.players[player].small_model = Some(SmallModel::new());
+            for (index, viewer) in self.players.iter().enumerate() {
+                if index != player {
+                    spawn_model(viewer, &self.players[player]);
+                }
+            }
+        }
+        self.players[player].send_system_message(&messages::small_animal(animal.name()));
+    }
+
     pub(super) fn set_small(&mut self, player: usize, enabled: bool) -> bool {
         let current = &self.players[player];
         if current.small_model.is_some() == enabled {
@@ -97,42 +132,74 @@ impl Plot {
 
     pub(super) fn sync_small_models(&mut self) {
         for owner in 0..self.players.len() {
-            let player = &mut self.players[owner];
-            let Some(model) = &mut player.small_model else {
-                continue;
+            let (model_id, position, head, mouth_changed) = {
+                let player = &mut self.players[owner];
+                let Some(model) = &mut player.small_model else {
+                    continue;
+                };
+                let pose = [
+                    player.pos.x,
+                    player.pos.y,
+                    player.pos.z,
+                    f64::from(player.yaw),
+                    f64::from(player.pitch),
+                ];
+                let moved = model.last_pose != Some(pose);
+                if moved {
+                    model.last_pose = Some(pose);
+                }
+                let mouth_changed = if player.small_animal == SmallAnimal::Fox {
+                    let item = player.inventory[player.selected_slot as usize + 36].as_ref();
+                    let signature = item
+                        .map(crate::container::item_components)
+                        .unwrap_or_default();
+                    if model.last_mouth_item.as_ref() == Some(&signature) {
+                        false
+                    } else {
+                        model.last_mouth_item = Some(signature);
+                        true
+                    }
+                } else {
+                    false
+                };
+                let position = moved.then(|| {
+                    CEntityTeleport {
+                        entity_id: model.entity_id as i32,
+                        x: player.pos.x,
+                        y: player.pos.y,
+                        z: player.pos.z,
+                        yaw: player.yaw,
+                        pitch: player.pitch,
+                        on_ground: player.on_ground,
+                    }
+                    .encode()
+                });
+                let head = moved.then(|| {
+                    CEntityHeadLook {
+                        entity_id: model.entity_id as i32,
+                        yaw: player.yaw,
+                    }
+                    .encode()
+                });
+                (model.entity_id, position, head, mouth_changed)
             };
-            let pose = [
-                player.pos.x,
-                player.pos.y,
-                player.pos.z,
-                f64::from(player.yaw),
-                f64::from(player.pitch),
-            ];
-            if model.last_pose == Some(pose) {
+            if position.is_none() && !mouth_changed {
                 continue;
             }
-            model.last_pose = Some(pose);
-            let position = CEntityTeleport {
-                entity_id: model.entity_id as i32,
-                x: player.pos.x,
-                y: player.pos.y,
-                z: player.pos.z,
-                yaw: player.yaw,
-                pitch: player.pitch,
-                on_ground: player.on_ground,
-            }
-            .encode();
-            let head = CEntityHeadLook {
-                entity_id: model.entity_id as i32,
-                yaw: player.yaw,
-            }
-            .encode();
+            let mouth = mouth_changed.then(|| fox_mouth_equipment(&self.players[owner], model_id));
             for (index, viewer) in self.players.iter().enumerate() {
                 if index == owner {
                     continue;
                 }
-                viewer.send_packet(&position);
-                viewer.send_packet(&head);
+                if let Some(position) = &position {
+                    viewer.send_packet(position);
+                }
+                if let Some(head) = &head {
+                    viewer.send_packet(head);
+                }
+                if let Some(mouth) = &mouth {
+                    viewer.send_packet(mouth);
+                }
             }
         }
     }

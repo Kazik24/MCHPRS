@@ -1,6 +1,7 @@
 use super::*;
-use crate::player::{Gamemode, PlayerPos};
+use crate::player::{Gamemode, PlayerPos, SmallAnimal};
 use mchprs_blocks::blocks::Block;
+use mchprs_blocks::items::{Item, ItemStack};
 use mchprs_blocks::{BlockFace, BlockPos};
 use mchprs_network::packets::serverbound::*;
 use mchprs_network::packets::PacketDecoderExt;
@@ -43,6 +44,26 @@ fn flags(peer: &mut TcpStream, compressed: bool, expected: u8) {
     assert_eq!(body.read_unsigned_byte().unwrap(), 0);
     assert_eq!(body.read_varint().unwrap(), 0);
     assert_eq!(body.read_unsigned_byte().unwrap(), expected);
+}
+
+fn proxy_type(peer: &mut TcpStream, compressed: bool) -> i32 {
+    let mut spawn = packet(peer, compressed, 0x01);
+    spawn.read_varint().unwrap();
+    spawn.read_uuid().unwrap();
+    spawn.read_varint().unwrap()
+}
+
+fn proxy_held_item(
+    peer: &mut TcpStream,
+    entity: u32,
+    compressed: bool,
+) -> Option<mchprs_network::packets::SlotData> {
+    let mut equipment = packet(peer, compressed, 0x5f);
+    assert_eq!(equipment.read_varint().unwrap(), entity as i32);
+    assert_eq!(equipment.read_unsigned_byte().unwrap(), 0);
+    let item = mchprs_network::packets::components::read_slot(&mut equipment).unwrap();
+    assert_eq!(equipment.position() as usize, equipment.get_ref().len());
+    item
 }
 
 fn enable(plot: &mut Plot, owner: &mut TcpStream, viewer: &mut TcpStream, compressed: bool) -> u32 {
@@ -301,4 +322,61 @@ fn cat_gamemode_enables_creative_and_normal_gamemode_restores_size() {
     assert!(plot.players[0].small_model.is_some());
     plot.handle_command(0, "/small", vec!["off"]);
     assert!(plot.players[0].small_model.is_none());
+}
+
+#[test]
+fn small_animal_commands_spawn_generated_models_and_update_fox_equipment() {
+    let (mut plot, mut owner, mut viewer) = fixture(false);
+    enable(&mut plot, &mut owner, &mut viewer, false);
+    plot.players[0].inventory[37] = Some(ItemStack {
+        item_type: Item::Stick {},
+        count: 1,
+        nbt: None,
+    });
+
+    for (name, animal, expected_entity) in [
+        (
+            "wolf",
+            SmallAnimal::Wolf,
+            mchprs_network::generated::WOLF_ENTITY,
+        ),
+        (
+            "fox",
+            SmallAnimal::Fox,
+            mchprs_network::generated::FOX_ENTITY,
+        ),
+        (
+            "cat",
+            SmallAnimal::Cat,
+            mchprs_network::generated::CAT_ENTITY,
+        ),
+        (
+            "ocelot",
+            SmallAnimal::Ocelot,
+            mchprs_network::generated::OCELOT_ENTITY,
+        ),
+    ] {
+        assert!(!plot.handle_command(0, "/small", vec![name]));
+        assert_eq!(plot.players[0].small_animal, animal);
+        packet(&mut owner, false, 0x46);
+        packet(&mut owner, false, 0x72);
+        packet(&mut viewer, false, 0x46);
+        let model = plot.players[0].small_model.as_ref().unwrap().entity_id;
+        assert_eq!(proxy_type(&mut viewer, false), expected_entity);
+        packet(&mut viewer, false, 0x5c);
+        if animal == SmallAnimal::Fox {
+            let item = proxy_held_item(&mut viewer, model, false).unwrap();
+            assert_eq!(item.item_id, Item::Sandstone {}.get_id() as i32);
+            assert_eq!(item.item_count, 64);
+
+            plot.sync_small_models();
+            packet(&mut viewer, false, 0x76);
+            packet(&mut viewer, false, 0x4c);
+            proxy_held_item(&mut viewer, model, false);
+            plot.players[0].selected_slot = 1;
+            plot.sync_small_models();
+            let item = proxy_held_item(&mut viewer, model, false).unwrap();
+            assert_eq!(item.item_id, Item::Stick {}.get_id() as i32);
+        }
+    }
 }
