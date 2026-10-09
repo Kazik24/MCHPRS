@@ -521,10 +521,7 @@ impl ServerBoundPacketHandler for Plot {
             || !data.has_permission("commands.commandblock.edit")
             || !Plot::in_plot_bounds(self.world.x, self.world.z, pos.x, pos.z)
             || !(0..super::PLOT_BLOCK_HEIGHT).contains(&pos.y)
-            || !super::picking::within_reach(
-                PlayerPos::new(data.pos.x, data.pos.y + 1.62, data.pos.z),
-                pos,
-            )
+            || !super::picking::within_reach(data.eye_position(), pos)
         {
             return;
         }
@@ -585,13 +582,9 @@ impl ServerBoundPacketHandler for Plot {
             return;
         }
         let pos = BlockPos::from_packed(packet.pos);
-        let location = self.players[player].pos;
         if !Plot::in_plot_bounds(self.world.x, self.world.z, pos.x, pos.z)
             || !(0..super::PLOT_BLOCK_HEIGHT).contains(&pos.y)
-            || !super::picking::within_reach(
-                PlayerPos::new(location.x, location.y + 1.62, location.z),
-                pos,
-            )
+            || !super::picking::within_reach(self.players[player].eye_position(), pos)
         {
             return;
         }
@@ -726,17 +719,7 @@ impl ServerBoundPacketHandler for Plot {
             };
             self.players[player].inventory[creative_inventory_action.slot as usize] = Some(item);
             if creative_inventory_action.slot as u32 == self.players[player].selected_slot + 36 {
-                let entity_equipment = CEntityEquipment {
-                    entity_id: self.players[player].entity_id as i32,
-                    equipment: vec![CEntityEquipmentEquipment {
-                        slot: 0, // Main hand
-                        item: self.players[player].inventory
-                            [creative_inventory_action.slot as usize]
-                            .as_ref()
-                            .map(crate::container::slot_data),
-                    }],
-                }
-                .encode();
+                let entity_equipment = self.players[player].entity_equipment_packet();
                 for other_player in 0..self.players.len() {
                     if player == other_player {
                         continue;
@@ -868,21 +851,10 @@ impl ServerBoundPacketHandler for Plot {
     }
 
     fn handle_client_settings(&mut self, client_settings: SClientSettings, player: usize) {
-        let player = &mut self.players[player];
-        player.skin_parts =
+        self.players[player].skin_parts =
             SkinParts::from_bits_truncate(client_settings.displayed_skin_parts as u32);
-        let metadata_entry = CEntityMetadataEntry {
-            index: 17,
-            metadata_type: 0,
-            value: vec![player.skin_parts.bits() as u8],
-        };
-        let entity_metadata = CEntityMetadata {
-            entity_id: player.entity_id as i32,
-            metadata: vec![metadata_entry],
-        }
-        .encode();
-        for player in &mut self.players {
-            player.client.send_packet(&entity_metadata);
+        for (index, viewer) in self.players.iter().enumerate() {
+            viewer.send_packet(&self.players[player].entity_metadata_packet(index == player));
         }
     }
 
@@ -989,37 +961,8 @@ impl ServerBoundPacketHandler for Plot {
             4 => self.players[player].sprinting = false,
             _ => {}
         }
-        let mut bitfield = 0;
-        if self.players[player].crouching {
-            bitfield |= 0x02;
-        };
-        if self.players[player].sprinting {
-            bitfield |= 0x08;
-        };
-        let metadata_entries = vec![
-            CEntityMetadataEntry {
-                index: 0,
-                metadata_type: 0,
-                value: vec![bitfield],
-            },
-            CEntityMetadataEntry {
-                index: 6,
-                metadata_type: 21,
-                value: vec![if self.players[player].crouching { 5 } else { 0 }],
-            },
-        ];
-        let entity_metadata = CEntityMetadata {
-            entity_id: self.players[player].entity_id as i32,
-            metadata: metadata_entries,
-        }
-        .encode();
-        for other_player in 0..self.players.len() {
-            if player == other_player {
-                continue;
-            };
-            self.players[other_player]
-                .client
-                .send_packet(&entity_metadata);
+        for (index, viewer) in self.players.iter().enumerate() {
+            viewer.send_packet(&self.players[player].entity_metadata_packet(index == player));
         }
     }
 
@@ -1030,16 +973,8 @@ impl ServerBoundPacketHandler for Plot {
         if self.players[player].selected_slot != held_item_change.slot as u32 {
             self.clear_wire_tool(player);
         }
-        let entity_equipment = CEntityEquipment {
-            entity_id: self.players[player].entity_id as i32,
-            equipment: vec![CEntityEquipmentEquipment {
-                slot: 0, // Main hand
-                item: self.players[player].inventory[held_item_change.slot as usize + 36]
-                    .as_ref()
-                    .map(crate::container::slot_data),
-            }],
-        }
-        .encode();
+        self.players[player].selected_slot = held_item_change.slot as u32;
+        let entity_equipment = self.players[player].entity_equipment_packet();
         for other_player in 0..self.players.len() {
             if player == other_player {
                 continue;
@@ -1048,7 +983,6 @@ impl ServerBoundPacketHandler for Plot {
                 .client
                 .send_packet(&entity_equipment);
         }
-        self.players[player].selected_slot = held_item_change.slot as u32;
     }
 
     fn handle_update_sign(&mut self, packet: SUpdateSign, player: usize) {

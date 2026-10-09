@@ -8,7 +8,6 @@ use mchprs_blocks::BlockPos;
 use std::time::{Duration, Instant};
 
 const RANGE: f64 = 1024.0;
-const HALF_WIDTH: f64 = 0.3;
 const SEARCH_DISTANCE: f64 = 8.0;
 
 impl Plot {
@@ -38,12 +37,8 @@ impl Plot {
         {
             return true;
         }
-        let crouching = data.crouching;
-        let eye = PlayerPos::new(
-            data.pos.x,
-            data.pos.y + if crouching { 1.27 } else { 1.62 },
-            data.pos.z,
-        );
+        let eye = data.eye_position();
+        let scale = data.scale();
         self.players[player].last_compass_use = Some(Instant::now());
         let read = |pos: BlockPos| {
             if !Plot::in_plot_bounds(self.world.x, self.world.z, pos.x, pos.z) {
@@ -54,7 +49,7 @@ impl Plot {
                 Some(self.world.get_block(pos))
             }
         };
-        let destination = compass_destination(eye, yaw, pitch, &read);
+        let destination = compass_destination(eye, yaw, pitch, scale, &read);
         let Some(destination) = destination else {
             self.players[player].send_error_message(messages::COMPASS_NO_SAFE_DESTINATION);
             return true;
@@ -196,10 +191,11 @@ fn compass_destination(
     eye: PlayerPos,
     yaw: f32,
     pitch: f32,
+    scale: f64,
     read: &impl Fn(BlockPos) -> Option<Block>,
 ) -> Option<PlayerPos> {
     let hit = pointed_block(eye, yaw, pitch, read)?;
-    if let Some(pos) = landing_position(hit.block, read) {
+    if let Some(pos) = landing_position(hit.block, scale, read) {
         return Some(pos);
     }
     let contact = hit.point(hit.distance);
@@ -220,12 +216,12 @@ fn compass_destination(
                     if !checked.insert(target) || !(0..PLOT_BLOCK_HEIGHT).contains(&target.y) {
                         continue;
                     }
-                    let Some(pos) = landing_position(target, read) else {
+                    let Some(pos) = landing_position(target, scale, read) else {
                         continue;
                     };
                     let offset = [
                         pos.x - hit.origin[0],
-                        pos.y + 0.9 - hit.origin[1],
+                        pos.y + 0.9 * scale - hit.origin[1],
                         pos.z - hit.origin[2],
                     ];
                     let projection: f64 =
@@ -381,6 +377,7 @@ fn vertical_bounds(block: Block) -> Option<(f64, f64)> {
 
 fn landing_position(
     target: BlockPos,
+    scale: f64,
     read: &impl Fn(BlockPos) -> Option<Block>,
 ) -> Option<PlayerPos> {
     let block = read(target)?;
@@ -401,23 +398,28 @@ fn landing_position(
         f64::from(target.z) + 0.5,
     );
     // Reserve standing height even when sneaking so releasing sneak remains safe.
-    let height = 1.8;
+    let height = 1.8 * scale;
     if !pos.is_valid() || pos.y < 0.0 || pos.y + height > f64::from(PLOT_BLOCK_HEIGHT) {
         return None;
     }
-    body_clear(pos, read).then_some(pos)
+    body_clear(pos, scale, read).then_some(pos)
 }
 
 /// Standing-body clearance shared by compass landing and plot restoration.
-pub(super) fn body_clear(pos: PlayerPos, read: &impl Fn(BlockPos) -> Option<Block>) -> bool {
+pub(super) fn body_clear(
+    pos: PlayerPos,
+    scale: f64,
+    read: &impl Fn(BlockPos) -> Option<Block>,
+) -> bool {
     if !pos.is_valid() {
         return false;
     }
-    let height = 1.8;
-    let min_x = (pos.x - HALF_WIDTH).floor() as i32;
-    let max_x = (pos.x + HALF_WIDTH).ceil() as i32;
-    let min_z = (pos.z - HALF_WIDTH).floor() as i32;
-    let max_z = (pos.z + HALF_WIDTH).ceil() as i32;
+    let height = 1.8 * scale;
+    let half_width = 0.3 * scale;
+    let min_x = (pos.x - half_width).floor() as i32;
+    let max_x = (pos.x + half_width).ceil() as i32;
+    let min_z = (pos.z - half_width).floor() as i32;
+    let max_z = (pos.z + half_width).ceil() as i32;
     for x in min_x..max_x {
         for z in min_z..max_z {
             // Include blocks below the feet: fences/walls can extend 1.5 blocks up.
@@ -428,10 +430,10 @@ pub(super) fn body_clear(pos: PlayerPos, read: &impl Fn(BlockPos) -> Option<Bloc
                 if let Some(bounds) = collision_bounds(block) {
                     if f64::from(y) + bounds.max[1] > pos.y + 1e-9
                         && f64::from(y) + bounds.min[1] < pos.y + height
-                        && f64::from(x) + bounds.max[0] > pos.x - HALF_WIDTH
-                        && f64::from(x) + bounds.min[0] < pos.x + HALF_WIDTH
-                        && f64::from(z) + bounds.max[2] > pos.z - HALF_WIDTH
-                        && f64::from(z) + bounds.min[2] < pos.z + HALF_WIDTH
+                        && f64::from(x) + bounds.max[0] > pos.x - half_width
+                        && f64::from(x) + bounds.min[0] < pos.x + half_width
+                        && f64::from(z) + bounds.max[2] > pos.z - half_width
+                        && f64::from(z) + bounds.min[2] < pos.z + half_width
                     {
                         return false;
                     }
@@ -446,6 +448,24 @@ pub(super) fn body_clear(pos: PlayerPos, read: &impl Fn(BlockPos) -> Option<Bloc
 mod tests {
     use super::*;
     use std::collections::HashMap;
+
+    #[test]
+    fn small_landing_fits_one_block_headroom_without_ignoring_obstacles() {
+        let target = BlockPos::new(1, 64, 1);
+        let ceiling = BlockPos::new(1, 66, 1);
+        let read = |p| {
+            Some(if p == target || p == ceiling {
+                Block::Stone {}
+            } else {
+                Block::Air
+            })
+        };
+        assert!(landing_position(target, 1.0, &read).is_none());
+        let pos = landing_position(target, 0.5, &read).unwrap();
+        assert_eq!(pos.y, 65.0);
+        assert!(!body_clear(PlayerPos::new(pos.x, 65.2, pos.z), 0.5, &read));
+        assert!(!body_clear(pos, 0.5, &|_| None));
+    }
 
     #[test]
     fn ray_hits_first_block_in_all_directions_and_stops_at_bounds() {
@@ -487,18 +507,20 @@ mod tests {
     fn landing_centers_feet_and_requires_full_headroom() {
         let target = BlockPos::new(-5, 64, -7);
         let mut blocks = HashMap::from([(target, Block::Stone {})]);
-        let destination =
-            landing_position(target, &|p| Some(*blocks.get(&p).unwrap_or(&Block::Air))).unwrap();
+        let destination = landing_position(target, 1.0, &|p| {
+            Some(*blocks.get(&p).unwrap_or(&Block::Air))
+        })
+        .unwrap();
         assert_eq!(
             (destination.x, destination.y, destination.z),
             (-4.5, 65.0, -6.5)
         );
         for y in [65, 66] {
             blocks.insert(BlockPos::new(-5, y, -7), Block::Glass);
-            assert!(
-                landing_position(target, &|p| Some(*blocks.get(&p).unwrap_or(&Block::Air)))
-                    .is_none()
-            );
+            assert!(landing_position(target, 1.0, &|p| Some(
+                *blocks.get(&p).unwrap_or(&Block::Air)
+            ))
+            .is_none());
             blocks.remove(&BlockPos::new(-5, y, -7));
         }
     }
@@ -513,7 +535,10 @@ mod tests {
             let block = Block::from_name(name).unwrap();
             let target = BlockPos::new(1, 64, 1);
             let read = |p| Some(if p == target { block } else { Block::Air });
-            assert_eq!(landing_position(target, &read).unwrap().y, 64.0 + expected);
+            assert_eq!(
+                landing_position(target, 1.0, &read).unwrap().y,
+                64.0 + expected
+            );
         }
         let target = BlockPos::new(1, PLOT_BLOCK_HEIGHT - 2, 1);
         let read = |p| {
@@ -523,7 +548,7 @@ mod tests {
                 Block::Air
             })
         };
-        assert!(landing_position(target, &read).is_none());
+        assert!(landing_position(target, 1.0, &read).is_none());
     }
 
     #[test]
@@ -567,7 +592,8 @@ mod tests {
                 },
             )
         };
-        let pos = compass_destination(PlayerPos::new(0.5, 64.5, 0.5), 0.0, 0.0, &read).unwrap();
+        let pos =
+            compass_destination(PlayerPos::new(0.5, 64.5, 0.5), 0.0, 0.0, 1.0, &read).unwrap();
         assert_eq!((pos.x, pos.y, pos.z), (0.5, 63.0, 9.5));
     }
 
@@ -580,7 +606,8 @@ mod tests {
                 Block::Air
             })
         };
-        let pos = compass_destination(PlayerPos::new(0.5, 64.5, 0.5), 0.0, 0.0, &read).unwrap();
+        let pos =
+            compass_destination(PlayerPos::new(0.5, 64.5, 0.5), 0.0, 0.0, 1.0, &read).unwrap();
         assert_eq!((pos.x, pos.y, pos.z), (0.5, 67.0, 10.5));
         let read = |p: BlockPos| {
             Some(
@@ -591,7 +618,9 @@ mod tests {
                 },
             )
         };
-        assert!(compass_destination(PlayerPos::new(0.5, 64.5, 0.5), 0.0, 0.0, &read).is_none());
+        assert!(
+            compass_destination(PlayerPos::new(0.5, 64.5, 0.5), 0.0, 0.0, 1.0, &read).is_none()
+        );
     }
 
     #[test]
@@ -606,7 +635,7 @@ mod tests {
                 Block::Air
             })
         };
-        assert_eq!(landing_position(target, &read).unwrap().y, 64.0);
+        assert_eq!(landing_position(target, 1.0, &read).unwrap().y, 64.0);
         let read = |p: BlockPos| {
             Some(if p.y == 63 {
                 Block::from_name("lava").unwrap()
@@ -614,7 +643,7 @@ mod tests {
                 Block::Air
             })
         };
-        assert!(landing_position(target, &read).is_none());
+        assert!(landing_position(target, 1.0, &read).is_none());
     }
 
     #[test]
@@ -651,6 +680,6 @@ mod tests {
                 .block,
             target
         );
-        assert!(landing_position(fence, &read).is_none());
+        assert!(landing_position(fence, 1.0, &read).is_none());
     }
 }

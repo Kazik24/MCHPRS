@@ -569,7 +569,7 @@ impl Plot {
                 let player = &self.players[player];
                 let pos = worldedit::ray_trace_block(
                     &self.world,
-                    player.pos,
+                    player.eye_position(),
                     player.pitch as f64,
                     player.yaw as f64,
                     10.0,
@@ -1029,6 +1029,18 @@ impl Plot {
                 let command = args.remove(0);
                 self.handle_redpiler_command(player, command, &args);
             }
+            "/small" => {
+                let enabled = match args.as_slice() {
+                    [] => self.players[player].small_model.is_none(),
+                    ["on"] => true,
+                    ["off"] => false,
+                    _ => {
+                        self.players[player].send_error_message(messages::USAGE_SMALL);
+                        return false;
+                    }
+                };
+                self.set_small(player, enabled);
+            }
             "/speed" => {
                 if args.len() != 1 {
                     self.players[player].send_error_message(messages::USAGE_SPEED);
@@ -1058,8 +1070,8 @@ impl Plot {
                     self.players[player].send_error_message(messages::UNABLE_PARSE_SPEED_VALUE);
                 }
             }
-            "/gmsp" => self.change_player_gamemode(player, Gamemode::Spectator),
-            "/gmc" => self.change_player_gamemode(player, Gamemode::Creative),
+            "/gmsp" => self.change_player_gamemode(player, Gamemode::Spectator, false),
+            "/gmc" => self.change_player_gamemode(player, Gamemode::Creative, false),
             "/gamemode" | "/gm" => {
                 if args.len() != 1 {
                     self.players[player].send_error_message(messages::INVALID_ARGUMENT_COUNT);
@@ -1067,15 +1079,15 @@ impl Plot {
                 }
                 let name = args.remove(0);
                 let gamemode = match name {
-                    "creative" | "1" => Gamemode::Creative,
-                    "adventure" | "2" => Gamemode::Adventure,
-                    "spectator" | "3" => Gamemode::Spectator,
+                    "c" | "creative" | "1" | "cat" => Gamemode::Creative,
+                    "a" | "adventure" | "2" => Gamemode::Adventure,
+                    "s" | "spectator" | "3" => Gamemode::Spectator,
                     _ => {
                         self.players[player].send_error_message(messages::UNKNOWN_GAMEMODE);
                         return false;
                     }
                 };
-                self.change_player_gamemode(player, gamemode);
+                self.change_player_gamemode(player, gamemode, name == "cat");
             }
             "/worldsendrate" | "/wsr" => {
                 if args.is_empty() {
@@ -1143,6 +1155,7 @@ fn native_command_permission(command: &str, args: &[&str]) -> Option<String> {
         "/warp" => "warp".to_owned(),
         "/setwarp" => "setwarp".to_owned(),
         "/speed" => "speed".to_owned(),
+        "/small" => "small".to_owned(),
         "/gmsp" | "/gmc" | "/gamemode" | "/gm" => "gamemode".to_owned(),
         "/stop" => "stop".to_owned(),
         "/whitelist" => "whitelist".to_owned(),
@@ -1208,7 +1221,7 @@ fn declared_command_nodes() -> Vec<Node<'static>> {
             1, 4, 5, 6, 11, 12, 14, 16, 18, 19, 20, 21, 22, 23, 24, 26, 29, 31, 33, 35, 46, 48, 52,
             59, 60, 62, 64, 65, 66, 70, 72, 73, 74, 81, 82, 84, 87, 89, 90, 100, 105, 110, 111,
             112, 113, 114, 115, 117, 119, 120, 123, 130, 134, 135, 142, 143, 144, 145, 146, 150,
-            152, 153, 160, 161, 164,
+            152, 153, 160, 161, 164, 165,
         ]),
         // 1: /teleport
         Node::literal("teleport", &[3, 2]),
@@ -1474,7 +1487,7 @@ fn declared_command_nodes() -> Vec<Node<'static>> {
             .suggestions("minecraft:ask_server"),
         // 134-143: gamemode alias, names, IDs and legacy shortcuts.
         Node::redirect("gm", 135),
-        Node::literal("gamemode", &[136, 137, 138, 139, 140, 141]),
+        Node::literal("gamemode", &[136, 137, 138, 139, 140, 141, 168]),
         Node::literal("creative", &[]).executable(),
         Node::literal("adventure", &[]).executable(),
         Node::literal("spectator", &[]).executable(),
@@ -1513,6 +1526,12 @@ fn declared_command_nodes() -> Vec<Node<'static>> {
         Node::literal("plane", &[]).executable(),
         // 164: /rv shares the server-completed git arguments.
         Node::literal("rv", &[109]).executable(),
+        // 165-167: /small and its explicit states.
+        Node::literal("small", &[166, 167]).executable(),
+        Node::literal("on", &[]).executable(),
+        Node::literal("off", &[]).executable(),
+        // 168: /gm cat selects creative play with the small ocelot disguise.
+        Node::literal("cat", &[]).executable(),
     ]
 }
 
@@ -1527,6 +1546,39 @@ pub static DECLARE_COMMANDS: Lazy<PacketEncoder> = Lazy::new(|| {
 #[cfg(test)]
 mod security_tests {
     use super::*;
+    #[test]
+    fn small_and_cat_commands_have_permissions_and_completion() {
+        assert_eq!(
+            native_command_permission("/small", &["on"]).as_deref(),
+            Some("commands.small")
+        );
+        assert_eq!(
+            native_command_permission("/gm", &["cat"]).as_deref(),
+            Some("commands.gamemode")
+        );
+        assert!(!changes_plot("/small", &["on"]));
+        let nodes = declared_command_nodes();
+        let small = nodes
+            .iter()
+            .find(|node| node.name == Some("small"))
+            .unwrap();
+        assert_eq!(
+            small
+                .children
+                .iter()
+                .map(|&id| nodes[id as usize].name.unwrap())
+                .collect::<Vec<_>>(),
+            ["on", "off"]
+        );
+        let gm = nodes
+            .iter()
+            .find(|node| node.name == Some("gamemode"))
+            .unwrap();
+        assert!(gm
+            .children
+            .iter()
+            .any(|&id| nodes[id as usize].name == Some("cat")));
+    }
     #[test]
     fn teleport_autocomplete_suggests_player_names_without_selectors() {
         let nodes = declared_command_nodes();
@@ -1596,7 +1648,7 @@ mod security_tests {
     #[test]
     fn command_declarations_have_valid_edges_and_no_legacy_tick_aliases() {
         let nodes = declared_command_nodes();
-        assert_eq!(nodes.len(), 165);
+        assert_eq!(nodes.len(), 169);
         for node in &nodes {
             for edge in node.children.iter().copied().chain(node.redirect_node) {
                 assert!(edge >= 0 && (edge as usize) < nodes.len());

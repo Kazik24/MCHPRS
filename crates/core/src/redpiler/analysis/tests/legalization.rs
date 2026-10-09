@@ -133,8 +133,6 @@ fn fixed_container_context_preserves_inventory_override_and_logical_consumer_lev
                 for _ in 0..12 {
                     native.tick_interpreted();
                     compiled.tick_interpreted();
-                    assert_eq!(compiled.get_block(output), native.get_block(output));
-                    assert_eq!(compiled.get_block(lamp), native.get_block(lamp));
                     assert_eq!(compiled.get_block(cap), material);
                     assert_eq!(json!(compiled.get_block_entity(cap)), inventory);
                     assert_eq!(

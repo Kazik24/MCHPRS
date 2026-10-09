@@ -189,6 +189,23 @@ impl ClientBoundPacket for CSpawnPlayer {
 
 // Play Packets
 
+pub struct CEntityScale {
+    pub entity_id: i32,
+    pub scale: f64,
+}
+
+impl ClientBoundPacket for CEntityScale {
+    fn encode(&self) -> PacketEncoder {
+        let mut buf = Vec::new();
+        buf.write_varint(self.entity_id);
+        buf.write_varint(1);
+        buf.write_varint(24); // Minecraft 1.21.5 scale attribute.
+        buf.write_double(self.scale);
+        buf.write_varint(0);
+        PacketEncoder::new(buf, 0x7c)
+    }
+}
+
 pub struct CEntityAnimation {
     pub entity_id: i32,
     pub animation: u8,

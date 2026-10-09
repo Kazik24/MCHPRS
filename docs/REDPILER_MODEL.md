@@ -535,35 +535,25 @@ decoder and episode; they are not universal component replacement rules.
 
 ## 11. Returning execution to the interpreter
 
-Handoff requires an interpreter state with equivalent future boundary behavior,
-not only matching current output bits. If $M$ materializes compiled state, the
-obligation is
-
-$$
-\forall h\in\mathcal P_{\mathrm{continue}}:\quad
-O(\operatorname{Interpreter}(M(S_n),h))
-=O(\operatorname{PhysicalReference}(n,h)).
-$$
-
-This concerns continuation of the compatible physical protocol. An ideal
-region can intentionally differ from physical execution, so materializing it
-does not promise continuing ideal/interpreter equality.
+Handoff must leave valid piston geometry and enough pending native work for
+active reset loops to resume. It preserves committed storage, but may restart
+the reset episode with different timing. It does not promise a waveform equal
+to uninterrupted physical execution across the transition. An ideal region
+can also intentionally differ from physical execution.
 
 Reset first flushes ordinary hidden state and events, including comparator
-entity strengths. In physically compatible mode, handoff preserves each actor's
-current movement phase and remaining deadline, including actors hidden from
-compiled output. It restores moving piston entities, owned observer power and
-pending ticks, and base rechecks that would otherwise be lost between movements.
-Payload ownership and stored cells follow the last committed bank. Owned dust
-is recalculated against that restored geometry without invoking update callbacks.
-The ordinary scheduler retains its pending work.
+entity strengths. Logical handoff writes stationary occupancy and the last
+committed bank. Shared payload ownership uses the first firing actor in stored
+group order. Owned reset observers are off; owned dust receives settled shape
+and strength from compiled guarded paths. The ordinary scheduler retains its
+pending work.
 
-With `--assume-instant`, handoff instead exports a deterministic settled snapshot
-of logical occupancy and stored bits. Shared payload ownership uses the first
-firing actor in stored group order. Owned reset observers are off, dust receives
-settled shape and strength from compiled guarded paths, and no movement or reset
-episode is synthesized. This preserves the intentional ideal-mode distinction
-from physical execution.
+After writing the complete snapshot, handoff schedules native observer pulses
+and base rechecks for active nonmemory reset owners, including the internal
+clock and its sampling observer. These resume the reset protocol from a valid
+pose without exporting historical movement entities or motion progress. Inactive
+owners and stored BUD cells receive no unsolicited reset. The same handoff rule
+applies with and without `--assume-instant`.
 
 Finally ordinary scheduler entries return to the world with relative deadlines,
 priority and FIFO order. Constants preserve current physical presentation
@@ -573,10 +563,10 @@ handoff exports the current bank regardless of the display cadence. Other
 virtual internal components may have remained at entry presentation.
 
 Explicit reset-with-update additionally invokes the requested physical updates;
-ordinary handoff exports continuation work without invoking them. Compilation
+ordinary handoff schedules only the active reset protocol's continuation. Compilation
 still requires stationary entry geometry with no pending piston events. Repeated
-handoff tests compare outputs tick by tick, resume interpretation, and settle
-before recompiling. This does not prove all edit/save/load histories; new
+handoff tests check geometry, continuing activity, and settled recompilation.
+They allow a timing shift at the domain boundary. This does not prove all edit/save/load histories; new
 lifecycle support needs continuation tests at the affected state boundaries.
 
 ## 12. Generalization, admission and known gaps

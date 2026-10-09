@@ -792,7 +792,7 @@ fn aim(
     if !player.pos.is_valid() || !yaw.is_finite() || !pitch.is_finite() {
         return None;
     }
-    let eye_y = player.pos.y + if player.crouching { 1.27 } else { 1.62 };
+    let eye_y = player.eye_position().y;
     let radians_pitch = f64::from(pitch).to_radians();
     let radians_yaw = f64::from(yaw).to_radians();
     let direction = [

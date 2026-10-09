@@ -22,19 +22,22 @@ pub(super) fn execute_wand(ctx: CommandExecuteContext<'_>) {
         item_type: Item::WEWand {},
         nbt: None,
     };
-    ctx.player.inventory[(ctx.player.selected_slot + 36) as usize] = Some(item);
-    let entity_equipment = CEntityEquipment {
-        entity_id: ctx.player.entity_id as i32,
-        equipment: vec![CEntityEquipmentEquipment {
-            slot: 0,
-            item: ctx.player.inventory[(ctx.player.selected_slot + 36) as usize]
-                .as_ref()
-                .map(crate::container::slot_data),
-        }],
-    }
-    .encode();
-    for player in &mut ctx.plot.packet_senders {
-        player.send_packet(&entity_equipment);
+    ctx.player
+        .set_inventory_slot(ctx.player.selected_slot + 36, Some(item));
+    if ctx.player.small_model.is_none() {
+        let entity_equipment = CEntityEquipment {
+            entity_id: ctx.player.entity_id as i32,
+            equipment: vec![CEntityEquipmentEquipment {
+                slot: 0,
+                item: ctx.player.inventory[(ctx.player.selected_slot + 36) as usize]
+                    .as_ref()
+                    .map(crate::container::slot_data),
+            }],
+        }
+        .encode();
+        for player in &mut ctx.plot.packet_senders {
+            player.send_packet(&entity_equipment);
+        }
     }
 }
 
@@ -371,7 +374,7 @@ pub(super) fn execute_hpos1(mut ctx: CommandExecuteContext<'_>) {
     let pitch = player.pitch as f64;
     let yaw = player.yaw as f64;
 
-    let result = ray_trace_block(ctx.plot, player.pos, pitch, yaw, 300.0);
+    let result = ray_trace_block(ctx.plot, player.eye_position(), pitch, yaw, 300.0);
 
     let player = ctx.player;
     match result {
@@ -385,7 +388,7 @@ pub(super) fn execute_hpos2(mut ctx: CommandExecuteContext<'_>) {
     let pitch = player.pitch as f64;
     let yaw = player.yaw as f64;
 
-    let result = ray_trace_block(ctx.plot, player.pos, pitch, yaw, 300.0);
+    let result = ray_trace_block(ctx.plot, player.eye_position(), pitch, yaw, 300.0);
 
     let player = &mut ctx.player;
     match result {

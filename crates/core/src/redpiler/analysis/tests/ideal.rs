@@ -350,13 +350,12 @@ fn ideal_reset_restores_stored_bits_and_stationary_geometry_deterministically() 
             }
             assert_eq!(actual, expected);
             assert!(world.piston_state().motions.is_empty());
-            assert!(world.piston_state().events.is_empty());
             assert!(
-                !world.scheduler().iter_entries().any(|tick| matches!(
-                    world.get_block(tick.pos),
-                    Block::Piston { .. } | Block::Observer { .. }
-                )),
-                "logical reset must not return physical reset or piston deadlines"
+                world
+                    .scheduler()
+                    .iter_entries()
+                    .any(|tick| matches!(world.get_block(tick.pos), Block::Observer { .. })),
+                "the active clock must resume from its settled snapshot"
             );
             crate::world::for_each_block_optimized(&world, bounds.0, bounds.1, |pos| {
                 assert!(
@@ -365,7 +364,7 @@ fn ideal_reset_restores_stored_bits_and_stationary_geometry_deterministically() 
                 );
                 assert!(
                     !matches!(world.get_block(pos), Block::Observer { observer } if observer.powered),
-                    "owned reset observers must be dormant at {pos:?}"
+                    "owned reset observers start unpowered at {pos:?}"
                 );
             });
             let restored = snapshot(&world, bounds);

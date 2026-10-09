@@ -626,10 +626,8 @@ fn compiled_adder_matches_arithmetic_in_each_response_window() {
                         assert!(world.piston_state().motions.is_empty());
                     }
                     compiler.reset(&mut world, bounds);
-                    if assume_instant {
-                        assert!(world.piston_state().events.is_empty());
-                        assert!(world.piston_state().motions.is_empty());
-                    }
+                    assert!(!compiler.is_active());
+                    assert!(world.piston_state().motions.is_empty());
                 }
             }
         }

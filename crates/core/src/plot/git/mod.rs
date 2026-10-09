@@ -441,11 +441,9 @@ impl Plot {
         let inspection = if args == ["inspect"] {
             self.reset_redpiler();
             let viewer = &self.players[player];
-            let mut eye_base = viewer.pos;
-            eye_base.y -= if viewer.crouching { 0.38 } else { 0.03 };
             let pos = super::worldedit::ray_trace_block(
                 &self.world,
-                eye_base,
+                viewer.eye_position(),
                 f64::from(pitch),
                 f64::from(yaw),
                 10.0,
@@ -896,7 +894,7 @@ impl Plot {
             self.players[player].worldedit_undo.clear();
             self.players[player].worldedit_redo.clear();
             let pos = self.players[player].pos;
-            if !self.git_player_clear(pos) {
+            if !self.git_player_clear(pos, self.players[player].scale()) {
                 if let Some(safe) = self.git_safe_position(pos) {
                     self.players[player].teleport(safe);
                     self.players[player].on_ground = false;
@@ -908,8 +906,8 @@ impl Plot {
         }
     }
 
-    fn git_player_clear(&self, pos: PlayerPos) -> bool {
-        super::compass::body_clear(pos, &|p| {
+    fn git_player_clear(&self, pos: PlayerPos, scale: f64) -> bool {
+        super::compass::body_clear(pos, scale, &|p| {
             if !Plot::in_plot_bounds(self.world.x, self.world.z, p.x, p.z) {
                 None
             } else if !(0..super::PLOT_BLOCK_HEIGHT).contains(&p.y) {

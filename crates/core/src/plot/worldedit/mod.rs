@@ -1099,6 +1099,7 @@ fn for_each_selected_position(first: BlockPos, second: BlockPos, mut visit: impl
     }
 }
 
+/// Trace from the player's eye position, including their current scale and pose.
 pub fn ray_trace_block(
     world: &impl World,
     mut pos: PlayerPos,
@@ -1108,8 +1109,6 @@ pub fn ray_trace_block(
 ) -> Option<BlockPos> {
     let check_distance = 0.2;
 
-    // Player view height
-    pos.y += 1.65;
     let rot_x = (start_yaw + 90.0) % 360.0;
     let rot_y = -start_pitch;
     let h = check_distance * rot_y.to_radians().cos();

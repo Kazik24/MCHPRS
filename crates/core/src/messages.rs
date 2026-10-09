@@ -24,6 +24,11 @@ macro_rules! catalog {
 
 catalog! {
     fixed {
+        USAGE_SMALL = "Usage: /small [on|off]";
+        SMALL_ENABLED = "Smol paws mode on";
+        SMALL_DISABLED = "Small mode off. You're back to your normal size.";
+        SMALL_NO_ROOM = "There isn't room to return to full size here. Move into an open space first.";
+        HELP_SMALL = "Small mode\n/small toggles half-size movement and an ocelot appearance for other players.\n/small on and /small off select the mode explicitly.\n/gm cat enables creative play in small mode; other gamemodes restore normal size.\nYour own view stays a scaled player so the preview cannot block your clicks.\nMove into an open space before turning it off. Your mode follows you between plots and is saved when you leave.";
         USAGE_SETWARP = "Usage: /setwarp <name> (creates or replaces a shared warp)";
         USAGE_WARP = "Usage: /warp [name] (omit the name to list shared warps)";
         INVALID_WARP_NAME = "Warp names must be 1-32 letters, digits, underscores or hyphens.";
@@ -407,7 +412,7 @@ catalog! {
         UNBALANCED_MASK_PROPERTIES = "The mask has unbalanced property brackets. Pair each [ with ] so these paws can read it.";
         UNCLOSED_SELECTOR_OPTIONS = "Missing ] after the selector options. Close that bracket tail.";
         UNKNOWN_CONTAINER_TYPE_USE_CHEST_BARREL = "Can't fetch that container type. Choose chest, barrel, hopper or furnace.";
-        UNKNOWN_GAMEMODE = "That's not a gamemode in my trick book. Choose creative (1), adventure (2), or spectator (3).";
+        UNKNOWN_GAMEMODE = "That's not a gamemode in my trick book. Choose creative (1), adventure (2), spectator (3), or cat.";
         UNKNOWN_HELP_TOPIC_USE_HELP_TOPICS = "That topic isn't in my pawbook. Use /help for topics, or //help <command> for WorldEdit.";
         USAGE_CONTAINER_CHEST_BARREL_HOPPER_FURNACE = "Fetch a powered stash with /container <chest|barrel|hopper|furnace> <0..15|a..f>.";
         USAGE_CURSEL = "Peek at your selection's pawprints with /cursel.";

@@ -1,12 +1,15 @@
 bind_address = "0.0.0.0:25565"
 motd = "§4§lmroww.redstoneFUN.pl §r§71.21.5\n§cMinecraft Redstone o Wysokiej Wydajności"
 chat_format = "<{username}> {message}"
-proxy_chat = true
+# Custom redstonefun:chat relay; not installed on the current Velocity proxy.
+# The proxy uses ChatRegulator + SignedVelocity instead.
+proxy_chat = false
 max_players = 100
 view_distance = 8
 neighbor_update_interval_ms = 2000
 bungeecord = false
 whitelist = false
+# Use schems/<player UUID>/ instead of the shared schems/ directory.
 schemati = false
 block_in_hitbox = true
 auto_redpiler = true
@@ -15,8 +18,37 @@ fast_render_threshold = 200
 fast_render_send_rate = 10
 rhistory_memory_limit_mib = 2048
 rhistory_work_memory_limit_mib = 256
+max_command_ticks = 10000
+command_work_time_ms = 250
 worldedit_max_blocks = 67108864
 worldedit_history_blocks = 134217728
 
+# Plot Git resource limits (MiB), diff markers and confirmation timeout (seconds).
+git_work_memory_mib = 1024
+git_plot_storage_mib = 1024
+git_default_plot_storage_mib = 100
+git_total_storage_mib = 16384
+git_snapshot_max_mib = 128
+git_marker_limit = 128
+git_marker_radius = 64
+git_session_seconds = 45
+
+# Velocity modern forwarding; mutually exclusive with bungeecord = true.
 [velocity]
 secret_file = "/run/velocity/forwarding.secret"
+
+# Preserve production's existing [luckperms] credentials when updating its config.
+# These non-secret options match the current backend; supply credentials locally.
+# [luckperms]
+# storage = "postgres"
+# host = "localhost"
+# port = 5432
+# db_name = "permissions"
+# username = "reader"
+# password = "replace-locally"
+# table_prefix = "luckperms_"
+# server_context = "mchprs"
+# world_context = "redstoneplots"
+# plotsquared_compat = true
+# redstonefun_ranks = true
+# mchprs_permissions = true

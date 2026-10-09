@@ -404,7 +404,7 @@ impl Compiler {
     pub fn reset<W: World>(&mut self, world: &mut W, bounds: (BlockPos, BlockPos)) {
         self.warnings.clear();
         if let Some(mut backend) = self.backend.take() {
-            backend.reset(world, self.options.io_only, self.options.assume_instant);
+            backend.reset(world, self.options.io_only);
         }
 
         if self.options.update {

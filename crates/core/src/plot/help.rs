@@ -14,6 +14,7 @@ pub(super) fn page(topic: Option<&str>) -> Option<&'static str> {
         "tps" | "adv" | "rtps" | "ticks" | "radvance" | "radv" => messages::HELP_TICKS,
         "we" | "worldedit" => messages::HELP_WORLD_EDIT,
         "wire" => messages::HELP_WIRE,
+        "small" => messages::HELP_SMALL,
         "tools" | "redstonetools" | "find" | "signsearch" | "ss" | "rstack" | "rs"
         | "autostack" | "container" | "cursel" => messages::HELP_REDSTONE_TOOLS,
         "schematics" | "schematic" | "load" | "save" => messages::HELP_SCHEMATICS,

@@ -345,6 +345,11 @@ pub fn protocol() -> Result<TokenStream, String> {
             .get("minecraft:player")
             .ok_or("missing player entity")?,
     )?;
+    let ocelot = protocol_id(
+        entities
+            .get("minecraft:ocelot")
+            .ok_or("missing ocelot entity")?,
+    )?;
     let tags = concat!(env!("CARGO_MANIFEST_DIR"), "/../../mc_data/1.21.5/tags.bin");
     let registries = concat!(
         env!("CARGO_MANIFEST_DIR"),
@@ -355,6 +360,7 @@ pub fn protocol() -> Result<TokenStream, String> {
         pub const ITEM_COUNT: i32 = #item_count;
         pub const COMPONENT_COUNT: i32 = #component_count;
         pub const PLAYER_ENTITY: i32 = #player;
+        pub const OCELOT_ENTITY: i32 = #ocelot;
         pub const TAGS: &[u8] = include_bytes!(#tags);
         pub const REGISTRIES: &[u8] = include_bytes!(#registries);
     })

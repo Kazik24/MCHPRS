@@ -64,6 +64,7 @@ pub struct PlayerData {
     fly_speed: f32,
     walk_speed: f32,
     gamemode: Gamemode,
+    small: bool,
 }
 
 impl Default for PlayerData {
@@ -79,7 +80,36 @@ impl Default for PlayerData {
             fly_speed: 1.0,
             walk_speed: 1.0,
             gamemode: Gamemode::Creative,
+            small: false,
         }
+    }
+}
+
+impl PlayerData {
+    fn decode(mut data: Vec<u8>) -> anyhow::Result<(Self, bool)> {
+        let legacy = !data.starts_with(b"MCHPLY\0");
+        let version = if legacy {
+            3
+        } else {
+            if data.len() < 15 {
+                anyhow::bail!("unsupported player save version");
+            }
+            let version = u32::from_le_bytes(data[7..11].try_into()?);
+            if !matches!(version, 3 | 4) {
+                anyhow::bail!("unsupported player save version");
+            }
+            if u32::from_le_bytes(data[11..15].try_into()?) != crate::server::MC_DATA_VERSION as u32
+            {
+                anyhow::bail!("player Minecraft data version mismatch");
+            }
+            data.drain(..15);
+            version
+        };
+        if version == 3 {
+            // Older bincode records predate the final small-mode flag.
+            data.push(0);
+        }
+        Ok((bincode::deserialize(&data)?, legacy))
     }
 }
 
@@ -166,6 +196,7 @@ pub struct Player {
     pub flying: bool,
     pub sprinting: bool,
     pub crouching: bool,
+    pub(crate) small_model: Option<SmallModel>,
     pub(crate) last_compass_use: Option<Instant>,
     pub on_ground: bool,
     pub fly_speed: f32,
@@ -196,6 +227,22 @@ pub struct Player {
     permissions_cache: Option<PlayerPermissionsCache>,
 }
 
+pub(crate) struct SmallModel {
+    pub entity_id: EntityId,
+    pub uuid: u128,
+    pub last_pose: Option<[f64; 5]>,
+}
+
+impl SmallModel {
+    pub fn new() -> Self {
+        Self {
+            entity_id: allocate_entity_id(),
+            uuid: rand::random(),
+            last_pose: None,
+        }
+    }
+}
+
 impl fmt::Debug for Player {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("Player")
@@ -206,6 +253,66 @@ impl fmt::Debug for Player {
 }
 
 impl Player {
+    pub(crate) fn scale(&self) -> f64 {
+        if self.small_model.is_some() {
+            0.5
+        } else {
+            1.0
+        }
+    }
+
+    pub(crate) fn eye_position(&self) -> PlayerPos {
+        PlayerPos::new(
+            self.pos.x,
+            self.pos.y + (if self.crouching { 1.27 } else { 1.62 }) * self.scale(),
+            self.pos.z,
+        )
+    }
+
+    pub(crate) fn entity_metadata_packet(&self, for_self: bool) -> PacketEncoder {
+        let flags = u8::from(self.crouching) * 0x02
+            | u8::from(self.sprinting) * 0x08
+            | u8::from(self.small_model.is_some() && !for_self) * 0x20;
+        CEntityMetadata {
+            entity_id: self.entity_id as i32,
+            metadata: vec![
+                CEntityMetadataEntry {
+                    index: 0,
+                    metadata_type: 0,
+                    value: vec![flags],
+                },
+                CEntityMetadataEntry {
+                    index: 6,
+                    metadata_type: 21,
+                    value: vec![if self.crouching { 5 } else { 0 }],
+                },
+                CEntityMetadataEntry {
+                    index: 17,
+                    metadata_type: 0,
+                    value: vec![self.skin_parts.bits() as u8],
+                },
+            ],
+        }
+        .encode()
+    }
+
+    pub(crate) fn entity_equipment_packet(&self) -> PacketEncoder {
+        CEntityEquipment {
+            entity_id: self.entity_id as i32,
+            equipment: [36 + self.selected_slot as usize, 45, 8, 7, 6, 5]
+                .into_iter()
+                .enumerate()
+                .map(|(slot, index)| CEntityEquipmentEquipment {
+                    slot: slot as i32,
+                    item: self.inventory[index]
+                        .as_ref()
+                        .filter(|_| self.small_model.is_none())
+                        .map(crate::container::slot_data),
+                })
+                .collect(),
+        }
+        .encode()
+    }
     #[cfg(test)]
     pub(crate) fn test_player(client: PlayerConn) -> Self {
         Self::from_data(Default::default(), 1, "SyncTest".into(), client)
@@ -282,6 +389,7 @@ impl Player {
             flying: player_data.flying,
             sprinting: false,
             crouching: false,
+            small_model: player_data.small.then(SmallModel::new),
             last_compass_use: None,
             gamemode: if permissions::dedicated_permissions()
                 && !permissions_cache
@@ -322,20 +430,7 @@ impl Player {
                 Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(Default::default()),
                 Err(e) => return Err(e.into()),
             };
-            let legacy = !data.starts_with(b"MCHPLY\0");
-            let mut player: PlayerData = if legacy {
-                bincode::deserialize(&data)?
-            } else {
-                if data.len() < 15 || u32::from_le_bytes(data[7..11].try_into()?) != 3 {
-                    anyhow::bail!("unsupported player save version");
-                }
-                if u32::from_le_bytes(data[11..15].try_into()?)
-                    != crate::server::MC_DATA_VERSION as u32
-                {
-                    anyhow::bail!("player Minecraft data version mismatch");
-                }
-                bincode::deserialize(&data[15..])?
-            };
+            let (mut player, legacy) = PlayerData::decode(data)?;
             if !(0..9).contains(&player.selected_item_slot) {
                 anyhow::bail!("invalid hotbar slot");
             }
@@ -371,7 +466,7 @@ impl Player {
             }
             if legacy {
                 let mut bytes = b"MCHPLY\0".to_vec();
-                bytes.extend_from_slice(&3u32.to_le_bytes());
+                bytes.extend_from_slice(&4u32.to_le_bytes());
                 bytes.extend_from_slice(&(crate::server::MC_DATA_VERSION as u32).to_le_bytes());
                 bytes.extend_from_slice(&bincode::serialize(&player)?);
                 mchprs_save_data::atomic::backup(path)?;
@@ -429,10 +524,11 @@ impl Player {
             rotation: [self.pitch, self.yaw],
             selected_item_slot: self.selected_slot as i32,
             walk_speed: self.walk_speed,
+            small: self.small_model.is_some(),
         })
         .unwrap();
         let mut bytes = b"MCHPLY\0".to_vec();
-        bytes.extend_from_slice(&3u32.to_le_bytes());
+        bytes.extend_from_slice(&4u32.to_le_bytes());
         bytes.extend_from_slice(&(crate::server::MC_DATA_VERSION as u32).to_le_bytes());
         bytes.extend_from_slice(&data);
         let filename = format!("./world/players/{:032x}", self.uuid);
@@ -944,6 +1040,48 @@ impl PacketSender for Player {
 #[cfg(test)]
 mod coordinate_security_tests {
     use super::*;
+    #[test]
+    fn player_saves_restore_small_mode_and_upgrade_old_records() {
+        let payload = bincode::serialize(&PlayerData {
+            small: true,
+            ..Default::default()
+        })
+        .unwrap();
+        let envelope = |version: u32, body: &[u8]| {
+            let mut data = b"MCHPLY\0".to_vec();
+            data.extend(version.to_le_bytes());
+            data.extend((crate::server::MC_DATA_VERSION as u32).to_le_bytes());
+            data.extend(body);
+            data
+        };
+        let (data, legacy) = PlayerData::decode(envelope(4, &payload)).unwrap();
+        assert!(data.small);
+        assert!(!legacy);
+        let conn = mchprs_network::test_support::connection(false).unwrap();
+        let player = Player::from_data(data, 1, "SavedCat".into(), conn.player);
+        assert!(player.small_model.is_some());
+        assert_ne!(
+            player.entity_id,
+            player.small_model.as_ref().unwrap().entity_id
+        );
+        let old_payload = &payload[..payload.len() - 1];
+        for (bytes, expected_legacy) in [
+            (old_payload.to_vec(), true),
+            (envelope(3, old_payload), false),
+        ] {
+            let (data, legacy) = PlayerData::decode(bytes).unwrap();
+            assert!(!data.small);
+            assert_eq!(legacy, expected_legacy);
+        }
+        for invalid in [
+            b"MCHPLY\0".to_vec(),
+            envelope(5, &payload),
+            envelope(4, old_payload),
+            envelope(3, &old_payload[..old_payload.len() - 1]),
+        ] {
+            assert!(PlayerData::decode(invalid).is_err());
+        }
+    }
     #[test]
     fn offline_uuid_matches_java_name_uuid() {
         assert_eq!(

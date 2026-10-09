@@ -342,7 +342,7 @@ impl DirectBackend {
         debug!("Node {:?}: {:#?}", node_id, self.nodes[*node_id]);
     }
 
-    pub(crate) fn reset<W: World>(&mut self, world: &mut W, io_only: bool, assume_instant: bool) {
+    pub(crate) fn reset<W: World>(&mut self, world: &mut W, io_only: bool) {
         // Display flushing can clear dirty flags without writing hidden nodes.
         // Handoff must materialize their current strengths, including ordinary
         // dust between a virtual region supply and its consumer.
@@ -376,7 +376,7 @@ impl DirectBackend {
         }
 
         for runtime in std::mem::take(&mut self.instant) {
-            runtime.materialize(world, !assume_instant);
+            runtime.materialize(world);
         }
         self.scheduler.reset(world, &self.blocks);
 

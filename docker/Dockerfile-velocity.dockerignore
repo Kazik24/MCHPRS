@@ -1,6 +1,0 @@
-**
-!docker/
-!docker/velocity.toml
-!plugins/
-!plugins/network-chat/**
-plugins/network-chat/**/target/

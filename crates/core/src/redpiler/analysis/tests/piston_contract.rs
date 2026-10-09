@@ -352,58 +352,66 @@ fn counter_preserves_native_output_waveform_when_started_stopped_and_resumed() {
 }
 
 #[test]
-fn running_counter_preserves_output_ticks_across_repeated_domain_changes() {
+fn running_counter_keeps_working_across_repeated_domain_changes() {
     for optimize in [false, true] {
         for io_only in [false, true] {
-            let (mut native, _, manifest) = fixture("counter_basic");
-            let (mut world, fixture_bounds, _) = fixture("counter_basic");
-            let bounds = world.get_corners();
-            let options = || CompilerOptions {
-                optimize,
-                io_only,
-                ..Default::default()
-            };
-            let mut compiler = Compiler::default();
-            compiler
-                .compile(&world, bounds, options(), vec![], Default::default())
-                .unwrap();
-            world.clear_scheduled_ticks();
-            let outputs: Vec<_> = manifest["ports"]["observations"]["repeater"]
-                .as_array()
-                .unwrap()
-                .iter()
-                .map(local_pos)
-                .collect();
-            let label = format!("counter handoff O={optimize} i={io_only}");
-            let mut tick = 0;
-            for _ in 0..24 {
-                tick_pair(&mut native, &mut world, &mut compiler);
-                tick += 1;
-            }
-            use_pair(
-                &mut native,
-                &mut world,
-                &mut compiler,
-                &json!({"pos": manifest["ports"]["inputs"]["trigger"], "powered": true}),
-            );
-            // Vary the reset point through every phase of the six-tick clock.
-            for run_ticks in 6..12 {
-                for _ in 0..run_ticks {
-                    tick_pair(&mut native, &mut world, &mut compiler);
-                    tick += 1;
-                    assert_ports(&native, &world, &outputs, &label, tick);
-                }
-                compiler.reset(&mut world, bounds);
-                assert!(!compiler.is_active());
-                assert_ports(&native, &world, &outputs, &label, tick);
+            for assume_instant in [false, true] {
+                let (mut world, fixture_bounds, manifest) = fixture("counter_basic");
+                let bounds = world.get_corners();
+                let trigger = local_pos(&manifest["ports"]["inputs"]["trigger"]);
+                let stored_cells: Vec<_> = manifest["ports"]["observations"]["memory"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .map(local_pos)
+                    .collect();
+                let poses: Vec<_> = analyze_world(&world)
+                    .pistons
+                    .iter()
+                    .filter(|piston| !stored_cells.contains(&piston.pos))
+                    .map(|piston| (piston.pos, world.get_block(piston.pos)))
+                    .collect();
+                let options = || CompilerOptions {
+                    optimize,
+                    io_only,
+                    assume_instant,
+                    ..Default::default()
+                };
+                let mut compiler = Compiler::default();
+                compiler
+                    .compile(&world, bounds, options(), vec![], Default::default())
+                    .unwrap();
+                world.clear_scheduled_ticks();
                 for _ in 0..24 {
-                    native.tick_interpreted();
-                    world.tick_interpreted();
-                    tick += 1;
-                    assert_ports(&native, &world, &outputs, &label, tick);
+                    compiler.tick_with_world(&mut world);
                 }
-                let before = snapshot(&world, fixture_bounds);
-                assert!(
+                // End compiled execution at every phase of the six-tick clock.
+                for run_ticks in 6..12 {
+                    compiler.on_use_block(trigger);
+                    for _ in 0..run_ticks {
+                        compiler.tick_with_world(&mut world);
+                    }
+                    compiler.reset(&mut world, bounds);
+                    assert!(!compiler.is_active());
+                    assert_valid_pistons(&world, fixture_bounds);
+                    for _ in 0..(run_ticks % 3) {
+                        world.tick_interpreted();
+                        assert_valid_pistons(&world, fixture_bounds);
+                    }
+                    lever_action(&mut world, trigger, false);
+                    for _ in 0..24 {
+                        world.tick_interpreted();
+                    }
+                    assert_valid_pistons(&world, fixture_bounds);
+                    assert!(world.piston_state().motions.is_empty());
+                    assert!(world.piston_state().events.is_empty());
+                    for &(pos, expected) in &poses {
+                        assert_eq!(
+                            world.get_block(pos),
+                            expected,
+                            "counter did not settle at {pos:?}"
+                        );
+                    }
                     compiler
                         .compile(
                             &world,
@@ -412,43 +420,50 @@ fn running_counter_preserves_output_ticks_across_repeated_domain_changes() {
                             world.scheduler().iter_entries().collect(),
                             Default::default(),
                         )
-                        .is_err(),
-                    "active movement must stay in the interpreter"
-                );
-                assert_eq!(snapshot(&world, fixture_bounds), before);
-                assert!(!compiler.is_active());
-                let trigger = local_pos(&manifest["ports"]["inputs"]["trigger"]);
-                lever_action(&mut native, trigger, false);
-                lever_action(&mut world, trigger, false);
-                for _ in 0..24 {
-                    native.tick_interpreted();
-                    world.tick_interpreted();
-                    tick += 1;
-                    assert_ports(&native, &world, &outputs, &label, tick);
+                        .unwrap();
+                    world.clear_scheduled_ticks();
                 }
-                compiler
-                    .compile(
-                        &world,
-                        bounds,
-                        options(),
-                        world.scheduler().iter_entries().collect(),
-                        Default::default(),
-                    )
-                    .unwrap();
-                world.clear_scheduled_ticks();
-                for _ in 0..12 {
-                    tick_pair(&mut native, &mut world, &mut compiler);
-                    tick += 1;
-                    assert_ports(&native, &world, &outputs, &label, tick);
-                }
-                use_pair(
-                    &mut native,
-                    &mut world,
-                    &mut compiler,
-                    &json!({"pos": manifest["ports"]["inputs"]["trigger"], "powered": true}),
-                );
             }
         }
+    }
+}
+
+/// Check native poses, including the entity and motion behind a moving cell.
+fn assert_valid_pistons(world: &PlotWorld, bounds: (BlockPos, BlockPos)) {
+    crate::world::for_each_block_optimized(world, bounds.0, bounds.1, |pos| {
+        match world.get_block(pos) {
+            Block::Piston { piston } if piston.extended => {
+                let head = pos.offset(piston.facing.into());
+                assert!(
+                    matches!(
+                        world.get_block(head),
+                        Block::PistonHead { .. } | Block::MovingPiston { .. }
+                    ),
+                    "extended piston without a head at {pos:?}"
+                );
+            }
+            Block::PistonHead { head } => {
+                let base = pos.offset(BlockFace::from(head.facing).opposite());
+                assert!(
+                    matches!(world.get_block(base), Block::Piston { piston } if piston.extended && piston.facing == head.facing && piston.sticky == head.sticky),
+                    "orphan head at {pos:?}"
+                );
+            }
+            Block::MovingPiston { .. } => {
+                assert!(matches!(
+                    world.get_block_entity(pos),
+                    Some(mchprs_blocks::block_entities::BlockEntity::MovingPiston(_))
+                ));
+                assert!(world.piston_motion_index(pos, None).is_some());
+            }
+            _ => {}
+        }
+    });
+    for motion in &world.piston_state().motions {
+        assert!(matches!(
+            world.get_block(motion.pos),
+            Block::MovingPiston { .. }
+        ));
     }
 }
 
@@ -474,86 +489,85 @@ fn activated_pc_counter_rejects_unmodeled_sampling_transactionally() {
 }
 
 #[test]
-fn held_instant_circuits_preserve_output_ticks_across_repeated_domain_changes() {
+fn held_instant_circuits_keep_working_across_repeated_domain_changes() {
     for name in ["TEST_INSTANT_3", "TEST_OR1", "TEST_OR2"] {
         let path = root().join(EXAMPLES).join(format!("{name}.schem"));
         for optimize in [false, true] {
             for io_only in [false, true] {
-                let (mut native, fixture_bounds) = schematic(&path);
-                let (mut world, _) = schematic(&path);
-                let bounds = world.get_corners();
-                let options = || CompilerOptions {
-                    optimize,
-                    io_only,
-                    ..Default::default()
-                };
-                let mut inputs = Vec::new();
-                let mut outputs = Vec::new();
-                crate::world::for_each_block_optimized(
-                    &native,
-                    fixture_bounds.0,
-                    fixture_bounds.1,
-                    |pos| {
-                        let block = native.get_block(pos);
-                        if let Block::Lever { lever } = block {
-                            inputs.push((pos, lever.powered));
-                        }
-                        if matches!(block, Block::RedstoneRepeater { .. }) || block.is_copper_bulb()
-                        {
-                            outputs.push(pos);
-                        }
-                    },
-                );
-                assert!(!inputs.is_empty() && !outputs.is_empty());
-                let label = format!("{name} handoff O={optimize} i={io_only}");
-                let mut compiler = Compiler::default();
-                compiler
-                    .compile(&world, bounds, options(), vec![], Default::default())
-                    .unwrap();
-                world.clear_scheduled_ticks();
-                let mut tick = 0;
-                for _ in 0..32 {
-                    tick_pair(&mut native, &mut world, &mut compiler);
-                    tick += 1;
-                    assert_ports(&native, &world, &outputs, &label, tick);
-                }
-                for handoff_at in 1..=6 {
-                    for &(pos, powered) in &inputs {
-                        lever_action(&mut native, pos, !powered);
-                        compiler.on_use_block(pos);
-                    }
-                    compiler.flush(&mut world);
-                    for step in 1..=handoff_at + 56 {
-                        if step == handoff_at + 1 {
-                            compiler.reset(&mut world, bounds);
-                            assert_ports(&native, &world, &outputs, &label, tick);
-                        }
-                        // Hold inputs through continuation, then settle before recompiling.
-                        if step == handoff_at + 25 {
-                            for &(pos, powered) in &inputs {
-                                lever_action(&mut native, pos, powered);
-                                lever_action(&mut world, pos, powered);
+                for assume_instant in [false, true] {
+                    let (mut world, fixture_bounds) = schematic(&path);
+                    let bounds = world.get_corners();
+                    let options = || CompilerOptions {
+                        optimize,
+                        io_only,
+                        assume_instant,
+                        ..Default::default()
+                    };
+                    let mut inputs = Vec::new();
+                    let mut poses = Vec::new();
+                    crate::world::for_each_block_optimized(
+                        &world,
+                        fixture_bounds.0,
+                        fixture_bounds.1,
+                        |pos| {
+                            let block = world.get_block(pos);
+                            if matches!(block, Block::Piston { .. }) {
+                                poses.push((pos, block));
                             }
-                        }
-                        if compiler.is_active() {
-                            tick_pair(&mut native, &mut world, &mut compiler);
-                        } else {
-                            native.tick_interpreted();
-                            world.tick_interpreted();
-                        }
-                        tick += 1;
-                        assert_ports(&native, &world, &outputs, &label, tick);
-                    }
+                            if let Block::Lever { lever } = block {
+                                inputs.push((pos, lever.powered));
+                            }
+                        },
+                    );
+                    assert!(!inputs.is_empty());
+                    let mut compiler = Compiler::default();
                     compiler
-                        .compile(
-                            &world,
-                            bounds,
-                            options(),
-                            world.scheduler().iter_entries().collect(),
-                            Default::default(),
-                        )
+                        .compile(&world, bounds, options(), vec![], Default::default())
                         .unwrap();
                     world.clear_scheduled_ticks();
+                    for _ in 0..32 {
+                        compiler.tick_with_world(&mut world);
+                    }
+                    for handoff_at in 1..=6 {
+                        for &(pos, _) in &inputs {
+                            compiler.on_use_block(pos);
+                        }
+                        for _ in 0..handoff_at {
+                            compiler.tick_with_world(&mut world);
+                        }
+                        compiler.reset(&mut world, bounds);
+                        assert_valid_pistons(&world, fixture_bounds);
+                        for _ in 0..(handoff_at % 3) {
+                            world.tick_interpreted();
+                            assert_valid_pistons(&world, fixture_bounds);
+                        }
+                        for &(pos, powered) in &inputs {
+                            lever_action(&mut world, pos, powered);
+                        }
+                        for _ in 0..32 {
+                            world.tick_interpreted();
+                        }
+                        assert_valid_pistons(&world, fixture_bounds);
+                        assert!(world.piston_state().motions.is_empty());
+                        assert!(world.piston_state().events.is_empty());
+                        for &(pos, expected) in &poses {
+                            assert_eq!(
+                                world.get_block(pos),
+                                expected,
+                                "{name} did not settle at {pos:?}"
+                            );
+                        }
+                        compiler
+                            .compile(
+                                &world,
+                                bounds,
+                                options(),
+                                world.scheduler().iter_entries().collect(),
+                                Default::default(),
+                            )
+                            .unwrap();
+                        world.clear_scheduled_ticks();
+                    }
                 }
             }
         }

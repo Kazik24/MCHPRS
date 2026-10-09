@@ -696,9 +696,12 @@ pub fn use_item_on_block(
         return ItemUseResult::Used;
     }
     let block_pos = ctx.block_pos.offset(ctx.block_face);
-    let mut top_pos = ctx.player.pos.block_pos();
-    top_pos.y += 1;
-    if (block_pos == ctx.player.pos.block_pos() || block_pos == top_pos) && !CONFIG.block_in_hitbox
+    let player_pos = ctx.player.pos.block_pos();
+    let top_y = (ctx.player.pos.y + 1.8 * ctx.player.scale() - 1e-9).floor() as i32;
+    if block_pos.x == player_pos.x
+        && block_pos.z == player_pos.z
+        && (player_pos.y..=top_y).contains(&block_pos.y)
+        && !CONFIG.block_in_hitbox
     {
         return ItemUseResult::Used;
     }

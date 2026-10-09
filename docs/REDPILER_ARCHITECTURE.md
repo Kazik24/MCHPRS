@@ -420,12 +420,12 @@ notification reads committed settled state independently of presentation.
 `Compiler::reset` removes the active backend, flushes surviving hidden node
 state, exports comparator entities, materializes region geometry and stored bits,
 and returns remaining ordinary scheduled ticks to the interpreter. Region
-materialization in physically compatible mode restores current piston movement,
-payload positions, observer power, and their remaining continuation work. Hidden
-actors retain phase tracking so stopping compilation cannot strand a running
-reset loop. Owned dust is recalculated without update callbacks. Assumption mode
-instead writes settled logical occupancy with dormant reset observers; it does
-not promise physical continuation of the ideal protocol.
+materialization writes stationary bases, heads, payloads, and settled dust.
+Afterward it rearms native observer pulses and base rechecks for active reset
+owners, so their loops can resume. Stored BUD cells retain the committed bank.
+Handoff may shift the physical reset phase; matching the uninterrupted native
+waveform across this boundary is not required. The same rule applies in
+assumption mode.
 `--update` explicitly runs interpreter updates over the bounds afterwards.
 
 Edits that change compiler input geometry must end compiler ownership first.

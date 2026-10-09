@@ -28,6 +28,7 @@ mod scoreboard;
 mod screen_updates;
 #[cfg(test)]
 mod sign_tests;
+mod small;
 mod visuals;
 pub mod worldedit;
 
@@ -1154,7 +1155,7 @@ impl Plot {
         }
     }
 
-    fn change_player_gamemode(&mut self, player_idx: usize, gamemode: Gamemode) {
+    fn change_player_gamemode(&mut self, player_idx: usize, gamemode: Gamemode, small: bool) {
         if crate::permissions::dedicated_permissions() {
             let name = match gamemode {
                 Gamemode::Creative => "creative",
@@ -1165,6 +1166,15 @@ impl Plot {
                 self.players[player_idx].send_no_permission_message();
                 return;
             }
+            if small && !self.players[player_idx].has_permission("commands.small") {
+                self.players[player_idx].send_no_permission_message();
+                return;
+            }
+        }
+        if self.players[player_idx].small_model.is_some() != small
+            && !self.set_small(player_idx, small)
+        {
+            return;
         }
         self.players[player_idx].set_gamemode(gamemode);
         let _ = self.message_sender.send(Message::PlayerUpdateGamemode(
@@ -1239,6 +1249,31 @@ impl Plot {
         false
     }
 
+    fn spawn_player(viewer: &Player, player: &Player) {
+        viewer.send_packet(
+            &CSpawnPlayer {
+                entity_id: player.entity_id as i32,
+                uuid: player.uuid,
+                pitch: player.pitch,
+                yaw: player.yaw,
+                x: player.pos.x,
+                y: player.pos.y,
+                z: player.pos.z,
+            }
+            .encode(),
+        );
+        viewer.send_packet(&player.entity_metadata_packet(false));
+        viewer.send_packet(
+            &CEntityScale {
+                entity_id: player.entity_id as i32,
+                scale: player.scale(),
+            }
+            .encode(),
+        );
+        viewer.send_packet(&player.entity_equipment_packet());
+        small::spawn_model(viewer, player);
+    }
+
     fn enter_plot(&mut self, player: Player) {
         info!(player = %player.username, uuid = %format_args!("{:032x}", player.uuid),
             plot_x = self.world.x, plot_z = self.world.z, "Player entered plot");
@@ -1247,85 +1282,23 @@ impl Plot {
         self.owner = database::get_plot_owner(self.world.x, self.world.z)
             .map(|s| s.parse::<HyphenatedUUID>().unwrap().0);
         self.save();
-        let spawn_player = CSpawnPlayer {
-            entity_id: player.entity_id as i32,
-            uuid: player.uuid,
-            pitch: player.pitch,
-            yaw: player.yaw,
-            x: player.pos.x,
-            y: player.pos.y,
-            z: player.pos.z,
-        }
-        .encode();
-        let metadata_entries = vec![CEntityMetadataEntry {
-            index: 17,
-            metadata_type: 0,
-            value: vec![player.skin_parts.bits() as u8],
-        }];
-        let metadata = CEntityMetadata {
-            entity_id: player.entity_id as i32,
-            metadata: metadata_entries,
-        }
-        .encode();
         let status = CEntityStatus {
             entity_id: player.entity_id as i32,
             entity_status: if player.can_use_commands() { 26 } else { 24 },
         }
         .encode();
-        player.client.send_packet(&status);
-        for other_player in &mut self.players {
-            other_player.client.send_packet(&spawn_player);
-            other_player.client.send_packet(&metadata);
-
-            let spawn_other_player = CSpawnPlayer {
-                entity_id: other_player.entity_id as i32,
-                uuid: other_player.uuid,
-                pitch: other_player.pitch,
-                yaw: other_player.yaw,
-                x: other_player.pos.x,
-                y: other_player.pos.y,
-                z: other_player.pos.z,
-            }
-            .encode();
-            player.client.send_packet(&spawn_other_player);
-
-            if let Some(item) = &other_player.inventory[other_player.selected_slot as usize + 36] {
-                let other_entity_equipment = CEntityEquipment {
-                    entity_id: other_player.entity_id as i32,
-                    equipment: vec![CEntityEquipmentEquipment {
-                        slot: 0, // Main hand
-                        item: Some(crate::container::slot_data(item)),
-                    }],
-                }
-                .encode();
-                player.client.send_packet(&other_entity_equipment);
-            }
-
-            let other_metadata_entries = vec![CEntityMetadataEntry {
-                index: 17,
-                metadata_type: 0,
-                value: vec![other_player.skin_parts.bits() as u8],
-            }];
-            let other_metadata = CEntityMetadata {
-                entity_id: other_player.entity_id as i32,
-                metadata: other_metadata_entries,
-            }
-            .encode();
-            player.client.send_packet(&other_metadata);
-        }
-
-        if let Some(item) = &player.inventory[player.selected_slot as usize + 36] {
-            let entity_equipment = CEntityEquipment {
+        player.send_packet(&status);
+        player.send_packet(&player.entity_metadata_packet(true));
+        player.send_packet(
+            &CEntityScale {
                 entity_id: player.entity_id as i32,
-                equipment: vec![CEntityEquipmentEquipment {
-                    slot: 0, // Main hand
-                    item: Some(crate::container::slot_data(item)),
-                }],
+                scale: player.scale(),
             }
-            .encode();
-            for other_player in &mut self.players {
-                other_player.client.send_packet(&entity_equipment);
-            }
+            .encode(),
+        );
+        for other in &self.players {
+            Self::spawn_player(other, &player);
+            Self::spawn_player(&player, other);
         }
 
         player.send_system_message(&messages::plot_entered(self.world.x, self.world.z));
@@ -1573,7 +1546,14 @@ impl Plot {
         self.disable_empty_plot_history();
 
         let destroy_other_entities = CDestroyEntities {
-            entity_ids: self.players.iter().map(|p| p.entity_id as i32).collect(),
+            entity_ids: self
+                .players
+                .iter()
+                .flat_map(|p| {
+                    std::iter::once(p.entity_id as i32)
+                        .chain(p.small_model.as_ref().map(|model| model.entity_id as i32))
+                })
+                .collect(),
         }
         .encode();
         player.client.send_packet(&destroy_other_entities);
@@ -1588,6 +1568,9 @@ impl Plot {
             );
         }
         self.destroy_entity(player.entity_id);
+        if let Some(model) = &player.small_model {
+            self.destroy_entity(model.entity_id);
+        }
         self.locked_players.remove(&player.entity_id);
         self.scoreboard.remove_player(&player);
         redstone_tools::selection::remove(&mut player);
@@ -1835,6 +1818,9 @@ impl Plot {
                     .send(Message::PlayerLeft(player.uuid))
                     .unwrap();
                 disconnected_players.push(player.entity_id);
+                if let Some(model) = &player.small_model {
+                    disconnected_players.push(model.entity_id);
+                }
             }
             alive
         });
@@ -1855,6 +1841,7 @@ impl Plot {
         for player_idx in 0..self.players.len() {
             self.handle_packets_for_player(player_idx);
         }
+        self.sync_small_models();
     }
 
     fn update(&mut self) {

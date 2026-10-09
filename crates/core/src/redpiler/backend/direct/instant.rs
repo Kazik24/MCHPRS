@@ -1,15 +1,13 @@
 //! Dependency-driven logical piston execution over frozen input/state snapshots.
-//! Reset resumes proven native motion and pulse deadlines; assumption mode exports a settled snapshot.
+//! Reset exports settled geometry and resumes owned native reset callbacks.
 use super::node::{NodeId, Nodes};
 use crate::redpiler::backend::BackendError;
 use crate::redpiler::instant::boolean::{Expr, GeometryPart, Variable};
 use crate::redpiler::instant::program::PreparedInstant;
 use crate::redpiler::instant::sampling::SamplingSource;
 use crate::world::World;
-use mchprs_blocks::block_entities::{BlockEntity, MovingPistonEntity};
 use mchprs_blocks::blocks::{Block, RedstonePistonHead};
 use mchprs_blocks::BlockPos;
-use mchprs_world::TickPriority;
 use rustc_hash::{FxHashMap, FxHashSet};
 
 mod logical;
@@ -36,6 +34,7 @@ pub(super) struct Runtime {
     observations_dirty: bool,
     boundaries: Vec<timing::Boundary>,
     boundary_index: Vec<Option<usize>>,
+    reset_owners: Vec<Vec<usize>>,
     next_boundary: Option<u64>,
     pending_launch: bool,
     in_tick: bool,
@@ -467,26 +466,12 @@ impl Runtime {
         let mut boundaries = Vec::new();
         for actor in 0..fired.len() {
             if geometry_masks[actor] != 0 {
-                boundary_index[actor] = Some(actor);
-            }
-            // Hidden actors also need their movement phase when returning to native execution.
-            boundaries.push(timing::Boundary::new(
-                actor,
-                reset_owners[actor].clone(),
-                fired[actor],
-            ));
-        }
-        for &(pos, block, _) in &program.template {
-            if !program.owned.contains(&pos) {
-                continue;
-            }
-            if let Block::Observer { observer } = block {
-                let watched = pos.offset(observer.facing.into());
-                if let Some(actor) = program.pistons.iter().position(|p| p.pos == watched) {
-                    boundaries[actor]
-                        .observers
-                        .push((pos, timing::ObserverPulse::new(observer.powered)));
-                }
+                boundary_index[actor] = Some(boundaries.len());
+                boundaries.push(timing::Boundary::new(
+                    actor,
+                    reset_owners[actor].clone(),
+                    fired[actor],
+                ));
             }
         }
         let bank_values = vec![
@@ -517,6 +502,7 @@ impl Runtime {
             observations_dirty: false,
             boundaries,
             boundary_index,
+            reset_owners,
             next_boundary: None,
             pending_launch: false,
             in_tick: false,
@@ -798,7 +784,6 @@ impl Runtime {
         let mut changed = false;
         for boundary in &mut self.boundaries {
             let previous = boundary.phase;
-            boundary.advance_observers(self.elapsed);
             if launch {
                 let requested = if self.memory_actors[boundary.actor] {
                     self.memory[boundary.actor]
@@ -815,13 +800,7 @@ impl Runtime {
         self.next_boundary = self
             .boundaries
             .iter()
-            .flat_map(|boundary| {
-                boundary
-                    .observers
-                    .iter()
-                    .filter_map(|(_, observer)| observer.deadline)
-                    .chain(boundary.deadline)
-            })
+            .filter_map(|boundary| boundary.deadline)
             .min();
         self.observations_dirty |= changed;
         changed
@@ -1052,7 +1031,12 @@ impl Runtime {
         };
         for actor in actors {
             if self.boundary_index[actor].is_none() {
-                self.boundary_index[actor] = Some(actor);
+                self.boundary_index[actor] = Some(self.boundaries.len());
+                self.boundaries.push(timing::Boundary::new(
+                    actor,
+                    self.reset_owners[actor].clone(),
+                    self.fired[actor],
+                ));
             }
         }
         self.observations
@@ -1105,207 +1089,7 @@ impl Runtime {
         changes
     }
 
-    /// Return the proven protocol's motion, pulse deadlines, and queued rechecks.
-    /// A settled pose alone loses the reset episode that keeps an active circuit running.
-    fn materialize_physical(&self, world: &mut impl World) {
-        use timing::Phase;
-
-        world.piston_state_mut().logical_tick =
-            self.program.logical_tick.wrapping_add(self.elapsed);
-        for &(_, pos, _) in &self.program.aliases {
-            world.set_block(pos, Block::Air);
-            world.delete_block_entity(pos);
-        }
-        let owners: Vec<_> = self
-            .program
-            .groups
-            .iter()
-            .map(|members| {
-                members
-                    .iter()
-                    .copied()
-                    .find(|&actor| self.boundaries[actor].phase != Phase::Extended)
-            })
-            .collect();
-        let mut actors: Vec<_> = (0..self.program.pistons.len()).collect();
-        // Older motion completes first in the native movement queue.
-        actors.sort_by_key(|&actor| self.boundaries[actor].deadline);
-        for actor in actors {
-            let p = &self.program.pistons[actor];
-            let phase = self.boundaries[actor].phase;
-            let group = self.actor_groups[actor];
-            let payload = self.program.payloads[group];
-            let owns_payload = owners[group] == Some(actor) && payload != Block::Air;
-            let piston = p
-                .piston
-                .extend(matches!(phase, Phase::Extended | Phase::Extending));
-            let head = Block::PistonHead {
-                head: RedstonePistonHead {
-                    facing: piston.facing,
-                    sticky: piston.sticky,
-                    short: false,
-                },
-            };
-            if phase == Phase::Retracting {
-                self.materialize_motion(world, actor, p.pos, Block::Piston { piston }, false, true);
-                if owns_payload {
-                    self.materialize_motion(world, actor, p.head, payload, false, false);
-                }
-            } else {
-                world.set_block(p.pos, Block::Piston { piston });
-                match phase {
-                    Phase::Retracted if owns_payload => {
-                        world.set_block(p.head, payload);
-                    }
-                    Phase::Extending => {
-                        if owns_payload {
-                            self.materialize_motion(world, actor, p.payload, payload, true, false);
-                        }
-                        self.materialize_motion(world, actor, p.head, head, true, true);
-                    }
-                    Phase::Extended => {
-                        world.set_block(p.head, head);
-                        if owners[group].is_none()
-                            && self.program.groups[group][0] == actor
-                            && payload != Block::Air
-                        {
-                            world.set_block(p.payload, payload);
-                        }
-                    }
-                    _ => {}
-                }
-            }
-        }
-        for boundary in &self.boundaries {
-            for &(pos, ref pulse) in &boundary.observers {
-                if let Block::Observer { mut observer } = world.get_block(pos) {
-                    observer.powered = pulse.powered;
-                    world.set_block(pos, Block::Observer { observer });
-                    if let Some(deadline) = pulse.deadline {
-                        world.schedule_half_tick(
-                            pos,
-                            deadline.saturating_sub(self.elapsed) as u32,
-                            TickPriority::Normal,
-                        );
-                    }
-                }
-            }
-        }
-        let mut wires = Vec::new();
-        for &(pos, _) in &self.program.logic.handoff_wires {
-            if let Block::RedstoneWire { mut wire } = world.get_block(pos) {
-                wire = crate::redstone::wire::get_regulated_sides(wire, world, pos);
-                wire.power = 0;
-                world.set_block(pos, Block::RedstoneWire { wire });
-                wires.push(pos);
-            }
-        }
-        // Starting at zero, power can travel at most fifteen dust steps.
-        for _ in 0..15 {
-            let mut changed = false;
-            for &pos in &wires {
-                let Block::RedstoneWire { mut wire } = world.get_block(pos) else {
-                    unreachable!()
-                };
-                let power = crate::redstone::wire::get_state_for_placement(world, pos).power;
-                if wire.power != power {
-                    wire.power = power;
-                    changed |= world.set_block(pos, Block::RedstoneWire { wire });
-                }
-            }
-            if !changed {
-                break;
-            }
-        }
-        // Motion completion queues its own recheck; settled bases already need
-        // their captured next event. Stored BUD cells wait for their writer.
-        for (actor, p) in self.program.pistons.iter().enumerate() {
-            if !self.memory_actors[actor]
-                && self.boundaries[actor].deadline.is_some()
-                && matches!(
-                    self.boundaries[actor].phase,
-                    Phase::Extended | Phase::Retracted
-                )
-            {
-                if let Block::Piston { piston } = world.get_block(p.pos) {
-                    crate::redstone::piston::update_piston_state(world, piston, p.pos);
-                }
-            }
-        }
-    }
-
-    fn materialize_motion(
-        &self,
-        world: &mut impl World,
-        actor: usize,
-        pos: BlockPos,
-        carried: Block,
-        extending: bool,
-        source: bool,
-    ) {
-        let piston = self.program.pistons[actor].piston;
-        let remaining = self.boundaries[actor]
-            .deadline
-            .unwrap()
-            .saturating_sub(self.elapsed);
-        let progress = if remaining >= 2 { 0.5 } else { 1.0 };
-        let previous = progress - 0.5;
-        world.set_block(
-            pos,
-            Block::MovingPiston {
-                moving: piston.into(),
-            },
-        );
-        let mut entity = MovingPistonEntity {
-            facing: piston.facing.into(),
-            progress: 0,
-            block_state: carried.get_id(),
-            extending,
-            source,
-        };
-        entity.set_progress(previous);
-        world.set_block_entity(pos, BlockEntity::MovingPiston(entity));
-        if let Some(index) = world.piston_motion_index(pos, None) {
-            let motion = &mut world.piston_state_mut().motions[index];
-            motion.progress = progress;
-            motion.previous_progress = previous;
-        }
-    }
-
-    pub(super) fn materialize(mut self, world: &mut impl World, physical: bool) {
-        if physical {
-            // Independent samples commit immediately, even before the next half tick.
-            // Preserve that bank and its generator pose if movement has not launched.
-            if self.pending_launch {
-                for boundary in &mut self.boundaries {
-                    let actor = boundary.actor;
-                    let independent_generator = !self.program.pistons[actor].piston.sticky
-                        && !self
-                            .program
-                            .clocked
-                            .as_ref()
-                            .is_some_and(|clock| clock.clock == actor);
-                    let retracted = if self.memory_actors[actor] {
-                        self.memory[actor]
-                    } else {
-                        self.fired[actor]
-                    };
-                    if (self.memory_actors[actor] || independent_generator)
-                        && boundary.requested != retracted
-                    {
-                        boundary.phase = if retracted {
-                            timing::Phase::Retracted
-                        } else {
-                            timing::Phase::Extended
-                        };
-                        boundary.requested = retracted;
-                        boundary.deadline = None;
-                    }
-                }
-            }
-            self.materialize_physical(world);
-            return;
-        }
+    pub(super) fn materialize(mut self, world: &mut impl World) {
         if self
             .program
             .clocked
@@ -1383,9 +1167,8 @@ impl Runtime {
         }
         world.piston_state_mut().logical_tick =
             self.program.logical_tick.wrapping_add(self.elapsed);
-        // All paths were extracted against settled geometry at compilation.
-        // Write their values directly: invoking update() here would create a
-        // physical reset episode which the logical executor never performed.
+        // Restore settled electrical paths before any native callback can read
+        // the region; propagating updates here would expose partial geometry.
         let mut wires = Vec::with_capacity(self.program.logic.handoff_wires.len());
         for (pos, terms) in &self.program.logic.handoff_wires {
             let pos = *pos;
@@ -1431,6 +1214,43 @@ impl Runtime {
         }
         for (pos, wire) in wires {
             world.set_block(pos, Block::RedstoneWire { wire });
+        }
+        self.resume_reset_protocol(world);
+    }
+
+    /// Start native callbacks after the whole settled snapshot has been written.
+    /// Only active reset owners resume; stored BUD bits wait for their native writer.
+    fn resume_reset_protocol(&self, world: &mut impl World) {
+        let owners: FxHashSet<_> = self
+            .program
+            .reset_groups
+            .iter()
+            .map(|group| group.owner)
+            .chain(self.program.clocked.iter().map(|clock| clock.clock))
+            .filter(|&actor| self.fired[actor] && !self.memory_actors[actor])
+            .map(|actor| self.program.pistons[actor].pos)
+            .collect();
+        for &(pos, block, _) in &self.program.template {
+            if !self.program.owned.contains(&pos) {
+                continue;
+            }
+            if let Block::Observer { observer } = block {
+                if owners.contains(&pos.offset(observer.facing.into())) {
+                    crate::redstone::update(
+                        world.get_block(pos),
+                        world,
+                        pos,
+                        Some(observer.facing.into()),
+                    );
+                }
+            }
+        }
+        for piston in &self.program.pistons {
+            if owners.contains(&piston.pos) {
+                if let Block::Piston { piston: state } = world.get_block(piston.pos) {
+                    crate::redstone::piston::update_piston_state(world, state, piston.pos);
+                }
+            }
         }
     }
 }
