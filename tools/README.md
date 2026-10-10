@@ -1,12 +1,12 @@
 # Repository tools
 
-[Test-suite documentation](../docs/tests/README.md) describes runnable checks,
-prerequisites, and the evidence each suite compares. Start there when changing
-the interpreter or compiler.
+Start with [interpreter verification](../docs/INTERPRETER_ARCHITECTURE.md#8-verification-and-reproduction)
+for physical checks and replay observations, or
+[compiler verification](../docs/REDPILER_ARCHITECTURE.md#9-commands-limits-and-verification)
+for Redpiler checks and admission limits.
 
 | Tools | Purpose |
 | --- | --- |
-| `validate_docs.py` | Check local Markdown links and heading anchors. |
 | `generate_mc_data.py` | Rebuild pinned registry/tag binary assets; see [Minecraft data](../mc_data/README.md). |
 | `inspect_instant_pistons.py` | Decode schematics without simulation. |
 | `instant_piston_protocols.py`, `instant_piston_io_protocols.py` | Define fixture actions and port protocols. |
@@ -15,9 +15,9 @@ the interpreter or compiler.
 | `validate_instant_pistons.py`, `validate_instant_io.py` | Check pack hashes, coverage, coordinates, comparisons, and documentation links. |
 | `capture_piston_research.py`, `summarize_piston_research.py` | Capture and summarize larger declared protocols. |
 
-The [instant-piston guide](../docs/tests/INSTANT_PISTONS.md) gives exact commands
-and distinguishes the original pack from the I/O revision. The
-[CPU guide](../docs/tests/CPU_REFERENCES.md) covers replays and benchmarks.
+The protocol modules define each piston pack's actions and observation ports.
+The [CPU reference guide](../test_data/cpu-references/README.md) covers frozen
+replays and benchmark setup.
 
 Schematics, fixture protocols, provenance, and frozen CPU/Java expectations remain
 versioned under `test_data/`. Inspections, detailed traces, projections, and trace

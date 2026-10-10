@@ -380,3 +380,68 @@ fn small_animal_commands_spawn_generated_models_and_update_fox_equipment() {
         }
     }
 }
+
+#[test]
+fn baby_ocelot_uses_its_model_and_quarter_size_hitbox() {
+    let (mut plot, mut owner, mut viewer) = fixture(false);
+    enable(&mut plot, &mut owner, &mut viewer, false);
+
+    assert!(!plot.handle_command(0, "/small", vec!["baby"]));
+    assert_eq!(plot.players[0].small_animal, SmallAnimal::BabyOcelot);
+    assert_eq!(plot.players[0].scale(), 0.25);
+    assert!((plot.players[0].eye_position().y - 21.405).abs() < 1e-9);
+
+    for peer in [&mut owner, &mut viewer] {
+        let mut destroy = packet(peer, false, 0x46);
+        assert_eq!(destroy.read_varint().unwrap(), 1);
+        destroy.read_varint().unwrap();
+        scale(peer, false, plot.players[0].entity_id, 0.25);
+    }
+    packet(&mut owner, false, 0x72);
+    assert_eq!(
+        proxy_type(&mut viewer, false),
+        mchprs_network::generated::OCELOT_ENTITY
+    );
+
+    let mut metadata = packet(&mut viewer, false, 0x5c);
+    assert_eq!(
+        metadata.read_varint().unwrap(),
+        plot.players[0].small_model.as_ref().unwrap().entity_id as i32
+    );
+    assert_eq!(metadata.read_unsigned_byte().unwrap(), 5);
+    assert_eq!(metadata.read_varint().unwrap(), 8);
+    assert_eq!(metadata.read_unsigned_byte().unwrap(), 1);
+    assert_eq!(metadata.read_unsigned_byte().unwrap(), 16);
+    assert_eq!(metadata.read_varint().unwrap(), 8);
+    assert_eq!(metadata.read_unsigned_byte().unwrap(), 1);
+    assert_eq!(metadata.read_unsigned_byte().unwrap(), 0xff);
+
+    let roof = |pos: BlockPos| {
+        Some(if pos.y == 21 {
+            Block::Stone {}
+        } else {
+            Block::Air {}
+        })
+    };
+    let feet = PlayerPos::new(32.5, 20.5, 35.5);
+    assert!(!super::super::compass::body_clear(feet, 0.5, &roof));
+    assert!(super::super::compass::body_clear(feet, 0.25, &roof));
+
+    assert!(!plot.handle_command(0, "/small", vec!["ocelot"]));
+    assert_eq!(plot.players[0].small_animal, SmallAnimal::Ocelot);
+    assert_eq!(plot.players[0].scale(), 0.5);
+    for peer in [&mut owner, &mut viewer] {
+        let mut destroy = packet(peer, false, 0x46);
+        assert_eq!(destroy.read_varint().unwrap(), 1);
+        destroy.read_varint().unwrap();
+        scale(peer, false, plot.players[0].entity_id, 0.5);
+    }
+    packet(&mut owner, false, 0x72);
+    proxy_type(&mut viewer, false);
+    let mut metadata = packet(&mut viewer, false, 0x5c);
+    metadata.read_varint().unwrap();
+    assert_eq!(metadata.read_unsigned_byte().unwrap(), 5);
+    assert_eq!(metadata.read_varint().unwrap(), 8);
+    assert_eq!(metadata.read_unsigned_byte().unwrap(), 1);
+    assert_eq!(metadata.read_unsigned_byte().unwrap(), 0xff);
+}

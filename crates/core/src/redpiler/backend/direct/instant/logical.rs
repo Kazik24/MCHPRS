@@ -105,7 +105,7 @@ impl Plan {
                 return Err(BackendError::InvalidInstantProgram);
             }
             let condition = match decision.input {
-                Input::Source(_) | Input::Memory(_) => None,
+                Input::Source(_) | Input::Memory(_) | Input::Committed(_) => None,
                 Input::Geometry { .. } if !response => None,
                 Input::Response(actor) if response && decision.threshold == 0 => Some(
                     *roots
@@ -749,6 +749,7 @@ mod tests {
                 clocked: None,
                 independent_memory: Vec::new(),
                 sampling: Vec::new(),
+                activation: Default::default(),
                 reset_groups: Vec::new(),
                 payloads: Vec::new(),
                 controls: Vec::new(),

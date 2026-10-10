@@ -6,17 +6,12 @@ This document specifies piston behavior implemented by the world interpreter. It
 
 ## 1. State, notation and observables
 
-Positions are integer triples. $F=(U,D,N,S,E,W)$ is the ordinary face order, $F_{\mathrm{piston}}=(W,E,D,U,N,S)$ the piston power/neighbor order, and $F_{\mathrm{shape}}=(W,E,N,S,D,U)$ the piston shape order. Facing $f$ points from a base toward its head/payload. Write $\bar f$ for the opposite face. $R_1(b,p,g;\Sigma)$ is the directional redstone query from the redstone model, and $[P]$ is the indicator of proposition $P$.
-
-The shared state is
-
-$$
-\Sigma=(B,E,Q,c,t,\phi,a,A,M,I,L,j,K,O).
-$$
-
-$B$ and $E$ are block and entity maps; $Q,c$ the scheduled ring and cursor; $t$ the logical game tick; $\phi$ the phase; $a$ whether the cursor has advanced during this tick; $A$ the ordered event queue; $M$ the ordered exact motion records; $I$ the identity counter; $L,j$ the movement snapshot/cursor; $K$ metadata and world hooks; and $O$ observable actions/sound/command output. The complete state during a synchronous callback additionally includes its stack and active dust-walk snapshots.
-
-From `BetweenTicks`, `tick_interpreted` completes one game tick with one scheduler half-tick bucket advance; from a partially stepped tick, it completes the remaining phases. `schedule_tick(d)` requests $2d$ game ticks, whereas `schedule_half_tick(d)` requests $d$. A movement operation occurs in the movement phase, and a piston event in the event phase. None is a separate physical time unit.
+This model uses the positions, face orders, $R_1$ power query and complete
+$\Sigma$ state defined in [Redstone sections 1–3](REDSTONE_MODEL.md#1-mathematical-conventions-and-spatial-domain).
+Facing $f$ points from a base toward its head/payload; $\bar f$ is its opposite.
+Scheduler advancement and event/movement phase boundaries follow
+[Redstone section 5](REDSTONE_MODEL.md#5-scheduled-ticks-and-the-game-tick-transition).
+Piston events and movement operations are ordered work, not additional time units.
 
 Four observations must remain distinct:
 
@@ -31,20 +26,15 @@ Block state alone is insufficient: identical geometry and power with different q
 
 ### Ordered notification operators
 
-Let $U(b,p,d)$ be a power callback, and $G(b,p,d)$ a shape/support callback, with $d=\bot$ meaning no supplied direction. Each nested callback completes before the caller proceeds. Reads below occur immediately before each call; duplicate positions are retained.
+`Shape(p)` and `Notify(p)` use the ordered procedures in
+[Redstone section 4.6](REDSTONE_MODEL.md#46-piston-notifications).
+`U` denotes a power callback and `G` a shape/support callback. Nested callbacks
+finish before their caller proceeds; reads are live unless specified otherwise,
+and duplicate positions are retained.
 
-`Shape(p)` visits $g\in F_{\mathrm{shape}}$:
-
-```text
-q := p + g
-G(B(q), q, g)
-if live B(q) is an observer:
-    U(B(q), q, opposite(g))
-```
-
-`Notify(p)` performs `Shape(p)` and then visits $g\in F_{\mathrm{piston}}$, calling $U(B(p+g),p+g,\bar g)$ when the live neighbor is not an observer. The shape callback direction points from the changed cell toward the receiver; the observer callback uses its opposite. Observers receive shape/state callbacks, while the subsequent loop supplies ordinary power rechecks.
-
-The nonpiston notification operators are specified in the [redstone notification rules](REDSTONE_MODEL.md#4-immediate-callbacks-and-ordered-notification-procedures). In particular, surrounding updates can skip diagonal piston bases, and indirect power loops can skip observers. A cell being in the power neighborhood does not imply that every change in that neighborhood delivers a callback to it.
+Delivery depends on the caller: surrounding updates can skip diagonal piston
+bases, and indirect power loops can skip observers. Membership in a power
+neighborhood alone does not imply delivery of a recheck.
 
 ## 2. Piston power, requests, and event validation
 
@@ -113,7 +103,9 @@ No additional guard requires the live facing to equal the captured event facing.
 
 If validation rejects the event, it has still been consumed. Successful execution emits a piston block action carrying the event action and captured direction.
 
-The abstract storage equation `q_next = accepted_transaction ? decoded_data : q` is a settled, certified-family projection of these rules, not a replacement for validation. A no-op sample can be a logical transaction without an accepted physical movement; a cancelled or blocked movement cannot be counted as a successful state-changing write. Valid BUD history can leave an extended or retracted cell disagreeing with current power until a qualifying recheck. Section 4 defines the settled decoder and separates these records.
+The settled storage projection and transaction assumptions are defined in
+section 4. Event validation remains authoritative for state-changing writes;
+notifications, requests and same-value samples are separate observations.
 
 ### 2.4 Legacy ticks and heads
 
@@ -384,15 +376,11 @@ Physically, $i$ must be effective at the relevant consumer acceptance/sampling b
 
 ### Causal order within a game tick
 
-Let $\tau=(t,k)$ identify the $k$th ordered semantic transition during game tick $t$. $k$ orders queue dispatches and their nested callbacks; it is not elapsed nanoseconds. Within a callback, writes and nested notifications execute in source order. Across callbacks, the scheduler chooses priority/FIFO order; piston events use FIFO; motion uses its identity snapshot.
-
-The phase order is
-
-$$
-\mathrm{ScheduledTicks}\prec\mathrm{PistonEvents}\prec\mathrm{MovingEntities}.
-$$
-
-The scheduled phase drains both the old cursor bucket and, after its one advance, the new bucket. An event created during scheduled processing can run in the current event phase. An event created by another event is appended and can run in that same phase. An event created during movement waits for the next event phase. A motion created before the movement snapshot is eligible in the current tick; a replacement created after that snapshot waits for another snapshot.
+Causal order and phase dispatch follow
+[Redstone section 5](REDSTONE_MODEL.md#55-phase-state-machine).
+Scheduled callbacks and piston events can enqueue events for the current event
+phase. Movement-generated events wait for the next event phase; motions created
+after the movement snapshot wait for another snapshot.
 
 For operations $a,b$, write $a\prec b$ when the dispatcher or a nested call requires $a$ to complete before $b$ starts. Independent-looking changes are only interchangeable if their writes, reads and generated work commute. Cached dust states, source ownership and callback delivery can introduce dependencies beyond adjacent base positions. Tick equality alone does not prove synchronization.
 
@@ -407,24 +395,19 @@ where “effective” includes all ordinary component delays and geometry needed
 
 ### Fine stepping APIs
 
-`picotick_advance(n)` attempts $n$ individual interpreter operations. An operation consumes a scheduled entry, piston event or motion-snapshot item, including all nested callbacks. An iteration may instead finish an exhausted tick administratively.
-
-`nanotick_advance(n)` prepares the next operation and snapshots the current phase's remaining operation **count**. It then executes that many normal operations. This does not freeze an operation list: newly inserted higher-priority scheduled work can precede older entries, and new event work can remain after the count is exhausted. A tick-finishing preparation also consumes an iteration. Both APIs return without advancing while history recording is enabled.
-
-Neither API exposes a dust-walk layer or pauses inside a synchronous callback. Completing a tick by game, nano or pico stepping follows the same transition sequence when external inputs are supplied at equivalent operation boundaries. Test instrumentation can observe finer callback ordering, but changes no production simulation rule.
+Pico/nano advancement follows [Redstone section 15.2](REDSTONE_MODEL.md#152-pico-and-nano-stepping).
+Neither API pauses inside a synchronous callback or dust walk. Comparing stepped
+and full-tick histories requires equivalent external-input operation boundaries.
+Test instrumentation can observe finer callback order without changing production rules.
 
 ### Reset, reuse and boundary strength
 
 Ready, response, restoration and rearm are distinct states. Restoring an extended base does not prove that payload ownership, observer power, ordinary input levels and pending work are ready for another independent transaction. An observer reset can recur while an external source remains absent. Ordinary repeaters can retain queued activations after a brief restore pulse, so publishing only a permanently settled result loses boundary behavior.
 
-For a certified geometry state $g$, consumer channel $c$ and contribution $i$, a useful electrical projection is
-
-$$
-s_c=\max\left(\{s_i\mathbin{\dotminus}a_i:
-\gamma_i(g)=1\}\cup\{0\}\right),
-$$
-
-where $a_i$ is dust attenuation and $\gamma_i$ the directional/occupancy guard. Conducting payloads expose permitted strong sources; they do not generate an intrinsic strength fifteen. Fixed contributors remain in the maximum when a mobile contributor disappears. A moving payload supplies no stationary power or conduction. Comparator overrides and side channels still use their distinct redstone equations.
+Electrical boundary strength uses the
+[guarded channel projection](REDSTONE_MODEL.md#36-guarded-electrical-channel-projection).
+Directional eligibility, attenuation, fixed contributors and comparator channels
+remain electrical properties when a logical result uses a falling-event decoder.
 
 A first-response function $\mathbf y=F(\mathbf d,\mathbf e,\mathbf q)$ is a derived projection over a declared input protocol and observation window. Complete reuse adds retained reset/read/clock state $z$ and transitions $z^+=H(z,\sigma)$ for the ordered actions $\sigma$. No universal reset period or universal observation window follows from a piston truth table. The [compiled model](REDPILER_MODEL.md) states which physical ordering is represented, normalized or restricted in each execution path.
 
@@ -432,33 +415,16 @@ A first-response function $\mathbf y=F(\mathbf d,\mathbf e,\mathbf q)$ is a deri
 
 The power/notification separation, event revalidation, identity-based motion and strength/occupancy projections explain broad classes of instant and BUD circuits. They do not require recognizing an adder, counter or memory by its name, bit coordinates or schematic hash.
 
-The following literal implementation choices matter when extending those models:
+Transport/ownership limits follow section 3; event facing and early retraction
+follow section 2. Notification exclusions and restore-time support are defined
+in Redstone sections 4 and 13. Extensions must preserve those physical procedures
+and the transaction assumptions of section 4.
 
-- Payload movement is straight-line transport. The scan has no twelve-block cap, general push-reaction table, destroy-on-push branch or slime/honey adhesion. Those mechanics require an explicit new transport rule rather than exceptions for individual schematics.
-- Observers are triggered by delivered callback directions. Caller-specific exclusions distinguish shape changes from indirect power rechecks; the observer itself does not compare old/new observed block states.
-- Early retraction depends on phase and exact motion history, not only on a byte progress field. Replacing that condition with a fixed cooldown changes short-pulse and recapture behavior.
-- Event validation uses live facing while retraction's carried base and emitted action retain captured facing. Equality of those directions is not currently required. A universal orientation invariant would need an implementation change and regression evidence.
-- Support is a directional predicate. A moving cell usually loses stationary support, with an explicit downward retracting source-base exception for dust. Restore-time validity and head ownership still apply.
-- Same-value BUD samples are observable even without a movement. A movement count cannot stand in for an ordered sample trace or establish continuously sampled storage.
-
-The interpreter can learn a per-piston address certificate from an actual native
-retract/reset cycle. Its initial family is a sticky, non-upward actor moving one
-entity-free redstone block, with a downward-facing reset observer directly above
-the base and an entity-free solid cap. Admission requires ordinary pull
-retraction, both exact motion identities completing, an observer-driven
-single-block reset without an alternate cap writer, and both reset motions
-completing with the expected restored footprint. Geometry alone never enables
-the fast path.
-
-A proven actor caches the eleven addresses from section 2's power query and the
-six strong-power source addresses around each potential conductor. Each sample
-still reads live block states and electrical strengths in the original order.
-Native events, notifications, BUD samples and movement phases remain
-unchanged. Relevant block/entity edits revoke certificates; mutable chunk or
-piston-state access clears them. Certificates are bounded, ephemeral interpreter
-state, rather than saved-world data or permission to collapse future waves.
-Runtime coverage and benchmark protocols are recorded in
-[tests/INSTANT_PISTONS.md](tests/INSTANT_PISTONS.md).
+Native route certificates cache addresses after an observed retract/reset cycle.
+They preserve live power reads, samples, native events, notifications and motion;
+they authorize no logical waveform collapse. Qualification, invalidation and
+cache lifetime are described in
+[Interpreter architecture](INTERPRETER_ARCHITECTURE.md#qualification-accelerates-addresses).
 
 | Subject | Source |
 | --- | --- |
@@ -470,4 +436,4 @@ Runtime coverage and benchmark protocols are recorded in
 | Power queries and observer pulse callbacks | [redstone/mod.rs](../crates/core/src/redstone/mod.rs) |
 | Test-only sample/acceptance instrumentation | [piston/trace.rs](../crates/core/src/redstone/piston/trace.rs), [instant_piston_tests.rs](../crates/core/src/redstone/instant_piston_tests.rs) |
 
-[tests/README.md](tests/README.md) contains runnable verification and fixture protocols. Saved reference traces are evidence for their input histories, not a replacement for these general transition rules.
+[verification reference](INTERPRETER_ARCHITECTURE.md#8-verification-and-reproduction) contains runnable verification and fixture protocols. Saved reference traces are evidence for their input histories, not a replacement for these general transition rules.

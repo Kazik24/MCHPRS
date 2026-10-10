@@ -124,6 +124,7 @@ pub(crate) fn extract_with_state(
         Some(&reset),
         &[],
         &mut [],
+        &mut super::activation::Activation::default(),
     )
 }
 
@@ -148,6 +149,33 @@ pub(crate) fn extract_ideal_with_state(
         Some(owned_reset),
         generators,
         sampling,
+        &mut super::activation::Activation::default(),
+    )
+}
+
+pub(crate) fn extract_activated_with_state(
+    world: &impl World,
+    report: &AnalysisReport,
+    monitor: &TaskMonitor,
+    memory: FxHashSet<usize>,
+    clock: Option<usize>,
+    owned_handoff: &FxHashSet<BlockPos>,
+    owned_reset: &FxHashSet<BlockPos>,
+    generators: &[usize],
+    sampling: &mut [super::sampling::SamplingEvent],
+    activation: &mut super::activation::Activation,
+) -> Result<WaveLogic, String> {
+    extract_with_options(
+        world,
+        report,
+        monitor,
+        memory,
+        clock,
+        Some(owned_handoff),
+        Some(owned_reset),
+        generators,
+        sampling,
+        activation,
     )
 }
 
@@ -161,6 +189,7 @@ fn extract_with_options(
     owned_reset: Option<&FxHashSet<BlockPos>>,
     generators: &[usize],
     sampling: &mut [super::sampling::SamplingEvent],
+    activation: &mut super::activation::Activation,
 ) -> Result<WaveLogic, String> {
     let handoff = owned_handoff.is_some();
     let actor_limit = if handoff {
@@ -424,6 +453,44 @@ fn extract_with_options(
             .sources
             .extend(terms.iter().filter_map(|term| term.source));
     }
+    let mut supported_activation_wires = Vec::new();
+    let mut unsupported_activation_actors = FxHashSet::default();
+    for mut wire in std::mem::take(&mut activation.wires) {
+        extractor.terms.clear();
+        extractor.wires.clear();
+        extractor.walk_wires(usize::MAX, FALSE, VecDeque::from([(wire.pos, 0, TRUE)]))?;
+        if extractor.wires.iter().any(|&pos| pos != wire.pos) {
+            unsupported_activation_actors
+                .extend(wire.deliveries.iter().map(|delivery| delivery.actor));
+            continue;
+        }
+        sampling_wires.extend(extractor.wires.iter().copied());
+        wire.terms = std::mem::take(&mut extractor.terms);
+        extractor
+            .sources
+            .extend(wire.terms.iter().filter_map(|term| term.source));
+        supported_activation_wires.push(wire);
+    }
+    // Falling back affected actors keeps us from omitting a possible callback.
+    for wire in &mut supported_activation_wires {
+        wire.deliveries
+            .retain(|delivery| !unsupported_activation_actors.contains(&delivery.actor));
+    }
+    supported_activation_wires.retain(|wire| !wire.deliveries.is_empty());
+    activation.wires = supported_activation_wires;
+    let supported_actors: FxHashSet<_> = activation
+        .wires
+        .iter()
+        .flat_map(|wire| &wire.deliveries)
+        .map(|delivery| delivery.actor)
+        .collect();
+    activation
+        .actors
+        .retain(|actor| supported_actors.contains(actor));
+    activation.pose_deliveries.retain(|_, deliveries| {
+        deliveries.retain(|delivery| supported_actors.contains(&delivery.actor));
+        !deliveries.is_empty()
+    });
     let mut handoff_wires = Vec::new();
     if handoff {
         let mut internals =
@@ -488,6 +555,12 @@ fn extract_with_options(
             })
             .map(|term| term.guard),
     );
+    responses.extend(
+        activation
+            .wires
+            .iter()
+            .flat_map(|wire| wire.terms.iter().map(|term| term.guard)),
+    );
     let arena = extractor.arena.compact(&mut responses);
     let mut guards = responses[response_count..].iter().copied();
     for output in &mut outputs {
@@ -505,6 +578,11 @@ fn extract_with_options(
             for term in terms {
                 term.guard = guards.next().unwrap();
             }
+        }
+    }
+    for wire in &mut activation.wires {
+        for term in &mut wire.terms {
+            term.guard = guards.next().unwrap();
         }
     }
     responses.truncate(response_count);

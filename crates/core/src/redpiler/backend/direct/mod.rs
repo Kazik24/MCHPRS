@@ -61,6 +61,23 @@ pub struct DirectBackend {
 }
 
 impl DirectBackend {
+    #[cfg(test)]
+    pub(crate) fn activation_states(&self) -> Vec<(BlockPos, bool)> {
+        self.instant
+            .iter()
+            .flat_map(|runtime| runtime.activation_states())
+            .collect()
+    }
+    #[cfg(test)]
+    pub(crate) fn take_activation_trace(
+        &mut self,
+    ) -> Vec<crate::redpiler::instant::activation::Delivery> {
+        self.instant
+            .iter_mut()
+            .flat_map(|runtime| runtime.take_activation_trace())
+            .collect()
+    }
+
     pub(crate) fn node_count(&self) -> usize {
         self.blocks.len()
     }

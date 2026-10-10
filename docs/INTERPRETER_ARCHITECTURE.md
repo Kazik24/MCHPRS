@@ -39,28 +39,11 @@ compiler or transfer simulation ownership.
 
 ### Spatial and electrical domain
 
-Positions are integer `BlockPos` triples. A plot owns a 256 by 256 horizontal
-area and height range `0..256`, represented by 16 by 16 chunks with 16 vertical
-sections each. Out-of-plot or out-of-height reads return air; writes fail.
-Neighboring plots are therefore outside this world's electrical domain.
-
-Block storage uses raw registry **state IDs**. `Block::from_id` decodes modeled
-variants and preserves other states as `Unknown { id }`. A registry **block
-type** identifies the kind of block across property changes; the scheduler uses
-this type to reject work after a block has been replaced.
-
-The intended signal domain is the finite chain `0..=15`. Parallel power routes
-combine by maximum, dust subtracts one strength per propagation step, and
-Boolean consumers test whether power is positive. Comparator output comes from
-a block entity, independently of its powered state bit. Raw entity APIs can
-contain out-of-range bytes; analog queries retain their actual values rather
-than applying an assumed 15-strength ceiling.
-
-The interpreter has no extracted circuit graph or precomputed Boolean function.
-Its semantic domain is a spatial, ordered transition system: geometry,
-electrical state, block entities, pending work, and operation history all matter.
-Quasi-connectivity supplies piston power without necessarily delivering a
-recheck, so a powered piston can retain a BUD state until a qualifying callback.
+The [Redstone model](REDSTONE_MODEL.md#1-mathematical-conventions-and-spatial-domain)
+defines plot boundaries, registry state/type IDs, signal algebra, conduction and
+component transitions. The interpreter applies those rules to live spatial storage
+and ordered work; it has no extracted graph or precomputed Boolean response.
+BUD storage follows the [piston transaction model](PISTON_MODEL.md#4-bud-switches-as-sampled-state).
 
 ### Authoritative state and derived data
 
@@ -98,33 +81,20 @@ flowchart TD
     T --> F[Return to between ticks]
 ```
 
-The scheduled phase drains the current bucket before advancing the ring, then
-drains the newly current bucket. Each pop selects `Highest`, `Higher`, `High`,
-then `Normal`, with FIFO order within a priority. A callback can append more
-work to a currently drained queue. `NanoTick` is an alias for `Normal`.
+The diagram summarizes the authoritative
+[phase dispatcher](REDSTONE_MODEL.md#55-phase-state-machine).
+Units, priority/FIFO order, ring bounds, type binding and stale requests follow
+Redstone section 5. `TickIndex` maintains membership counts without changing
+queue order or deduplication. Membership is removed before dispatch so callbacks
+can immediately reschedule; counts preserve repeated imported entries.
 
-`schedule_half_tick(d)` uses game ticks; `schedule_tick(d)` uses twice that
-delay. The ring expects delays below 32 and zero delay only with `NanoTick`,
-enforced by debug assertions in the generic scheduler. Larger delays wrap in
-release builds; this is a bounded ring, not an arbitrary-duration timer.
+Immediate callbacks finish synchronously. Notification order, duplicate recipients
+and observer/piston exclusions follow
+[Redstone section 4](REDSTONE_MODEL.md#4-immediate-callbacks-and-ordered-notification-procedures).
 
-Scheduling captures `(position, expected block type)` and suppresses another
-pending request with that same key. A request is removed from both queue and
-membership index **before** its callback, allowing immediate rescheduling.
-Execution reads the live block and requires its registry type to match. The
-generic scheduler can retain duplicate imported entries; membership counts
-preserve them without changing execution order.
-
-Immediate callbacks execute synchronously. Power rechecks, shape/support
-callbacks, and explicit scheduled ticks have different roles. Their face orders,
-duplicate notifications, and observer/piston exclusions are part of behavior;
-reordering or globally deduplicating them can change a circuit's transient trace.
-
-`picotick_advance(n)` executes up to `n` individual queued operations.
-`nanotick_advance(n)` captures the current phase's pending count and executes that
-many operations per step. A callback or dust walk completes inside an operation;
-fine stepping cannot pause its internal recursion. Both APIs reject advancement
-when plot history is enabled.
+Public stepping uses the same dispatcher. Count semantics, partial-tick completion
+and the history guard are defined in
+[Redstone section 15.2](REDSTONE_MODEL.md#152-pico-and-nano-stepping).
 
 ## 4. Electrical execution and Wire Turbo
 
@@ -171,24 +141,11 @@ are cleared. The persistent topology cache holds canonical addresses only.
 
 ### Requests, movement, and BUD state
 
-A piston callback samples directional input and quasi-connectivity, compares
-that input with the captured base pose, and may enqueue `Extend`, `Retract`, or
-`RetractWithoutPull`. An event captures position, sticky flag, facing, and action;
-identical full events are suppressed while different actions at one base can
-coexist. Event execution validates live state and power again before mutation.
-
-Payload movement uses `MovingPiston` states plus entities carrying the original
-state and optional block entity. A moving redstone block does not emit its
-carried redstone power. Exact motion records retain current/previous progress,
-last tick, and identity; the movement phase snapshots `(position, identity)`.
-A replaced entity cannot consume an old entity's scheduled movement operation.
-New motions created during that phase wait for the next snapshot.
-
-This checkout supports straight-line payload transport without a twelve-block
-push cap. It does not implement general push reactions or slime/honey branching.
-Boundary checks, restore-time support, head ownership, and early retraction
-remain part of physical execution. See the [piston model](PISTON_MODEL.md) for
-the exact mutation and notification order.
+The interpreter executes [physical piston transitions](PISTON_MODEL.md#2-piston-power-requests-and-event-validation)
+using the event and exact-motion deques in `PistonState`. Requests, live validation,
+payload mutation, identity snapshots and restoration retain the model's order.
+Address certificates accelerate these operations while leaving physical state
+and callback delivery authoritative.
 
 ### Qualification accelerates addresses
 
@@ -197,6 +154,11 @@ It observes a qualifying sticky piston with a single redstone-block payload,
 a downward-facing observer directly above the base, and a solid cap above that
 observer. Upward-facing actors, drop retractions, shared stationary payload
 ownership, unsupported entities, and conflicting reset writers fail the checks.
+The payload and cap must be entity-free; reset must restore the single-block
+footprint without an alternate cap writer.
+
+The certificate is derived lookup state only. It authorizes no cached power
+values or logical replacement of later waves.
 
 Qualification follows the real cycle:
 
@@ -215,7 +177,8 @@ solidity, emission, and comparator entities remain live. Addresses bypass repeat
 chunk/section/local-coordinate calculations, not electrical evaluation.
 
 Block/entity edits, interrupted motion, mismatched identities, or invalid
-footprints revoke affected entries. Bulk cache invalidation clears qualification.
+footprints revoke affected entries. Mutable chunk/piston-state access and bulk
+cache invalidation clear qualification. Certificates are ephemeral and unsaved.
 The cache admits at most 65,536 actors; exceeding the cap leaves execution on the
 ordinary path. A miss or unsupported `World` cache hook uses ordinary spatial
 power queries.

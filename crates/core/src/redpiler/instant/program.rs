@@ -20,6 +20,7 @@ pub(crate) struct PreparedInstant {
     pub clocked: Option<super::clocked::ClockedProgram>,
     pub independent_memory: Vec<super::clocked::MemoryCell>,
     pub sampling: Vec<super::sampling::SamplingEvent>,
+    pub activation: super::activation::Activation,
     pub reset_groups: Vec<super::observer::ResetGroup>,
     pub payloads: Vec<Block>,
     pub controls: Vec<BlockPos>,
@@ -133,10 +134,11 @@ pub(crate) fn prepare(
                 .iter()
                 .enumerate()
                 .filter_map(|(actor, piston)| {
-                    (!program
-                        .independent_memory
-                        .iter()
-                        .any(|cell| cell.actor == actor)
+                    (!program.activation.actors.contains(&actor)
+                        && !program
+                            .independent_memory
+                            .iter()
+                            .any(|cell| cell.actor == actor)
                         && !program.clocked.as_ref().is_some_and(|clock| {
                             clock.clock == actor
                                 || clock.memory.iter().any(|cell| cell.actor == actor)
@@ -222,6 +224,7 @@ fn prepare_region(
     }
     let clocked = super::clocked::recognize(world, report, &monitor, options.assume_instant)?;
     let candidates = super::sampling::reset_candidates(world, report);
+    let mut activation = super::activation::recognize(world, report, &monitor, &candidates)?;
     let mut independent =
         super::sampling::recognize(world, report, &monitor, clocked.as_ref(), &candidates)?;
     let is_clock = |id| clocked.as_ref().is_some_and(|c| c.clock == id);
@@ -429,7 +432,7 @@ fn prepare_region(
     if ticks.iter().any(|t| owned.contains(&t.pos)) {
         return Err("instant entry contains pending reset or movement work".into());
     }
-    let logic = logic::extract_ideal_with_state(
+    let logic = logic::extract_activated_with_state(
         world,
         report,
         &monitor,
@@ -439,6 +442,7 @@ fn prepare_region(
         &reset_owners,
         &independent.generators,
         &mut independent.events,
+        &mut activation,
     )?;
     super::sampling::validate(&independent.events, &logic, report)?;
     if let Some(clocked) = &clocked {
@@ -574,6 +578,7 @@ fn prepare_region(
         clocked,
         independent_memory: independent.memory,
         sampling: independent.events,
+        activation,
         reset_groups: certification.reset_groups,
         payloads: logical_payloads,
         controls: Vec::new(),

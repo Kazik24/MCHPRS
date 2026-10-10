@@ -2,7 +2,7 @@
 
 This document specifies the electrical and scheduling semantics implemented by MCHPRS. Its rules apply to arbitrary supported geometry and ordered input histories; schematic names, saved coordinates and particular output traces are not semantic inputs. The implementation is authoritative when it changes.
 
-The scope is `PlotWorld::tick_interpreted` and its immediate callbacks. [PISTON_MODEL.md](PISTON_MODEL.md) adds piston transport, quasi-connectivity, BUD storage and instant ordering to the same transition system. [REDPILER_MODEL.md](REDPILER_MODEL.md) defines the compiler abstraction; [REDPILER_ARCHITECTURE.md](REDPILER_ARCHITECTURE.md) maps that abstraction to the implementation. Regression protocols belong in [tests/README.md](tests/README.md).
+The scope is `PlotWorld::tick_interpreted` and its immediate callbacks. [PISTON_MODEL.md](PISTON_MODEL.md) adds piston transport, quasi-connectivity, BUD storage and instant ordering to the same transition system. [REDPILER_MODEL.md](REDPILER_MODEL.md) defines the compiler abstraction; [REDPILER_ARCHITECTURE.md](REDPILER_ARCHITECTURE.md) maps it to the implementation. Physical checks and replay observations are indexed in [interpreter verification](INTERPRETER_ARCHITECTURE.md#8-verification-and-reproduction).
 
 All equations describe repository behavior. They are not an exhaustive specification of every Minecraft mechanic. A derived equilibrium or Boolean formula states its assumptions explicitly and does not replace the ordered callback procedures.
 
@@ -271,6 +271,28 @@ $$
 
 This dust fallback lets a diode read adjacent dust strength even when dust's directional weak-emission rule returned zero.
 
+### 3.6 Guarded electrical channel projection
+
+For a fixed or certified geometry state $g$, a consumer channel $o$ has
+contributions $(\gamma_i,s_i,a_i)$: eligibility guard, source strength and
+dust attenuation. Its electrical projection is
+
+$$
+\operatorname{Channel}_o(g,\mathbf s)=
+\max\left(\{s_i\mathbin{\dotminus}a_i:\gamma_i(g)=1\}\cup\{0\}\right).
+$$
+
+A redstone-block contribution has strength fifteen. Conductors provide
+connectivity to permitted strong sources, not an intrinsic strength. Fixed
+contributors remain in the maximum when a mobile contributor disappears;
+a moving payload contributes none of its stationary power or conduction.
+Directional emission, dust shape and occupancy determine the guards.
+
+This is an electrical projection, not a replacement for notification or
+scheduling. Comparator overrides and side eligibility still use section 10.
+The [compiled model](REDPILER_MODEL.md#4-conditional-geometry-and-electrical-boundaries)
+describes how extraction represents guards and sources.
+
 ## 4. Immediate callbacks and ordered notification procedures
 
 ### 4.1 Three different operations
@@ -484,6 +506,13 @@ The scheduled phase therefore drains the old current bucket **before** advancing
 | MovingEntities | Consume $L[j]$, increment $j$, and attempt that identity's motion step |
 
 All nested immediate updates within that operation complete before it returns. A piston event generated during scheduled ticks is available in the same game tick's event phase. Events generated during the event phase are appended and drained in that phase. Events generated during movement wait until the next game tick's event phase; the engine does not jump backward through phases.
+
+For causal order, $\tau=(t,k)$ identifies the $k$th ordered semantic transition
+inside game tick $t$. The index orders dispatches and nested callbacks; it is
+not elapsed nanoseconds. Writes and nested notifications execute in source order,
+scheduled dispatches in priority/FIFO order, events in FIFO order, and motions
+in movement-snapshot order. Tick equality does not establish that actions
+commute or sample a common state.
 
 ### 5.6 What a full tick means
 
@@ -1124,9 +1153,10 @@ This is an event-driven pulse generator. It does not sample every adjacent block
 
 ### 12.3 Observers during movement
 
-A moving observer is represented by a moving-piston state, not by an active observer state. It emits no observer power while carried. On restoration, a powered observer is reset to unpowered if no request for observer type is pending at the destination. That reset invokes observer-output notifications.
-
-A matching observer request already at the destination is retained and can execute after restoration. Requests at the old source cell remain position-bound and do not accompany the carried observer.
+Moving observers emit no power. Restoration and powered-state recovery follow
+[piston completion](PISTON_MODEL.md#37-normal-and-interrupted-completion).
+Scheduled requests remain position-bound under section 5.4; they do not travel
+with the observer.
 
 ## 13. Support geometry, placement, destruction, and use
 
@@ -1277,7 +1307,7 @@ History snapshots capture chunks/entities, scheduled entries, and `PistonState`.
 
 Identical block maps with different requests, piston events, motion identities, or phases can have different futures. A simulation snapshot must preserve those fields.
 
-Schematic import is a different initialization operation from notified placement. `load_schematic` decodes v2/v3 block states/entities and negates the saved displacement; v2 WEOffset metadata takes precedence when present and must contain all three coordinates. The actual [paste routine](../crates/core/src/plot/worldedit/mod.rs) sets minimum = anchor − clipboard offset, writes x-fastest/z-next/y-last block cells through storage, then installs entities. It does not replay placement, shape or redstone notifications. Strict saved states can therefore remain quiescent although a notified reconstruction has different work or behavior. Regression setup must record import, settling and later notified operations separately; see [test protocols](tests/README.md).
+Schematic import is a different initialization operation from notified placement. `load_schematic` decodes v2/v3 block states/entities and negates the saved displacement; v2 WEOffset metadata takes precedence when present and must contain all three coordinates. The actual [paste routine](../crates/core/src/plot/worldedit/mod.rs) sets minimum = anchor − clipboard offset, writes x-fastest/z-next/y-last block cells through storage, then installs entities. It does not replay placement, shape or redstone notifications. Strict saved states can therefore remain quiescent although a notified reconstruction has different work or behavior. Regression setup must record import, settling and later notified operations separately; see [test protocols](INTERPRETER_ARCHITECTURE.md#8-verification-and-reproduction).
 
 ### 15.2 Pico and nano stepping
 
@@ -1341,7 +1371,7 @@ A quiescent state has no scheduled work, events, active motions, or immediate ca
 
 ### 16.4 Scope of equivalence
 
-This model does not assume Minecraft's general push reactions, twelve-block piston limit, adhesion, torch burnout, dynamic tripwire/projectile behavior, autonomous hopper transport, or general furnace processing.
+Piston transport limits are specified in [the piston model](PISTON_MODEL.md#31-forward-payload-line). This model also omits torch burnout, dynamic tripwire/projectile behavior, autonomous hopper transport, and general furnace processing.
 
 Redpiler's optimized graph can merge or remove nodes. Equality of ordinary lamp outputs alone does not establish equality of observer callbacks, transient dust states, analog overrides, piston motions, or pending-request traces. Compiled execution needs a separate equivalence argument for the selected observables.
 
@@ -1375,4 +1405,4 @@ Several rules can be expressed more generally, but the current implementation ha
 | Command activation and chains | [command_block.rs](../crates/core/src/redstone/command_block.rs) |
 | Snapshot state restoration | [history/codec.rs](../crates/core/src/plot/history/codec.rs) |
 
-Use [tests/README.md](tests/README.md) for runnable checks and frozen reference protocols. Tests establish their asserted observations and input histories; neither a saved trace nor a successful compilation is a proof for every circuit.
+Use [verification reference](INTERPRETER_ARCHITECTURE.md#8-verification-and-reproduction) for runnable checks and frozen reference protocols. Tests establish their asserted observations and input histories; neither a saved trace nor a successful compilation is a proof for every circuit.

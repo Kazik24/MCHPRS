@@ -98,7 +98,7 @@ use `mchprs.we.update`, `.invalidatecaches`, and `.replacecontainer`. Redstone t
 use `mchprs.redstonetools.find`, `.signsearch`, `.rstack`, `.autostack`, `.container`,
 `.cursel`, and `.wire`. Mutating commands still validate current-plot access and bounds.
 
-The [wire pen](WIRE_TOOL.md) requires `mchprs.redstonetools.wire`, plot edit
+The wire pen requires `mchprs.redstonetools.wire`, plot edit
 access, and `mchprs.build.place` when committing. Legacy mode checks
 `redstonetools.wire` and the existing WorldEdit ownership/member/bypass gate.
 Possession of its carrot on a stick does not grant tool access. `/wire off`

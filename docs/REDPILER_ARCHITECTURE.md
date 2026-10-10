@@ -215,6 +215,11 @@ Final compaction retains decisions reachable from response roots, electrical
 output guards, sampling guards, and handoff dust expressions. Restoration-only
 decisions remain in the arena but need not enter the active runtime plans.
 
+The decision equation is $D(v,L,H)=(\neg v\land L)\lor(v\land H)$.
+Threshold implications such as $[s>7]\Rightarrow[s>3]$ are not a separate
+constraint theory in the arena; independent decisions can miss simplifications
+while remaining correct for valid strengths.
+
 ### Observer certification as conservative inference
 
 [`observer::certify`](../crates/core/src/redpiler/instant/observer.rs) uses
@@ -271,17 +276,14 @@ binding, and supplies dynamic mobile aliases and projected consumer outputs.
 `MobileSource` and `InstantOutput` lower to `InstantSource` runtime nodes.
 `InstantInput` is diagnostic and is not an executable node.
 
-Each output is a list of `PowerTerm { guard, source, attenuation }`, where an
-absent source means a full-strength redstone block. The receiving strength is:
-
-```text
-max(enabled terms: source_strength.saturating_sub(attenuation)), or 0
-```
-
-Main and comparator-side channels remain distinct. Moving a conductor can gate
-an ordinary source without reducing it to a Boolean 0/15 output. Output guards
-read settled geometry; moving-base occupancy is always false in this runtime.
-Shared groups choose the first fired actor as deterministic near-payload owner.
+Each output stores `PowerTerm { guard, source, attenuation }`; an absent source
+means a strength-fifteen redstone block. It implements the
+[guarded channel projection](REDSTONE_MODEL.md#36-guarded-electrical-channel-projection).
+Internal responses use settled geometry; electrical outputs, observers and
+activation routes use scheduled phases. Main and comparator-side channels remain
+separate. Shared groups choose the first fired actor as deterministic near owner.
+See [compiled model sections 4 and 6](REDPILER_MODEL.md#4-conditional-geometry-and-electrical-boundaries)
+for the observation and timing contract.
 
 ### Cached runtime plans
 
@@ -291,12 +293,28 @@ expression references, response order, allowed input kinds, and dependency
 cycles, then keeps only reachable decisions and deduplicates input/threshold
 bindings. Runtime source bindings cannot be ordinary display wire nodes.
 
-Each plan holds a frozen Boolean input snapshot, cached decision values,
-input users, and reverse parent dependencies. `capture` invalidates paths
-affected by changed threshold results; it can keep an unaffected selected branch
-cached. `evaluate` uses an explicit stack and evaluates only the selected paths.
-Repeated roots share cached results. Unchanged sources, no due clock, and no
-pending sample allow an initialized region to skip evaluation.
+Each plan holds a frozen Boolean snapshot, cached decisions, input users and
+reverse parent dependencies. Mutation marking records dirty binding IDs;
+`capture_dirty` reads that set against one coherent state before invalidating
+affected decisions. Initialization captures all bindings. Unaffected selected
+branches remain cached; `evaluate` uses an explicit stack and required branches.
+Repeated roots share results. Source, memory, committed-response and geometry
+mutations mark dependent bindings in relevant plans. Unchanged inputs and absent
+due work permit evaluation to be skipped.
+
+### Notification-gated activation
+
+[`activation::recognize`](../crates/core/src/redpiler/instant/activation.rs)
+prepares isolated mobile-fed wire and base/head delivery tables for reset-observed
+actors whose data route does not notify. Conditional extraction rejects additional
+wire positions. `Input::Committed` cuts gated references at committed pose.
+
+The runtime owns `activation_wires` and a `VecDeque<Delivery>`. Strength changes
+and represented boundary notifications enqueue ordered recipients, including
+repeated deliveries. Each advance processes one recipient and publishes its pose
+and electrical effects; head-only delivery checks current geometry. Data-only
+changes hold gated responses. The contract and limits are in
+[compiled model section 13](REDPILER_MODEL.md#13-notification-gated-instant-responses).
 
 ### Memory and event ordering
 
@@ -309,17 +327,9 @@ Compilation seeds stored bits from saved piston geometry and establishes event
 baselines. Activation itself is not a write event. Changing prepared data alone
 does not overwrite an independent memory cell.
 
-A recognized active observer clock evaluates all responses against one old bank,
-commits its memory cells together, and schedules its next sample six backend
-half-tick advances later. Stopping the clock preserves stored bits and the last
-data response. The six-step interval belongs to this recognized protocol.
-
-Independent writes are grouped by writer. All delivered notifications from one
-writer evaluate eligible targets against one frozen old bank, then commit them
-together. Head-target eligibility uses the old extended state. Separate writers
-observe the preceding writer's committed bank; they are not collapsed into one
-tick-wide transaction. Remaining delivered groups stay pending for another
-backend evaluation pass. Non-memory responses refresh after a bank commit.
+Clocked and independent-memory transaction boundaries are specified in
+[compiled model sections 7–8](REDPILER_MODEL.md#7-shared-clock-memory).
+Their bank state remains independent of gated actuator commitment.
 
 ## 6. Optimizer
 
@@ -401,17 +411,13 @@ binds world positions and region outputs, builds observer/dependency tables, and
 transfers retained scheduled ticks with remaining half-tick deadlines and
 priorities. Backend node IDs are local to that backend instance.
 
-Each node channel has sixteen byte counters, one for each strength `0..=15`.
-A source change subtracts link attenuation from old and new strengths, adjusts
-the corresponding counters, and reevaluates the consumer. Strongest input is
-the highest occupied strength bucket; Boolean input means any nonzero-strength
-bucket is occupied. Runtime execution follows compiled links instead of walking
-neighbor blocks.
+Each node channel has sixteen byte counters for strengths `0..=15`, updated by
+the histogram rule below. Boolean input tests for an occupied nonzero-strength
+bucket. Execution follows compiled links instead of walking neighbor blocks.
 
-Lowering validates strengths and limits incoming edges to 255 per channel.
-[`ForwardLink`](../crates/core/src/redpiler/backend/direct/node.rs) packs a 27-bit
-target ID, one side-channel bit, and four attenuation bits. Fixed node storage
-and validated IDs support unchecked indexing on hot paths.
+Lowering enforces the counter and packed-link limits below. `ForwardLink` stores
+a target ID, channel bit and attenuation; validated backend-local IDs support
+unchecked runtime indexing.
 
 [`update.rs`](../crates/core/src/redpiler/backend/direct/update.rs) reevaluates
 inputs and requests work; [`tick.rs`](../crates/core/src/redpiler/backend/direct/tick.rs)
@@ -420,6 +426,27 @@ preserves repeater locking/delay, comparator timing, observer pulses, and delaye
 lamp turn-off. [`TickScheduler`](../crates/core/src/redpiler/backend/queue.rs) is a
 32-slot half-tick ring with FIFO queues per priority; redstone-tick delays are
 converted to twice as many slots. It is not an arbitrary-duration scheduler.
+
+Using strengths $s_v$, channel inputs $I_{v,c}$ and edges $(u,v,c,a)$ from the
+[ordinary graph model](REDPILER_MODEL.md#2-ordinary-electrical-graph), channel
+counters implement its maximum equation incrementally:
+
+$$
+C_{v,c}[j]=\sum_{e=(u,v,c,a)}[s_u\mathbin{\dotminus}a=j],\qquad
+I_{v,c}=\max\bigl(\{j:C_{v,c}[j]>0\}\cup\{0\}\bigr).
+$$
+
+When $s_u$ changes from $x$ to $y$, each outgoing edge decrements
+$C_{v,c}[x\dotminus a]$ and increments $C_{v,c}[y\dotminus a]$.
+If the attenuated values agree, that edge delivers no update. Otherwise the
+backend reevaluates the receiving component. This is an incremental
+implementation of the maximum equation, not an approximation.
+
+[Direct lowering](../crates/core/src/redpiler/backend/direct/compile.rs)
+requires strengths in $\mathcal S$ and at most 255 incoming edges per channel.
+The packed forward-link representation requires attenuation below fifteen and
+target indices below $2^{27}$. Node IDs belong to one fixed backend array;
+unchecked runtime access relies on those construction invariants.
 
 One compiled advance proceeds as follows:
 
@@ -431,7 +458,8 @@ One compiled advance proceeds as follows:
 3. After ordinary callbacks, evaluate due owned periodic clocks.
 4. Publish changed aliases/output strengths through `set_node`, mark dependent
    regions dirty, and notify ordinary observers of committed geometry changes.
-   Repeat region evaluation while dirty regions or delivered samples remain.
+   Repeat region evaluation while dirty regions, delivered samples or queued
+   activations remain.
 
 The dependency refresh loop coordinates prepared programs; it is not a general
 solver for arbitrary cyclic physical circuits. Region preparation rejects
@@ -470,10 +498,8 @@ assumption mode.
 
 Edits that change compiler input geometry must end compiler ownership first.
 Lever/button use and pressure-plate changes have compiled input paths; other
-interaction rules live in the plot/player callers. The proposed mixed
-native/compiled ownership design in
-[partial compilation scope](notes/REDPILER_PARTIAL_COMPILATION.md) is a plan,
-not an implemented fallback for rejected piston regions.
+interaction rules live in the plot/player callers. Mixed native/compiled ownership
+remains proposed; rejected piston regions have no native execution fallback.
 
 ## 9. Commands, limits, and verification
 
@@ -515,14 +541,11 @@ command flags. Cancellation and exhaustion return diagnostics instead of
 activating a truncated program. Successful statistics include graph counts and
 timings, wire elision, region counts, arena/plan decisions, outputs, and bindings.
 
-For documentation changes, run:
-
-```sh
-python tools/validate_docs.py
-```
+For documentation changes, check local targets and heading anchors, including
+fixture reports. The former `tools/validate_docs.py` is absent from this checkout.
 
 For implementation changes, select relevant checks from the
-[test guide](tests/README.md). The main compiler suite is:
+[test guide](REDPILER_ARCHITECTURE.md#9-commands-limits-and-verification). The main compiler suite is:
 
 ```sh
 cargo test -p mchprs_core --lib --locked redpiler::
@@ -533,7 +556,7 @@ cancellation, shared roots, invalidation, threshold handling, and frozen memory
 snapshots. Analysis tests cover geometry admission, rejected input without world
 mutation, electrical output strengths, observer ownership, independent write
 ordering, clock banks, and reset/recompile continuity. Physical interpreter
-protocols have [separate tests](tests/INSTANT_PISTONS.md); a matching logical
+protocols have [physical piston verification](INTERPRETER_ARCHITECTURE.md#8-verification-and-reproduction); a matching logical
 output is not evidence that intermediate physical motion or reset pulses match.
 The isolated Boolean optimizer can be checked separately with:
 

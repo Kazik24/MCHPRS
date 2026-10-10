@@ -9,6 +9,7 @@ use crate::world::World;
 use mchprs_blocks::blocks::{Block, RedstonePistonHead};
 use mchprs_blocks::BlockPos;
 use rustc_hash::{FxHashMap, FxHashSet};
+use std::collections::VecDeque;
 
 mod logical;
 mod timing;
@@ -29,6 +30,11 @@ pub(super) struct Runtime {
     memory_geometry: FxHashMap<BlockPos, Observation>,
     geometry_index: FxHashMap<BlockPos, (Observation, bool)>,
     sampling: Vec<SamplingEvent>,
+    activation_wires: Vec<ActivationWire>,
+    activations: VecDeque<crate::redpiler::instant::activation::Delivery>,
+    deferred_sources: bool,
+    #[cfg(test)]
+    activation_trace: Vec<crate::redpiler::instant::activation::Delivery>,
     sampling_groups: Vec<Vec<usize>>,
     sampling_pending: bool,
     observations: Vec<(BlockPos, Observation, Block)>,
@@ -48,6 +54,12 @@ enum Observation {
     Base(usize),
     Near(usize),
     Far(usize),
+}
+
+struct ActivationWire {
+    terms: Vec<(usize, Term)>,
+    previous: u8,
+    deliveries: Vec<crate::redpiler::instant::activation::Delivery>,
 }
 
 struct SamplingEvent {
@@ -98,6 +110,7 @@ enum Input {
     Source(NodeId),
     Memory(usize),
     Response(usize),
+    Committed(usize),
     Geometry { actor: usize, part: GeometryPart },
 }
 enum Supply {
@@ -113,6 +126,23 @@ enum Supply {
 }
 
 impl Runtime {
+    #[cfg(test)]
+    pub(super) fn activation_states(&self) -> Vec<(BlockPos, bool)> {
+        self.program
+            .activation
+            .actors
+            .iter()
+            .map(|&actor| (self.program.pistons[actor].pos, self.fired[actor]))
+            .collect()
+    }
+
+    #[cfg(test)]
+    pub(super) fn take_activation_trace(
+        &mut self,
+    ) -> Vec<crate::redpiler::instant::activation::Delivery> {
+        std::mem::take(&mut self.activation_trace)
+    }
+
     pub(super) fn mark_source_dirty(&mut self, source: NodeId) {
         if let Some(state) = &mut self.logical {
             state.mark_dirty(Input::Source(source));
@@ -208,9 +238,14 @@ impl Runtime {
                     {
                         (Input::Memory(actor), 0)
                     }
-                    Variable::Actuator(actor) if actor < program.logic.responses.len() => {
-                        (Input::Response(actor), 0)
-                    }
+                    Variable::Actuator(actor) if actor < program.logic.responses.len() => (
+                        if program.activation.actors.contains(&actor) {
+                            Input::Committed(actor)
+                        } else {
+                            Input::Response(actor)
+                        },
+                        0,
+                    ),
                     Variable::Geometry { actor, part } if actor < program.logic.responses.len() => {
                         (Input::Geometry { actor, part }, 0)
                     }
@@ -358,6 +393,35 @@ impl Runtime {
             }
         }
         let sampling_groups = writers.into_iter().map(|(_, events)| events).collect();
+        let mut activation_wires = Vec::new();
+        for wire in &program.activation.wires {
+            let mut terms = Vec::new();
+            for term in &wire.terms {
+                let root = sampling_roots.len();
+                sampling_roots.push(term.guard);
+                terms.push((
+                    root,
+                    Term {
+                        guard: term.guard,
+                        source: term
+                            .source
+                            .map(|pos| {
+                                bindings
+                                    .get(&pos)
+                                    .copied()
+                                    .ok_or(BackendError::MissingInstantBinding { pos })
+                            })
+                            .transpose()?,
+                        attenuation: term.attenuation,
+                    },
+                ));
+            }
+            activation_wires.push(ActivationWire {
+                terms,
+                previous: wire.initial,
+                deliveries: wire.deliveries.clone(),
+            });
+        }
         let logical = Some(logical::State::bind(
             &decisions,
             program.logic.responses.clone(),
@@ -420,7 +484,13 @@ impl Runtime {
             group_fired[actor_groups[actor]] |= value;
         }
         let mut geometry_masks = vec![0u8; fired.len()];
-        for (actor, part) in logical.as_ref().unwrap().outputs.geometry_inputs() {
+        for (actor, part) in logical
+            .as_ref()
+            .unwrap()
+            .outputs
+            .geometry_inputs()
+            .chain(logical.as_ref().unwrap().sampling.geometry_inputs())
+        {
             geometry_masks[actor] |= 1 << part as u8;
         }
         for &(node, ref supply) in &aliases {
@@ -446,6 +516,17 @@ impl Runtime {
                             GeometryPart::NearPayload
                         }) as u8;
                 }
+            }
+        }
+        for (actor, piston) in program.pistons.iter().enumerate() {
+            if program.activation.actors.contains(&actor)
+                || program.activation.pose_deliveries.contains_key(&piston.pos)
+                || program
+                    .activation
+                    .pose_deliveries
+                    .contains_key(&piston.head)
+            {
+                geometry_masks[actor] = 31;
             }
         }
         for members in &program.groups {
@@ -519,6 +600,11 @@ impl Runtime {
             actor_groups,
             memory_actors,
             sampling,
+            activation_wires,
+            activations: VecDeque::new(),
+            deferred_sources: false,
+            #[cfg(test)]
+            activation_trace: Vec::new(),
             sampling_groups,
             sampling_pending: false,
             observations: Vec::new(),
@@ -575,7 +661,7 @@ impl Runtime {
     }
 
     pub(super) fn has_pending_samples(&self) -> bool {
-        self.sampling_pending
+        self.sampling_pending || !self.activations.is_empty() || self.deferred_sources
     }
 
     pub(super) fn begin_tick(&mut self) {
@@ -618,7 +704,7 @@ impl Runtime {
         match input {
             Input::Source(source) => nodes[source].output_power > threshold,
             Input::Memory(actor) => self.memory[actor],
-            Input::Response(actor) => self.fired[actor],
+            Input::Response(actor) | Input::Committed(actor) => self.fired[actor],
             Input::Geometry { actor, part } => self.geometry(actor, part),
         }
     }
@@ -646,9 +732,39 @@ impl Runtime {
     pub(super) fn advance(
         &mut self,
         nodes: &Nodes,
-        sources_changed: bool,
+        mut sources_changed: bool,
         clock_event: bool,
     ) -> Vec<(NodeId, u8)> {
+        self.deferred_sources |= sources_changed;
+        if let Some(event) = self.activations.pop_front() {
+            #[cfg(test)]
+            self.activation_trace.push(event);
+            let eligible =
+                !event.requires_extended || self.geometry(event.actor, GeometryPart::Head);
+            if eligible {
+                let mut state = self.logical.take().unwrap();
+                state
+                    .responses
+                    .capture_dirty(|input, threshold| self.read_input(input, threshold, nodes));
+                let value = state.responses.evaluate(event.actor);
+                if self.fired[event.actor] != value {
+                    self.fired[event.actor] = value;
+                    state.mark_dirty(Input::Committed(event.actor));
+                    for &actor in &self.program.groups[self.actor_groups[event.actor]] {
+                        state.mark_geometry_actor_dirty(actor);
+                    }
+                }
+                self.logical = Some(state);
+                if self.in_tick {
+                    self.advance_boundaries(true);
+                } else {
+                    self.pending_launch = true;
+                }
+                self.queue_activations(nodes);
+            }
+            return self.supply_changes(nodes);
+        }
+        sources_changed = std::mem::take(&mut self.deferred_sources);
         let boundary_due = clock_event
             && self
                 .next_boundary
@@ -666,6 +782,7 @@ impl Runtime {
         if state.initialized && !sources_changed && !due && !self.sampling_pending && !bank_due {
             if boundary_due || launch_due {
                 if self.advance_boundaries(launch_due) {
+                    self.queue_activations(nodes);
                     return self.supply_changes(nodes);
                 }
             }
@@ -733,6 +850,9 @@ impl Runtime {
             // Every response reads the same frozen old bank before any write.
             let mut changed_actors = Vec::new();
             state.responses.evaluate_dirty(|actor, value| {
+                if self.program.activation.actors.contains(&actor) {
+                    return;
+                }
                 if self.fired[actor] != value {
                     changed_actors.push(actor);
                 }
@@ -740,6 +860,7 @@ impl Runtime {
             });
             for actor in changed_actors {
                 state.mark_dirty(Input::Response(actor));
+                state.mark_dirty(Input::Committed(actor));
                 for &member in &self.program.groups[self.actor_groups[actor]] {
                     state.mark_geometry_actor_dirty(member);
                 }
@@ -833,7 +954,7 @@ impl Runtime {
                 .capture_dirty(|input, threshold| self.read_input(input, threshold, nodes));
             let mut changed_actors = Vec::new();
             state.responses.evaluate_dirty(|actor, value| {
-                if !self.memory_actors[actor] {
+                if !self.memory_actors[actor] && !self.program.activation.actors.contains(&actor) {
                     if self.fired[actor] != value {
                         changed_actors.push(actor);
                     }
@@ -842,6 +963,7 @@ impl Runtime {
             });
             for actor in changed_actors {
                 state.mark_dirty(Input::Response(actor));
+                state.mark_dirty(Input::Committed(actor));
                 for &member in &self.program.groups[self.actor_groups[actor]] {
                     state.mark_geometry_actor_dirty(member);
                 }
@@ -864,7 +986,34 @@ impl Runtime {
         } else {
             self.pending_launch = true;
         }
+        self.queue_activations(nodes);
         self.supply_changes(nodes)
+    }
+
+    fn queue_activations(&mut self, nodes: &Nodes) {
+        let mut state = self.logical.take().unwrap();
+        state
+            .sampling
+            .capture_dirty(|input, threshold| self.read_input(input, threshold, nodes));
+        for wire in &mut self.activation_wires {
+            let strength = wire
+                .terms
+                .iter()
+                .filter_map(|(root, term)| {
+                    state.sampling.evaluate(*root).then(|| {
+                        term.source
+                            .map_or(15, |id| nodes[id].output_power)
+                            .saturating_sub(term.attenuation)
+                    })
+                })
+                .max()
+                .unwrap_or(0);
+            let previous = std::mem::replace(&mut wire.previous, strength);
+            if previous != strength {
+                self.activations.extend(wire.deliveries.iter().copied());
+            }
+        }
+        self.logical = Some(state);
     }
 
     fn advance_boundaries(&mut self, launch: bool) -> bool {
@@ -876,6 +1025,7 @@ impl Runtime {
             .is_none_or(|clock| self.fired[clock.clock]);
         let mut changed = false;
         let mut changed_groups = Vec::new();
+        let mut notifications = Vec::new();
         for boundary in &mut self.boundaries {
             let previous = boundary.phase;
             if launch {
@@ -891,6 +1041,16 @@ impl Runtime {
             boundary.advance(self.elapsed, resetting);
             if previous != boundary.phase {
                 changed = true;
+                let piston = &self.program.pistons[boundary.actor];
+                match boundary.phase {
+                    timing::Phase::Retracting | timing::Phase::Retracted => {
+                        notifications.extend([piston.pos, piston.head])
+                    }
+                    timing::Phase::Extending => {
+                        notifications.extend([piston.head, piston.head, piston.pos])
+                    }
+                    timing::Phase::Extended => notifications.push(piston.head),
+                }
                 let group = self.actor_groups[boundary.actor];
                 if !changed_groups.contains(&group) {
                     changed_groups.push(group);
@@ -908,6 +1068,11 @@ impl Runtime {
                 for &actor in &self.program.groups[group] {
                     state.mark_geometry_actor_dirty(actor);
                 }
+            }
+        }
+        for pos in notifications {
+            if let Some(deliveries) = self.program.activation.pose_deliveries.get(&pos) {
+                self.activations.extend(deliveries.iter().copied());
             }
         }
         changed

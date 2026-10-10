@@ -24,11 +24,11 @@ macro_rules! catalog {
 
 catalog! {
     fixed {
-        USAGE_SMALL = "Usage: /small [on|off|wolf|fox|cat|ocelot]";
+        USAGE_SMALL = "Usage: /small [on|off|wolf|fox|cat|ocelot|baby]";
         SMALL_ENABLED = "Smol paws mode on";
         SMALL_DISABLED = "Small mode off. You're back to your normal size.";
         SMALL_NO_ROOM = "There isn't room to return to full size here. Move into an open space first.";
-        HELP_SMALL = "Small mode\n/small toggles half-size movement and an animal appearance for other players.\n/small on and /small off select the mode explicitly.\n/small wolf|fox|cat|ocelot changes your saved animal; ocelot is the default.\n/gm cat enables creative play in small mode; other gamemodes restore normal size.\nYour own view stays a scaled player so the preview cannot block your clicks.\nMove into an open space before turning it off. Your mode and animal follow you between plots and are saved when you leave.";
+        HELP_SMALL = "Small mode\n/small toggles half-size movement and an animal appearance for other players.\n/small on and /small off select the mode explicitly.\n/small wolf|fox|cat|ocelot|baby changes your saved animal; ocelot is the default. Baby ocelot uses an even smaller model and hitbox.\n/gm cat enables creative play in small mode; other gamemodes restore normal size.\nYour own view stays a scaled player so the preview cannot block your clicks.\nMove into an open space before turning it off. Your mode and animal follow you between plots and are saved when you leave.";
         USAGE_SETWARP = "Usage: /setwarp <name> (creates or replaces a shared warp)";
         USAGE_WARP = "Usage: /warp [name] (omit the name to list shared warps)";
         INVALID_WARP_NAME = "Warp names must be 1-32 letters, digits, underscores or hyphens.";

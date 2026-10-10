@@ -272,4 +272,4 @@ and timing in merge proofs; preserve pending work and retained interfaces.
 The limitations above are present implementation constraints, not reasons to
 add circuit-name exceptions. Checks should vary analog strength, path length,
 saved state and scheduler order across the relevant family. See the
-[test guide](tests/README.md) for existing runnable suites.
+[test guide](REDPILER_ARCHITECTURE.md#9-commands-limits-and-verification) for existing runnable suites.

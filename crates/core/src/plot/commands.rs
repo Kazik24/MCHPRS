@@ -1057,11 +1057,12 @@ impl Plot {
                     [] => self.players[player].small_model.is_none(),
                     ["on"] => true,
                     ["off"] => false,
-                    ["wolf" | "fox" | "cat" | "ocelot"] => {
+                    ["wolf" | "fox" | "cat" | "ocelot" | "baby"] => {
                         let animal = match args[0] {
                             "wolf" => crate::player::SmallAnimal::Wolf,
                             "fox" => crate::player::SmallAnimal::Fox,
                             "cat" => crate::player::SmallAnimal::Cat,
+                            "baby" => crate::player::SmallAnimal::BabyOcelot,
                             _ => crate::player::SmallAnimal::Ocelot,
                         };
                         self.set_small_animal(player, animal);
@@ -1560,7 +1561,7 @@ fn declared_command_nodes() -> Vec<Node<'static>> {
         // 164: /rv shares the server-completed git arguments.
         Node::literal("rv", &[109]).executable(),
         // 165-167: /small and its explicit states.
-        Node::literal("small", &[166, 167, 171, 172, 173, 174]).executable(),
+        Node::literal("small", &[166, 167, 171, 172, 173, 174, 175]).executable(),
         Node::literal("on", &[]).executable(),
         Node::literal("off", &[]).executable(),
         // 168: /gm cat selects creative play with the small ocelot disguise.
@@ -1573,6 +1574,7 @@ fn declared_command_nodes() -> Vec<Node<'static>> {
         Node::literal("fox", &[]).executable(),
         Node::literal("cat", &[]).executable(),
         Node::literal("ocelot", &[]).executable(),
+        Node::literal("baby", &[]).executable(),
     ]
 }
 
@@ -1739,7 +1741,7 @@ mod security_tests {
                 .iter()
                 .map(|&id| nodes[id as usize].name.unwrap())
                 .collect::<Vec<_>>(),
-            ["on", "off", "wolf", "fox", "cat", "ocelot"]
+            ["on", "off", "wolf", "fox", "cat", "ocelot", "baby"]
         );
         let gm = nodes
             .iter()
@@ -1819,7 +1821,7 @@ mod security_tests {
     #[test]
     fn command_declarations_have_valid_edges_and_no_legacy_tick_aliases() {
         let nodes = declared_command_nodes();
-        assert_eq!(nodes.len(), 171);
+        assert_eq!(nodes.len(), 176);
         for node in &nodes {
             for edge in node.children.iter().copied().chain(node.redirect_node) {
                 assert!(edge >= 0 && (edge as usize) < nodes.len());

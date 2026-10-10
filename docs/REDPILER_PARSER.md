@@ -144,31 +144,17 @@ remaps actor/group IDs, mobile dependencies and ports consistently.
 
 Executable preparation rejects non-between-tick entry, active motion/events or
 movement work, and selection spanning plots. Binary instant export is rejected.
-Each region then selects a representation before extraction:
+Each region prepares the same cached logical runtime: guarded acyclic responses,
+optional recognized clock/storage, independent sampling and restricted activation.
+`--assume-instant` relaxes construction/reset proofs while retaining geometry,
+ownership, context, sampling and dependency validation. Rejected piston regions
+have no sequential or native execution fallback.
 
-| Condition | Preparation path |
-| --- | --- |
-| More than one ordinary generator, an ordinary generator not facing down, any retracted actor, missing/mismatched saved head, or an additional reset writer | Sampled sequential without `--assume-instant`; otherwise require a logical certificate or reject |
-| Other supported ready geometry | Acyclic response, optionally recognized clock and memory |
-
-This is the dispatch in
-[`program::prepare_region`](../crates/core/src/redpiler/instant/program.rs),
-which falls back from failed wave preparation to the sequential adapter in
-physical mode. Logical mode never publishes that fallback. Within each path,
-moving-context entities and destructive moving
-attachments are rejected; smaller selections must provide dependency context.
-For a full isolated plot, sequential extraction permits outside reads as air.
-
-The ready path additionally checks supported reset ownership, required
-notifications, pending owned work and visible reset effects. Physical mode
-requires the ready electrical response and appropriate return protocol;
-logical mode certifies a pure response domain rather than its physical reset
-pulse. It still validates heads, payloads, electrical/update coupling, owned
-storage boundaries and acyclic dependencies. Specialized
-clock recognition keeps memory actors explicit instead of treating stored data
-as an acyclic feedback edge. Use current code and the
-[compiled model](REDPILER_MODEL.md) for branch-specific behavior rather than
-inferring support from a recognition diagnostic's wording.
+[`program::prepare_region`](../crates/core/src/redpiler/instant/program.rs)
+recognizes clocks, reset candidates, gated actors and independent memory before
+extracting expressions. Binding is a later admission step; recognition alone
+cannot authorize execution. Admission and transaction contracts are in
+[the compiled model](REDPILER_MODEL.md#6-cached-logical-response-execution).
 
 ## Conditional geometry extraction
 
@@ -180,7 +166,9 @@ without emitting redstone themselves.
 
 For an acyclic response, another actor's firing temporarily removes its mobile
 payload's supply and conduction; an actor's own payload is excluded from its
-initial firing predicate. Memory geometry is an explicit stored variable.
+initial firing predicate. Memory geometry is an explicit stored variable; gated
+references use committed response state. Data and notification-route discovery
+remain separate.
 Wire shape is recomputed under conditional neighbor configurations using the
 shared wire shape functions. Equivalent shapes and blocks share a disjunction
 of guards. Conditional dust walks carry both distance and a Boolean path guard;
@@ -202,18 +190,16 @@ terms. Main and comparator side channels are separate ports. Changing geometry
 around an inventory override requires an unsupported dynamic-read protocol and
 is rejected on the ready acyclic path; a fixed rear override stays ordinary.
 
-[`BooleanArena`](../crates/core/src/redpiler/instant/boolean.rs) implements
-ordered binary decisions with false/true terminal IDs 0/1. Equal branches
-collapse, identical decisions share an ID, conjunction and inverse results are
-cached, and actuator substitution rebuilds through conditional selection to
-retain ordering. Final compaction keeps only decisions reachable from response
-roots, output guards and requested logical restoration paths, dropping temporary
-decisions and construction caches. Ideal preparation also extracts guarded
-dust strengths for deterministic handoff without electrical update propagation.
-This simplifies equivalent Boolean functions; it does not prove physical
-timing, update order or safe materialization.
+Decision representation and compaction are specified in
+[the solver architecture](REDPILER_ARCHITECTURE.md#decision-arena-and-dependency-solving).
+Executable extraction retains local candidate DAG edges; standalone helpers can
+substitute resolved actors. Gated references cut at committed state. The remaining
+candidate graph must still be acyclic.
 
 ## Sampled sequential extraction
+
+This retained extractor supplies dependency and reset-certification analysis.
+It is not an active executor or a fallback for rejected regions.
 
 [`logic/sequential.rs`](../crates/core/src/redpiler/instant/logic/sequential.rs)
 uses the same conditional geometry engine while retaining local boundaries:
@@ -233,11 +219,9 @@ on a common far destination. Unsupported nonair occupancy in possible payload
 positions is rejected; saved actor heads have their own compatibility checks.
 
 [`instant/sequential.rs`](../crates/core/src/redpiler/instant/sequential.rs)
-compiles observer watch positions, source-triggered samples, geometry
-notifications, wire-cache neighbor indices and shape-update recipients into
-tables. Their order is part of execution behavior. Sample delivery and power
-evaluation remain distinct, allowing BUD storage without inventing an
-electrical link for a sampling event.
+collects retained expression dependencies. Storage delivery comes from `sampling.rs`;
+gated delivery comes from `activation.rs`. Electrical graph edges do not represent
+implicit sampling events.
 
 ## Graph boundary and lowering
 

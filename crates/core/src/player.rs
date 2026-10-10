@@ -125,6 +125,7 @@ pub(crate) enum SmallAnimal {
     Cat,
     #[default]
     Ocelot,
+    BabyOcelot,
 }
 
 impl SmallAnimal {
@@ -133,7 +134,7 @@ impl SmallAnimal {
             Self::Wolf => mchprs_network::generated::WOLF_ENTITY,
             Self::Fox => mchprs_network::generated::FOX_ENTITY,
             Self::Cat => mchprs_network::generated::CAT_ENTITY,
-            Self::Ocelot => mchprs_network::generated::OCELOT_ENTITY,
+            Self::Ocelot | Self::BabyOcelot => mchprs_network::generated::OCELOT_ENTITY,
         }
     }
 
@@ -143,6 +144,7 @@ impl SmallAnimal {
             Self::Fox => "fox",
             Self::Cat => "cat",
             Self::Ocelot => "ocelot",
+            Self::BabyOcelot => "baby ocelot",
         }
     }
 }
@@ -292,7 +294,11 @@ impl fmt::Debug for Player {
 impl Player {
     pub(crate) fn scale(&self) -> f64 {
         if self.small_model.is_some() {
-            0.5
+            if self.small_animal == SmallAnimal::BabyOcelot {
+                0.25
+            } else {
+                0.5
+            }
         } else {
             1.0
         }
@@ -1083,7 +1089,7 @@ mod coordinate_security_tests {
     fn player_saves_restore_small_mode_and_animal_and_upgrade_old_records() {
         let payload = bincode::serialize(&PlayerData {
             small: true,
-            small_animal: SmallAnimal::Fox,
+            small_animal: SmallAnimal::BabyOcelot,
             ..Default::default()
         })
         .unwrap();
@@ -1096,12 +1102,12 @@ mod coordinate_security_tests {
         };
         let (data, legacy) = PlayerData::decode(envelope(5, &payload)).unwrap();
         assert!(data.small);
-        assert_eq!(data.small_animal, SmallAnimal::Fox);
+        assert_eq!(data.small_animal, SmallAnimal::BabyOcelot);
         assert!(!legacy);
         let conn = mchprs_network::test_support::connection(false).unwrap();
         let player = Player::from_data(data, 1, "SavedCat".into(), conn.player);
         assert!(player.small_model.is_some());
-        assert_eq!(player.small_animal, SmallAnimal::Fox);
+        assert_eq!(player.small_animal, SmallAnimal::BabyOcelot);
         assert_ne!(
             player.entity_id,
             player.small_model.as_ref().unwrap().entity_id

@@ -27,6 +27,23 @@ pub(crate) enum Runtime {
 }
 
 impl Runtime {
+    #[cfg(test)]
+    pub(crate) fn activation_states(&self) -> Vec<(mchprs_blocks::BlockPos, bool)> {
+        match self {
+            Self::Direct(b) => b.activation_states(),
+            Self::Native(_) => Vec::new(),
+        }
+    }
+    #[cfg(test)]
+    pub(crate) fn take_activation_trace(
+        &mut self,
+    ) -> Vec<crate::redpiler::instant::activation::Delivery> {
+        match self {
+            Self::Direct(b) => b.take_activation_trace(),
+            Self::Native(_) => Vec::new(),
+        }
+    }
+
     pub(crate) fn native(
         world: &impl crate::world::World,
         bounds: (mchprs_blocks::BlockPos, mchprs_blocks::BlockPos),

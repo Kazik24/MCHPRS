@@ -11,7 +11,7 @@ The physical interpreter executes spatial redstone and piston updates; redpiler
 compiles supported circuits into a graph and logical runtime.
 
 Read [the documentation index](docs/README.md) for the current architecture,
-mathematical models, parser, optimizer, and [test suites](docs/tests/README.md).
+mathematical models, parser, optimizer, and [test suites](docs/INTERPRETER_ARCHITECTURE.md#8-verification-and-reproduction).
 Supported server mechanics are defined by the implementation; do not assume
 complete vanilla physics or that every interpreted circuit can be compiled.
 
@@ -81,7 +81,7 @@ and credentials; the commented example documents its non-secret options.
 
 Plot speed and rendering settings are separate. Neighbor plots appear as
 read-only snapshots; entering a plot changes the active simulation context.
-See [client synchronization](docs/CLIENT_SYNC.md) for presentation and queue
+See client synchronization for presentation and queue
 semantics and [permissions](docs/MCHPRS_PERMISSIONS.md) for LuckPerms setup.
 
 ## Use
@@ -93,8 +93,9 @@ supported command forms.
 
 `/small` toggles a half-size player (0.3 blocks wide, 0.9 blocks tall), fitting
 through one-block gaps. `/small on|off` selects the mode explicitly. Other players
-see an ocelot following you by default; `/small wolf|fox|cat|ocelot` selects and
-saves its appearance. Your own view stays a scaled player so block clicks,
+see an ocelot following you by default; `/small wolf|fox|cat|ocelot|baby` selects and
+saves its appearance. Baby selects a baby ocelot and gives you a quarter-size hitbox.
+Your own view stays a scaled player so block clicks,
 inventory, and tools work normally. `/gm cat` enables creative play in this mode;
 other gamemodes restore normal size. Restoring normal size requires headroom.
 The mode and selected animal follow you between plots and survive reconnects.
@@ -113,7 +114,7 @@ execution and `/rp reset` hands it back to the interpreter. Read
 `/rhistory` and `/back` record and restore interpreter state.
 Plot Git saves build versions, branches, and comparisons.
 
-Hold any carrot on a stick to use the [wire pen](docs/WIRE_TOOL.md): right-click
+Hold any carrot on a stick to use the wire pen: right-click
 to start, aim to preview, right-click to build and continue. `/wire` supplies a
 named pen or resets your route. F cycles horizontal, two vertical drawing planes,
 and Free aiming; sneak + F changes the preferred bend. Build intermediate points
@@ -158,13 +159,12 @@ must configure their own stdout retention.
 ## Development
 
 ```sh
-python tools/validate_docs.py
 cargo fmt --all -- --check
 cargo test --workspace --locked --no-fail-fast
 ```
 
 Long replays, independent Java captures, and baseline creation are explicit
-operations documented under [docs/tests/](docs/tests/README.md). Update the
+operations documented under [verification reference](docs/INTERPRETER_ARCHITECTURE.md#8-verification-and-reproduction). Update the
 model and affected checks alongside semantic changes. Keep frozen expectations
 and source provenance separate from newly captured results.
 

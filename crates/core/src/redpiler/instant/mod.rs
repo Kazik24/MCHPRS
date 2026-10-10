@@ -2,6 +2,7 @@
 //!
 //! Recognition and execution are separate: declaring a port never certifies a
 //! physical circuit, and observing a falling edge never moves a piston.
+pub(crate) mod activation;
 pub(crate) mod boolean;
 pub(crate) mod boundary;
 pub(crate) mod clocked;

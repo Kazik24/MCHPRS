@@ -39,14 +39,22 @@ pub(super) fn spawn_model(viewer: &impl PacketSender, player: &Player) {
         }
         .encode(),
     );
+    let mut metadata = vec![CEntityMetadataEntry {
+        index: 5,
+        metadata_type: 8,
+        value: vec![1], // The visual model follows the player, without gravity.
+    }];
+    if player.small_animal == SmallAnimal::BabyOcelot {
+        metadata.push(CEntityMetadataEntry {
+            index: 16,
+            metadata_type: 8,
+            value: vec![1],
+        });
+    }
     viewer.send_packet(
         &CEntityMetadata {
             entity_id: model.entity_id as i32,
-            metadata: vec![CEntityMetadataEntry {
-                index: 5,
-                metadata_type: 8,
-                value: vec![1], // The visual model follows the player, without gravity.
-            }],
+            metadata,
         }
         .encode(),
     );
@@ -61,11 +69,22 @@ impl Plot {
             self.players[player].send_system_message(&messages::small_animal(animal.name()));
             return;
         }
+        let old_scale = self.players[player].scale();
         self.players[player].small_animal = animal;
         if let Some(model) = self.players[player].small_model.take() {
             self.destroy_entity(model.entity_id);
             self.players[player].small_model = Some(SmallModel::new());
+            let scale = (old_scale != self.players[player].scale()).then(|| {
+                CEntityScale {
+                    entity_id: self.players[player].entity_id as i32,
+                    scale: self.players[player].scale(),
+                }
+                .encode()
+            });
             for (index, viewer) in self.players.iter().enumerate() {
+                if let Some(scale) = &scale {
+                    viewer.send_packet(scale);
+                }
                 if index != player {
                     spawn_model(viewer, &self.players[player]);
                 }
