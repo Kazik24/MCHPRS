@@ -329,7 +329,9 @@ impl RedstoneWireTurbo {
                 neighbor.layer = layer1;
                 if neighbor.facts.updates {
                     #[cfg(test)]
-                    { self.notification_sources[1].push(source); }
+                    {
+                        self.notification_sources[1].push(source);
+                    }
                     self.update_queue[1].push(neighbor_id);
                 }
             }
@@ -343,7 +345,9 @@ impl RedstoneWireTurbo {
                 neighbor.layer = layer2;
                 if neighbor.facts.updates {
                     #[cfg(test)]
-                    { self.notification_sources[2].push(source); }
+                    {
+                        self.notification_sources[2].push(source);
+                    }
                     self.update_queue[2].push(*neighbor_id);
                 }
             }
@@ -376,7 +380,7 @@ impl RedstoneWireTurbo {
                             Some(self.notification_sources[0][index]),
                         );
                         redstone::update(block, world, self.nodes[node_id.index()].pos, None)
-                    },
+                    }
                 }
             }
 
@@ -409,8 +413,11 @@ impl RedstoneWireTurbo {
         let new_wire = self.calculate_current_changes(world, upd1);
         if old_wire.power != new_wire.power {
             #[cfg(test)]
-            crate::redstone::instant_piston_tests::record_operation(world, "wire_strength",
-                serde_json::json!({"pos":self.nodes[upd1.index()].pos,"old":old_wire.power,"new":new_wire.power}));
+            crate::redstone::instant_piston_tests::record_operation(
+                world,
+                "wire_strength",
+                serde_json::json!({"pos":self.nodes[upd1.index()].pos,"old":old_wire.power,"new":new_wire.power}),
+            );
             wire_mut(&mut self.nodes[upd1.index()].state).power = new_wire.power;
 
             self.propagate_changes(world, upd1, layer);

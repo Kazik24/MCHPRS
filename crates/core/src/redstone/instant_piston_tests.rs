@@ -42,7 +42,9 @@ impl Drop for NotificationGuard {
 }
 pub(crate) fn notification_source(pos: Option<BlockPos>) -> NotificationGuard {
     NotificationGuard(RECORDER.with(|r| {
-        r.borrow_mut().as_mut().and_then(|r| std::mem::replace(&mut r.source, pos))
+        r.borrow_mut()
+            .as_mut()
+            .and_then(|r| std::mem::replace(&mut r.source, pos))
     }))
 }
 
@@ -69,8 +71,12 @@ pub(crate) fn callback(
 ) -> CallbackGuard {
     let (active, parents) = RECORDER.with(|r| {
         r.borrow().as_ref().map_or((false, None), |r| {
-            (r.positions.as_ref().is_none_or(|positions| positions.contains(&pos)),
-                Some(r.parents.clone()))
+            (
+                r.positions
+                    .as_ref()
+                    .is_none_or(|positions| positions.contains(&pos)),
+                Some(r.parents.clone()),
+            )
         })
     });
     if active {
