@@ -3,7 +3,7 @@ use crate::messages;
 use crate::player::Player;
 use crate::plot::worldedit::{self, AirPolicy};
 use crate::world::World;
-use anyhow::{bail, Context, Result};
+use anyhow::{Context, Result, bail};
 use mchprs_blocks::blocks::Block;
 use mchprs_blocks::{BlockFacing, BlockPos};
 

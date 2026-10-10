@@ -3,8 +3,8 @@
 //! https://bugs.mojang.com/browse/MC-81098.
 
 use crate::redstone;
-use crate::world::wire_cache::{self, Facts};
 use crate::world::World;
+use crate::world::wire_cache::{self, Facts};
 use mchprs_blocks::blocks::{Block, RedstoneWire};
 use mchprs_blocks::{BlockFace, BlockPos};
 use rustc_hash::FxHashMap;

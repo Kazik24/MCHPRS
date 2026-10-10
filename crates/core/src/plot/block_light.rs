@@ -1,6 +1,6 @@
-use super::{PlotWorld, PLOT_BLOCK_HEIGHT, PLOT_SECTIONS};
+use super::{PLOT_BLOCK_HEIGHT, PLOT_SECTIONS, PlotWorld};
 use crate::world::World;
-use mchprs_blocks::{blocks::Block, BlockFace, BlockPos};
+use mchprs_blocks::{BlockFace, BlockPos, blocks::Block};
 use mchprs_network::packets::clientbound::{CUpdateLight, ClientBoundPacket};
 use rustc_hash::FxHashMap;
 use std::collections::VecDeque;

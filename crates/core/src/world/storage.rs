@@ -1,7 +1,7 @@
 use crate::plot::{PLOT_BLOCK_HEIGHT, PLOT_SECTIONS};
+use mchprs_blocks::BlockPos;
 use mchprs_blocks::block_entities::BlockEntity;
 use mchprs_blocks::blocks::Block;
-use mchprs_blocks::BlockPos;
 use mchprs_save_data::plot_data::{ChunkData, ChunkSectionData};
 
 use mchprs_network::packets::clientbound::{
@@ -960,12 +960,14 @@ mod heightmap_tests {
         let normal = chunk.client_data(false);
         let fast = chunk.client_data(true);
         assert_eq!(normal.chunk_sections[1].block_count, 1);
-        assert!(normal.chunk_sections[1]
-            .block_states
-            .palette
-            .as_ref()
-            .unwrap()
-            .contains(&(moving as i32)));
+        assert!(
+            normal.chunk_sections[1]
+                .block_states
+                .palette
+                .as_ref()
+                .unwrap()
+                .contains(&(moving as i32))
+        );
         assert_eq!(fast.chunk_sections[1].block_count, 0);
         assert_eq!(normal.block_entities.len(), 1);
         assert!(fast.block_entities.is_empty());

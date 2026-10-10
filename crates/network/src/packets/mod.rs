@@ -4,15 +4,15 @@ pub mod serverbound;
 
 use super::NetworkState;
 use byteorder::{BigEndian, ReadBytesExt, WriteBytesExt};
+use flate2::Compression;
 use flate2::bufread::ZlibDecoder;
 use flate2::write::ZlibEncoder;
-use flate2::Compression;
 use serde::Serialize;
 use serverbound::*;
 use std::io::{self, Cursor, Read, Write};
 use std::net::TcpStream;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 #[derive(Debug)]
 pub struct SlotData {
@@ -128,7 +128,7 @@ fn decode_packet<T: PacketDecoderExt>(
                         io::ErrorKind::InvalidData,
                         "invalid handshake state",
                     )
-                    .into())
+                    .into());
                 }
             };
             Box::new(p)
@@ -209,7 +209,7 @@ fn decode_packet<T: PacketDecoderExt>(
                 io::ErrorKind::InvalidData,
                 "packet in invalid connection state",
             )
-            .into())
+            .into());
         }
     })
 }

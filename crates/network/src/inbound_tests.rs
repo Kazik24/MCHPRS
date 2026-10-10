@@ -1,6 +1,6 @@
 use super::*;
-use packets::serverbound::*;
 use packets::PacketEncoderExt;
+use packets::serverbound::*;
 use std::io::{Read, Write};
 use std::time::Duration;
 

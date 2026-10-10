@@ -91,9 +91,11 @@ fn independent_bud_data_changes_hold_state_until_a_qualifying_update() {
                 ),
                 r,
             );
-            assert!(applied(&t)
-                .iter()
-                .any(|e| e["data"]["pos"] == json!(pos) && e["data"]["action"] == "Retract"));
+            assert!(
+                applied(&t)
+                    .iter()
+                    .any(|e| e["data"]["pos"] == json!(pos) && e["data"]["action"] == "Retract")
+            );
         }
     }
 }
@@ -115,11 +117,13 @@ fn bud_storage_survives_restored_power_and_resamples_on_the_next_update() {
         assert_eq!(repeater_bits(&hold["observations"]["repeater"]), 1);
         assert!(extended(&t["projections"][24]["memory"]));
         assert_eq!(repeater_bits(&t["projections"][8]["repeater"]), 0);
-        assert!(t["readiness_checks"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .all(|r| r["quiet"] == true && r["stable_boundaries"] == 2));
+        assert!(
+            t["readiness_checks"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .all(|r| r["quiet"] == true && r["stable_boundaries"] == 2)
+        );
     }
 }
 
@@ -200,14 +204,18 @@ fn output_stage_rejects_pending_retraction_after_inhibition_becomes_effective() 
     let i_exec = locate("event_execute", &inhibit);
     let o_exec = locate("event_execute", &output);
     assert!(t_exec < o_enqueue && o_enqueue < i_exec && i_exec < o_exec);
-    assert!(entries[i_exec..o_exec]
-        .iter()
-        .any(|e| e["kind"] == "callback"
-            && e["data"]["pos"] == output
-            && e["data"]["piston_power"] == true));
-    assert!(!entries
-        .iter()
-        .any(|e| e["kind"] == "event_applied" && e["tick"] == 2 && e["data"]["pos"] == output));
+    assert!(
+        entries[i_exec..o_exec]
+            .iter()
+            .any(|e| e["kind"] == "callback"
+                && e["data"]["pos"] == output
+                && e["data"]["piston_power"] == true)
+    );
+    assert!(
+        !entries
+            .iter()
+            .any(|e| e["kind"] == "event_applied" && e["tick"] == 2 && e["data"]["pos"] == output)
+    );
     assert_eq!(repeater_bits(&t["projections"][4]["repeater"]), 0);
 }
 
@@ -317,11 +325,13 @@ fn gate_consumers_have_a_delayed_projection_and_preserve_history_and_reset_effec
     assert_eq!(repeater_bits(&reset["projections"][4]["repeater"]), 0);
     assert_eq!(repeater_bits(&reset["projections"][8]["repeater"]), 1);
     let other = run("xor_simple", "events-11-21", 0, false);
-    assert!(other["projections"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .all(|p| repeater_bits(&p["repeater"]) == 0));
+    assert!(
+        other["projections"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|p| repeater_bits(&p["repeater"]) == 0)
+    );
 }
 
 #[test]
@@ -357,11 +367,13 @@ fn lever_torch_delay_and_held_levels_do_not_create_additional_root_computations(
     }
     for id in ["instant_torch", "instant_down_torch_reset"] {
         let t = run(id, "reuse-after-quiescence", 0, true);
-        assert!(t["readiness_checks"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .all(|r| r["quiet"] == true));
+        assert!(
+            t["readiness_checks"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .all(|r| r["quiet"] == true)
+        );
         assert!(
             applied(&t)
                 .iter()

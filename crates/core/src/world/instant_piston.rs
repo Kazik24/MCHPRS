@@ -1,6 +1,6 @@
 //! Historical native-cycle certificates cache addresses, never electrical results.
 use super::WireNeighbor;
-use mchprs_blocks::{blocks::Block, BlockFace, BlockPos};
+use mchprs_blocks::{BlockFace, BlockPos, blocks::Block};
 use rustc_hash::FxHashMap;
 use std::cell::Cell;
 
@@ -323,8 +323,8 @@ impl InstantPistonCache {
 mod tests {
     use super::*;
     use mchprs_blocks::{
-        blocks::{RedstoneObserver, RedstonePiston},
         BlockDirection, BlockFacing,
+        blocks::{RedstoneObserver, RedstonePiston},
     };
 
     fn base() -> BlockPos {

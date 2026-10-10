@@ -1,7 +1,7 @@
 use super::*;
 use crate::redstone;
-use crate::world::storage::Chunk;
 use crate::world::World;
+use crate::world::storage::Chunk;
 use mchprs_blocks::block_entities::{BlockEntity, CommandBlockEntity, ContainerType};
 use mchprs_blocks::blocks::{Block, RedstonePiston};
 use mchprs_blocks::{BlockFace, BlockFacing, BlockPos};
@@ -286,14 +286,18 @@ fn normal_limit_and_admin_override_preserve_existing_history_on_rejection() {
     let before = state(&world);
     let memory = world.history.memory_bytes();
     for ticks in [NORMAL_HISTORY_LIMIT + 1, usize::MAX] {
-        assert!(world
-            .enable_history(ticks, false)
-            .unwrap_err()
-            .contains(UNLIMITED_HISTORY_PERMISSION));
-        assert!(world
-            .rewind_ticks(ticks, false)
-            .unwrap_err()
-            .contains(UNLIMITED_HISTORY_PERMISSION));
+        assert!(
+            world
+                .enable_history(ticks, false)
+                .unwrap_err()
+                .contains(UNLIMITED_HISTORY_PERMISSION)
+        );
+        assert!(
+            world
+                .rewind_ticks(ticks, false)
+                .unwrap_err()
+                .contains(UNLIMITED_HISTORY_PERMISSION)
+        );
         assert_eq!(world.history.capacity(), NORMAL_HISTORY_LIMIT);
         assert_eq!(world.history.len(), 1);
         assert_eq!(world.history.memory_bytes(), memory);
@@ -305,10 +309,12 @@ fn normal_limit_and_admin_override_preserve_existing_history_on_rejection() {
     assert_eq!(world.history.capacity(), NORMAL_HISTORY_LIMIT + 1);
     assert_eq!(world.history.len(), 0);
     // Admin bypasses the policy cap, but not depth validation or representable capacity.
-    assert!(world
-        .rewind_ticks(NORMAL_HISTORY_LIMIT + 1, true)
-        .unwrap_err()
-        .contains("Only 0 game ticks are available to rewind"));
+    assert!(
+        world
+            .rewind_ticks(NORMAL_HISTORY_LIMIT + 1, true)
+            .unwrap_err()
+            .contains("Only 0 game ticks are available to rewind")
+    );
     assert!(world.enable_history(usize::MAX, true).is_err());
     assert_eq!(world.history.capacity(), NORMAL_HISTORY_LIMIT + 1);
 }
@@ -375,10 +381,10 @@ fn borrowed_chunk_encoding_matches_palettes_and_direct_storage() {
 
 #[test]
 fn shared_dictionary_compresses_repeated_random_data() {
-    use rand::{RngCore, SeedableRng};
+    use rand::prelude::*;
     let work = Budget::new(1024 * 1024);
     let mut raw = Bytes::zeroed(&work, 60000).unwrap();
-    rand::rngs::StdRng::seed_from_u64(22).fill_bytes(&mut raw.data);
+    rand::rngs::StdRng::seed_from_u64(22).fill(&mut raw.data);
     let dictionary = raw.data.clone();
     let without = Encoded::encode(Bytes::copy(&work, &raw.data).unwrap(), &[], &work).unwrap();
     let shared = Encoded::encode(raw, &dictionary, &work).unwrap();
@@ -427,6 +433,7 @@ fn compressed_admission_uses_stored_size_and_accounts_for_dictionary() {
 
 #[test]
 fn byte_limit_evicts_oldest_ticks_without_gaps_and_oversized_capture_stops() {
+    use rand::prelude::*;
     let mut world = limited_world(1024 * 1024);
     world.enable_history(8, false).unwrap();
     let work = world.history.work.clone();
@@ -445,8 +452,7 @@ fn byte_limit_evicts_oldest_ticks_without_gaps_and_oversized_capture_stops() {
     assert_eq!(world.piston_state.logical_tick, 20 - depth as u64);
     // Grow the circuit so one raw-fallback record cannot fit, even with no older ticks.
     let mut rng = rand::rngs::StdRng::seed_from_u64(19);
-    use rand::{Rng, SeedableRng};
-    let command: String = (0..8000).map(|_| rng.gen_range('a'..='z')).collect();
+    let command: String = (0..8000).map(|_| rng.random_range('a'..='z')).collect();
     world.set_block_entity(
         BlockPos::new(4, 30, 4),
         BlockEntity::CommandBlock(Box::new(CommandBlockEntity {
@@ -517,14 +523,14 @@ fn corrupt_snapshot_or_exhausted_workspace_preserves_rewind_state() {
 
 #[test]
 fn raw_fallback_and_concurrent_reservations_obey_exact_limits() {
-    use rand::{RngCore, SeedableRng};
+    use rand::prelude::*;
     use std::sync::{
-        atomic::{AtomicUsize, Ordering},
         Barrier,
+        atomic::{AtomicUsize, Ordering},
     };
     let work = Budget::new(16384);
     let mut raw = Bytes::zeroed(&work, 2048).unwrap();
-    rand::rngs::StdRng::seed_from_u64(21).fill_bytes(&mut raw.data);
+    rand::rngs::StdRng::seed_from_u64(21).fill(&mut raw.data);
     let encoded = Encoded::encode(raw, &[], &work).unwrap();
     assert!(!encoded.compressed);
     let stored = Budget::new(2048);

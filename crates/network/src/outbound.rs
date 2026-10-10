@@ -1,8 +1,8 @@
 //! One ordered writer per connection. Only adjacent visual updates may coalesce.
+use crate::packets::PacketEncoder;
 use crate::packets::clientbound::{
     C3BMultiBlockChangeRecord, CMultiBlockChange, ClientBoundPacket,
 };
-use crate::packets::PacketEncoder;
 use std::collections::{BTreeMap, VecDeque};
 use std::io::Write;
 use std::net::{Shutdown, TcpStream};

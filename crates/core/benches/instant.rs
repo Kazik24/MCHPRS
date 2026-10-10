@@ -5,21 +5,21 @@
 #[allow(dead_code)]
 mod cpu_support;
 
-use anyhow::{bail, ensure, Context, Result};
+use anyhow::{Context, Result, bail, ensure};
 use mchprs_blocks::{
-    blocks::{Block, LeverFace, RedstoneRepeater},
     BlockColorVariant, BlockDirection, BlockFace, BlockPos,
+    blocks::{Block, LeverFace, RedstoneRepeater},
 };
 use mchprs_core::{
     plot::{
+        PLOT_WIDTH, PlotWorld,
         worldedit::{load_schematic, paste_clipboard},
-        PlotWorld, PLOT_WIDTH,
     },
     redpiler::{Compiler, CompilerOptions},
     redstone,
-    world::{storage::Chunk, World},
+    world::{World, storage::Chunk},
 };
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use std::{
     path::Path,
@@ -44,9 +44,15 @@ impl Workload {
 
     fn description(self) -> &'static str {
         match self {
-            Self::Random => "independent xorshift64 raw port masks; resample identical consecutive masks by flipping bit zero",
-            Self::RandomWalk => "xorshift64 chooses one input bit to flip per vector, including opcode bits",
-            Self::Sequence => "cycle 128 fixed raw port pairs (i, 127-i), i=0..127; opcode mask zero; seed independent",
+            Self::Random => {
+                "independent xorshift64 raw port masks; resample identical consecutive masks by flipping bit zero"
+            }
+            Self::RandomWalk => {
+                "xorshift64 chooses one input bit to flip per vector, including opcode bits"
+            }
+            Self::Sequence => {
+                "cycle 128 fixed raw port pairs (i, 127-i), i=0..127; opcode mask zero; seed independent"
+            }
         }
     }
 }
@@ -72,11 +78,7 @@ fn input_stimuli(
             let word = match workload {
                 Workload::Random => {
                     let word = state & mask;
-                    if word == previous {
-                        word ^ 1
-                    } else {
-                        word
-                    }
+                    if word == previous { word ^ 1 } else { word }
                 }
                 Workload::RandomWalk => previous ^ (1 << (state % width as u64)),
                 Workload::Sequence => {
@@ -99,9 +101,11 @@ fn check_workloads() {
                 words,
                 input_stimuli(workload, initial, bits, opcode_bits, 7, 384)
             );
-            assert!(words
-                .iter()
-                .all(|word| word >> (bits * 2 + opcode_bits) == 0));
+            assert!(
+                words
+                    .iter()
+                    .all(|word| word >> (bits * 2 + opcode_bits) == 0)
+            );
             if workload == Workload::Sequence {
                 assert_eq!(&words[..128], &words[128..256]);
                 assert_eq!(
@@ -174,7 +178,9 @@ fn main() -> Result<()> {
                 return Ok(());
             }
             "--help" => {
-                println!("instant [--component counter_basic|pc_counter|cpu_bubblesort|fpu_divider|fpu_legal] [--manifest path.json] [--changing-inputs | --workload random|random-walk|sequence] [--seed integer] [--input-every ticks] [--interpreted | --optimize] [--iterations 3] [--episodes 32] [--ticks 60000] [--flush-every 0|1] [--output path.json] [--reference frozen-native-report.json]\n--workload implies --changing-inputs. Sequence repeats 128 fixed raw port pairs with opcode zero.\n--check-workloads verifies generators without loading a schematic.");
+                println!(
+                    "instant [--component counter_basic|pc_counter|cpu_bubblesort|fpu_divider|fpu_legal] [--manifest path.json] [--changing-inputs | --workload random|random-walk|sequence] [--seed integer] [--input-every ticks] [--interpreted | --optimize] [--iterations 3] [--episodes 32] [--ticks 60000] [--flush-every 0|1] [--output path.json] [--reference frozen-native-report.json]\n--workload implies --changing-inputs. Sequence repeats 128 fixed raw port pairs with opcode zero.\n--check-workloads verifies generators without loading a schematic."
+                );
                 return Ok(());
             }
             _ => {}
@@ -958,7 +964,12 @@ fn fpu_changing_inputs(
         LeverFace::Wall => trigger.offset(trigger_lever.facing.opposite().block_face()),
     };
     ensure!(
-        matches!(world.get_block(trigger_support), Block::Wool { color: BlockColorVariant::Green }),
+        matches!(
+            world.get_block(trigger_support),
+            Block::Wool {
+                color: BlockColorVariant::Green
+            }
+        ),
         "FPU trigger at {trigger:?} must be attached to green wool; found {:?} at {trigger_support:?}",
         world.get_block(trigger_support)
     );
@@ -1123,7 +1134,12 @@ fn fpu_changing_inputs(
             boundary_tick += phase_ticks;
             if measured {
                 if let Some(expected) = expected {
-                    ensure!(word == expected[episode][boundary_tick - 1], "full-FPU episode {} phase {phase} output {word} differs from plain reference {}", episode + 1, expected[episode][boundary_tick - 1]);
+                    ensure!(
+                        word == expected[episode][boundary_tick - 1],
+                        "full-FPU episode {} phase {phase} output {word} differs from plain reference {}",
+                        episode + 1,
+                        expected[episode][boundary_tick - 1]
+                    );
                 }
                 boundary_hash.update(word.to_le_bytes());
                 phase_words.push(word);
@@ -1137,7 +1153,12 @@ fn fpu_changing_inputs(
                     for (game_tick, (&actual, &reference)) in
                         trace.iter().zip(&expected[episode]).enumerate()
                     {
-                        ensure!(actual == reference, "full-FPU episode {} game tick {} output {actual} differs from plain reference {reference}", episode + 1, game_tick + 1);
+                        ensure!(
+                            actual == reference,
+                            "full-FPU episode {} game tick {} output {actual} differs from plain reference {reference}",
+                            episode + 1,
+                            game_tick + 1
+                        );
                     }
                 }
                 latencies.push(if full_fpu {

@@ -1,7 +1,7 @@
 use super::ToolNotice;
 use crate::messages;
 use crate::player::{Gamemode, Player};
-use anyhow::{bail, Context, Result};
+use anyhow::{Context, Result, bail};
 use mchprs_blocks::block_entities::{ContainerType, SignalStrength};
 use mchprs_blocks::items::ItemStack;
 use mchprs_network::packets::components;

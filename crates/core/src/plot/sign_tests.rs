@@ -1,10 +1,10 @@
 use super::*;
 use mchprs_blocks::block_entities::SignBlockEntity;
 use mchprs_blocks::items::{Item, ItemStack};
+use mchprs_network::packets::PacketDecoderExt;
 use mchprs_network::packets::serverbound::{
     SPlayerBlockPlacemnt, SUpdateSign, ServerBoundPacketHandler,
 };
-use mchprs_network::packets::PacketDecoderExt;
 use mchprs_network::test_support::read_frame;
 use std::net::TcpStream;
 

@@ -1,8 +1,8 @@
 use super::PlotWorld;
 use crate::world::World;
+use mchprs_blocks::BlockPos;
 use mchprs_blocks::block_entities::BlockEntity;
 use mchprs_blocks::blocks::Block;
-use mchprs_blocks::BlockPos;
 use mchprs_network::packets::clientbound::{C3BMultiBlockChangeRecord, CMultiBlockChange};
 use rustc_hash::{FxHashMap, FxHashSet};
 use std::collections::BTreeMap;
@@ -179,12 +179,12 @@ impl PlotWorld {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::plot::client_test_utils::{read_ack, read_blocks};
     use crate::plot::PLOT_WIDTH;
+    use crate::plot::client_test_utils::{read_ack, read_blocks};
     use crate::world::storage::Chunk;
     use mchprs_blocks::blocks::{RedstoneMovingPiston, RedstoneWire};
     use mchprs_network::{
-        test_support::connection, BlockActionAcknowledgement, PlayerPacketSender,
+        BlockActionAcknowledgement, PlayerPacketSender, test_support::connection,
     };
 
     #[test]

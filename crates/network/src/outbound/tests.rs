@@ -163,14 +163,16 @@ fn failed_writes_close_the_connection_instead_of_skipping_reliable_packets() {
     );
     assert!(sender.handle.shared.pending.lock().unwrap().closed);
     sender.packet(&PacketEncoder::new(vec![43], 0x04), true);
-    assert!(sender
-        .handle
-        .shared
-        .pending
-        .lock()
-        .unwrap()
-        .items
-        .is_empty());
+    assert!(
+        sender
+            .handle
+            .shared
+            .pending
+            .lock()
+            .unwrap()
+            .items
+            .is_empty()
+    );
 }
 
 #[test]
@@ -348,9 +350,16 @@ fn compare_no_client_synchronous_and_background_sending() {
         }
         let stats = sender.stats();
         let frames = output.lock().unwrap().len();
-        println!("sender mode={mode}: producer={:.6}s drain_total={:.6}s synthetic_tps={:.0} delivered_frames={frames} coalesced_blocks={} encode={:.6}s compression={:.6}s writes={:.6}s",
-            producer.as_secs_f64(), total.as_secs_f64(), 10_000.0/producer.as_secs_f64(), stats.coalesced_blocks,
-            stats.encode_ns as f64/1e9, stats.compress_ns as f64/1e9, stats.write_ns as f64/1e9);
+        println!(
+            "sender mode={mode}: producer={:.6}s drain_total={:.6}s synthetic_tps={:.0} delivered_frames={frames} coalesced_blocks={} encode={:.6}s compression={:.6}s writes={:.6}s",
+            producer.as_secs_f64(),
+            total.as_secs_f64(),
+            10_000.0 / producer.as_secs_f64(),
+            stats.coalesced_blocks,
+            stats.encode_ns as f64 / 1e9,
+            stats.compress_ns as f64 / 1e9,
+            stats.write_ns as f64 / 1e9
+        );
         std::hint::black_box(state);
     }
 }

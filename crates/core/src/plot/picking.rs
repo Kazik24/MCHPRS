@@ -1,9 +1,9 @@
 use crate::container::item_components;
 use crate::player::PlayerPos;
 use crate::world::World;
+use mchprs_blocks::BlockPos;
 use mchprs_blocks::blocks::Block;
 use mchprs_blocks::items::{Item, ItemStack};
-use mchprs_blocks::BlockPos;
 
 const MAIN_INVENTORY_START: usize = 9;
 const HOTBAR_START: usize = 36;

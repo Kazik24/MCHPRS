@@ -8,10 +8,10 @@
 use crate::redpiler::compile_graph::{CompileGraph, CompileNode, NodeIdx, NodeState, NodeType};
 use crate::redpiler::{CompilerInput, CompilerOptions};
 use crate::redstone::{self, comparator, noteblock};
-use crate::world::{for_each_block_optimized, World};
+use crate::world::{World, for_each_block_optimized};
+use mchprs_blocks::BlockPos;
 use mchprs_blocks::block_entities::BlockEntity;
 use mchprs_blocks::blocks::Block;
-use mchprs_blocks::BlockPos;
 use rustc_hash::{FxHashMap, FxHashSet};
 
 pub(super) fn run<W: World>(

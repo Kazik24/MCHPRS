@@ -7,8 +7,8 @@
 
 use crate::redpiler::compile_graph::{CompileGraph, LinkType, NodeIdx, NodeType};
 use mchprs_blocks::blocks::ComparatorMode;
-use petgraph::visit::{EdgeRef, NodeIndexable};
 use petgraph::Direction;
+use petgraph::visit::{EdgeRef, NodeIndexable};
 
 pub(super) fn run(graph: &mut CompileGraph) -> Result<(), super::GraphError> {
     for i in 0..graph.node_bound() {

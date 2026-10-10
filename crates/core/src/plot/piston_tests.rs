@@ -1,6 +1,6 @@
 use super::*;
-use mchprs_blocks::blocks::RedstonePiston;
 use mchprs_blocks::BlockFacing;
+use mchprs_blocks::blocks::RedstonePiston;
 
 fn world() -> PlotWorld {
     let chunks = (0..PLOT_WIDTH)
@@ -64,11 +64,12 @@ fn motion_removal_preserves_order_and_removes_all_legacy_duplicates() {
     let duplicate = w.piston_state.motions[5].clone();
     w.piston_state_mut().motions.push_back(duplicate.clone());
     w.remove_motions_at(duplicate.pos);
-    assert!(w
-        .piston_state
-        .motions
-        .iter()
-        .all(|m| m.pos != duplicate.pos));
+    assert!(
+        w.piston_state
+            .motions
+            .iter()
+            .all(|m| m.pos != duplicate.pos)
+    );
     w.register_motion(duplicate.pos, 0.5);
     assert_eq!(w.piston_state.motions.back().unwrap().pos, duplicate.pos);
     assert_ne!(

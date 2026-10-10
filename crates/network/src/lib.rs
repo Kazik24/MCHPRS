@@ -7,10 +7,10 @@ pub mod text;
 pub use outbound::SendStats;
 
 use packets::serverbound::ServerBoundPacket;
-use packets::{read_packet, PacketDecodeError, PacketEncoder};
+use packets::{PacketDecodeError, PacketEncoder, read_packet};
 use std::net::{Shutdown, TcpListener, TcpStream};
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{mpsc, Arc};
+use std::sync::{Arc, mpsc};
 use std::thread;
 use tracing::{debug, warn};
 
@@ -72,8 +72,8 @@ impl Drop for BlockActionAcknowledgement {
 #[cfg(test)]
 mod acknowledgement_tests {
     use super::*;
-    use packets::clientbound::{C3BMultiBlockChangeRecord, CMultiBlockChange, ClientBoundPacket};
     use packets::PacketDecoderExt;
+    use packets::clientbound::{C3BMultiBlockChangeRecord, CMultiBlockChange, ClientBoundPacket};
     use std::io::Cursor;
     #[test]
     fn authoritative_blocks_reach_the_wire_before_prediction_acknowledgement() {

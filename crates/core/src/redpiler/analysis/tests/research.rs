@@ -635,7 +635,9 @@ fn capture_bubblesort_execution() {
                     "operation_count":total, "operation_sha256":sha256, "operations":entries}),
                 );
                 if elapsed % 500 == 0 {
-                    println!("{selected}: step {index}, {elapsed} ticks, pending {pending}, motions {motions}");
+                    println!(
+                        "{selected}: step {index}, {elapsed} ticks, pending {pending}, motions {motions}"
+                    );
                 }
                 if step.get("wait_quiet").is_some() && quiet >= 20 {
                     break;

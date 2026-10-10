@@ -151,8 +151,18 @@ pub enum BackendError {
 impl std::fmt::Display for BackendError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::InvalidStrength { pos, strength } => write!(f, "graph node at {pos:?} has invalid strength {strength}; expected 0..15"),
-            Self::TooManyInputs { pos, default_inputs, side_inputs } => write!(f, "graph node at {pos:?} has {default_inputs} main and {side_inputs} side inputs; each channel supports at most 255"),
+            Self::InvalidStrength { pos, strength } => write!(
+                f,
+                "graph node at {pos:?} has invalid strength {strength}; expected 0..15"
+            ),
+            Self::TooManyInputs {
+                pos,
+                default_inputs,
+                side_inputs,
+            } => write!(
+                f,
+                "graph node at {pos:?} has {default_inputs} main and {side_inputs} side inputs; each channel supports at most 255"
+            ),
         }
     }
 }

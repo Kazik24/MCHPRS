@@ -1,6 +1,6 @@
 use crate::player::PlayerPos;
 use once_cell::sync::Lazy;
-use rusqlite::{params, Connection, OptionalExtension};
+use rusqlite::{Connection, OptionalExtension, params};
 use std::collections::HashSet;
 use std::sync::{Mutex, MutexGuard, RwLock};
 
@@ -38,7 +38,9 @@ fn set_warp_in(conn: &Connection, name: &str, warp: Warp) -> rusqlite::Result<()
         "INSERT INTO warp(name, x, y, z, yaw, pitch) VALUES(?1, ?2, ?3, ?4, ?5, ?6)
          ON CONFLICT(name) DO UPDATE SET x=excluded.x, y=excluded.y, z=excluded.z,
              yaw=excluded.yaw, pitch=excluded.pitch",
-        params![name, warp.pos.x, warp.pos.y, warp.pos.z, warp.yaw, warp.pitch],
+        params![
+            name, warp.pos.x, warp.pos.y, warp.pos.z, warp.yaw, warp.pitch
+        ],
     )?;
     Ok(())
 }
@@ -572,21 +574,27 @@ mod tests {
             assert_eq!(warp_names_in(&conn).unwrap(), ["CPU", "Spawn"]);
             assert!(get_warp_in(&conn, "missing").unwrap().is_none());
             assert!(saved.is_valid());
-            assert!(!Warp {
-                pos: PlayerPos::new(f64::NAN, 64.0, 0.0),
-                ..warp
-            }
-            .is_valid());
-            assert!(!Warp {
-                yaw: f32::INFINITY,
-                ..warp
-            }
-            .is_valid());
-            assert!(!Warp {
-                pitch: f32::NAN,
-                ..warp
-            }
-            .is_valid());
+            assert!(
+                !Warp {
+                    pos: PlayerPos::new(f64::NAN, 64.0, 0.0),
+                    ..warp
+                }
+                .is_valid()
+            );
+            assert!(
+                !Warp {
+                    yaw: f32::INFINITY,
+                    ..warp
+                }
+                .is_valid()
+            );
+            assert!(
+                !Warp {
+                    pitch: f32::NAN,
+                    ..warp
+                }
+                .is_valid()
+            );
         }
         std::fs::remove_file(path).unwrap();
     }

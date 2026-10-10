@@ -1,8 +1,8 @@
 //! This pass populates the graph with edges.
 //! This pass is *mandatory*. Without it, there would be no links between nodes.
 
-use crate::redpiler::compile_graph::{CompileGraph, CompileLink, LinkType, NodeIdx};
 use crate::redpiler::CompilerInput;
+use crate::redpiler::compile_graph::{CompileGraph, CompileLink, LinkType, NodeIdx};
 use crate::redstone::{self, comparator};
 use crate::world::World;
 use mchprs_blocks::blocks::{Block, RedstoneWire};

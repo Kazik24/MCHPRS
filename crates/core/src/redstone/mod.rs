@@ -525,18 +525,18 @@ pub fn is_diode(block: Block) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use mchprs_blocks::blocks::Block;
     use mchprs_blocks::BlockPos;
+    use mchprs_blocks::blocks::Block;
     use std::fs::File;
     use std::ops::{Deref, DerefMut};
     use std::path::PathBuf;
 
     use crate::interaction::place_in_world;
     use crate::plot::worldedit::{load_schematic, paste_clipboard};
-    use crate::plot::{empty_plot, PlotWorld, PLOT_WIDTH};
+    use crate::plot::{PLOT_WIDTH, PlotWorld, empty_plot};
     use crate::tests::click_floor_button;
-    use crate::world::storage::Chunk;
     use crate::world::World;
+    use crate::world::storage::Chunk;
 
     const BUTTON_POS: BlockPos = BlockPos::new(100, 30, 100);
     const BASE_WIRE: BlockPos = BlockPos::new(100, 30, 102);

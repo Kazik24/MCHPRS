@@ -3,10 +3,10 @@ use crate::player::{Gamemode, PlayerPos, SmallAnimal};
 use mchprs_blocks::blocks::Block;
 use mchprs_blocks::items::{Item, ItemStack};
 use mchprs_blocks::{BlockFace, BlockPos};
-use mchprs_network::packets::serverbound::*;
-use mchprs_network::packets::PacketDecoderExt;
-use mchprs_network::test_support::{connection, read_frame};
 use mchprs_network::PlayerPacketSender;
+use mchprs_network::packets::PacketDecoderExt;
+use mchprs_network::packets::serverbound::*;
+use mchprs_network::test_support::{connection, read_frame};
 use std::io::Cursor;
 use std::net::TcpStream;
 

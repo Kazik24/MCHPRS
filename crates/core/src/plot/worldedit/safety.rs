@@ -212,11 +212,13 @@ mod tests {
 
     #[test]
     fn malicious_clipboard_offsets_and_volumes_are_rejected() {
-        assert!(volume(
-            BlockPos::new(i32::MIN, i32::MIN, i32::MIN),
-            BlockPos::new(i32::MAX, i32::MAX, i32::MAX)
-        )
-        .is_err());
+        assert!(
+            volume(
+                BlockPos::new(i32::MIN, i32::MIN, i32::MIN),
+                BlockPos::new(i32::MAX, i32::MAX, i32::MAX)
+            )
+            .is_err()
+        );
         let cb = WorldEditClipboard {
             offset_x: i32::MIN,
             offset_y: 0,
@@ -233,12 +235,14 @@ mod tests {
     fn out_of_height_and_cross_plot_regions_are_rejected() {
         let world = PlotWorld::from_chunks(0, 0, vec![], Default::default());
         assert!(region(&world, BlockPos::zero(), BlockPos::new(1, -1, 1)).is_err());
-        assert!(region(
-            &world,
-            BlockPos::zero(),
-            BlockPos::new(PLOT_BLOCK_WIDTH, 1, 1)
-        )
-        .is_err());
+        assert!(
+            region(
+                &world,
+                BlockPos::zero(),
+                BlockPos::new(PLOT_BLOCK_WIDTH, 1, 1)
+            )
+            .is_err()
+        );
         assert_eq!(
             region(&world, BlockPos::zero(), BlockPos::new(1, 1, 1)).unwrap(),
             8

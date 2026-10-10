@@ -8,10 +8,10 @@ mod passes;
 mod task_monitor;
 
 use crate::redstone;
-use crate::world::{for_each_block_mut_optimized, World};
-use backend::{direct::DirectBackend, Runtime};
-use mchprs_blocks::blocks::Block;
+use crate::world::{World, for_each_block_mut_optimized};
+use backend::{Runtime, direct::DirectBackend};
 use mchprs_blocks::BlockPos;
+use mchprs_blocks::blocks::Block;
 use mchprs_world::TickEntry;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -214,8 +214,11 @@ impl CompileStatistics {
         let ms = |duration: Duration| duration.as_secs_f64() * 1000.0;
         let mut lines = vec![format!(
             "Compile: {:.3} ms total; analysis {:.3}, graph {:.3}, backend {:.3} ms; {} backend nodes",
-            ms(self.total_duration), ms(self.analysis_duration),
-            ms(self.graph.duration), ms(self.backend_duration), self.backend_nodes,
+            ms(self.total_duration),
+            ms(self.analysis_duration),
+            ms(self.graph.duration),
+            ms(self.backend_duration),
+            self.backend_nodes,
         )];
         lines.extend(self.graph.summary_lines().into_iter().take(2));
         lines
@@ -406,8 +409,8 @@ mod tests {
     fn pistons_require_interpreter_for_every_compiler_mode() {
         use crate::plot::PlotWorld;
         use crate::world::storage::Chunk;
-        use mchprs_blocks::blocks::RedstonePiston;
         use mchprs_blocks::BlockFacing;
+        use mchprs_blocks::blocks::RedstonePiston;
 
         let mut world = PlotWorld::from_chunks(0, 0, vec![Chunk::empty(0, 0)], Default::default());
         let pos = BlockPos::new(4, 20, 4);
@@ -513,15 +516,17 @@ mod tests {
         compiler.reset(&mut world, bounds);
         let cancelled = Arc::new(TaskMonitor::default());
         cancelled.cancel();
-        assert!(compiler
-            .compile(
-                &world,
-                bounds,
-                CompilerOptions::default(),
-                Vec::new(),
-                cancelled
-            )
-            .is_err());
+        assert!(
+            compiler
+                .compile(
+                    &world,
+                    bounds,
+                    CompilerOptions::default(),
+                    Vec::new(),
+                    cancelled
+                )
+                .is_err()
+        );
         assert_eq!(compiler.stats().unwrap().total_duration, total_duration);
     }
 }

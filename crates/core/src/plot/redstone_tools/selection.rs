@@ -1,7 +1,7 @@
 use super::ToolNotice;
 use crate::messages;
 use crate::player::{PacketSender, Player};
-use anyhow::{bail, Result};
+use anyhow::{Result, bail};
 use mchprs_blocks::BlockPos;
 use mchprs_network::packets::clientbound::{
     CDisplayScoreboard, CScoreboardObjective, CUpdateScore, ClientBoundPacket,

@@ -3,7 +3,7 @@
 
 use proc_macro::TokenStream;
 use quote::quote;
-use syn::{parse_macro_input, Data, DeriveInput, Error, Ident, Type};
+use syn::{Data, DeriveInput, Error, Ident, Type, parse_macro_input};
 
 mod minecraft_data;
 
@@ -46,7 +46,7 @@ fn create_block_property_impl(input: DeriveInput) -> Result<TokenStream, Error> 
             return Err(Error::new_spanned(
                 input,
                 "BlockProperty proxy type must be a struct",
-            ))
+            ));
         }
     };
     let field_types: Vec<&Type> = fields.iter().map(|f| &f.ty).collect();
@@ -88,7 +88,7 @@ fn create_block_transform_impl(input: DeriveInput) -> Result<TokenStream, Error>
             return Err(Error::new_spanned(
                 input,
                 "BlockTransform proxy type must be a struct",
-            ))
+            ));
         }
     };
     let field_types: Vec<&Type> = fields.iter().map(|f| &f.ty).collect();

@@ -1,6 +1,6 @@
 //! Bound canonical JSON scratch and reject NBT allocation bombs before parsing.
 use crate::messages;
-use anyhow::{ensure, Result};
+use anyhow::{Result, ensure};
 use mchprs_blocks::block_entities::BlockEntity;
 
 pub(super) fn check_entity(entity: &BlockEntity) -> Result<()> {

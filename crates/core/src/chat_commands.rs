@@ -1,5 +1,5 @@
 use crate::messages;
-use serde_json::{json, Map, Value};
+use serde_json::{Map, Value, json};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Recipient {

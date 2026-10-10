@@ -1,11 +1,11 @@
 //! Viewer-only block displays shared by Git and interactive tools.
-use crate::player::{allocate_entity_id, PacketSender};
+use crate::player::{PacketSender, allocate_entity_id};
 use mchprs_blocks::blocks::Block;
 use mchprs_blocks::{BlockColorVariant, BlockPos};
+use mchprs_network::packets::PacketEncoderExt;
 use mchprs_network::packets::clientbound::{
     CDestroyEntities, CEntityMetadata, CEntityMetadataEntry, CSpawnEntity, ClientBoundPacket,
 };
-use mchprs_network::packets::PacketEncoderExt;
 use std::collections::HashMap;
 use std::time::{Duration, Instant};
 
@@ -210,11 +210,13 @@ mod tests {
         assert!(!unload_markers(&viewer, &mut markers, 1, 0));
         clear_markers(&viewer, &mut markers);
         assert!(markers.is_empty());
-        assert!(viewer
-            .0
-            .borrow()
-            .iter()
-            .all(|packet| packet.packet_id == 0x46));
+        assert!(
+            viewer
+                .0
+                .borrow()
+                .iter()
+                .all(|packet| packet.packet_id == 0x46)
+        );
 
         // A newer target replaces unfinished work rather than finishing stale additions.
         assert!(!reconcile_markers(&viewer, &mut markers, &wanted, 1));

@@ -8,7 +8,7 @@ use crate::messages;
 use crate::player::{Gamemode, PacketSender, Player, PlayerPos};
 use crate::plot::{preview, worldedit};
 use crate::world::World;
-use anyhow::{bail, Result};
+use anyhow::{Result, bail};
 use mchprs_blocks::blocks::Block;
 use mchprs_blocks::items::{Item, ItemStack};
 use mchprs_blocks::{BlockFace, BlockPos};
@@ -19,7 +19,7 @@ use once_cell::sync::Lazy;
 use routing::{Capture, GeometryCheck, Plan, SearchResult, Snapshot};
 use std::collections::{HashMap, HashSet};
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{mpsc, Arc, Mutex};
+use std::sync::{Arc, Mutex, mpsc};
 use std::time::{Duration, Instant};
 
 const UPDATE_INTERVAL: Duration = Duration::from_millis(50);
@@ -45,15 +45,17 @@ static WORKERS: Lazy<mpsc::SyncSender<Job>> = Lazy::new(|| {
         let receiver = receiver.clone();
         std::thread::Builder::new()
             .name(format!("wire-router-{index}"))
-            .spawn(move || loop {
-                let Ok(job) = receiver.lock().unwrap().recv() else {
-                    break;
-                };
-                let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                    routing::search(job.snapshot, job.start, job.end, job.prefer_x, &job.cancel)
-                }))
-                .unwrap_or_else(|_| SearchResult::Invalid(messages::WIRE_UNSUPPORTED.into()));
-                let _ = job.reply.try_send((job.generation, result));
+            .spawn(move || {
+                loop {
+                    let Ok(job) = receiver.lock().unwrap().recv() else {
+                        break;
+                    };
+                    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                        routing::search(job.snapshot, job.start, job.end, job.prefer_x, &job.cancel)
+                    }))
+                    .unwrap_or_else(|_| SearchResult::Invalid(messages::WIRE_UNSUPPORTED.into()));
+                    let _ = job.reply.try_send((job.generation, result));
+                }
             })
             .expect("Cannot start wire routing worker");
     }

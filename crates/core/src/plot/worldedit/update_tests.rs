@@ -5,7 +5,7 @@ use crate::world::storage::Chunk;
 use mchprs_blocks::block_entities::SignBlockEntity;
 use mchprs_network::packets::PacketDecoderExt;
 use mchprs_network::test_support::read_frame;
-use mchprs_network::{test_support::connection, BlockActionAcknowledgement, PlayerPacketSender};
+use mchprs_network::{BlockActionAcknowledgement, PlayerPacketSender, test_support::connection};
 
 #[test]
 fn replace_removes_all_moving_piston_states_and_their_motion_entities() {

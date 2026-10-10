@@ -1,10 +1,10 @@
 //! Frozen format-1 bincode layout. Never add/reorder fields or enum variants here.
 use super::legacy_1_21_5::LegacyTick;
 use crate::plot_data::{ChunkData, ChunkSectionData, PlotData, PlotLoadError, Tps, WorldSendRate};
+use mchprs_blocks::BlockPos;
 use mchprs_blocks::block_entities::{
     self as current, ContainerType, InventoryEntry, MovingPistonEntity,
 };
-use mchprs_blocks::BlockPos;
 use rustc_hash::FxHashMap;
 use serde::{Deserialize, Serialize};
 use serde_big_array::BigArray;

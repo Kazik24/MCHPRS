@@ -1,12 +1,13 @@
 //! Deterministic differential fuzzing. MCHPRS_REDSTONE_FUZZ_SEED selects the first
 //! case; MCHPRS_REDSTONE_FUZZ_CASES sets the count (defaults: 0 and 64).
 use super::*;
+use mchprs_blocks::BlockDirection;
 use mchprs_blocks::block_entities::BlockEntity;
 use mchprs_blocks::blocks::{
     ComparatorMode, Lever, LeverFace, RedstoneComparator, RedstoneRepeater, RedstoneWire,
 };
-use mchprs_blocks::BlockDirection;
-use rand::{rngs::StdRng, Rng, SeedableRng};
+use rand::RngExt;
+use rand::{SeedableRng, rngs::StdRng};
 
 const WIDTH: i32 = 8;
 const DEPTH: i32 = 6;
@@ -19,19 +20,19 @@ fn circuit(rng: &mut StdRng) -> Vec<(BlockPos, Block)> {
             let pos = BASE + BlockPos::new(x, 0, z);
             let block = if x == 0 {
                 Block::Lever {
-                    lever: Lever::new(LeverFace::Floor, BlockDirection::North, rng.gen()),
+                    lever: Lever::new(LeverFace::Floor, BlockDirection::North, rng.random()),
                 }
             } else if x == WIDTH - 1 {
                 Block::RedstoneLamp { lit: false }
             } else {
-                let facing = BlockDirection::from_id(rng.gen_range(0..4));
-                match rng.gen_range(0..10) {
+                let facing = BlockDirection::from_id(rng.random_range(0..4));
+                match rng.random_range(0..10) {
                     0 => Block::Air,
                     1 => Block::RedstoneTorch { lit: true },
                     2 | 3 => Block::RedstoneRepeater {
                         repeater: RedstoneRepeater {
                             facing,
-                            delay: rng.gen_range(1..=4),
+                            delay: rng.random_range(1..=4),
                             powered: false,
                             locked: false,
                         },
@@ -39,7 +40,7 @@ fn circuit(rng: &mut StdRng) -> Vec<(BlockPos, Block)> {
                     4 | 5 => Block::RedstoneComparator {
                         comparator: RedstoneComparator::new(
                             facing,
-                            if rng.gen() {
+                            if rng.random() {
                                 ComparatorMode::Compare
                             } else {
                                 ComparatorMode::Subtract
@@ -86,13 +87,13 @@ fn load(blocks: &[(BlockPos, Block)], warmup: u32) -> PlotWorld {
 fn compare(seed: u64, optimize: bool) -> Result<(), String> {
     let mut rng = StdRng::seed_from_u64(seed);
     let blocks = circuit(&mut rng);
-    let warmup = rng.gen_range(0..=16);
+    let warmup = rng.random_range(0..=16);
     let actions: Vec<_> = (0..64)
         .map(|_| {
             (
-                rng.gen_range(0..DEPTH),
-                rng.gen::<bool>(),
-                rng.gen_range(0..=8),
+                rng.random_range(0..DEPTH),
+                rng.random::<bool>(),
+                rng.random_range(0..=8),
             )
         })
         .collect();
@@ -114,7 +115,7 @@ fn compare(seed: u64, optimize: bool) -> Result<(), String> {
         Err(error) => {
             return Err(format!(
                 "seed={seed} optimize={optimize} compile error: {error}"
-            ))
+            ));
         }
     }
     compiled.clear_scheduled_ticks();
@@ -209,7 +210,9 @@ fn normal_redstone_matches_interpreter() {
             );
         }
     }
-    eprintln!("Fuzz summary: {cases} circuits, optimization off/on, {failures} failing runs (compile errors count as failures)");
+    eprintln!(
+        "Fuzz summary: {cases} circuits, optimization off/on, {failures} failing runs (compile errors count as failures)"
+    );
     assert_eq!(failures, 0, "see the replayable failures above");
 }
 
@@ -226,7 +229,7 @@ fn feedback_fuzz_seeds_compile_and_match_native_callback_order() {
 fn native_feedback_preserves_hidden_state_and_scheduler_on_reset() {
     let mut rng = StdRng::seed_from_u64(121);
     let blocks = circuit(&mut rng);
-    let warmup = rng.gen_range(0..=16);
+    let warmup = rng.random_range(0..=16);
     let control = BASE + BlockPos::new(0, 0, 1);
     for optimize in [false, true] {
         for io_only in [false, true] {
@@ -250,9 +253,11 @@ fn native_feedback_preserves_hidden_state_and_scheduler_on_reset() {
                         )
                         .unwrap();
                     assert!(compiler.stats().unwrap().graph.native_propagation);
-                    assert!(compiler.stats().unwrap().graph.passes[3..9]
-                        .iter()
-                        .all(|pass| !pass.enabled));
+                    assert!(
+                        compiler.stats().unwrap().graph.passes[3..9]
+                            .iter()
+                            .all(|pass| !pass.enabled)
+                    );
                     compiled.clear_scheduled_ticks();
                     compiler.on_use_block(control);
                     let Block::Lever { lever } = native.get_block(control) else {
@@ -409,9 +414,9 @@ fn torch_oscillator_compiles_and_keeps_oscillating_after_reset() {
 
 #[test]
 fn native_controls_observers_and_command_outputs_match_interpreter() {
+    use mchprs_blocks::BlockFacing;
     use mchprs_blocks::block_entities::CommandBlockEntity;
     use mchprs_blocks::blocks::{ButtonFace, RedstoneObserver, StoneButton};
-    use mchprs_blocks::BlockFacing;
     let button = BASE;
     let plate = BASE + BlockPos::new(0, 0, 3);
     let command = BASE + BlockPos::new(3, 0, 0);
@@ -682,8 +687,11 @@ fn coalesced_repeaters_preserve_display_and_pending_work_on_reset() {
                     compiler.flush(&mut compiled);
                     for pos in repeaters.into_iter().chain(lamps) {
                         if !io_only || lamps.contains(&pos) {
-                            assert_eq!(compiled.get_block(pos), native.get_block(pos),
-                                "optimize={optimize} io_only={io_only} reset_at={reset_at} tick={tick} pos={pos:?}");
+                            assert_eq!(
+                                compiled.get_block(pos),
+                                native.get_block(pos),
+                                "optimize={optimize} io_only={io_only} reset_at={reset_at} tick={tick} pos={pos:?}"
+                            );
                         }
                     }
                 }
@@ -701,8 +709,11 @@ fn coalesced_repeaters_preserve_display_and_pending_work_on_reset() {
                     native.tick_interpreted();
                     compiled.tick_interpreted();
                     for pos in repeaters.into_iter().chain(lamps) {
-                        assert_eq!(compiled.get_block(pos), native.get_block(pos),
-                            "handoff optimize={optimize} io_only={io_only} reset_at={reset_at} tick={tick} pos={pos:?}");
+                        assert_eq!(
+                            compiled.get_block(pos),
+                            native.get_block(pos),
+                            "handoff optimize={optimize} io_only={io_only} reset_at={reset_at} tick={tick} pos={pos:?}"
+                        );
                     }
                 }
             }

@@ -1,8 +1,8 @@
 //! Velocity modern forwarding. Verify the MAC before interpreting any identity.
-use anyhow::{ensure, Context, Result};
+use anyhow::{Context, Result, ensure};
 use hmac::{Hmac, Mac};
-use mchprs_network::packets::clientbound::CPlayerInfoAddPlayerProperty;
 use mchprs_network::packets::PacketDecoderExt;
+use mchprs_network::packets::clientbound::CPlayerInfoAddPlayerProperty;
 use once_cell::sync::OnceCell;
 use serde::{Deserialize, Serialize};
 use sha2::Sha256;

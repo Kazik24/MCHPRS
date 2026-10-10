@@ -1,5 +1,5 @@
-use mchprs_blocks::blocks::{ComparatorMode, Instrument};
 use mchprs_blocks::BlockPos;
+use mchprs_blocks::blocks::{ComparatorMode, Instrument};
 use petgraph::stable_graph::{NodeIndex, StableGraph};
 
 pub type NodeIdx = NodeIndex;
@@ -156,7 +156,9 @@ impl std::fmt::Display for GraphError {
                 )
             }
 
-            Self::UnsupportedNativeExport => f.write_str("native propagation cannot be exported as a collapsed electrical graph"),
+            Self::UnsupportedNativeExport => {
+                f.write_str("native propagation cannot be exported as a collapsed electrical graph")
+            }
             Self::UnsupportedCommandBlockExport => {
                 f.write_str("command-block output export is not implemented")
             }

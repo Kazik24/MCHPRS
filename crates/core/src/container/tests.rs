@@ -2,8 +2,8 @@ use super::*;
 
 #[test]
 fn hopper_and_furnace_creation_locking_and_cake_bites() {
-    use crate::world::{storage::Chunk, World};
-    use mchprs_blocks::{block_entities::BlockEntity, blocks::Block, BlockFace};
+    use crate::world::{World, storage::Chunk};
+    use mchprs_blocks::{BlockFace, block_entities::BlockEntity, blocks::Block};
     let mut world =
         crate::plot::PlotWorld::from_chunks(0, 0, vec![Chunk::empty(0, 0)], Default::default());
     let pos = BlockPos::new(4, 30, 4);
@@ -150,7 +150,7 @@ fn placement_uses_all_axes_and_nearest_diagonal_view() {
 #[test]
 fn barrel_creation_state_changes_removal_and_chunk_round_trip() {
     use crate::plot::PlotWorld;
-    use crate::world::{storage::Chunk, World};
+    use crate::world::{World, storage::Chunk};
     use mchprs_blocks::block_entities::BlockEntity;
     use mchprs_blocks::blocks::Block;
     let mut world = PlotWorld::from_chunks(0, 0, vec![Chunk::empty(0, 0)], Default::default());

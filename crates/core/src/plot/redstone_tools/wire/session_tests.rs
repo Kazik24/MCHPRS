@@ -1,8 +1,8 @@
 use super::*;
 use crate::plot::client_sync_tests::fixture;
 use mchprs_blocks::blocks::RedstoneWire;
-use mchprs_network::packets::serverbound::{SPlayerDigging, SUseItem};
 use mchprs_network::packets::PacketDecoderExt;
+use mchprs_network::packets::serverbound::{SPlayerDigging, SUseItem};
 use mchprs_network::test_support::read_frame;
 use std::net::TcpStream;
 
@@ -47,9 +47,16 @@ fn wait_for_preview(plot: &mut Plot) {
         if session.plan.is_some() && session.displayed {
             return;
         }
-        assert!(Instant::now() < deadline,
+        assert!(
+            Instant::now() < deadline,
             "Live route did not reach a buildable preview: target={:?}, notice={:?}, pending={}, capture={}, check={}, needs_search={}",
-            session.target, session.notice, session.pending.is_some(), session.capture.is_some(), session.check.is_some(), session.needs_search);
+            session.target,
+            session.notice,
+            session.pending.is_some(),
+            session.capture.is_some(),
+            session.check.is_some(),
+            session.needs_search
+        );
         std::thread::sleep(Duration::from_millis(1));
     }
 }
@@ -144,9 +151,11 @@ fn command_uses_empty_hotbar_slot_and_refuses_to_overwrite_full_inventory() {
         });
     }
     assert!(plot.wire_tool(0, &[]).is_err());
-    assert!(plot.players[0].inventory[36..45]
-        .iter()
-        .all(|item| item.as_ref().unwrap().item_type == existing));
+    assert!(
+        plot.players[0].inventory[36..45]
+            .iter()
+            .all(|item| item.as_ref().unwrap().item_type == existing)
+    );
     assert!(plot.players[0].redstone_tools.wire.is_none());
 }
 
@@ -171,13 +180,15 @@ fn invalid_and_offhand_use_acknowledge_without_starting_or_editing() {
             0,
         );
         assert_eq!(read_through_ack(&mut peer, sequence), [0x04]);
-        assert!(plot.players[0]
-            .redstone_tools
-            .wire
-            .as_ref()
-            .unwrap()
-            .start
-            .is_none());
+        assert!(
+            plot.players[0]
+                .redstone_tools
+                .wire
+                .as_ref()
+                .unwrap()
+                .start
+                .is_none()
+        );
         assert_eq!(plot.world.get_block_raw(pos), before);
         assert!(plot.players[0].worldedit_undo.is_empty());
     }
@@ -990,9 +1001,18 @@ fn live_continuation_builds_several_supported_segments_then_turns_and_undoes() {
             if session.target == Some(end) && session.plan.is_some() && session.displayed {
                 break;
             }
-            assert!(Instant::now() < deadline,
+            assert!(
+                Instant::now() < deadline,
                 "Segment {} did not produce a buildable route: source={:?}, target={:?}, notice={:?}, pending={}, capture={}, check={}, needs_search={}",
-                segment + 1, session.start, session.target, session.notice, session.pending.is_some(), session.capture.is_some(), session.check.is_some(), session.needs_search);
+                segment + 1,
+                session.start,
+                session.target,
+                session.notice,
+                session.pending.is_some(),
+                session.capture.is_some(),
+                session.check.is_some(),
+                session.needs_search
+            );
             std::thread::sleep(Duration::from_millis(1));
         }
         let session = plot.players[0].redstone_tools.wire.as_mut().unwrap();
@@ -1003,10 +1023,11 @@ fn live_continuation_builds_several_supported_segments_then_turns_and_undoes() {
             (end.x.abs_diff(previous.x) + end.z.abs_diff(previous.z)) as usize + 1
         );
         assert!(plan.path.iter().all(|pos| pos.y == start.y));
-        assert!(plan
-            .placements
-            .iter()
-            .all(|(_, block)| matches!(block, Block::Glass {} | Block::RedstoneWire { .. })));
+        assert!(
+            plan.placements
+                .iter()
+                .all(|(_, block)| matches!(block, Block::Glass {} | Block::RedstoneWire { .. }))
+        );
         placed.extend(plan.placements.iter().map(|&(pos, _)| pos));
         session.last_click = None;
         assert!(plot.use_wire_tool(0, 0, 0.0, 90.0));
@@ -1070,9 +1091,11 @@ fn status_uses_latest_action_bar_message_once_per_second_without_repeating() {
             Plane::Horizontal.label()
         )))
     );
-    assert!(packets
-        .iter()
-        .all(|packet| packet.packet_id == 0x72 && packet.buffer.last() == Some(&1)));
+    assert!(
+        packets
+            .iter()
+            .all(|packet| packet.packet_id == 0x72 && packet.buffer.last() == Some(&1))
+    );
     drop(packets);
     session.send_status(&viewer, now + NOTICE_INTERVAL * 2);
     assert_eq!(viewer.0.borrow().len(), 2);
@@ -1310,13 +1333,15 @@ fn clicking_existing_dust_preserves_its_support_and_copies_the_support_color() {
     wait_for_preview(&mut plot);
     let session = plot.players[0].redstone_tools.wire.as_mut().unwrap();
     assert_eq!(session.target, Some(end));
-    assert!(session
-        .plan
-        .as_ref()
-        .unwrap()
-        .placements
-        .iter()
-        .all(|&(_, block)| block == support || matches!(block, Block::RedstoneWire { .. })));
+    assert!(
+        session
+            .plan
+            .as_ref()
+            .unwrap()
+            .placements
+            .iter()
+            .all(|&(_, block)| block == support || matches!(block, Block::RedstoneWire { .. }))
+    );
     session.last_click = None;
     assert!(plot.use_wire_tool(0, 0, 0.0, 90.0));
     for x in start.x..=end.x {
@@ -1408,13 +1433,15 @@ fn left_click_selects_support_and_right_click_without_a_start_does_not() {
     plot.world.set_block(support, Block::Stone {});
     plot.players[0].pos = PlayerPos::new(32.5, 24.0, 35.5);
     assert!(plot.use_wire_tool(0, 0, 0.0, 90.0));
-    assert!(plot.players[0]
-        .redstone_tools
-        .wire
-        .as_ref()
-        .unwrap()
-        .start
-        .is_none());
+    assert!(
+        plot.players[0]
+            .redstone_tools
+            .wire
+            .as_ref()
+            .unwrap()
+            .start
+            .is_none()
+    );
 }
 
 #[test]
@@ -1549,12 +1576,16 @@ fn live_elevated_route_copies_stone_supports_and_undo_restores_both_platforms() 
     let plan = session.plan.as_ref().unwrap();
     let path = plan.path.clone();
     let placements = plan.placements.clone();
-    assert!(placements
-        .iter()
-        .any(|(_, block)| matches!(block, Block::Stone {})));
-    assert!(placements
-        .iter()
-        .all(|(_, block)| matches!(block, Block::Stone {} | Block::RedstoneWire { .. })));
+    assert!(
+        placements
+            .iter()
+            .any(|(_, block)| matches!(block, Block::Stone {}))
+    );
+    assert!(
+        placements
+            .iter()
+            .all(|(_, block)| matches!(block, Block::Stone {} | Block::RedstoneWire { .. }))
+    );
     assert!(path.windows(2).any(|pair| pair[0].y != pair[1].y));
     session.last_click = None;
     let (yaw, pitch) = (plot.players[0].yaw, plot.players[0].pitch);

@@ -9,12 +9,12 @@ mod wire;
 #[cfg(test)]
 mod tests;
 
-use super::{Plot, PlotWorld, PLOT_BLOCK_HEIGHT};
+use super::{PLOT_BLOCK_HEIGHT, Plot, PlotWorld};
 use crate::player::{PacketSender, Player};
-use anyhow::{bail, Result};
+use anyhow::{Result, bail};
 use mchprs_blocks::BlockPos;
 use search::{SearchCache, SearchKind};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 /// Session state only: none of these preferences or caches alter player saves.
 #[derive(Default)]

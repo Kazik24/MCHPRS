@@ -1,6 +1,6 @@
 //! SignedVelocity 1.5.0 decisions, received only through authenticated forwarding.
 use crate::utils::HyphenatedUUID;
-use anyhow::{bail, ensure, Result};
+use anyhow::{Result, bail, ensure};
 use byteorder::{BigEndian, ReadBytesExt};
 use std::collections::VecDeque;
 

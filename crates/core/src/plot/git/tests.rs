@@ -126,11 +126,12 @@ fn persistent_commits_branch_divergence_and_ordered_search() {
     let log = repo.log(false, None, 1).unwrap().to_string();
     assert!(log.contains("divergent experiment") && log.contains("root build"));
     assert!(!log.contains("improved master"));
-    assert!(repo
-        .log(true, Some("IMPROVED"), 1)
-        .unwrap()
-        .to_string()
-        .contains("improved master"));
+    assert!(
+        repo.log(true, Some("IMPROVED"), 1)
+            .unwrap()
+            .to_string()
+            .contains("improved master")
+    );
     assert!(repo.show(&experiment).unwrap().contains("Bob"));
     drop(repo);
     let repo = root.repo();
@@ -184,9 +185,10 @@ fn checkout_preserves_dirty_work_in_a_recoverable_branch() {
     assert_eq!(recovered.fingerprints().unwrap().full, dirty);
     assert_eq!(recovered.data.pending_ticks, snapshot.data.pending_ticks);
     assert!(repo.recoveries(1).unwrap().to_string().contains("Alice"));
-    assert!(repo
-        .checkout("other", &snapshot, 1, "Alice", &root.0.join("plot"))
-        .is_err());
+    assert!(
+        repo.checkout("other", &snapshot, 1, "Alice", &root.0.join("plot"))
+            .is_err()
+    );
     assert_eq!(
         root.db()
             .query_row("SELECT count(*) FROM recoveries", [], |r| r
@@ -207,9 +209,10 @@ fn failed_checkout_restores_save_and_branch_after_target_write() {
     let save = root.0.join("plot");
     snapshot.data.save_to_file(&save).unwrap();
     root.db().execute_batch("CREATE TRIGGER reject_checkout BEFORE UPDATE ON meta WHEN NEW.key='active' BEGIN SELECT RAISE(ABORT,'injected metadata failure'); END;").unwrap();
-    assert!(repo
-        .checkout("other", &snapshot, 1, "Alice", &save)
-        .is_err());
+    assert!(
+        repo.checkout("other", &snapshot, 1, "Alice", &save)
+            .is_err()
+    );
     assert_eq!(repo.head().unwrap().0, "master");
     assert!(!repo.has_pending().unwrap());
     let loaded = PlotData::<{ super::super::PLOT_SECTIONS }>::load_from_file(&save, false).unwrap();
@@ -268,9 +271,10 @@ fn rollback_io_failure_keeps_durable_checkout_record() {
     repo.branch("other", "HEAD").unwrap();
     set(&mut snapshot, 3, 60, 3, Block::Stone {}, None);
     fs::write(root.0.join("blocked"), "file").unwrap();
-    assert!(repo
-        .checkout("other", &snapshot, 1, "Alice", &root.0.join("blocked/plot"))
-        .is_err());
+    assert!(
+        repo.checkout("other", &snapshot, 1, "Alice", &root.0.join("blocked/plot"))
+            .is_err()
+    );
     assert!(repo.has_pending().unwrap());
     assert_eq!(repo.head().unwrap().0, "master");
     drop(repo);
@@ -311,11 +315,12 @@ fn quota_and_transaction_failures_never_advance_head_or_leave_objects() {
     let mut quota = test_limits();
     quota.plot_bytes = 1;
     let mut repo = Repository::open(&root.0, (-1, 2), quota).unwrap();
-    assert!(repo
-        .commit(&snapshot, 1, "Alice", "over quota")
-        .unwrap_err()
-        .to_string()
-        .contains("quota"));
+    assert!(
+        repo.commit(&snapshot, 1, "Alice", "over quota")
+            .unwrap_err()
+            .to_string()
+            .contains("quota")
+    );
     assert_eq!(repo.head().unwrap(), head);
     assert!(repo.branch("../escape", "HEAD").is_err());
 }
@@ -438,11 +443,12 @@ fn validation_and_checksums_reject_corruption_without_changing_history() {
             [changed.encode(test_limits().snapshot).unwrap()],
         )
         .unwrap();
-    assert!(repo
-        .load(&head)
-        .unwrap_err()
-        .to_string()
-        .contains("checksum"));
+    assert!(
+        repo.load(&head)
+            .unwrap_err()
+            .to_string()
+            .contains("checksum")
+    );
     assert_eq!(repo.resolve("HEAD").unwrap(), head);
 }
 
@@ -484,20 +490,23 @@ fn diff_classifies_add_remove_state_and_data_and_inspects_removed_positions() {
     assert!(text.contains("say before") && text.contains("say after"));
     assert!(text.contains("From data:") && text.contains("To data:"));
     assert!(inspected.get("extra").is_none());
-    assert!(diff
-        .inspect(pos(4, 64, 3), Some("from"))
-        .unwrap()
-        .to_string()
-        .contains("say before"));
-    assert!(diff
-        .inspect(pos(4, 64, 3), Some("to"))
-        .unwrap()
-        .to_string()
-        .contains("say after"));
+    assert!(
+        diff.inspect(pos(4, 64, 3), Some("from"))
+            .unwrap()
+            .to_string()
+            .contains("say before")
+    );
+    assert!(
+        diff.inspect(pos(4, 64, 3), Some("to"))
+            .unwrap()
+            .to_string()
+            .contains("say after")
+    );
     assert!(diff.inspect(pos(8, 64, 3), None).is_err());
-    assert!(diff
-        .inspect(BlockPos::new(i32::MAX, 64, i32::MIN), None)
-        .is_err());
+    assert!(
+        diff.inspect(BlockPos::new(i32::MAX, 64, i32::MIN), None)
+            .is_err()
+    );
 }
 
 #[test]
@@ -796,11 +805,12 @@ fn logs_paginate_with_literal_search_and_modern_clicks() {
             .len(),
         3
     );
-    assert!(repo
-        .log(true, Some("% literal"), 1)
-        .unwrap()
-        .to_string()
-        .contains("commit 11"));
+    assert!(
+        repo.log(true, Some("% literal"), 1)
+            .unwrap()
+            .to_string()
+            .contains("commit 11")
+    );
     assert_eq!(
         repo.log(true, Some("_' OR 1=1"), 1).unwrap()["extra"],
         json!([])
@@ -809,11 +819,12 @@ fn logs_paginate_with_literal_search_and_modern_clicks() {
     snapshot.data.piston_state.logical_tick = 12;
     repo.commit(&snapshot, 1, "Alice", "ŚWIATŁO działa")
         .unwrap();
-    assert!(repo
-        .log(true, Some("światło"), 1)
-        .unwrap()
-        .to_string()
-        .contains("ŚWIATŁO działa"));
+    assert!(
+        repo.log(true, Some("światło"), 1)
+            .unwrap()
+            .to_string()
+            .contains("ŚWIATŁO działa")
+    );
 }
 
 #[test]
@@ -972,11 +983,12 @@ fn commit_checkout_detaches_head_and_keeps_branch_tips_and_dirty_work() {
     assert_eq!(repo.resolve("master").unwrap(), master);
     assert!(repo.status(&restored).unwrap().contains("detached HEAD"));
     assert_eq!(repo.sidebar_head().unwrap(), format!("@{first}"));
-    assert!(repo
-        .branches()
-        .unwrap()
-        .to_string()
-        .contains("detached HEAD"));
+    assert!(
+        repo.branches()
+            .unwrap()
+            .to_string()
+            .contains("detached HEAD")
+    );
     let recovery: String = root
         .db()
         .query_row("SELECT id FROM recoveries", [], |r| r.get(0))
@@ -1129,11 +1141,12 @@ fn storage_rank_downgrade_keeps_history_readable_and_rejects_growth() {
             .full,
         fingerprint
     );
-    assert!(repo
-        .log(false, None, 1)
-        .unwrap()
-        .to_string()
-        .contains("second"));
+    assert!(
+        repo.log(false, None, 1)
+            .unwrap()
+            .to_string()
+            .contains("second")
+    );
     assert!(repo.status(&snapshot).is_ok());
     set(&mut snapshot, 2, 64, 2, Block::Glass, None);
     assert_eq!(
@@ -1232,10 +1245,11 @@ fn rebase_copies_whole_plot_uncommitted_then_commit_advances_current_branch() {
             .unwrap(),
         3
     );
-    assert!(repo
-        .status(&copied)
-        .unwrap()
-        .contains("Build changes: true"));
+    assert!(
+        repo.status(&copied)
+            .unwrap()
+            .contains("Build changes: true")
+    );
     assert!(!repo.has_pending().unwrap());
     drop(reservation);
     drop(repo);
@@ -1397,9 +1411,10 @@ fn rebase_interrupted_save_resumes_copy_without_moving_branch_tips() {
     let (old_head, source_head) = rebase_branches(&mut repo, &ours, &theirs, &save);
     let unavailable_save = root.0.join("unavailable");
     fs::create_dir(&unavailable_save).unwrap();
-    assert!(repo
-        .rebase("revisit", &ours, 1, "Alice", &unavailable_save)
-        .is_err());
+    assert!(
+        repo.rebase("revisit", &ours, 1, "Alice", &unavailable_save)
+            .is_err()
+    );
     assert_eq!(
         repo.head().unwrap(),
         ("master".into(), Some(old_head.clone()))
@@ -1468,20 +1483,26 @@ fn reference_chat_layout_clipboard_counts_and_contextual_completion() {
         row["click_event"],
         json!({"action": "copy_to_clipboard", "value": &head[..8]})
     );
-    assert!(row["hover_event"]["value"]["text"]
-        .as_str()
-        .unwrap()
-        .contains("Author: Bob\nDate: "));
-    assert!(row["extra"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .any(|part| part["text"] == "HEAD" && part["color"] == "aqua"));
-    assert!(row["extra"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .any(|part| part["text"] == "master" && part["color"] == "green"));
+    assert!(
+        row["hover_event"]["value"]["text"]
+            .as_str()
+            .unwrap()
+            .contains("Author: Bob\nDate: ")
+    );
+    assert!(
+        row["extra"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|part| part["text"] == "HEAD" && part["color"] == "aqua")
+    );
+    assert!(
+        row["extra"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|part| part["text"] == "master" && part["color"] == "green")
+    );
     assert_eq!(
         row["extra"].as_array().unwrap().last().unwrap()["color"],
         "white"
@@ -1536,9 +1557,11 @@ fn reference_chat_layout_clipboard_counts_and_contextual_completion() {
     for omitted in ["init", "list", "use", "tp"] {
         assert!(!completion(&["/git"], "", &names, &ids).contains(&omitted.into()));
     }
-    assert!(completion(&["/git"], "", &names, &ids)
-        .iter()
-        .all(|item| !names.contains(item)));
+    assert!(
+        completion(&["/git"], "", &names, &ids)
+            .iter()
+            .all(|item| !names.contains(item))
+    );
     assert!(completion(&["/git", "commit"], "", &names, &ids).is_empty());
     assert_eq!(
         completion(&["/git", "checkout"], "MA", &names, &ids),

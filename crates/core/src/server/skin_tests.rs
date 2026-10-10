@@ -1,8 +1,8 @@
 use super::*;
+use mchprs_network::packets::PacketDecoderExt;
 use mchprs_network::packets::serverbound::{
     SClientSettings, SConfigurationFinished, ServerBoundPacket,
 };
-use mchprs_network::packets::PacketDecoderExt;
 use std::io::Cursor;
 
 #[test]

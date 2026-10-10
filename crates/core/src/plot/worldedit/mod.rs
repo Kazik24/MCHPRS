@@ -14,15 +14,15 @@ mod update_tests;
 use super::{Plot, PlotWorld};
 use crate::player::{PacketSender, Player, PlayerPos};
 use crate::redstone;
-use crate::world::storage::PalettedBitBuffer;
 use crate::world::World;
+use crate::world::storage::PalettedBitBuffer;
 use execute::*;
 use mchprs_blocks::block_entities::{BlockEntity, ContainerType};
 use mchprs_blocks::blocks::Block;
 use mchprs_blocks::{BlockFacing, BlockPos};
 use mchprs_utils::map;
 use once_cell::sync::Lazy;
-use rand::Rng;
+use rand::prelude::*;
 use regex::Regex;
 use rustc_hash::FxHashMap;
 use std::collections::HashMap;
@@ -318,7 +318,7 @@ impl Argument {
                         return Err(ArgumentParseError::new(
                             arg_type,
                             messages::ARGUMENT_UNKNOWN_DIRECTION,
-                        ))
+                        ));
                     }
                 }))
             }
@@ -969,8 +969,8 @@ impl WorldEditPattern {
             return Block::Air {};
         }
 
-        let mut rng = rand::thread_rng();
-        let mut random = rng.gen_range(0.0..weight_sum);
+        let mut rng = rand::rng();
+        let mut random = rng.random_range(0.0..weight_sum);
 
         let mut selected = &WorldEditPatternPart {
             block_id: 0,

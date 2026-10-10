@@ -3,14 +3,14 @@ mod redstone_fuzz;
 mod research;
 
 use crate::plot::worldedit::{load_schematic, paste_clipboard};
-use crate::plot::{PlotWorld, PLOT_WIDTH};
+use crate::plot::{PLOT_WIDTH, PlotWorld};
 use crate::redpiler::analysis::AnalysisLimits;
 use crate::redpiler::{CompileError, Compiler, CompilerOptions};
 use crate::world::storage::Chunk;
 use mchprs_blocks::blocks::{Block, RedstonePiston};
 use mchprs_blocks::{BlockFace, BlockFacing, BlockPos};
 use mchprs_world::{AdvancePhase, PistonAction, TickPriority};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use std::path::{Path, PathBuf};
 
@@ -176,22 +176,30 @@ fn piston_head_moving_piston_and_unsafe_entry_state_are_admission_blockers() {
 
     let report = analyze_world(&world);
     assert_eq!(report.pistons[0], BASE);
-    assert!(report
-        .issues
-        .iter()
-        .any(|i| matches!(i, AdmissionIssue::PistonRuntimeUnavailable { pos } if *pos == BASE)));
-    assert!(report
-        .issues
-        .iter()
-        .any(|i| matches!(i, AdmissionIssue::MovingPiston { .. })));
-    assert!(report
-        .issues
-        .iter()
-        .any(|i| matches!(i, AdmissionIssue::UnownedPistonHead { .. })));
-    assert!(report
-        .issues
-        .iter()
-        .any(|i| matches!(i, AdmissionIssue::EntryPhase { .. })));
+    assert!(
+        report
+            .issues
+            .iter()
+            .any(|i| matches!(i, AdmissionIssue::PistonRuntimeUnavailable { pos } if *pos == BASE))
+    );
+    assert!(
+        report
+            .issues
+            .iter()
+            .any(|i| matches!(i, AdmissionIssue::MovingPiston { .. }))
+    );
+    assert!(
+        report
+            .issues
+            .iter()
+            .any(|i| matches!(i, AdmissionIssue::UnownedPistonHead { .. }))
+    );
+    assert!(
+        report
+            .issues
+            .iter()
+            .any(|i| matches!(i, AdmissionIssue::EntryPhase { .. }))
+    );
 }
 
 #[test]
@@ -215,18 +223,24 @@ fn queued_events_motions_and_movement_work_block_compilation() {
     state.movement_work.push((BASE, 1));
 
     let report = analyze_world(&world);
-    assert!(report
-        .issues
-        .iter()
-        .any(|issue| matches!(issue, AdmissionIssue::PendingPistonEvents { count: 1 })));
-    assert!(report
-        .issues
-        .iter()
-        .any(|issue| matches!(issue, AdmissionIssue::PendingPistonMotions { count: 1 })));
-    assert!(report
-        .issues
-        .iter()
-        .any(|issue| matches!(issue, AdmissionIssue::PendingMovementWork { count: 1 })));
+    assert!(
+        report
+            .issues
+            .iter()
+            .any(|issue| matches!(issue, AdmissionIssue::PendingPistonEvents { count: 1 }))
+    );
+    assert!(
+        report
+            .issues
+            .iter()
+            .any(|issue| matches!(issue, AdmissionIssue::PendingPistonMotions { count: 1 }))
+    );
+    assert!(
+        report
+            .issues
+            .iter()
+            .any(|issue| matches!(issue, AdmissionIssue::PendingMovementWork { count: 1 }))
+    );
 }
 
 #[test]

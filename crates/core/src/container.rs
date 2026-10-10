@@ -1,8 +1,8 @@
 //! Server-owned container inventory operations. Client hashes are predictions, not items.
+use mchprs_blocks::BlockPos;
 use mchprs_blocks::block_entities::{ContainerType, InventoryEntry};
 use mchprs_blocks::blocks::Block;
 use mchprs_blocks::items::{Item, ItemStack};
-use mchprs_blocks::BlockPos;
 use mchprs_network::packets::{PacketEncoderExt, SlotData};
 
 #[derive(PartialEq, Eq)]

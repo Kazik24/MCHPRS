@@ -1,12 +1,12 @@
 use super::super::{PLOT_SECTIONS, PLOT_WIDTH};
 use super::repository::button;
-use super::snapshot::{state, Snapshot};
+use super::snapshot::{Snapshot, state};
 use crate::messages;
 use crate::player::PlayerPos;
-use anyhow::{ensure, Result};
-use mchprs_blocks::blocks::Block;
+use anyhow::{Result, ensure};
 use mchprs_blocks::BlockPos;
-use serde_json::{json, Value};
+use mchprs_blocks::blocks::Block;
+use serde_json::{Value, json};
 use std::collections::BinaryHeap;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

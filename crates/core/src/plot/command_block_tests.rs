@@ -43,9 +43,11 @@ fn offline_replay_retains_all_output_without_enabling_other_commands() {
     }
     assert_eq!(world.command_output().count(), 1_535);
     assert!(world.execute_command_block("stop", "@").is_err());
-    assert!(world
-        .execute_command_block(&"x".repeat(131_069), "@")
-        .is_err());
+    assert!(
+        world
+            .execute_command_block(&"x".repeat(131_069), "@")
+            .is_err()
+    );
 }
 fn place(
     world: &mut PlotWorld,

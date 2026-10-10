@@ -220,7 +220,7 @@ pub(crate) fn completed(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::plot::{PlotWorld, PLOT_WIDTH};
+    use crate::plot::{PLOT_WIDTH, PlotWorld};
     use crate::world::storage::Chunk;
     use mchprs_blocks::blocks::RedstoneObserver;
 
@@ -570,10 +570,12 @@ mod tests {
                 break;
             }
         }
-        assert!(cached
-            .instant_piston_cache()
-            .unwrap()
-            .awaiting_reset(base, BlockFace::East));
+        assert!(
+            cached
+                .instant_piston_cache()
+                .unwrap()
+                .awaiting_reset(base, BlockFace::East)
+        );
         let far = base.offset(BlockFace::East).offset(BlockFace::East);
         cached.set_block(far, Block::Stone {});
         native.set_block(far, Block::Stone {});

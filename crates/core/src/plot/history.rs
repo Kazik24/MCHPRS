@@ -6,11 +6,11 @@ mod codec;
 mod tests;
 
 use super::data::sleep_time_for_tps;
-use super::{Plot, PlotWorld, PLOT_SECTIONS};
+use super::{PLOT_SECTIONS, Plot, PlotWorld};
 use crate::config::CONFIG;
 use crate::player::PacketSender;
 use budget::{Budget, Bytes, Reservation};
-use codec::{capture_raw, Encoded};
+use codec::{Encoded, capture_raw};
 use mchprs_network::packets::clientbound::{CChatMessage, ClientBoundPacket};
 use mchprs_save_data::plot_data::Tps;
 use mchprs_world::AdvancePhase;

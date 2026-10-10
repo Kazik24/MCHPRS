@@ -3,7 +3,7 @@ use super::{ScheduledBlockTick, TickScheduler};
 use crate::redpiler::compile_graph::{CompileGraph, NodeType};
 use crate::redpiler::{CompileError, TaskMonitor};
 use crate::redstone;
-use crate::world::{for_each_block_optimized, storage::Chunk, BlockAction, World};
+use crate::world::{BlockAction, World, for_each_block_optimized, storage::Chunk};
 use mchprs_blocks::block_entities::BlockEntity;
 use mchprs_blocks::blocks::{Block, ButtonFace, LeverFace};
 use mchprs_blocks::{BlockFace, BlockPos};

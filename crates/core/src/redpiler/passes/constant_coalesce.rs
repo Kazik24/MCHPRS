@@ -1,9 +1,9 @@
 use std::collections::hash_map::Entry;
 
 use crate::redpiler::compile_graph::{CompileGraph, CompileNode, NodeIdx, NodeState, NodeType};
+use petgraph::Direction;
 use petgraph::unionfind::UnionFind;
 use petgraph::visit::{EdgeRef, IntoEdgeReferences, NodeIndexable};
-use petgraph::Direction;
 use rustc_hash::{FxHashMap, FxHashSet};
 
 pub(super) fn run(graph: &mut CompileGraph) -> Result<(), super::GraphError> {

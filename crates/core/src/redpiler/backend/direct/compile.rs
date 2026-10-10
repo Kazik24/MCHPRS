@@ -1,17 +1,17 @@
-use crate::redpiler::compile_graph::{CompileGraph, LinkType, NodeIdx};
 use crate::redpiler::CompilerOptions;
+use crate::redpiler::compile_graph::{CompileGraph, LinkType, NodeIdx};
 use itertools::Itertools;
-use mchprs_blocks::blocks::{Block, Instrument};
 use mchprs_blocks::BlockPos;
+use mchprs_blocks::blocks::{Block, Instrument};
 use mchprs_world::TickEntry;
-use petgraph::visit::EdgeRef;
 use petgraph::Direction;
+use petgraph::visit::EdgeRef;
 use rustc_hash::FxHashMap;
 use smallvec::SmallVec;
 use tracing::trace;
 
-use super::node::{ForwardLink, Node, NodeId, NodeInput, NodeType, Nodes, NonMaxU8};
 use super::DirectBackend;
+use super::node::{ForwardLink, Node, NodeId, NodeInput, NodeType, Nodes, NonMaxU8};
 use crate::redpiler::backend::BackendError;
 
 const MAX_INPUTS: usize = u8::MAX as usize;
@@ -469,8 +469,8 @@ mod tests {
         ticks: Vec<TickEntry>,
         powered: bool,
     ) -> (DirectBackend, [super::super::node::NodeId; 3]) {
-        use mchprs_blocks::blocks::{Lever, RedstoneObserver};
         use mchprs_blocks::BlockFacing;
+        use mchprs_blocks::blocks::{Lever, RedstoneObserver};
         let positions = [
             BlockPos::new(4, 30, 4),
             BlockPos::new(5, 30, 4),

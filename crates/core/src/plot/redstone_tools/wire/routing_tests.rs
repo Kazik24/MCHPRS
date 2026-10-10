@@ -1,8 +1,8 @@
 use super::*;
+use mchprs_blocks::BlockFacing;
 use mchprs_blocks::blocks::{
     Lever, LeverFace, RedstoneComparator, RedstoneObserver, RedstonePiston, RedstoneRepeater,
 };
-use mchprs_blocks::BlockFacing;
 
 fn snapshot(bounds: (BlockPos, BlockPos), blocks: &[(BlockPos, Block)]) -> Snapshot {
     let halo = BlockPos::new(14, 14, 14);
@@ -57,10 +57,11 @@ fn flat_wire_has_no_repeaters_or_range_limit() {
     let plan = candidate(&path, &[]).unwrap_or_else(|e| panic!("{e}"));
     assert_eq!(plan.path, path);
     assert_eq!(plan.placements.len(), 40);
-    assert!(plan
-        .placements
-        .iter()
-        .all(|(_, b)| matches!(b, Block::RedstoneWire { .. })));
+    assert!(
+        plan.placements
+            .iter()
+            .all(|(_, b)| matches!(b, Block::RedstoneWire { .. }))
+    );
 }
 
 #[test]
@@ -88,11 +89,12 @@ fn new_staircase_supports_are_opaque_and_work_in_both_directions() {
                 color: mchprs_blocks::BlockColorVariant::White
             }
         )));
-        assert!(plan
-            .placements
-            .iter()
-            .take(3)
-            .all(|(_, block)| !matches!(block, Block::RedstoneWire { .. })));
+        assert!(
+            plan.placements
+                .iter()
+                .take(3)
+                .all(|(_, block)| !matches!(block, Block::RedstoneWire { .. }))
+        );
     }
 }
 
@@ -113,10 +115,11 @@ fn vertical_targets_route_to_a_safe_staircase_within_the_budget() {
         };
         assert_eq!(plan.path.first(), Some(&start));
         assert_eq!(plan.path.last(), Some(&end));
-        assert!(plan
-            .placements
-            .iter()
-            .any(|(_, block)| matches!(block, Block::Wool { .. })));
+        assert!(
+            plan.placements
+                .iter()
+                .any(|(_, block)| matches!(block, Block::Wool { .. }))
+        );
     }
 }
 
@@ -240,9 +243,10 @@ fn new_supports_sample_passive_start_material_and_preserve_color() {
             .collect();
         let plan = candidate(&path, &blocks).unwrap_or_else(|e| panic!("{e}"));
         for p in &path[1..] {
-            assert!(plan
-                .placements
-                .contains(&(p.offset(BlockFace::Bottom), material)));
+            assert!(
+                plan.placements
+                    .contains(&(p.offset(BlockFace::Bottom), material))
+            );
         }
         let raised = [path[0], path[1].offset(BlockFace::Top)];
         let plan = candidate(&raised, &[(path[0].offset(BlockFace::Bottom), material)])
@@ -328,14 +332,16 @@ fn merging_unselected_dust_is_rejected_but_parallel_lanes_at_spacing_two_work() 
 #[test]
 fn only_selected_endpoint_dust_may_join_the_route() {
     let path = line();
-    assert!(candidate(
-        &path,
-        &[
-            (path[0], plain_wire()),
-            (*path.last().unwrap(), plain_wire())
-        ]
-    )
-    .is_ok());
+    assert!(
+        candidate(
+            &path,
+            &[
+                (path[0], plain_wire()),
+                (*path.last().unwrap(), plain_wire())
+            ]
+        )
+        .is_ok()
+    );
     assert!(candidate(&path, &[(path[1], plain_wire())]).is_err());
 }
 
@@ -529,10 +535,11 @@ fn straight_wire_on_the_real_generated_floor_is_found() {
             panic!("Generated-floor line of {distance} blocks was not found")
         };
         assert_eq!(plan.path.len(), distance as usize + 1);
-        assert!(plan
-            .placements
-            .iter()
-            .all(|(_, block)| matches!(block, Block::RedstoneWire { .. })));
+        assert!(
+            plan.placements
+                .iter()
+                .all(|(_, block)| matches!(block, Block::RedstoneWire { .. }))
+        );
     }
 }
 
@@ -590,10 +597,12 @@ fn dense_machine_route_avoids_a_strongly_powered_support_near_the_start() {
         }
         _ => panic!("Valid route near hidden dust was not found"),
     };
-    assert!(!plan
-        .placements
-        .iter()
-        .any(|&(p, block)| { p == BlockPos::new(22, 19, 20) && block.is_solid() }));
+    assert!(
+        !plan
+            .placements
+            .iter()
+            .any(|&(p, block)| { p == BlockPos::new(22, 19, 20) && block.is_solid() })
+    );
 }
 
 #[test]
@@ -778,8 +787,10 @@ fn endpoint_near_machinery_can_route_along_an_unchanged_connection_side() {
 fn pm1_short_connections_from_selected_sources_have_bounded_precise_results() {
     use crate::plot::worldedit::{load_schematic, paste_clipboard};
     use sha2::{Digest, Sha256};
-    let bytes = include_bytes!(concat!(env!("CARGO_MANIFEST_DIR"),
-        "/../../test_data/piston-research/pm1-compilation-1-20261008-fresh/PM1_FIXED_COMPILATION_1.schem"));
+    let bytes = include_bytes!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../test_data/piston-research/pm1-compilation-1-20261008-fresh/PM1_FIXED_COMPILATION_1.schem"
+    ));
     assert_eq!(
         format!("{:x}", Sha256::digest(bytes)),
         "cf5ef6b5e62defbc02dc3b201b9bb29766feb310f6abfcad2941486312e0bd7c"
@@ -883,7 +894,10 @@ fn pm1_short_connections_from_selected_sources_have_bounded_precise_results() {
             SearchResult::NoPath => "NoPath".to_owned(),
             SearchResult::Cancelled => "Cancelled".to_owned(),
         };
-        eprintln!("PM1 {local_start}->{local_end}: capture={capture_time:?}, rays={reads}, search={:?}, {outcome}", began.elapsed());
+        eprintln!(
+            "PM1 {local_start}->{local_end}: capture={capture_time:?}, rays={reads}, search={:?}, {outcome}",
+            began.elapsed()
+        );
         let matches_expected = match expected {
             None => matches!(result, SearchResult::Found(_)),
             Some(expected) => {

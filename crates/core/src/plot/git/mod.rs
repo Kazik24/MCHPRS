@@ -10,15 +10,15 @@ mod visuals;
 use self::diff::{Diff, Marker};
 use self::repository::{Limits, Repository};
 use self::snapshot::Snapshot;
-use super::{Plot, PLOT_SCALE, PLOT_WIDTH};
+use super::{PLOT_SCALE, PLOT_WIDTH, Plot};
 use crate::chat::ColorCode;
 use crate::config::CONFIG;
 use crate::messages;
 use crate::permissions;
 use crate::player::{PacketSender, PlayerPos};
-use crate::world::storage::Chunk;
 use crate::world::World;
-use anyhow::{bail, ensure, Context, Result};
+use crate::world::storage::Chunk;
+use anyhow::{Context, Result, bail, ensure};
 use mchprs_blocks::BlockPos;
 use mchprs_network::packets::clientbound::{
     CDestroyEntities, CTabComplete, CTabCompleteMatch, ClientBoundPacket,
@@ -30,9 +30,9 @@ use serde_json::Value;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::{
+    Arc, Mutex,
     atomic::{AtomicUsize, Ordering},
     mpsc::{self, Receiver, SyncSender, TryRecvError},
-    Arc, Mutex,
 };
 use std::time::{Duration, Instant};
 
@@ -62,7 +62,7 @@ impl Reservation {
 
     fn new(bytes: usize) -> Result<Self> {
         let limit = mib(CONFIG.git_work_memory_mib.min(MAX_WORK_MEMORY_MIB));
-        USED.fetch_update(Ordering::SeqCst, Ordering::SeqCst, |used| {
+        USED.try_update(Ordering::SeqCst, Ordering::SeqCst, |used| {
             used.checked_add(bytes).filter(|&n| n <= limit)
         })
         .map_err(|_| anyhow::anyhow!(messages::GIT_MEMORY_LIMIT_REACHED))?;
@@ -209,9 +209,16 @@ pub(super) struct State {
 impl State {
     pub(super) fn diagnostics(&self) -> String {
         let (used, limit) = memory_usage();
-        format!("Git head {:?}; pending {}; locked {}; recovery required {}; diff sessions {}; RAM reserved {}/{} MiB",
-            self.head, self.pending.is_some(), self.locked, self.fatal, self.sessions.len(),
-            used / 1048576, limit / 1048576)
+        format!(
+            "Git head {:?}; pending {}; locked {}; recovery required {}; diff sessions {}; RAM reserved {}/{} MiB",
+            self.head,
+            self.pending.is_some(),
+            self.locked,
+            self.fatal,
+            self.sessions.len(),
+            used / 1048576,
+            limit / 1048576
+        )
     }
 }
 

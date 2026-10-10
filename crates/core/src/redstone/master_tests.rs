@@ -1,5 +1,5 @@
 use super::*;
-use crate::plot::{PlotWorld, PLOT_WIDTH};
+use crate::plot::{PLOT_WIDTH, PlotWorld};
 use crate::redpiler::{Compiler, CompilerOptions};
 use crate::world::storage::Chunk;
 use mchprs_blocks::blocks::{Lever, LeverFace, RedstoneRepeater, RedstoneWire, SlabType};
@@ -405,8 +405,10 @@ fn downward_piston_dust_step_only_transmits_upward() {
                         high
                     ));
                     let expected = if upward { 14 } else { 0 };
-                    assert!(matches!(world.get_block(output), Block::RedstoneWire { wire } if wire.power == expected),
-                        "placement: {direction:?}, sticky={sticky}, extended={extended}, upward={upward}");
+                    assert!(
+                        matches!(world.get_block(output), Block::RedstoneWire { wire } if wire.power == expected),
+                        "placement: {direction:?}, sticky={sticky}, extended={extended}, upward={upward}"
+                    );
                     // Toggle the actual input, rather than merely inspecting
                     // prepowered dust; this exercises cached propagation too.
                     for power in [Block::Air, Block::RedstoneBlock {}, Block::Air] {
@@ -422,9 +424,11 @@ fn downward_piston_dust_step_only_transmits_upward() {
                             0,
                             "the piston must not conduct dust power through its base"
                         );
-                        assert!(matches!(world.get_block(output), Block::RedstoneWire { wire }
+                        assert!(
+                            matches!(world.get_block(output), Block::RedstoneWire { wire }
                             if wire.power == if power == Block::Air { 0 } else { expected }),
-                            "Turbo: {direction:?}, sticky={sticky}, extended={extended}, upward={upward}, source={power:?}");
+                            "Turbo: {direction:?}, sticky={sticky}, extended={extended}, upward={upward}, source={power:?}"
+                        );
                     }
                 }
             }

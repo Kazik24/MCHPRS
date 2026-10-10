@@ -6,9 +6,9 @@ pub(crate) mod wire_cache;
 pub use wire_cache::Neighbor as WireNeighbor;
 
 use crate::messages;
+use mchprs_blocks::BlockPos;
 use mchprs_blocks::block_entities::{BlockEntity, ContainerType};
 use mchprs_blocks::blocks::{Block, RedstonePiston};
-use mchprs_blocks::BlockPos;
 pub use mchprs_world::PistonAction;
 use mchprs_world::TickPriority;
 use storage::Chunk;

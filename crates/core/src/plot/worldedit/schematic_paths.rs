@@ -1,6 +1,6 @@
 //! Schematic paths stay within their library; the shared rf folder is read-only.
 use crate::messages;
-use anyhow::{bail, ensure, Context, Result};
+use anyhow::{Context, Result, bail, ensure};
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -263,15 +263,18 @@ mod tests {
         );
         let all = complete_names(&library.0, "").unwrap();
         assert!(all.contains(&"rf/".into()));
-        assert!(!all
-            .iter()
-            .any(|name| name.contains("notes") || name.contains("readme") || name == "empty/"));
+        assert!(
+            !all.iter()
+                .any(|name| name.contains("notes") || name.contains("readme") || name == "empty/")
+        );
         for name in all.into_iter().filter(|name| !name.ends_with('/')) {
             assert!(load_path(&library.0, &name).is_ok());
         }
-        assert!(complete_names(&library.0.join("missing"), "")
-            .unwrap()
-            .is_empty());
+        assert!(
+            complete_names(&library.0.join("missing"), "")
+                .unwrap()
+                .is_empty()
+        );
     }
 
     #[test]
@@ -335,10 +338,12 @@ mod tests {
             expected
         );
         library.file("other/circuit.schem");
-        assert!(load_path(&library.0, "circuit.schem")
-            .unwrap_err()
-            .to_string()
-            .contains("More than one"));
+        assert!(
+            load_path(&library.0, "circuit.schem")
+                .unwrap_err()
+                .to_string()
+                .contains("More than one")
+        );
         library.file("circuit.schem");
         assert_eq!(
             load_path(&library.0, "circuit.schem").unwrap(),
@@ -378,10 +383,12 @@ mod tests {
             "RF/deep/new.schem",
             "rf\\new.schem",
         ] {
-            assert!(save_path(&library.0, name)
-                .unwrap_err()
-                .to_string()
-                .contains("read-only"));
+            assert!(
+                save_path(&library.0, name)
+                    .unwrap_err()
+                    .to_string()
+                    .contains("read-only")
+            );
         }
         assert_eq!(
             fs::read(library.0.join("rf/original.schem")).unwrap(),
@@ -389,9 +396,11 @@ mod tests {
         );
         assert!(!library.0.join("rf/new.schem").exists());
         assert!(!library.0.join("rf/deep").exists());
-        assert!(save_path(&library.0, "my_builds/new.schem")
-            .unwrap()
-            .ends_with("my_builds/new.schem"));
+        assert!(
+            save_path(&library.0, "my_builds/new.schem")
+                .unwrap()
+                .ends_with("my_builds/new.schem")
+        );
         for name in [
             "../outside.schem",
             "rf/../new.schem",
@@ -411,14 +420,16 @@ mod tests {
             #[cfg(unix)]
             std::os::unix::fs::symlink(target, path).unwrap();
             #[cfg(windows)]
-            assert!(std::process::Command::new("cmd")
-                .args(["/C", "mklink", "/J"])
-                .arg(path)
-                .arg(target)
-                .output()
-                .unwrap()
-                .status
-                .success());
+            assert!(
+                std::process::Command::new("cmd")
+                    .args(["/C", "mklink", "/J"])
+                    .arg(path)
+                    .arg(target)
+                    .output()
+                    .unwrap()
+                    .status
+                    .success()
+            );
         }
         let library = Library::new();
         let outside = Library::new();

@@ -2,9 +2,9 @@
 //! power is never evidence that a source, consumer or update channel is harmless.
 use crate::interaction;
 use crate::plot::PlotWorld;
-use crate::redstone::power::{consumer_roots, ConsumerInput};
+use crate::redstone::power::{ConsumerInput, consumer_roots};
 use crate::redstone::{self, power, wire};
-use crate::world::{storage::Chunk, World};
+use crate::world::{World, storage::Chunk};
 use mchprs_blocks::block_entities::BlockEntity;
 use mchprs_blocks::blocks::{Block, RedstoneWire};
 use mchprs_blocks::{BlockDirection, BlockFace, BlockPos};
@@ -13,8 +13,8 @@ use rustc_hash::{FxHashMap, FxHashSet};
 use std::cell::{Cell, RefCell};
 use std::cmp::Reverse;
 use std::collections::BinaryHeap;
-use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::time::{Duration, Instant};
 
 pub(super) const MAX_PLACEMENTS: usize = 512;
@@ -33,7 +33,7 @@ struct Reservation(usize);
 impl Reservation {
     fn new(bytes: usize) -> Result<Self, String> {
         SNAPSHOT_BYTES
-            .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |used| {
+            .try_update(Ordering::Relaxed, Ordering::Relaxed, |used| {
                 (used + bytes <= GLOBAL_SNAPSHOT_BYTES).then_some(used + bytes)
             })
             .map(|_| Self(bytes))
@@ -759,12 +759,12 @@ fn immutable_failure(view: &View<'_>, pos: BlockPos, is_dust: bool) -> Option<St
             match block {
                 Block::Air {} => break,
                 Block::Piston { .. } => {
-                    return Some(format!("Piston movement can reach the route at {pos}."))
+                    return Some(format!("Piston movement can reach the route at {pos}."));
                 }
                 Block::MovingPiston { .. } | Block::PistonHead { .. } => {
                     return Some(format!(
                         "Moving geometry near {pos} cannot be certified safe."
-                    ))
+                    ));
                 }
                 _ => {}
             }
@@ -1394,7 +1394,7 @@ pub(super) fn search(
             _ => {
                 return SearchResult::Invalid(format!(
                     "The route would overwrite a block at {pos}."
-                ))
+                ));
             }
         }
     }
@@ -1621,7 +1621,9 @@ pub(super) fn search(
                         .flatten()
                         .map(|source| (p, source))
                 }) {
-                    reason = Some(format!("The staircase support at {support} would conduct an unselected source at {source}."));
+                    reason = Some(format!(
+                        "The staircase support at {support} would conduct an unselected source at {source}."
+                    ));
                     continue;
                 }
                 if let Err(result) = budget.check() {

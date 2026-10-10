@@ -1,8 +1,8 @@
 use super::*;
 use crate::plot::PlotWorld;
 use crate::world::World;
-use mchprs_blocks::block_entities::BlockEntity;
 use mchprs_blocks::BlockPos;
+use mchprs_blocks::block_entities::BlockEntity;
 use mchprs_save_data::plot_data::{ChunkData, PistonAnimation, Tps, WorldSendRate};
 
 fn packet(state: u8) -> Snapshot {
@@ -26,10 +26,12 @@ fn neighbor_refreshes_are_grouped_throttled_and_skip_unchanged_packets() {
     let delivered = views.update(now, interval, |r| requests.push(r));
     assert_eq!(delivered.len(), 2);
     assert!(Arc::ptr_eq(&delivered[0].1, &delivered[1].1));
-    assert!(views
-        .update(now + Duration::from_millis(1999), interval, |r| requests
-            .push(r))
-        .is_empty());
+    assert!(
+        views
+            .update(now + Duration::from_millis(1999), interval, |r| requests
+                .push(r))
+            .is_empty()
+    );
     assert!(requests.is_empty());
     views.update(now + interval, interval, |r| requests.push(r));
     assert_eq!(requests.len(), 1);
@@ -39,9 +41,11 @@ fn neighbor_refreshes_are_grouped_throttled_and_skip_unchanged_packets() {
         .reply
         .send(vec![((16, 0), packet(1))])
         .unwrap();
-    assert!(views
-        .update(now + interval, interval, |r| requests.push(r))
-        .is_empty());
+    assert!(
+        views
+            .update(now + interval, interval, |r| requests.push(r))
+            .is_empty()
+    );
     views.update(now + interval * 2, interval, |r| requests.push(r));
     requests
         .pop()

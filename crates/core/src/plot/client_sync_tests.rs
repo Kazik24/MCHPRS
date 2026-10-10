@@ -1,8 +1,8 @@
 use super::*;
 use crate::plot::client_test_utils::{decode_blocks, read_ack, read_blocks};
 use mchprs_blocks::items::{Item, ItemStack};
-use mchprs_network::packets::serverbound::*;
 use mchprs_network::packets::PacketDecoderExt;
+use mchprs_network::packets::serverbound::*;
 use mchprs_network::test_support::{connection, read_frame};
 use std::net::TcpStream;
 

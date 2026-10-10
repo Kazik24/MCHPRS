@@ -55,7 +55,15 @@ fn main() {
         let mut instant_cache_stats = Vec::new();
         for sample in 1..=iterations {
             let timing = replay_with_visuals(cpu, &expected, screen_only, flush_every);
-            println!("{} sample {sample}: {:.6}s / 50,000 game ticks ({:.1} TPS); active window: {} ticks / {:.6}s ({:.1} TPS); all assertions passed",cpu.name,timing.total.as_secs_f64(),50_000.0/timing.total.as_secs_f64(),timing.active_ticks,timing.active.as_secs_f64(),f64::from(timing.active_ticks)/timing.active.as_secs_f64());
+            println!(
+                "{} sample {sample}: {:.6}s / 50,000 game ticks ({:.1} TPS); active window: {} ticks / {:.6}s ({:.1} TPS); all assertions passed",
+                cpu.name,
+                timing.total.as_secs_f64(),
+                50_000.0 / timing.total.as_secs_f64(),
+                timing.active_ticks,
+                timing.active.as_secs_f64(),
+                f64::from(timing.active_ticks) / timing.active.as_secs_f64()
+            );
             times.push(timing.total);
             active_times.push(timing.active);
             active_ticks = timing.active_ticks;

@@ -4,13 +4,13 @@
 mod cpus;
 
 use cpus::*;
-use mchprs_blocks::{blocks::Block, BlockPos};
+use mchprs_blocks::{BlockPos, blocks::Block};
 use mchprs_core::{
     plot::PlotWorld,
     redpiler::{Compiler, CompilerOptions},
     world::World,
 };
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::time::{Duration, Instant};
 
 const REMOVED: [BlockPos; 2] = [BlockPos::new(206, 42, 40), BlockPos::new(206, 43, 40)];
@@ -146,9 +146,11 @@ fn replay_fixed(expected: &Reference, sample: usize) -> Value {
     }
     assert_eq!(trace, expected.chat_trace);
     assert_eq!(trace.len(), 1535);
-    assert!(trace
-        .iter()
-        .any(|(t, s)| *t == 12_051 && s.contains("shut")));
+    assert!(
+        trace
+            .iter()
+            .any(|(t, s)| *t == 12_051 && s.contains("shut"))
+    );
     assert!(quiet(&world));
     println!(
         "interpreter sample {sample}: {:.6}s, {:.2} active TPS",

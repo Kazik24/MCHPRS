@@ -1,5 +1,5 @@
 use super::*;
-use crate::world::{storage::Chunk, BlockAction};
+use crate::world::{BlockAction, storage::Chunk};
 use mchprs_blocks::block_entities::BlockEntity;
 use mchprs_world::{PistonState, TickPriority};
 
@@ -117,7 +117,7 @@ fn omitted_wire_callbacks_are_inert_for_every_registry_state() {
 
 #[test]
 fn reused_walk_scratch_observes_changed_blocks_and_other_worlds() {
-    use crate::plot::{PlotWorld, PLOT_WIDTH};
+    use crate::plot::{PLOT_WIDTH, PlotWorld};
     let make_world = || {
         let chunks = (0..PLOT_WIDTH)
             .flat_map(|x| (0..PLOT_WIDTH).map(move |z| Chunk::empty(x, z)))

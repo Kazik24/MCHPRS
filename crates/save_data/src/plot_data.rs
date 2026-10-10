@@ -4,8 +4,8 @@ mod tests;
 
 use self::fixer::FixInfo;
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
-use mchprs_blocks::block_entities::BlockEntity;
 use mchprs_blocks::BlockPos;
+use mchprs_blocks::block_entities::BlockEntity;
 use mchprs_world::TickEntry;
 use rustc_hash::FxHashMap;
 use serde::{Deserialize, Serialize};
@@ -180,7 +180,7 @@ impl<const NUM_CHUNK_SECTIONS: usize> PlotData<NUM_CHUNK_SECTIONS> {
                         return Err(invalid("invalid command block data"));
                     }
                     BlockEntity::MovingPiston(p) if p.block_state >= states => {
-                        return Err(invalid("invalid carried piston block state"))
+                        return Err(invalid("invalid carried piston block state"));
                     }
                     BlockEntity::Container { inventory, ty, .. } => {
                         let mut slots = std::collections::HashSet::new();

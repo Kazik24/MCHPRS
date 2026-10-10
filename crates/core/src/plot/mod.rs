@@ -47,8 +47,8 @@ use bus::BusReader;
 use mchprs_blocks::block_entities::BlockEntity;
 use mchprs_blocks::blocks::Block;
 use mchprs_blocks::{BlockFace, BlockPos};
-use mchprs_network::packets::clientbound::*;
 use mchprs_network::PlayerPacketSender;
+use mchprs_network::packets::clientbound::*;
 use mchprs_save_data::plot_data::{ChunkData, PistonAnimation, PlotData, Tps, WorldSendRate};
 use mchprs_world::{AdvancePhase, PistonMotion, PistonState, TickPriority};
 use monitor::TimingsMonitor;
@@ -2037,7 +2037,10 @@ impl Plot {
         if chunks.len() != NUM_CHUNKS {
             error!("This plot has the wrong number of chunks!");
             let possible_scale = (chunks.len() as f64).sqrt().log2();
-            error!("Note: it most likely came from a server running plot scale {}, this server is running a plot scale of {}", possible_scale, PLOT_SCALE);
+            error!(
+                "Note: it most likely came from a server running plot scale {}, this server is running a plot scale of {}",
+                possible_scale, PLOT_SCALE
+            );
         }
 
         let mut world =
@@ -2251,7 +2254,7 @@ fn chunk_save_and_load_test() {
 
 #[test]
 fn copper_bulb_item_actions_preserve_state_and_exclude_predicted_feedback() {
-    use crate::interaction::{use_item_on_block, ItemUseResult, UseOnBlockContext};
+    use crate::interaction::{ItemUseResult, UseOnBlockContext, use_item_on_block};
     use mchprs_blocks::items::{Item, ItemStack};
     let mut world = PlotWorld::from_chunks(0, 0, vec![Chunk::empty(0, 0)], Default::default());
     let pos = BlockPos::new(4, 30, 4);
@@ -2295,8 +2298,10 @@ fn copper_bulb_item_actions_preserve_state_and_exclude_predicted_feedback() {
     }
     assert_eq!(world.level_events.len(), 3);
     assert_eq!(world.sounds.len(), 2);
-    assert!(world
-        .sounds
-        .iter()
-        .all(|sound| sound.excluded == Some(player.uuid)));
+    assert!(
+        world
+            .sounds
+            .iter()
+            .all(|sound| sound.excluded == Some(player.uuid))
+    );
 }

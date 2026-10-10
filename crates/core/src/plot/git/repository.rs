@@ -1,11 +1,11 @@
 use super::diff::{self, Diff};
-use super::snapshot::{compressed_bound, hex, Fingerprints, Snapshot};
+use super::snapshot::{Fingerprints, Snapshot, compressed_bound, hex};
 use crate::messages;
-use anyhow::{bail, ensure, Context, Result};
+use anyhow::{Context, Result, bail, ensure};
 use chrono::TimeZone;
-use mchprs_blocks::{blocks::Block, BlockPos};
-use rusqlite::{params, Connection, OptionalExtension};
-use serde_json::{json, Value};
+use mchprs_blocks::{BlockPos, blocks::Block};
+use rusqlite::{Connection, OptionalExtension, params};
+use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;

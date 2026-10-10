@@ -1,5 +1,5 @@
 use super::*;
-use crate::plot::{PlotWorld, PLOT_WIDTH};
+use crate::plot::{PLOT_WIDTH, PlotWorld};
 use std::collections::HashSet;
 
 #[test]
@@ -61,7 +61,9 @@ fn block_walkers_visit_every_selected_position_once_while_removing_blocks() {
         world.set_block(pos, Block::Air {});
     });
     assert_eq!(mutated, visited);
-    assert!(expected
-        .iter()
-        .all(|&pos| world.get_block(pos) == Block::Air {}));
+    assert!(
+        expected
+            .iter()
+            .all(|&pos| world.get_block(pos) == Block::Air {})
+    );
 }

@@ -203,9 +203,11 @@ impl Scoreboard {
 
     fn set_lines(&mut self, players: &[Player], lines: Vec<String>, git_readers: HashSet<u128>) {
         debug_assert!(lines.iter().all(|line| line.is_ascii() && line.len() <= 20));
-        debug_assert!(lines
-            .first()
-            .is_some_and(|first| lines.iter().all(|line| first.len() >= line.len())));
+        debug_assert!(
+            lines
+                .first()
+                .is_some_and(|first| lines.iter().all(|line| first.len() >= line.len()))
+        );
         if lines == self.current_state && git_readers == self.git_readers {
             return;
         }
@@ -433,9 +435,11 @@ mod tests {
             board.set_redpiler_state(&[], engine);
             let lines = &board.current_state;
             assert!(lines.len() <= 15);
-            assert!(lines
-                .iter()
-                .all(|line| line.is_ascii() && line.len() <= lines[0].len()));
+            assert!(
+                lines
+                    .iter()
+                    .all(|line| line.is_ascii() && line.len() <= lines[0].len())
+            );
             assert_eq!(lines.iter().collect::<HashSet<_>>().len(), lines.len());
             assert_eq!(lines.last().unwrap(), "Git: very-long-b...");
         }
@@ -510,14 +514,18 @@ mod tests {
             Some(20),
             current,
         );
-        assert!(board
-            .current_state
-            .iter()
-            .any(|line| line == "Pistons: on/on"));
-        assert!(board
-            .current_state
-            .iter()
-            .any(|line| line == "Screen only: off"));
+        assert!(
+            board
+                .current_state
+                .iter()
+                .any(|line| line == "Pistons: on/on")
+        );
+        assert!(
+            board
+                .current_state
+                .iter()
+                .any(|line| line == "Screen only: off")
+        );
         board.update_plot_metrics(
             &[],
             Tps::Limited(20),
@@ -529,14 +537,18 @@ mod tests {
             Some(20),
             status(Some("experiment")),
         );
-        assert!(board
-            .current_state
-            .iter()
-            .any(|line| line == "Pistons: auto/off"));
-        assert!(board
-            .current_state
-            .iter()
-            .any(|line| line == "Screen only: on"));
+        assert!(
+            board
+                .current_state
+                .iter()
+                .any(|line| line == "Pistons: auto/off")
+        );
+        assert!(
+            board
+                .current_state
+                .iter()
+                .any(|line| line == "Screen only: on")
+        );
         assert_eq!(board.current_state.last().unwrap(), "Git: experiment");
         assert!(!board.current_state.iter().any(|line| line == "Git: main"));
     }

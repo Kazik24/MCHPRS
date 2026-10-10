@@ -1,6 +1,6 @@
 //! Supplementary physical BUD oracle; never replace the original CPU references.
 use crate::redstone::piston::trace::{self, Operation};
-use crate::world::{for_each_block_optimized, World};
+use crate::world::{World, for_each_block_optimized};
 use mchprs_blocks::blocks::Block;
 use mchprs_blocks::{BlockFace, BlockFacing, BlockPos};
 use rustc_hash::FxHashSet;
@@ -218,8 +218,11 @@ fn anpu_cannot_bypass_compiled_graph_admission() {
             println!("ANPU admission budget={budget_multiplier}, flags={flags:?}: {error}");
             assert!(!compiler.is_active());
             assert!(compiler.current_flags().is_none());
-            assert_eq!(cpus::checkpoint(&world, 0, &[]), before,
-                "failed admission must preserve physical state and queued work; budget={budget_multiplier}, flags={flags}");
+            assert_eq!(
+                cpus::checkpoint(&world, 0, &[]),
+                before,
+                "failed admission must preserve physical state and queued work; budget={budget_multiplier}, flags={flags}"
+            );
         }
     }
     assert!(CompilerOptions::parse("--piston-events").is_err());

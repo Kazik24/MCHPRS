@@ -3,7 +3,7 @@ use std::time::Instant;
 
 use criterion::*;
 use mchprs_blocks::BlockPos;
-use mchprs_core::plot::{PlotWorld, PLOT_WIDTH};
+use mchprs_core::plot::{PLOT_WIDTH, PlotWorld};
 use mchprs_core::redpiler::{Compiler, CompilerOptions};
 use mchprs_core::world::storage::Chunk;
 use mchprs_save_data::plot_data::PlotData;

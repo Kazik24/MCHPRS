@@ -1,6 +1,6 @@
 //! Read-only neighbor snapshots. World access stays on the owning plot thread;
 //! only unloaded saves are read by the bounded background worker.
-use super::{Plot, NUM_CHUNKS, PLOT_SCALE, PLOT_SECTIONS, PLOT_WIDTH};
+use super::{NUM_CHUNKS, PLOT_SCALE, PLOT_SECTIONS, PLOT_WIDTH, Plot};
 use crate::config::CONFIG;
 use crate::world::storage::Chunk;
 use mchprs_network::packets::PacketEncoder;

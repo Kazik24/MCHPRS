@@ -1,5 +1,5 @@
 use super::*;
-use crate::plot::{PlotWorld, PLOT_WIDTH};
+use crate::plot::{PLOT_WIDTH, PlotWorld};
 use crate::world::storage::Chunk;
 use mchprs_blocks::blocks::RedstoneObserver;
 

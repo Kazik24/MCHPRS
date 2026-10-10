@@ -4,11 +4,12 @@ use crate::messages;
 use crate::permissions;
 use crate::player::{Gamemode, PacketSender, Player, SkinParts};
 use crate::plot::commands::DECLARE_COMMANDS;
-use crate::plot::{self, database, Plot};
+use crate::plot::{self, Plot, database};
 use crate::utils::HyphenatedUUID;
 use crate::velocity;
 use backtrace::Backtrace;
 use bus::Bus;
+use mchprs_network::packets::PacketEncoderExt;
 use mchprs_network::packets::clientbound::{
     CDisconnectLogin, CHeldItemChange, CJoinGame, CLoginPluginRequest, CLoginSuccess, CPlayerInfo,
     CPlayerInfoAddPlayer, CPlayerInfoAddPlayerProperty, CPluginMessage, CPong, CResponse,
@@ -17,7 +18,6 @@ use mchprs_network::packets::clientbound::{
 use mchprs_network::packets::serverbound::{
     SHandshake, SLoginPluginResponse, SLoginStart, SPing, SRequest, ServerBoundPacketHandler,
 };
-use mchprs_network::packets::PacketEncoderExt;
 use mchprs_network::{NetworkServer, NetworkState, PlayerPacketSender};
 use rustc_hash::FxHashMap;
 use serde::{Deserialize, Serialize};

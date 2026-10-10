@@ -1,6 +1,6 @@
 use crate::world::World;
-use mchprs_blocks::blocks::Block;
 use mchprs_blocks::BlockPos;
+use mchprs_blocks::blocks::Block;
 
 pub(crate) fn update(world: &mut impl World, pos: BlockPos) {
     // Dust callbacks can carry stale states; only the live latch can detect an edge.

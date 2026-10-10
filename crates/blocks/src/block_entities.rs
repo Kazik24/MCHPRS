@@ -1,7 +1,7 @@
+use crate::BlockFace;
 use crate::blocks::Block;
 use crate::items::Item;
-use crate::BlockFace;
-use anyhow::{bail, Context, Result};
+use anyhow::{Context, Result, bail};
 use mchprs_utils::{map, nbt_unwrap_val};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -352,7 +352,9 @@ impl BlockEntity {
             };
             if let Some(value) = item_compound.get("components") {
                 if !matches!(value,Value::Compound(c) if c.is_empty()) {
-                    bail!("modern persisted inventory components are not supported by this schematic importer");
+                    bail!(
+                        "modern persisted inventory components are not supported by this schematic importer"
+                    );
                 }
             }
             let slot = *nbt_unwrap_val!(item_compound.get("Slot"), Value::Byte);

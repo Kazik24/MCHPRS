@@ -1,8 +1,8 @@
 use std::collections::VecDeque;
 use std::mem;
 
-use mchprs_blocks::blocks::Block;
 use mchprs_blocks::BlockPos;
+use mchprs_blocks::blocks::Block;
 use mchprs_world::{TickEntry, TickPriority};
 use rustc_hash::FxHashMap;
 use tracing::warn;
@@ -241,12 +241,12 @@ mod tests {
         let entries = iter::repeat_with(|| TickEntry {
             block_type: None,
             pos: BlockPos::new(
-                rng.gen_range(0..128),
-                rng.gen_range(0..128),
-                rng.gen_range(0..128),
+                rng.random_range(0..128),
+                rng.random_range(0..128),
+                rng.random_range(0..128),
             ),
-            ticks_left: rng.gen_range(0..16),
-            tick_priority: TickPriority::ALL[rng.gen_range(0..TickPriority::COUNT)],
+            ticks_left: rng.random_range(0..16),
+            tick_priority: TickPriority::ALL[rng.random_range(0..TickPriority::COUNT)],
         })
         .filter(|e| {
             if e.ticks_left == 0 {

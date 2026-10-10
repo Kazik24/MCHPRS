@@ -2,8 +2,8 @@ use super::Plot;
 use crate::messages;
 use crate::player::{PacketSender, Player, SmallAnimal, SmallModel};
 use crate::world::World;
-use mchprs_network::packets::clientbound::*;
 use mchprs_network::packets::PacketEncoder;
+use mchprs_network::packets::clientbound::*;
 
 fn fox_mouth_equipment(player: &Player, entity_id: u32) -> PacketEncoder {
     CEntityEquipment {

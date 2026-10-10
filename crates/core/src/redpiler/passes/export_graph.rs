@@ -3,10 +3,10 @@ use crate::redpiler::compile_graph::{
 };
 use itertools::Itertools;
 use mchprs_blocks::blocks::ComparatorMode as CComparatorMode;
-use petgraph::visit::EdgeRef;
 use petgraph::Direction;
+use petgraph::visit::EdgeRef;
 use redpiler_graph::{
-    serialize, BlockPos, ComparatorMode, Link, LinkType, Node, NodeState, NodeType,
+    BlockPos, ComparatorMode, Link, LinkType, Node, NodeState, NodeType, serialize,
 };
 use rustc_hash::FxHashMap;
 use std::fs;

@@ -1,6 +1,6 @@
 use crate::plot::worldedit::{load_schematic, paste_clipboard};
-use crate::plot::{PlotWorld, PLOT_WIDTH};
-use crate::world::{storage::Chunk, World};
+use crate::plot::{PLOT_WIDTH, PlotWorld};
+use crate::world::{World, storage::Chunk};
 use mchprs_blocks::block_entities::BlockEntity;
 use mchprs_blocks::blocks::Block;
 use mchprs_blocks::{BlockFace, BlockPos};

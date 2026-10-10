@@ -1,5 +1,5 @@
-use super::{Plot, NUM_CHUNKS, PLOT_SCALE, PLOT_SECTIONS, PLOT_WIDTH};
-use anyhow::{anyhow, ensure, Context, Result};
+use super::{NUM_CHUNKS, PLOT_SCALE, PLOT_SECTIONS, PLOT_WIDTH, Plot};
+use anyhow::{Context, Result, anyhow, ensure};
 use mchprs_save_data::plot_data::{PlotData, Tps, WorldSendRate};
 use once_cell::sync::Lazy;
 use std::path::Path;

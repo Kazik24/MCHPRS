@@ -1,5 +1,5 @@
 use crate::utils::HyphenatedUUID;
-use anyhow::{anyhow, bail, Context, Result};
+use anyhow::{Context, Result, anyhow, bail};
 use mysql::prelude::*;
 use mysql::{OptsBuilder, Pool};
 use once_cell::sync::OnceCell;

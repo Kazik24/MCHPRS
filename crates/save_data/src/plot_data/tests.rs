@@ -1,7 +1,7 @@
 use super::fixer::legacy_1_18 as legacy;
 use super::*;
-use mchprs_blocks::block_entities::MovingPistonEntity;
 use mchprs_blocks::BlockFace;
+use mchprs_blocks::block_entities::MovingPistonEntity;
 use std::fs;
 use std::iter::FromIterator;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -200,8 +200,8 @@ fn rejects_other_minecraft_versions_and_unsupported_save_formats() {
 
 fn format_three_motion(occupied: bool) -> Vec<u8> {
     use super::fixer::legacy_1_21_5::{LegacyTick, Plot};
-    use mchprs_blocks::blocks::{Block, RedstonePiston};
     use mchprs_blocks::BlockFacing;
+    use mchprs_blocks::blocks::{Block, RedstonePiston};
     let base = BlockPos::new(3, 8, 4);
     let head = base.offset(BlockFace::East);
     let piston = RedstonePiston {

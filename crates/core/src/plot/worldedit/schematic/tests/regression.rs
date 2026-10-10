@@ -1,7 +1,7 @@
 use super::*;
 use crate::plot::worldedit::{create_clipboard, paste_clipboard};
-use crate::plot::{PlotWorld, PLOT_WIDTH};
-use crate::world::{storage::Chunk, World};
+use crate::plot::{PLOT_WIDTH, PlotWorld};
+use crate::world::{World, storage::Chunk};
 use std::io::Cursor;
 
 const ADDER: &[u8] =
@@ -260,16 +260,20 @@ fn supplied_potados_preserves_all_command_blocks_and_supported_messages() {
         world.tick_interpreted();
     }
     assert_eq!(world.command_messages.len(), 29);
-    assert!(world
-        .command_messages
-        .iter()
-        .any(|message| message.message.contains("div by zero")));
-    assert!(world
-        .command_messages
-        .iter()
-        .all(|message| !message.message.contains("clickEvent")
-            && !message.message.contains("hoverEvent")
-            && !message.message.contains("\"score\"")));
+    assert!(
+        world
+            .command_messages
+            .iter()
+            .any(|message| message.message.contains("div by zero"))
+    );
+    assert!(
+        world
+            .command_messages
+            .iter()
+            .all(|message| !message.message.contains("clickEvent")
+                && !message.message.contains("hoverEvent")
+                && !message.message.contains("\"score\""))
+    );
     assert_roundtrip(&cb);
 }
 

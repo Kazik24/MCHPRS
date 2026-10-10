@@ -1,14 +1,14 @@
 //! Test-only recorder and behavioral pack regressions. Hooks compile out of servers.
-use crate::plot::worldedit::{load_schematic, paste_clipboard, WorldEditClipboard};
-use crate::plot::{PlotWorld, PLOT_WIDTH};
+use crate::plot::worldedit::{WorldEditClipboard, load_schematic, paste_clipboard};
+use crate::plot::{PLOT_WIDTH, PlotWorld};
 use crate::world::{
-    storage::{Chunk, PalettedBitBuffer},
     World,
+    storage::{Chunk, PalettedBitBuffer},
 };
 use mchprs_blocks::blocks::{Block, RotateAmt};
 use mchprs_blocks::{BlockFace, BlockPos};
 use mchprs_world::{AdvancePhase, PistonEvent};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use std::cell::RefCell;
 use std::collections::BTreeSet;
@@ -863,11 +863,13 @@ fn adder_inhibition_changes_dust_connections_before_pending_target_validation() 
             if s["operation"] == entries[fired]["operation"] {
                 assert_eq!(cells[&target_index]["piston_power"], true);
                 assert!(power(&cells[&wire_index]) > 0);
-                assert!(cells[&wire_index]["properties"]
-                    .as_object()
-                    .unwrap()
-                    .values()
-                    .any(|v| v == "up"));
+                assert!(
+                    cells[&wire_index]["properties"]
+                        .as_object()
+                        .unwrap()
+                        .values()
+                        .any(|v| v == "up")
+                );
                 witnessed = true;
             }
         }
@@ -889,11 +891,13 @@ fn one_bit_and_corrected_eleven_bit_arithmetic_have_separate_valid_windows() {
             .filter(|c| c["id"].as_str().unwrap().starts_with("prepared-"))
         {
             let t = episode(&m, c, 0, "game", false);
-            assert!(t["readiness_checks"]
-                .as_array()
-                .unwrap()
-                .iter()
-                .all(|r| r["quiet"] == true && r["stable_boundaries"].as_u64().unwrap() >= 2));
+            assert!(
+                t["readiness_checks"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .all(|r| r["quiet"] == true && r["stable_boundaries"].as_u64().unwrap() >= 2)
+            );
             let sum = c["inputs"]
                 .as_array()
                 .unwrap()
@@ -987,11 +991,13 @@ fn negation_records_transient_order_and_repeater_filters_same_wave() {
             "pico",
             true,
         );
-        assert!(probe["projections"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .all(|s| s["probe"]["properties"]["powered"] == "true"));
+        assert!(
+            probe["projections"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .all(|s| s["probe"]["properties"]["powered"] == "true")
+        );
     }
 }
 
@@ -1281,7 +1287,9 @@ fn capture_pack() {
                 assert!(!path.exists(), "refusing overwrite {}", path.display());
                 let mut trace = episode(&m, c, r, "pico", true);
                 trace["engine_identity"] = read(&source.join("source-baseline.json"));
-                trace["capture_command"]=json!("INSTANT_CAPTURE_DIR=<new-dir> cargo test -p mchprs_core --lib redstone::instant_piston_tests::capture_pack -- --ignored --exact --test-threads=1");
+                trace["capture_command"] = json!(
+                    "INSTANT_CAPTURE_DIR=<new-dir> cargo test -p mchprs_core --lib redstone::instant_piston_tests::capture_pack -- --ignored --exact --test-threads=1"
+                );
                 std::fs::write(&path, serde_json::to_vec(&trace).unwrap()).unwrap();
                 println!("captured {}", path.display());
             }

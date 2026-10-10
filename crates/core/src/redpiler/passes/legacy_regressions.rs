@@ -1,10 +1,10 @@
-use crate::plot::{PlotWorld, PLOT_WIDTH};
+use crate::plot::{PLOT_WIDTH, PlotWorld};
 use crate::redpiler::compile_graph::{
     CompileGraph, CompileLink, CompileNode, LinkType, NodeState, NodeType,
 };
 use crate::redpiler::{Compiler, CompilerOptions};
 use crate::redstone;
-use crate::world::{storage::Chunk, World};
+use crate::world::{World, storage::Chunk};
 use mchprs_blocks::blocks::{
     Block, ComparatorMode, Instrument, Lever, LeverFace, RedstoneComparator, RedstoneRepeater,
     RedstoneWire, StoneButton,

@@ -2,9 +2,9 @@ use mchprs_core::server::MinecraftServer;
 use std::fs;
 use std::path::Path;
 use tracing::debug;
+use tracing_subscriber::EnvFilter;
 use tracing_subscriber::filter::LevelFilter;
 use tracing_subscriber::fmt::writer::MakeWriterExt;
-use tracing_subscriber::EnvFilter;
 
 mod logging;
 

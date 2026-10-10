@@ -4,7 +4,7 @@ use crate::velocity::VelocityConfig;
 use once_cell::sync::Lazy;
 use serde::{Deserialize, Serialize};
 use std::fs;
-use toml_edit::{value, Document};
+use toml_edit::{Document, value};
 
 static CONFIG_PATH: Lazy<std::path::PathBuf> = Lazy::new(|| {
     std::env::var_os("MCHPRS_CONFIG")

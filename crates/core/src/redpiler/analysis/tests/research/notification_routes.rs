@@ -55,9 +55,11 @@ fn bud_head_request_rechecks_restored_power_before_commit() {
         .position(|entry| entry["kind"] == "event_execute" && entry["data"]["pos"] == json!(cell))
         .unwrap();
     assert!(requested < validated);
-    assert!(!callbacks
-        .iter()
-        .any(|entry| { entry["kind"] == "event_applied" && entry["data"]["pos"] == json!(cell) }));
+    assert!(
+        !callbacks.iter().any(|entry| {
+            entry["kind"] == "event_applied" && entry["data"]["pos"] == json!(cell)
+        })
+    );
     assert!(matches!(world.get_block(cell), Block::Piston { piston } if piston.extended));
     assert!(matches!(world.get_block(head), Block::PistonHead { .. }));
     assert_eq!(world.get_block(cell + BlockPos::new(0, -2, 0)), payload);

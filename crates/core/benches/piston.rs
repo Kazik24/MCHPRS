@@ -1,10 +1,10 @@
 //! Steady-state interpreted extension/retraction; world construction is excluded.
-use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion};
+use criterion::{BenchmarkId, Criterion, black_box, criterion_group, criterion_main};
 use mchprs_blocks::blocks::{Block, RedstonePiston};
 use mchprs_blocks::{BlockFace, BlockFacing, BlockPos};
-use mchprs_core::plot::{PlotWorld, PLOT_WIDTH};
+use mchprs_core::plot::{PLOT_WIDTH, PlotWorld};
 use mchprs_core::redstone;
-use mchprs_core::world::{storage::Chunk, World};
+use mchprs_core::world::{World, storage::Chunk};
 use std::time::Duration;
 
 fn world() -> PlotWorld {

@@ -40,9 +40,11 @@ fn queued_movement_cannot_undo_teleports_or_release_a_newer_destination() {
     let second = PlayerPos::new(128.0, 90.0, 128.0);
     player.teleport(first);
     let first_id = read_teleport(&mut peer, first);
-    assert!(player
-        .accept_position(original, true, Some((180.0, 90.0)))
-        .is_none());
+    assert!(
+        player
+            .accept_position(original, true, Some((180.0, 90.0)))
+            .is_none()
+    );
     assert_eq!(xyz(player.pos), xyz(first));
     assert_eq!((player.yaw, player.pitch), (35.0, -10.0));
 

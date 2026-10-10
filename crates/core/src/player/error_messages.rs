@@ -1,6 +1,6 @@
 use once_cell::sync::Lazy;
 use regex::Regex;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 static COORDINATES: Lazy<Regex> = Lazy::new(|| {
     Regex::new(

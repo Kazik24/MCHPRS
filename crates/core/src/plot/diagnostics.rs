@@ -53,13 +53,23 @@ impl Plot {
                 let (used, limit) = super::git::memory_usage();
                 format!(
                     "Players advertised {}; view distance {}; default TPS {}; auto Redpiler {}\nHistory work budget {} MiB (stored usage: /rhistory limit)\nGit RAM reserved {}/{} MiB; snapshot cap {} MiB; plot default/ceiling {}/{} MiB; total disk {} MiB\nRedpiler base limits: {} cells, {} pistons; rank multiplier 1-8; no shared RAM cap\nCommand steps {}; work time {} ms; WorldEdit operation/history blocks {}/{}",
-                    CONFIG.max_players, CONFIG.view_distance, CONFIG.default_tps, CONFIG.auto_redpiler,
-                    CONFIG.rhistory_work_memory_limit_mib, used / 1048576, limit / 1048576,
-                    CONFIG.git_snapshot_max_mib.min(128), CONFIG.git_default_plot_storage_mib,
-                    CONFIG.git_plot_storage_mib, CONFIG.git_total_storage_mib,
-                    limits.max_cells, limits.max_pistons,
-                    CONFIG.max_command_ticks, CONFIG.command_work_time_ms,
-                    CONFIG.worldedit_max_blocks, CONFIG.worldedit_history_blocks,
+                    CONFIG.max_players,
+                    CONFIG.view_distance,
+                    CONFIG.default_tps,
+                    CONFIG.auto_redpiler,
+                    CONFIG.rhistory_work_memory_limit_mib,
+                    used / 1048576,
+                    limit / 1048576,
+                    CONFIG.git_snapshot_max_mib.min(128),
+                    CONFIG.git_default_plot_storage_mib,
+                    CONFIG.git_plot_storage_mib,
+                    CONFIG.git_total_storage_mib,
+                    limits.max_cells,
+                    limits.max_pistons,
+                    CONFIG.max_command_ticks,
+                    CONFIG.command_work_time_ms,
+                    CONFIG.worldedit_max_blocks,
+                    CONFIG.worldedit_history_blocks,
                 )
             }
             _ => {
@@ -83,12 +93,24 @@ impl Plot {
         );
         let mut text = format!(
             "Plot {},{}; owner {:?}; {} players; {} chunks\nTPS setting {:?}; {timings}; last tick {:?}\nAuto Redpiler {}; compiled {}; WSR {}; screen-only {}; fast rendering {}; piston animation {:?}\nPending half-ticks {}; piston events {}; motions {}\n{}\n{}",
-            self.world.x, self.world.z, self.owner.map(|uuid| format!("{uuid:032x}")),
-            self.players.len(), self.world.chunks.len(), self.tps, self.last_nspt,
-            self.auto_redpiler, self.redpiler.is_active(), self.world_send_rate.0,
-            self.world.screen_only(), self.world.fast_rendering, self.piston_animation,
-            self.world.to_be_ticked.iter().count(), self.world.piston_state.events.len(),
-            self.world.piston_state.motions.len(), self.world.history.status(), self.git.diagnostics(),
+            self.world.x,
+            self.world.z,
+            self.owner.map(|uuid| format!("{uuid:032x}")),
+            self.players.len(),
+            self.world.chunks.len(),
+            self.tps,
+            self.last_nspt,
+            self.auto_redpiler,
+            self.redpiler.is_active(),
+            self.world_send_rate.0,
+            self.world.screen_only(),
+            self.world.fast_rendering,
+            self.piston_animation,
+            self.world.to_be_ticked.iter().count(),
+            self.world.piston_state.events.len(),
+            self.world.piston_state.motions.len(),
+            self.world.history.status(),
+            self.git.diagnostics(),
         );
         if let Some(stats) = self.redpiler.stats() {
             text.push('\n');

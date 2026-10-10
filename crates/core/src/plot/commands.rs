@@ -1,4 +1,4 @@
-use super::{database, worldedit, Plot, PlotWorld};
+use super::{Plot, PlotWorld, database, worldedit};
 use crate::chat::ChatComponent;
 use crate::messages;
 use crate::player::{Gamemode, PacketSender, PlayerPos};
@@ -6,12 +6,12 @@ use crate::plot::data::sleep_time_for_tps;
 use crate::profile::PlayerProfile;
 use crate::redpiler::CompilerOptions;
 use crate::server::Message;
+use mchprs_network::PlayerPacketSender;
+use mchprs_network::packets::PacketEncoder;
 use mchprs_network::packets::clientbound::{
     CDeclareCommands, CDeclareCommandsNode as Node, CDeclareCommandsNodeParser as Parser,
     CTabComplete, CTabCompleteMatch, ClientBoundPacket,
 };
-use mchprs_network::packets::PacketEncoder;
-use mchprs_network::PlayerPacketSender;
 use mchprs_save_data::plot_data::{Tps, WorldSendRate};
 use once_cell::sync::Lazy;
 use std::str::FromStr;
@@ -1764,10 +1764,11 @@ mod security_tests {
             .iter()
             .find(|node| node.name == Some("gamemode"))
             .unwrap();
-        assert!(gm
-            .children
-            .iter()
-            .any(|&id| nodes[id as usize].name == Some("cat")));
+        assert!(
+            gm.children
+                .iter()
+                .any(|&id| nodes[id as usize].name == Some("cat"))
+        );
     }
     #[test]
     fn teleport_autocomplete_suggests_player_names_without_selectors() {
@@ -1894,10 +1895,11 @@ mod security_tests {
                 .collect::<Vec<_>>(),
             ["free", "plane", "off"]
         );
-        assert!(wire
-            .children
-            .iter()
-            .all(|&id| nodes[id as usize].flags & 0x04 != 0));
+        assert!(
+            wire.children
+                .iter()
+                .all(|&id| nodes[id as usize].flags & 0x04 != 0)
+        );
         assert_eq!(NO_COMMANDS.packet_id, 0x10);
     }
     #[test]
@@ -2081,12 +2083,16 @@ mod security_tests {
             ] {
                 plot.handle_redpiler_command(0, "analyze", &args);
                 let lines = messages("Exporting graph [skipped]");
-                assert!(lines
-                    .iter()
-                    .any(|line| line.starts_with("Candidate graph:")));
-                assert!(lines
-                    .iter()
-                    .any(|line| line.starts_with("Graph after required preparation:")));
+                assert!(
+                    lines
+                        .iter()
+                        .any(|line| line.starts_with("Candidate graph:"))
+                );
+                assert!(
+                    lines
+                        .iter()
+                        .any(|line| line.starts_with("Graph after required preparation:"))
+                );
                 assert!(lines.iter().any(|line| line.contains(folding)
                     && line.contains("links")
                     && line.ends_with("ms")));
@@ -2094,12 +2100,16 @@ mod security_tests {
             }
             plot.handle_redpiler_command(0, "analyze", &[]);
             let lines = messages("This plot can compile with these flags.");
-            assert!(lines
-                .iter()
-                .any(|line| line.contains(" pistons, ") && line.contains(" admission issues")));
-            assert!(lines
-                .iter()
-                .any(|line| line.starts_with("Compile:") && line.contains("backend nodes")));
+            assert!(
+                lines
+                    .iter()
+                    .any(|line| line.contains(" pistons, ") && line.contains(" admission issues"))
+            );
+            assert!(
+                lines
+                    .iter()
+                    .any(|line| line.starts_with("Compile:") && line.contains("backend nodes"))
+            );
             assert!(!plot.redpiler.is_active());
             assert_eq!(
                 [plot.world.get_block(control), plot.world.get_block(output)],

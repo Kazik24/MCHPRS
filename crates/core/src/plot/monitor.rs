@@ -160,7 +160,7 @@ impl TimingsMonitor {
                     || tps != last_tps
                     || data.reset_timings.load(Ordering::Relaxed) > 0
                 {
-                    let _ = data.reset_timings.fetch_update(
+                    let _ = data.reset_timings.try_update(
                         Ordering::Relaxed,
                         Ordering::Relaxed,
                         |remaining| remaining.checked_sub(1),

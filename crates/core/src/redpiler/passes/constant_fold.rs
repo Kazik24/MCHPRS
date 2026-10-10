@@ -1,8 +1,8 @@
 use crate::redpiler::compile_graph::{CompileGraph, LinkType, NodeIdx, NodeType};
 use crate::world::World;
 use mchprs_blocks::blocks::{Block, ComparatorMode};
-use petgraph::visit::{EdgeRef, NodeIndexable};
 use petgraph::Direction;
+use petgraph::visit::{EdgeRef, NodeIndexable};
 use tracing::trace;
 
 pub(super) fn run(graph: &mut CompileGraph, world: &impl World) -> Result<(), super::GraphError> {

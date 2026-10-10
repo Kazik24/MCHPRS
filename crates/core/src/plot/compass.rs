@@ -1,10 +1,10 @@
-use super::{Plot, PLOT_BLOCK_HEIGHT};
+use super::{PLOT_BLOCK_HEIGHT, Plot};
 use crate::messages;
 use crate::player::{PacketSender, PlayerPos};
 use crate::world::World;
+use mchprs_blocks::BlockPos;
 use mchprs_blocks::blocks::{Block, SlabType};
 use mchprs_blocks::items::Item;
-use mchprs_blocks::BlockPos;
 use std::time::{Duration, Instant};
 
 const RANGE: f64 = 1024.0;
@@ -517,10 +517,12 @@ mod tests {
         );
         for y in [65, 66] {
             blocks.insert(BlockPos::new(-5, y, -7), Block::Glass);
-            assert!(landing_position(target, 1.0, &|p| Some(
-                *blocks.get(&p).unwrap_or(&Block::Air)
-            ))
-            .is_none());
+            assert!(
+                landing_position(target, 1.0, &|p| Some(
+                    *blocks.get(&p).unwrap_or(&Block::Air)
+                ))
+                .is_none()
+            );
             blocks.remove(&BlockPos::new(-5, y, -7));
         }
     }

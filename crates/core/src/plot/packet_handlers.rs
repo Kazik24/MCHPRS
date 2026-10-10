@@ -10,9 +10,9 @@ use mchprs_blocks::block_entities::BlockEntity;
 use mchprs_blocks::blocks::Block;
 use mchprs_blocks::items::{Item, ItemStack};
 use mchprs_blocks::{BlockFace, BlockPos};
+use mchprs_network::packets::PacketEncoder;
 use mchprs_network::packets::clientbound::*;
 use mchprs_network::packets::serverbound::*;
-use mchprs_network::packets::PacketEncoder;
 use serde_json::json;
 use std::path::PathBuf;
 use std::time::Instant;
@@ -1221,10 +1221,12 @@ mod movement_tests {
                 let result = relative_movement(old, new);
                 assert_eq!(result.map(|deltas| deltas[axis]), expected);
                 if let Some(deltas) = result {
-                    assert!(deltas
-                        .iter()
-                        .enumerate()
-                        .all(|(i, &value)| i == axis || value == 0));
+                    assert!(
+                        deltas
+                            .iter()
+                            .enumerate()
+                            .all(|(i, &value)| i == axis || value == 0)
+                    );
                 }
             }
         }
