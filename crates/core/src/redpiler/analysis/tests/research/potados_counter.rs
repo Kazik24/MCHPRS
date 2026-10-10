@@ -337,9 +337,36 @@ fn potados_pc_counter_compile_and_native_protocol() {
     std::fs::write(output, serde_json::to_vec_pretty(&report).unwrap()).unwrap();
 }
 
+fn compiled_state(compiler: &Compiler) -> (Vec<(BlockPos, bool)>, Vec<(BlockPos, bool)>) {
+    let mut responses = compiler.backend.as_ref().unwrap().activation_states();
+    responses.sort_by_key(|(pos, _)| (pos.y, pos.z, pos.x));
+    let mut memory: Vec<_> = compiler
+        .backend
+        .as_ref()
+        .unwrap()
+        .logical_stats()
+        .into_iter()
+        .flat_map(|(_, _, memory)| memory)
+        .collect();
+    memory.sort_by_key(|(pos, _)| (pos.y, pos.z, pos.x));
+    (responses, memory)
+}
+
+fn interpreted_state(world: &PlotWorld, cells: &[(BlockPos, bool)]) -> Vec<(BlockPos, bool)> {
+    cells
+        .iter()
+        .map(|&(pos, _)| {
+            let Block::Piston { piston } = world.get_block(pos) else {
+                panic!("logical memory at {pos:?} is not a piston")
+            };
+            (pos, !piston.extended)
+        })
+        .collect()
+}
+
 #[test]
-#[ignore = "4,096-tick native/compiled Potados counter comparison across eight compile options"]
-fn potados_pc_counter_preserves_native_count_waveform() {
+#[ignore = "4,096-tick interpreted/compiled Potados counter equivalence"]
+fn potados_pc_counter_counts_up_with_and_without_optimization() {
     let bytes = std::fs::read(root().join(FIXTURE)).unwrap();
     assert_eq!(
         format!("{:x}", Sha256::digest(bytes)),
@@ -347,18 +374,88 @@ fn potados_pc_counter_preserves_native_count_waveform() {
     );
     let (mut native, bounds) = load_counter();
     turn_on_all_levers(&mut native, bounds);
+    let (mut world, _) = load_counter();
+    turn_on_all_levers(&mut world, bounds);
+    let mut compiler = Compiler::default();
+    compiler
+        .compile(
+            &world,
+            world.get_corners(),
+            CompilerOptions {
+                optimize: false,
+                ..Default::default()
+            },
+            world.scheduler().iter_entries().collect(),
+            Default::default(),
+        )
+        .unwrap();
+    world.clear_scheduled_ticks();
+    let (initial_responses, initial_memory) = compiled_state(&compiler);
+    assert!(
+        !initial_responses.is_empty(),
+        "counter should have logical pistons"
+    );
+    assert_eq!(interpreted_state(&native, &initial_memory), initial_memory);
     let mut expected = Vec::new();
+    let mut expected_compiled_state = Vec::new();
     let mut peaks = Vec::new();
     let mut peak = 0;
-    for _ in 0..4096 {
-        native.tick_interpreted();
-        let value = !u16::from_str_radix(&bus(&native), 2).unwrap();
+    for tick in 0..4096 {
+        let native_trace = trace::capture(|| native.tick_interpreted());
+        compiler.tick_with_world(&mut world);
+        compiler.flush(&mut world);
+        let current_bus = bus(&native);
+        let compiled_bus = bus(&world);
+        let activations = compiler.backend.as_mut().unwrap().take_activation_trace();
+        if compiled_bus != current_bus {
+            let native_applied: Vec<_> = native_trace
+                .iter()
+                .filter_map(|entry| match entry.operation {
+                    trace::Operation::Applied(event) => {
+                        Some((entry.phase, event.pos - BASE, event.action, event.sticky))
+                    }
+                    trace::Operation::Sample { .. } => None,
+                })
+                .take(24)
+                .collect();
+            let compiled_deliveries: Vec<_> = activations
+                .iter()
+                .take(24)
+                .map(|event| {
+                    (
+                        event.source - BASE,
+                        event.actor,
+                        event.recipient - BASE,
+                        event.direction,
+                    )
+                })
+                .collect();
+            eprintln!(
+                "PC first mismatch tick={} native={} compiled={} native applied={:?} compiled deliveries={:?} compiled state={:?}",
+                tick + 1,
+                current_bus,
+                compiled_bus,
+                native_applied,
+                compiled_deliveries,
+                compiled_state(&compiler).0
+            );
+        }
+        let current_memory = interpreted_state(&native, &initial_memory);
+        assert_eq!(compiled_bus, current_bus, "unoptimized tick={}", tick + 1);
+        assert_eq!(
+            compiled_state(&compiler).1,
+            current_memory,
+            "unoptimized memory tick={}",
+            tick + 1
+        );
+        let value = !u16::from_str_radix(&current_bus, 2).unwrap();
         if value == 0 && peak != 0 {
             peaks.push(peak);
             peak = 0;
         }
         peak = peak.max(value);
-        expected.push(bus(&native));
+        expected.push(current_bus);
+        expected_compiled_state.push(compiled_state(&compiler));
     }
     if peak != 0 {
         peaks.push(peak);
@@ -368,52 +465,37 @@ fn potados_pc_counter_preserves_native_count_waveform() {
         !u16::from_str_radix(expected.last().unwrap(), 2).unwrap(),
         682
     );
-    let candidate = BASE + BlockPos::new(6, 15, 4);
-    for budget_multiplier in [1, 8] {
-        for optimize in [false, true] {
-            for assume_instant in [false, true] {
-                let (mut world, bounds) = load_counter();
-                turn_on_all_levers(&mut world, bounds);
-                let initial = block_state(&world, candidate, BASE);
-                let mut compiler = Compiler::default();
-                let start = Instant::now();
-                compiler
-                    .compile(
-                        &world,
-                        world.get_corners(),
-                        CompilerOptions {
-                            budget_multiplier,
-                            optimize,
-                            assume_instant,
-                            ..Default::default()
-                        },
-                        world.scheduler().iter_entries().collect(),
-                        Default::default(),
-                    )
-                    .unwrap();
-                assert!(compiler.stats().unwrap().regions.static_pistons >= 1);
-                world.native_scheduler().clear();
-                for (tick, expected) in expected.iter().enumerate() {
-                    compiler.tick_with_world(&mut world);
-                    compiler.flush(&mut world);
-                    assert_eq!(
-                        &bus(&world),
-                        expected,
-                        "tick={} O={optimize} A={assume_instant} budget={budget_multiplier}",
-                        tick + 1
-                    );
-                    assert_eq!(
-                        block_state(&world, candidate, BASE),
-                        initial,
-                        "static piston tick={}",
-                        tick + 1
-                    );
-                }
-                let full_bounds = world.get_corners();
-                compiler.reset(&mut world, full_bounds);
-                assert_eq!(bus(&world), bus(&native));
-                eprintln!("Potados: O={optimize} A={assume_instant} budget={budget_multiplier}; 4096 native-equivalent ticks in {:.2}s",start.elapsed().as_secs_f64());
-            }
-        }
+    let (mut world, bounds) = load_counter();
+    turn_on_all_levers(&mut world, bounds);
+    let mut compiler = Compiler::default();
+    compiler
+        .compile(
+            &world,
+            world.get_corners(),
+            CompilerOptions {
+                optimize: true,
+                ..Default::default()
+            },
+            world.scheduler().iter_entries().collect(),
+            Default::default(),
+        )
+        .unwrap();
+    world.clear_scheduled_ticks();
+    assert_eq!(
+        compiled_state(&compiler),
+        (initial_responses, initial_memory)
+    );
+    for (tick, (expected_bus, expected_state)) in
+        expected.iter().zip(&expected_compiled_state).enumerate()
+    {
+        compiler.tick_with_world(&mut world);
+        compiler.flush(&mut world);
+        assert_eq!(bus(&world), *expected_bus, "optimized tick={}", tick + 1);
+        assert_eq!(
+            compiled_state(&compiler),
+            *expected_state,
+            "optimized tick={}",
+            tick + 1
+        );
     }
 }

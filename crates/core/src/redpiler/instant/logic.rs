@@ -128,6 +128,7 @@ pub(crate) fn extract_with_state(
     )
 }
 
+#[cfg(test)]
 pub(crate) fn extract_ideal_with_state(
     world: &impl World,
     report: &AnalysisReport,
@@ -369,7 +370,10 @@ fn extract_with_options(
                 || extractor.bases.contains_key(&rear))
                 && redstone::comparator::has_override(world.get_block(far))
             {
-                return Err(format!("comparator at {pos:?} reads an analog override through moving blocks; this is unsupported"));
+                return Err(format!(
+                    "comparator at {pos:?} reads an analog override through moving blocks; \
+                     this is unsupported"
+                ));
             }
         }
         for input in [
@@ -404,7 +408,10 @@ fn extract_with_options(
                     || crate::redstone::comparator::get_far_input(world, pos, comparator.facing)
                         .is_some()
                 {
-                    return Err(format!("comparator at {pos:?} reads an analog override through moving blocks; this is unsupported"));
+                    return Err(format!(
+                        "comparator at {pos:?} reads an analog override through moving blocks; \
+                         this is unsupported"
+                    ));
                 }
             }
             consumer_wires.extend(extractor.wires.iter().copied());
@@ -446,7 +453,10 @@ fn extract_with_options(
             .iter()
             .any(|variable| !matches!(variable, Variable::Signal { .. }))
         {
-            return Err(format!("sampling dust at {pos:?} depends on moving blocks or another power source; expected one fixed source"));
+            return Err(format!(
+                "sampling dust at {pos:?} depends on moving blocks or another power source; \
+                 expected one fixed source"
+            ));
         }
         extractor.sources.insert(*writer);
         extractor

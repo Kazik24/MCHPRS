@@ -445,19 +445,61 @@ pub(crate) fn extract(
 }
 
 fn entry_strength<W: World>(extractor: &Extractor<'_, W>, terms: &[PowerTerm]) -> u8 {
-    terms.iter().filter(|term| extractor.arena.evaluate(term.guard, |variable| match variable {
-        Variable::Geometry { actor, part } => {
-            let p = &extractor.report.pistons[actor];
-            match part {
-                GeometryPart::FarPayload => extractor.payloads[extractor.group_of[actor]] != Block::Air && extractor.world.get_block(p.head.offset(p.piston.facing.into())) == extractor.payloads[extractor.group_of[actor]],
-                GeometryPart::NearPayload => extractor.payloads[extractor.group_of[actor]] != Block::Air && !p.piston.extended && extractor.world.get_block(p.head) == extractor.payloads[extractor.group_of[actor]],
-                GeometryPart::Head => matches!(extractor.world.get_block(p.head), Block::PistonHead { .. }),
-                GeometryPart::RetractedBase => !p.piston.extended,
-                GeometryPart::MovingBase => false,
-            }
-        }
-        Variable::Observer(id) => matches!(extractor.world.get_block(extractor.report.observers[id]), Block::Observer { observer } if observer.powered),
-        Variable::WireDot(pos) => matches!(extractor.world.get_block(pos), Block::RedstoneWire { wire } if redstone::wire::is_dot(wire)),
-        _ => unreachable!(),
-    })).map(|term| term.source.map_or(15, |pos| crate::redstone::source_strength(extractor.world.get_block(pos), extractor.world, pos)).saturating_sub(term.attenuation)).max().unwrap_or(0)
+    terms
+        .iter()
+        .filter(|term| {
+            extractor
+                .arena
+                .evaluate(term.guard, |variable| match variable {
+                    Variable::Geometry { actor, part } => {
+                        let p = &extractor.report.pistons[actor];
+                        match part {
+                            GeometryPart::FarPayload => {
+                                let payload = extractor.payloads[extractor.group_of[actor]];
+                                payload != Block::Air
+                                    && extractor
+                                        .world
+                                        .get_block(p.head.offset(p.piston.facing.into()))
+                                        == payload
+                            }
+                            GeometryPart::NearPayload => {
+                                let payload = extractor.payloads[extractor.group_of[actor]];
+                                payload != Block::Air
+                                    && !p.piston.extended
+                                    && extractor.world.get_block(p.head) == payload
+                            }
+                            GeometryPart::Head => {
+                                matches!(
+                                    extractor.world.get_block(p.head),
+                                    Block::PistonHead { .. }
+                                )
+                            }
+                            GeometryPart::RetractedBase => !p.piston.extended,
+                            GeometryPart::MovingBase => false,
+                        }
+                    }
+                    Variable::Observer(id) => matches!(
+                        extractor.world.get_block(extractor.report.observers[id]),
+                        Block::Observer { observer } if observer.powered
+                    ),
+                    Variable::WireDot(pos) => matches!(
+                        extractor.world.get_block(pos),
+                        Block::RedstoneWire { wire } if redstone::wire::is_dot(wire)
+                    ),
+                    _ => unreachable!(),
+                })
+        })
+        .map(|term| {
+            term.source
+                .map_or(15, |pos| {
+                    crate::redstone::source_strength(
+                        extractor.world.get_block(pos),
+                        extractor.world,
+                        pos,
+                    )
+                })
+                .saturating_sub(term.attenuation)
+        })
+        .max()
+        .unwrap_or(0)
 }

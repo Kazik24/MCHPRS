@@ -472,18 +472,6 @@ pub(crate) fn validate_feedback(
         targets,
         internally_driven,
     )?;
-    #[cfg(test)]
-    eprintln!(
-        "FEEDBACK PROBE: targets={} driven={} nonempty={} overlap={:?}",
-        targets.len(),
-        internally_driven.len(),
-        feedback.values().filter(|sources| !sources.is_empty()).count(),
-        feedback
-            .iter()
-            .filter(|(_, sources)| sources.iter().any(|source| internally_driven.contains(source)))
-            .take(3)
-            .collect::<Vec<_>>()
-    );
     let mut groups = vec![0; report.pistons.len()];
     let mut mobile = FxHashMap::default();
     for (group, descriptor) in report.payload_groups.iter().enumerate() {

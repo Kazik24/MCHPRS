@@ -9,6 +9,8 @@ mod anpu_motion_scope;
 mod bud_cells;
 mod notification_routes;
 mod pm1_clocks;
+#[path = "research/potados_counter.rs"]
+mod potados_counter;
 
 #[path = "research/fpu_divider.rs"]
 mod fpu_divider;

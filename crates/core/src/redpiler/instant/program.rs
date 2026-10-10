@@ -129,15 +129,22 @@ pub(crate) fn prepare(
                 }
                 pending.extend(graph.neighbors_directed(id, petgraph::Direction::Incoming));
             }
+            // Mobile payload sources are internal even when graph passes omit them.
+            internally_driven.extend(
+                report
+                    .payload_groups
+                    .iter()
+                    .flat_map(|group| group.positions.iter().copied()),
+            );
             let targets = program
                 .pistons
                 .iter()
                 .enumerate()
                 .filter_map(|(actor, piston)| {
                     (!program
-                            .independent_memory
-                            .iter()
-                            .any(|cell| cell.actor == actor)
+                        .independent_memory
+                        .iter()
+                        .any(|cell| cell.actor == actor)
                         && !program.clocked.as_ref().is_some_and(|clock| {
                             clock.clock == actor
                                 || clock.memory.iter().any(|cell| cell.actor == actor)
