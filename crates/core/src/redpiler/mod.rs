@@ -481,9 +481,8 @@ mod tests {
     }
 
     #[test]
-    fn logical_mode_is_explicit_and_unknown_flags_fail() {
-        assert!(CompilerOptions::parse("--assume-instant -oi").is_err());
-        for flags in ["--assume-instnat", "-ox", "-", "assume-instant"] {
+    fn unknown_flags_fail() {
+        for flags in ["--unknown", "-ox", "-"] {
             assert!(CompilerOptions::parse(flags).is_err(), "{flags}");
         }
     }

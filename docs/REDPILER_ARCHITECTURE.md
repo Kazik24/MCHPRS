@@ -57,8 +57,7 @@ highlighting.
 | `--export`, `-e`                 | Export a supported ordinary graph                                 |
 | `--export-dot`                   | Export the backend graph as DOT where supported                   |
 
-`--assume-instant` is no longer a supported option. Unknown flags are rejected.
-Graph optimization has local eligibility checks and is not a universal
+Unknown flags are rejected. Graph optimization has local eligibility checks and is not a universal
 equivalence proof. Binary and DOT export can reject graph features their
 formats cannot represent.
 

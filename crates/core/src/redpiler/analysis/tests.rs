@@ -43,7 +43,7 @@ fn root() -> PathBuf {
 }
 
 fn local_pos(pos: &Value) -> BlockPos {
-    BlockPos::new(
+    BASE + BlockPos::new(
         pos[0].as_i64().unwrap() as i32,
         pos[1].as_i64().unwrap() as i32,
         pos[2].as_i64().unwrap() as i32,
@@ -70,7 +70,8 @@ fn lever_action(world: &mut PlotWorld, pos: BlockPos, powered: bool) {
 
 #[test]
 fn analysis_limits_and_cancellation_are_errors() {
-    let world = empty();
+    let mut world = empty();
+    world.set_block(BASE, Block::Stone {});
     let monitor = TaskMonitor::default();
     monitor.cancel();
     assert_eq!(
@@ -119,6 +120,31 @@ fn analysis_limits_and_cancellation_are_errors() {
         ),
         Err(AnalysisError::UnloadedChunk { .. })
     ));
+    let mut piston_world = empty();
+    piston_world.set_block(
+        BASE,
+        Block::Piston {
+            piston: RedstonePiston {
+                facing: BlockFacing::South,
+                sticky: true,
+                extended: false,
+            },
+        },
+    );
+    assert_eq!(
+        analyze(
+            &piston_world,
+            piston_world.get_corners(),
+            &[],
+            &Default::default(),
+            AnalysisLimits {
+                max_pistons: 0,
+                ..Default::default()
+            }
+        )
+        .unwrap_err(),
+        AnalysisError::PistonLimit
+    );
 }
 
 #[test]
@@ -149,7 +175,7 @@ fn piston_head_moving_piston_and_unsafe_entry_state_are_admission_blockers() {
     world.piston_state_mut().phase = AdvancePhase::PistonEvents;
 
     let report = analyze_world(&world);
-    assert_eq!(report.pistons[0].pos, BASE);
+    assert_eq!(report.pistons[0], BASE);
     assert!(report
         .issues
         .iter()
@@ -166,6 +192,41 @@ fn piston_head_moving_piston_and_unsafe_entry_state_are_admission_blockers() {
         .issues
         .iter()
         .any(|i| matches!(i, AdmissionIssue::EntryPhase { .. })));
+}
+
+#[test]
+fn queued_events_motions_and_movement_work_block_compilation() {
+    let mut world = empty();
+    let state = world.piston_state_mut();
+    state.events.push_back(mchprs_world::PistonEvent {
+        pos: BASE,
+        sticky: true,
+        facing: BlockFace::South,
+        action: PistonAction::Extend,
+    });
+    state.motions.push_back(mchprs_world::PistonMotion {
+        pos: BASE,
+        identity: 1,
+        progress: 0.0,
+        previous_progress: 0.0,
+        last_tick: 0,
+        carried_entity: None,
+    });
+    state.movement_work.push((BASE, 1));
+
+    let report = analyze_world(&world);
+    assert!(report
+        .issues
+        .iter()
+        .any(|issue| matches!(issue, AdmissionIssue::PendingPistonEvents { count: 1 })));
+    assert!(report
+        .issues
+        .iter()
+        .any(|issue| matches!(issue, AdmissionIssue::PendingPistonMotions { count: 1 })));
+    assert!(report
+        .issues
+        .iter()
+        .any(|issue| matches!(issue, AdmissionIssue::PendingMovementWork { count: 1 })));
 }
 
 #[test]

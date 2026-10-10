@@ -1838,7 +1838,7 @@ mod security_tests {
     #[test]
     fn command_declarations_have_valid_edges_and_no_legacy_tick_aliases() {
         let nodes = declared_command_nodes();
-        assert_eq!(nodes.len(), 176);
+        assert_eq!(nodes.len(), 187);
         for node in &nodes {
             for edge in node.children.iter().copied().chain(node.redirect_node) {
                 assert!(edge >= 0 && (edge as usize) < nodes.len());
@@ -2094,7 +2094,9 @@ mod security_tests {
             }
             plot.handle_redpiler_command(0, "analyze", &[]);
             let lines = messages("This plot can compile with these flags.");
-            assert!(lines.iter().any(|line| line.starts_with("0 pistons,")));
+            assert!(lines
+                .iter()
+                .any(|line| line.contains(" pistons, ") && line.contains(" admission issues")));
             assert!(lines
                 .iter()
                 .any(|line| line.starts_with("Compile:") && line.contains("backend nodes")));

@@ -1,4 +1,4 @@
-//! Fixed graph preparation pipeline, shared by ordinary and instant compilation.
+//! Fixed graph preparation pipeline for ordinary compilation.
 mod clamp_weights;
 mod coalesce;
 mod constant_coalesce;

@@ -67,11 +67,6 @@ impl fmt::Display for AnalysisError {
 impl std::error::Error for AnalysisError {}
 
 #[derive(Debug, Clone, Serialize)]
-pub struct PistonDescriptor {
-    pub pos: BlockPos,
-}
-
-#[derive(Debug, Clone, Serialize)]
 pub enum AdmissionIssue {
     PistonRuntimeUnavailable { pos: BlockPos },
     UnownedPistonHead { pos: BlockPos },
@@ -112,7 +107,7 @@ pub struct AnalysisReport {
     pub inspected_cells: usize,
     pub nonair_blocks: usize,
     pub pending_ticks: usize,
-    pub pistons: Vec<PistonDescriptor>,
+    pub pistons: Vec<BlockPos>,
     pub issues: Vec<AdmissionIssue>,
 }
 
@@ -123,7 +118,7 @@ impl AnalysisReport {
 
     pub fn summary(&self) -> String {
         format!(
-            "{} blocks, {} pistons, {} pending ticks; {} admission issues",
+            "{} non-air blocks, {} pistons, {} pending ticks; {} admission issues",
             self.nonair_blocks,
             self.pistons.len(),
             self.pending_ticks,
@@ -197,7 +192,7 @@ pub fn analyze(
                                     if report.pistons.len() >= limits.max_pistons {
                                         return Err(AnalysisError::PistonLimit);
                                     }
-                                    report.pistons.push(PistonDescriptor { pos });
+                                    report.pistons.push(pos);
                                     report
                                         .issues
                                         .push(AdmissionIssue::PistonRuntimeUnavailable { pos });
@@ -222,7 +217,7 @@ pub fn analyze(
             }
         }
     }
-    report.pistons.sort_by_key(|p| (p.pos.y, p.pos.z, p.pos.x));
+    report.pistons.sort_by_key(|p| (p.y, p.z, p.x));
     for (pos, head) in heads {
         if !owned_heads.contains(&(pos, BlockFace::from(head.facing), head.sticky)) {
             report
