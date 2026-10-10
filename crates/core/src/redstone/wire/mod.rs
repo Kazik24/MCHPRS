@@ -215,16 +215,6 @@ pub fn get_regulated_sides(wire: RedstoneWire, world: &impl World, pos: BlockPos
     regulate_sides(wire, get_all_sides(wire, world, pos))
 }
 
-/// The same shape rule over a compiler occupancy assignment. No world changes
-/// or redstone notifications are needed to inspect conditional connections.
-pub(crate) fn get_regulated_sides_from(
-    wire: RedstoneWire,
-    pos: BlockPos,
-    read: impl Fn(BlockPos) -> Block,
-) -> RedstoneWire {
-    regulate_sides(wire, get_raw_sides_from(wire, pos, read))
-}
-
 pub(crate) fn get_raw_sides_from(
     wire: RedstoneWire,
     pos: BlockPos,
