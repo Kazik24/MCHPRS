@@ -1,0 +1,750 @@
+{
+  "fixture": "test_data/piston-research/test-potados-counter-revised-20261008/TEST_POTADOS_PC_COUNTER.schem",
+  "sha256": "641c50d1903ccf3715759007d5b82e0f04786020d8cce80fbdbb4a3c8a3596f7",
+  "origin": {
+    "x": 40,
+    "z": 40,
+    "y": 30
+  },
+  "payload_group": {
+    "actors": [
+      {
+        "actor": 340,
+        "pos": {
+          "x": 18,
+          "y": 10,
+          "z": 65
+        },
+        "sources": [
+          {
+            "attenuation": 0,
+            "kind": {
+              "MobilePayload": {
+                "group": 242
+              }
+            },
+            "route": "Direct",
+            "source": {
+              "x": 58,
+              "y": 39,
+              "z": 105
+            }
+          },
+          {
+            "attenuation": 0,
+            "kind": "Ordinary",
+            "route": "Direct",
+            "source": {
+              "x": 61,
+              "y": 40,
+              "z": 105
+            }
+          },
+          {
+            "attenuation": 0,
+            "kind": {
+              "MobilePayload": {
+                "group": 276
+              }
+            },
+            "route": "QuasiConnectivity",
+            "source": {
+              "x": 57,
+              "y": 41,
+              "z": 105
+            }
+          },
+          {
+            "attenuation": 0,
+            "kind": "Observer",
+            "route": "QuasiConnectivity",
+            "source": {
+              "x": 58,
+              "y": 41,
+              "z": 105
+            }
+          }
+        ],
+        "updates": [
+          {
+            "independent_of_power": true,
+            "kind": "WireNotification",
+            "requires_extended": false,
+            "source": {
+              "x": 58,
+              "y": 39,
+              "z": 104
+            }
+          },
+          {
+            "independent_of_power": true,
+            "kind": "WireNotification",
+            "requires_extended": false,
+            "source": {
+              "x": 57,
+              "y": 40,
+              "z": 104
+            }
+          },
+          {
+            "independent_of_power": true,
+            "kind": "AdjacentHeadChange",
+            "requires_extended": false,
+            "source": {
+              "x": 57,
+              "y": 40,
+              "z": 105
+            }
+          },
+          {
+            "independent_of_power": false,
+            "kind": "WireNotification",
+            "requires_extended": false,
+            "source": {
+              "x": 60,
+              "y": 40,
+              "z": 105
+            }
+          },
+          {
+            "independent_of_power": false,
+            "kind": "AdjacentHeadChange",
+            "requires_extended": true,
+            "source": {
+              "x": 57,
+              "y": 41,
+              "z": 105
+            }
+          },
+          {
+            "independent_of_power": false,
+            "kind": "WireNotification",
+            "requires_extended": false,
+            "source": {
+              "x": 59,
+              "y": 41,
+              "z": 105
+            }
+          }
+        ]
+      },
+      {
+        "actor": 435,
+        "pos": {
+          "x": 16,
+          "y": 12,
+          "z": 65
+        },
+        "sources": [
+          {
+            "attenuation": 0,
+            "kind": "Observer",
+            "route": "QuasiConnectivity",
+            "source": {
+              "x": 56,
+              "y": 43,
+              "z": 105
+            }
+          },
+          {
+            "attenuation": 2,
+            "kind": {
+              "MobilePayload": {
+                "group": 386
+              }
+            },
+            "route": "Direct",
+            "source": {
+              "x": 57,
+              "y": 45,
+              "z": 103
+            }
+          }
+        ],
+        "updates": [
+          {
+            "independent_of_power": true,
+            "kind": "AdjacentHeadChange",
+            "requires_extended": false,
+            "source": {
+              "x": 56,
+              "y": 41,
+              "z": 105
+            }
+          },
+          {
+            "independent_of_power": true,
+            "kind": "AdjacentHeadChange",
+            "requires_extended": true,
+            "source": {
+              "x": 57,
+              "y": 41,
+              "z": 105
+            }
+          },
+          {
+            "independent_of_power": true,
+            "kind": "WireNotification",
+            "requires_extended": false,
+            "source": {
+              "x": 54,
+              "y": 42,
+              "z": 105
+            }
+          },
+          {
+            "independent_of_power": false,
+            "kind": "WireNotification",
+            "requires_extended": false,
+            "source": {
+              "x": 56,
+              "y": 43,
+              "z": 104
+            }
+          }
+        ]
+      }
+    ],
+    "payload_group": {
+      "members": [
+        340,
+        435
+      ],
+      "positions": [
+        {
+          "x": 56,
+          "y": 40,
+          "z": 105
+        },
+        {
+          "x": 57,
+          "y": 40,
+          "z": 105
+        },
+        {
+          "x": 56,
+          "y": 41,
+          "z": 105
+        }
+      ]
+    }
+  },
+  "waveform": [
+    {
+      "tick": 0,
+      "native_input": 1,
+      "native_wire": "1",
+      "native_payload": {
+        "entity": null,
+        "name": "light_gray_terracotta",
+        "pos": {
+          "x": 16,
+          "y": 10,
+          "z": 65
+        },
+        "power": null,
+        "properties": {}
+      },
+      "direct_port": [
+        "source=Some(BlockPos { x: 56, y: 40, z: 106 }) power=1 attenuation=0 guard=true output=1 dependencies=[(BlockPos { x: 58, y: 40, z: 105 }, FarPayload, true, false)]"
+      ],
+      "members": null,
+      "piston_events": []
+    },
+    {
+      "tick": 1,
+      "native_input": 0,
+      "native_wire": "0",
+      "native_payload": {
+        "entity": null,
+        "name": "air",
+        "pos": {
+          "x": 16,
+          "y": 10,
+          "z": 65
+        },
+        "power": null,
+        "properties": {}
+      },
+      "direct_port": [
+        "source=Some(BlockPos { x: 56, y: 40, z: 106 }) power=1 attenuation=0 guard=true output=1 dependencies=[(BlockPos { x: 58, y: 40, z: 105 }, FarPayload, true, false)]"
+      ],
+      "members": [
+        {
+          "direct": "Some((340, false, true, false, Some(\"extended\"), Piston { piston: RedstonePiston { facing: West, sticky: true, extended: true } }))",
+          "native": {
+            "entity": null,
+            "name": "sticky_piston",
+            "pos": {
+              "x": 18,
+              "y": 10,
+              "z": 65
+            },
+            "power": true,
+            "properties": {
+              "extended": "true",
+              "facing": "west",
+              "sticky": "true"
+            }
+          }
+        },
+        {
+          "direct": "Some((435, false, false, false, Some(\"extended\"), Piston { piston: RedstonePiston { facing: Down, sticky: true, extended: true } }))",
+          "native": {
+            "entity": {
+              "MovingPiston": {
+                "block_state": 2046,
+                "extending": false,
+                "facing": "Bottom",
+                "progress": 0,
+                "source": true
+              }
+            },
+            "name": "moving_piston",
+            "pos": {
+              "x": 16,
+              "y": 12,
+              "z": 65
+            },
+            "power": null,
+            "properties": {
+              "facing": "down",
+              "type": "sticky"
+            }
+          }
+        }
+      ],
+      "piston_events": [
+        {
+          "action": 0,
+          "data": {
+            "action": "Retract",
+            "facing": "Bottom",
+            "pos": {
+              "x": 56,
+              "y": 42,
+              "z": 105
+            },
+            "sticky": true
+          },
+          "depth": 1,
+          "kind": "event_enqueue",
+          "operation": 0,
+          "phase": "PistonEvents",
+          "tick": 2
+        },
+        {
+          "action": 0,
+          "data": {
+            "action": "Retract",
+            "facing": "Bottom",
+            "pos": {
+              "x": 56,
+              "y": 42,
+              "z": 105
+            },
+            "sticky": true
+          },
+          "depth": 0,
+          "kind": "event_execute",
+          "operation": 0,
+          "phase": "PistonEvents",
+          "tick": 2
+        },
+        {
+          "action": 0,
+          "data": {
+            "action": "Retract",
+            "facing": "Bottom",
+            "pos": {
+              "x": 56,
+              "y": 42,
+              "z": 105
+            },
+            "sticky": true
+          },
+          "depth": 0,
+          "kind": "event_applied",
+          "operation": 0,
+          "phase": "PistonEvents",
+          "tick": 2
+        }
+      ]
+    },
+    {
+      "tick": 2,
+      "native_input": 0,
+      "native_wire": "0",
+      "native_payload": {
+        "entity": null,
+        "name": "air",
+        "pos": {
+          "x": 16,
+          "y": 10,
+          "z": 65
+        },
+        "power": null,
+        "properties": {}
+      },
+      "direct_port": [
+        "source=Some(BlockPos { x: 56, y: 40, z: 106 }) power=1 attenuation=0 guard=true output=1 dependencies=[(BlockPos { x: 58, y: 40, z: 105 }, FarPayload, true, false)]"
+      ],
+      "members": [
+        {
+          "direct": "Some((340, false, true, false, Some(\"extended\"), Piston { piston: RedstonePiston { facing: West, sticky: true, extended: true } }))",
+          "native": {
+            "entity": null,
+            "name": "sticky_piston",
+            "pos": {
+              "x": 18,
+              "y": 10,
+              "z": 65
+            },
+            "power": true,
+            "properties": {
+              "extended": "true",
+              "facing": "west",
+              "sticky": "true"
+            }
+          }
+        },
+        {
+          "direct": "Some((435, false, false, false, Some(\"extended\"), Piston { piston: RedstonePiston { facing: Down, sticky: true, extended: true } }))",
+          "native": {
+            "entity": {
+              "MovingPiston": {
+                "block_state": 2046,
+                "extending": false,
+                "facing": "Bottom",
+                "progress": 127,
+                "source": true
+              }
+            },
+            "name": "moving_piston",
+            "pos": {
+              "x": 16,
+              "y": 12,
+              "z": 65
+            },
+            "power": null,
+            "properties": {
+              "facing": "down",
+              "type": "sticky"
+            }
+          }
+        }
+      ],
+      "piston_events": []
+    },
+    {
+      "tick": 3,
+      "native_input": 0,
+      "native_wire": "0",
+      "native_payload": {
+        "entity": null,
+        "name": "air",
+        "pos": {
+          "x": 16,
+          "y": 10,
+          "z": 65
+        },
+        "power": null,
+        "properties": {}
+      },
+      "direct_port": [
+        "source=Some(BlockPos { x: 56, y: 40, z: 106 }) power=1 attenuation=0 guard=true output=1 dependencies=[(BlockPos { x: 58, y: 40, z: 105 }, FarPayload, true, false)]"
+      ],
+      "members": [
+        {
+          "direct": "Some((340, false, true, false, Some(\"extended\"), Piston { piston: RedstonePiston { facing: West, sticky: true, extended: true } }))",
+          "native": {
+            "entity": null,
+            "name": "sticky_piston",
+            "pos": {
+              "x": 18,
+              "y": 10,
+              "z": 65
+            },
+            "power": true,
+            "properties": {
+              "extended": "true",
+              "facing": "west",
+              "sticky": "true"
+            }
+          }
+        },
+        {
+          "direct": "Some((435, false, false, false, Some(\"extended\"), Piston { piston: RedstonePiston { facing: Down, sticky: true, extended: true } }))",
+          "native": {
+            "entity": null,
+            "name": "sticky_piston",
+            "pos": {
+              "x": 16,
+              "y": 12,
+              "z": 65
+            },
+            "power": true,
+            "properties": {
+              "extended": "false",
+              "facing": "down",
+              "sticky": "true"
+            }
+          }
+        }
+      ],
+      "piston_events": [
+        {
+          "action": 0,
+          "data": {
+            "action": "Extend",
+            "facing": "Bottom",
+            "pos": {
+              "x": 56,
+              "y": 42,
+              "z": 105
+            },
+            "sticky": true
+          },
+          "depth": 1,
+          "kind": "event_enqueue",
+          "operation": 0,
+          "phase": "MovingEntities",
+          "tick": 4
+        }
+      ]
+    },
+    {
+      "tick": 4,
+      "native_input": 0,
+      "native_wire": "0",
+      "native_payload": {
+        "entity": {
+          "MovingPiston": {
+            "block_state": 10173,
+            "extending": true,
+            "facing": "Bottom",
+            "progress": 0,
+            "source": false
+          }
+        },
+        "name": "moving_piston",
+        "pos": {
+          "x": 16,
+          "y": 10,
+          "z": 65
+        },
+        "power": null,
+        "properties": {
+          "facing": "down",
+          "type": "sticky"
+        }
+      },
+      "direct_port": [
+        "source=Some(BlockPos { x: 56, y: 40, z: 106 }) power=1 attenuation=0 guard=true output=1 dependencies=[(BlockPos { x: 58, y: 40, z: 105 }, FarPayload, true, false)]"
+      ],
+      "members": [
+        {
+          "direct": "Some((340, false, true, false, Some(\"extended\"), Piston { piston: RedstonePiston { facing: West, sticky: true, extended: true } }))",
+          "native": {
+            "entity": null,
+            "name": "sticky_piston",
+            "pos": {
+              "x": 18,
+              "y": 10,
+              "z": 65
+            },
+            "power": true,
+            "properties": {
+              "extended": "true",
+              "facing": "west",
+              "sticky": "true"
+            }
+          }
+        },
+        {
+          "direct": "Some((435, false, false, false, Some(\"extended\"), Piston { piston: RedstonePiston { facing: Down, sticky: true, extended: true } }))",
+          "native": {
+            "entity": null,
+            "name": "sticky_piston",
+            "pos": {
+              "x": 16,
+              "y": 12,
+              "z": 65
+            },
+            "power": true,
+            "properties": {
+              "extended": "true",
+              "facing": "down",
+              "sticky": "true"
+            }
+          }
+        }
+      ],
+      "piston_events": [
+        {
+          "action": 0,
+          "data": {
+            "action": "Extend",
+            "facing": "Bottom",
+            "pos": {
+              "x": 56,
+              "y": 42,
+              "z": 105
+            },
+            "sticky": true
+          },
+          "depth": 0,
+          "kind": "event_execute",
+          "operation": 0,
+          "phase": "PistonEvents",
+          "tick": 5
+        },
+        {
+          "action": 0,
+          "data": {
+            "action": "Extend",
+            "facing": "Bottom",
+            "pos": {
+              "x": 56,
+              "y": 42,
+              "z": 105
+            },
+            "sticky": true
+          },
+          "depth": 0,
+          "kind": "event_applied",
+          "operation": 0,
+          "phase": "PistonEvents",
+          "tick": 5
+        }
+      ]
+    },
+    {
+      "tick": 5,
+      "native_input": 0,
+      "native_wire": "0",
+      "native_payload": {
+        "entity": {
+          "MovingPiston": {
+            "block_state": 10173,
+            "extending": true,
+            "facing": "Bottom",
+            "progress": 127,
+            "source": false
+          }
+        },
+        "name": "moving_piston",
+        "pos": {
+          "x": 16,
+          "y": 10,
+          "z": 65
+        },
+        "power": null,
+        "properties": {
+          "facing": "down",
+          "type": "sticky"
+        }
+      },
+      "direct_port": [
+        "source=Some(BlockPos { x: 56, y: 40, z: 106 }) power=1 attenuation=0 guard=true output=1 dependencies=[(BlockPos { x: 58, y: 40, z: 105 }, FarPayload, true, false)]"
+      ],
+      "members": [
+        {
+          "direct": "Some((340, false, true, false, Some(\"extended\"), Piston { piston: RedstonePiston { facing: West, sticky: true, extended: true } }))",
+          "native": {
+            "entity": null,
+            "name": "sticky_piston",
+            "pos": {
+              "x": 18,
+              "y": 10,
+              "z": 65
+            },
+            "power": true,
+            "properties": {
+              "extended": "true",
+              "facing": "west",
+              "sticky": "true"
+            }
+          }
+        },
+        {
+          "direct": "Some((435, false, false, false, Some(\"extended\"), Piston { piston: RedstonePiston { facing: Down, sticky: true, extended: true } }))",
+          "native": {
+            "entity": null,
+            "name": "sticky_piston",
+            "pos": {
+              "x": 16,
+              "y": 12,
+              "z": 65
+            },
+            "power": false,
+            "properties": {
+              "extended": "true",
+              "facing": "down",
+              "sticky": "true"
+            }
+          }
+        }
+      ],
+      "piston_events": []
+    },
+    {
+      "tick": 6,
+      "native_input": 1,
+      "native_wire": "1",
+      "native_payload": {
+        "entity": null,
+        "name": "light_gray_terracotta",
+        "pos": {
+          "x": 16,
+          "y": 10,
+          "z": 65
+        },
+        "power": null,
+        "properties": {}
+      },
+      "direct_port": [
+        "source=Some(BlockPos { x: 56, y: 40, z: 106 }) power=1 attenuation=0 guard=true output=1 dependencies=[(BlockPos { x: 58, y: 40, z: 105 }, FarPayload, true, false)]"
+      ],
+      "members": [
+        {
+          "direct": "Some((340, false, true, false, Some(\"extended\"), Piston { piston: RedstonePiston { facing: West, sticky: true, extended: true } }))",
+          "native": {
+            "entity": null,
+            "name": "sticky_piston",
+            "pos": {
+              "x": 18,
+              "y": 10,
+              "z": 65
+            },
+            "power": true,
+            "properties": {
+              "extended": "true",
+              "facing": "west",
+              "sticky": "true"
+            }
+          }
+        },
+        {
+          "direct": "Some((435, false, false, false, Some(\"extended\"), Piston { piston: RedstonePiston { facing: Down, sticky: true, extended: true } }))",
+          "native": {
+            "entity": null,
+            "name": "sticky_piston",
+            "pos": {
+              "x": 16,
+              "y": 12,
+              "z": 65
+            },
+            "power": true,
+            "properties": {
+              "extended": "true",
+              "facing": "down",
+              "sticky": "true"
+            }
+          }
+        }
+      ],
+      "piston_events": []
+    }
+  ]
+}

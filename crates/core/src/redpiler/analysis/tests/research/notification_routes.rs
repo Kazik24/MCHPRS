@@ -23,6 +23,111 @@ fn extended_sticky(world: &mut PlotWorld, pos: BlockPos, payload: Block) {
 }
 
 #[test]
+#[ignore = "minimal Direct pose retention regression under a non-notifying QC input"]
+fn unnotified_qc_falling_edge_preserves_committed_piston_pose() {
+    let data = BASE + BlockPos::new(1, 1, 0);
+    let activation = BASE.offset(BlockFace::West);
+    let make_world = || {
+        let mut world = empty();
+        observer_seed(&mut world);
+        world.set_block(data.offset(BlockFace::East), Block::Stone {});
+        world.set_block(
+            data,
+            Block::Lever {
+                lever: Lever::new(LeverFace::Wall, BlockDirection::West, true),
+            },
+        );
+        world.set_block(activation.offset(BlockFace::West), Block::Stone {});
+        world.set_block(
+            activation,
+            Block::Lever {
+                lever: Lever::new(LeverFace::Wall, BlockDirection::East, false),
+            },
+        );
+        assert!(crate::redstone::piston::should_piston_extend(
+            &world,
+            BlockFacing::South,
+            BASE
+        ));
+        world
+    };
+    let mut native = make_world();
+    let mut world = make_world();
+    let mut compiler = Compiler::default();
+    compiler
+        .compile(
+            &world,
+            world.get_corners(),
+            CompilerOptions {
+                optimize: false,
+                ..Default::default()
+            },
+            Vec::new(),
+            Default::default(),
+        )
+        .unwrap();
+    let held = trace::capture(|| lever_action(&mut native, data, false));
+    assert!(
+        held.is_empty(),
+        "QC data edge must not sample the piston: {held:?}"
+    );
+    compiler.on_use_block(data);
+    let mut first_difference = None;
+    for tick in 1..=6 {
+        let samples = trace::capture(|| native.tick_interpreted());
+        assert!(
+            samples.is_empty(),
+            "unexpected activation at tick {tick}: {samples:?}"
+        );
+        assert!(!crate::redstone::piston::should_piston_extend(
+            &native,
+            BlockFacing::South,
+            BASE
+        ));
+        assert!(matches!(native.get_block(BASE), Block::Piston { piston } if piston.extended));
+        compiler.tick_with_world(&mut world);
+        compiler.flush(&mut world);
+        let state = compiler
+            .backend
+            .as_ref()
+            .unwrap()
+            .geometry_state(BASE)
+            .unwrap();
+        let direct_extended = matches!(state.5, Block::Piston { piston } if piston.extended);
+        eprintln!("tick={tick} native_extended=true native_power=false direct={state:?}");
+        if !direct_extended && first_difference.is_none() {
+            first_difference = Some(tick);
+        }
+    }
+    // The adjacent control supplies the callback that the QC data edge lacks.
+    let activated = trace::capture(|| {
+        lever_action(&mut native, activation, true);
+        lever_action(&mut native, activation, false);
+        native.tick_interpreted();
+    });
+    assert!(activated.iter().any(|entry| matches!(entry.operation,
+        Operation::Sample { pos, powered: false, .. } if pos == BASE)));
+    assert!(activated.iter().any(|entry| matches!(entry.operation,
+        Operation::Applied(event) if event.pos == BASE && event.action == PistonAction::Retract)));
+    compiler.on_use_block(activation);
+    compiler.on_use_block(activation);
+    compiler.tick_with_world(&mut world);
+    compiler.flush(&mut world);
+    let direct = compiler
+        .backend
+        .as_ref()
+        .unwrap()
+        .geometry_state(BASE)
+        .unwrap();
+    assert!(direct.2, "the notifying input must commit the piston response");
+    assert!(direct.1, "the final unpowered notification must commit retraction");
+    assert_eq!(
+        first_difference, None,
+        "Direct changed committed pose without activation"
+    );
+}
+
+#[test]
 fn sticky_base_change_rechecks_an_existing_bud_head_without_powering_its_base() {
     let mut world = empty();
     let cell = BASE;

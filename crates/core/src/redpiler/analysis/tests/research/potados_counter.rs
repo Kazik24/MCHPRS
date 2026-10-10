@@ -441,8 +441,376 @@ fn interpreted_state(world: &PlotWorld, cells: &[(BlockPos, bool)]) -> Vec<(Bloc
 }
 
 #[test]
+#[ignore = "12-tick terminal activation and compile-handoff diagnostic"]
+fn pc_counter_terminal_activation_handoff() {
+    use crate::redstone::instant_piston_tests::capture_at;
+
+    let fixture = json!({
+        "fixture": "test_data/piston-research/pc-counter-measurement-points-20261010/PC_COUNTER_MESURMENT_POINTS.schem",
+        "sha256": "0749f1b8d5e52e13f62323d42aa194b5d1440f48fcc679aaf687eaa67d5e078b",
+        "dimensions": [24, 19, 76], "loader_offset": [23, 1, 0]
+    });
+    let terminal = BASE + BlockPos::new(18, 9, 68);
+    let (mut native, bounds) = load(&fixture);
+    let (mut world, _) = load(&fixture);
+    let Block::Piston { piston } = native.get_block(terminal) else {
+        panic!("terminal piston missing from revised grid");
+    };
+    let watched = [terminal, terminal.offset(piston.facing.into())];
+    let initialize = |world: &mut PlotWorld| {
+        let levers = lever_positions(world, bounds);
+        assert_eq!(levers.len(), 23);
+        for pos in levers {
+            assert!(matches!(world.get_block(pos), Block::Lever { lever } if !lever.powered));
+            lever_action(world, pos, true);
+        }
+        world.tick_interpreted();
+    };
+    let mut callbacks = Vec::new();
+    let samples = trace::capture(|| {
+        callbacks = capture_at(&watched, || initialize(&mut native));
+    });
+    initialize(&mut world);
+    let mut compiler = Compiler::default();
+    compiler
+        .compile(
+            &world,
+            world.get_corners(),
+            CompilerOptions {
+                optimize: false,
+                ..Default::default()
+            },
+            world.scheduler().iter_entries().collect(),
+            Default::default(),
+        )
+        .unwrap();
+    world.clear_scheduled_ticks();
+    let terminal_samples = |entries: Vec<trace::Entry>| {
+        entries
+            .into_iter()
+            .filter(|entry| match entry.operation {
+                trace::Operation::Sample { pos, .. } => pos == terminal,
+                trace::Operation::Applied(event) => event.pos == terminal,
+            })
+            .collect::<Vec<_>>()
+    };
+    let geometry = |compiler: &Compiler| {
+        let (actor, retracted, activation, memory, phase, block) = compiler
+            .backend
+            .as_ref()
+            .unwrap()
+            .geometry_state(terminal)
+            .unwrap();
+        json!({"actor":actor,"response_retracted":retracted,
+            "activation":activation,"memory":memory,"phase":phase,
+            "block":block.get_name(),"properties":block.properties(),
+            "extended":matches!(block, Block::Piston { piston } if piston.extended)})
+    };
+    eprintln!(
+        "{}",
+        json!({"stage":"initialization","origin":BASE,
+        "native":block_state(&native,terminal,BASE),"direct":geometry(&compiler),
+        "samples":terminal_samples(samples),"callbacks":callbacks,
+        "pending_events":native.piston_state().events})
+    );
+
+    let probes = [
+        ("adder_out", BlockPos::new(0, 10, 62)),
+        ("adder_stage", BlockPos::new(3, 11, 65)),
+    ];
+    let mut first_pose_difference = None;
+    for tick in 1..=12 {
+        let samples = trace::capture(|| {
+            callbacks = capture_at(&watched, || native.tick_interpreted());
+        });
+        compiler.tick_with_world(&mut world);
+        compiler.flush(&mut world);
+        let direct = geometry(&compiler);
+        let native_pose =
+            matches!(native.get_block(terminal), Block::Piston { piston } if piston.extended);
+        let direct_pose = direct["extended"] == true;
+        if native_pose != direct_pose && first_pose_difference.is_none() {
+            first_pose_difference = Some(tick);
+        }
+        let inputs: Vec<_> = probes
+            .iter()
+            .map(|(name, local)| {
+                let pos = BASE + *local;
+                let Block::RedstoneRepeater { repeater } = native.get_block(pos) else {
+                    unreachable!()
+                };
+                let face = repeater.facing.block_face();
+                let source = pos.offset(face);
+                let block = native.get_block(source);
+                let mut native_input =
+                    crate::redstone::get_redstone_power(block, &native, source, face);
+                if native_input == 0 {
+                    if let Block::RedstoneWire { wire } = block {
+                        native_input = wire.power;
+                    }
+                }
+                let (_, powered, _, strengths, _) =
+                    compiler.backend.as_ref().unwrap().node_state(pos).unwrap();
+                let direct_input = strengths.iter().rposition(|&count| count != 0).unwrap_or(0);
+                json!({"probe":name,"native_input":native_input,"direct_input":direct_input,
+                "native_powered":repeater.powered,"direct_powered":powered})
+            })
+            .collect();
+        assert_eq!(
+            inputs[1]["native_input"], inputs[1]["direct_input"],
+            "adder_stage control at tick {tick}"
+        );
+        assert_eq!(
+            inputs[1]["native_powered"], inputs[1]["direct_powered"],
+            "adder_stage control at tick {tick}"
+        );
+        let deliveries: Vec<_> = compiler
+            .backend.as_mut().unwrap().take_activation_trace().into_iter()
+            .filter(|delivery| watched.contains(&delivery.recipient))
+            .map(|delivery| json!({"source":delivery.source - BASE,
+                "recipient":delivery.recipient - BASE,"actor":delivery.actor,
+                "direction":delivery.direction,"requires_extended":delivery.requires_extended}))
+            .collect();
+        eprintln!(
+            "{}",
+            json!({"stage":"replay","tick":tick,
+            "native":block_state(&native,terminal,BASE),"direct":direct,
+            "samples":terminal_samples(samples),"callbacks":callbacks,
+            "direct_activations":deliveries,
+            "pending_events":native.piston_state().events,"inputs":inputs})
+        );
+    }
+    eprintln!("first terminal pose difference: {first_pose_difference:?}");
+}
+
+#[test]
+#[ignore = "six-tick electrical route and publication diagnostic"]
+fn pc_counter_memory_input_publication_route() {
+    use crate::redstone::instant_piston_tests::capture_at;
+
+    let target = BASE + BlockPos::new(15, 9, 64);
+    let wire = BASE + BlockPos::new(15, 10, 65);
+    let source = BASE + BlockPos::new(16, 10, 66);
+    let gate = BASE + BlockPos::new(18, 10, 65);
+    let payload = BASE + BlockPos::new(16, 10, 65);
+    let mut watched = vec![target, wire, source, gate, payload];
+    let snapshot = |world: &PlotWorld| {
+        let Block::RedstoneRepeater { repeater } = world.get_block(target) else {
+            panic!("expected memory repeater");
+        };
+        let face = repeater.facing.block_face();
+        let input = target.offset(face);
+        let blocks: Vec<_> = [target, wire, source, gate, payload]
+            .iter()
+            .map(|&pos| block_state(world, pos, BASE))
+            .collect();
+        json!({"blocks":blocks,
+            "main_input":crate::redstone::get_redstone_power(world.get_block(input),world,input,face),
+            "source_strength":crate::redstone::source_strength(world.get_block(source),world,source)})
+    };
+    let (mut native, bounds) = load_counter();
+    let initialization = capture_at(&watched, || {
+        turn_on_all_levers(&mut native, bounds);
+    });
+    let report = analyze_world(&native);
+    let group = report
+        .payload_groups
+        .iter()
+        .find(|group| group.positions.contains(&payload))
+        .unwrap();
+    let members: Vec<_> = group
+        .members
+        .iter()
+        .map(|&actor| report.pistons[actor].pos)
+        .collect();
+    let response_actor = report
+        .pistons
+        .iter()
+        .position(|piston| piston.pos == BASE + BlockPos::new(16, 12, 65))
+        .unwrap();
+    let response_sources = report.recognition[response_actor].inputs.sources.clone();
+    let mut tracked_actors = vec![response_actor];
+    let mut upstream_groups = Vec::new();
+    let mut cursor = 0;
+    while cursor < tracked_actors.len() {
+        let actor = tracked_actors[cursor];
+        cursor += 1;
+        for source in &report.recognition[actor].inputs.sources {
+            let crate::redpiler::analysis::topology::SourceKind::MobilePayload { group } =
+                source.kind
+            else {
+                continue;
+            };
+            upstream_groups.push(group);
+            for &member in &report.payload_groups[group].members {
+                if !tracked_actors.contains(&member) {
+                    tracked_actors.push(member);
+                }
+            }
+        }
+    }
+    upstream_groups.sort_unstable();
+    upstream_groups.dedup();
+    tracked_actors.sort_unstable();
+    tracked_actors.dedup();
+    for &actor in &tracked_actors {
+        watched.extend([report.pistons[actor].pos, report.pistons[actor].head]);
+        watched.extend(report.ports.pistons[actor].updates.iter().map(|update| update.source));
+    }
+    watched.sort_by_key(|pos| (pos.y, pos.z, pos.x));
+    watched.dedup();
+    let (mut world, _) = load_counter();
+    turn_on_all_levers(&mut world, bounds);
+    let mut compiler = Compiler::default();
+    compiler
+        .compile(
+            &world,
+            world.get_corners(),
+            CompilerOptions {
+                optimize: false,
+                ..Default::default()
+            },
+            world.scheduler().iter_entries().collect(),
+            Default::default(),
+        )
+        .unwrap();
+    world.clear_scheduled_ticks();
+    eprintln!(
+        "{}",
+        json!({"payload_group":group,"actors":group.members.iter().map(|&actor| {
+        json!({"actor":actor,"pos":report.pistons[actor].pos-BASE,
+            "sources":report.recognition[actor].inputs.sources,"updates":report.ports.pistons[actor].updates})
+    }).collect::<Vec<_>>()})
+    );
+    eprintln!(
+        "{}",
+        json!({"tick":0,"origin":BASE,"native":snapshot(&native),
+        "direct_node":format!("{:?}",compiler.backend.as_ref().unwrap().node_state(target)),
+        "direct_wire_node":format!("{:?}",compiler.backend.as_ref().unwrap().node_state(wire)),
+        "upstream_groups":upstream_groups.iter().map(|&group| &report.payload_groups[group]).collect::<Vec<_>>(),
+        "response_actor":response_actor,
+        "native_response":crate::redstone::piston::should_piston_extend(&native,
+            report.pistons[response_actor].piston.facing,report.pistons[response_actor].pos),
+        "direct_response":format!("{:?}",compiler.backend.as_ref().unwrap().geometry_state(report.pistons[response_actor].pos)),
+        "response_sources":response_sources.iter().map(|source| {
+            let pos=source.source;
+            let native_block=native.get_block(pos);
+            let direct_block=world.get_block(pos);
+            json!({"pos":pos-BASE,"kind":source.kind,
+                "notifies":crate::redpiler::instant::sampling::data_notifies(&native,pos,report.pistons[response_actor].pos),
+                "native_block":native_block.get_name(),"native_properties":native_block.properties(),
+                "native_strength":crate::redstone::source_strength(native_block,&native,pos),
+                "direct_block":direct_block.get_name(),"direct_properties":direct_block.properties(),
+                "direct_node":format!("{:?}",compiler.backend.as_ref().unwrap().node_state(pos))})
+        }).collect::<Vec<_>>(),
+        "tracked_actors":tracked_actors.iter().map(|&actor| {
+            let pos=report.pistons[actor].pos;
+            json!({"actor":actor,"pos":pos-BASE,
+                "native_power":crate::redstone::piston::should_piston_extend(&native,
+                    report.pistons[actor].piston.facing,pos),
+                "native":block_state(&native,pos,BASE),
+                "direct":format!("{:?}",compiler.backend.as_ref().unwrap().geometry_state(pos)),
+                "sources":report.recognition[actor].inputs.sources.iter().map(|source| {
+                    let source_pos=source.source;
+                    let block=native.get_block(source_pos);
+                    json!({"pos":source_pos-BASE,"kind":source.kind,
+                        "notifies":crate::redpiler::instant::sampling::data_notifies(&native,source_pos,pos),
+                        "native_block":block.get_name(),"native_properties":block.properties(),
+                        "native_strength":crate::redstone::source_strength(block,&native,source_pos),
+                        "direct_node":format!("{:?}",compiler.backend.as_ref().unwrap().node_state(source_pos))})
+                }).collect::<Vec<_>>(),
+                "updates":report.ports.pistons[actor].updates})
+        }).collect::<Vec<_>>(),
+        "direct_port":compiler.backend.as_ref().unwrap().output_states(target),
+        "initialization_callbacks":initialization})
+    );
+
+    // Recompute a separate native copy; preserve the paired replay's pending work.
+    let (mut recomputed, _) = load_counter();
+    turn_on_all_levers(&mut recomputed, bounds);
+    let before = snapshot(&recomputed);
+    assert_eq!(
+        before,
+        snapshot(&native),
+        "recompute probe must start from the same activated state"
+    );
+    let callbacks = capture_at(&watched, || {
+        crate::redstone::update(recomputed.get_block(wire), &mut recomputed, wire, None);
+    });
+    eprintln!(
+        "{}",
+        json!({"probe":"native_wire_recompute_at_tick_zero",
+        "before":before,"after":snapshot(&recomputed),"callbacks":callbacks})
+    );
+
+    for tick in 1..=6 {
+        let callbacks = capture_at(&watched, || native.tick_interpreted());
+        compiler.tick_with_world(&mut world);
+        compiler.flush(&mut world);
+        let direct_activations: Vec<_> = compiler
+            .backend
+            .as_mut()
+            .unwrap()
+            .take_activation_trace()
+            .into_iter()
+            .filter(|delivery| tracked_actors.contains(&delivery.actor))
+            .map(|delivery| {
+                json!({"source":delivery.source-BASE,"actor":delivery.actor,
+                    "recipient":delivery.recipient-BASE,
+                    "requires_extended":delivery.requires_extended})
+            })
+            .collect();
+        eprintln!(
+            "{}",
+            json!({"tick":tick,"native":snapshot(&native),
+            "upstream_groups":upstream_groups.iter().map(|&group| &report.payload_groups[group]).collect::<Vec<_>>(),
+            "native_response":crate::redstone::piston::should_piston_extend(&native,
+                report.pistons[response_actor].piston.facing,report.pistons[response_actor].pos),
+            "direct_response":format!("{:?}",compiler.backend.as_ref().unwrap().geometry_state(report.pistons[response_actor].pos)),
+            "response_sources":response_sources.iter().map(|source| {
+                let pos=source.source;
+                let native_block=native.get_block(pos);
+                let direct_block=world.get_block(pos);
+                json!({"pos":pos-BASE,"kind":source.kind,
+                    "native_block":native_block.get_name(),"native_properties":native_block.properties(),
+                    "native_strength":crate::redstone::source_strength(native_block,&native,pos),
+                    "direct_block":direct_block.get_name(),"direct_properties":direct_block.properties(),
+                    "direct_node":format!("{:?}",compiler.backend.as_ref().unwrap().node_state(pos))})
+            }).collect::<Vec<_>>(),
+            "tracked_actors":tracked_actors.iter().map(|&actor| {
+                let pos=report.pistons[actor].pos;
+                json!({"actor":actor,"pos":pos-BASE,
+                    "native_power":crate::redstone::piston::should_piston_extend(&native,
+                        report.pistons[actor].piston.facing,pos),
+                    "native":block_state(&native,pos,BASE),
+                    "direct":format!("{:?}",compiler.backend.as_ref().unwrap().geometry_state(pos)),
+                    "sources":report.recognition[actor].inputs.sources.iter().map(|source| {
+                        let source_pos=source.source;
+                        let block=native.get_block(source_pos);
+                        json!({"pos":source_pos-BASE,"kind":source.kind,
+                            "native_block":block.get_name(),"native_properties":block.properties(),
+                            "native_strength":crate::redstone::source_strength(block,&native,source_pos),
+                            "direct_node":format!("{:?}",compiler.backend.as_ref().unwrap().node_state(source_pos))})
+                    }).collect::<Vec<_>>()})
+            }).collect::<Vec<_>>(),
+            "direct_wire":block_state(&world,wire,BASE),
+            "direct_gate":format!("{:?}",compiler.backend.as_ref().unwrap().geometry_state(gate)),
+            "direct_node":format!("{:?}",compiler.backend.as_ref().unwrap().node_state(target)),
+            "direct_wire_node":format!("{:?}",compiler.backend.as_ref().unwrap().node_state(wire)),
+            "direct_activations":direct_activations,
+            "direct_port":compiler.backend.as_ref().unwrap().output_states(target),
+            "members":members.iter().map(|&pos| json!({"native":block_state(&native,pos,BASE),
+                "direct":format!("{:?}",compiler.backend.as_ref().unwrap().geometry_state(pos))})).collect::<Vec<_>>(),
+            "callbacks":callbacks})
+        );
+    }
+}
+
+#[test]
 #[ignore = "4,096-tick interpreted/compiled Potados counter equivalence"]
 fn potados_pc_counter_counts_up_with_and_without_optimization() {
+    use crate::redstone::instant_piston_tests::capture_at;
+
     let bytes = std::fs::read(root().join(FIXTURE)).unwrap();
     assert_eq!(
         format!("{:x}", Sha256::digest(bytes)),
@@ -465,6 +833,28 @@ fn potados_pc_counter_counts_up_with_and_without_optimization() {
             Default::default(),
         )
         .unwrap();
+    let diagnostic = crate::redpiler::analysis::analyze(
+        &world,
+        bounds,
+        &world.scheduler().iter_entries().collect::<Vec<_>>(),
+        &Default::default(),
+        Default::default(),
+    )
+    .unwrap();
+    let guard = BASE + BlockPos::new(12, 4, 63);
+    if let Some(actor) = diagnostic.pistons.iter().position(|piston| piston.pos == guard) {
+        eprintln!(
+            "guard actor={actor} recognition={:?} updates={:?} source_notifications={:?} compiled={:?}",
+            diagnostic.recognition[actor].inputs.sources,
+            diagnostic.ports.pistons[actor].updates,
+            diagnostic.recognition[actor].inputs.sources.iter().map(|source| (
+                source.source,
+                crate::redpiler::instant::sampling::data_notifies(&world, source.source, guard),
+                world.get_block(source.source).properties(),
+            )).collect::<Vec<_>>(),
+            compiler.backend.as_ref().unwrap().geometry_state(guard),
+        );
+    }
     world.clear_scheduled_ticks();
     let (initial_responses, initial_memory) = compiled_state(&compiler);
     assert!(
@@ -506,7 +896,11 @@ fn potados_pc_counter_counts_up_with_and_without_optimization() {
         );
     }
     for tick in 0..4096 {
-        let native_trace = trace::capture(|| native.tick_interpreted());
+        let mut guard_callbacks = Vec::new();
+        let guard_head = guard + BlockPos::new(0, -1, 0);
+        let native_trace = trace::capture(|| {
+            guard_callbacks = capture_at(&[guard, guard_head], || native.tick_interpreted());
+        });
         compiler.tick_with_world(&mut world);
         compiler.flush(&mut world);
         let current_bus = bus(&native);
@@ -551,6 +945,47 @@ fn potados_pc_counter_counts_up_with_and_without_optimization() {
                 compiler.backend.as_ref().unwrap().node_state(pos),
                 compiler.backend.as_ref().unwrap().output_states(pos),
             );
+            let watch = BASE + BlockPos::new(15, 9, 64);
+            let Block::RedstoneRepeater { repeater: watch_repeater } = native.get_block(watch) else { unreachable!() };
+            let watch_face = watch_repeater.facing.block_face();
+            let watch_input_pos = watch.offset(watch_face);
+            let watch_input = native.get_block(watch_input_pos);
+            let watch_power = crate::redstone::get_redstone_power(watch_input, &native, watch_input_pos, watch_face);
+            eprintln!("watch tick={} native={:?} input_pos={:?} input={} {:?} power={} direct={:?} port={:?} native_ticks={:?} direct_ticks={:?}",
+                tick + 1, watch_repeater, watch_input_pos - BASE, watch_input.get_name(), watch_input.properties(), watch_power,
+                compiler.backend.as_ref().unwrap().node_state(watch),
+                compiler.backend.as_ref().unwrap().output_states(watch),
+                native.scheduler().iter_entries().filter(|entry| entry.pos == watch).map(|entry| (entry.ticks_left, entry.tick_priority)).collect::<Vec<_>>(),
+                compiler.backend.as_ref().unwrap().scheduled_ticks().into_iter().filter(|entry| entry.pos == watch).map(|entry| (entry.ticks_left, entry.tick_priority)).collect::<Vec<_>>());
+            let watch_source = BASE + BlockPos::new(16, 10, 66);
+            let native_source = native.get_block(watch_source);
+            eprintln!("watch_source tick={} pos={:?} native={} {:?} strength={} direct={} {:?} node={:?}", tick + 1,
+                watch_source - BASE, native_source.get_name(), native_source.properties(),
+                crate::redstone::source_strength(native_source, &native, watch_source),
+                world.get_block(watch_source).get_name(), world.get_block(watch_source).properties(),
+                compiler.backend.as_ref().unwrap().node_state(watch_source));
+            if tick == 0 {
+                let nearby: Vec<_> = [watch_input_pos, watch_source]
+                    .into_iter()
+                    .flat_map(|center| [
+                        BlockPos::new(1, 0, 0), BlockPos::new(-1, 0, 0),
+                        BlockPos::new(0, 1, 0), BlockPos::new(0, -1, 0),
+                        BlockPos::new(0, 0, 1), BlockPos::new(0, 0, -1),
+                    ].into_iter().map(move |offset| center + offset))
+                    .collect();
+                let snapshot: Vec<_> = nearby.iter().copied()
+                    .map(|pos| (pos - BASE, native.get_block(pos).get_name(), native.get_block(pos).properties()))
+                    .collect();
+                eprintln!("watch_output_port={:?} snapshot={snapshot:?}",
+                    diagnostic.ports.outputs.iter().find(|output| output.consumer == watch));
+                eprintln!("direct_watch_nearby={:?}", nearby.iter().map(|&pos| {
+                    let block = world.get_block(pos);
+                    (pos - BASE, block.get_name(), block.properties(),
+                        crate::redstone::get_redstone_power(block, &world, pos, watch_face),
+                        compiler.backend.as_ref().unwrap().node_state(pos),
+                        compiler.backend.as_ref().unwrap().output_states(pos))
+                }).collect::<Vec<_>>());
+            }
             let gate = BASE + BlockPos::new(18, 10, 5);
             let Block::Piston { piston } = native.get_block(gate) else { unreachable!() };
             eprintln!("native_should_extend={}", crate::redstone::piston::should_piston_extend(&native, piston.facing, gate));
@@ -738,7 +1173,7 @@ fn potados_pc_counter_counts_up_with_and_without_optimization() {
                     .collect::<Vec<_>>()
             };
             eprintln!(
-                "first repeater divergence tick={} differences={:?} node_state={:?} incoming={:?} output_terms={:?} around={:?} pending native={:?} direct={:?} piston trace={:?} instant callbacks={:?}",
+                "first repeater divergence tick={} differences={:?} node_state={:?} incoming={:?} output_terms={:?} around={:?} pending native={:?} direct={:?} piston trace={:?} instant callbacks={:?} guard_native={:?} guard_direct={:?} guard_activations={:?} guard_callbacks={:?}",
                 tick + 1,
                 differences,
                 direct_node,
@@ -748,7 +1183,14 @@ fn potados_pc_counter_counts_up_with_and_without_optimization() {
                 nearby_ticks(&native_ticks),
                 nearby_ticks(&direct_ticks),
                 native_events,
-                deliveries.iter().take(20).map(|event| (event.source - BASE, event.actor, event.recipient - BASE, event.direction)).collect::<Vec<_>>()
+                deliveries.iter().take(20).map(|event| (event.source - BASE, event.actor, event.recipient - BASE, event.direction)).collect::<Vec<_>>(),
+                native_trace.iter().filter(|entry| match entry.operation {
+                    trace::Operation::Sample { pos, .. } => pos == guard,
+                    trace::Operation::Applied(event) => event.pos == guard,
+                }).map(|entry| (entry.phase, format!("{:?}", entry.operation))).collect::<Vec<_>>(),
+                compiler.backend.as_ref().unwrap().geometry_state(guard),
+                deliveries.iter().filter(|event| event.actor == 46).map(|event| (event.source - BASE, event.recipient - BASE, event.direction)).collect::<Vec<_>>(),
+                guard_callbacks,
             );
         }
         let current_memory = interpreted_state(&native, &initial_memory);

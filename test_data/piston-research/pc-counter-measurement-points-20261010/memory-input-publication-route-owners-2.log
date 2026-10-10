@@ -1,0 +1,15 @@
+warning: linker stdout: Trwa tworzenie biblioteki F:\rustrepos\MCHPRS\target\debug\deps\mchprs_proc_macros-da997f4567e3e19f.dll.lib i obiektu F:\rustrepos\MCHPRS\target\debug\deps\mchprs_proc_macros-da997f4567e3e19f.dll.exp
+  |
+  = note: `#[warn(linker_messages)]` on by default
+
+warning: `mchprs_proc_macros` (lib) generated 1 warning
+   Compiling mchprs_core v0.1.0 (F:\rustrepos\MCHPRS\crates\core)
+error: no rules expected `.`
+   --> crates\core\src\redpiler\analysis\tests\research\potados_counter.rs:603:58
+    |
+603 |         json!({"blocks":[target,wire,source,gate,payload].iter().map(|&pos| block_state(world,pos,BASE)).collect::<Vec<_>>(),
+    |                                                          ^ no rules expected this token in macro call
+    |
+    = note: while trying to match end of macro
+
+error: could not compile `mchprs_core` (lib test) due to 1 previous error

@@ -493,10 +493,27 @@ fn extract_with_options(
         .iter()
         .flat_map(|wire| &wire.deliveries)
         .map(|delivery| delivery.actor)
+        .chain(
+            activation
+                .sources
+                .iter()
+                .flat_map(|source| &source.deliveries)
+                .map(|delivery| delivery.actor),
+        )
+        .chain(
+            activation
+                .pose_deliveries
+                .values()
+                .flatten()
+                .map(|delivery| delivery.actor),
+        )
         .collect();
     activation
         .actors
         .retain(|actor| supported_actors.contains(actor));
+    extractor
+        .sources
+        .extend(activation.sources.iter().map(|source| source.pos));
     activation.pose_deliveries.retain(|_, deliveries| {
         deliveries.retain(|delivery| supported_actors.contains(&delivery.actor));
         !deliveries.is_empty()

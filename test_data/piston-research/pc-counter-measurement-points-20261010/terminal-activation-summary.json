@@ -1,0 +1,779 @@
+[
+  {
+    "callbacks": [],
+    "direct": {
+      "activation": false,
+      "actor": 323,
+      "block": "sticky_piston",
+      "extended": true,
+      "memory": false,
+      "phase": null,
+      "properties": {
+        "extended": "true",
+        "facing": "north",
+        "sticky": "true"
+      },
+      "response_retracted": false
+    },
+    "native": {
+      "entity": null,
+      "name": "sticky_piston",
+      "pos": {
+        "x": 18,
+        "y": 9,
+        "z": 68
+      },
+      "power": true,
+      "properties": {
+        "extended": "true",
+        "facing": "north",
+        "sticky": "true"
+      }
+    },
+    "origin": {
+      "x": 40,
+      "y": 30,
+      "z": 40
+    },
+    "pending_events": [],
+    "samples": [],
+    "stage": "initialization"
+  },
+  {
+    "callbacks": [
+      {
+        "action": 0,
+        "data": {
+          "block": "sticky_piston",
+          "dir": null,
+          "piston_power": true,
+          "pos": {
+            "x": 58,
+            "y": 39,
+            "z": 108
+          }
+        },
+        "depth": 0,
+        "kind": "callback",
+        "operation": 0,
+        "phase": "ScheduledTicks",
+        "tick": 2
+      },
+      {
+        "action": 0,
+        "data": {
+          "block": "piston_head",
+          "dir": null,
+          "piston_power": null,
+          "pos": {
+            "x": 58,
+            "y": 39,
+            "z": 107
+          }
+        },
+        "depth": 0,
+        "kind": "callback",
+        "operation": 0,
+        "phase": "ScheduledTicks",
+        "tick": 2
+      },
+      {
+        "action": 0,
+        "data": {
+          "block": "sticky_piston",
+          "dir": "Top",
+          "piston_power": true,
+          "pos": {
+            "x": 58,
+            "y": 39,
+            "z": 108
+          }
+        },
+        "depth": 0,
+        "kind": "callback",
+        "operation": 0,
+        "phase": "ScheduledTicks",
+        "tick": 2
+      }
+    ],
+    "direct": {
+      "activation": false,
+      "actor": 323,
+      "block": "sticky_piston",
+      "extended": false,
+      "memory": false,
+      "phase": null,
+      "properties": {
+        "extended": "false",
+        "facing": "north",
+        "sticky": "true"
+      },
+      "response_retracted": true
+    },
+    "direct_activations": [],
+    "inputs": [
+      {
+        "direct_input": 0,
+        "direct_powered": true,
+        "native_input": 0,
+        "native_powered": true,
+        "probe": "adder_out"
+      },
+      {
+        "direct_input": 0,
+        "direct_powered": true,
+        "native_input": 0,
+        "native_powered": true,
+        "probe": "adder_stage"
+      }
+    ],
+    "native": {
+      "entity": null,
+      "name": "sticky_piston",
+      "pos": {
+        "x": 18,
+        "y": 9,
+        "z": 68
+      },
+      "power": false,
+      "properties": {
+        "extended": "true",
+        "facing": "north",
+        "sticky": "true"
+      }
+    },
+    "pending_events": [],
+    "samples": [
+      {
+        "operation": {
+          "Sample": {
+            "extended": true,
+            "pos": {
+              "x": 58,
+              "y": 39,
+              "z": 108
+            },
+            "powered": true
+          }
+        },
+        "phase": "ScheduledTicks",
+        "tick": 2
+      },
+      {
+        "operation": {
+          "Sample": {
+            "extended": true,
+            "pos": {
+              "x": 58,
+              "y": 39,
+              "z": 108
+            },
+            "powered": true
+          }
+        },
+        "phase": "ScheduledTicks",
+        "tick": 2
+      },
+      {
+        "operation": {
+          "Sample": {
+            "extended": true,
+            "pos": {
+              "x": 58,
+              "y": 39,
+              "z": 108
+            },
+            "powered": true
+          }
+        },
+        "phase": "ScheduledTicks",
+        "tick": 2
+      }
+    ],
+    "stage": "replay",
+    "tick": 1
+  },
+  {
+    "callbacks": [],
+    "direct": {
+      "activation": false,
+      "actor": 323,
+      "block": "sticky_piston",
+      "extended": false,
+      "memory": false,
+      "phase": null,
+      "properties": {
+        "extended": "false",
+        "facing": "north",
+        "sticky": "true"
+      },
+      "response_retracted": true
+    },
+    "direct_activations": [],
+    "inputs": [
+      {
+        "direct_input": 0,
+        "direct_powered": true,
+        "native_input": 0,
+        "native_powered": true,
+        "probe": "adder_out"
+      },
+      {
+        "direct_input": 0,
+        "direct_powered": true,
+        "native_input": 0,
+        "native_powered": true,
+        "probe": "adder_stage"
+      }
+    ],
+    "native": {
+      "entity": null,
+      "name": "sticky_piston",
+      "pos": {
+        "x": 18,
+        "y": 9,
+        "z": 68
+      },
+      "power": false,
+      "properties": {
+        "extended": "true",
+        "facing": "north",
+        "sticky": "true"
+      }
+    },
+    "pending_events": [],
+    "samples": [],
+    "stage": "replay",
+    "tick": 2
+  },
+  {
+    "callbacks": [],
+    "direct": {
+      "activation": false,
+      "actor": 323,
+      "block": "sticky_piston",
+      "extended": false,
+      "memory": false,
+      "phase": null,
+      "properties": {
+        "extended": "false",
+        "facing": "north",
+        "sticky": "true"
+      },
+      "response_retracted": true
+    },
+    "direct_activations": [],
+    "inputs": [
+      {
+        "direct_input": 0,
+        "direct_powered": false,
+        "native_input": 0,
+        "native_powered": false,
+        "probe": "adder_out"
+      },
+      {
+        "direct_input": 0,
+        "direct_powered": false,
+        "native_input": 0,
+        "native_powered": false,
+        "probe": "adder_stage"
+      }
+    ],
+    "native": {
+      "entity": null,
+      "name": "sticky_piston",
+      "pos": {
+        "x": 18,
+        "y": 9,
+        "z": 68
+      },
+      "power": false,
+      "properties": {
+        "extended": "true",
+        "facing": "north",
+        "sticky": "true"
+      }
+    },
+    "pending_events": [],
+    "samples": [],
+    "stage": "replay",
+    "tick": 3
+  },
+  {
+    "callbacks": [],
+    "direct": {
+      "activation": false,
+      "actor": 323,
+      "block": "sticky_piston",
+      "extended": false,
+      "memory": false,
+      "phase": null,
+      "properties": {
+        "extended": "false",
+        "facing": "north",
+        "sticky": "true"
+      },
+      "response_retracted": true
+    },
+    "direct_activations": [],
+    "inputs": [
+      {
+        "direct_input": 0,
+        "direct_powered": false,
+        "native_input": 0,
+        "native_powered": false,
+        "probe": "adder_out"
+      },
+      {
+        "direct_input": 0,
+        "direct_powered": false,
+        "native_input": 0,
+        "native_powered": false,
+        "probe": "adder_stage"
+      }
+    ],
+    "native": {
+      "entity": null,
+      "name": "sticky_piston",
+      "pos": {
+        "x": 18,
+        "y": 9,
+        "z": 68
+      },
+      "power": false,
+      "properties": {
+        "extended": "true",
+        "facing": "north",
+        "sticky": "true"
+      }
+    },
+    "pending_events": [],
+    "samples": [],
+    "stage": "replay",
+    "tick": 4
+  },
+  {
+    "callbacks": [],
+    "direct": {
+      "activation": false,
+      "actor": 323,
+      "block": "sticky_piston",
+      "extended": false,
+      "memory": false,
+      "phase": null,
+      "properties": {
+        "extended": "false",
+        "facing": "north",
+        "sticky": "true"
+      },
+      "response_retracted": true
+    },
+    "direct_activations": [],
+    "inputs": [
+      {
+        "direct_input": 8,
+        "direct_powered": false,
+        "native_input": 0,
+        "native_powered": false,
+        "probe": "adder_out"
+      },
+      {
+        "direct_input": 0,
+        "direct_powered": false,
+        "native_input": 0,
+        "native_powered": false,
+        "probe": "adder_stage"
+      }
+    ],
+    "native": {
+      "entity": null,
+      "name": "sticky_piston",
+      "pos": {
+        "x": 18,
+        "y": 9,
+        "z": 68
+      },
+      "power": false,
+      "properties": {
+        "extended": "true",
+        "facing": "north",
+        "sticky": "true"
+      }
+    },
+    "pending_events": [],
+    "samples": [],
+    "stage": "replay",
+    "tick": 5
+  },
+  {
+    "callbacks": [],
+    "direct": {
+      "activation": false,
+      "actor": 323,
+      "block": "sticky_piston",
+      "extended": false,
+      "memory": false,
+      "phase": null,
+      "properties": {
+        "extended": "false",
+        "facing": "north",
+        "sticky": "true"
+      },
+      "response_retracted": true
+    },
+    "direct_activations": [],
+    "inputs": [
+      {
+        "direct_input": 8,
+        "direct_powered": false,
+        "native_input": 9,
+        "native_powered": false,
+        "probe": "adder_out"
+      },
+      {
+        "direct_input": 14,
+        "direct_powered": false,
+        "native_input": 14,
+        "native_powered": false,
+        "probe": "adder_stage"
+      }
+    ],
+    "native": {
+      "entity": null,
+      "name": "sticky_piston",
+      "pos": {
+        "x": 18,
+        "y": 9,
+        "z": 68
+      },
+      "power": false,
+      "properties": {
+        "extended": "true",
+        "facing": "north",
+        "sticky": "true"
+      }
+    },
+    "pending_events": [],
+    "samples": [],
+    "stage": "replay",
+    "tick": 6
+  },
+  {
+    "callbacks": [],
+    "direct": {
+      "activation": false,
+      "actor": 323,
+      "block": "sticky_piston",
+      "extended": false,
+      "memory": false,
+      "phase": null,
+      "properties": {
+        "extended": "false",
+        "facing": "north",
+        "sticky": "true"
+      },
+      "response_retracted": true
+    },
+    "direct_activations": [],
+    "inputs": [
+      {
+        "direct_input": 8,
+        "direct_powered": true,
+        "native_input": 8,
+        "native_powered": false,
+        "probe": "adder_out"
+      },
+      {
+        "direct_input": 0,
+        "direct_powered": false,
+        "native_input": 0,
+        "native_powered": false,
+        "probe": "adder_stage"
+      }
+    ],
+    "native": {
+      "entity": null,
+      "name": "sticky_piston",
+      "pos": {
+        "x": 18,
+        "y": 9,
+        "z": 68
+      },
+      "power": false,
+      "properties": {
+        "extended": "true",
+        "facing": "north",
+        "sticky": "true"
+      }
+    },
+    "pending_events": [],
+    "samples": [],
+    "stage": "replay",
+    "tick": 7
+  },
+  {
+    "callbacks": [],
+    "direct": {
+      "activation": false,
+      "actor": 323,
+      "block": "sticky_piston",
+      "extended": false,
+      "memory": false,
+      "phase": null,
+      "properties": {
+        "extended": "false",
+        "facing": "north",
+        "sticky": "true"
+      },
+      "response_retracted": true
+    },
+    "direct_activations": [],
+    "inputs": [
+      {
+        "direct_input": 8,
+        "direct_powered": true,
+        "native_input": 8,
+        "native_powered": true,
+        "probe": "adder_out"
+      },
+      {
+        "direct_input": 0,
+        "direct_powered": true,
+        "native_input": 0,
+        "native_powered": true,
+        "probe": "adder_stage"
+      }
+    ],
+    "native": {
+      "entity": null,
+      "name": "sticky_piston",
+      "pos": {
+        "x": 18,
+        "y": 9,
+        "z": 68
+      },
+      "power": false,
+      "properties": {
+        "extended": "true",
+        "facing": "north",
+        "sticky": "true"
+      }
+    },
+    "pending_events": [],
+    "samples": [],
+    "stage": "replay",
+    "tick": 8
+  },
+  {
+    "callbacks": [],
+    "direct": {
+      "activation": false,
+      "actor": 323,
+      "block": "sticky_piston",
+      "extended": false,
+      "memory": false,
+      "phase": null,
+      "properties": {
+        "extended": "false",
+        "facing": "north",
+        "sticky": "true"
+      },
+      "response_retracted": true
+    },
+    "direct_activations": [],
+    "inputs": [
+      {
+        "direct_input": 8,
+        "direct_powered": true,
+        "native_input": 8,
+        "native_powered": true,
+        "probe": "adder_out"
+      },
+      {
+        "direct_input": 0,
+        "direct_powered": true,
+        "native_input": 0,
+        "native_powered": true,
+        "probe": "adder_stage"
+      }
+    ],
+    "native": {
+      "entity": null,
+      "name": "sticky_piston",
+      "pos": {
+        "x": 18,
+        "y": 9,
+        "z": 68
+      },
+      "power": false,
+      "properties": {
+        "extended": "true",
+        "facing": "north",
+        "sticky": "true"
+      }
+    },
+    "pending_events": [],
+    "samples": [],
+    "stage": "replay",
+    "tick": 9
+  },
+  {
+    "callbacks": [],
+    "direct": {
+      "activation": false,
+      "actor": 323,
+      "block": "sticky_piston",
+      "extended": false,
+      "memory": false,
+      "phase": null,
+      "properties": {
+        "extended": "false",
+        "facing": "north",
+        "sticky": "true"
+      },
+      "response_retracted": true
+    },
+    "direct_activations": [],
+    "inputs": [
+      {
+        "direct_input": 0,
+        "direct_powered": true,
+        "native_input": 8,
+        "native_powered": true,
+        "probe": "adder_out"
+      },
+      {
+        "direct_input": 0,
+        "direct_powered": false,
+        "native_input": 0,
+        "native_powered": false,
+        "probe": "adder_stage"
+      }
+    ],
+    "native": {
+      "entity": null,
+      "name": "sticky_piston",
+      "pos": {
+        "x": 18,
+        "y": 9,
+        "z": 68
+      },
+      "power": false,
+      "properties": {
+        "extended": "true",
+        "facing": "north",
+        "sticky": "true"
+      }
+    },
+    "pending_events": [],
+    "samples": [],
+    "stage": "replay",
+    "tick": 10
+  },
+  {
+    "callbacks": [],
+    "direct": {
+      "activation": false,
+      "actor": 323,
+      "block": "sticky_piston",
+      "extended": false,
+      "memory": false,
+      "phase": null,
+      "properties": {
+        "extended": "false",
+        "facing": "north",
+        "sticky": "true"
+      },
+      "response_retracted": true
+    },
+    "direct_activations": [],
+    "inputs": [
+      {
+        "direct_input": 8,
+        "direct_powered": true,
+        "native_input": 8,
+        "native_powered": true,
+        "probe": "adder_out"
+      },
+      {
+        "direct_input": 0,
+        "direct_powered": false,
+        "native_input": 0,
+        "native_powered": false,
+        "probe": "adder_stage"
+      }
+    ],
+    "native": {
+      "entity": null,
+      "name": "sticky_piston",
+      "pos": {
+        "x": 18,
+        "y": 9,
+        "z": 68
+      },
+      "power": false,
+      "properties": {
+        "extended": "true",
+        "facing": "north",
+        "sticky": "true"
+      }
+    },
+    "pending_events": [],
+    "samples": [],
+    "stage": "replay",
+    "tick": 11
+  },
+  {
+    "callbacks": [],
+    "direct": {
+      "activation": false,
+      "actor": 323,
+      "block": "sticky_piston",
+      "extended": false,
+      "memory": false,
+      "phase": null,
+      "properties": {
+        "extended": "false",
+        "facing": "north",
+        "sticky": "true"
+      },
+      "response_retracted": true
+    },
+    "direct_activations": [],
+    "inputs": [
+      {
+        "direct_input": 8,
+        "direct_powered": true,
+        "native_input": 9,
+        "native_powered": true,
+        "probe": "adder_out"
+      },
+      {
+        "direct_input": 14,
+        "direct_powered": false,
+        "native_input": 14,
+        "native_powered": false,
+        "probe": "adder_stage"
+      }
+    ],
+    "native": {
+      "entity": null,
+      "name": "sticky_piston",
+      "pos": {
+        "x": 18,
+        "y": 9,
+        "z": 68
+      },
+      "power": false,
+      "properties": {
+        "extended": "true",
+        "facing": "north",
+        "sticky": "true"
+      }
+    },
+    "pending_events": [],
+    "samples": [],
+    "stage": "replay",
+    "tick": 12
+  }
+]

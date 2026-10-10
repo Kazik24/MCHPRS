@@ -1,0 +1,24 @@
+warning: linker stdout: Trwa tworzenie biblioteki F:\rustrepos\MCHPRS\target\debug\deps\mchprs_proc_macros-da997f4567e3e19f.dll.lib i obiektu F:\rustrepos\MCHPRS\target\debug\deps\mchprs_proc_macros-da997f4567e3e19f.dll.exp
+  |
+  = note: `#[warn(linker_messages)]` on by default
+
+warning: `mchprs_proc_macros` (lib) generated 1 warning
+   Compiling mchprs_core v0.1.0 (F:\rustrepos\MCHPRS\crates\core)
+    Finished `test` profile [optimized + debuginfo] target(s) in 34.30s
+     Running unittests src\lib.rs (target\debug\deps\mchprs_core-b3d3daf02e36dae8.exe)
+
+running 1 test
+
+thread 'redpiler::analysis::tests::research::notification_routes::unnotified_qc_falling_edge_preserves_committed_piston_pose' (2860) panicked at crates\core\src\redpiler\analysis\tests\research\notification_routes.rs:53:5:
+QC data edge must not sample the piston: [Entry { tick: 0, phase: BetweenTicks, operation: Sample { pos: BlockPos { x: 40, y: 30, z: 40 }, extended: true, powered: false } }]
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+test redpiler::analysis::tests::research::notification_routes::unnotified_qc_falling_edge_preserves_committed_piston_pose ... FAILED
+
+failures:
+
+failures:
+    redpiler::analysis::tests::research::notification_routes::unnotified_qc_falling_edge_preserves_committed_piston_pose
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 695 filtered out; finished in 0.01s
+
+error: test failed, to rerun pass `-p mchprs_core --lib`

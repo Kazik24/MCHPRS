@@ -1,0 +1,31 @@
+warning: linker stdout: Trwa tworzenie biblioteki F:\rustrepos\MCHPRS\target\debug\deps\mchprs_proc_macros-da997f4567e3e19f.dll.lib i obiektu F:\rustrepos\MCHPRS\target\debug\deps\mchprs_proc_macros-da997f4567e3e19f.dll.exp
+  |
+  = note: `#[warn(linker_messages)]` on by default
+
+warning: `mchprs_proc_macros` (lib) generated 1 warning
+   Compiling mchprs_core v0.1.0 (F:\rustrepos\MCHPRS\crates\core)
+    Finished `test` profile [optimized + debuginfo] target(s) in 15.44s
+     Running unittests src\lib.rs (target\debug\deps\mchprs_core-b3d3daf02e36dae8.exe)
+
+running 1 test
+response pos=BlockPos { x: 40, y: 30, z: 40 } root=3 decisions=[(3, Decision { variable: Signal { pos: BlockPos { x: 41, y: 31, z: 40 }, threshold: 0, order: 0 }, low: 2, high: 0 }, None), (2, Decision { variable: Signal { pos: BlockPos { x: 39, y: 30, z: 40 }, threshold: 0, order: 1 }, low: 1, high: 0 }, None)]
+tick=1 native_extended=true native_power=false direct=(0, true, false, false, None, Piston { piston: RedstonePiston { facing: South, sticky: true, extended: false } })
+tick=2 native_extended=true native_power=false direct=(0, true, false, false, None, Piston { piston: RedstonePiston { facing: South, sticky: true, extended: false } })
+tick=3 native_extended=true native_power=false direct=(0, true, false, false, None, Piston { piston: RedstonePiston { facing: South, sticky: true, extended: false } })
+tick=4 native_extended=true native_power=false direct=(0, true, false, false, None, Piston { piston: RedstonePiston { facing: South, sticky: true, extended: false } })
+tick=5 native_extended=true native_power=false direct=(0, true, false, false, None, Piston { piston: RedstonePiston { facing: South, sticky: true, extended: false } })
+tick=6 native_extended=true native_power=false direct=(0, true, false, false, None, Piston { piston: RedstonePiston { facing: South, sticky: true, extended: false } })
+
+thread 'redpiler::analysis::tests::research::notification_routes::unnotified_qc_falling_edge_preserves_committed_piston_pose' (31848) panicked at crates\core\src\redpiler\analysis\tests\research\notification_routes.rs:77:5:
+assertion failed: matches!(native.get_block(BASE), Block::Piston { piston } if !piston.extended)
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+test redpiler::analysis::tests::research::notification_routes::unnotified_qc_falling_edge_preserves_committed_piston_pose ... FAILED
+
+failures:
+
+failures:
+    redpiler::analysis::tests::research::notification_routes::unnotified_qc_falling_edge_preserves_committed_piston_pose
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 695 filtered out; finished in 0.01s
+
+error: test failed, to rerun pass `-p mchprs_core --lib`

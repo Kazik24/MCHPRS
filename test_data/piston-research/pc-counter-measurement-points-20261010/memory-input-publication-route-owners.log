@@ -1,0 +1,53 @@
+warning: linker stdout: Trwa tworzenie biblioteki F:\rustrepos\MCHPRS\target\debug\deps\mchprs_proc_macros-da997f4567e3e19f.dll.lib i obiektu F:\rustrepos\MCHPRS\target\debug\deps\mchprs_proc_macros-da997f4567e3e19f.dll.exp
+  |
+  = note: `#[warn(linker_messages)]` on by default
+
+warning: `mchprs_proc_macros` (lib) generated 1 warning
+   Compiling mchprs_core v0.1.0 (F:\rustrepos\MCHPRS\crates\core)
+error[E0502]: cannot borrow `watched` as mutable because it is also borrowed as immutable
+   --> crates\core\src\redpiler\analysis\tests\research\potados_counter.rs:613:9
+    |
+597 |     let snapshot = |world: &PlotWorld| {
+    |                    ------------------- immutable borrow occurs here
+...
+603 |         json!({"blocks":watched.iter().map(|&pos| block_state(world,pos,BASE)).collect::<Vec<_>>(),
+    |                         ------- first borrow occurs due to use of `watched` in closure
+...
+613 |         watched.extend([report.pistons[actor].pos, report.pistons[actor].head]);
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ mutable borrow occurs here
+...
+630 |     eprintln!("{}", json!({"tick":0,"origin":BASE,"native":snapshot(&native),
+    |                                                            -------- immutable borrow later used here
+
+error[E0502]: cannot borrow `watched` as mutable because it is also borrowed as immutable
+   --> crates\core\src\redpiler\analysis\tests\research\potados_counter.rs:615:5
+    |
+597 |     let snapshot = |world: &PlotWorld| {
+    |                    ------------------- immutable borrow occurs here
+...
+603 |         json!({"blocks":watched.iter().map(|&pos| block_state(world,pos,BASE)).collect::<Vec<_>>(),
+    |                         ------- first borrow occurs due to use of `watched` in closure
+...
+615 |     watched.sort_by_key(|pos| (pos.y,pos.z,pos.x));
+    |     ^^^^^^^ mutable borrow occurs here
+...
+630 |     eprintln!("{}", json!({"tick":0,"origin":BASE,"native":snapshot(&native),
+    |                                                            -------- immutable borrow later used here
+
+error[E0502]: cannot borrow `watched` as mutable because it is also borrowed as immutable
+   --> crates\core\src\redpiler\analysis\tests\research\potados_counter.rs:616:5
+    |
+597 |     let snapshot = |world: &PlotWorld| {
+    |                    ------------------- immutable borrow occurs here
+...
+603 |         json!({"blocks":watched.iter().map(|&pos| block_state(world,pos,BASE)).collect::<Vec<_>>(),
+    |                         ------- first borrow occurs due to use of `watched` in closure
+...
+616 |     watched.dedup();
+    |     ^^^^^^^^^^^^^^^ mutable borrow occurs here
+...
+630 |     eprintln!("{}", json!({"tick":0,"origin":BASE,"native":snapshot(&native),
+    |                                                            -------- immutable borrow later used here
+
+For more information about this error, try `rustc --explain E0502`.
+error: could not compile `mchprs_core` (lib test) due to 3 previous errors

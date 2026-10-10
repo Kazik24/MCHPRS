@@ -103,6 +103,8 @@ pub(super) struct RedstoneWireTurbo {
     spatial: spatial::SpatialNodes,
     node_cache: FxHashMap<BlockPos, NodeId>,
     update_queue: Vec<Vec<NodeId>>,
+    #[cfg(test)]
+    notification_sources: Vec<Vec<BlockPos>>,
     current_walk_layer: u32,
 }
 
@@ -125,6 +127,8 @@ impl RedstoneWireTurbo {
             spatial: Default::default(),
             node_cache: FxHashMap::default(),
             update_queue: vec![vec![], vec![], vec![]],
+            #[cfg(test)]
+            notification_sources: vec![vec![], vec![], vec![]],
             current_walk_layer: 0,
         }
     }
@@ -300,11 +304,17 @@ impl RedstoneWireTurbo {
         for queue in &mut turbo.update_queue {
             queue.clear();
         }
+        #[cfg(test)]
+        for sources in &mut turbo.notification_sources {
+            sources.clear();
+        }
         turbo.current_walk_layer = 0;
         SCRATCH.with(|scratch| *scratch.borrow_mut() = Some(turbo));
     }
 
     fn propagate_changes(&mut self, world: &mut impl World, upd1: NodeId, layer: u32) {
+        #[cfg(test)]
+        let source = self.nodes[upd1.index()].pos;
         if self.nodes[upd1.index()].neighbors.is_none() {
             self.identify_neighbors(world, upd1);
         }
@@ -318,6 +328,8 @@ impl RedstoneWireTurbo {
             if layer1 > neighbor.layer {
                 neighbor.layer = layer1;
                 if neighbor.facts.updates {
+                    #[cfg(test)]
+                    { self.notification_sources[1].push(source); }
                     self.update_queue[1].push(neighbor_id);
                 }
             }
@@ -330,6 +342,8 @@ impl RedstoneWireTurbo {
             if layer2 > neighbor.layer {
                 neighbor.layer = layer2;
                 if neighbor.facts.updates {
+                    #[cfg(test)]
+                    { self.notification_sources[2].push(source); }
                     self.update_queue[2].push(*neighbor_id);
                 }
             }
@@ -356,7 +370,13 @@ impl RedstoneWireTurbo {
                     // This only works because updating any other block than a wire will
                     // never change the state of the block. If that changes in the future,
                     // the cached state will need to be updated
-                    block => redstone::update(block, world, self.nodes[node_id.index()].pos, None),
+                    block => {
+                        #[cfg(test)]
+                        let _source = crate::redstone::instant_piston_tests::notification_source(
+                            Some(self.notification_sources[0][index]),
+                        );
+                        redstone::update(block, world, self.nodes[node_id.index()].pos, None)
+                    },
                 }
             }
 
@@ -368,6 +388,12 @@ impl RedstoneWireTurbo {
     }
 
     fn shift_queue(&mut self) {
+        #[cfg(test)]
+        {
+            let mut sources = self.notification_sources.remove(0);
+            sources.clear();
+            self.notification_sources.push(sources);
+        }
         let mut t = self.update_queue.remove(0);
         t.clear();
         self.update_queue.push(t);

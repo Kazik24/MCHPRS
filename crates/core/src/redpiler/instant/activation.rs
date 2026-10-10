@@ -24,10 +24,16 @@ pub(crate) struct Wire {
     pub deliveries: Vec<Delivery>,
 }
 
+pub(crate) struct Source {
+    pub pos: BlockPos,
+    pub deliveries: Vec<Delivery>,
+}
+
 #[derive(Default)]
 pub(crate) struct Activation {
     pub actors: FxHashSet<usize>,
     pub wires: Vec<Wire>,
+    pub sources: Vec<Source>,
     pub pose_deliveries: FxHashMap<BlockPos, Vec<Delivery>>,
 }
 
@@ -73,6 +79,50 @@ pub(crate) fn recognize(
     let mut result = Activation::default();
     let mut wires = FxHashMap::default();
     for (actor, piston) in report.pistons.iter().enumerate() {
+        let mut notifying_sources = Vec::new();
+        let mut has_unnotified_source = false;
+        let has_self_payload = report.recognition[actor]
+            .inputs
+            .sources
+            .iter()
+            .any(|source| matches!(source.kind, SourceKind::MobilePayload { group } if group == groups[actor]));
+        for source in &report.recognition[actor].inputs.sources {
+            if resets.contains(&source.source) || source.kind == SourceKind::Constant {
+                continue;
+            }
+            if super::sampling::data_notifies(world, source.source, piston.pos) {
+                if matches!(
+                    source.kind,
+                    SourceKind::Ordinary | SourceKind::Observer | SourceKind::MobilePayload { .. }
+                ) {
+                    notifying_sources.push(source.source);
+                }
+            } else if !matches!(source.kind, SourceKind::MobilePayload { group } if group == groups[actor]) {
+                has_unnotified_source = true;
+            }
+        }
+        notifying_sources.sort_by_key(|pos| (pos.y, pos.z, pos.x));
+        notifying_sources.dedup();
+        if !notifying_sources.is_empty() || has_self_payload && has_unnotified_source {
+            result.actors.insert(actor);
+            for source in notifying_sources {
+                let delivery = Delivery {
+                    source,
+                    actor,
+                    recipient: piston.pos,
+                    direction: None,
+                    requires_extended: false,
+                };
+                if let Some(trigger) = result.sources.iter_mut().find(|t| t.pos == source) {
+                    trigger.deliveries.push(delivery);
+                } else {
+                    result.sources.push(Source {
+                        pos: source,
+                        deliveries: vec![delivery],
+                    });
+                }
+            }
+        }
         if !resets.iter().any(|&pos| matches!(world.get_block(pos), mchprs_blocks::blocks::Block::Observer { observer } if pos.offset(observer.facing.into()) == piston.pos))
             || !feedback[&piston.pos].iter().any(|&source| !super::sampling::data_notifies(world, source, piston.pos)) {
             continue;

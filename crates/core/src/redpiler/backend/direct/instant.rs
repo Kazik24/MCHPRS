@@ -30,6 +30,7 @@ pub(super) struct Runtime {
     memory_geometry: FxHashMap<BlockPos, Observation>,
     geometry_index: FxHashMap<BlockPos, (Observation, bool)>,
     sampling: Vec<SamplingEvent>,
+    activation_sources: Vec<ActivationSource>,
     activation_wires: Vec<ActivationWire>,
     activations: VecDeque<crate::redpiler::instant::activation::Delivery>,
     deferred_sources: bool,
@@ -58,6 +59,12 @@ enum Observation {
 
 struct ActivationWire {
     terms: Vec<(usize, Term)>,
+    previous: u8,
+    deliveries: Vec<crate::redpiler::instant::activation::Delivery>,
+}
+
+struct ActivationSource {
+    node: NodeId,
     previous: u8,
     deliveries: Vec<crate::redpiler::instant::activation::Delivery>,
 }
@@ -402,6 +409,13 @@ impl Runtime {
             .iter()
             .flat_map(|output| output.terms.iter().filter_map(|term| term.source))
             .collect();
+        output_sources.extend(
+            program
+                .activation
+                .sources
+                .iter()
+                .filter_map(|source| sources.get(&source.pos).copied()),
+        );
         let mut memory_actors = vec![false; program.logic.responses.len()];
         for cell in program
             .clocked
@@ -522,6 +536,21 @@ impl Runtime {
                 deliveries: wire.deliveries.clone(),
             });
         }
+        let activation_sources = program
+            .activation
+            .sources
+            .iter()
+            .map(|source| {
+                let node = *sources
+                    .get(&source.pos)
+                    .ok_or(BackendError::MissingInstantBinding { pos: source.pos })?;
+                Ok(ActivationSource {
+                    node,
+                    previous: nodes[node].output_power,
+                    deliveries: source.deliveries.clone(),
+                })
+            })
+            .collect::<Result<Vec<_>, BackendError>>()?;
         let logical = Some(logical::State::bind(
             &decisions,
             program.logic.responses.clone(),
@@ -700,6 +729,7 @@ impl Runtime {
             actor_groups,
             memory_actors,
             sampling,
+            activation_sources,
             activation_wires,
             activations: VecDeque::new(),
             deferred_sources: false,
@@ -1095,6 +1125,12 @@ impl Runtime {
         state
             .sampling
             .capture_dirty(|input, threshold| self.read_input(input, threshold, nodes));
+        for source in &mut self.activation_sources {
+            let strength = nodes[source.node].output_power;
+            if std::mem::replace(&mut source.previous, strength) != strength {
+                self.activations.extend(source.deliveries.iter().copied());
+            }
+        }
         for wire in &mut self.activation_wires {
             let strength = wire
                 .terms

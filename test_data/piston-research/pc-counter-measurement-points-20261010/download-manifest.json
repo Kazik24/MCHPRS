@@ -1,0 +1,14 @@
+{
+  "schema_version": 1,
+  "source_host": "urmom",
+  "source_directory": "/srv/mchprs/data/schems",
+  "verified_utc": "2026-10-10T11:42:38.026180Z",
+  "files": [
+    {
+      "name": "PC_COUNTER_MESURMENT_POINTS.schem",
+      "bytes": 4885,
+      "sha256": "0749f1b8d5e52e13f62323d42aa194b5d1440f48fcc679aaf687eaa67d5e078b",
+      "modified_utc": "2026-10-10T11:42:10.410389+00:00"
+    }
+  ]
+}

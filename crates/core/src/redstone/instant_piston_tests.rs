@@ -26,15 +26,36 @@ struct Recorder {
     depth: usize,
     action: usize,
     operation: usize,
+    parents: Vec<BlockPos>,
+    source: Option<BlockPos>,
 }
 
-pub(crate) struct CallbackGuard(bool);
+pub(crate) struct NotificationGuard(Option<BlockPos>);
+impl Drop for NotificationGuard {
+    fn drop(&mut self) {
+        RECORDER.with(|r| {
+            if let Some(r) = r.borrow_mut().as_mut() {
+                r.source = self.0;
+            }
+        });
+    }
+}
+pub(crate) fn notification_source(pos: Option<BlockPos>) -> NotificationGuard {
+    NotificationGuard(RECORDER.with(|r| {
+        r.borrow_mut().as_mut().and_then(|r| std::mem::replace(&mut r.source, pos))
+    }))
+}
+
+pub(crate) struct CallbackGuard(bool, bool);
 impl Drop for CallbackGuard {
     fn drop(&mut self) {
-        if self.0 {
+        if self.1 {
             RECORDER.with(|r| {
                 if let Some(r) = r.borrow_mut().as_mut() {
-                    r.depth -= 1;
+                    r.parents.pop();
+                    if self.0 {
+                        r.depth -= 1;
+                    }
                 }
             });
         }
@@ -46,23 +67,26 @@ pub(crate) fn callback(
     pos: BlockPos,
     dir: Option<BlockFace>,
 ) -> CallbackGuard {
-    let active = RECORDER.with(|r| {
-        r.borrow().as_ref().is_some_and(|r| {
-            r.positions
-                .as_ref()
-                .is_none_or(|positions| positions.contains(&pos))
+    let (active, parents) = RECORDER.with(|r| {
+        r.borrow().as_ref().map_or((false, None), |r| {
+            (r.positions.as_ref().is_none_or(|positions| positions.contains(&pos)),
+                Some(r.parents.clone()))
         })
     });
     if active {
+        let source = RECORDER.with(|r| r.borrow().as_ref().unwrap().source);
         record_operation(
             world,
             "callback",
-            json!({"pos":pos,"block":block.get_name(),"dir":dir,
+            json!({"pos":pos,"block":block.get_name(),"dir":dir,"parents":parents,"source":source,
             "piston_power": match block { Block::Piston { piston } => Some(super::piston::should_piston_extend(world,piston.facing,pos)), _ => None }}),
         );
         RECORDER.with(|r| r.borrow_mut().as_mut().unwrap().depth += 1);
     }
-    CallbackGuard(active)
+    if parents.is_some() {
+        RECORDER.with(|r| r.borrow_mut().as_mut().unwrap().parents.push(pos));
+    }
+    CallbackGuard(active, parents.is_some())
 }
 pub(crate) fn record_event(world: &impl World, kind: &str, event: PistonEvent) {
     record_operation(world, kind, json!(event));

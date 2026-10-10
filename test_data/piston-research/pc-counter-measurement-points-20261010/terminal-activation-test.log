@@ -1,0 +1,51 @@
+warning: linker stdout: Trwa tworzenie biblioteki F:\rustrepos\MCHPRS\target\debug\deps\mchprs_proc_macros-da997f4567e3e19f.dll.lib i obiektu F:\rustrepos\MCHPRS\target\debug\deps\mchprs_proc_macros-da997f4567e3e19f.dll.exp
+  |
+  = note: `#[warn(linker_messages)]` on by default
+
+warning: `mchprs_proc_macros` (lib) generated 1 warning
+   Compiling mchprs_core v0.1.0 (F:\rustrepos\MCHPRS\crates\core)
+error[E0277]: the trait bound `Delivery: serde::Serialize` is not satisfied
+   --> crates\core\src\redpiler\analysis\tests\research\potados_counter.rs:569:13
+    |
+569 | /             json!({"stage":"replay","tick":tick,
+570 | |             "native":block_state(&native,terminal,BASE),"direct":direct,
+571 | |             "samples":terminal_samples(samples),"callbacks":callbacks,
+572 | |             "direct_activations":compiler.backend.as_mut().unwrap().take_activation_trace(),
+573 | |             "pending_events":native.piston_state().events,"inputs":inputs})
+    | |                                                                           ^
+    | |                                                                           |
+    | |___________________________________________________________________________unsatisfied trait bound
+    |                                                                             required by a bound introduced by this call
+    |
+help: the trait `chat::_::_serde::Serialize` is not implemented for `Delivery`
+   --> crates\core\src\redpiler\instant\activation.rs:12:1
+    |
+ 12 | pub(crate) struct Delivery {
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^
+    = note: for local types consider adding `#[derive(serde::Serialize)]` to your `Delivery` type
+    = note: for types from other crates check whether the crate offers a `serde` feature flag
+    = help: the following other types implement trait `chat::_::_serde::Serialize`:
+              &'a T
+              &'a mut T
+              ()
+              (T,)
+              (T0, T1)
+              (T0, T1, T2)
+              (T0, T1, T2, T3)
+              (T0, T1, T2, T3, T4)
+            and 228 others
+    = note: required for `Vec<Delivery>` to implement `chat::_::_serde::Serialize`
+    = note: 1 redundant requirement hidden
+    = note: required for `&Vec<Delivery>` to implement `chat::_::_serde::Serialize`
+note: required by a bound in `serde_json::to_value`
+   --> C:\Users\Maciej\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde_json-1.0.96\src\value\mod.rs:942:8
+    |
+940 | pub fn to_value<T>(value: T) -> Result<Value, Error>
+    |        -------- required by a bound in this function
+941 | where
+942 |     T: Serialize,
+    |        ^^^^^^^^^ required by this bound in `to_value`
+    = note: this error originates in the macro `json_internal` which comes from the expansion of the macro `json` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+For more information about this error, try `rustc --explain E0277`.
+error: could not compile `mchprs_core` (lib test) due to 1 previous error
