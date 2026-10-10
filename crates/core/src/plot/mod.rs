@@ -1784,7 +1784,13 @@ impl Plot {
             }
             let (plot_x, plot_z) = player.pos.plot_pos();
             if plot_x != self.world.x || plot_z != self.world.z {
-                outside_players.push(player.uuid);
+                if player.should_transfer_plot(
+                    (self.world.x, self.world.z),
+                    (plot_x, plot_z),
+                    player.pos,
+                ) {
+                    outside_players.push(player.uuid);
+                }
             }
         }
 

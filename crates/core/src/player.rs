@@ -2,8 +2,8 @@ use crate::chat::{ChatComponent, ColorCode};
 use crate::config::CONFIG;
 use crate::messages;
 use crate::permissions::{self, PlayerPermissionsCache, Rank};
-use crate::plot::PLOT_SCALE;
 use crate::plot::worldedit::{WorldEditClipboard, WorldEditUndo};
+use crate::plot::{PLOT_BLOCK_WIDTH, PLOT_SCALE};
 use crate::utils::HyphenatedUUID;
 use mchprs_blocks::block_entities::{ContainerType, InventoryEntry};
 use mchprs_blocks::items::{Item, ItemStack};
@@ -242,6 +242,7 @@ pub struct Player {
     pub entity_id: EntityId,
     pub client: PlayerConn,
     teleport_state: client_sync::TeleportState,
+    last_plot_transition: Option<((i32, i32), (i32, i32))>,
     /// The last time the keep alive packet was received.
     pub last_keep_alive_received: Instant,
     /// The last time the keep alive packet was sent.
@@ -429,6 +430,7 @@ impl Player {
             entity_id: allocate_entity_id(),
             client,
             teleport_state: Default::default(),
+            last_plot_transition: None,
             flying: player_data.flying,
             sprinting: false,
             crouching: false,
@@ -663,9 +665,38 @@ impl Player {
             return;
         }
 
+        self.last_plot_transition = None;
         self.pos = pos;
         let id = self.teleport_state.begin(Instant::now());
         self.send_position_sync(id);
+    }
+
+    pub(crate) fn should_transfer_plot(
+        &mut self,
+        from: (i32, i32),
+        to: (i32, i32),
+        pos: PlayerPos,
+    ) -> bool {
+        let crossed_back = |from, to, position| {
+            let width = f64::from(PLOT_BLOCK_WIDTH);
+            if from > to {
+                position <= f64::from(to + 1) * width - 1.0
+            } else if from < to {
+                position >= f64::from(to) * width + 1.0
+            } else {
+                true
+            }
+        };
+        if self
+            .last_plot_transition
+            .is_some_and(|(last_from, last_to)| last_from == to && last_to == from)
+        {
+            if !crossed_back(from.0, to.0, pos.x) || !crossed_back(from.1, to.1, pos.z) {
+                return false;
+            }
+        }
+        self.last_plot_transition = Some((from, to));
+        true
     }
 
     fn send_position_sync(&self, id: i32) {
