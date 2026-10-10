@@ -1,4 +1,0 @@
-    Blocking waiting for file lock on build directory
-   Compiling mchprs_core v0.1.0 (F:\rustrepos\MCHPRS\crates\core)
-    Checking mroww v0.4.1 (F:\rustrepos\MCHPRS)
-    Finished `dev` profile [optimized + debuginfo] target(s) in 37.64s

@@ -113,6 +113,11 @@ def summarize(capture):
             analyses.append(attempt)
             continue
         report = attempt["report"]
+        if "recognition" not in report:
+            analyses.append(dict(budget=attempt["budget"], elapsed_ms=attempt["elapsed_ms"],
+                                inspected_cells=report["inspected_cells"], nonair_blocks=report["nonair_blocks"],
+                                pistons=len(report["pistons"]), admission_issues=len(report["issues"])))
+            continue
         failures = Counter()
         examples = {}
         for recognition in report["recognition"]:

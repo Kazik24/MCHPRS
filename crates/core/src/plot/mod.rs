@@ -1462,11 +1462,6 @@ impl Plot {
                     elapsed_ms = started.elapsed().as_millis(),
                     "Redpiler completed"
                 );
-                for warning in self.redpiler.warnings() {
-                    for player in &self.players {
-                        player.send_system_message(&format!("Redpiler warning: {warning}"));
-                    }
-                }
                 if let Some(stats) = self.redpiler.stats() {
                     for line in stats.summary_lines() {
                         for player in &self.players {

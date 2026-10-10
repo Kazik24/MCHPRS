@@ -6,9 +6,6 @@ use std::time::Instant;
 
 mod notification_routes;
 
-#[path = "research/fpu_divider.rs"]
-mod fpu_divider;
-
 #[path = "../../../../benches/support/cpus.rs"]
 #[allow(dead_code)]
 mod cpus;
@@ -141,16 +138,6 @@ fn bubblesort_import_preserves_full_memory_and_button_protocol() {
     assert!(world.pending_tick_at(pos));
     advance(&mut world, 20);
     assert!(matches!(world.get_block(pos), Block::StoneButton { button } if !button.powered));
-    // A second cell of margin contains all potential notification positions.
-    let mut relocated = fixture;
-    relocated["origin"] = json!([2, 8, 2]);
-    let (world, _) = load(&relocated);
-    let report = analyze_world(&world);
-    assert!(report
-        .ports
-        .pistons
-        .iter()
-        .all(|p| p.outside_bounds.is_empty()));
 }
 
 fn memory_pos(address: u8, bit: u8) -> BlockPos {

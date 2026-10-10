@@ -1,5 +1,5 @@
 //! Compile world blocks into an electrical graph, then execute it with the direct
-//! backend. Piston regions require the interpreter.
+//! backend. Piston builds require the interpreter.
 
 pub mod analysis;
 pub(crate) mod backend;
@@ -36,7 +36,7 @@ impl std::fmt::Display for CompileError {
             Self::AlreadyActive => f.write_str("reset the active compiler before recompiling"),
             Self::Analysis(error) => error.fmt(f),
             Self::Unsupported(report) if !report.pistons.is_empty() => {
-                f.write_str("build contains pistion, pistions are not supported")
+                f.write_str("build contains pistons, which require the interpreter")
             }
             Self::Unsupported(report) => {
                 write!(f, "{}", report.summary())?;
@@ -205,7 +205,6 @@ pub struct CompileStatistics {
     pub graph: GraphStatistics,
     pub backend_nodes: usize,
     pub analysis_duration: Duration,
-    pub preparation_duration: Duration,
     pub backend_duration: Duration,
     pub total_duration: Duration,
 }
@@ -214,8 +213,8 @@ impl CompileStatistics {
     pub fn summary_lines(&self) -> Vec<String> {
         let ms = |duration: Duration| duration.as_secs_f64() * 1000.0;
         let mut lines = vec![format!(
-            "Compile: {:.3} ms total; analysis {:.3}, preparation {:.3}, graph {:.3}, backend {:.3} ms; {} backend nodes",
-            ms(self.total_duration), ms(self.analysis_duration), ms(self.preparation_duration),
+            "Compile: {:.3} ms total; analysis {:.3}, graph {:.3}, backend {:.3} ms; {} backend nodes",
+            ms(self.total_duration), ms(self.analysis_duration),
             ms(self.graph.duration), ms(self.backend_duration), self.backend_nodes,
         )];
         lines.extend(self.graph.summary_lines().into_iter().take(2));
@@ -227,7 +226,6 @@ impl CompileStatistics {
 pub struct Compiler {
     backend: Option<Runtime>,
     options: CompilerOptions,
-    warnings: Vec<String>,
     statistics: Option<CompileStatistics>,
 }
 
@@ -242,9 +240,6 @@ impl Compiler {
         self.statistics.as_ref()
     }
 
-    pub fn warnings(&self) -> &[String] {
-        &self.warnings
-    }
     pub fn is_active(&self) -> bool {
         self.backend.is_some()
     }
@@ -270,11 +265,10 @@ impl Compiler {
         if self.is_active() {
             return Err(CompileError::AlreadyActive);
         }
-        self.warnings.clear();
         monitor.clear_graph_statistics();
         monitor.set_budget_multiplier(options.budget_multiplier);
         let analysis_start = Instant::now();
-        let report = analysis::analyze_for_compile(
+        let report = analysis::analyze(
             world,
             bounds,
             &ticks,
@@ -303,7 +297,6 @@ impl Compiler {
         let (graph, native) =
             passes::prepare(&options, &input, &monitor, true).map_err(CompileError::Graph)?;
         let graph_statistics = monitor.graph_statistics();
-        let preparation_duration = Duration::ZERO;
         if monitor.cancelled() {
             return Err(CompileError::Cancelled);
         }
@@ -337,7 +330,6 @@ impl Compiler {
             graph: graph_statistics,
             backend_nodes: backend.node_count(),
             analysis_duration,
-            preparation_duration,
             backend_duration,
             total_duration: start.elapsed(),
         };
@@ -350,7 +342,6 @@ impl Compiler {
     }
 
     pub fn reset<W: World>(&mut self, world: &mut W, bounds: (BlockPos, BlockPos)) {
-        self.warnings.clear();
         if let Some(mut backend) = self.backend.take() {
             backend.reset(world, self.options.io_only);
         }
@@ -443,7 +434,7 @@ mod tests {
                     assert!(matches!(error, CompileError::Unsupported(_)));
                     assert_eq!(
                         error.to_string(),
-                        "build contains pistion, pistions are not supported"
+                        "build contains pistons, which require the interpreter"
                     );
                     assert!(!compiler.is_active());
                     assert!(compiler.stats().is_none());

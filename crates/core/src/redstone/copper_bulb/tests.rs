@@ -463,7 +463,7 @@ fn copper_bulb_save_load_retains_states() {
 }
 
 #[test]
-fn copper_bulbs_move_physically_and_are_not_admitted_as_inert_compiled_payloads() {
+fn copper_bulbs_move_physically_under_the_interpreter() {
     use mchprs_blocks::blocks::RedstonePiston;
     let mut world = world();
     let piston = BULB.offset(BlockFace::West);
@@ -488,5 +488,4 @@ fn copper_bulbs_move_physically_and_are_not_admitted_as_inert_compiled_payloads(
         world.tick_interpreted();
     }
     assert_eq!(world.get_block(BULB.offset(BlockFace::East)), bulb);
-    assert!(!crate::redpiler::analysis::supported_payload(bulb));
 }

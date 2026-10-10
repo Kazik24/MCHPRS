@@ -3,25 +3,24 @@
 Redpiler has no textual circuit-language parser. Its input is a live world:
 block positions and states, block entities, and scheduled ticks. Command flags
 are parsed by `CompilerOptions`; spatial analysis inventories the selected
-world and prepares an electrical graph.
+world and prepares an ordinary electrical graph.
 
 ## Analysis and compile admission
 
 [`analysis::analyze`](../crates/core/src/redpiler/analysis/mod.rs) reads the
 selected bounds, checks resource limits and loaded chunks, and inventories
-blocks, pending work, and piston geometry. This analysis is read-only: it does
+blocks, pending work, and piston positions. This analysis is read-only: it does
 not move blocks, consume scheduled ticks, or transfer world ownership.
 
-Pistons are recorded for diagnostics. If any piston is present,
-[`Compiler::compile`](../crates/core/src/redpiler/mod.rs) rejects the build
-before graph preparation with `build contains pistion, pistions are not
-supported`. The compile error points to a piston in the selection. The
-interpreter remains responsible for piston execution.
+Piston positions are recorded for admission and highlighting. If any piston is
+present, [`Compiler::compile`](../crates/core/src/redpiler/mod.rs) rejects the
+build before graph preparation; the command highlights the first piston in the
+selection. The interpreter remains responsible for piston execution.
 
-Analysis limits include inspected cells, piston inventory, and dependency
-steps. Exceeding a limit or cancelling analysis returns an error rather than a
-partial compile. `AnalysisReport` and `CandidateGraph` are diagnostic results;
-neither is an executable backend.
+Analysis limits include inspected cells and piston inventory. Exceeding a limit
+or cancelling analysis returns an error rather than a partial compile.
+`AnalysisReport` and `CandidateGraph` are diagnostic results; neither is an
+executable backend.
 
 ## Ordinary electrical graph
 

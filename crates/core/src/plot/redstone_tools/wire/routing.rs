@@ -2,7 +2,7 @@
 //! power is never evidence that a source, consumer or update channel is harmless.
 use crate::interaction;
 use crate::plot::PlotWorld;
-use crate::redpiler::analysis::ports::{consumer_roots, ConsumerInput};
+use crate::redstone::power::{consumer_roots, ConsumerInput};
 use crate::redstone::{self, power, wire};
 use crate::world::{storage::Chunk, World};
 use mchprs_blocks::block_entities::BlockEntity;

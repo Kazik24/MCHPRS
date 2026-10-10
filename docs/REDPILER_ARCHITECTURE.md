@@ -23,8 +23,8 @@ for details.
 
 [`Compiler::compile`](../crates/core/src/redpiler/mod.rs) first performs
 read-only analysis over the selection. It stops immediately if the analysis
-finds a piston. The compile error is `build contains pistion, pistions are not
-supported`; the command highlights the first piston in the selection. No
+finds a piston. The compile error says pistons require the interpreter; the
+command highlights the first piston in the selection. No
 backend is activated and scheduled work stays with the interpreter.
 
 For piston-free selections, graph preparation identifies nodes, searches
@@ -37,8 +37,8 @@ remaining scheduled work to the interpreter.
 Read-only [`/rp analyze`](../crates/core/src/plot/commands.rs) reports the
 selection and checks whether it can compile without transferring world
 ownership. `--graph` prepares a diagnostic candidate only; it cannot be
-executed. Analysis may inventory piston geometry for diagnostics, but no
-analysis path creates an executable piston program.
+executed. Analysis records piston positions only for admission and rejection
+highlighting.
 
 ## Commands and options
 

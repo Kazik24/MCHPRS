@@ -489,8 +489,6 @@ impl Plot {
                                 "Candidate graph: {} ordinary nodes, {} electrical links; execution remains disabled",
                                 summary.ordinary_nodes, summary.electrical_links,
                             ));
-                            self.players[player]
-                                .send_system_message(&candidate.report.recognition_summary());
                             for line in monitor.graph_statistics().summary_lines() {
                                 self.players[player].send_system_message(&line);
                             }
@@ -511,9 +509,6 @@ impl Plot {
                 ) {
                     Ok(report) => {
                         self.players[player].send_system_message(&report.summary());
-                        if !report.pistons.is_empty() {
-                            self.players[player].send_system_message(&report.recognition_summary());
-                        }
                         debug!(report = %serde_json::to_string(&report).unwrap(), "Redpiler analysis");
                         // Stage the same backend as compile, then drop it without
                         // activating it or transferring any interpreter work.

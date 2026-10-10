@@ -39,12 +39,12 @@ interpreter.
 ## Piston behavior and scope
 
 `Compiler::compile` rejects any selection containing a piston before graph
-preparation. The command reports `build contains pistion, pistions are not
-supported` and identifies the piston in the build error. Piston heads, moving
+preparation. The command reports that pistons require the interpreter and
+identifies the piston in the build error. Piston heads, moving
 pistons, and piston timing remain part of the physical interpreter model.
-Read-only analysis can inventory piston geometry and explain admission issues,
-but it does not produce an executable piston representation.
+Read-only analysis records piston positions for admission and rejection
+highlighting; it does not analyze piston behavior.
 
-The compiler supports ordinary electrical graph execution only. No piston
-response functions, region composition, sampled piston memory, or instant
-execution mode are part of the runtime contract.
+The compiler supports ordinary electrical graph execution only. Piston
+response functions, region composition, and sampled piston memory are outside
+the runtime contract.

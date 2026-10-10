@@ -493,7 +493,6 @@ fn main() -> Result<()> {
                 },
             })
         }));
-        sample["warnings"] = json!(compiler.as_ref().map_or(&[][..], Compiler::warnings));
         println!("{}", serde_json::to_string(&sample)?);
         samples.push(sample);
     }

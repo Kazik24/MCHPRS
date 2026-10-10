@@ -181,7 +181,6 @@ fn capture_anpu_bud_reference_to_new_file() {
 fn anpu_cannot_bypass_compiled_graph_admission() {
     use crate::redpiler::analysis::{self, AnalysisLimits};
     use crate::redpiler::{Compiler, CompilerOptions};
-    use std::collections::BTreeMap;
 
     let world = cpus::load_cpu(cpus::CPUS[1]);
     let before = cpus::checkpoint(&world, 0, &[]);
@@ -194,25 +193,12 @@ fn anpu_cannot_bypass_compiled_graph_admission() {
         AnalysisLimits::for_budget(8),
     )
     .unwrap();
-    let mut unsupported = BTreeMap::<_, usize>::new();
-    for actor in &report.recognition {
-        for failure in &actor.failures {
-            if let analysis::families::RecognitionFailure::UnsupportedPayload { block, .. } =
-                failure
-            {
-                *unsupported.entry(block).or_default() += 1;
-            }
-        }
-    }
     println!(
         "ANPU live inventory: {}",
         serde_json::json!({
-            "pistons": report.pistons.len(), "observers": report.observers.len(),
-            "ordinary": report.pistons.iter().filter(|p| !p.piston.sticky).count(),
-            "retracted": report.pistons.iter().filter(|p| !p.piston.extended).count(),
-            "matched_reset_mechanisms": report.recognition.iter().filter(|r| r.is_matched()).count(),
-            "payload_groups": report.payload_groups.len(), "unsupported_payloads": unsupported,
-            "inspected_cells": report.inspected_cells, "dependency_steps": report.dependency_steps,
+            "pistons": report.pistons.len(),
+            "inspected_cells": report.inspected_cells,
+            "admission_issues": report.issues.len(),
         })
     );
     for budget_multiplier in [1, 2, 4, 8] {
