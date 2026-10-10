@@ -1448,7 +1448,7 @@ fn declared_command_nodes() -> Vec<Node<'static>> {
         Node::argument("mode", Parser::String(0), &[]).executable(),
         Node::redirect("bisdon_anim", 87).executable(),
         // 90–99: /help and its topic suggestions
-        Node::literal("help", &[91, 92, 93, 94, 95, 96, 97, 98, 99, 178]).executable(),
+        Node::literal("help", &[91, 92, 93, 94, 95, 96, 97, 98, 99, 186]).executable(),
         Node::argument("topic", Parser::String(0), &[]).executable(),
         Node::literal("plots", &[]).executable(),
         Node::literal("tps", &[]).executable(),
@@ -1585,9 +1585,17 @@ fn declared_command_nodes() -> Vec<Node<'static>> {
         Node::literal("cat", &[]).executable(),
         Node::literal("ocelot", &[]).executable(),
         Node::literal("baby", &[]).executable(),
-        // 176-179: unified visual settings and legacy command spellings.
-        Node::literal("visual", &[177]).executable(),
-        Node::argument("settings", Parser::String(2), &[]).executable(),
+        // 176-186: visual settings and their tab-completion options.
+        Node::literal("visual", &[177, 181, 183]).executable(),
+        Node::literal("pistons", &[178, 179, 180]).executable(),
+        Node::literal("auto", &[]).executable(),
+        Node::literal("on", &[]).executable(),
+        Node::literal("off", &[]).executable(),
+        Node::literal("rate", &[182]).executable(),
+        Node::argument("hertz", Parser::Integer(0, 1000), &[]).executable(),
+        Node::literal("displayonly", &[184, 185]).executable(),
+        Node::literal("on", &[]).executable(),
+        Node::literal("off", &[]).executable(),
         Node::literal("visual", &[]).executable(),
     ]
 }
