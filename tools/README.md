@@ -2,7 +2,7 @@
 
 Start with [interpreter verification](../docs/INTERPRETER_ARCHITECTURE.md#8-verification-and-reproduction)
 for physical checks and replay observations, or
-[compiler verification](../docs/REDPILER_ARCHITECTURE.md#9-commands-limits-and-verification)
+[compiler verification](../scraps/docs/REDPILER_ARCHITECTURE.md#9-commands-limits-and-verification)
 for Redpiler checks and admission limits.
 
 | Tools | Purpose |

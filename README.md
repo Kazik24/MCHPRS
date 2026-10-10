@@ -110,7 +110,7 @@ are operations in the interpreter, not fixed fractions of elapsed time.
 
 `/rp analyze` reports circuit structure; `/rp compile` starts admitted compiled
 execution and `/rp reset` hands it back to the interpreter. Read
-[redpiler architecture](docs/REDPILER_ARCHITECTURE.md) for flags and lifecycle contracts.
+[redpiler architecture](scraps/docs/REDPILER_ARCHITECTURE.md) for flags and lifecycle contracts.
 `/rhistory` and `/back` record and restore interpreter state.
 Plot Git saves build versions, branches, and comparisons.
 

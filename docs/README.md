@@ -15,10 +15,10 @@ graph rewrites:
 | [Redstone model](REDSTONE_MODEL.md) | Spatial signal algebra, component transitions, dust propagation, and scheduled work. |
 | [Piston model](PISTON_MODEL.md) | Physical transport, validation, ownership, BUD transactions and instant causality; shares Redstone state and scheduling. |
 | [Interpreter architecture](INTERPRETER_ARCHITECTURE.md) | Physical execution domain, ordered callbacks, scheduling, dust and piston caches, and optimization benefits. |
-| [Redpiler architecture](REDPILER_ARCHITECTURE.md) | Compilation lifecycle, ordinary graph preparation, backends, and handoff. |
-| [Redpiler parser](REDPILER_PARSER.md) | Selection inventory, admission, and ordinary graph preparation. |
-| [Redpiler optimizer](REDPILER_OPTIMIZER.md) | Actual pass order, rewrite rules, and correctness conditions. |
-| [Redpiler model](REDPILER_MODEL.md) | Region contract, graph transitions, memory, restricted activation, electrical boundaries and handoff. |
+| [Redpiler architecture](../scraps/docs/REDPILER_ARCHITECTURE.md) | Compilation lifecycle, ordinary graph preparation, backends, and handoff. |
+| [Redpiler parser](../scraps/docs/REDPILER_PARSER.md) | Selection inventory, admission, and ordinary graph preparation. |
+| [Redpiler optimizer](../scraps/docs/REDPILER_OPTIMIZER.md) | Actual pass order, rewrite rules, and correctness conditions. |
+| [Redpiler model](../scraps/docs/REDPILER_MODEL.md) | Region contract, graph transitions, memory, restricted activation, electrical boundaries and handoff. |
 | [Interpreter verification](INTERPRETER_ARCHITECTURE.md#8-verification-and-reproduction) | Physical checks, frozen replay observations and reproduction commands. |
 
 Each rule has one owner: Redstone defines shared electrical/state/time rules;
@@ -47,7 +47,7 @@ for arbitrary circuits. Put fixture setup and reproduction commands under
 `test_data/`. Keep derived inspections and traces in their ignored output paths.
 
 Implementation plans and dated investigations belong in `docs/notes/`.
-The [general activation proposal](notes/NOTIFICATION_GATED_RESPONSES.md) describes
+The [general activation proposal](../scraps/docs/notes/NOTIFICATION_GATED_RESPONSES.md) describes
 obligations beyond the restricted activation path in the active model.
 Existing machine-readable provenance is evidence about its recorded revision,
 not a description of the current runtime.

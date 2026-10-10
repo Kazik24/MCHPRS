@@ -9,7 +9,7 @@ This document describes the current Rust implementation, its execution domain,
 performance optimizations, and their measured benefits. The source is the
 authority. Detailed transition rules are in the
 [redstone model](REDSTONE_MODEL.md) and [piston model](PISTON_MODEL.md);
-[Redpiler architecture](REDPILER_ARCHITECTURE.md) describes compiled execution.
+[Redpiler architecture](../scraps/docs/REDPILER_ARCHITECTURE.md) describes compiled execution.
 Benchmark numbers below describe measured workloads; gains depend on circuit
 activity and do not prove general Minecraft compatibility.
 
@@ -287,7 +287,7 @@ Fine stepping, save/load, history restoration, and compiler reset must preserve
 pending work and partial phase state. Rendering choices can project piston
 animation or screen updates differently while physical motion continues.
 The compiler handoff contract is described in
-[Redpiler architecture](REDPILER_ARCHITECTURE.md#compile-lifecycle).
+[Redpiler architecture](../scraps/docs/REDPILER_ARCHITECTURE.md#compile-lifecycle).
 
 Before changing a hot path, identify whether its data is an immutable address,
 an immutable registry fact, a per-walk snapshot, or live electrical state.

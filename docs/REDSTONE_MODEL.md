@@ -2,7 +2,7 @@
 
 This document specifies the electrical and scheduling semantics implemented by MCHPRS. Its rules apply to arbitrary supported geometry and ordered input histories; schematic names, saved coordinates and particular output traces are not semantic inputs. The implementation is authoritative when it changes.
 
-The scope is `PlotWorld::tick_interpreted` and its immediate callbacks. [PISTON_MODEL.md](PISTON_MODEL.md) adds piston transport, quasi-connectivity, BUD storage and instant ordering to the same transition system. [REDPILER_MODEL.md](REDPILER_MODEL.md) defines the compiler abstraction; [REDPILER_ARCHITECTURE.md](REDPILER_ARCHITECTURE.md) maps it to the implementation. Physical checks and replay observations are indexed in [interpreter verification](INTERPRETER_ARCHITECTURE.md#8-verification-and-reproduction).
+The scope is `PlotWorld::tick_interpreted` and its immediate callbacks. [PISTON_MODEL.md](PISTON_MODEL.md) adds piston transport, quasi-connectivity, BUD storage and instant ordering to the same transition system. [REDPILER_MODEL.md](../scraps/docs/REDPILER_MODEL.md) defines the compiler abstraction; [REDPILER_ARCHITECTURE.md](../scraps/docs/REDPILER_ARCHITECTURE.md) maps it to the implementation. Physical checks and replay observations are indexed in [interpreter verification](INTERPRETER_ARCHITECTURE.md#8-verification-and-reproduction).
 
 All equations describe repository behavior. They are not an exhaustive specification of every Minecraft mechanic. A derived equilibrium or Boolean formula states its assumptions explicitly and does not replace the ordered callback procedures.
 
@@ -290,7 +290,7 @@ Directional emission, dust shape and occupancy determine the guards.
 
 This is an electrical projection, not a replacement for notification or
 scheduling. Comparator overrides and side eligibility still use section 10.
-The [compiled model](REDPILER_MODEL.md) describes the piston-free electrical
+The [compiled model](../scraps/docs/REDPILER_MODEL.md) describes the piston-free electrical
 graph abstraction; the physical interpreter continues to evaluate these
 guards and sources for all supported input histories.
 
@@ -1376,7 +1376,7 @@ Piston transport limits are specified in [the piston model](PISTON_MODEL.md#31-f
 
 Redpiler's optimized graph can merge or remove nodes. Equality of ordinary lamp outputs alone does not establish equality of observer callbacks, transient dust states, analog overrides, piston motions, or pending-request traces. Compiled execution needs a separate equivalence argument for the selected observables.
 
-Piston event values, retained storage and electrical boundary strengths need separate decoders. An internal falling event does not impose inverted polarity on every ordinary consumer. The [Redpiler model](REDPILER_MODEL.md) describes the supported piston-free graph abstraction; [Redpiler architecture](REDPILER_ARCHITECTURE.md) documents piston rejection and ordinary graph execution. Compiler admission does not alter the physical rules specified here.
+Piston event values, retained storage and electrical boundary strengths need separate decoders. An internal falling event does not impose inverted polarity on every ordinary consumer. The [Redpiler model](../scraps/docs/REDPILER_MODEL.md) describes the supported piston-free graph abstraction; [Redpiler architecture](../scraps/docs/REDPILER_ARCHITECTURE.md) documents piston rejection and ordinary graph execution. Compiler admission does not alter the physical rules specified here.
 
 ### 16.5 Implementation distinctions to preserve
 
