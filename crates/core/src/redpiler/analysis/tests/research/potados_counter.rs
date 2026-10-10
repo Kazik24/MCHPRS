@@ -807,6 +807,51 @@ fn pc_counter_memory_input_publication_route() {
 }
 
 #[test]
+#[ignore = "counter payload activation handoff is not equivalent yet"]
+fn pc_counter_payload_activation_handoff_matches_interpreter() {
+    let receiver = BASE + BlockPos::new(5, 6, 64);
+    let repeater = BASE + BlockPos::new(15, 9, 64);
+    let input = repeater.offset(BlockFace::South);
+    let mut mismatches = Vec::new();
+    for optimize in [false, true] {
+        let (mut native, bounds) = load_counter();
+        turn_on_all_levers(&mut native, bounds);
+        let (mut world, _) = load_counter();
+        turn_on_all_levers(&mut world, bounds);
+        let mut compiler = Compiler::default();
+        compiler.compile(&world, world.get_corners(), CompilerOptions {
+            optimize,
+            ..Default::default()
+        }, world.scheduler().iter_entries().collect(), Default::default()).unwrap();
+        world.clear_scheduled_ticks();
+        for tick in 1..=6 {
+            let native_events = trace::capture(|| native.tick_interpreted());
+            compiler.tick_with_world(&mut world);
+            compiler.flush(&mut world);
+            if tick == 1 {
+                assert!(native_events.iter().any(|entry| matches!(entry.operation,
+                    trace::Operation::Applied(event) if event.pos == receiver
+                        && event.action == mchprs_world::PistonAction::Retract)),
+                    "native control must accept receiver retraction");
+                let direct = compiler.backend.as_ref().unwrap().geometry_state(receiver).unwrap();
+                if !direct.1 {
+                    mismatches.push(format!("optimize={optimize} tick=1 receiver did not retract"));
+                }
+            }
+            let expected = crate::redstone::get_redstone_power(native.get_block(input),
+                &native, input, BlockFace::South);
+            assert_eq!(expected, u8::from(tick == 6), "native input tick={tick}");
+            let actual = compiler.backend.as_ref().unwrap().node_state(repeater).unwrap().3
+                .iter().rposition(|&count| count != 0).unwrap_or(0) as u8;
+            if actual != expected {
+                mismatches.push(format!("optimize={optimize} tick={tick} input={actual} expected={expected}"));
+            }
+        }
+    }
+    assert!(mismatches.is_empty(), "{}", mismatches.join("\n"));
+}
+
+#[test]
 #[ignore = "4,096-tick interpreted/compiled Potados counter equivalence"]
 fn potados_pc_counter_counts_up_with_and_without_optimization() {
     use crate::redstone::instant_piston_tests::capture_at;

@@ -408,6 +408,9 @@ impl RedstoneWireTurbo {
 
         let new_wire = self.calculate_current_changes(world, upd1);
         if old_wire.power != new_wire.power {
+            #[cfg(test)]
+            crate::redstone::instant_piston_tests::record_operation(world, "wire_strength",
+                serde_json::json!({"pos":self.nodes[upd1.index()].pos,"old":old_wire.power,"new":new_wire.power}));
             wire_mut(&mut self.nodes[upd1.index()].state).power = new_wire.power;
 
             self.propagate_changes(world, upd1, layer);

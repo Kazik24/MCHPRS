@@ -457,6 +457,8 @@ fn shape_changed(world: &mut impl World, pos: BlockPos) {
 }
 
 pub(crate) fn notify(world: &mut impl World, pos: BlockPos) {
+    #[cfg(test)]
+    let _source = super::instant_piston_tests::notification_source(Some(pos));
     shape_changed(world, pos);
     for face in NEIGHBORS {
         let neighbor = pos.offset(face);
