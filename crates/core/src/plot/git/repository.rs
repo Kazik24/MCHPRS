@@ -317,9 +317,16 @@ impl Repository {
         let own = self.root.join(format!("p{},{}", self.plot.0, self.plot.1));
         let mut total = 0u64;
         for entry in std::fs::read_dir(&self.root)? {
-            let path = entry?.path();
+            let entry = entry?;
+            let path = entry.path();
             if path == own {
                 continue;
+            }
+            match std::fs::metadata(&path) {
+                Ok(meta) if meta.is_dir() => {}
+                Ok(_) => continue,
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => continue,
+                Err(e) => return Err(e.into()),
             }
             match std::fs::metadata(path.join("repository.sqlite")) {
                 Ok(meta) => total = total.saturating_add(meta.len()),
