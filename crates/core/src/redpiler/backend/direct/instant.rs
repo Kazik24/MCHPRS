@@ -137,6 +137,106 @@ impl Runtime {
     }
 
     #[cfg(test)]
+    pub(super) fn geometry_state(
+        &self,
+        pos: BlockPos,
+    ) -> Option<(usize, bool, bool, bool, Option<&'static str>, Block)> {
+        let &(observation, _) = self.geometry_index.get(&pos)?;
+        let actor = match observation {
+            Observation::Base(actor) | Observation::Near(actor) | Observation::Far(actor) => actor,
+        };
+        let mut pending = vec![self.program.logic.responses[actor]];
+        let mut seen = FxHashSet::default();
+        let mut decisions = Vec::new();
+        while let Some(root) = pending.pop() {
+            if !seen.insert(root) {
+                continue;
+            }
+            if let Some(decision) = self.program.logic.arena.decision(root) {
+                if let Variable::Actuator(dependency) = decision.variable {
+                    pending.push(self.program.logic.responses[dependency]);
+                }
+                decisions.push((root, decision, match decision.variable {
+                    Variable::Actuator(dependency) => Some((self.program.pistons[dependency].pos, self.fired[dependency])),
+                    _ => None,
+                }));
+                pending.extend([decision.low, decision.high]);
+            }
+        }
+        if self.elapsed <= 1 {
+            eprintln!("response pos={:?} root={} decisions={:?}", pos,
+                self.program.logic.responses[actor], decisions);
+        }
+        let phase = self.boundary_index[actor].map(|index| match self.boundaries[index].phase {
+            timing::Phase::Extended => "extended",
+            timing::Phase::Retracting => "retracting",
+            timing::Phase::Retracted => "retracted",
+            timing::Phase::Extending => "extending",
+        });
+        Some((
+            actor,
+            self.fired[actor],
+            self.program.activation.actors.contains(&actor),
+            self.memory_actors[actor],
+            phase,
+            self.observed_block(observation),
+        ))
+    }
+
+    #[cfg(test)]
+    pub(super) fn output_states(
+        &self,
+        consumer: BlockPos,
+        nodes: &Nodes,
+    ) -> Option<Vec<String>> {
+        let mut result = Vec::new();
+        for (port_index, port) in self.program.logic.outputs.iter().enumerate() {
+            for (term_index, term) in port.terms.iter().enumerate() {
+                if port.consumer != consumer {
+                    continue;
+                }
+                let geometry_guard =
+                    self.program
+                        .logic
+                        .arena
+                        .evaluate(term.guard, |variable| match variable {
+                            Variable::Geometry { actor, part } => self.geometry(actor, part),
+                            _ => unreachable!("output guards depend only on compiled geometry"),
+                        });
+                let runtime_term = &self.outputs[port_index].terms[term_index];
+                let source_power = runtime_term
+                    .source
+                    .map_or(15, |source| nodes[source].output_power);
+                let mut dependencies = Vec::new();
+                let mut pending = vec![term.guard];
+                let mut seen = FxHashSet::default();
+                while let Some(root) = pending.pop() {
+                    if !seen.insert(root) {
+                        continue;
+                    }
+                    if let Some(decision) = self.program.logic.arena.decision(root) {
+                        if let Variable::Geometry { actor, part } = decision.variable {
+                            dependencies.push((
+                                self.program.pistons[actor].pos,
+                                part,
+                                self.geometry(actor, part),
+                                self.fired[actor],
+                            ));
+                        }
+                        pending.extend([decision.low, decision.high]);
+                    }
+                }
+                result.push(format!(
+                    "source={:?} power={} attenuation={} guard={} output={} dependencies={:?}",
+                    term.source, source_power, term.attenuation, geometry_guard,
+                    nodes[self.outputs[port_index].node].output_power, dependencies
+                ));
+            }
+        }
+        (!result.is_empty()).then_some(result)
+    }
+
+    #[cfg(test)]
     pub(super) fn take_activation_trace(
         &mut self,
     ) -> Vec<crate::redpiler::instant::activation::Delivery> {

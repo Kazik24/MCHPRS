@@ -58,6 +58,82 @@ fn bus(world: &PlotWorld) -> String {
         .collect()
 }
 
+fn repeater_states(world: &PlotWorld, bounds: (BlockPos, BlockPos)) -> Vec<(BlockPos, bool, bool)> {
+    (bounds.0.y..=bounds.1.y)
+        .flat_map(|y| {
+            (bounds.0.z..=bounds.1.z)
+                .flat_map(move |z| (bounds.0.x..=bounds.1.x).map(move |x| BlockPos::new(x, y, z)))
+        })
+        .filter_map(|pos| match world.get_block(pos) {
+            Block::RedstoneRepeater { repeater } => {
+                Some((pos - BASE, repeater.powered, repeater.locked))
+            }
+            _ => None,
+        })
+        .collect()
+}
+
+fn ordinary_sources(world: &PlotWorld, bounds: (BlockPos, BlockPos)) -> Vec<(BlockPos, u8)> {
+    (bounds.0.y..=bounds.1.y)
+        .flat_map(|y| {
+            (bounds.0.z..=bounds.1.z)
+                .flat_map(move |z| (bounds.0.x..=bounds.1.x).map(move |x| BlockPos::new(x, y, z)))
+        })
+        .filter_map(|pos| {
+            let block = world.get_block(pos);
+            matches!(
+                block,
+                Block::RedstoneTorch { .. }
+                    | Block::RedstoneWallTorch { .. }
+                    | Block::RedstoneRepeater { .. }
+                    | Block::RedstoneComparator { .. }
+            )
+            .then_some((pos, crate::redstone::source_strength(block, world, pos)))
+        })
+        .collect()
+}
+
+fn scheduler_delta(
+    native: &[mchprs_world::TickEntry],
+    direct: &[mchprs_world::TickEntry],
+    native_world: &PlotWorld,
+    direct_world: &PlotWorld,
+) -> (Vec<Value>, Vec<Value>) {
+    let mut unmatched_direct = direct.to_vec();
+    let mut native_only = Vec::new();
+    for tick in native {
+        if let Some(index) = unmatched_direct.iter().position(|other| other == tick) {
+            unmatched_direct.remove(index);
+        } else {
+            native_only.push(json!({
+                "pos": tick.pos - BASE,
+                "ticks_left": tick.ticks_left,
+                "priority": tick.tick_priority,
+                "block": native_world.get_block(tick.pos).get_name(),
+                "properties": native_world.get_block(tick.pos).properties(),
+                "watched_pos": tick.pos + BlockPos::new(0, -1, 0),
+                "watched_block": native_world.get_block(tick.pos + BlockPos::new(0, -1, 0)).get_name(),
+                "watched_properties": native_world.get_block(tick.pos + BlockPos::new(0, -1, 0)).properties(),
+                "direct_watched_block": direct_world.get_block(tick.pos + BlockPos::new(0, -1, 0)).get_name(),
+                "direct_watched_properties": direct_world.get_block(tick.pos + BlockPos::new(0, -1, 0)).properties(),
+            }));
+        }
+    }
+    let direct_only = unmatched_direct
+        .iter()
+        .map(|tick| {
+            json!({
+                "pos": tick.pos - BASE,
+                "ticks_left": tick.ticks_left,
+                "priority": tick.tick_priority,
+                "block": direct_world.get_block(tick.pos).get_name(),
+                "properties": direct_world.get_block(tick.pos).properties(),
+            })
+        })
+        .collect();
+    (native_only, direct_only)
+}
+
 fn lever_positions(world: &PlotWorld, bounds: (BlockPos, BlockPos)) -> Vec<BlockPos> {
     let mut found = Vec::new();
     for y in bounds.0.y..=bounds.1.y {
@@ -397,47 +473,282 @@ fn potados_pc_counter_counts_up_with_and_without_optimization() {
     );
     assert_eq!(interpreted_state(&native, &initial_memory), initial_memory);
     let mut expected = Vec::new();
+    let mut expected_repeaters = Vec::new();
+    let mut compiled_repeaters = Vec::new();
+    let mut repeater_divergence_reported = false;
+    let mut scheduler_divergence_reported = false;
     let mut expected_compiled_state = Vec::new();
     let mut peaks = Vec::new();
     let mut peak = 0;
+    let mut initial_native_ticks: Vec<_> = native.scheduler().iter_entries().collect();
+    let mut initial_direct_ticks = compiler.backend.as_ref().unwrap().scheduled_ticks();
+    let tick_key = |tick: &mchprs_world::TickEntry| {
+        (
+            tick.pos.y,
+            tick.pos.z,
+            tick.pos.x,
+            tick.ticks_left,
+            tick.tick_priority,
+            tick.block_type,
+        )
+    };
+    initial_native_ticks.sort_by_key(tick_key);
+    initial_direct_ticks.sort_by_key(tick_key);
+    let (native_only, direct_only) = scheduler_delta(
+        &initial_native_ticks,
+        &initial_direct_ticks,
+        &native,
+        &world,
+    );
+    if !native_only.is_empty() || !direct_only.is_empty() {
+        eprintln!(
+            "compile-start scheduler native-only={native_only:?} direct-only={direct_only:?}"
+        );
+    }
     for tick in 0..4096 {
         let native_trace = trace::capture(|| native.tick_interpreted());
         compiler.tick_with_world(&mut world);
         compiler.flush(&mut world);
         let current_bus = bus(&native);
         let compiled_bus = bus(&world);
-        let activations = compiler.backend.as_mut().unwrap().take_activation_trace();
-        if compiled_bus != current_bus {
-            let native_applied: Vec<_> = native_trace
-                .iter()
-                .filter_map(|entry| match entry.operation {
-                    trace::Operation::Applied(event) => {
-                        Some((entry.phase, event.pos - BASE, event.action, event.sticky))
-                    }
-                    trace::Operation::Sample { .. } => None,
-                })
-                .take(24)
+        let current_repeaters = repeater_states(&native, bounds);
+        let actual_repeaters = repeater_states(&world, bounds);
+        let deliveries = compiler.backend.as_mut().unwrap().take_activation_trace();
+        let mut native_ticks: Vec<_> = native.scheduler().iter_entries().collect();
+        let mut direct_ticks = compiler.backend.as_ref().unwrap().scheduled_ticks();
+        let sort_ticks = |ticks: &mut Vec<mchprs_world::TickEntry>| {
+            ticks.sort_by_key(|tick| {
+                (
+                    tick.pos.y,
+                    tick.pos.z,
+                    tick.pos.x,
+                    tick.ticks_left,
+                    tick.tick_priority,
+                    tick.block_type,
+                )
+            });
+        };
+        sort_ticks(&mut native_ticks);
+        sort_ticks(&mut direct_ticks);
+        if tick < 8 {
+            let pos = BASE + BlockPos::new(15, 9, 4);
+            let Block::RedstoneRepeater { repeater } = native.get_block(pos) else {
+                unreachable!()
+            };
+            let input_pos = pos.offset(repeater.facing.block_face());
+            let input = native.get_block(input_pos);
+            let mut input_power = crate::redstone::get_redstone_power(
+                input, &native, input_pos, repeater.facing.block_face(),
+            );
+            if input_power == 0 {
+                if let Block::RedstoneWire { wire } = input {
+                    input_power = wire.power;
+                }
+            }
+            eprintln!(
+                "boundary tick={} native_repeater={:?} native_input_pos={:?} native_input={} {:?} power={} direct_node={:?} port={:?}",
+                tick + 1, repeater, input_pos - BASE, input.get_name(), input.properties(), input_power,
+                compiler.backend.as_ref().unwrap().node_state(pos),
+                compiler.backend.as_ref().unwrap().output_states(pos),
+            );
+            let gate = BASE + BlockPos::new(18, 10, 5);
+            let Block::Piston { piston } = native.get_block(gate) else { unreachable!() };
+            eprintln!("native_should_extend={}", crate::redstone::piston::should_piston_extend(&native, piston.facing, gate));
+            let gate_blocks: Vec<_> = [
+                BlockPos::new(18, 10, 5),
+                BlockPos::new(17, 10, 5),
+                BlockPos::new(16, 10, 5),
+                BlockPos::new(15, 10, 5),
+                BlockPos::new(16, 10, 6),
+                BlockPos::new(21, 10, 5),
+                BlockPos::new(18, 9, 7),
+                BlockPos::new(18, 9, 6),
+                BlockPos::new(18, 9, 5),
+                BlockPos::new(18, 9, 67),
+                BlockPos::new(18, 10, 68),
+                BlockPos::new(17, 12, 67),
+            ].into_iter().map(|local| {
+                let block = native.get_block(BASE + local);
+                (local, block.get_name(), block.properties())
+            }).collect();
+            eprintln!("gate tick={} native={:?} compiled={:?}", tick + 1, gate_blocks,
+                compiler.backend.as_ref().unwrap().geometry_state(gate));
+            eprintln!("lower gate tick={} compiled={:?} source={:?}", tick + 1,
+                compiler.backend.as_ref().unwrap().geometry_state(BASE + BlockPos::new(18, 9, 7)),
+                compiler.backend.as_ref().unwrap().node_state(BASE + BlockPos::new(21, 10, 5)));
+            let terminal = BASE + BlockPos::new(18, 9, 67);
+            let terminal_block = native.get_block(terminal);
+            eprintln!("terminal tick={} native_desired={:?} compiled={:?} sources={:?}", tick + 1,
+                match terminal_block { Block::Piston { piston } => Some(crate::redstone::piston::should_piston_extend(&native, piston.facing, terminal)), _ => None },
+                compiler.backend.as_ref().unwrap().geometry_state(terminal),
+                [BlockPos::new(18, 10, 68), BlockPos::new(17, 12, 67)].map(|local| {
+                    let source = BASE + local;
+                    (local, crate::redstone::source_strength(native.get_block(source), &native, source), compiler.backend.as_ref().unwrap().node_state(source))
+                }));
+        }
+        if native_ticks != direct_ticks && !scheduler_divergence_reported {
+            scheduler_divergence_reported = true;
+            let (native_only, direct_only) =
+                scheduler_delta(&native_ticks, &direct_ticks, &native, &world);
+            let native_sources: std::collections::HashMap<_, _> = ordinary_sources(&native, bounds)
+                .into_iter()
+                .map(|(pos, strength)| (pos, strength))
                 .collect();
-            let compiled_deliveries: Vec<_> = activations
+            let source_differences: Vec<_> = compiler
+                .backend
+                .as_ref()
+                .unwrap()
+                .ordinary_sources()
+                .into_iter()
+                .filter_map(|(pos, strength)| {
+                    (native_sources.get(&pos) != Some(&strength)).then_some((
+                        pos - BASE,
+                        native_sources.get(&pos).copied(),
+                        strength,
+                    ))
+                })
+                .take(20)
+                .collect();
+            let wire_differences: Vec<_> = (0..16)
+                .filter_map(|bit| {
+                    let pos = BASE + BlockPos::new(14, 6, 3 + bit * 4);
+                    match (native.get_block(pos), world.get_block(pos)) {
+                        (
+                            Block::RedstoneWire { wire: expected },
+                            Block::RedstoneWire { wire: actual },
+                        ) if expected.power != actual.power => {
+                            Some((pos - BASE, expected.power, actual.power))
+                        }
+                        _ => None,
+                    }
+                })
+                .collect();
+            let applied_events: Vec<_> = native_trace
                 .iter()
-                .take(24)
-                .map(|event| {
-                    (
-                        event.source - BASE,
-                        event.actor,
-                        event.recipient - BASE,
-                        event.direction,
-                    )
+                .filter_map(|entry| match &entry.operation {
+                    trace::Operation::Applied(event) => Some(format!(
+                        "tick={} phase={:?} event={event:?}",
+                        entry.tick, entry.phase
+                    )),
+                    _ => None,
+                })
+                .take(8)
+                .collect();
+            let watched_base = BASE + BlockPos::new(16, 7, 65);
+            let direct_base_activation = compiler
+                .backend
+                .as_ref()
+                .unwrap()
+                .activation_states()
+                .into_iter()
+                .find(|(pos, _)| *pos == watched_base);
+            let direct_geometry = compiler
+                .backend
+                .as_ref()
+                .unwrap()
+                .geometry_state(watched_base);
+            let direct_observer = compiler
+                .backend
+                .as_ref()
+                .unwrap()
+                .observer_state(BASE + BlockPos::new(16, 8, 5));
+            let current_responses = compiled_state(&compiler).0;
+            let response_changes: Vec<_> = initial_responses
+                .iter()
+                .filter_map(|&(pos, initial)| {
+                    let current =
+                        current_responses
+                            .iter()
+                            .find_map(|&(current_pos, current)| {
+                                (current_pos == pos).then_some(current)
+                            })?;
+                    (initial != current).then_some((
+                        pos - BASE,
+                        initial,
+                        current,
+                        native.get_block(pos).get_name(),
+                        native.get_block(pos).properties(),
+                    ))
                 })
                 .collect();
             eprintln!(
-                "PC first mismatch tick={} native={} compiled={} native applied={:?} compiled deliveries={:?} compiled state={:?}",
+                "first scheduler divergence tick={} native-only={:?} direct-only={:?} source_differences={:?} activation_wire_differences={:?} response_changes={:?} native_trace_len={} native_applied={:?} direct_activations={:?} watched_base_activation={:?} direct_geometry={:?} direct_observer={:?} logical_stats={:?}",
                 tick + 1,
-                current_bus,
-                compiled_bus,
-                native_applied,
-                compiled_deliveries,
-                compiled_state(&compiler).0
+                native_only.into_iter().take(8).collect::<Vec<_>>(),
+                direct_only.into_iter().take(8).collect::<Vec<_>>(),
+                source_differences,
+                wire_differences,
+                response_changes,
+                native_trace.len(),
+                applied_events,
+                deliveries.iter().take(16).map(|event| (event.source - BASE, event.actor, event.recipient - BASE, event.direction)).collect::<Vec<_>>(),
+                direct_base_activation,
+                direct_geometry,
+                direct_observer,
+                compiler.backend.as_ref().unwrap().logical_stats(),
+            );
+        }
+        if actual_repeaters != current_repeaters && !repeater_divergence_reported {
+            repeater_divergence_reported = true;
+            let differences: Vec<_> = actual_repeaters
+                .iter()
+                .zip(&current_repeaters)
+                .filter(|(actual, expected)| actual != expected)
+                .take(8)
+                .map(|(actual, expected)| (actual, expected))
+                .collect();
+            let native_events: Vec<_> = native_trace
+                .iter()
+                .take(20)
+                .map(|entry| (entry.phase, format!("{:?}", entry.operation)))
+                .take(20)
+                .collect();
+            let pos = BASE + differences[0].0 .0;
+            let direct_node = compiler.backend.as_ref().unwrap().node_state(pos);
+            let direct_incoming = compiler.backend.as_ref().unwrap().incoming_states(pos);
+            let direct_outputs = compiler.backend.as_ref().unwrap().output_states(pos);
+            let neighbors = [
+                BlockPos::new(1, 0, 0),
+                BlockPos::new(-1, 0, 0),
+                BlockPos::new(0, 1, 0),
+                BlockPos::new(0, -1, 0),
+                BlockPos::new(0, 0, 1),
+                BlockPos::new(0, 0, -1),
+            ];
+            let around: Vec<_> = neighbors
+                .into_iter()
+                .map(|offset| {
+                    let neighbor = pos + offset;
+                    (
+                        neighbor - BASE,
+                        native.get_block(neighbor).get_name(),
+                        native.get_block(neighbor).properties(),
+                        world.get_block(neighbor).get_name(),
+                        world.get_block(neighbor).properties(),
+                    )
+                })
+                .collect();
+            let nearby_ticks = |ticks: &[mchprs_world::TickEntry]| {
+                ticks
+                    .iter()
+                    .filter(|tick| {
+                        tick.pos == pos || neighbors.iter().any(|offset| tick.pos == pos + *offset)
+                    })
+                    .map(|tick| (tick.pos - BASE, tick.ticks_left, tick.tick_priority))
+                    .collect::<Vec<_>>()
+            };
+            eprintln!(
+                "first repeater divergence tick={} differences={:?} node_state={:?} incoming={:?} output_terms={:?} around={:?} pending native={:?} direct={:?} piston trace={:?} instant callbacks={:?}",
+                tick + 1,
+                differences,
+                direct_node,
+                direct_incoming,
+                direct_outputs,
+                around,
+                nearby_ticks(&native_ticks),
+                nearby_ticks(&direct_ticks),
+                native_events,
+                deliveries.iter().take(20).map(|event| (event.source - BASE, event.actor, event.recipient - BASE, event.direction)).collect::<Vec<_>>()
             );
         }
         let current_memory = interpreted_state(&native, &initial_memory);
@@ -455,6 +766,8 @@ fn potados_pc_counter_counts_up_with_and_without_optimization() {
         }
         peak = peak.max(value);
         expected.push(current_bus);
+        expected_repeaters.push(current_repeaters);
+        compiled_repeaters.push(actual_repeaters);
         expected_compiled_state.push(compiled_state(&compiler));
     }
     if peak != 0 {
@@ -485,12 +798,21 @@ fn potados_pc_counter_counts_up_with_and_without_optimization() {
         compiled_state(&compiler),
         (initial_responses, initial_memory)
     );
-    for (tick, (expected_bus, expected_state)) in
-        expected.iter().zip(&expected_compiled_state).enumerate()
+    for (tick, ((expected_bus, expected_repeater_state), expected_state)) in expected
+        .iter()
+        .zip(&expected_repeaters)
+        .zip(&expected_compiled_state)
+        .enumerate()
     {
         compiler.tick_with_world(&mut world);
         compiler.flush(&mut world);
         assert_eq!(bus(&world), *expected_bus, "optimized tick={}", tick + 1);
+        assert_eq!(
+            repeater_states(&world, bounds),
+            *expected_repeater_state,
+            "optimized repeater state tick={}",
+            tick + 1
+        );
         assert_eq!(
             compiled_state(&compiler),
             *expected_state,

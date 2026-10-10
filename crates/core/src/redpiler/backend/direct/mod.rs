@@ -98,6 +98,85 @@ impl DirectBackend {
             .collect()
     }
     #[cfg(test)]
+    pub(crate) fn geometry_state(
+        &self,
+        pos: BlockPos,
+    ) -> Option<(usize, bool, bool, bool, Option<&'static str>, Block)> {
+        self.instant
+            .iter()
+            .find_map(|runtime| runtime.geometry_state(pos))
+    }
+    #[cfg(test)]
+    pub(crate) fn observer_state(&self, pos: BlockPos) -> Option<(bool, bool, bool)> {
+        let id = *self.pos_map.get(&pos)?;
+        let watched = match self.blocks[id.index()]?.1 {
+            Block::Observer { observer } => pos.offset(observer.facing.into()),
+            _ => return None,
+        };
+        Some((
+            self.nodes[id].powered,
+            self.nodes[id].pending_tick,
+            self.instant_observers
+                .get(&watched)
+                .is_some_and(|observers| observers.contains(&id)),
+        ))
+    }
+    #[cfg(test)]
+    pub(crate) fn node_state(
+        &self,
+        pos: BlockPos,
+    ) -> Option<(NodeType, bool, u8, [u8; 16], [u8; 16])> {
+        let id = *self.pos_map.get(&pos)?;
+        let node = &self.nodes[id];
+        Some((
+            node.ty,
+            node.powered,
+            node.output_power,
+            node.default_inputs.strength_counts,
+            node.side_inputs.strength_counts,
+        ))
+    }
+    #[cfg(test)]
+    pub(crate) fn incoming_states(
+        &self,
+        pos: BlockPos,
+    ) -> Option<Vec<(Option<BlockPos>, NodeType, u8, bool, u8)>> {
+        let target = *self.pos_map.get(&pos)?;
+        Some(
+            self.nodes
+                .inner()
+                .iter()
+                .enumerate()
+                .flat_map(|(index, node)| {
+                    node.updates.iter().filter_map(move |link| {
+                        (link.node() == target).then(|| {
+                            let source = self.nodes.get(index);
+                            let source_pos = self.blocks[index]
+                                .map(|(pos, _)| pos)
+                                .or_else(|| self.block_aliases.get(&index)?.first().map(|x| x.0));
+                            (
+                                source_pos,
+                                node.ty,
+                                self.nodes[source].output_power,
+                                link.side(),
+                                link.attenuation(),
+                            )
+                        })
+                    })
+                })
+                .collect(),
+        )
+    }
+    #[cfg(test)]
+    pub(crate) fn output_states(
+        &self,
+        pos: BlockPos,
+    ) -> Option<Vec<String>> {
+        self.instant
+            .iter()
+            .find_map(|runtime| runtime.output_states(pos, &self.nodes))
+    }
+    #[cfg(test)]
     pub(crate) fn ordinary_sources(&self) -> Vec<(BlockPos, u8)> {
         self.blocks
             .iter()
@@ -112,6 +191,21 @@ impl DirectBackend {
                         | Block::RedstoneComparator { .. }
                 )
                 .then_some((pos, self.nodes[self.nodes.get(id)].output_power))
+            })
+            .collect()
+    }
+    #[cfg(test)]
+    pub(crate) fn scheduled_ticks(&self) -> Vec<TickEntry> {
+        self.scheduler
+            .iter()
+            .filter_map(|(id, ticks_left, tick_priority)| {
+                let (pos, block) = self.blocks[id.index()]?;
+                Some(TickEntry {
+                    pos,
+                    block_type: Some(block.registry_id()),
+                    ticks_left: ticks_left as u32,
+                    tick_priority,
+                })
             })
             .collect()
     }

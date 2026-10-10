@@ -122,6 +122,78 @@ impl Runtime {
             Self::Native(b) => b.ordinary_sources(),
         }
     }
+    #[cfg(test)]
+    pub(crate) fn scheduled_ticks(&self) -> Vec<mchprs_world::TickEntry> {
+        match self {
+            Self::Direct(b) => b.scheduled_ticks(),
+            Self::Native(_) => Vec::new(),
+        }
+    }
+    #[cfg(test)]
+    pub(crate) fn geometry_state(
+        &self,
+        pos: mchprs_blocks::BlockPos,
+    ) -> Option<(
+        usize,
+        bool,
+        bool,
+        bool,
+        Option<&'static str>,
+        mchprs_blocks::blocks::Block,
+    )> {
+        match self {
+            Self::Direct(b) => b.geometry_state(pos),
+            Self::Native(_) => None,
+        }
+    }
+    #[cfg(test)]
+    pub(crate) fn observer_state(
+        &self,
+        pos: mchprs_blocks::BlockPos,
+    ) -> Option<(bool, bool, bool)> {
+        match self {
+            Self::Direct(b) => b.observer_state(pos),
+            Self::Native(_) => None,
+        }
+    }
+    #[cfg(test)]
+    pub(crate) fn node_state(
+        &self,
+        pos: mchprs_blocks::BlockPos,
+    ) -> Option<(direct::node::NodeType, bool, u8, [u8; 16], [u8; 16])> {
+        match self {
+            Self::Direct(b) => b.node_state(pos),
+            Self::Native(_) => None,
+        }
+    }
+    #[cfg(test)]
+    pub(crate) fn incoming_states(
+        &self,
+        pos: mchprs_blocks::BlockPos,
+    ) -> Option<
+        Vec<(
+            Option<mchprs_blocks::BlockPos>,
+            direct::node::NodeType,
+            u8,
+            bool,
+            u8,
+        )>,
+    > {
+        match self {
+            Self::Direct(b) => b.incoming_states(pos),
+            Self::Native(_) => None,
+        }
+    }
+    #[cfg(test)]
+    pub(crate) fn output_states(
+        &self,
+        pos: mchprs_blocks::BlockPos,
+    ) -> Option<Vec<String>> {
+        match self {
+            Self::Direct(b) => b.output_states(pos),
+            Self::Native(_) => None,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
