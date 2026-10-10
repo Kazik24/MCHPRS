@@ -127,15 +127,14 @@ pub(crate) fn prepare(
                 if let Some((pos, _)) = graph[id].block {
                     internally_driven.insert(pos);
                 }
-                pending.extend(graph.neighbors_directed(id, petgraph::Direction::Outgoing));
+                pending.extend(graph.neighbors_directed(id, petgraph::Direction::Incoming));
             }
             let targets = program
                 .pistons
                 .iter()
                 .enumerate()
                 .filter_map(|(actor, piston)| {
-                    (!program.activation.actors.contains(&actor)
-                        && !program
+                    (!program
                             .independent_memory
                             .iter()
                             .any(|cell| cell.actor == actor)

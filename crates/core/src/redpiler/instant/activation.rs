@@ -53,12 +53,16 @@ pub(crate) fn recognize(
         .collect();
     let feedback =
         super::logic::sequential::feedback_sources(world, report, monitor, &targets, &data)?;
-    let mobile = report
-        .payload_groups
-        .iter()
-        .enumerate()
-        .flat_map(|(group, p)| p.positions.iter().map(move |&pos| (pos, group)))
-        .collect();
+    let mut groups = vec![usize::MAX; report.pistons.len()];
+    let mut mobile = FxHashMap::default();
+    for (group, payload) in report.payload_groups.iter().enumerate() {
+        for &actor in &payload.members {
+            groups[actor] = group;
+        }
+        for &pos in &payload.positions {
+            mobile.insert(pos, group);
+        }
+    }
     let mut topology = Topology::new(
         world,
         report.bounds,
@@ -75,6 +79,7 @@ pub(crate) fn recognize(
         }
         let mut actor_wires = FxHashSet::default();
         let mut representable = true;
+        let mut has_external_mobile = false;
         for update in &report.ports.pistons[actor].updates {
             if update.kind != UpdateKind::WireNotification {
                 continue;
@@ -82,13 +87,9 @@ pub(crate) fn recognize(
             let inputs = topology
                 .wire_inputs(update.source)
                 .map_err(|e| e.to_string())?;
-            if !inputs
-                .sources
-                .iter()
-                .any(|s| matches!(s.kind, SourceKind::MobilePayload { .. }))
-            {
-                continue;
-            }
+            has_external_mobile |= inputs.sources.iter().any(
+                |s| matches!(s.kind, SourceKind::MobilePayload { group } if group != groups[actor]),
+            );
             if !inputs.outside_bounds.is_empty()
                 || inputs.wires.iter().any(|&pos| pos != update.source)
             {
@@ -98,7 +99,7 @@ pub(crate) fn recognize(
             actor_wires.insert(update.source);
         }
         // Keep connected callback nets on the existing physical update path.
-        if representable && !actor_wires.is_empty() {
+        if representable && has_external_mobile && !actor_wires.is_empty() {
             result.actors.insert(actor);
             wires.extend(actor_wires.into_iter().map(|pos| (pos, ())));
         }

@@ -69,6 +69,32 @@ fn calculate_world_hash(world: &PlotWorld) -> Box<[u8]> {
     hash.to_vec().into_boxed_slice()
 }
 
+fn visible_output_positions(world: &PlotWorld) -> Vec<BlockPos> {
+    let mut positions = Vec::new();
+    for chunk in world.get_chunks() {
+        for x in 0..16 {
+            for z in 0..16 {
+                for y in 0..256 {
+                    let block = Block::from_id(chunk.get_block(x, y, z));
+                    if matches!(
+                        block,
+                        Block::RedstoneLamp { .. }
+                            | Block::IronTrapdoor { .. }
+                            | Block::NoteBlock { .. }
+                    ) {
+                        positions.push(BlockPos::new(
+                            chunk.x * 16 + x as i32,
+                            y as i32,
+                            chunk.z * 16 + z as i32,
+                        ));
+                    }
+                }
+            }
+        }
+    }
+    positions
+}
+
 #[test]
 fn run_mandelbrot_chungus() {
     let mut plot = load_test_plot("./benches/chungus_mandelbrot_plot");
@@ -87,24 +113,54 @@ fn run_mandelbrot_chungus() {
 
 #[test]
 fn run_mandelbrot_chungus_compiled() {
-    let mut plot = load_test_plot("./benches/chungus_mandelbrot_plot");
-
-    let mut compiler: Compiler = Default::default();
-    let options = CompilerOptions::parse("-O").unwrap();
-    let bounds = plot.get_corners();
-    compiler
-        .compile(&plot, bounds, options, Vec::new(), Default::default())
-        .unwrap();
-    compiler.on_use_block(CHUNGUS_START_BUTTON);
-
-    for _ in 0..1000 * TICK_MUL {
-        compiler.tick();
+    let mut interpreted = load_test_plot("./benches/chungus_mandelbrot_plot");
+    let output_positions = visible_output_positions(&interpreted);
+    click_floor_button(&mut interpreted, CHUNGUS_START_BUTTON);
+    let mut expected_trace = Vec::with_capacity(1000);
+    for _ in 0..1000 {
+        for _ in 0..TICK_MUL {
+            interpreted.tick_interpreted();
+        }
+        expected_trace.push(
+            output_positions
+                .iter()
+                .map(|&pos| interpreted.get_block(pos))
+                .collect::<Vec<_>>(),
+        );
     }
-    compiler.flush(&mut plot);
+    let expected = calculate_world_hash(&interpreted);
 
-    let hash = calculate_world_hash(&plot);
-    //hash after 1000 ticks for compiled engine (master commit 33cfc6dd84)
-    assert_eq!(hash.as_ref(),b"\x08\xbc\x30\xaf\x0f\xa9\x8f\xa1\x3b\x9e\x21\x93\xfe\xf6\xba\xf9\xc2\x3a\x1d\xcf\x54\xa5\x92\xdc\xeb\x9e\xb7\x16\x27\x0a\xae\xda");
+    for (mode, flags) in [("compiled", ""), ("optimized", "-O")] {
+        let mut plot = load_test_plot("./benches/chungus_mandelbrot_plot");
+        let mut compiler: Compiler = Default::default();
+        let options = CompilerOptions::parse(flags).unwrap();
+        let bounds = plot.get_corners();
+        compiler
+            .compile(&plot, bounds, options, Vec::new(), Default::default())
+            .unwrap();
+        compiler.on_use_block(CHUNGUS_START_BUTTON);
+
+        for (tick, expected_outputs) in expected_trace.iter().enumerate() {
+            for _ in 0..TICK_MUL {
+                compiler.tick();
+            }
+            compiler.flush(&mut plot);
+            for (&pos, expected_output) in output_positions.iter().zip(expected_outputs) {
+                assert_eq!(
+                    plot.get_block(pos),
+                    *expected_output,
+                    "{mode} output at {pos} differs after game tick {}",
+                    tick + 1
+                );
+            }
+        }
+
+        assert_eq!(
+            calculate_world_hash(&plot),
+            expected,
+            "{mode} output differs from interpreter"
+        );
+    }
 }
 
 #[test]
