@@ -287,7 +287,7 @@ Fine stepping, save/load, history restoration, and compiler reset must preserve
 pending work and partial phase state. Rendering choices can project piston
 animation or screen updates differently while physical motion continues.
 The compiler handoff contract is described in
-[Redpiler architecture](REDPILER_ARCHITECTURE.md#8-world-output-and-interpreter-handoff).
+[Redpiler architecture](REDPILER_ARCHITECTURE.md#compile-lifecycle).
 
 Before changing a hot path, identify whether its data is an immutable address,
 an immutable registry fact, a per-walk snapshot, or live electrical state.

@@ -409,11 +409,11 @@ Electrical boundary strength uses the
 Directional eligibility, attenuation, fixed contributors and comparator channels
 remain electrical properties when a logical result uses a falling-event decoder.
 
-A first-response function $\mathbf y=F(\mathbf d,\mathbf e,\mathbf q)$ is a derived projection over a declared input protocol and observation window. Complete reuse adds retained reset/read/clock state $z$ and transitions $z^+=H(z,\sigma)$ for the ordered actions $\sigma$. No universal reset period or universal observation window follows from a piston truth table. The [compiled model](REDPILER_MODEL.md) states which physical ordering is represented, normalized or restricted in each execution path.
+A first-response function $\mathbf y=F(\mathbf d,\mathbf e,\mathbf q)$ is a derived projection over a declared input protocol and observation window. Complete reuse adds retained reset/read/clock state $z$ and transitions $z^+=H(z,\sigma)$ for the ordered actions $\sigma$. No universal reset period or universal observation window follows from a piston truth table. The [Redpiler model](REDPILER_MODEL.md) covers piston-free compiled graphs; piston timing and ordering remain interpreter behavior.
 
 ## 6. General rules and implementation limits
 
-The power/notification separation, event revalidation, identity-based motion and strength/occupancy projections explain broad classes of instant and BUD circuits. They do not require recognizing an adder, counter or memory by its name, bit coordinates or schematic hash.
+The power/notification separation, event revalidation, identity-based motion and strength/occupancy projections explain broad classes of instant and BUD circuits. They do not require recognizing an adder, counter or memory by its name, bit coordinates or schematic hash. The Redpiler currently rejects piston-containing builds and leaves these behaviors to the interpreter; see [Redpiler architecture](REDPILER_ARCHITECTURE.md).
 
 Transport/ownership limits follow section 3; event facing and early retraction
 follow section 2. Notification exclusions and restore-time support are defined

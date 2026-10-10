@@ -1,11 +1,9 @@
-# General notification-gated instant response contract
+# Retired notification-gated instant response proposal
 
-Status: proposed general contract. The worktree implements a restricted subset in
-[compiled model section 13](../REDPILER_MODEL.md#13-notification-gated-instant-responses).
-The equations below specify obligations beyond source presence or successful
-admission; they are not evidence of general physical equivalence. True storage
-remains separate from committed response. Route and phase certification remain
-required with either flag.
+Status: retained research note; this execution path has been removed. Piston
+builds are rejected by Redpiler and remain interpreter-only. The equations
+below describe the former proposal, not current compiler behavior or evidence
+of physical equivalence. True storage remains separate from committed response.
 
 ### State and activation
 
@@ -64,12 +62,13 @@ An ineligible callback changes neither response nor phase state.
 Process activations in delivery order, publishing effects required before the
 next event. Shared writer identity does not imply an atomic batch. Only an
 explicit certificate can authorize old-state fanout batching. Storage writes
-retain their separate old-bank sampling contract from compiled model sections 7–8.
+retained their separate old-bank sampling contract in the former executor.
 
 ### Boundary and selective-capture contract
 
-Internal dust has no physical runtime executor. Compiled notification routes
-produce activation events; ordinary sources provide live electrical inputs.
+In the proposal, internal dust had no physical runtime executor. Compiled
+notification routes produced activation events; ordinary sources provided
+live electrical inputs.
 Generic external placement/shape callbacks and destruction of decorative blocks
 are not part of an assembly's interface. Supported electrical and observer
 events require explicit ports. Intermediate geometry remains internal to those
@@ -90,6 +89,6 @@ acceptance/cancellation, interacting regions and reset continuation. Selective
 capture must cover source, memory, committed-response and geometry mutations.
 A queued activation must survive an empty dirty-binding set.
 
-Storage writes keep the clocked/independent old-bank transaction boundaries in
-[compiled model sections 7–8](../REDPILER_MODEL.md#7-shared-clock-memory).
+Storage writes in the proposal kept the clocked/independent old-bank transaction
+boundaries described by the former executor.
 General native/compiled partial ownership is outside this activation contract.

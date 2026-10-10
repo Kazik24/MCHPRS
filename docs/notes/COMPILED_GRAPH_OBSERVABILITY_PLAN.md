@@ -1,6 +1,9 @@
 # Optional graph presentation correlations: plan for Luna 6
 
-Status: implementation handoff, 2026-10-10. This planning change contains no production implementation.
+Status: historical proposal. This predates removal of the instant piston
+compiler; references to instant extraction and execution are not current
+implementation targets. The ordinary graph observability ideas remain notes,
+not an implementation handoff.
 
 Inspected baseline: `redpiler/piston-1.21.5`, HEAD `7fc44e3`, with uncommitted investigation work. Recheck the checkout and preserve all existing changes; other investigation work may continue while this plan is implemented.
 

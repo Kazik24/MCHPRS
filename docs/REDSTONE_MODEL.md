@@ -290,8 +290,9 @@ Directional emission, dust shape and occupancy determine the guards.
 
 This is an electrical projection, not a replacement for notification or
 scheduling. Comparator overrides and side eligibility still use section 10.
-The [compiled model](REDPILER_MODEL.md#4-conditional-geometry-and-electrical-boundaries)
-describes how extraction represents guards and sources.
+The [compiled model](REDPILER_MODEL.md) describes the piston-free electrical
+graph abstraction; the physical interpreter continues to evaluate these
+guards and sources for all supported input histories.
 
 ## 4. Immediate callbacks and ordered notification procedures
 
@@ -1375,7 +1376,7 @@ Piston transport limits are specified in [the piston model](PISTON_MODEL.md#31-f
 
 Redpiler's optimized graph can merge or remove nodes. Equality of ordinary lamp outputs alone does not establish equality of observer callbacks, transient dust states, analog overrides, piston motions, or pending-request traces. Compiled execution needs a separate equivalence argument for the selected observables.
 
-For instant-piston compilation, event values, retained storage and electrical boundary strengths need separate decoders. An internal falling event does not impose inverted polarity on every ordinary consumer. The [Redpiler model](REDPILER_MODEL.md) states the abstraction and supported execution modes; [Redpiler architecture](REDPILER_ARCHITECTURE.md) explains their admission and runtime paths. Those compiler choices do not alter the physical rules specified here.
+Piston event values, retained storage and electrical boundary strengths need separate decoders. An internal falling event does not impose inverted polarity on every ordinary consumer. The [Redpiler model](REDPILER_MODEL.md) describes the supported piston-free graph abstraction; [Redpiler architecture](REDPILER_ARCHITECTURE.md) documents piston rejection and ordinary graph execution. Compiler admission does not alter the physical rules specified here.
 
 ### 16.5 Implementation distinctions to preserve
 
