@@ -1,8 +1,7 @@
 //! This pass populates the graph with edges.
 //! This pass is *mandatory*. Without it, there would be no links between nodes.
 
-use crate::redpiler::compile_graph::{CompileGraph, CompileLink, LinkType, NodeIdx, NodeType};
-use crate::redpiler::instant::boundary::Boundaries;
+use crate::redpiler::compile_graph::{CompileGraph, CompileLink, LinkType, NodeIdx};
 use crate::redpiler::CompilerInput;
 use crate::redstone::{self, comparator};
 use crate::world::World;
@@ -16,7 +15,7 @@ pub(super) fn run<W: World>(
     graph: &mut CompileGraph,
     input: &CompilerInput<'_, W>,
 ) -> Result<(), super::GraphError> {
-    let mut state = InputSearchState::new(input.world, graph, input.boundaries);
+    let mut state = InputSearchState::new(input.world, graph);
     state.search();
     state.error.map_or(Ok(()), Err)
 }
@@ -25,22 +24,15 @@ struct InputSearchState<'a, W: World> {
     world: &'a W,
     graph: &'a mut CompileGraph,
     pos_map: FxHashMap<BlockPos, NodeIdx>,
-    boundaries: Option<&'a Boundaries<'a>>,
     error: Option<super::GraphError>,
 }
 
 impl<'a, W: World> InputSearchState<'a, W> {
-    fn new(
-        world: &'a W,
-        graph: &'a mut CompileGraph,
-        boundaries: Option<&'a Boundaries<'a>>,
-    ) -> InputSearchState<'a, W> {
+    fn new(world: &'a W, graph: &'a mut CompileGraph) -> InputSearchState<'a, W> {
         let mut pos_map = FxHashMap::default();
         for id in graph.node_indices() {
             if let Some((pos, _)) = graph[id].block {
                 pos_map.insert(pos, id);
-            } else if let NodeType::MobileSource { alias, .. } = graph[id].ty {
-                pos_map.insert(alias, id);
             }
         }
 
@@ -48,7 +40,6 @@ impl<'a, W: World> InputSearchState<'a, W> {
             world,
             graph,
             pos_map,
-            boundaries,
             error: None,
         }
     }
@@ -62,14 +53,6 @@ impl<'a, W: World> InputSearchState<'a, W> {
     }
 
     fn link_source(&mut self, source: BlockPos, target: NodeIdx, ty: LinkType, distance: u8) {
-        if self.boundaries.is_some_and(|b| {
-            b.is_internal(source)
-                || self.graph[target]
-                    .block
-                    .is_some_and(|(pos, _)| b.projects(pos, ty))
-        }) {
-            return;
-        }
         if let Some(&node) = self.pos_map.get(&source) {
             self.graph
                 .add_edge(node, target, CompileLink::new(ty, distance));
@@ -112,16 +95,6 @@ impl<'a, W: World> InputSearchState<'a, W> {
         start_node: NodeIdx,
         search_wire: bool,
     ) {
-        if self.boundaries.is_some_and(|b| b.is_internal(pos)) {
-            return;
-        }
-        if self
-            .boundaries
-            .is_some_and(|b| b.mobile_group(pos).is_some())
-        {
-            self.link_source(pos, start_node, link_ty, distance);
-            return;
-        }
         if block.is_solid() {
             for side in &BlockFace::values() {
                 let pos = pos.offset(*side);
@@ -162,7 +135,7 @@ impl<'a, W: World> InputSearchState<'a, W> {
             let distance = discovered[&pos];
             // Signals cannot survive fifteen wire steps. Stop before distance
             // arithmetic overflows and before traversing irrelevant long nets.
-            if distance >= 15 || self.boundaries.is_some_and(|b| b.is_internal(pos)) {
+            if distance >= 15 {
                 continue;
             }
 
@@ -240,11 +213,8 @@ impl<'a, W: World> InputSearchState<'a, W> {
     fn search_comparator_side(&mut self, id: NodeIdx, pos: BlockPos, side: BlockDirection) {
         let side_pos = pos.offset(side.block_face());
         let side_block = self.world.get_block(side_pos);
-        if self
-            .boundaries
-            .is_some_and(|b| b.mobile_group(side_pos).is_some())
-            || (redstone::is_diode(side_block)
-                && self.provides_weak_power(side_block, side.block_face(), side_pos))
+        if (redstone::is_diode(side_block)
+            && self.provides_weak_power(side_block, side.block_face(), side_pos))
             || matches!(side_block, Block::RedstoneBlock)
         {
             self.link_source(side_pos, id, LinkType::Side, 0);
@@ -339,28 +309,7 @@ impl<'a, W: World> InputSearchState<'a, W> {
                 continue;
             }
             let node = &self.graph[idx];
-            if let NodeType::InstantInput { piston } = node.ty {
-                if let Some(boundaries) = self.boundaries {
-                    for dependency in &boundaries.report.recognition[piston].inputs.sources {
-                        if !boundaries.internal_dependency(piston, dependency) {
-                            self.link_source(
-                                dependency.source,
-                                idx,
-                                LinkType::Default,
-                                dependency.attenuation,
-                            );
-                        }
-                    }
-                }
-            } else if let NodeType::InstantOutput { port } = node.ty {
-                if let Some(boundaries) = self.boundaries {
-                    for term in &boundaries.outputs[port].terms {
-                        if let Some(source) = term.source {
-                            self.link_source(source, idx, LinkType::Default, 0);
-                        }
-                    }
-                }
-            } else if let Some(block) = node.block {
+            if let Some(block) = node.block {
                 self.search_node(idx, block);
             }
         }

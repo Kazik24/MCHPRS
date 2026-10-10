@@ -2,7 +2,7 @@
 //! candidate artifact, not authorization to execute a piston region.
 use super::families::{GroupFailure, RecognitionFailure};
 use super::{AdmissionIssue, AnalysisError, AnalysisReport};
-use crate::redpiler::compile_graph::{CompileGraph, GraphError, NodeType};
+use crate::redpiler::compile_graph::{CompileGraph, GraphError};
 use crate::redpiler::{CompilerInput, CompilerOptions, TaskMonitor};
 use crate::world::World;
 use mchprs_blocks::BlockPos;
@@ -84,9 +84,6 @@ impl std::error::Error for GraphPreparationError {}
 #[derive(Debug, Serialize)]
 pub struct GraphSummary {
     pub ordinary_nodes: usize,
-    pub instant_inputs: usize,
-    pub mobile_sources: usize,
-    pub compiled_outputs: usize,
     pub electrical_links: usize,
 }
 
@@ -98,22 +95,10 @@ pub struct CandidateGraph {
 
 impl CandidateGraph {
     pub fn summary(&self) -> GraphSummary {
-        let mut result = GraphSummary {
-            ordinary_nodes: 0,
-            instant_inputs: 0,
-            mobile_sources: 0,
-            compiled_outputs: 0,
+        GraphSummary {
+            ordinary_nodes: self.graph.node_count(),
             electrical_links: self.graph.edge_count(),
-        };
-        for node in self.graph.node_weights() {
-            match node.ty {
-                NodeType::InstantInput { .. } => result.instant_inputs += 1,
-                NodeType::MobileSource { .. } => result.mobile_sources += 1,
-                NodeType::InstantOutput { .. } => result.compiled_outputs += 1,
-                _ => result.ordinary_nodes += 1,
-            }
         }
-        result
     }
 }
 
@@ -130,7 +115,7 @@ pub fn prepare_candidate_graph(
         return Err(GraphPreparationError::UnsupportedExport);
     }
     monitor.set_budget_multiplier(options.budget_multiplier);
-    let report = super::analyze(
+    let report = super::analyze_for_compile(
         world,
         bounds,
         ticks,
@@ -138,20 +123,16 @@ pub fn prepare_candidate_graph(
         super::AnalysisLimits::for_budget(monitor.budget_multiplier()),
     )
     .map_err(GraphPreparationError::Analysis)?;
-    let graph = if report.pistons.is_empty() {
-        let input = CompilerInput {
-            world,
-            bounds: report.bounds,
-            ticks,
-            boundaries: None,
-        };
-        crate::redpiler::passes::run_passes(options, &input, &monitor)
-            .map_err(GraphPreparationError::Graph)?
-    } else {
-        crate::redpiler::instant::program::prepare(world, &report, ticks, options, monitor.clone())
-            .map_err(GraphPreparationError::Execution)?
-            .0
+    if let Some(issue) = report.issues.first() {
+        return Err(GraphPreparationError::Entry(issue.clone()));
+    }
+    let input = CompilerInput {
+        world,
+        bounds: report.bounds,
+        ticks,
     };
+    let graph = crate::redpiler::passes::run_passes(options, &input, &monitor)
+        .map_err(GraphPreparationError::Graph)?;
     if monitor.cancelled() {
         return Err(GraphPreparationError::Analysis(AnalysisError::Cancelled));
     }

@@ -311,7 +311,6 @@ mod tests {
             world: &world,
             bounds: (BlockPos::new(0, 0, 0), BlockPos::new(15, 31, 15)),
             ticks: &[],
-            boundaries: None,
         };
         for (optimize, io_only, expected_nodes) in [
             (false, false, 4),

@@ -359,19 +359,13 @@ fn graph_coalescing_preserves_input_channel_and_attenuation() {
     for (source_type, target_type, channel, attenuation, should_merge) in [
         (repeater.clone(), repeater.clone(), LinkType::Side, 0, false),
         (
-            NodeType::InstantOutput { port: 0 },
+            NodeType::Wire,
             repeater.clone(),
             LinkType::Default,
             1,
             false,
         ),
-        (
-            NodeType::InstantOutput { port: 0 },
-            repeater.clone(),
-            LinkType::Default,
-            0,
-            true,
-        ),
+        (NodeType::Wire, repeater.clone(), LinkType::Default, 0, true),
         (
             NodeType::Lever,
             repeater.clone(),

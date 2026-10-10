@@ -1,11 +1,6 @@
 use super::*;
 use crate::plot::client_test_utils::{decode_blocks, read_ack, read_blocks};
-use mchprs_blocks::blocks::{
-    Instrument, Lever, LeverFace, RedstonePiston, RedstonePistonHead, RedstoneWire,
-    RedstoneWireSide,
-};
 use mchprs_blocks::items::{Item, ItemStack};
-use mchprs_blocks::{BlockDirection, BlockFacing};
 use mchprs_network::packets::serverbound::*;
 use mchprs_network::packets::PacketDecoderExt;
 use mchprs_network::test_support::{connection, read_frame};
@@ -343,7 +338,7 @@ fn redpiler_flag_suggestions_reach_the_chat_client() {
     for compressed in [false, true] {
         let (mut plot, mut peer) = fixture(compressed);
         plot.players[0].set_test_permissions(&["mchprs.access.commands"]);
-        let text = "/rp c --optimize --ass";
+        let text = "/rp c --optimize --exp";
         plot.handle_tab_complete(
             STabComplete {
                 transaction_id: 42,
@@ -359,8 +354,8 @@ fn redpiler_flag_suggestions_reach_the_chat_client() {
             text.rfind(' ').unwrap() as i32 + 1
         );
         assert_eq!(frame.read_varint().unwrap(), 5);
-        assert_eq!(frame.read_varint().unwrap(), 1);
-        assert_eq!(frame.read_string().unwrap(), "--assume-instant");
+        assert_eq!(frame.read_varint().unwrap(), 2);
+        assert_eq!(frame.read_string().unwrap(), "--export");
         assert!(!frame.read_bool().unwrap());
     }
 }
@@ -396,224 +391,6 @@ fn episode(
         }
     }
     panic!("action acknowledgement did not arrive within 128 packets");
-}
-
-fn compiled_bud_fixture(
-    compressed: bool,
-    io_only: bool,
-) -> (Plot, TcpStream, BlockPos, BlockPos, BlockPos, BlockPos) {
-    let (mut plot, peer) = fixture(compressed);
-    let senders = std::mem::take(&mut plot.world.packet_senders);
-    plot.world.set_screen_only(false);
-    // Base and head straddle a section boundary to exercise packet collection.
-    let cell = BlockPos::new(47, 32, 40);
-    let piston = RedstonePiston {
-        facing: BlockFacing::Down,
-        sticky: true,
-        extended: true,
-    };
-    plot.world.set_block(cell, Block::Piston { piston });
-    plot.world.set_block(
-        cell.offset(BlockFace::Bottom),
-        Block::PistonHead {
-            head: RedstonePistonHead::from(piston),
-        },
-    );
-    plot.world
-        .set_block(cell + BlockPos::new(0, -2, 0), Block::RedstoneBlock);
-    let data_wire = cell + BlockPos::new(0, 3, 0);
-    plot.world
-        .set_block(data_wire.offset(BlockFace::Bottom), Block::Stone {});
-    plot.world.set_block(
-        data_wire,
-        Block::RedstoneWire {
-            wire: RedstoneWire {
-                north: RedstoneWireSide::None,
-                south: RedstoneWireSide::None,
-                east: RedstoneWireSide::Side,
-                west: RedstoneWireSide::Side,
-                power: 0,
-            },
-        },
-    );
-    let data = data_wire.offset(BlockFace::East);
-    let generator = cell + BlockPos::new(2, 0, 0);
-    plot.world.set_block(
-        generator,
-        Block::Piston {
-            piston: RedstonePiston {
-                facing: BlockFacing::West,
-                sticky: false,
-                extended: false,
-            },
-        },
-    );
-    let sample = generator.offset(BlockFace::South);
-    let note = cell + BlockPos::new(0, -3, 0);
-    plot.world.set_block(
-        note,
-        Block::NoteBlock {
-            instrument: Instrument::Harp,
-            note: 0,
-            powered: true,
-        },
-    );
-    let note_control = note.offset(BlockFace::East);
-    for pos in [data, sample, note_control] {
-        plot.world
-            .set_block(pos.offset(BlockFace::Bottom), Block::Stone {});
-        plot.world.set_block(
-            pos,
-            Block::Lever {
-                lever: Lever::new(LeverFace::Floor, BlockDirection::North, false),
-            },
-        );
-    }
-    plot.redpiler
-        .compile(
-            &plot.world,
-            plot.world.get_corners(),
-            CompilerOptions {
-                optimize: true,
-                io_only,
-                ..Default::default()
-            },
-            vec![],
-            Default::default(),
-        )
-        .unwrap();
-    plot.redpiler.flush(&mut plot.world);
-    plot.world.flush_block_changes();
-    plot.world.sounds.clear();
-    plot.world.packet_senders = senders;
-    (plot, peer, cell, data, sample, note_control)
-}
-
-#[test]
-fn paused_advance_delivers_committed_bud_geometry_and_preserves_suppression() {
-    for compressed in [false, true] {
-        for io_only in [false, true] {
-            for screen_only in [false, true] {
-                let (mut plot, mut peer, cell, data, sample, _) =
-                    compiled_bud_fixture(compressed, io_only);
-                plot.world.set_screen_only(screen_only);
-                let near = cell.offset(BlockFace::Bottom);
-                let far = near.offset(BlockFace::Bottom);
-                let old = [cell, near, far].map(|pos| (pos, plot.world.get_block_raw(pos)));
-                plot.redpiler.on_use_block(sample);
-                assert_eq!(plot.world.get_block_raw(cell), old[0].1);
-                assert!(!plot.handle_command(0, "/adv", vec!["1"]));
-                drop(mchprs_network::BlockActionAcknowledgement::new(
-                    &plot.players[0].client,
-                    1,
-                ));
-                let (_, blocks) = episode(&mut peer, compressed, 1);
-                for pos in [cell, near, far] {
-                    assert_eq!(
-                        blocks.iter().any(|&(changed, _)| changed == pos),
-                        !io_only && !screen_only,
-                    );
-                }
-                if !io_only {
-                    assert!(
-                        matches!(plot.world.get_block(cell), Block::Piston { piston } if !piston.extended)
-                    );
-                    assert_eq!(plot.world.get_block(near), Block::RedstoneBlock);
-                    assert_eq!(plot.world.get_block(far), Block::Air);
-                    if screen_only {
-                        plot.world.set_screen_only(false);
-                        drop(mchprs_network::BlockActionAcknowledgement::new(
-                            &plot.players[0].client,
-                            2,
-                        ));
-                        let (_, blocks) = episode(&mut peer, compressed, 2);
-                        for pos in [cell, near, far] {
-                            assert!(blocks.contains(&(pos, plot.world.get_block_raw(pos))));
-                        }
-                    }
-                } else {
-                    assert_eq!(
-                        [cell, near, far].map(|pos| (pos, plot.world.get_block_raw(pos))),
-                        old,
-                    );
-                }
-                plot.redpiler.on_use_block(data);
-                plot.redpiler.on_use_block(sample);
-                plot.handle_command(0, "/adv", vec!["1"]);
-                drop(mchprs_network::BlockActionAcknowledgement::new(
-                    &plot.players[0].client,
-                    3,
-                ));
-                let (_, blocks) = episode(&mut peer, compressed, 3);
-                if !io_only {
-                    for &(pos, state) in &old {
-                        assert!(blocks.contains(&(pos, state)));
-                        assert_eq!(plot.world.get_block_raw(pos), state);
-                    }
-                }
-            }
-        }
-    }
-}
-
-#[test]
-fn bud_note_obstruction_uses_committed_memory_with_deferred_or_suppressed_display() {
-    for io_only in [false, true] {
-        for frequent in [false, true] {
-            let (mut plot, _peer, cell, data, sample, note_control) =
-                compiled_bud_fixture(false, io_only);
-            let ready = |plot: &mut Plot| {
-                // Complete the piston movement and reset before the next input.
-                // Pure ticks keep note events deferred until an explicit flush.
-                for _ in 0..6 {
-                    plot.redpiler.tick();
-                    if frequent {
-                        plot.redpiler.flush(&mut plot.world);
-                    }
-                }
-            };
-            plot.redpiler.on_use_block(sample);
-            ready(&mut plot);
-            let far = cell + BlockPos::new(0, -2, 0);
-            assert_eq!(
-                plot.world.get_block(far),
-                if frequent && !io_only {
-                    Block::Air
-                } else {
-                    Block::RedstoneBlock
-                },
-                "deferred or suppressed geometry must not decide note eligibility",
-            );
-            plot.redpiler.on_use_block(note_control);
-            if frequent {
-                plot.redpiler.flush(&mut plot.world);
-                assert_eq!(plot.world.sounds.len(), 1, "committed far cell is empty");
-            } else {
-                assert!(plot.world.sounds.is_empty(), "note playback stays deferred");
-            }
-            ready(&mut plot);
-            plot.redpiler.on_use_block(note_control);
-            ready(&mut plot);
-            plot.redpiler.on_use_block(data);
-            // The new QC data must settle before the separate update samples it.
-            ready(&mut plot);
-            plot.redpiler.on_use_block(sample);
-            ready(&mut plot);
-            plot.redpiler.flush(&mut plot.world);
-            assert_eq!(
-                plot.world.sounds.len(),
-                1,
-                "only the rise while the committed far cell was empty can play",
-            );
-            assert_eq!(plot.world.get_block(far), Block::RedstoneBlock);
-            plot.redpiler.flush(&mut plot.world);
-            assert_eq!(
-                plot.world.sounds.len(),
-                1,
-                "a flush must not replay the note"
-            );
-        }
-    }
 }
 
 #[test]

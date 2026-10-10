@@ -173,7 +173,7 @@ fn main() {
         let world = load_cpu(FIXED);
         let before = checkpoint(&world, 0, &[]);
         for budget in [1, 8] {
-            for flags in ["", "-O", "--assume-instant", "-O --assume-instant"] {
+            for flags in ["", "-O"] {
                 let mut compiler = Compiler::default();
                 let mut options = CompilerOptions::parse(flags).unwrap();
                 options.budget_multiplier = budget;
@@ -261,7 +261,7 @@ fn main() {
     let before = checkpoint(&world, 0, &[]);
     let ticks = world.scheduler().iter_entries().collect::<Vec<_>>();
     for budget in [1, 8] {
-        for flags in ["", "-O", "--assume-instant", "-O --assume-instant"] {
+        for flags in ["", "-O"] {
             let mut compiler = Compiler::default();
             let mut options = CompilerOptions::parse(flags).unwrap();
             options.budget_multiplier = budget;

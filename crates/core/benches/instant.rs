@@ -320,7 +320,6 @@ fn main() -> Result<()> {
                         &world,
                         world.get_corners(),
                         CompilerOptions {
-                            assume_instant: true,
                             optimize: checked_optimize,
                             budget_multiplier: 8,
                             ..Default::default()
@@ -382,7 +381,6 @@ fn main() -> Result<()> {
                 &world,
                 world.get_corners(),
                 CompilerOptions {
-                    assume_instant: true,
                     optimize,
                     budget_multiplier: 8,
                     ..Default::default()
@@ -486,26 +484,12 @@ fn main() -> Result<()> {
         }
         sample["compile_seconds_metadata"] = json!(compile_seconds);
         sample["compile_statistics"] = json!(compiler.as_ref().and_then(Compiler::stats).map(|stats| {
-            let regions = &stats.regions;
             json!({
                 "backend_nodes": stats.backend_nodes,
                 "graph": {
                     "baseline": stats.graph.baseline().map(|counts| json!({"nodes": counts.nodes, "links": counts.links})),
                     "final": stats.graph.final_graph().map(|counts| json!({"nodes": counts.nodes, "links": counts.links})),
                     "wire_nodes_elided_before_baseline": stats.graph.wire_nodes_elided,
-                },
-                "regions": {
-                    "logical": regions.logical_regions, "clocked": regions.clocked_regions,
-                    "pistons": regions.pistons, "payload_groups": regions.payload_groups,
-                    "memory_cells": regions.memory_cells,
-                },
-                "program": {
-                    "arena_decisions_including_handoff": regions.decisions,
-                    "response_roots": regions.response_roots,
-                    "output_ports": regions.output_ports, "output_terms": regions.output_terms,
-                    "executable_response_decisions": regions.logical_response_decisions,
-                    "executable_output_and_sampling_decisions": regions.logical_output_decisions,
-                    "input_bindings": regions.logical_input_bindings,
                 },
             })
         }));
@@ -535,7 +519,7 @@ fn main() -> Result<()> {
     let report = json!({
         "schema": 1, "backend": backend, "component": component, "manifest": manifest_path, "schematic_sha256": descriptor["sha256"],
         "actual_origin": [origin(&descriptor).x, origin(&descriptor).y, origin(&descriptor).z],
-        "flags": if interpreted { None } else { Some(if optimize { "-O --assume-instant" } else { "--assume-instant" }) }, "budget_multiplier": (!interpreted).then_some(8),
+        "flags": if interpreted { None } else { Some(if optimize { "-O" } else { "" }) }, "budget_multiplier": (!interpreted).then_some(8),
         "admitted_means": (!interpreted).then_some("compiler acceptance only; no physical or arithmetic equivalence claim"),
         "scope": if interpreted { "native interpreter; per-tick outputs and final whole-world checkpoint compared with --reference" } else { "actual logical workloads; BubbleSort and full FPU without --changing-inputs are admission only; no runtime fallback" },
         "measurement_kind": if changing_inputs { if component == "fpu_legal" { "full_fpu_raw_changing_inputs" } else { "divider_raw_changing_inputs" } } else { match (component.as_str(), interpreted) { ("pc_counter", true) => "interpreted_pc_counter_runtime", ("counter_basic", true) => "interpreted_counter_runtime", ("counter_basic", false) => "logical_counter_runtime", ("fpu_divider", true) => "interpreted_divider_episodes", ("fpu_divider", false) => "logical_divider_episodes", _ => "admission_only" } },
@@ -567,7 +551,7 @@ fn main() -> Result<()> {
             "fixed-window raw-port benchmark: 64 initial ON ticks; untimed workload warmup (128 vectors for sequence, eight otherwise); ordered lever updates set operand port masks while ON, then hold all inputs ON64, OFF128, ON64; no arithmetic or readiness oracle"
         }),
         "trace_validation": validation.as_ref().map(|report| json!({
-            "reference": if interpreted { if frozen.is_some() { "supplied frozen native baseline" } else { "untimed native capture; reuse this report with --reference" } } else { "independent unoptimized --assume-instant compiler with identical output ports/adapters and workload" },
+            "reference": if interpreted { if frozen.is_some() { "supplied frozen native baseline" } else { "untimed native capture; reuse this report with --reference" } } else { "independent unoptimized compiler with identical output ports/adapters and workload" },
             "selected_plan_every_game_tick_matches": !interpreted || frozen.is_some(),
             "output_varied": report["activity_confirmed"],
             "output_trace_sha256": report["output_trace_sha256"],

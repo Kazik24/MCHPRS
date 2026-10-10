@@ -1,5 +1,9 @@
 # Redpiler spatial parser
 
+> INSTANT compiler retired: piston regions require the interpreter. The
+> --assume-instant flag is no longer accepted. Piston-specific sections below
+> are retained as historical research, not supported compiler behavior.
+
 Redpiler has no textual circuit-language parser. Its circuit input is the live
 world: block positions and states, block entities, pending ticks, and piston
 execution state. `CompilerOptions::parse` parses command flags only. Here,

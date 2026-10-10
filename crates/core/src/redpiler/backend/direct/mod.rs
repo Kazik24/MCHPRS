@@ -1,7 +1,6 @@
 //! Execute the compiled graph using packed nodes and priority-ordered tick queues.
 
 mod compile;
-mod instant;
 pub mod node;
 mod tick;
 mod update;
@@ -14,7 +13,7 @@ use crate::redstone::noteblock;
 use crate::world::World;
 use mchprs_blocks::block_entities::BlockEntity;
 use mchprs_blocks::blocks::{Block, ComparatorMode, Instrument};
-use mchprs_blocks::{BlockFace, BlockPos};
+use mchprs_blocks::BlockPos;
 use mchprs_world::{TickEntry, TickPriority};
 use node::{Node, NodeId, NodeType, Nodes};
 use rustc_hash::FxHashMap;
@@ -53,75 +52,16 @@ pub struct DirectBackend {
     events: Vec<Event>,
     noteblock_info: Vec<(BlockPos, Instrument, u32)>,
     far_comparators: FxHashMap<NodeId, Vec<NodeId>>,
-    instant: Vec<instant::Runtime>,
-    instant_dependencies: FxHashMap<NodeId, Vec<usize>>,
-    instant_dirty: Vec<bool>,
     observer_watchers: FxHashMap<NodeId, Vec<NodeId>>,
-    instant_observers: FxHashMap<BlockPos, Vec<NodeId>>,
 }
 
 impl DirectBackend {
-    #[cfg(test)]
-    pub(crate) fn activation_states(&self) -> Vec<(BlockPos, bool)> {
-        self.instant
-            .iter()
-            .flat_map(|runtime| runtime.activation_states())
-            .collect()
-    }
-    #[cfg(test)]
-    pub(crate) fn take_activation_trace(
-        &mut self,
-    ) -> Vec<crate::redpiler::instant::activation::Delivery> {
-        self.instant
-            .iter_mut()
-            .flat_map(|runtime| runtime.take_activation_trace())
-            .collect()
-    }
-
     pub(crate) fn node_count(&self) -> usize {
         self.blocks.len()
     }
 
-    pub(crate) fn region_statistics(&self) -> crate::redpiler::RegionStatistics {
-        let mut statistics = crate::redpiler::RegionStatistics::default();
-        for runtime in &self.instant {
-            runtime.collect_statistics(&mut statistics);
-        }
-        statistics
-    }
-
     #[cfg(test)]
-    pub(crate) fn logical_stats(&self) -> Vec<(u64, u64, Vec<(BlockPos, bool)>)> {
-        self.instant
-            .iter()
-            .filter_map(|runtime| runtime.logical_stats())
-            .collect()
-    }
-    #[cfg(test)]
-    pub(crate) fn geometry_state(
-        &self,
-        pos: BlockPos,
-    ) -> Option<(usize, bool, bool, bool, Option<&'static str>, Block)> {
-        self.instant
-            .iter()
-            .find_map(|runtime| runtime.geometry_state(pos))
-    }
-    #[cfg(test)]
-    pub(crate) fn observer_state(&self, pos: BlockPos) -> Option<(bool, bool, bool)> {
-        let id = *self.pos_map.get(&pos)?;
-        let watched = match self.blocks[id.index()]?.1 {
-            Block::Observer { observer } => pos.offset(observer.facing.into()),
-            _ => return None,
-        };
-        Some((
-            self.nodes[id].powered,
-            self.nodes[id].pending_tick,
-            self.instant_observers
-                .get(&watched)
-                .is_some_and(|observers| observers.contains(&id)),
-        ))
-    }
-    #[cfg(test)]
+    #[allow(dead_code)]
     pub(crate) fn node_state(
         &self,
         pos: BlockPos,
@@ -137,6 +77,7 @@ impl DirectBackend {
         ))
     }
     #[cfg(test)]
+    #[allow(dead_code)]
     pub(crate) fn incoming_states(
         &self,
         pos: BlockPos,
@@ -167,15 +108,7 @@ impl DirectBackend {
                 .collect(),
         )
     }
-    #[cfg(test)]
-    pub(crate) fn output_states(
-        &self,
-        pos: BlockPos,
-    ) -> Option<Vec<String>> {
-        self.instant
-            .iter()
-            .find_map(|runtime| runtime.output_states(pos, &self.nodes))
-    }
+
     #[cfg(test)]
     pub(crate) fn ordinary_sources(&self) -> Vec<(BlockPos, u8)> {
         self.blocks
@@ -195,6 +128,7 @@ impl DirectBackend {
             .collect()
     }
     #[cfg(test)]
+    #[allow(dead_code)]
     pub(crate) fn scheduled_ticks(&self) -> Vec<TickEntry> {
         self.scheduler
             .iter()
@@ -250,7 +184,6 @@ impl DirectBackend {
                                     pos,
                                 );
                                 self.set_node(id, self.nodes[id].powered, strength);
-                                self.evaluate_instant(false);
                             }
                         }
                         if let NodeType::CommandBlock {
@@ -287,9 +220,8 @@ impl DirectBackend {
         graph: CompileGraph,
         ticks: Vec<TickEntry>,
         options: &CompilerOptions,
-        instant: Vec<crate::redpiler::instant::program::PreparedInstant>,
     ) -> Result<(), BackendError> {
-        compile::compile(self, graph, ticks, options, instant)
+        compile::compile(self, graph, ticks, options)
     }
     #[inline]
     fn schedule_tick(&mut self, node_id: NodeId, delay: usize, priority: TickPriority) {
@@ -348,15 +280,6 @@ impl DirectBackend {
             }
         }
         if old_power != new_power || bulb_state_changed {
-            for &region in self
-                .instant_dependencies
-                .get(&node_id)
-                .into_iter()
-                .flatten()
-            {
-                self.instant_dirty[region] = true;
-                self.instant[region].mark_source_dirty(node_id);
-            }
             for &comparator in self.far_comparators.get(&node_id).into_iter().flatten() {
                 if let NodeType::Comparator { far_input, .. } = &mut self.nodes[comparator].ty {
                     *far_input = node::NonMaxU8::new(new_power);
@@ -372,9 +295,8 @@ impl DirectBackend {
     }
 
     /// Apply an input change and capture effects that depend on its arrival time.
-    /// Bulb latches update immediately; note eligibility reads committed memory.
+    /// Bulb latches update immediately.
     fn update_node(&mut self, id: NodeId) {
-        let event_start = self.events.len();
         let node = &self.nodes[id];
         if matches!(node.ty, NodeType::CopperBulb) {
             let powered = has_main_input(node);
@@ -387,21 +309,6 @@ impl DirectBackend {
                 self.set_node(id, powered, bool_to_ss(lit));
             }
         } else if update::update_node(&mut self.scheduler, &mut self.events, &mut self.nodes, id) {
-            if let Some(Event::NoteBlockPlay {
-                noteblock_id,
-                unblocked,
-            }) = self.events.get_mut(event_start)
-            {
-                // Keep note eligibility at its power rise, independent of display cadence.
-                let above = self.noteblock_info[*noteblock_id as usize]
-                    .0
-                    .offset(BlockFace::Top);
-                *unblocked = self
-                    .instant
-                    .iter()
-                    .find_map(|runtime| runtime.memory_block_at(above))
-                    .map(|block| block == Block::Air);
-            }
             self.notify_observer_watchers(id);
         }
     }
@@ -414,35 +321,6 @@ impl DirectBackend {
 
     /// Propagate region outputs until no source changes or delivered samples remain.
     /// Each pass commits one writer's samples before processing the next writer.
-    fn evaluate_instant(&mut self, clock_event: bool) {
-        loop {
-            let mut runtimes = std::mem::take(&mut self.instant);
-            let mut changes = Vec::new();
-            for (region, runtime) in runtimes.iter_mut().enumerate() {
-                let changed = std::mem::replace(&mut self.instant_dirty[region], false);
-                changes.extend(runtime.advance(&self.nodes, changed, clock_event));
-                for pos in runtime.geometry_changes() {
-                    if let Some(observers) = self.instant_observers.get(&pos) {
-                        update::notify_observers(&mut self.scheduler, &mut self.nodes, observers);
-                    }
-                }
-            }
-            self.instant = runtimes;
-            for (id, strength) in changes {
-                if self.nodes[id].output_power != strength {
-                    self.set_node(id, strength != 0, strength);
-                }
-            }
-            if !self.instant_dirty.iter().any(|&dirty| dirty)
-                && !self
-                    .instant
-                    .iter()
-                    .any(|runtime| runtime.has_pending_samples())
-            {
-                break;
-            }
-        }
-    }
 
     pub(crate) fn tick_with_world<W: World>(&mut self, world: &mut W) {
         self.process_command_outputs(world);
@@ -463,15 +341,14 @@ impl DirectBackend {
     pub(crate) fn reset<W: World>(&mut self, world: &mut W, io_only: bool) {
         // Display flushing can clear dirty flags without writing hidden nodes.
         // Handoff must materialize their current strengths, including ordinary
-        // dust between a virtual region supply and its consumer.
+        // dust between a source and its consumer.
         for node in self.nodes.inner_mut() {
             if !matches!(node.ty, NodeType::Constant) {
                 node.changed = true;
             }
         }
         self.flush(world, false);
-        // Logical dust restoration reads ordinary comparator entities.
-        // Export their current analog strengths before materializing regions.
+        // Export comparator entities before returning to interpreted execution.
         let nodes = std::mem::take(&mut self.nodes);
 
         for (i, node) in nodes.into_inner().iter().enumerate() {
@@ -493,9 +370,6 @@ impl DirectBackend {
             }
         }
 
-        for runtime in std::mem::take(&mut self.instant) {
-            runtime.materialize(world);
-        }
         self.scheduler
             .reset(world, &self.blocks, &self.block_aliases);
 
@@ -503,10 +377,7 @@ impl DirectBackend {
         self.block_aliases.clear();
         self.noteblock_info.clear();
         self.far_comparators.clear();
-        self.instant_dependencies.clear();
-        self.instant_dirty.clear();
         self.observer_watchers.clear();
-        self.instant_observers.clear();
         self.events.clear();
     }
 
@@ -526,7 +397,6 @@ impl DirectBackend {
             }
             _ => warn!("Tried to use a {:?} redpiler node", node.ty),
         }
-        self.evaluate_instant(false);
     }
 
     pub(crate) fn set_pressure_plate(&mut self, pos: BlockPos, powered: bool) {
@@ -538,7 +408,6 @@ impl DirectBackend {
             }
             _ => warn!("Tried to set pressure plate state for a {:?}", node.ty),
         }
-        self.evaluate_instant(false);
     }
 
     pub(crate) fn tick(&mut self) {
@@ -546,9 +415,6 @@ impl DirectBackend {
     }
 
     fn tick_after_callbacks(&mut self, mut after_callback: impl FnMut(&mut Self)) {
-        for runtime in &mut self.instant {
-            runtime.begin_tick();
-        }
         // Imported work at the current deadline runs before advancing, as in the interpreter.
         for advance in [false, true] {
             if advance {
@@ -557,20 +423,12 @@ impl DirectBackend {
             while let Some(node_id) = self.scheduler.this_tick().pop_first() {
                 self.tick_node(node_id);
                 after_callback(self);
-                // Separate delivered events retain scheduler order and committed memory.
-                self.evaluate_instant(false);
             }
-        }
-        // Owned periodic clocks sample after ordinary events at this deadline.
-        self.evaluate_instant(true);
-        for runtime in &mut self.instant {
-            runtime.end_tick();
         }
     }
 
     pub(crate) fn flush<W: World>(&mut self, world: &mut W, io_only: bool) {
         self.process_command_outputs(world);
-        self.evaluate_instant(false);
         for event in self.events.drain(..) {
             match event {
                 Event::CopperBulbToggle { node_id, lit } => {
@@ -626,11 +484,6 @@ impl DirectBackend {
                 }
             }
             node.changed = false;
-        }
-        if !io_only {
-            for runtime in &mut self.instant {
-                runtime.flush_memory(world);
-            }
         }
     }
 }
@@ -731,7 +584,6 @@ impl fmt::Display for DirectBackend {
                 NodeType::Trapdoor => "Trapdoor".to_string(),
                 NodeType::Wire => "Wire".to_string(),
                 NodeType::Constant => format!("Constant({})", node.output_power),
-                NodeType::InstantSource => format!("InstantSource({})", node.output_power),
                 NodeType::NoteBlock { .. } => "NoteBlock".to_string(),
                 NodeType::CommandBlock { .. } => "CommandBlock".to_string(),
             };

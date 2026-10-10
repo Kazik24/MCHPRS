@@ -372,7 +372,10 @@ fn copper_bulb_variants_do_not_age_during_simulation() {
                 compiler.reset(&mut world, bounds);
             }
             assert_eq!(world.get_block(BULB).get_name(), name, "flags={flags:?}");
-            assert_eq!(world.get_block(BULB).copper_bulb_state(), Some((true, true)));
+            assert_eq!(
+                world.get_block(BULB).copper_bulb_state(),
+                Some((true, true))
+            );
         }
     }
 }
@@ -485,5 +488,5 @@ fn copper_bulbs_move_physically_and_are_not_admitted_as_inert_compiled_payloads(
         world.tick_interpreted();
     }
     assert_eq!(world.get_block(BULB.offset(BlockFace::East)), bulb);
-    assert!(!crate::redpiler::instant::outputs::supported_payload(bulb));
+    assert!(!crate::redpiler::analysis::supported_payload(bulb));
 }

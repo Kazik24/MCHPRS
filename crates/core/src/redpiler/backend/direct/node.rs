@@ -134,7 +134,6 @@ pub enum NodeType {
         chain: bool,
         automatic: bool,
     },
-    InstantSource,
     NoteBlock {
         noteblock_id: u32,
     },

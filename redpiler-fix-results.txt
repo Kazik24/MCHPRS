@@ -1,0 +1,4 @@
+    Checking mchprs_core v0.1.0 (F:\rustrepos\MCHPRS\crates\core)
+       Fixed crates\core\src\redpiler\analysis\tests\outputs.rs (2 fixes)
+       Fixed crates\core\src\redpiler\analysis\tests\legalization.rs (2 fixes)
+    Finished `dev` profile [optimized + debuginfo] target(s) in 6.23s

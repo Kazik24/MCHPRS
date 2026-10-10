@@ -68,11 +68,6 @@ fn convert_node(
             CNodeType::Trapdoor => NodeType::Trapdoor,
             CNodeType::Wire => NodeType::Wire,
             CNodeType::Constant => NodeType::Constant,
-            CNodeType::InstantInput { .. }
-            | CNodeType::MobileSource { .. }
-            | CNodeType::InstantOutput { .. } => {
-                unreachable!("instant graph export rejected before this pass")
-            }
             CNodeType::NoteBlock { .. } => NodeType::NoteBlock,
             CNodeType::CommandBlock { .. } => {
                 unreachable!("command block export rejected before lowering")
@@ -118,16 +113,6 @@ pub(super) fn validate(graph: &CompileGraph) -> Result<(), super::GraphError> {
         .any(|node| matches!(node.ty, CNodeType::CommandBlock { .. }))
     {
         return Err(super::GraphError::UnsupportedCommandBlockExport);
-    }
-    if graph.node_weights().any(|n| {
-        matches!(
-            n.ty,
-            CNodeType::InstantInput { .. }
-                | CNodeType::MobileSource { .. }
-                | CNodeType::InstantOutput { .. }
-        )
-    }) {
-        return Err(super::GraphError::UnsupportedInstantExport);
     }
     Ok(())
 }

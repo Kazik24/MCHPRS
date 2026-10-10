@@ -1761,3 +1761,29 @@ fn default_master_updates_unborn_repositories_without_renaming_saved_branches() 
     let repo = root.repo();
     assert_eq!(repo.head().unwrap(), ("main".into(), Some(head)));
 }
+
+#[test]
+fn rejected_piston_compilation_highlights_the_block_and_keeps_interpreter_work() {
+    use mchprs_blocks::blocks::RedstonePiston;
+    for compressed in [false, true] {
+        let (mut plot, _peer) = crate::plot::client_sync_tests::fixture(compressed);
+        let pos = BlockPos::new(33, 20, 35);
+        let block = Block::Piston {
+            piston: RedstonePiston::default(),
+        };
+        plot.world.set_block(pos, block);
+        plot.world
+            .schedule_tick(pos, 3, mchprs_world::TickPriority::High);
+        let ticks = plot.world.scheduler().iter_entries().collect::<Vec<_>>();
+        plot.start_redpiler(Default::default());
+        assert!(!plot.redpiler.is_active());
+        assert_eq!(plot.world.get_block(pos), block);
+        assert_eq!(
+            plot.world.scheduler().iter_entries().collect::<Vec<_>>(),
+            ticks
+        );
+        let marker = plot.git.inspections.get(&plot.players[0].uuid).unwrap();
+        assert_eq!(marker.0, pos);
+        assert!(!marker.3);
+    }
+}

@@ -1,5 +1,9 @@
 # Redpiler architecture
 
+> INSTANT compiler retired: piston regions require the interpreter. The
+> --assume-instant flag is no longer accepted. Piston-specific sections below
+> are retained as historical research, not supported compiler behavior.
+
 Redpiler compiles a live redstone world into an electrical graph and, when
 pistons are present, logical region programs. The direct backend executes those
 representations without repeating spatial power searches or interpreting piston

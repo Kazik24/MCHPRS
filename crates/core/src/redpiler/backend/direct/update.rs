@@ -7,10 +7,7 @@ use super::*;
 /// entity output strengths do not themselves change the watched block state.
 pub(super) fn observed_state(node: &Node) -> (bool, bool, u8) {
     (
-        !matches!(
-            node.ty,
-            NodeType::CommandBlock { .. } | NodeType::Constant | NodeType::InstantSource
-        ) && node.powered,
+        !matches!(node.ty, NodeType::CommandBlock { .. } | NodeType::Constant) && node.powered,
         matches!(node.ty, NodeType::Repeater { .. }) && node.locked,
         if matches!(node.ty, NodeType::Wire | NodeType::CopperBulb) {
             node.output_power

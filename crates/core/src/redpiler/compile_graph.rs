@@ -34,21 +34,6 @@ pub enum NodeType {
         automatic: bool,
         initial_tick: bool,
     },
-    /// Aggregate electrical input to a recognized actuator. Qualifying updates
-    /// remain in the boundary side table, never diode Side links.
-    InstantInput {
-        piston: usize,
-    },
-    /// One physical alias of a group's mobile redstone supply. A single payload
-    /// can occupy several aliases; none is an immutable constant.
-    MobileSource {
-        group: usize,
-        alias: BlockPos,
-    },
-    /// Electrical strength at one ordinary consumer input, evaluated by the region.
-    InstantOutput {
-        port: usize,
-    },
     NoteBlock {
         instrument: Instrument,
         note: u32,
@@ -111,15 +96,7 @@ pub struct CompileNode {
 
 impl CompileNode {
     pub fn is_removable(&self) -> bool {
-        !self.is_input
-            && !self.is_output
-            && !self.state.pending_tick
-            && !matches!(
-                self.ty,
-                NodeType::InstantInput { .. }
-                    | NodeType::MobileSource { .. }
-                    | NodeType::InstantOutput { .. }
-            )
+        !self.is_input && !self.is_output && !self.state.pending_tick
     }
 }
 
@@ -150,7 +127,6 @@ pub enum GraphError {
     MissingSource {
         pos: BlockPos,
     },
-    UnsupportedInstantExport,
     UnsupportedNativeExport,
     UnsupportedCommandBlockExport,
     UnsupportedObserverExport,
@@ -179,9 +155,7 @@ impl std::fmt::Display for GraphError {
                     "power source at {pos:?} is missing from the compiled graph"
                 )
             }
-            Self::UnsupportedInstantExport => {
-                f.write_str("instant graph export is not implemented")
-            }
+
             Self::UnsupportedNativeExport => f.write_str("native propagation cannot be exported as a collapsed electrical graph"),
             Self::UnsupportedCommandBlockExport => {
                 f.write_str("command-block output export is not implemented")

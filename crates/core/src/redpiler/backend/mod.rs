@@ -27,23 +27,6 @@ pub(crate) enum Runtime {
 }
 
 impl Runtime {
-    #[cfg(test)]
-    pub(crate) fn activation_states(&self) -> Vec<(mchprs_blocks::BlockPos, bool)> {
-        match self {
-            Self::Direct(b) => b.activation_states(),
-            Self::Native(_) => Vec::new(),
-        }
-    }
-    #[cfg(test)]
-    pub(crate) fn take_activation_trace(
-        &mut self,
-    ) -> Vec<crate::redpiler::instant::activation::Delivery> {
-        match self {
-            Self::Direct(b) => b.take_activation_trace(),
-            Self::Native(_) => Vec::new(),
-        }
-    }
-
     pub(crate) fn native(
         world: &impl crate::world::World,
         bounds: (mchprs_blocks::BlockPos, mchprs_blocks::BlockPos),
@@ -60,12 +43,7 @@ impl Runtime {
             Self::Native(b) => b.node_count(),
         }
     }
-    pub(crate) fn region_statistics(&self) -> super::RegionStatistics {
-        match self {
-            Self::Direct(b) => b.region_statistics(),
-            Self::Native(_) => Default::default(),
-        }
-    }
+
     pub(crate) fn tick(&mut self) {
         match self {
             Self::Direct(b) => b.tick(),
@@ -108,13 +86,7 @@ impl Runtime {
             Self::Native(b) => b.inspect(pos),
         }
     }
-    #[cfg(test)]
-    pub(crate) fn logical_stats(&self) -> Vec<(u64, u64, Vec<(mchprs_blocks::BlockPos, bool)>)> {
-        match self {
-            Self::Direct(b) => b.logical_stats(),
-            Self::Native(_) => Vec::new(),
-        }
-    }
+
     #[cfg(test)]
     pub(crate) fn ordinary_sources(&self) -> Vec<(mchprs_blocks::BlockPos, u8)> {
         match self {
@@ -123,40 +95,16 @@ impl Runtime {
         }
     }
     #[cfg(test)]
+    #[allow(dead_code)]
     pub(crate) fn scheduled_ticks(&self) -> Vec<mchprs_world::TickEntry> {
         match self {
             Self::Direct(b) => b.scheduled_ticks(),
             Self::Native(_) => Vec::new(),
         }
     }
+
     #[cfg(test)]
-    pub(crate) fn geometry_state(
-        &self,
-        pos: mchprs_blocks::BlockPos,
-    ) -> Option<(
-        usize,
-        bool,
-        bool,
-        bool,
-        Option<&'static str>,
-        mchprs_blocks::blocks::Block,
-    )> {
-        match self {
-            Self::Direct(b) => b.geometry_state(pos),
-            Self::Native(_) => None,
-        }
-    }
-    #[cfg(test)]
-    pub(crate) fn observer_state(
-        &self,
-        pos: mchprs_blocks::BlockPos,
-    ) -> Option<(bool, bool, bool)> {
-        match self {
-            Self::Direct(b) => b.observer_state(pos),
-            Self::Native(_) => None,
-        }
-    }
-    #[cfg(test)]
+    #[allow(dead_code)]
     pub(crate) fn node_state(
         &self,
         pos: mchprs_blocks::BlockPos,
@@ -167,6 +115,7 @@ impl Runtime {
         }
     }
     #[cfg(test)]
+    #[allow(dead_code)]
     pub(crate) fn incoming_states(
         &self,
         pos: mchprs_blocks::BlockPos,
@@ -184,32 +133,10 @@ impl Runtime {
             Self::Native(_) => None,
         }
     }
-    #[cfg(test)]
-    pub(crate) fn output_states(
-        &self,
-        pos: mchprs_blocks::BlockPos,
-    ) -> Option<Vec<String>> {
-        match self {
-            Self::Direct(b) => b.output_states(pos),
-            Self::Native(_) => None,
-        }
-    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BackendError {
-    InstantRuntimeUnavailable,
-    InvalidInstantProgram,
-    MissingInstantBinding {
-        pos: mchprs_blocks::BlockPos,
-    },
-    LogicalWireInput {
-        pos: mchprs_blocks::BlockPos,
-    },
-    ObserverGeometryBinding {
-        pos: mchprs_blocks::BlockPos,
-        bindings: usize,
-    },
     InvalidStrength {
         pos: Option<mchprs_blocks::BlockPos>,
         strength: u8,
@@ -224,13 +151,6 @@ pub enum BackendError {
 impl std::fmt::Display for BackendError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::InstantRuntimeUnavailable => {
-                f.write_str("instant graph boundaries require the region runtime")
-            }
-            Self::InvalidInstantProgram => f.write_str("instant program contains unresolved actuator variables"),
-            Self::MissingInstantBinding { pos } => write!(f, "instant port at {pos:?} was lost during graph preparation"),
-            Self::LogicalWireInput { pos } => write!(f, "logical input at {pos:?} points to display-only dust instead of a power source"),
-            Self::ObserverGeometryBinding { pos, bindings } => write!(f, "observer target at {pos:?} belongs to {bindings} piston regions; expected exactly one"),
             Self::InvalidStrength { pos, strength } => write!(f, "graph node at {pos:?} has invalid strength {strength}; expected 0..15"),
             Self::TooManyInputs { pos, default_inputs, side_inputs } => write!(f, "graph node at {pos:?} has {default_inputs} main and {side_inputs} side inputs; each channel supports at most 255"),
         }

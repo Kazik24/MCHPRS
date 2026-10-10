@@ -1,5 +1,9 @@
 # Redpiler execution model
 
+> INSTANT compiler retired: piston regions require the interpreter. The
+> --assume-instant flag is no longer accepted. Piston-specific sections below
+> are retained as historical research, not supported compiler behavior.
+
 This document defines the mathematical meaning of the current compiler and
 Direct backend. [REDPILER_ARCHITECTURE.md](REDPILER_ARCHITECTURE.md) describes the architecture,
 [REDPILER_PARSER.md](REDPILER_PARSER.md) describes extraction, and

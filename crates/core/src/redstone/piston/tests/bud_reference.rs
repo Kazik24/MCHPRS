@@ -216,13 +216,7 @@ fn anpu_cannot_bypass_compiled_graph_admission() {
         })
     );
     for budget_multiplier in [1, 2, 4, 8] {
-        for flags in [
-            "",
-            "--optimize",
-            "--io-only",
-            "--optimize --io-only",
-            "--assume-instant",
-        ] {
+        for flags in ["", "--optimize", "--io-only", "--optimize --io-only"] {
             let mut compiler = Compiler::default();
             let mut options = CompilerOptions::parse(flags).unwrap();
             options.budget_multiplier = budget_multiplier;

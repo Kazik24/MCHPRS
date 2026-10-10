@@ -5,9 +5,7 @@
 //!
 //! There are no requirements for this pass.
 
-use crate::redpiler::compile_graph::{
-    CompileGraph, CompileLink, CompileNode, LinkType, NodeIdx, NodeState, NodeType,
-};
+use crate::redpiler::compile_graph::{CompileGraph, CompileNode, NodeIdx, NodeState, NodeType};
 use crate::redpiler::{CompilerInput, CompilerOptions};
 use crate::redstone::{self, comparator, noteblock};
 use crate::world::{for_each_block_optimized, World};
@@ -27,70 +25,14 @@ pub(super) fn run<W: World>(
     let mut nodes_by_position = FxHashMap::default();
     let mut watched = FxHashSet::default();
     for_each_block_optimized(plot, input.bounds.0, input.bounds.1, |pos| {
-        if !input
-            .boundaries
-            .is_some_and(|boundaries| boundaries.is_owned(pos))
-        {
-            if let Block::Observer { observer } = plot.get_block(pos) {
-                watched.insert(pos.offset(observer.facing.into()));
-            }
+        if let Block::Observer { observer } = plot.get_block(pos) {
+            watched.insert(pos.offset(observer.facing.into()));
         }
     });
-
-    if let Some(boundaries) = input.boundaries {
-        for (group, payload) in boundaries.report.payload_groups.iter().enumerate() {
-            for &alias in &payload.positions {
-                if boundaries.mobile_group(alias).is_none() {
-                    continue;
-                }
-                graph.add_node(CompileNode {
-                    ty: NodeType::MobileSource { group, alias },
-                    block: None,
-                    block_aliases: Vec::new(),
-                    state: NodeState::with_strength(
-                        if plot.get_block(alias) == Block::RedstoneBlock {
-                            15
-                        } else {
-                            0
-                        },
-                    ),
-                    is_input: false,
-                    is_output: false,
-                });
-            }
-        }
-        for piston in 0..boundaries.report.pistons.len() {
-            if boundaries.executable {
-                break;
-            }
-            let strength = boundaries.report.recognition[piston]
-                .inputs
-                .sources
-                .iter()
-                .filter(|source| !boundaries.internal_dependency(piston, source))
-                .map(|source| {
-                    redstone::source_strength(plot.get_block(source.source), plot, source.source)
-                        .saturating_sub(source.attenuation)
-                })
-                .max()
-                .unwrap_or(0);
-            graph.add_node(CompileNode {
-                ty: NodeType::InstantInput { piston },
-                block: None,
-                block_aliases: Vec::new(),
-                state: NodeState::with_strength(strength),
-                is_input: false,
-                is_output: false,
-            });
-        }
-    }
 
     let (first_pos, second_pos) = input.bounds;
 
     for_each_block_optimized(plot, first_pos, second_pos, |pos| {
-        if input.boundaries.is_some_and(|b| b.is_owned(pos)) {
-            return;
-        }
         for_pos(
             graph,
             &mut nodes_by_position,
@@ -124,52 +66,6 @@ pub(super) fn run<W: World>(
                 watched,
                 reason: "the watched cell is outside the compiled selection",
             });
-        }
-        if input
-            .boundaries
-            .is_some_and(|boundaries| boundaries.is_owned(watched))
-            && matches!(plot.get_block(watched), Block::RedstoneWire { .. })
-        {
-            return Err(super::GraphError::UnsupportedObserverWatch {
-                observer, watched, reason: "conditional logical dust needs an explicit compiled observation of its strength and shape",
-            });
-        }
-    }
-
-    if let Some(boundaries) = input.boundaries {
-        for node in graph.node_weights_mut() {
-            if node
-                .block
-                .is_some_and(|(pos, _)| boundaries.is_retained(pos))
-            {
-                node.is_input = true;
-            }
-            if node.block.is_some_and(|(pos, _)| boundaries.is_output(pos)) {
-                node.is_output = true;
-            }
-        }
-    }
-
-    if let Some(boundaries) = input.boundaries {
-        for (port, output) in boundaries.outputs.iter().enumerate() {
-            let target = *nodes_by_position.get(&output.consumer).ok_or(
-                super::GraphError::MissingSource {
-                    pos: output.consumer,
-                },
-            )?;
-            let source = graph.add_node(CompileNode {
-                ty: NodeType::InstantOutput { port },
-                block: None,
-                block_aliases: Vec::new(),
-                state: NodeState::with_strength(output.initial_strength),
-                is_input: false,
-                is_output: false,
-            });
-            let channel = match output.input {
-                crate::redpiler::analysis::ports::ConsumerInput::Main => LinkType::Default,
-                crate::redpiler::analysis::ports::ConsumerInput::ComparatorSide => LinkType::Side,
-            };
-            graph.add_edge(source, target, CompileLink::new(channel, 0));
         }
     }
 

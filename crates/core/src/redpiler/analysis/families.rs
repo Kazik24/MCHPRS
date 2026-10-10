@@ -246,7 +246,7 @@ pub(super) fn recognize<W: World>(
             None => result
                 .failures
                 .push(RecognitionFailure::OutsideBounds { pos: p.payload }),
-            Some(block) if crate::redpiler::instant::outputs::supported_payload(block) => {}
+            Some(block) if crate::redpiler::analysis::supported_payload(block) => {}
             Some(block) => result
                 .failures
                 .push(RecognitionFailure::UnsupportedPayload {
@@ -304,7 +304,7 @@ pub(super) fn recognize<W: World>(
         for &pos in &group.positions {
             if matches!(
                 topology.read(pos)?,
-                Some(block) if crate::redpiler::instant::outputs::supported_payload(block)
+                Some(block) if crate::redpiler::analysis::supported_payload(block)
             ) {
                 result.payloads.push(pos);
             }
@@ -628,7 +628,7 @@ fn conductor_reset<W: World>(
     };
     if !BlockFace::from(p.piston.facing).is_horizontal()
         || payload == Block::RedstoneBlock
-        || !crate::redpiler::instant::outputs::supported_payload(payload)
+        || !crate::redpiler::analysis::supported_payload(payload)
         || !topology
             .read(p.pos.offset(BlockFace::Bottom))?
             .is_some_and(|block| block.is_solid())

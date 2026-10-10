@@ -1,3 +1,6 @@
+// MSVC reports normal import-library creation as linker stdout.
+#![cfg_attr(target_env = "msvc", allow(linker_messages))]
+
 use proc_macro::TokenStream;
 use quote::quote;
 use syn::{parse_macro_input, Data, DeriveInput, Error, Ident, Type};

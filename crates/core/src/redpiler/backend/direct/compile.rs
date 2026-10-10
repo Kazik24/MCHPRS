@@ -6,7 +6,7 @@ use mchprs_blocks::BlockPos;
 use mchprs_world::TickEntry;
 use petgraph::visit::EdgeRef;
 use petgraph::Direction;
-use rustc_hash::{FxHashMap, FxHashSet};
+use rustc_hash::FxHashMap;
 use smallvec::SmallVec;
 use tracing::trace;
 
@@ -124,10 +124,6 @@ fn compile_node(
             chain: *chain,
             automatic: *automatic,
         },
-        CNodeType::MobileSource { .. } | CNodeType::InstantOutput { .. } => NodeType::InstantSource,
-        CNodeType::InstantInput { .. } => {
-            unreachable!("boundary nodes rejected before lowering")
-        }
         CNodeType::NoteBlock { instrument, note } => {
             let noteblock_id = noteblock_info.len().try_into().unwrap();
             noteblock_info.push((node.block.unwrap().0, *instrument, *note));
@@ -154,32 +150,7 @@ pub fn compile(
     graph: CompileGraph,
     ticks: Vec<TickEntry>,
     options: &CompilerOptions,
-    instant: Vec<crate::redpiler::instant::program::PreparedInstant>,
 ) -> Result<(), BackendError> {
-    // Geometry observation reads settled blocks, never electrical alias power.
-    let geometry_positions: FxHashSet<_> = instant
-        .iter()
-        .flat_map(|program| {
-            program
-                .pistons
-                .iter()
-                .flat_map(|piston| [piston.pos, piston.head])
-                .chain(program.aliases.iter().filter_map(|&(group, pos, _)| {
-                    (program.payloads[group] != Block::Air).then_some(pos)
-                }))
-        })
-        .collect();
-    if graph.node_weights().any(|n| {
-        matches!(
-            n.ty,
-            crate::redpiler::compile_graph::NodeType::InstantInput { .. }
-                | crate::redpiler::compile_graph::NodeType::MobileSource { .. }
-                | crate::redpiler::compile_graph::NodeType::InstantOutput { .. }
-        )
-    }) && instant.is_empty()
-    {
-        return Err(BackendError::InstantRuntimeUnavailable);
-    }
     // Validate before filling packed input counters or creating unchecked
     // runtime references. Failure must leave the staged backend untouched.
     super::super::validate_strengths(&graph)?;
@@ -246,50 +217,6 @@ pub fn compile(
         })
         .collect();
     backend.nodes = Nodes::new(nodes);
-    if !instant.is_empty() {
-        let bindings = graph
-            .node_indices()
-            .filter_map(|idx| match graph[idx].ty {
-                crate::redpiler::compile_graph::NodeType::MobileSource { alias, .. } => {
-                    Some((alias, backend.nodes.get(nodes_map[&idx])))
-                }
-                _ => graph[idx]
-                    .block
-                    .map(|(pos, _)| (pos, backend.nodes.get(nodes_map[&idx]))),
-            })
-            .collect::<FxHashMap<_, _>>();
-        let outputs = graph
-            .node_indices()
-            .filter_map(|idx| match graph[idx].ty {
-                crate::redpiler::compile_graph::NodeType::InstantOutput { port } => {
-                    Some((port, backend.nodes.get(nodes_map[&idx])))
-                }
-                _ => None,
-            })
-            .collect::<FxHashMap<_, _>>();
-        for program in instant {
-            backend.instant.push(super::instant::Runtime::bind(
-                program,
-                &bindings,
-                &outputs,
-                &backend.nodes,
-            )?);
-        }
-        backend.instant_dirty = vec![true; backend.instant.len()];
-        for (region, runtime) in backend.instant.iter().enumerate() {
-            for source in runtime.source_nodes() {
-                backend
-                    .instant_dependencies
-                    .entry(source)
-                    .or_default()
-                    .push(region);
-            }
-        }
-        for regions in backend.instant_dependencies.values_mut() {
-            regions.sort_unstable();
-            regions.dedup();
-        }
-    }
 
     // Create a mapping from block pos to backend NodeId
     for i in 0..backend.blocks.len() {
@@ -308,13 +235,7 @@ pub fn compile(
             continue;
         };
         let observer = backend.nodes.get(nodes_map[&idx]);
-        if geometry_positions.contains(&watched) {
-            backend
-                .instant_observers
-                .entry(watched)
-                .or_default()
-                .push(observer);
-        } else if let Some(&source) = backend.pos_map.get(&watched) {
+        if let Some(&source) = backend.pos_map.get(&watched) {
             backend
                 .observer_watchers
                 .entry(source)
@@ -323,25 +244,10 @@ pub fn compile(
         }
         // A fixed cell without a node cannot change while compilation is active.
     }
-    for observers in backend
-        .observer_watchers
-        .values_mut()
-        .chain(backend.instant_observers.values_mut())
-    {
+    for observers in backend.observer_watchers.values_mut() {
         observers.sort_unstable_by_key(|id| id.index());
         observers.dedup();
     }
-    for &pos in backend.instant_observers.keys() {
-        let bindings = backend
-            .instant
-            .iter_mut()
-            .map(|runtime| usize::from(runtime.watch_geometry(pos)))
-            .sum::<usize>();
-        if bindings != 1 {
-            return Err(BackendError::ObserverGeometryBinding { pos, bindings });
-        }
-    }
-
     // Dynamic analog overrides can be read through a conducting rear block.
     for (i, block) in backend.blocks.iter().enumerate() {
         let Some((pos, Block::RedstoneComparator { comparator })) = block else {
@@ -460,7 +366,7 @@ mod tests {
             graph.add_node(node(NodeType::Constant, strength));
             let mut backend = DirectBackend::default();
             assert_eq!(
-                backend.compile(graph, vec![], &Default::default(), Default::default()),
+                backend.compile(graph, vec![], &Default::default()),
                 Err(BackendError::InvalidStrength {
                     pos: None,
                     strength
@@ -480,7 +386,7 @@ mod tests {
         }
         let mut backend = DirectBackend::default();
         assert_eq!(
-            backend.compile(graph, vec![], &Default::default(), Default::default()),
+            backend.compile(graph, vec![], &Default::default()),
             Err(BackendError::TooManyInputs {
                 pos: None,
                 default_inputs: 256,
@@ -512,9 +418,7 @@ mod tests {
                 CompileLink::new(LinkType::Default, 1),
             );
             let mut backend = DirectBackend::default();
-            backend
-                .compile(graph, vec![], &Default::default(), vec![])
-                .unwrap();
+            backend.compile(graph, vec![], &Default::default()).unwrap();
             let source = backend.nodes.get(0);
             let rear_source = backend.nodes.get(1);
             let comparator = backend.nodes.get(2);
@@ -603,9 +507,7 @@ mod tests {
             graph.add_node(observer);
         }
         let mut backend = DirectBackend::default();
-        backend
-            .compile(graph, ticks, &Default::default(), vec![])
-            .unwrap();
+        backend.compile(graph, ticks, &Default::default()).unwrap();
         let ids = positions.map(|pos| backend.pos_map[&pos]);
         (backend, ids)
     }
@@ -712,9 +614,7 @@ mod tests {
         ));
         graph.add_node(observer);
         let mut backend = DirectBackend::default();
-        backend
-            .compile(graph, vec![], &Default::default(), vec![])
-            .unwrap();
+        backend.compile(graph, vec![], &Default::default()).unwrap();
         let source = backend.pos_map[&source_pos];
         let observer = backend.pos_map[&observer_pos];
         backend.set_node(source, true, 8);

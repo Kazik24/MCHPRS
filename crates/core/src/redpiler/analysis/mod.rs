@@ -159,7 +159,10 @@ impl fmt::Display for AdmissionIssue {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::PistonRuntimeUnavailable { pos } => {
-                write!(f, "piston at {pos:?} needs a validated instant runtime")
+                write!(
+                    f,
+                    "piston at {pos:?} requires the interpreter; piston compilation is unsupported"
+                )
             }
             Self::ObserverRuntimeUnavailable { pos } => {
                 write!(f, "observer at {pos:?} needs an execution owner")
@@ -236,6 +239,27 @@ pub fn analyze(
     ticks: &[TickEntry],
     monitor: &TaskMonitor,
     limits: AnalysisLimits,
+) -> Result<AnalysisReport, AnalysisError> {
+    inventory(world, bounds, ticks, monitor, limits, true)
+}
+
+pub(crate) fn analyze_for_compile(
+    world: &impl World,
+    bounds: (BlockPos, BlockPos),
+    ticks: &[TickEntry],
+    monitor: &TaskMonitor,
+    limits: AnalysisLimits,
+) -> Result<AnalysisReport, AnalysisError> {
+    inventory(world, bounds, ticks, monitor, limits, false)
+}
+
+fn inventory(
+    world: &impl World,
+    bounds: (BlockPos, BlockPos),
+    ticks: &[TickEntry],
+    monitor: &TaskMonitor,
+    limits: AnalysisLimits,
+    describe_geometry: bool,
 ) -> Result<AnalysisReport, AnalysisError> {
     let bounds = (bounds.0.min(bounds.1), bounds.0.max(bounds.1));
     if bounds.0.y < 0
@@ -343,8 +367,8 @@ pub fn analyze(
                 .push(AdmissionIssue::UnownedPistonHead { pos });
         }
     }
-    report.payload_groups = payload_groups(world, &report.pistons);
-    if !report.pistons.is_empty() {
+    if describe_geometry && !report.pistons.is_empty() {
+        report.payload_groups = payload_groups(world, &report.pistons);
         let mobile = report
             .payload_groups
             .iter()
@@ -438,7 +462,7 @@ fn describe(
     if piston.facing == BlockFacing::Up {
         p.diagnostics.push(PistonDiagnostic::UpwardFacing);
     }
-    if !crate::redpiler::instant::outputs::supported_payload(world.get_block(payload)) {
+    if !crate::redpiler::analysis::supported_payload(world.get_block(payload)) {
         p.diagnostics.push(PistonDiagnostic::UnsupportedPayload);
     }
     if world.get_block_entity(payload).is_some() {
@@ -571,4 +595,19 @@ fn payload_groups(world: &impl World, pistons: &[PistonDescriptor]) -> Vec<Paylo
         group.positions.dedup();
     }
     groups
+}
+
+/// Deliberately exclude entities, analog overrides and blocks with their own
+/// update behavior. These payloads have fixed material properties.
+pub(crate) fn supported_payload(block: mchprs_blocks::blocks::Block) -> bool {
+    use mchprs_blocks::blocks::Block;
+    block == Block::RedstoneBlock
+        || (block.is_solid()
+            && block.is_cube()
+            && !block.is_transparent()
+            && !block.has_block_entity()
+            && !crate::redstone::has_neighbor_update(block)
+            && !crate::redstone::comparator::has_override(block)
+            // Unknown states (including powered targets) use fallback geometry.
+            && !matches!(block, Block::Unknown { .. }))
 }

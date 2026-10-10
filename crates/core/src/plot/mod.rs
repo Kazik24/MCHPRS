@@ -1488,7 +1488,16 @@ impl Plot {
             }
             failure => {
                 let reason = match failure {
-                    Ok(Err(error)) => error.to_string(),
+                    Ok(Err(error)) => {
+                        if let crate::redpiler::CompileError::Unsupported(report) = &error {
+                            if let Some(piston) = report.pistons.first() {
+                                for player in 0..self.players.len() {
+                                    self.show_block_highlight(player, piston.pos, false);
+                                }
+                            }
+                        }
+                        error.to_string()
+                    }
                     Err(_) => "compiler worker failed".to_owned(),
                     Ok(Ok(())) => unreachable!(),
                 };

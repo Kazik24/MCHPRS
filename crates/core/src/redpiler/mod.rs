@@ -1,10 +1,9 @@
 //! Compile world blocks into an electrical graph, then execute it with the direct
-//! backend. Piston regions execute logical plans and export settled geometry.
+//! backend. Piston regions require the interpreter.
 
 pub mod analysis;
 pub(crate) mod backend;
 mod compile_graph;
-pub mod instant;
 mod passes;
 mod task_monitor;
 
@@ -29,7 +28,6 @@ pub enum CompileError {
     Cancelled,
     Backend(backend::BackendError),
     Graph(compile_graph::GraphError),
-    Instant(String),
 }
 
 impl std::fmt::Display for CompileError {
@@ -37,6 +35,9 @@ impl std::fmt::Display for CompileError {
         match self {
             Self::AlreadyActive => f.write_str("reset the active compiler before recompiling"),
             Self::Analysis(error) => error.fmt(f),
+            Self::Unsupported(report) if !report.pistons.is_empty() => {
+                f.write_str("build contains pistion, pistions are not supported")
+            }
             Self::Unsupported(report) => {
                 write!(f, "{}", report.summary())?;
                 if let Some(issue) = report.issues.first() {
@@ -47,7 +48,6 @@ impl std::fmt::Display for CompileError {
             Self::Cancelled => f.write_str("compilation cancelled"),
             Self::Backend(error) => error.fmt(f),
             Self::Graph(error) => error.fmt(f),
-            Self::Instant(error) => f.write_str(error),
         }
     }
 }
@@ -73,8 +73,6 @@ fn block_powered_mut(block: &mut Block) -> Option<&mut bool> {
 
 #[derive(Default, PartialEq, Eq, Debug)]
 pub struct CompilerOptions {
-    /// Trust instant/BUD construction, while validating logical data and sampling roles.
-    pub assume_instant: bool,
     /// Set by the server from the initiating player's rank, never from flags.
     /// Zero retains the default 1x budget; values are capped at 8x.
     pub budget_multiplier: usize,
@@ -96,7 +94,6 @@ impl CompilerOptions {
         for option in flags.split_whitespace() {
             if option.starts_with("--") {
                 match option {
-                    "--assume-instant" => options.assume_instant = true,
                     "--optimize" => options.optimize = true,
                     "--export" => options.export = true,
                     "--io-only" => options.io_only = true,
@@ -203,29 +200,9 @@ impl GraphStatistics {
     }
 }
 
-#[derive(Clone, Debug, Default)]
-pub struct RegionStatistics {
-    pub logical_regions: usize,
-    pub clocked_regions: usize,
-    pub pistons: usize,
-    pub payload_groups: usize,
-    pub memory_cells: usize,
-    /// Complete bound arena, including restoration-only decisions.
-    pub decisions: usize,
-    pub response_roots: usize,
-    pub output_ports: usize,
-    pub output_terms: usize,
-    pub logical_response_decisions: usize,
-    /// Output guards and independent sampling guards, excluding response work.
-    pub logical_output_decisions: usize,
-    /// Unique bindings per logical plan; plans may overlap.
-    pub logical_input_bindings: usize,
-}
-
 #[derive(Clone, Debug)]
 pub struct CompileStatistics {
     pub graph: GraphStatistics,
-    pub regions: RegionStatistics,
     pub backend_nodes: usize,
     pub analysis_duration: Duration,
     pub preparation_duration: Duration,
@@ -237,30 +214,11 @@ impl CompileStatistics {
     pub fn summary_lines(&self) -> Vec<String> {
         let ms = |duration: Duration| duration.as_secs_f64() * 1000.0;
         let mut lines = vec![format!(
-            "Compile: {:.3} ms total; analysis {:.3}, instant preparation {:.3}, graph {:.3}, backend {:.3} ms; {} backend nodes",
+            "Compile: {:.3} ms total; analysis {:.3}, preparation {:.3}, graph {:.3}, backend {:.3} ms; {} backend nodes",
             ms(self.total_duration), ms(self.analysis_duration), ms(self.preparation_duration),
             ms(self.graph.duration), ms(self.backend_duration), self.backend_nodes,
         )];
         lines.extend(self.graph.summary_lines().into_iter().take(2));
-        let regions = &self.regions;
-        if regions.pistons != 0 {
-            lines.push(format!(
-                "Piston executors: {} logical regions; {} clocked; {} pistons / {} payload groups / {} sampled memory cells",
-                regions.logical_regions, regions.clocked_regions, regions.pistons,
-                regions.payload_groups, regions.memory_cells,
-            ));
-            lines.push(format!(
-                "Programs: {} arena decisions (including handoff), {} response roots, {} output ports / {} terms",
-                regions.decisions, regions.response_roots, regions.output_ports, regions.output_terms,
-            ));
-            if regions.logical_regions != 0 {
-                lines.push(format!(
-                    "Logical plans: {} response decisions / {} output and sampling decisions / {} input bindings",
-                    regions.logical_response_decisions, regions.logical_output_decisions,
-                    regions.logical_input_bindings,
-                ));
-            }
-        }
         lines
     }
 }
@@ -316,7 +274,7 @@ impl Compiler {
         monitor.clear_graph_statistics();
         monitor.set_budget_multiplier(options.budget_multiplier);
         let analysis_start = Instant::now();
-        let report = analysis::analyze(
+        let report = analysis::analyze_for_compile(
             world,
             bounds,
             &ticks,
@@ -325,7 +283,7 @@ impl Compiler {
         )
         .map_err(CompileError::Analysis)?;
         let analysis_duration = analysis_start.elapsed();
-        if report.pistons.is_empty() && !report.can_compile() {
+        if !report.can_compile() {
             return Err(CompileError::Unsupported(Box::new(report)));
         }
 
@@ -341,27 +299,11 @@ impl Compiler {
             world,
             bounds,
             ticks: &ticks,
-            boundaries: None,
         };
-        let preparation_start = Instant::now();
-        let (graph, instant, native) = if report.pistons.is_empty() {
-            let (graph, native) =
-                passes::prepare(&options, &input, &monitor, true).map_err(CompileError::Graph)?;
-            (graph, Vec::new(), native)
-        } else {
-            let (graph, program) =
-                instant::program::prepare(world, &report, &ticks, &options, monitor.clone())
-                    .map_err(CompileError::Instant)?;
-            (graph, program, false)
-        };
-        let preparation_and_graph_duration = preparation_start.elapsed();
+        let (graph, native) =
+            passes::prepare(&options, &input, &monitor, true).map_err(CompileError::Graph)?;
         let graph_statistics = monitor.graph_statistics();
-        let preparation_duration = if report.pistons.is_empty() {
-            Duration::ZERO
-        } else {
-            preparation_and_graph_duration.saturating_sub(graph_statistics.duration)
-        };
-
+        let preparation_duration = Duration::ZERO;
         if monitor.cancelled() {
             return Err(CompileError::Cancelled);
         }
@@ -381,7 +323,7 @@ impl Compiler {
         } else {
             let mut backend = DirectBackend::default();
             backend
-                .compile(graph, ticks, &options, instant)
+                .compile(graph, ticks, &options)
                 .map_err(CompileError::Backend)?;
             Runtime::Direct(backend)
         };
@@ -393,7 +335,6 @@ impl Compiler {
 
         let statistics = CompileStatistics {
             graph: graph_statistics,
-            regions: backend.region_statistics(),
             backend_nodes: backend.node_count(),
             analysis_duration,
             preparation_duration,
@@ -403,14 +344,7 @@ impl Compiler {
         self.backend = Some(backend);
         self.statistics = Some(statistics);
         self.options = options;
-        self.warnings = report.pistons.iter()
-            .filter(|p| p.piston.extended && p.diagnostics.contains(&analysis::PistonDiagnostic::MissingOrMismatchedHead))
-            .map(|p| format!("Extended piston at {:?} has no matching saved head at {:?}; the runtime starts from its saved geometry.", p.pos, p.head))
-            .collect();
         tracing::info!(stats = ?self.statistics, "Compiler completed");
-        for warning in &self.warnings {
-            tracing::warn!("Redpiler: {warning}");
-        }
         debug!("Compile completed in {:?}", start.elapsed());
         Ok(())
     }
@@ -471,7 +405,6 @@ pub struct CompilerInput<'w, W: World> {
     pub world: &'w W,
     pub bounds: (BlockPos, BlockPos),
     pub ticks: &'w [TickEntry],
-    pub(crate) boundaries: Option<&'w instant::boundary::Boundaries<'w>>,
 }
 
 #[cfg(test)]
@@ -479,10 +412,62 @@ mod tests {
     use super::*;
 
     #[test]
+    fn pistons_require_interpreter_for_every_compiler_mode() {
+        use crate::plot::PlotWorld;
+        use crate::world::storage::Chunk;
+        use mchprs_blocks::blocks::RedstonePiston;
+        use mchprs_blocks::BlockFacing;
+
+        let mut world = PlotWorld::from_chunks(0, 0, vec![Chunk::empty(0, 0)], Default::default());
+        let pos = BlockPos::new(4, 20, 4);
+        let bounds = (BlockPos::new(0, 0, 0), BlockPos::new(15, 31, 15));
+        for sticky in [false, true] {
+            for extended in [false, true] {
+                let block = Block::Piston {
+                    piston: RedstonePiston {
+                        facing: BlockFacing::South,
+                        sticky,
+                        extended,
+                    },
+                };
+                world.set_block(pos, block);
+                for optimize in [false, true] {
+                    let options = CompilerOptions {
+                        optimize,
+                        ..Default::default()
+                    };
+                    let mut compiler = Compiler::default();
+                    let error = compiler
+                        .compile(&world, bounds, options, vec![], Arc::default())
+                        .unwrap_err();
+                    assert!(matches!(error, CompileError::Unsupported(_)));
+                    assert_eq!(
+                        error.to_string(),
+                        "build contains pistion, pistions are not supported"
+                    );
+                    assert!(!compiler.is_active());
+                    assert!(compiler.stats().is_none());
+                    assert_eq!(world.get_block(pos), block);
+                    assert!(matches!(
+                        analysis::graph::prepare_candidate_graph(
+                            &world,
+                            bounds,
+                            &[],
+                            &CompilerOptions::default(),
+                            Arc::default()
+                        ),
+                        Err(analysis::graph::GraphPreparationError::Entry(
+                            analysis::AdmissionIssue::PistonRuntimeUnavailable { .. }
+                        ))
+                    ));
+                }
+            }
+        }
+    }
+    #[test]
     fn parse_options() {
         let input = "-iO -U --export";
         let expected_options = CompilerOptions {
-            assume_instant: false,
             budget_multiplier: 0,
             io_only: true,
             optimize: true,
@@ -506,12 +491,7 @@ mod tests {
 
     #[test]
     fn logical_mode_is_explicit_and_unknown_flags_fail() {
-        assert!(
-            CompilerOptions::parse("--assume-instant -oi")
-                .unwrap()
-                .assume_instant
-        );
-        assert!(!CompilerOptions::parse("").unwrap().assume_instant);
+        assert!(CompilerOptions::parse("--assume-instant -oi").is_err());
         for flags in ["--assume-instnat", "-ox", "-", "assume-instant"] {
             assert!(CompilerOptions::parse(flags).is_err(), "{flags}");
         }
@@ -538,7 +518,6 @@ mod tests {
         let statistics = compiler.stats().unwrap();
         assert_eq!(statistics.graph.passes.len(), 10);
         assert_eq!(statistics.graph.baseline(), statistics.graph.final_graph());
-        assert_eq!(statistics.regions.pistons, 0);
         assert!(statistics.backend_nodes > 0);
         let total_duration = statistics.total_duration;
         compiler.reset(&mut world, bounds);

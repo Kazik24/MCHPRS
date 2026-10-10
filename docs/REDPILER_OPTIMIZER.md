@@ -1,5 +1,9 @@
 # Redpiler optimizer
 
+> INSTANT compiler retired: piston regions require the interpreter. The
+> --assume-instant flag is no longer accepted. Piston-specific sections below
+> are retained as historical research, not supported compiler behavior.
+
 Redpiler first extracts the graph described in the
 [parser document](REDPILER_PARSER.md), then optionally rewrites it. Its optimizer
 is a fixed sequence of graph passes, not an adaptive planner or a global

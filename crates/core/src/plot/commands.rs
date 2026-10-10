@@ -60,7 +60,6 @@ pub(super) fn complete_redpiler(id: i32, text: &str) -> Option<CTabComplete> {
     };
     let prefix = &text[start..];
     let matches = [
-        "--assume-instant",
         "--optimize",
         "--io-only",
         "--update",
@@ -487,8 +486,8 @@ impl Plot {
                         Ok(candidate) => {
                             let summary = candidate.summary();
                             self.players[player].send_system_message(&format!(
-                                "Candidate graph: {} ordinary nodes, {} instant inputs, {} mobile sources, {} compiled output ports, {} electrical links; execution remains disabled",
-                                summary.ordinary_nodes, summary.instant_inputs, summary.mobile_sources, summary.compiled_outputs, summary.electrical_links,
+                                "Candidate graph: {} ordinary nodes, {} electrical links; execution remains disabled",
+                                summary.ordinary_nodes, summary.electrical_links,
                             ));
                             self.players[player]
                                 .send_system_message(&candidate.report.recognition_summary());
@@ -2105,16 +2104,12 @@ mod security_tests {
             Some("compile")
         );
         for (text, expected) in [
-            ("/rp compile --ass", vec!["--assume-instant"]),
+            ("/rp compile --ass", vec![]),
             ("/redpiler c --optimize --i", vec!["--io-only"]),
-            (
-                "/rp analyze --graph --assume-instant --o",
-                vec!["--optimize"],
-            ),
+            ("/rp analyze --graph --o", vec!["--optimize"]),
             (
                 "/rp compile -",
                 vec![
-                    "--assume-instant",
                     "--optimize",
                     "--io-only",
                     "--update",
