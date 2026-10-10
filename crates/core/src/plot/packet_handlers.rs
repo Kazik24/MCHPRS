@@ -416,6 +416,11 @@ impl Plot {
             self.reset_redpiler();
 
             interaction::destroy(block, &mut self.world, block_pos);
+            if self.world.screen_only() && !matches!(block, Block::Air) {
+                for viewer in &self.players {
+                    viewer.send_system_message(messages::DISPLAY_ONLY_BREAK_WARNING);
+                }
+            }
             if !matches!(block, Block::Air) {
                 self.mirror_auto_stack(player, block_pos);
             }

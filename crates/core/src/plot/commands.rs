@@ -653,41 +653,112 @@ impl Plot {
         }
 
         match command {
-            "/screenonly" => {
-                if !self.players[player].has_permission("commands.screenonly") {
+            "/visual" => {
+                if !self.players[player].has_permission("commands.visual") {
                     self.players[player].send_no_permission_message();
                     return false;
                 }
-                let enabled = match args.as_slice() {
-                    [] => None,
-                    ["on"] => Some(true),
-                    ["off"] => Some(false),
-                    _ => {
-                        self.players[player].send_error_message(messages::USAGE_SCREEN_ONLY);
-                        return false;
+                match args.as_slice() {
+                    [] => self.players[player].send_system_message(&format!(
+                        "Visual settings: pistons {}; update rate {} Hz; display-only {}.",
+                        self.piston_animation,
+                        self.world_send_rate.0,
+                        if self.world.screen_only() {
+                            "on"
+                        } else {
+                            "off"
+                        },
+                    )),
+                    ["pistons"] => {
+                        self.players[player].send_system_message(&messages::piston_animation(
+                            self.piston_animation,
+                            if self.world.fast_rendering {
+                                "off"
+                            } else {
+                                "on"
+                            },
+                        ))
                     }
-                };
-                if let Some(enabled) = enabled {
-                    if self.owner != Some(self.players[player].uuid)
-                        && !self.players[player].has_permission("plots.worldedit.bypass")
-                    {
-                        self.players[player].send_no_permission_message();
-                        return false;
+                    ["pistons", mode] => {
+                        self.piston_animation = match *mode {
+                            "auto" => mchprs_save_data::plot_data::PistonAnimation::Auto,
+                            "on" => mchprs_save_data::plot_data::PistonAnimation::On,
+                            "off" => mchprs_save_data::plot_data::PistonAnimation::Off,
+                            _ => {
+                                self.players[player].send_error_message(messages::USAGE_VISUAL);
+                                return false;
+                            }
+                        };
+                        self.update_render_mode();
+                        self.players[player].send_system_message(&messages::piston_animation(
+                            self.piston_animation,
+                            if self.world.fast_rendering {
+                                "off"
+                            } else {
+                                "on"
+                            },
+                        ));
                     }
-                    if let Err(error) =
-                        database::set_screen_only(self.world.x, self.world.z, enabled)
-                    {
+                    ["rate"] => {
+                        self.players[player].send_system_message(&messages::world_send_rate(
+                            self.world_send_rate.0,
+                            self.effective_send_rate(),
+                        ))
+                    }
+                    ["rate", rate] => {
+                        let Ok(hertz) = rate.parse::<u32>() else {
+                            self.players[player]
+                                .send_error_message(messages::UNABLE_PARSE_SEND_RATE);
+                            return false;
+                        };
+                        if hertz > 1000 {
+                            self.players[player]
+                                .send_error_message(messages::WORLD_SEND_RATE_CANNOT_GO_HIGHER);
+                            return false;
+                        }
+                        self.world_send_rate = WorldSendRate(hertz);
+                        self.reset_timings();
                         self.players[player]
-                            .send_error_message(&messages::visual_setting_save_failed(error));
-                        return false;
+                            .send_system_message(messages::WORLD_SEND_RATE_WAS_SUCCESSFULLY_SET);
                     }
-                    self.world.set_screen_only(enabled);
+                    ["displayonly"] => {
+                        self.players[player].send_system_message(if self.world.screen_only() {
+                            messages::SCREEN_ONLY_ON
+                        } else {
+                            messages::SCREEN_ONLY_OFF
+                        })
+                    }
+                    ["displayonly", enabled] => {
+                        let enabled = match *enabled {
+                            "on" => true,
+                            "off" => false,
+                            _ => {
+                                self.players[player].send_error_message(messages::USAGE_VISUAL);
+                                return false;
+                            }
+                        };
+                        if self.owner != Some(self.players[player].uuid)
+                            && !self.players[player].has_permission("plots.worldedit.bypass")
+                        {
+                            self.players[player].send_no_permission_message();
+                            return false;
+                        }
+                        if let Err(error) =
+                            database::set_screen_only(self.world.x, self.world.z, enabled)
+                        {
+                            self.players[player]
+                                .send_error_message(&messages::visual_setting_save_failed(error));
+                            return false;
+                        }
+                        self.world.set_screen_only(enabled);
+                        self.players[player].send_system_message(if enabled {
+                            messages::SCREEN_ONLY_ON
+                        } else {
+                            messages::SCREEN_ONLY_OFF
+                        });
+                    }
+                    _ => self.players[player].send_error_message(messages::USAGE_VISUAL),
                 }
-                self.players[player].send_system_message(if self.world.screen_only() {
-                    messages::SCREEN_ONLY_ON
-                } else {
-                    messages::SCREEN_ONLY_OFF
-                });
             }
             "/help" => {
                 if args.len() > 1 {
@@ -705,33 +776,6 @@ impl Plot {
                     self.players[player]
                         .send_error_message(messages::UNKNOWN_HELP_TOPIC_USE_HELP_TOPICS);
                 }
-            }
-            "/piston_anim" | "/bisdon_anim" => {
-                if !self.players[player].has_permission("commands.piston_anim") {
-                    self.players[player].send_no_permission_message();
-                    return false;
-                }
-                if !args.is_empty() {
-                    self.piston_animation = match args.as_slice() {
-                        ["auto"] => mchprs_save_data::plot_data::PistonAnimation::Auto,
-                        ["on"] => mchprs_save_data::plot_data::PistonAnimation::On,
-                        ["off"] => mchprs_save_data::plot_data::PistonAnimation::Off,
-                        _ => {
-                            self.players[player]
-                                .send_error_message(messages::USAGE_PISTON_ANIM_AUTO_ON_OFF);
-                            return false;
-                        }
-                    };
-                    self.update_render_mode();
-                }
-                self.players[player].send_system_message(&messages::piston_animation(
-                    self.piston_animation,
-                    if self.world.fast_rendering {
-                        "off"
-                    } else {
-                        "on"
-                    },
-                ));
             }
             "/tellraw" | "/say" => {
                 let permission = if command == "/say" {
@@ -1122,34 +1166,6 @@ impl Plot {
                 };
                 self.change_player_gamemode(player, gamemode, name == "cat");
             }
-            "/worldsendrate" | "/wsr" => {
-                if args.is_empty() {
-                    self.players[player].send_system_message(&messages::world_send_rate(
-                        self.world_send_rate.0,
-                        self.effective_send_rate(),
-                    ));
-                    return false;
-                }
-                if args.len() != 1 {
-                    self.players[player].send_error_message(messages::USAGE_WORLDSENDRATE_HERTZ);
-                    return false;
-                }
-
-                let Ok(hertz) = args[0].parse::<u32>() else {
-                    self.players[player].send_error_message(messages::UNABLE_PARSE_SEND_RATE);
-                    return false;
-                };
-                if hertz > 1000 {
-                    self.players[player]
-                        .send_error_message(messages::WORLD_SEND_RATE_CANNOT_GO_HIGHER);
-                    return false;
-                }
-
-                self.world_send_rate = WorldSendRate(hertz);
-                self.reset_timings();
-                self.players[player]
-                    .send_system_message(messages::WORLD_SEND_RATE_WAS_SUCCESSFULLY_SET);
-            }
             "/curse" => {
                 if self.world.is_cursed {
                     self.players[player].send_system_message(messages::WORLD_ALREADY_CURSED);
@@ -1179,7 +1195,6 @@ impl Plot {
 
 /// Native command permissions are checked before dispatch, including aliases.
 fn native_command_permission(command: &str, args: &[&str]) -> Option<String> {
-    let action = if args.is_empty() { "view" } else { "set" };
     let name = match command {
         "/help" => "help".to_owned(),
         "/git" | "/rv" => "git".to_owned(),
@@ -1202,9 +1217,7 @@ fn native_command_permission(command: &str, args: &[&str]) -> Option<String> {
                 "set"
             }
         ),
-        "/worldsendrate" | "/wsr" => format!("worldsendrate.{action}"),
-        "/screenonly" => format!("screenonly.{action}"),
-        "/piston_anim" | "/bisdon_anim" => format!("piston_anim.{action}"),
+        "/visual" => format!("visual.{}", if args.len() > 1 { "set" } else { "view" }),
         "/adv" => "radvance".to_owned(),
         "/toggleautorp" => "toggleautorp".to_owned(),
         "/curse" => "curse".to_owned(),
@@ -1228,9 +1241,7 @@ fn native_command_permission(command: &str, args: &[&str]) -> Option<String> {
 fn changes_plot(command: &str, args: &[&str]) -> bool {
     match command {
         "/tps" => !args.is_empty() && args != ["timings"],
-        "/worldsendrate" | "/wsr" | "/screenonly" | "/piston_anim" | "/bisdon_anim" => {
-            !args.is_empty()
-        }
+        "/visual" => args.len() > 1,
         "/adv" | "/toggleautorp" | "/curse" | "/bless" => true,
         "/redpiler" | "/rp" => !matches!(args.first().copied(), Some("inspect" | "i" | "analyze")),
         _ => false,
@@ -1252,9 +1263,9 @@ fn declared_command_nodes() -> Vec<Node<'static>> {
         // 0: Root Node
         Node::root(&[
             1, 4, 5, 6, 11, 12, 14, 16, 18, 19, 20, 21, 22, 23, 24, 26, 29, 31, 33, 35, 46, 48, 52,
-            59, 60, 62, 64, 65, 66, 70, 72, 73, 74, 81, 82, 84, 87, 89, 90, 100, 105, 110, 111,
-            112, 113, 114, 115, 117, 119, 120, 123, 130, 134, 135, 142, 143, 144, 145, 146, 150,
-            152, 153, 160, 161, 164, 165,
+            59, 60, 62, 64, 65, 66, 73, 74, 81, 82, 84, 90, 100, 105, 110, 111, 112, 113, 114, 115,
+            117, 119, 123, 130, 134, 135, 142, 143, 144, 145, 146, 150, 152, 153, 160, 161, 164,
+            165, 176,
         ]),
         // 1: /teleport
         Node::literal("teleport", &[3, 2]),
@@ -1437,7 +1448,7 @@ fn declared_command_nodes() -> Vec<Node<'static>> {
         Node::argument("mode", Parser::String(0), &[]).executable(),
         Node::redirect("bisdon_anim", 87).executable(),
         // 90–99: /help and its topic suggestions
-        Node::literal("help", &[91, 92, 93, 94, 95, 96, 97, 98, 99]).executable(),
+        Node::literal("help", &[91, 92, 93, 94, 95, 96, 97, 98, 99, 178]).executable(),
         Node::argument("topic", Parser::String(0), &[]).executable(),
         Node::literal("plots", &[]).executable(),
         Node::literal("tps", &[]).executable(),
@@ -1574,6 +1585,10 @@ fn declared_command_nodes() -> Vec<Node<'static>> {
         Node::literal("cat", &[]).executable(),
         Node::literal("ocelot", &[]).executable(),
         Node::literal("baby", &[]).executable(),
+        // 176-179: unified visual settings and legacy command spellings.
+        Node::literal("visual", &[177]).executable(),
+        Node::argument("settings", Parser::String(2), &[]).executable(),
+        Node::literal("visual", &[]).executable(),
     ]
 }
 
@@ -1983,8 +1998,6 @@ mod security_tests {
     #[test]
     fn native_aliases_share_permissions_and_ownership_checks() {
         for (alias, canonical, args) in [
-            ("/bisdon_anim", "/piston_anim", vec!["off"]),
-            ("/wsr", "/worldsendrate", vec!["100"]),
             ("/rp", "/redpiler", vec!["compile"]),
             ("/tp", "/teleport", vec!["Admin"]),
             ("/gm", "/gamemode", vec!["2"]),

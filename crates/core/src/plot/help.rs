@@ -18,10 +18,7 @@ pub(super) fn page(topic: Option<&str>) -> Option<&'static str> {
         "tools" | "redstonetools" | "find" | "signsearch" | "ss" | "rstack" | "rs"
         | "autostack" | "container" | "cursel" => messages::HELP_REDSTONE_TOOLS,
         "schematics" | "schematic" | "load" | "save" => messages::HELP_SCHEMATICS,
-        "screenonly" | "screens" => messages::HELP_SCREEN_ONLY,
-        "pistons" | "animations" | "piston_anim" | "bisdon_anim" | "wsr" | "worldsendrate" => {
-            messages::HELP_PISTONS
-        }
+        "visual" | "pistons" | "animations" => messages::HELP_PISTONS,
         "back" | "rewind" | "history" | "tick_rewind" | "rhistory" | "rback" => {
             messages::HELP_HISTORY
         }

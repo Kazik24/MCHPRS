@@ -78,9 +78,7 @@ waive its plot or packet validation.
 | `/gm cat` | `mchprs.commands.gamemode`, `.gamemode.creative`, and `.small` |
 | `/tps` | `mchprs.commands.rtps.view` or `.set` |
 | `/adv` | `mchprs.commands.radvance` |
-| `/wsr` | `mchprs.commands.worldsendrate.view` or `.set` |
-| `/screenonly` | `mchprs.commands.screenonly` plus `.view` or `.set` |
-| `/piston_anim` | `mchprs.commands.piston_anim` plus `.view` or `.set` |
+| `/visual` | `mchprs.commands.visual` plus `.view` or `.set` |
 | `/rp`, `/redpiler` | `mchprs.commands.redpiler.analyze`, `.compile`, `.reset`, `.inspect`, or `.help` |
 | `/toggleautorp` | `mchprs.commands.toggleautorp` |
 | `/rhistory` | `mchprs.commands.rhistory` plus the requested subcommand node |
