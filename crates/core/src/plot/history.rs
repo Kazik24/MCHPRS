@@ -111,7 +111,9 @@ impl TickHistory {
         let bytes = capacity
             .checked_mul(size_of::<Option<Encoded>>())
             .ok_or(messages::HISTORY_SIZE_OVERFLOW)?;
-        let reservation = budget.reserve(bytes)?;
+        let reservation = budget
+            .reserve(bytes)
+            .ok_or_else(|| messages::HISTORY_MEMORY_LIMIT_REACHED.to_owned())?;
         let mut slots = Vec::new();
         slots
             .try_reserve_exact(capacity)
@@ -368,10 +370,11 @@ impl Plot {
                     .parse::<i64>()
                     .map_err(|_| messages::SPECIFY_NONNEGATIVE_MEMORY_LIMIT_MIB.to_owned())?;
                 let bytes = budget::mib_to_bytes(mib)?;
-                self.world
-                    .history
-                    .budget
-                    .set_limit(bytes, || crate::config::save_history_limit(mib))?;
+                self.world.history.budget.set_limit(
+                    bytes,
+                    |used| messages::history_free_buffers_first(format_memory(used)),
+                    || crate::config::save_history_limit(mib),
+                )?;
                 Ok(messages::history_limit_saved(format_memory(bytes)))
             }
             ["off"] => {

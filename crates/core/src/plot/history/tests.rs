@@ -441,7 +441,11 @@ fn byte_limit_evicts_oldest_ticks_without_gaps_and_oversized_capture_stops() {
     let sample = Encoded::encode(raw, world.history.dictionary(), &world.history.work).unwrap();
     let limit = world.history.memory_bytes() + sample.bytes.data.len() * 2 + 8;
     drop(sample);
-    world.history.budget.set_limit(limit, || Ok(())).unwrap();
+    world
+        .history
+        .budget
+        .set_limit(limit, |_| "too small".into(), || Ok(()))
+        .unwrap();
     for _ in 0..20 {
         world.tick_interpreted();
     }
@@ -485,7 +489,9 @@ fn shared_limits_release_on_drop_and_reenable_rejection_preserves_history() {
     );
     let memory = first.history.memory_bytes();
     let before = state(&first);
-    budget.set_limit(budget.stats().0, || Ok(())).unwrap();
+    budget
+        .set_limit(budget.stats().0, |_| "too small".into(), || Ok(()))
+        .unwrap();
     assert!(first.enable_history(4, false).is_err());
     assert_eq!(first.history.memory_bytes(), memory);
     assert_eq!(state(&first), before);
@@ -512,7 +518,11 @@ fn corrupt_snapshot_or_exhausted_workspace_preserves_rewind_state() {
     assert_eq!(world.history.len(), 1);
     assert_eq!(world.history.memory_bytes(), memory);
     world.history.slots[0].as_mut().unwrap().checksum ^= 1;
-    world.history.work.set_limit(0, || Ok(())).unwrap();
+    world
+        .history
+        .work
+        .set_limit(0, |_| "too small".into(), || Ok(()))
+        .unwrap();
     assert!(world.rewind_ticks(1, false).is_err());
     assert_eq!(state(&world), before);
     assert_eq!(world.history.len(), 1);
@@ -536,13 +546,23 @@ fn raw_fallback_and_concurrent_reservations_obey_exact_limits() {
     let stored = Budget::new(2048);
     assert!(Bytes::copy(&stored, &encoded.bytes.data).is_ok());
     let held = Bytes::copy(&stored, &encoded.bytes.data).unwrap();
-    assert!(stored.reserve(1).is_err());
-    assert!(stored.set_limit(2047, || Ok(())).is_err());
-    assert!(stored.set_limit(4096, || Err("disk error".into())).is_err());
+    assert!(stored.reserve(1).is_none());
+    assert!(
+        stored
+            .set_limit(2047, |used| used.to_string(), || Ok(()))
+            .is_err()
+    );
+    assert!(
+        stored
+            .set_limit(4096, |_| "too small".into(), || Err("disk error".into()))
+            .is_err()
+    );
     assert_eq!(stored.stats().1, 2048);
     drop(held);
-    stored.set_limit(0, || Ok(())).unwrap();
-    assert!(stored.reserve(1).is_err());
+    stored
+        .set_limit(0, |_| "too small".into(), || Ok(()))
+        .unwrap();
+    assert!(stored.reserve(1).is_none());
 
     let budget = Budget::new(4);
     let barrier = Arc::new(Barrier::new(17));
@@ -554,7 +574,7 @@ fn raw_fallback_and_concurrent_reservations_obey_exact_limits() {
             let accepted = accepted.clone();
             std::thread::spawn(move || {
                 barrier.wait();
-                let held = budget.reserve(1).ok();
+                let held = budget.reserve(1);
                 if held.is_some() {
                     accepted.fetch_add(1, Ordering::Relaxed);
                 }

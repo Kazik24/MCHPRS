@@ -2,6 +2,7 @@
 //! power is never evidence that a source, consumer or update channel is harmless.
 use crate::interaction;
 use crate::plot::PlotWorld;
+use crate::plot::memory_budget;
 use crate::redstone::power::{ConsumerInput, consumer_roots};
 use crate::redstone::{self, power, wire};
 use crate::world::{World, storage::Chunk};
@@ -14,49 +15,54 @@ use std::cell::{Cell, RefCell};
 use std::cmp::Reverse;
 use std::collections::BinaryHeap;
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
 pub(super) const MAX_PLACEMENTS: usize = 512;
+const MAX_SNAPSHOT_BYTES: usize = 16 * 1024 * 1024;
 const MAX_CELLS: usize = 262_144;
 const MAX_STATES: usize = 32_768;
 const MAX_VISITS: usize = 1_048_576;
 const SEARCH_TIME: Duration = Duration::from_millis(200);
 const SLICE_TIME: Duration = Duration::from_millis(1);
 const MOTION_REACH: i32 = 13;
-const MAX_SNAPSHOT_BYTES: usize = 16 * 1024 * 1024;
-static SNAPSHOT_BYTES: AtomicUsize = AtomicUsize::new(0);
 const GLOBAL_SNAPSHOT_BYTES: usize = 64 * 1024 * 1024;
+static SNAPSHOT_BUDGET: once_cell::sync::Lazy<Arc<memory_budget::Budget>> =
+    once_cell::sync::Lazy::new(|| memory_budget::Budget::new(GLOBAL_SNAPSHOT_BYTES));
 
-struct Reservation(usize);
+struct Reservation {
+    bytes: usize,
+    _budget: memory_budget::Reservation,
+}
 
 impl Reservation {
     fn new(bytes: usize) -> Result<Self, String> {
-        SNAPSHOT_BYTES
-            .try_update(Ordering::Relaxed, Ordering::Relaxed, |used| {
-                (used + bytes <= GLOBAL_SNAPSHOT_BYTES).then_some(used + bytes)
-            })
-            .map(|_| Self(bytes))
-            .map_err(|_| {
-                "Wire snapshot memory budget reached; try again after another route finishes."
-                    .into()
-            })
+        let budget = SNAPSHOT_BUDGET.reserve(bytes).ok_or_else(|| {
+            "Wire snapshot memory budget reached; try again after another route finishes."
+                .to_owned()
+        })?;
+        Ok(Self {
+            bytes,
+            _budget: budget,
+        })
     }
 
     fn grow(&mut self, bytes: usize) -> Result<(), String> {
-        if self.0 + bytes > MAX_SNAPSHOT_BYTES {
-            return Err("Wire snapshot memory budget reached; place a shorter segment.".into());
+        let total = self
+            .bytes
+            .checked_add(bytes)
+            .filter(|&total| total <= MAX_SNAPSHOT_BYTES)
+            .ok_or_else(|| {
+                "Wire snapshot memory budget reached; place a shorter segment.".to_owned()
+            })?;
+        if !self._budget.grow(bytes) {
+            return Err(
+                "Wire snapshot memory budget reached; try again after another route finishes."
+                    .into(),
+            );
         }
-        let mut extra = Self::new(bytes)?;
-        self.0 += extra.0;
-        extra.0 = 0;
+        self.bytes = total;
         Ok(())
-    }
-}
-
-impl Drop for Reservation {
-    fn drop(&mut self) {
-        SNAPSHOT_BYTES.fetch_sub(self.0, Ordering::Relaxed);
     }
 }
 
@@ -412,7 +418,7 @@ impl Snapshot {
 
     #[cfg(test)]
     pub(super) fn bytes(&self) -> usize {
-        self.data._reservation.0
+        self.data._reservation.bytes
     }
 
     #[cfg(test)]

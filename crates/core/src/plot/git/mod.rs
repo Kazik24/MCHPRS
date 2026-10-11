@@ -16,6 +16,7 @@ use crate::config::CONFIG;
 use crate::messages;
 use crate::permissions;
 use crate::player::{PacketSender, PlayerPos};
+use crate::plot::memory_budget;
 use crate::world::World;
 use crate::world::storage::Chunk;
 use anyhow::{Context, Result, bail, ensure};
@@ -31,7 +32,6 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::{
     Arc, Mutex,
-    atomic::{AtomicUsize, Ordering},
     mpsc::{self, Receiver, SyncSender, TryRecvError},
 };
 use std::time::{Duration, Instant};
@@ -40,14 +40,16 @@ const ROOT: &str = "./world/plot-git";
 const MAX_WORK_MEMORY_MIB: u64 = 1024;
 const MAX_SNAPSHOT_MIB: u64 = 128;
 
-static USED: AtomicUsize = AtomicUsize::new(0);
+static MEMORY: Lazy<Arc<memory_budget::Budget>> = Lazy::new(|| {
+    memory_budget::Budget::new(mib(CONFIG.git_work_memory_mib.min(MAX_WORK_MEMORY_MIB)))
+});
+
 pub(super) fn memory_usage() -> (usize, usize) {
-    (
-        USED.load(Ordering::SeqCst),
-        mib(CONFIG.git_work_memory_mib.min(MAX_WORK_MEMORY_MIB)),
-    )
+    MEMORY.stats()
 }
-pub(super) struct Reservation(usize);
+pub(super) struct Reservation {
+    _reservation: memory_budget::Reservation,
+}
 impl Reservation {
     fn snapshot(bytes: usize) -> Result<Self> {
         // Packed bytes understate decoded maps/collections. Include compression,
@@ -61,17 +63,12 @@ impl Reservation {
     }
 
     fn new(bytes: usize) -> Result<Self> {
-        let limit = mib(CONFIG.git_work_memory_mib.min(MAX_WORK_MEMORY_MIB));
-        USED.try_update(Ordering::SeqCst, Ordering::SeqCst, |used| {
-            used.checked_add(bytes).filter(|&n| n <= limit)
+        let reservation = MEMORY
+            .reserve(bytes)
+            .ok_or_else(|| anyhow::anyhow!(messages::GIT_MEMORY_LIMIT_REACHED))?;
+        Ok(Self {
+            _reservation: reservation,
         })
-        .map_err(|_| anyhow::anyhow!(messages::GIT_MEMORY_LIMIT_REACHED))?;
-        Ok(Self(bytes))
-    }
-}
-impl Drop for Reservation {
-    fn drop(&mut self) {
-        USED.fetch_sub(self.0, Ordering::SeqCst);
     }
 }
 

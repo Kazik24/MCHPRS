@@ -16,6 +16,7 @@ mod git;
 mod help;
 mod history;
 mod interpreter_cache;
+mod memory_budget;
 mod monitor;
 mod neighbors;
 mod packet_handlers;
