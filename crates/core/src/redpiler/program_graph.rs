@@ -51,9 +51,10 @@ pub(crate) enum InputPort {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum PowerPort {
     Output,
+    Stored,
     Weak(BlockFace),
     Strong(BlockFace),
-    Conducted,
+    Conducted { include_dust: bool },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

@@ -9,6 +9,7 @@ use rustc_hash::FxHashSet;
 use serde::Serialize;
 use std::fmt;
 
+pub(crate) mod electrical;
 pub(crate) mod geometry;
 pub mod graph;
 

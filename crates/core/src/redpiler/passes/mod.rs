@@ -12,6 +12,8 @@ mod legacy_regressions;
 mod prune_orphans;
 mod unreachable_output;
 
+pub(crate) use identify_nodes::identify_block;
+
 use super::compile_graph::{CompileGraph, GraphError};
 use super::{CompilerInput, CompilerOptions, GraphCounts, PassStatistics, TaskMonitor};
 use crate::world::World;

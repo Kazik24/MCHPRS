@@ -133,7 +133,7 @@ fn for_pos<W: World>(
     nodes_by_position.insert(pos, node_idx);
 }
 
-fn identify_block<W: World>(
+pub(crate) fn identify_block<W: World>(
     block: Block,
     pos: BlockPos,
     world: &W,

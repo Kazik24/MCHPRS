@@ -1,6 +1,6 @@
 # Step 04: Guarded electrical connections
 
-Status: not started. [Step 03](./03-geometry-and-payload-parser.md) must be reviewed.
+Status: implemented; awaiting human review. [Step 03](./03-geometry-and-payload-parser.md) is reviewed.
 
 ## Agent prompt
 
@@ -20,11 +20,11 @@ Compile live normal, side, QC, and conductor dependencies for every admitted geo
 
 Electrical discovery and pure graph query plans/guards. Do not infer callback delivery from these links.
 
-1. Compile directional primitive weak/strong emission and receiver channels. Solid conduction is a maximum of adjacent primitive strong inputs; do not chain conductor-to-conductor charge.
+1. Compile directional primitive weak/strong emission and receiver channels. Solid conduction is a maximum of adjacent primitive strong inputs; keep dust-inclusive and dust-excluding reads separate, and do not chain conductor-to-conductor charge.
 2. Keep normal and QC piston ports separate, with front exclusion and world-up QC geometry. Both feed the sampled extension predicate; neither causes activation by itself.
 3. Make resource emission/conduction conditional on contact selection and availability. A disabled resource supplies no stationary material power; base/head ports retain their own parsed rules. No moving-block runtime profile is needed.
-4. Keep explicit dust vertices and stored strengths. Compile all required directed step/ascent/descent and shape-query context. Do not collapse paths or normalize imported dust, even with -O.
-5. Preserve attenuation/max semantics, comparator main/side eligibility, direct/far override precedence, and fixed container analog values. Keep static context entities separate from movable material admission.
+4. Keep explicit dust vertices and stored strengths, including shape-independent diode rear fallback and comparator-side reads. Compile all required directed step/ascent/descent and shape-query context. Do not collapse paths or normalize imported dust, even with -O.
+5. Preserve attenuation/max semantics, comparator main/side eligibility, direct/far override precedence, fixed analog values, and live component-backed overrides. Keep static context entities separate from movable material admission.
 6. Represent local guards without global pose enumeration. Record source, channel, face, guard, and attenuation provenance. Prepare strong-query and wire context references needed by the executor.
 
 ## Acceptance checks
