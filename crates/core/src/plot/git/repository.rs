@@ -860,7 +860,7 @@ impl Repository {
             repo.store(before,&fp)?;
             if repo.snapshot_id(&head)?!=fp.full {
                 let now=chrono::Utc::now().timestamp();
-                let id=hex(Sha256::digest(serde_json::to_vec(&(&fp.full,&head,author.to_string(),name,chrono::Utc::now().timestamp_nanos()))?));
+                let id=hex(Sha256::digest(serde_json::to_vec(&(&fp.full,&head,author.to_string(),name,chrono::Utc::now().timestamp_nanos_opt().unwrap()))?));
                 repo.conn.execute("INSERT INTO recoveries(id,snapshot,parent,author,name,date,source) VALUES(?1,?2,?3,?4,?5,?6,?7)",params![id,fp.full,head,author.to_string(),name,now,source])?;
                 recovery=Some(id);
             }
