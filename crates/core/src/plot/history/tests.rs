@@ -554,7 +554,11 @@ fn raw_fallback_and_concurrent_reservations_obey_exact_limits() {
     );
     assert!(
         stored
-            .set_limit(4096, |_| "too small".into(), || Err("disk error".into()))
+            .set_limit(
+                4096,
+                |_| "too small".into(),
+                || Err::<(), String>("disk error".into())
+            )
             .is_err()
     );
     assert_eq!(stored.stats().1, 2048);

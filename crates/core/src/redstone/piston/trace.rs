@@ -40,6 +40,11 @@ fn record(world: &impl World, operation: Operation) {
 }
 
 pub(crate) fn sample(world: &impl World, pos: BlockPos, extended: bool, powered: bool) {
+    crate::redstone::instant_piston_tests::record_operation(
+        world,
+        "piston_sample",
+        serde_json::json!({"pos":pos,"extended":extended,"powered":powered}),
+    );
     record(
         world,
         Operation::Sample {

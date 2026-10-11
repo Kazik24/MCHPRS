@@ -5,6 +5,7 @@ pub mod analysis;
 pub(crate) mod backend;
 mod compile_graph;
 mod passes;
+pub(crate) mod program_graph;
 mod task_monitor;
 
 use crate::redstone;

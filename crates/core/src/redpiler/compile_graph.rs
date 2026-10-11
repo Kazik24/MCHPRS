@@ -100,9 +100,13 @@ impl CompileNode {
     }
 }
 
+/// Destination channel for the legacy graph's power-only links. These variants
+/// do not encode neighbor updates or shape callbacks; those use `program_graph`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LinkType {
+    /// Ordinary power delivered to the destination's main input.
     Default,
+    /// Ordinary power delivered to the destination's side input.
     Side,
 }
 
@@ -119,6 +123,8 @@ impl CompileLink {
     }
 }
 
+/// The legacy electrically lowered graph. Rich power/update/shape graphs use
+/// `program_graph` and cannot be passed to the legacy rewrites or backends.
 pub type CompileGraph = StableGraph<CompileNode, CompileLink>;
 
 #[derive(Debug)]

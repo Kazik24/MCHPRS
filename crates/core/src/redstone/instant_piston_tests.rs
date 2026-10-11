@@ -15,6 +15,7 @@ use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 
 mod io;
+mod reference_contract;
 
 thread_local! {
     static RECORDER: RefCell<Option<Recorder>> = const { RefCell::new(None) };
@@ -568,6 +569,20 @@ fn applied(t: &Value) -> Vec<&Value> {
         .collect()
 }
 
+fn assert_sampled_request(entries: &[&Value], request: usize) {
+    let sample = entries[request - 1];
+    assert_eq!(sample["kind"], "piston_sample");
+    let callback = entries[..request - 1]
+        .iter()
+        .rev()
+        .find(|entry| entry["kind"] == "callback")
+        .unwrap();
+    assert_eq!(callback["data"]["pos"], sample["data"]["pos"]);
+    assert_eq!(callback["data"]["piston_power"], sample["data"]["powered"]);
+    assert_eq!(callback["operation"], sample["operation"]);
+    assert_eq!(callback["action"], sample["action"]);
+}
+
 #[test]
 fn exact_saved_imports_remain_ready_without_notifications() {
     for m in manifests() {
@@ -761,8 +776,8 @@ fn chain_causality_is_fifo_retraction_then_callback_then_downstream_event() {
     assert_eq!(entries[enqueue]["depth"], 1);
     assert_eq!(entries[second]["tick"], 1);
     assert_ne!(entries[first]["operation"], entries[second]["operation"]);
-    assert_eq!(entries[enqueue - 1]["kind"], "callback");
-    assert_eq!(entries[enqueue - 1]["data"]["piston_power"], false);
+    assert_sampled_request(&entries, enqueue);
+    assert_eq!(entries[enqueue - 1]["data"]["powered"], false);
 }
 
 #[test]

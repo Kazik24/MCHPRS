@@ -175,8 +175,8 @@ fn lever_chain_propagates_through_nested_callbacks_in_one_tick() {
     assert_eq!(entries[second]["tick"], 2);
     assert_eq!(entries[request]["operation"], entries[first]["operation"]);
     assert_ne!(entries[second]["operation"], entries[first]["operation"]);
-    assert_eq!(entries[request - 1]["kind"], "callback");
-    assert_eq!(entries[request - 1]["data"]["piston_power"], false);
+    assert_sampled_request(&entries, request);
+    assert_eq!(entries[request - 1]["data"]["powered"], false);
 }
 
 #[test]
