@@ -40,7 +40,7 @@ graph_id!(ProfileId);
 graph_id!(GuardId);
 graph_id!(RouteId);
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub(crate) enum InputPort {
     Main,
     Side,
@@ -48,7 +48,7 @@ pub(crate) enum InputPort {
     StrongIncident,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub(crate) enum PowerPort {
     Output,
     Stored,
@@ -57,7 +57,7 @@ pub(crate) enum PowerPort {
     Conducted { include_dust: bool },
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub(crate) enum LinkKind {
     Power {
         from: PowerPort,
@@ -80,6 +80,13 @@ pub(crate) struct LinkSpec {
     pub(crate) from: NodeId,
     pub(crate) to: NodeId,
     pub(crate) kind: LinkKind,
+    pub(crate) callback: Option<CallbackEdgeRef>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub(crate) struct CallbackEdgeRef {
+    pub(crate) route: RouteId,
+    pub(crate) sequence: u32,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -179,6 +186,7 @@ pub(crate) enum CallbackReceiver {
     Component(NodeId),
     PistonBase(PistonId),
     PistonHead(PistonId),
+    Contact(ContactId),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -267,9 +275,12 @@ pub(crate) struct SiteSpec {
 pub(crate) struct WirePlan {
     pub(crate) node: NodeId,
     pub(crate) canonical_neighbors: [SiteId; 24],
+    pub(crate) shape_route: Option<RouteId>,
+    /// Canonical captured candidates are ordered by TURBO_ORDER at delivery.
+    pub(crate) turbo_route: Option<RouteId>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub(crate) enum DeliveryKind {
     Update { direction: Option<BlockFace> },
     Shape { direction: BlockFace },
@@ -280,11 +291,30 @@ pub(crate) struct RouteDelivery {
     pub(crate) target: SiteId,
     pub(crate) kind: DeliveryKind,
     pub(crate) guard: GuardId,
+    pub(crate) view: OperandView,
+    pub(crate) sequence: u32,
+    pub(crate) receiver: Option<CallbackReceiver>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct Route {
+    pub(crate) source: NodeId,
     pub(crate) deliveries: Box<[RouteDelivery]>,
+}
+
+impl RouteDelivery {
+    fn link_kind(self) -> LinkKind {
+        match self.kind {
+            DeliveryKind::Update { direction } => LinkKind::Update {
+                direction,
+                guard: self.guard,
+            },
+            DeliveryKind::Shape { direction } => LinkKind::Shape {
+                direction,
+                guard: self.guard,
+            },
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -470,6 +500,9 @@ impl CircuitDraft {
             }
             if let Some(route) = node.output_route {
                 check_id("routes", route.index(), self.routes.len())?;
+                if self.routes[route.index()].source != id {
+                    return Err(GraphBuildError::RouteSourceMismatch { route, node: id });
+                }
             }
         }
         Ok(())
@@ -593,6 +626,15 @@ impl CircuitDraft {
             for site in wire.canonical_neighbors {
                 check_id("sites", site.index(), self.sites.len())?;
             }
+            for route in wire.shape_route.into_iter().chain(wire.turbo_route) {
+                check_id("routes", route.index(), self.routes.len())?;
+                if self.routes[route.index()].source != wire.node {
+                    return Err(GraphBuildError::RouteSourceMismatch {
+                        route,
+                        node: wire.node,
+                    });
+                }
+            }
         }
         Ok(())
     }
@@ -642,7 +684,7 @@ impl CircuitDraft {
             if let PistonLane::SingleResource { far } = piston.lane {
                 check_id("contacts", far.index(), self.contacts.len())?;
             }
-            self.validate_piston_routes(piston.routes)?;
+            self.validate_piston_routes(piston.node, piston.routes)?;
         }
 
         if self.initial_pistons.len() != self.pistons.len() {
@@ -727,10 +769,17 @@ impl CircuitDraft {
             CallbackReceiver::PistonBase(piston) | CallbackReceiver::PistonHead(piston) => {
                 check_id("pistons", piston.index(), self.pistons.len())
             }
+            CallbackReceiver::Contact(contact) => {
+                check_id("contacts", contact.index(), self.contacts.len())
+            }
         }
     }
 
-    fn validate_piston_routes(&self, routes: PistonRoutes) -> Result<(), GraphBuildError> {
+    fn validate_piston_routes(
+        &self,
+        source: NodeId,
+        routes: PistonRoutes,
+    ) -> Result<(), GraphBuildError> {
         for route in [
             Some(routes.base_changed),
             Some(routes.near_changed),
@@ -743,21 +792,170 @@ impl CircuitDraft {
         .flatten()
         {
             check_id("routes", route.index(), self.routes.len())?;
-        }
-        Ok(())
-    }
-
-    fn validate_routes(&self) -> Result<(), GraphBuildError> {
-        for route in &self.routes {
-            for delivery in route.deliveries.iter() {
-                check_id("sites", delivery.target.index(), self.sites.len())?;
-                check_id("guards", delivery.guard.index(), self.guards.len())?;
+            if self.routes[route.index()].source != source {
+                return Err(GraphBuildError::RouteSourceMismatch {
+                    route,
+                    node: source,
+                });
             }
         }
         Ok(())
     }
 
+    fn validate_routes(&self) -> Result<(), GraphBuildError> {
+        for (route_index, route) in self.routes.iter().enumerate() {
+            let route_id = RouteId::try_from_index(route_index).expect("route count was checked");
+            check_id("nodes", route.source.index(), self.nodes.len())?;
+            let mut previous_sequence = 0;
+            for (delivery_index, delivery) in route.deliveries.iter().enumerate() {
+                check_id("sites", delivery.target.index(), self.sites.len())?;
+                check_id("guards", delivery.guard.index(), self.guards.len())?;
+                if delivery_index > 0 && delivery.sequence < previous_sequence {
+                    return Err(GraphBuildError::UnorderedRoute { route: route_id });
+                }
+                previous_sequence = delivery.sequence;
+                if let Some(receiver) = delivery.receiver {
+                    self.validate_receiver(receiver)?;
+                    self.validate_delivery_receiver(route_id, delivery, receiver)?;
+                }
+            }
+        }
+        Ok(())
+    }
+
+    fn receiver_node(&self, receiver: CallbackReceiver) -> Result<NodeId, GraphBuildError> {
+        match receiver {
+            CallbackReceiver::Component(node) => Ok(node),
+            CallbackReceiver::PistonBase(id) | CallbackReceiver::PistonHead(id) => self
+                .pistons
+                .get(id.index())
+                .map(|piston| piston.node)
+                .ok_or(GraphBuildError::InvalidReference {
+                    table: "pistons",
+                    index: id.index(),
+                    len: self.pistons.len(),
+                }),
+            CallbackReceiver::Contact(id) => self
+                .contacts
+                .get(id.index())
+                .map(|contact| contact.node)
+                .ok_or(GraphBuildError::InvalidReference {
+                    table: "contacts",
+                    index: id.index(),
+                    len: self.contacts.len(),
+                }),
+        }
+    }
+
+    fn validate_delivery_receiver(
+        &self,
+        route: RouteId,
+        delivery: &RouteDelivery,
+        receiver: CallbackReceiver,
+    ) -> Result<(), GraphBuildError> {
+        let site = self.sites[delivery.target.index()];
+        let valid = match (delivery.kind, site.source, receiver) {
+            (
+                DeliveryKind::Shape { .. },
+                SiteSource::Contact(contact),
+                CallbackReceiver::Contact(target),
+            ) => contact == target && self.contact_guard_matches(delivery, contact, None),
+            (
+                DeliveryKind::Shape { .. },
+                SiteSource::Component(node),
+                CallbackReceiver::Component(target),
+            ) => node == target,
+            (
+                DeliveryKind::Update { .. },
+                SiteSource::Component(node),
+                CallbackReceiver::Component(target),
+            ) => node == target,
+            (DeliveryKind::Update { .. }, SiteSource::Contact(contact), receiver) => self.contacts
+                [contact.index()]
+            .variants
+            .iter()
+            .any(|variant| {
+                variant.receiver == Some(receiver)
+                    && self.contact_guard_matches(delivery, contact, Some(variant.profile))
+            }),
+            (_, SiteSource::Constant(_), _) => false,
+            _ => false,
+        };
+        if valid {
+            Ok(())
+        } else {
+            Err(GraphBuildError::CallbackEdgeMismatch {
+                route,
+                sequence: delivery.sequence,
+            })
+        }
+    }
+
+    fn contact_guard_matches(
+        &self,
+        delivery: &RouteDelivery,
+        contact: ContactId,
+        profile: Option<ProfileId>,
+    ) -> bool {
+        let matching: Vec<_> = self.contacts[contact.index()]
+            .variants
+            .iter()
+            .filter(|variant| profile.map_or(true, |profile| variant.profile == profile))
+            .map(|variant| (variant.when, variant.profile))
+            .collect();
+        match delivery.view {
+            OperandView::Live => matching.iter().any(|(guard, _)| {
+                matches!(self.guards[guard.index()], Guard::Always)
+                    || self.guard_contains(delivery.guard, *guard)
+            }),
+            OperandView::Captured => matching.iter().any(|(_, profile)| {
+                self.guard_contains_site_profile(delivery.guard, delivery.target, *profile)
+            }),
+        }
+    }
+
+    fn guard_contains(&self, root: GuardId, expected: GuardId) -> bool {
+        let mut pending = vec![root];
+        let mut visited = vec![false; self.guards.len()];
+        while let Some(id) = pending.pop() {
+            if id == expected {
+                return true;
+            }
+            if visited[id.index()] {
+                continue;
+            }
+            visited[id.index()] = true;
+            pending.extend(guard_children(&self.guards[id.index()]).iter().copied());
+        }
+        false
+    }
+
+    fn guard_contains_site_profile(&self, root: GuardId, site: SiteId, profile: ProfileId) -> bool {
+        let mut pending = vec![root];
+        let mut visited = vec![false; self.guards.len()];
+        while let Some(id) = pending.pop() {
+            if visited[id.index()] {
+                continue;
+            }
+            visited[id.index()] = true;
+            if matches!(
+                self.guards[id.index()],
+                Guard::Site {
+                    site: candidate_site,
+                    view: OperandView::Captured,
+                    test: SiteTest::Profile(candidate_profile),
+                } if candidate_site == site && candidate_profile == profile
+            ) {
+                return true;
+            }
+            pending.extend(guard_children(&self.guards[id.index()]).iter().copied());
+        }
+        false
+    }
+
     fn validate_links(&self) -> Result<(), GraphBuildError> {
+        let mut callback_edges =
+            HashMap::<(CallbackEdgeRef, NodeId, NodeId, LinkKind), usize>::new();
         for link in &self.links {
             check_id("nodes", link.from.index(), self.nodes.len())?;
             check_id("nodes", link.to.index(), self.nodes.len())?;
@@ -777,6 +975,67 @@ impl CircuitDraft {
                 LinkKind::Update { guard, .. } | LinkKind::Shape { guard, .. } => guard,
             };
             check_id("guards", guard.index(), self.guards.len())?;
+            match (link.kind, link.callback) {
+                (LinkKind::Power { .. }, None) => {}
+                (_, Some(reference)) => {
+                    let route = self.routes.get(reference.route.index()).ok_or(
+                        GraphBuildError::InvalidReference {
+                            table: "routes",
+                            index: reference.route.index(),
+                            len: self.routes.len(),
+                        },
+                    )?;
+                    if route.source != link.from || matches!(link.kind, LinkKind::Power { .. }) {
+                        return Err(GraphBuildError::CallbackEdgeMismatch {
+                            route: reference.route,
+                            sequence: reference.sequence,
+                        });
+                    }
+                    *callback_edges
+                        .entry((reference, link.from, link.to, link.kind))
+                        .or_default() += 1;
+                }
+                (_, None) => {
+                    return Err(GraphBuildError::CallbackEdgeMissingReference {
+                        from: link.from,
+                        to: link.to,
+                    });
+                }
+            }
+        }
+
+        for (route_index, route) in self.routes.iter().enumerate() {
+            let route_id = RouteId::try_from_index(route_index).expect("route count was checked");
+            for delivery in route.deliveries.iter() {
+                let Some(receiver) = delivery.receiver else {
+                    continue;
+                };
+                let to = self.receiver_node(receiver)?;
+                let key = (
+                    CallbackEdgeRef {
+                        route: route_id,
+                        sequence: delivery.sequence,
+                    },
+                    route.source,
+                    to,
+                    delivery.link_kind(),
+                );
+                let Some(count) = callback_edges.get_mut(&key) else {
+                    return Err(GraphBuildError::CallbackEdgeMismatch {
+                        route: route_id,
+                        sequence: delivery.sequence,
+                    });
+                };
+                *count -= 1;
+            }
+        }
+        if let Some(((reference, _, _, _), _)) =
+            callback_edges.iter().find(|(_, count)| **count != 0)
+        {
+            return Err(GraphBuildError::CallbackEdgeMismatch {
+                route: reference.route,
+                sequence: reference.sequence,
+            });
         }
         Ok(())
     }
@@ -841,6 +1100,21 @@ pub(crate) enum GraphBuildError {
     },
     CyclicGuard {
         guard: GuardId,
+    },
+    UnorderedRoute {
+        route: RouteId,
+    },
+    RouteSourceMismatch {
+        route: RouteId,
+        node: NodeId,
+    },
+    CallbackEdgeMismatch {
+        route: RouteId,
+        sequence: u32,
+    },
+    CallbackEdgeMissingReference {
+        from: NodeId,
+        to: NodeId,
     },
     ContactGuardReadsSite {
         contact: ContactId,
@@ -919,6 +1193,28 @@ impl std::fmt::Display for GraphBuildError {
             Self::CyclicGuard { guard } => {
                 write!(f, "guard {} participates in a cycle", guard.index())
             }
+            Self::UnorderedRoute { route } => write!(
+                f,
+                "route {} has deliveries out of sequence order",
+                route.index()
+            ),
+            Self::RouteSourceMismatch { route, node } => write!(
+                f,
+                "route {} is assigned to the wrong source node {}",
+                route.index(),
+                node.index()
+            ),
+            Self::CallbackEdgeMismatch { route, sequence } => write!(
+                f,
+                "route {} delivery {sequence} does not match its callback edge",
+                route.index()
+            ),
+            Self::CallbackEdgeMissingReference { from, to } => write!(
+                f,
+                "callback edge {} -> {} is missing its route reference",
+                from.index(),
+                to.index()
+            ),
             Self::ContactGuardReadsSite {
                 contact,
                 guard,
@@ -1148,30 +1444,34 @@ mod tests {
                         attenuation: 15,
                         guard,
                     },
+                    callback: None,
                 },
                 LinkSpec {
-                    from: NodeId::new(0),
+                    from: NodeId::new(2),
                     to: NodeId::new(1),
                     kind: LinkKind::Update {
                         direction: Some(BlockFace::East),
                         guard,
                     },
+                    callback: Some(CallbackEdgeRef { route, sequence: 0 }),
                 },
                 LinkSpec {
-                    from: NodeId::new(0),
+                    from: NodeId::new(2),
                     to: NodeId::new(1),
                     kind: LinkKind::Update {
                         direction: Some(BlockFace::East),
                         guard,
                     },
+                    callback: Some(CallbackEdgeRef { route, sequence: 1 }),
                 },
                 LinkSpec {
-                    from: NodeId::new(0),
+                    from: NodeId::new(2),
                     to: NodeId::new(1),
                     kind: LinkKind::Shape {
                         direction: BlockFace::West,
                         guard,
                     },
+                    callback: Some(CallbackEdgeRef { route, sequence: 2 }),
                 },
             ],
             profiles: vec![Profile {
@@ -1206,20 +1506,37 @@ mod tests {
                 },
             ],
             routes: vec![Route {
+                source: piston_node,
                 deliveries: vec![
                     RouteDelivery {
                         target: site,
                         kind: DeliveryKind::Update {
-                            direction: Some(BlockFace::North),
+                            direction: Some(BlockFace::East),
                         },
                         guard,
+                        view: OperandView::Live,
+                        sequence: 0,
+                        receiver: Some(CallbackReceiver::Component(NodeId::new(1))),
+                    },
+                    RouteDelivery {
+                        target: site,
+                        kind: DeliveryKind::Update {
+                            direction: Some(BlockFace::East),
+                        },
+                        guard,
+                        view: OperandView::Live,
+                        sequence: 1,
+                        receiver: Some(CallbackReceiver::Component(NodeId::new(1))),
                     },
                     RouteDelivery {
                         target: site,
                         kind: DeliveryKind::Shape {
-                            direction: BlockFace::East,
+                            direction: BlockFace::West,
                         },
                         guard,
+                        view: OperandView::Live,
+                        sequence: 2,
+                        receiver: Some(CallbackReceiver::Component(NodeId::new(1))),
                     },
                 ]
                 .into_boxed_slice(),
@@ -1227,10 +1544,12 @@ mod tests {
             wires: vec![WirePlan {
                 node: NodeId::new(5),
                 canonical_neighbors: [site; 24],
+                shape_route: None,
+                turbo_route: None,
             }],
             sites: vec![SiteSpec {
                 position: BlockPos::new(0, 0, 0),
-                source: SiteSource::Component(NodeId::new(0)),
+                source: SiteSource::Component(NodeId::new(1)),
             }],
             pistons: vec![PistonSpec {
                 node: piston_node,
@@ -1296,13 +1615,19 @@ mod tests {
         assert_eq!(
             program.routes[0].deliveries[0].kind,
             DeliveryKind::Update {
-                direction: Some(BlockFace::North)
+                direction: Some(BlockFace::East)
             }
         );
         assert_eq!(
             program.routes[0].deliveries[1].kind,
+            DeliveryKind::Update {
+                direction: Some(BlockFace::East)
+            }
+        );
+        assert_eq!(
+            program.routes[0].deliveries[2].kind,
             DeliveryKind::Shape {
-                direction: BlockFace::East
+                direction: BlockFace::West
             }
         );
         assert_eq!(state.pistons.len(), 1);
@@ -1340,6 +1665,23 @@ mod tests {
                 attenuation: 16,
                 ..
             })
+        ));
+
+        let mut invalid_callback = draft_with_mixed_links();
+        invalid_callback.links[1].callback = Some(CallbackEdgeRef {
+            route: RouteId::new(0),
+            sequence: 99,
+        });
+        assert!(matches!(
+            invalid_callback.lower(),
+            Err(GraphBuildError::CallbackEdgeMismatch { .. })
+        ));
+
+        let mut missing_callback = draft_with_mixed_links();
+        missing_callback.links[1].callback = None;
+        assert!(matches!(
+            missing_callback.lower(),
+            Err(GraphBuildError::CallbackEdgeMissingReference { .. })
         ));
     }
 

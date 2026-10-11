@@ -12,7 +12,7 @@ mod tests;
 #[cfg(test)]
 pub(crate) mod trace;
 
-const NEIGHBORS: [BlockFace; 6] = [
+pub(crate) const NEIGHBORS: [BlockFace; 6] = [
     BlockFace::West,
     BlockFace::East,
     BlockFace::Bottom,
@@ -25,7 +25,7 @@ const NEIGHBORS: [BlockFace; 6] = [
 // Observers schedule their pulse ticks in this order; swapping vertical and
 // horizontal faces can make a falling wire edge recheck a quasi-powered piston
 // after its powering observer has switched off, causing an extra piston cycle.
-const SHAPE_NEIGHBORS: [BlockFace; 6] = [
+pub(crate) const SHAPE_NEIGHBORS: [BlockFace; 6] = [
     BlockFace::West,
     BlockFace::East,
     BlockFace::North,
@@ -443,8 +443,7 @@ fn finish(world: &mut impl World, pos: BlockPos, interrupted: bool) {
 }
 
 fn shape_changed(world: &mut impl World, pos: BlockPos) {
-    for face in SHAPE_NEIGHBORS {
-        let neighbor = pos.offset(face);
+    shape_notifications(pos, |neighbor, face| {
         // interaction::change takes the direction from the changed block to
         // its neighbor; observer callbacks below take the opposite direction.
         crate::interaction::change(world.get_block(neighbor), world, neighbor, face);
@@ -453,6 +452,18 @@ fn shape_changed(world: &mut impl World, pos: BlockPos) {
         if matches!(block, Block::Observer { .. }) {
             super::update(block, world, neighbor, Some(face.opposite()));
         }
+    });
+}
+
+pub(crate) fn shape_notifications(pos: BlockPos, mut visit: impl FnMut(BlockPos, BlockFace)) {
+    for face in SHAPE_NEIGHBORS {
+        visit(pos.offset(face), face);
+    }
+}
+
+pub(crate) fn neighbor_notifications(pos: BlockPos, mut visit: impl FnMut(BlockPos, BlockFace)) {
+    for face in NEIGHBORS {
+        visit(pos.offset(face), face.opposite());
     }
 }
 
@@ -460,13 +471,12 @@ pub(crate) fn notify(world: &mut impl World, pos: BlockPos) {
     #[cfg(test)]
     let _source = super::instant_piston_tests::notification_source(Some(pos));
     shape_changed(world, pos);
-    for face in NEIGHBORS {
-        let neighbor = pos.offset(face);
+    neighbor_notifications(pos, |neighbor, direction| {
         let block = world.get_block(neighbor);
         if !matches!(block, Block::Observer { .. }) {
-            super::update(block, world, neighbor, Some(face.opposite()));
+            super::update(block, world, neighbor, Some(direction));
         }
-    }
+    });
 }
 
 /// Breaking an owned source/head removes its counterpart. Payload movement is

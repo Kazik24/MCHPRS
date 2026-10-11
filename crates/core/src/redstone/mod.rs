@@ -455,19 +455,24 @@ pub(crate) fn observer_notifications(
 }
 
 pub fn update_wire_neighbors(world: &mut impl World, pos: BlockPos) {
-    for direction in &BlockFace::values() {
-        let neighbor_pos = pos.offset(*direction);
-        let block = world.get_block(neighbor_pos);
-        update(block, world, neighbor_pos, Some(direction.opposite()));
-        for n_direction in &BlockFace::values() {
-            let n_neighbor_pos = neighbor_pos.offset(*n_direction);
-            let block = world.get_block(n_neighbor_pos);
-            // These are power notifications through a neighboring block. Its
-            // state did not change, so an observer watching it must not pulse.
-            // Observers adjacent to the changed wire are notified above.
-            if !matches!(block, Block::Observer { .. }) {
-                update(block, world, n_neighbor_pos, Some(n_direction.opposite()));
-            }
+    wire_update_notifications(pos, |target, direction, indirect| {
+        let block = world.get_block(target);
+        // Indirect calls are power rechecks through an unchanged intervening block.
+        if !indirect || !matches!(block, Block::Observer { .. }) {
+            update(block, world, target, Some(direction));
+        }
+    });
+}
+
+pub(crate) fn wire_update_notifications(
+    pos: BlockPos,
+    mut visit: impl FnMut(BlockPos, BlockFace, bool),
+) {
+    for direction in BlockFace::values() {
+        let neighbor = pos.offset(direction);
+        visit(neighbor, direction.opposite(), false);
+        for next in BlockFace::values() {
+            visit(neighbor.offset(next), next.opposite(), true);
         }
     }
 }

@@ -1,6 +1,6 @@
 # Redpiler pistons, attempt four
 
-Status: implementation proposal for review, 2026-10-11. No step is implemented by this document set.
+Status: Steps 01-04 implemented and reviewed; Step 05 is implemented and awaiting review. Side projects scoped on 2026-10-12.
 
 The first deliverable is a readable, executable graph representing supported piston circuits without physical or interpreted redstone execution. The interpreter is the differential-test oracle. Generalized dust remains explicit initially; a later pass may eliminate it when power, updates, timing, and continuation are preserved. Pistons select compiled connections and publish events: the runtime has no physical Motion objects or progress simulation.
 
@@ -47,7 +47,21 @@ An unexpectedly large step should be divided during review into smaller, complet
 - Compile failure preserves the input world; reset reconstructs exact current state and pending work.
 - Parser stages and graph operations explain themselves through stable IDs, source positions, named inputs, guards, and ordered traces.
 
-Optimization, binary export, graph visualization products, and multithreading are subsequent work. Minimal textual inspection and test traces are required now for debugging; they are not an export subsystem.
+Behavioral optimization and multithreading remain subsequent work. The user has additionally requested the inspection export/viewer and basic-pass research below; these do not change the core execution gates.
+
+## Side projects
+
+| Scope | Reviewable slices |
+| --- | --- |
+| [Side A: export and viewer](steps/side-a-export-and-viewer.md) | A1: read-only JSON export; A2: offline HTML inspection and recorded trace replay; true execution is a later A3. |
+| [JSON format contract](GRAPH_JSON.md) | Versioned typed records, stage/capability declarations, provenance, logical snapshots, and ordered routes. |
+| [Side B: basic passes](steps/side-b-basic-passes.md) | B1: source research and legality table; B2: reviewed local simplification/interning, before later runtime-sensitive rewrites. |
+
+Each slice stops for human review. Side agents preserve the active core agent's files and must not implement unreviewed parser/runtime changes to satisfy an export or optimizer interface.
+
+## Parser audit gate
+
+After Step 05, use [the complete parser review checklist](STEP_05_REVIEW.md) to review Steps 02-05 together, run focused regressions and real fixture preparation, and compare query/route plans with interpreter procedures before starting Step 06.
 
 ## Later implementation direction
 

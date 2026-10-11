@@ -1,4 +1,5 @@
 use super::*;
+mod callback_routes;
 mod redstone_fuzz;
 mod research;
 

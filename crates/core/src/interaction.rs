@@ -629,20 +629,17 @@ pub fn change(block: Block, world: &mut impl World, pos: BlockPos, direction: Bl
 }
 
 fn change_surrounding_blocks(world: &mut impl World, pos: BlockPos) {
-    for direction in &BlockFace::values() {
-        let neighbor_pos = pos.offset(*direction);
-        let block = world.get_block(neighbor_pos);
-        change(block, world, neighbor_pos, *direction);
+    shape_notifications(pos, |target, direction| {
+        change(world.get_block(target), world, target, direction);
+    });
+}
 
-        // Also change diagonal blocks
-
-        let up_pos = neighbor_pos.offset(BlockFace::Top);
-        let up_block = world.get_block(up_pos);
-        change(up_block, world, up_pos, *direction);
-
-        let down_pos = neighbor_pos.offset(BlockFace::Bottom);
-        let down_block = world.get_block(down_pos);
-        change(down_block, world, down_pos, *direction);
+pub(crate) fn shape_notifications(pos: BlockPos, mut visit: impl FnMut(BlockPos, BlockFace)) {
+    for direction in BlockFace::values() {
+        let neighbor = pos.offset(direction);
+        visit(neighbor, direction);
+        visit(neighbor.offset(BlockFace::Top), direction);
+        visit(neighbor.offset(BlockFace::Bottom), direction);
     }
 }
 

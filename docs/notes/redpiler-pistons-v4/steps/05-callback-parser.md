@@ -1,6 +1,6 @@
 # Step 05: Ordered neighbor and shape routes
 
-Status: not started. [Step 04](./04-electrical-parser.md) must be reviewed.
+Status: implemented; awaiting human review. [Step 04](./04-electrical-parser.md) is reviewed.
 
 ## Agent prompt
 

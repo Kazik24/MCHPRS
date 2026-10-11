@@ -1,6 +1,6 @@
 # Step 04: Guarded electrical connections
 
-Status: implemented; awaiting human review. [Step 03](./03-geometry-and-payload-parser.md) is reviewed.
+Status: reviewed. [Step 03](./03-geometry-and-payload-parser.md) is reviewed.
 
 ## Agent prompt
 
