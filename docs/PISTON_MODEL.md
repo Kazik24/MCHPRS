@@ -15,12 +15,12 @@ Piston events and movement operations are ordered work, not additional time unit
 
 Four observations must remain distinct:
 
-| Observation | Meaning |
-| --- | --- |
-| Sample | A delivered callback evaluated live power, including a no-change sample |
-| Request | A particular Extend/Retract/RetractWithoutPull tuple was queued |
-| Accepted event | Its live validation succeeded and its movement mutation ran |
-| Settled value | A declared decoder can read a stationary base/payload state |
+| Observation    | Meaning                                                                 |
+| -------------- | ----------------------------------------------------------------------- |
+| Sample         | A delivered callback evaluated live power, including a no-change sample |
+| Request        | A particular Extend/Retract/RetractWithoutPull tuple was queued         |
+| Accepted event | Its live validation succeeded and its movement mutation ran             |
+| Settled value  | A declared decoder can read a stationary base/payload state             |
 
 Block state alone is insufficient: identical geometry and power with different queues, motion identities or phases can have different futures. A moving payload occupies its destination as `MovingPiston` and emits none of its carried block's electrical power. A screen or static-animation rendering mode changes the client projection, not these simulation states.
 
@@ -125,13 +125,13 @@ $$
 
 until one of the following cases occurs:
 
-| Encounter | Result |
-| --- | --- |
-| Out-of-height or unavailable chunk | Reject extension |
-| Recognized container block | Reject extension |
-| Air | Accept; air terminates the line and is not a payload |
-| Moving piston or piston head | Reject extension |
-| Any other block | Append it to the line and continue |
+| Encounter                          | Result                                               |
+| ---------------------------------- | ---------------------------------------------------- |
+| Out-of-height or unavailable chunk | Reject extension                                     |
+| Recognized container block         | Reject extension                                     |
+| Air                                | Accept; air terminates the line and is not a payload |
+| Moving piston or piston head       | Reject extension                                     |
+| Any other block                    | Append it to the line and continue                   |
 
 Let the accepted payload positions be $(q_1,\ldots,q_n)$ from nearest to farthest, ending before the terminating air cell.
 
@@ -224,12 +224,12 @@ and store the **old** value $g_{\mathrm{previous}}$ in the moving entity's seria
 
 An uninterrupted motion created at progress zero therefore evolves as
 
-| Movement operation | Exact progress after operation | Serialized/interpolated progress | Cell state |
-| --- | --- | --- | --- |
-| Creation | $0$ | $0$ | Moving piston |
-| First | $1/2$ | $0$ | Moving piston |
-| Second | $1$ | $1/2$ | Moving piston |
-| Third | Removed | Entity removed | Restored carried block, subject to validity |
+| Movement operation | Exact progress after operation | Serialized/interpolated progress | Cell state                                  |
+| ------------------ | ------------------------------ | -------------------------------- | ------------------------------------------- |
+| Creation           | $0$                            | $0$                              | Moving piston                               |
+| First              | $1/2$                          | $0$                              | Moving piston                               |
+| Second             | $1$                            | $1/2$                            | Moving piston                               |
+| Third              | Removed                        | Entity removed                   | Restored carried block, subject to validity |
 
 Completion checks the progress **before** incrementing. Reaching progress $1$ at the second operation does not itself restore the block.
 
@@ -426,14 +426,14 @@ they authorize no logical waveform collapse. Qualification, invalidation and
 cache lifetime are described in
 [Interpreter architecture](INTERPRETER_ARCHITECTURE.md#qualification-accelerates-addresses).
 
-| Subject | Source |
-| --- | --- |
-| Power, requests, acceptance and mutation order | [piston.rs](../crates/core/src/redstone/piston.rs) |
-| Event/motion/phase types and exact progress recurrence | [world/lib.rs](../crates/world/src/lib.rs) |
-| Queue deduplication, movement registration, phase stepping and loading | [plot/mod.rs](../crates/core/src/plot/mod.rs) |
-| Moving entity progress encoding | [block_entities.rs](../crates/blocks/src/block_entities.rs) |
-| Support checks, destruction and owned-part removal callers | [interaction.rs](../crates/core/src/interaction.rs) |
-| Power queries and observer pulse callbacks | [redstone/mod.rs](../crates/core/src/redstone/mod.rs) |
-| Test-only sample/acceptance instrumentation | [piston/trace.rs](../crates/core/src/redstone/piston/trace.rs), [instant_piston_tests.rs](../crates/core/src/redstone/instant_piston_tests.rs) |
+| Subject                                                                | Source                                                                                                                                         |
+| ---------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| Power, requests, acceptance and mutation order                         | [piston.rs](../crates/core/src/redstone/piston.rs)                                                                                             |
+| Event/motion/phase types and exact progress recurrence                 | [world/lib.rs](../crates/world/src/lib.rs)                                                                                                     |
+| Queue deduplication, movement registration, phase stepping and loading | [plot/mod.rs](../crates/core/src/plot/mod.rs)                                                                                                  |
+| Moving entity progress encoding                                        | [block_entities.rs](../crates/blocks/src/block_entities.rs)                                                                                    |
+| Support checks, destruction and owned-part removal callers             | [interaction.rs](../crates/core/src/interaction.rs)                                                                                            |
+| Power queries and observer pulse callbacks                             | [redstone/mod.rs](../crates/core/src/redstone/mod.rs)                                                                                          |
+| Test-only sample/acceptance instrumentation                            | [piston/trace.rs](../crates/core/src/redstone/piston/trace.rs), [instant_piston_tests.rs](../crates/core/src/redstone/instant_piston_tests.rs) |
 
 [verification reference](INTERPRETER_ARCHITECTURE.md#8-verification-and-reproduction) contains runnable verification and fixture protocols. Saved reference traces are evidence for their input histories, not a replacement for these general transition rules.
