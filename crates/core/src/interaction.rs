@@ -523,7 +523,7 @@ pub fn destroy(block: Block, world: &mut impl World, pos: BlockPos) {
 }
 
 // Center support geometry needed by torches and attachments around moving pistons.
-fn supports_attachment(block: Block, face: BlockFace) -> bool {
+pub(crate) fn supports_attachment(block: Block, face: BlockFace) -> bool {
     match block {
         Block::MovingPiston { .. } => false,
         Block::PistonHead { head } => BlockFace::from(head.facing) == face,

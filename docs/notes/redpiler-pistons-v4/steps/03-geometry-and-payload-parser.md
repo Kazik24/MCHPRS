@@ -1,6 +1,6 @@
 # Step 03: Stationary geometry and bounded payload parser
 
-Status: not started. [Step 02](./02-graph-and-memory.md) must be reviewed.
+Status: implemented; awaiting human review. Step 02 was reviewed.
 
 ## Agent prompt
 
