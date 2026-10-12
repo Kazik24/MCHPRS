@@ -1,6 +1,10 @@
 # Step 10: Transactional activation and continuation projection
 
-Status: not started. [Step 09](./09-shared-payloads.md) must be reviewed.
+Status: implemented; awaiting human review (authorized together with Step 11).
+
+Result: builds with stationary pistons select `BackendKind::Graph` through `Compiler::compile`; other entry issues, rich-graph parser rejections, cancellation, and `--export`/`--export-dot` fail before publication with structured errors and leave world, ticks, piston state, flags, and statistics unchanged. Controls route to graph state; `flush` writes graph state only (io_only suppresses non-IO cells), and `GraphBackend::project_future` derives interpreter blocks, motions (progress from deadlines), ordinary ticks (verbatim via `World::restore_scheduled_tick`), and queued requests at reset. Evidence: `redpiler::backend::graph::fuzz_tests::continuation::*` (reset at every host boundary for 48 single-actor templates, with observer/lamp scheduled work and with display suppressed) and `redpiler::tests::failed_and_cancelled_piston_compilation_preserve_interpreter_state`.
+
+Shortcut: reset is defined at BetweenTicks only; the host rejects nano/pico stepping while Redpiler is active, so no partial-phase frontier is persisted. Legacy `block_type: None` imported ticks are restored with the current type (inherited from Step 06).
 
 ## Agent prompt
 

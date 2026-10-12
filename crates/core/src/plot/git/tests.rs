@@ -1797,8 +1797,25 @@ fn rejected_piston_compilation_highlights_the_block_and_keeps_interpreter_work()
         plot.world.set_block(pos, block);
         plot.world
             .schedule_tick(pos, 3, mchprs_world::TickPriority::High);
+        // Queued piston work is not stationary entry, so compilation rejects it.
+        let queued = mchprs_world::PistonEvent {
+            pos,
+            sticky: false,
+            facing: mchprs_blocks::BlockFace::North,
+            action: mchprs_world::PistonAction::Extend,
+        };
+        plot.world.piston_state_mut().events.push_back(queued);
         let ticks = plot.world.scheduler().iter_entries().collect::<Vec<_>>();
         plot.start_redpiler(Default::default());
+        assert_eq!(
+            plot.world
+                .piston_state()
+                .events
+                .iter()
+                .copied()
+                .collect::<Vec<_>>(),
+            vec![queued]
+        );
         assert!(!plot.redpiler.is_active());
         assert_eq!(plot.world.get_block(pos), block);
         assert_eq!(

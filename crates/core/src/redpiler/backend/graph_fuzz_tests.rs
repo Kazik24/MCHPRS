@@ -61,7 +61,6 @@ enum Delivery {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum NotifyTarget {
     Base,
-    Near,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -196,9 +195,7 @@ struct Fixture {
     near: BlockPos,
     far: BlockPos,
     normal: BlockPos,
-    normal_support: BlockPos,
     quasi: BlockPos,
-    quasi_support: BlockPos,
     blocks: Vec<(BlockPos, Block)>,
     watched: Vec<BlockPos>,
 }
@@ -272,9 +269,7 @@ fn fixture(template: Template) -> Fixture {
         near,
         far,
         normal,
-        normal_support,
         quasi,
-        quasi_support,
         blocks,
         watched,
     }
@@ -293,7 +288,7 @@ fn load_fixture(fixture: &Fixture) -> PlotWorld {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-enum Operation {
+pub(super) enum Operation {
     Callback {
         target: BlockPos,
         direction: Option<BlockFace>,
@@ -450,7 +445,7 @@ fn semantic_callback(block: &str) -> bool {
     )
 }
 
-fn native_operations(entries: &[Value], watched: &[BlockPos]) -> Vec<Operation> {
+pub(super) fn native_operations(entries: &[Value], watched: &[BlockPos]) -> Vec<Operation> {
     entries
         .iter()
         .filter_map(|entry| {
@@ -900,7 +895,7 @@ fn graph_deadlines(backend: &GraphBackend, fixture: &Fixture) -> Vec<Deadline> {
     deadlines
 }
 
-fn graph_operations_since(
+pub(super) fn graph_operations_since(
     backend: &GraphBackend,
     start: usize,
     watched: &[BlockPos],
@@ -1041,7 +1036,6 @@ fn native_action(world: &mut PlotWorld, fixture: &Fixture, action: &Action) {
         Action::Notify { target, direction } => {
             let position = match target {
                 NotifyTarget::Base => fixture.base,
-                NotifyTarget::Near => fixture.near,
             };
             redstone::update(world.get_block(position), world, position, direction);
         }
@@ -1069,7 +1063,6 @@ fn graph_action(
         Action::Notify { target, direction } => {
             let position = match target {
                 NotifyTarget::Base => fixture.base,
-                NotifyTarget::Near => fixture.near,
             };
             graph_notify(backend, position, direction)
         }
@@ -1684,3 +1677,6 @@ fn dropped_payload_reuse_keeps_far_resource_live() {
     }
     assert!(divergences.is_empty(), "{}", divergences.join("\n"));
 }
+
+#[path = "graph_continuation_tests.rs"]
+mod continuation;

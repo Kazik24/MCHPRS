@@ -485,9 +485,9 @@ fn remaining_frozen_targets_report_their_first_parser_stage() {
         ("INSTANT_RESET_REDSTONE.schem", FixturePrepStage::Admitted),
         ("INSTANT_RESET_REDSTONE_2.schem", FixturePrepStage::Admitted),
         ("INSTANT_TORCH.schem", FixturePrepStage::Admitted),
-        ("NOT_1.schem", FixturePrepStage::Geometry),
+        ("NOT_1.schem", FixturePrepStage::Admitted),
         ("OR_Interpreter_illigal.schem", FixturePrepStage::Admitted),
-        ("XOR_Simple.schem", FixturePrepStage::Geometry),
+        ("XOR_Simple.schem", FixturePrepStage::Admitted),
     ];
     for (name, expected_stage) in fixtures {
         let (stage, detail) = fixture_callback_projection(name);

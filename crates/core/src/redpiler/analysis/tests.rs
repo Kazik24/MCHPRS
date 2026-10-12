@@ -262,32 +262,46 @@ fn queued_events_motions_and_movement_work_block_compilation() {
 }
 
 #[test]
-fn piston_compile_rejection_preserves_the_interpreter_world() {
+fn piston_entry_rejection_preserves_the_interpreter_world() {
     let mut world = empty();
-    world.set_block(
-        BASE,
-        Block::Piston {
-            piston: RedstonePiston {
-                facing: BlockFacing::South,
-                sticky: true,
-                extended: false,
-            },
-        },
-    );
+    let piston = RedstonePiston {
+        facing: BlockFacing::South,
+        sticky: true,
+        extended: false,
+    };
+    world.set_block(BASE, Block::Piston { piston });
+    let queued = mchprs_world::PistonEvent {
+        pos: BASE,
+        sticky: true,
+        facing: BlockFace::South,
+        action: mchprs_world::PistonAction::Extend,
+    };
+    world.piston_state_mut().events.push_back(queued);
     let before = world.get_block(BASE);
     let mut compiler = Compiler::default();
-    assert!(matches!(
-        compiler.compile(
+    let error = compiler
+        .compile(
             &world,
             world.get_corners(),
             Default::default(),
             Vec::new(),
-            Default::default()
-        ),
-        Err(CompileError::Unsupported(_))
-    ));
+            Default::default(),
+        )
+        .unwrap_err();
+    assert!(matches!(&error, CompileError::Unsupported(report)
+        if report.issues.iter().any(|issue| matches!(issue, AdmissionIssue::PendingPistonEvents { count: 1 }))));
     assert!(!compiler.is_active());
+    assert!(compiler.stats().is_none());
     assert_eq!(world.get_block(BASE), before);
+    assert_eq!(
+        world
+            .piston_state()
+            .events
+            .iter()
+            .copied()
+            .collect::<Vec<_>>(),
+        vec![queued]
+    );
 }
 
 #[test]
@@ -572,6 +586,7 @@ fn electrical_channels_preserve_direction_and_one_cube_conduction() {
 fn electrical_comparator_side_tracks_resource_contact_alternatives() {
     let mut world = empty();
     let comparator = RedstoneComparator::new(BlockDirection::South, ComparatorMode::Compare, false);
+    world.set_block(BASE.offset(BlockFace::Bottom), Block::Stone {});
     world.set_block(BASE, Block::RedstoneComparator { comparator });
     let side = BASE.offset(BlockFace::East);
     let piston = side.offset(BlockFace::North).offset(BlockFace::North);

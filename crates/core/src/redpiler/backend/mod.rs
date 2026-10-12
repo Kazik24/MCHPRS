@@ -1,5 +1,5 @@
 pub mod direct;
-mod graph;
+pub(crate) mod graph;
 mod native;
 mod queue;
 pub use queue::*;
@@ -25,6 +25,7 @@ fn validate_strengths(graph: &super::compile_graph::CompileGraph) -> Result<(), 
 pub(crate) enum Runtime {
     Direct(direct::DirectBackend),
     Native(native::NativeBackend),
+    Graph(Box<graph::GraphBackend>),
 }
 
 impl Runtime {
@@ -42,6 +43,30 @@ impl Runtime {
         match self {
             Self::Direct(b) => b.node_count(),
             Self::Native(b) => b.node_count(),
+            Self::Graph(b) => b.node_count(),
+        }
+    }
+
+    pub(crate) fn kind(&self) -> super::BackendKind {
+        match self {
+            Self::Direct(_) => super::BackendKind::Direct,
+            Self::Native(_) => super::BackendKind::Native,
+            Self::Graph(_) => super::BackendKind::Graph,
+        }
+    }
+
+    pub(crate) fn graph_execution_counts(&self) -> Option<super::GraphExecutionCounts> {
+        match self {
+            Self::Graph(b) => Some(b.execution_counts()),
+            _ => None,
+        }
+    }
+
+    fn tick_graph(backend: &mut graph::GraphBackend) {
+        // Validation rejects unsupported components before publication, so an
+        // execution error is a defect. Report it; never fall back to physics.
+        if let Err(error) = backend.tick() {
+            tracing::error!(%error, "graph backend execution failed");
         }
     }
 
@@ -49,42 +74,58 @@ impl Runtime {
         match self {
             Self::Direct(b) => b.tick(),
             Self::Native(b) => b.tick(),
+            Self::Graph(b) => Self::tick_graph(b),
         }
     }
     pub(crate) fn tick_with_world(&mut self, world: &mut impl crate::world::World) {
         match self {
             Self::Direct(b) => b.tick_with_world(world),
             Self::Native(b) => b.tick_with_world(world),
+            Self::Graph(b) => Self::tick_graph(b),
         }
     }
     pub(crate) fn flush(&mut self, world: &mut impl crate::world::World, io_only: bool) {
         match self {
             Self::Direct(b) => b.flush(world, io_only),
             Self::Native(b) => b.flush(world, io_only),
+            Self::Graph(b) => b.flush(world, io_only),
         }
     }
     pub(crate) fn reset(&mut self, world: &mut impl crate::world::World, io_only: bool) {
         match self {
             Self::Direct(b) => b.reset(world, io_only),
             Self::Native(b) => b.reset(world, io_only),
+            // Continuation needs the whole future, so io_only affects display only.
+            Self::Graph(b) => b.reset(world),
         }
     }
     pub(crate) fn on_use_block(&mut self, pos: mchprs_blocks::BlockPos) {
         match self {
             Self::Direct(b) => b.on_use_block(pos),
             Self::Native(b) => b.on_use_block(pos),
+            Self::Graph(b) => {
+                if let Err(error) = b.use_block(pos) {
+                    tracing::error!(%error, "graph backend control failed");
+                }
+            }
         }
     }
     pub(crate) fn set_pressure_plate(&mut self, pos: mchprs_blocks::BlockPos, powered: bool) {
         match self {
             Self::Direct(b) => b.set_pressure_plate(pos, powered),
             Self::Native(b) => b.set_pressure_plate(pos, powered),
+            Self::Graph(b) => {
+                if let Err(error) = b.set_pressure_plate(pos, powered) {
+                    tracing::error!(%error, "graph backend control failed");
+                }
+            }
         }
     }
     pub(crate) fn inspect(&mut self, pos: mchprs_blocks::BlockPos) {
         match self {
             Self::Direct(b) => b.inspect(pos),
             Self::Native(b) => b.inspect(pos),
+            Self::Graph(b) => b.inspect(pos),
         }
     }
 
@@ -93,6 +134,7 @@ impl Runtime {
         match self {
             Self::Direct(b) => b.ordinary_sources(),
             Self::Native(b) => b.ordinary_sources(),
+            Self::Graph(_) => Vec::new(),
         }
     }
     #[cfg(test)]
@@ -100,7 +142,7 @@ impl Runtime {
     pub(crate) fn scheduled_ticks(&self) -> Vec<mchprs_world::TickEntry> {
         match self {
             Self::Direct(b) => b.scheduled_ticks(),
-            Self::Native(_) => Vec::new(),
+            Self::Native(_) | Self::Graph(_) => Vec::new(),
         }
     }
 
@@ -112,7 +154,7 @@ impl Runtime {
     ) -> Option<(direct::node::NodeType, bool, u8, [u8; 16], [u8; 16])> {
         match self {
             Self::Direct(b) => b.node_state(pos),
-            Self::Native(_) => None,
+            Self::Native(_) | Self::Graph(_) => None,
         }
     }
     #[cfg(test)]
@@ -131,7 +173,7 @@ impl Runtime {
     > {
         match self {
             Self::Direct(b) => b.incoming_states(pos),
-            Self::Native(_) => None,
+            Self::Native(_) | Self::Graph(_) => None,
         }
     }
 }

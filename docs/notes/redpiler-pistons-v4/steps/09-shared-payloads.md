@@ -1,6 +1,6 @@
 # Step 09: Shared graph resources and contact recapture
 
-Status: not started. [Step 08](./08-piston-transitions.md) must be reviewed.
+Status: implemented, including the retraction-direction and interruption fixes; awaiting human review.
 
 ## Agent prompt
 

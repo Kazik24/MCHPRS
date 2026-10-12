@@ -1,6 +1,6 @@
 # Step 08: Piston connection switching and timed graph events
 
-Status: implemented for isolated empty ordinary and single-resource sticky pistons; awaiting review. Same-value QC requests, unavailable resource channels, and observed completion callback order have parity coverage. Instant chained actor actions remain unverified; Step 09 is not started.
+Status: implemented for isolated empty ordinary and single-resource sticky pistons; awaiting review. Same-value QC requests, unavailable resource channels, and observed completion callback order have parity coverage. Shared-resource and chained-actor behavior is covered by Step 09.
 
 ## Agent prompt
 

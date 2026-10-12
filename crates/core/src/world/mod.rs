@@ -121,6 +121,12 @@ pub trait World {
     /// Schedules a tick in the world with `delay` and `pritority`
     fn schedule_half_tick(&mut self, pos: BlockPos, delay: u32, priority: TickPriority);
 
+    /// Restore one handed-off entry verbatim, keeping duplicates, FIFO order
+    /// and its expected block type. Worlds without typed queues reschedule it.
+    fn restore_scheduled_tick(&mut self, entry: mchprs_world::TickEntry) {
+        self.schedule_half_tick(entry.pos, entry.ticks_left, entry.tick_priority);
+    }
+
     /// Returns true if there is a tick entry with `pos`
     fn pending_tick_at(&mut self, pos: BlockPos) -> bool;
 

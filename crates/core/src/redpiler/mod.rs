@@ -1,5 +1,5 @@
 //! Compile world blocks into an electrical graph, then execute it with the direct
-//! backend. Piston builds require the interpreter.
+//! backend. Builds with pistons compile to the rich graph backend instead.
 
 pub mod analysis;
 pub(crate) mod backend;
@@ -29,6 +29,20 @@ pub enum CompileError {
     Cancelled,
     Backend(backend::BackendError),
     Graph(compile_graph::GraphError),
+    /// The rich piston graph rejected the selection; nothing was published.
+    RichGraph(RichGraphError),
+    /// Legacy binary and dot exports cannot carry piston, contact, or route edges.
+    UnsupportedRichExport,
+}
+
+/// Structured rich-graph preparation failure, kept opaque outside the crate.
+#[derive(Debug)]
+pub struct RichGraphError(pub(crate) backend::graph::GraphBackendError);
+
+impl std::fmt::Display for RichGraphError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.0.fmt(f)
+    }
 }
 
 impl std::fmt::Display for CompileError {
@@ -49,11 +63,37 @@ impl std::fmt::Display for CompileError {
             Self::Cancelled => f.write_str("compilation cancelled"),
             Self::Backend(error) => error.fmt(f),
             Self::Graph(error) => error.fmt(f),
+            Self::RichGraph(error) => write!(f, "piston graph rejected: {error}"),
+            Self::UnsupportedRichExport => f.write_str(
+                "legacy graph export cannot represent piston graphs; compile without --export or --export-dot",
+            ),
         }
     }
 }
 
 impl std::error::Error for CompileError {}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum BackendKind {
+    /// Packed ordinary electrical graph.
+    Direct,
+    /// Ordinary circuits whose dust feedback needs native propagation.
+    Native,
+    /// Graph-native pistons, shared resources, routes, and generalized dust.
+    Graph,
+}
+
+/// Work performed by the graph backend since activation.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct GraphExecutionCounts {
+    pub ticks: u64,
+    pub scheduled_ticks: u64,
+    pub callbacks: u64,
+    pub wire_walks: u64,
+    pub piston_samples: u64,
+    pub piston_actions: u64,
+    pub deferred_publications: u64,
+}
 
 fn block_powered_mut(block: &mut Block) -> Option<&mut bool> {
     Some(match block {
@@ -204,6 +244,7 @@ impl GraphStatistics {
 #[derive(Clone, Debug)]
 pub struct CompileStatistics {
     pub graph: GraphStatistics,
+    pub backend: BackendKind,
     pub backend_nodes: usize,
     pub analysis_duration: Duration,
     pub backend_duration: Duration,
@@ -221,6 +262,11 @@ impl CompileStatistics {
             ms(self.backend_duration),
             self.backend_nodes,
         )];
+        if self.backend == BackendKind::Graph {
+            lines.push(
+                "Execution: graph backend with pistons, shared resources, and generalized dust; -O does not apply.".into(),
+            );
+        }
         lines.extend(self.graph.summary_lines().into_iter().take(2));
         lines
     }
@@ -252,6 +298,15 @@ impl Compiler {
         self.backend.as_ref().map(|_| &self.options)
     }
 
+    pub fn backend_kind(&self) -> Option<BackendKind> {
+        self.backend.as_ref().map(Runtime::kind)
+    }
+
+    /// Executed graph work; None unless the active backend is the graph.
+    pub fn graph_execution_counts(&self) -> Option<GraphExecutionCounts> {
+        self.backend.as_ref()?.graph_execution_counts()
+    }
+
     pub fn compile<W: World>(
         &mut self,
         world: &W,
@@ -281,6 +336,36 @@ impl Compiler {
         )
         .map_err(CompileError::Analysis)?;
         let analysis_duration = analysis_start.elapsed();
+        // Pistons are rejected by the ordinary graph only; any other entry
+        // issue (moving blocks, queued piston work, phase) rejects both.
+        let rich = !report.pistons.is_empty()
+            && report.issues.iter().all(|issue| {
+                matches!(
+                    issue,
+                    analysis::AdmissionIssue::PistonRuntimeUnavailable { .. }
+                )
+            });
+        if rich {
+            if options.export || options.export_dot_graph {
+                return Err(CompileError::UnsupportedRichExport);
+            }
+            let backend_start = Instant::now();
+            let backend =
+                backend::graph::GraphBackend::compile(world, bounds, ticks, monitor.clone())
+                    .map_err(|error| match error {
+                        _ if monitor.cancelled() => CompileError::Cancelled,
+                        error => CompileError::RichGraph(RichGraphError(error)),
+                    })?;
+            let backend = Runtime::Graph(Box::new(backend));
+            return self.publish(
+                backend,
+                options,
+                &monitor,
+                start,
+                analysis_duration,
+                backend_start,
+            );
+        }
         if !report.can_compile() {
             return Err(CompileError::Unsupported(Box::new(report)));
         }
@@ -300,7 +385,6 @@ impl Compiler {
         };
         let (graph, native) =
             passes::prepare(&options, &input, &monitor, true).map_err(CompileError::Graph)?;
-        let graph_statistics = monitor.graph_statistics();
         if monitor.cancelled() {
             return Err(CompileError::Cancelled);
         }
@@ -324,6 +408,26 @@ impl Compiler {
                 .map_err(CompileError::Backend)?;
             Runtime::Direct(backend)
         };
+        self.publish(
+            backend,
+            options,
+            &monitor,
+            start,
+            analysis_duration,
+            backend_start,
+        )
+    }
+
+    /// The only place a staged backend becomes active.
+    fn publish(
+        &mut self,
+        backend: Runtime,
+        options: CompilerOptions,
+        monitor: &TaskMonitor,
+        start: Instant,
+        analysis_duration: Duration,
+        backend_start: Instant,
+    ) -> Result<(), CompileError> {
         let backend_duration = backend_start.elapsed();
         if monitor.cancelled() {
             return Err(CompileError::Cancelled);
@@ -331,7 +435,8 @@ impl Compiler {
         monitor.inc_progress();
 
         let statistics = CompileStatistics {
-            graph: graph_statistics,
+            graph: monitor.graph_statistics(),
+            backend: backend.kind(),
             backend_nodes: backend.node_count(),
             analysis_duration,
             backend_duration,
@@ -407,7 +512,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn pistons_require_interpreter_for_every_compiler_mode() {
+    fn stationary_pistons_select_the_graph_backend_in_every_compiler_mode() {
         use crate::plot::PlotWorld;
         use crate::world::storage::Chunk;
         use mchprs_blocks::BlockFacing;
@@ -418,31 +523,39 @@ mod tests {
         let bounds = (BlockPos::new(0, 0, 0), BlockPos::new(15, 31, 15));
         for sticky in [false, true] {
             for extended in [false, true] {
-                let block = Block::Piston {
-                    piston: RedstonePiston {
-                        facing: BlockFacing::South,
-                        sticky,
-                        extended,
-                    },
+                let piston = RedstonePiston {
+                    facing: BlockFacing::South,
+                    sticky,
+                    extended,
                 };
-                world.set_block(pos, block);
+                world.set_block(pos, Block::Piston { piston });
+                let head = pos.offset(mchprs_blocks::BlockFace::South);
+                world.set_block(
+                    head,
+                    if extended {
+                        Block::PistonHead {
+                            head: piston.into(),
+                        }
+                    } else {
+                        Block::Air
+                    },
+                );
                 for optimize in [false, true] {
                     let options = CompilerOptions {
                         optimize,
                         ..Default::default()
                     };
                     let mut compiler = Compiler::default();
-                    let error = compiler
+                    compiler
                         .compile(&world, bounds, options, vec![], Arc::default())
-                        .unwrap_err();
-                    assert!(matches!(error, CompileError::Unsupported(_)));
-                    assert_eq!(
-                        error.to_string(),
-                        "build contains pistons, which require the interpreter"
-                    );
-                    assert!(!compiler.is_active());
-                    assert!(compiler.stats().is_none());
-                    assert_eq!(world.get_block(pos), block);
+                        .unwrap();
+                    assert_eq!(compiler.backend_kind(), Some(BackendKind::Graph));
+                    assert_eq!(compiler.stats().unwrap().backend, BackendKind::Graph);
+                    compiler.tick();
+                    assert_eq!(compiler.graph_execution_counts().unwrap().ticks, 1);
+                    compiler.reset(&mut world, bounds);
+                    assert_eq!(world.get_block(pos), Block::Piston { piston });
+                    // The ordinary read-only candidate still excludes pistons.
                     assert!(matches!(
                         analysis::graph::prepare_candidate_graph(
                             &world,
@@ -459,6 +572,147 @@ mod tests {
             }
         }
     }
+
+    /// Everything activation could disturb: blocks, entities, ordinary ticks,
+    /// and the interpreter's logical piston state.
+    fn interpreter_snapshot(
+        world: &crate::plot::PlotWorld,
+        bounds: (BlockPos, BlockPos),
+    ) -> (Vec<(BlockPos, u32, Option<String>)>, Vec<TickEntry>, String) {
+        let mut cells = Vec::new();
+        for y in bounds.0.y..=bounds.1.y {
+            for z in bounds.0.z..=bounds.1.z {
+                for x in bounds.0.x..=bounds.1.x {
+                    let pos = BlockPos::new(x, y, z);
+                    let entity = world.get_block_entity(pos).map(|e| format!("{e:?}"));
+                    let raw = world.get_block_raw(pos);
+                    if raw != 0 || entity.is_some() {
+                        cells.push((pos, raw, entity));
+                    }
+                }
+            }
+        }
+        (
+            cells,
+            world.scheduler().iter_entries().collect(),
+            serde_json::to_string(world.piston_state()).unwrap(),
+        )
+    }
+
+    #[test]
+    fn failed_and_cancelled_piston_compilation_preserve_interpreter_state() {
+        use crate::plot::PlotWorld;
+        use crate::world::storage::Chunk;
+        use mchprs_blocks::BlockFace;
+        use mchprs_blocks::blocks::{RedstonePiston, RedstoneRepeater};
+        use mchprs_world::TickPriority;
+
+        let bounds = (BlockPos::new(0, 0, 0), BlockPos::new(15, 31, 15));
+        let base = BlockPos::new(4, 20, 4);
+        let repeater = BlockPos::new(10, 20, 10);
+        let build = |payload: Block| {
+            let mut world =
+                PlotWorld::from_chunks(0, 0, vec![Chunk::empty(0, 0)], Default::default());
+            world.set_block(
+                base,
+                Block::Piston {
+                    piston: RedstonePiston {
+                        facing: mchprs_blocks::BlockFacing::East,
+                        sticky: true,
+                        extended: false,
+                    },
+                },
+            );
+            world.set_block(base.offset(BlockFace::East), payload);
+            world.set_block(repeater.offset(BlockFace::Bottom), Block::Stone {});
+            world.set_block(
+                repeater,
+                Block::RedstoneRepeater {
+                    repeater: RedstoneRepeater::default(),
+                },
+            );
+            world.schedule_tick(repeater, 1, TickPriority::High);
+            world.piston_state_mut().logical_tick = 77;
+            world
+        };
+        let world = build(Block::RedstoneBlock);
+        let moved_observer = build(Block::Observer {
+            observer: Default::default(),
+        });
+
+        // A previous success publishes statistics that failures must keep.
+        let mut compiler = Compiler::default();
+        let mut scratch = build(Block::RedstoneBlock);
+        let ticks = scratch.scheduler().iter_entries().collect();
+        compiler
+            .compile(
+                &scratch,
+                bounds,
+                CompilerOptions::default(),
+                ticks,
+                Arc::default(),
+            )
+            .unwrap();
+        assert_eq!(compiler.backend_kind(), Some(BackendKind::Graph));
+        let published = compiler.stats().unwrap().total_duration;
+        compiler.reset(&mut scratch, bounds);
+
+        let cancelled = Arc::new(TaskMonitor::default());
+        cancelled.cancel();
+        let cases: [(&str, &PlotWorld, CompilerOptions, Arc<TaskMonitor>); 4] = [
+            (
+                "moved observer",
+                &moved_observer,
+                CompilerOptions::default(),
+                Arc::default(),
+            ),
+            ("cancelled", &world, CompilerOptions::default(), cancelled),
+            (
+                "binary export",
+                &world,
+                CompilerOptions {
+                    export: true,
+                    ..Default::default()
+                },
+                Arc::default(),
+            ),
+            (
+                "dot export",
+                &world,
+                CompilerOptions {
+                    export_dot_graph: true,
+                    ..Default::default()
+                },
+                Arc::default(),
+            ),
+        ];
+        for (name, input, options, monitor) in cases {
+            let before = interpreter_snapshot(input, bounds);
+            let ticks = input.scheduler().iter_entries().collect();
+            let error = compiler
+                .compile(input, bounds, options, ticks, monitor)
+                .unwrap_err();
+            eprintln!("{name}: {error}");
+            match name {
+                "moved observer" => assert!(matches!(error, CompileError::RichGraph(_))),
+                "cancelled" => assert!(matches!(
+                    error,
+                    CompileError::Cancelled
+                        | CompileError::Analysis(analysis::AnalysisError::Cancelled)
+                )),
+                _ => assert!(matches!(error, CompileError::UnsupportedRichExport)),
+            }
+            assert!(!compiler.is_active(), "{name}");
+            assert!(compiler.current_flags().is_none(), "{name}");
+            assert_eq!(
+                compiler.stats().unwrap().total_duration,
+                published,
+                "{name}"
+            );
+            assert_eq!(interpreter_snapshot(input, bounds), before, "{name}");
+        }
+    }
+
     #[test]
     fn parse_options() {
         let input = "-iO -U --export";

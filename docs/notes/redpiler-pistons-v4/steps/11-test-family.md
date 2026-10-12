@@ -1,6 +1,8 @@
 # Step 11: Supported TEST circuits under active controls
 
-Status: not started. [Step 10](./10-activation-and-handoff.md) must be reviewed.
+Status: implemented; awaiting human review.
+
+Result: `redpiler::backend::graph::test_family_tests` replays all thirteen pinned fixtures (hashes checked against `download-manifest.json`) under masks, both actor orders, staggered inputs, 1-8 tick pulses, same-tick cancellation, rearm, and long holds, plus three horizontal rotations, comparing ordered callbacks/samples/requests/acceptance and the projected interpreter future (cells, wire properties, entities, ticks, requests, motions) at every boundary. Public compile-run-reset-native-recompile cuts cover stop/restart. TEST_DEC2, TEST_OR_3, and TEST_XOR use the wall levers recorded in `output-summary.json` on their torch supports; the loader supplies a floor block under bottom-layer dust whose saved selection omitted its support (TEST_XOR). General fixes: opaque handler-free cubes such as stone are admitted resources; a retracting downward base keeps dust support (as `interaction::supports_dust`); a piston-adjacent dependent already unsupported at entry is rejected with its position; dust-walk callbacks are observed. WEIRD fixtures were excluded by request.
 
 ## Agent prompt
 

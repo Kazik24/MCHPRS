@@ -1,18 +1,19 @@
-#![allow(dead_code)] // Kept internal until the public activation step.
-
-//! Graph-native execution for fixed components. This backend is test-targeted
-//! until activation, dust traversal, and piston transitions are reviewed.
+//! Graph-native execution for rich piston circuits. The World is read only at
+//! compilation; flush and reset project graph state back to it.
 
 use super::TickScheduler;
+use crate::redpiler::GraphExecutionCounts;
 use crate::redpiler::TaskMonitor;
 use crate::redpiler::analysis::{AnalysisLimits, callbacks, electrical, geometry};
 use crate::redpiler::compile_graph::{NodeState, NodeType};
 use crate::redpiler::program_graph::*;
-use crate::world::World;
-use mchprs_blocks::block_entities::{BlockEntity, ContainerType};
-use mchprs_blocks::blocks::{Block, ComparatorMode, RedstoneWire, RedstoneWireSide};
+use crate::world::{BlockAction, World};
+use mchprs_blocks::block_entities::{BlockEntity, ContainerType, MovingPistonEntity};
+use mchprs_blocks::blocks::{
+    Block, ComparatorMode, RedstonePiston, RedstoneWire, RedstoneWireSide,
+};
 use mchprs_blocks::{BlockFace, BlockPos};
-use mchprs_world::{TickEntry, TickPriority};
+use mchprs_world::{PistonEvent, TickEntry, TickPriority};
 use rustc_hash::{FxHashMap, FxHashSet};
 #[cfg(test)]
 use std::cell::Cell;
@@ -24,7 +25,10 @@ const SCHEDULER_BUCKETS: usize = super::queue::NUM_QUEUES;
 
 #[derive(Debug)]
 pub(crate) enum GraphBackendError {
-    Preparation(String),
+    Cancelled,
+    Geometry(geometry::GeometryError),
+    Electrical(electrical::ElectricalError),
+    Callbacks(callbacks::CallbackError),
     Graph(GraphBuildError),
     MissingBlockState {
         node: NodeId,
@@ -55,7 +59,10 @@ pub(crate) enum GraphBackendError {
 impl fmt::Display for GraphBackendError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Preparation(error) => f.write_str(error),
+            Self::Cancelled => f.write_str("graph preparation cancelled"),
+            Self::Geometry(error) => error.fmt(f),
+            Self::Electrical(error) => error.fmt(f),
+            Self::Callbacks(error) => error.fmt(f),
             Self::Graph(error) => error.fmt(f),
             Self::MissingBlockState { node } => {
                 write!(
@@ -170,8 +177,11 @@ enum GraphObservedOperation {
     },
 }
 
-#[derive(Debug, Clone, Copy)]
 enum PresentationEffect {
+    BlockAction {
+        position: BlockPos,
+        action: BlockAction,
+    },
     Sound {
         position: BlockPos,
         id: i32,
@@ -234,6 +244,8 @@ pub(crate) struct GraphBackend {
     clock: Clock,
     dirty: Vec<bool>,
     effects: Vec<PresentationEffect>,
+    /// Reported work only; simulation never reads it.
+    counts: GraphExecutionCounts,
     #[cfg(test)]
     trace: Vec<String>,
     #[cfg(test)]
@@ -255,21 +267,19 @@ impl GraphBackend {
     ) -> Result<Self, GraphBackendError> {
         let limits = AnalysisLimits::for_budget(monitor.budget_multiplier());
         let geometry = geometry::prepare_geometry(world, bounds, &ticks, &monitor, limits)
-            .map_err(|error| GraphBackendError::Preparation(error.to_string()))?;
+            .map_err(GraphBackendError::Geometry)?;
         let mut electrical = electrical::prepare_electrical(
             world,
             geometry.report.bounds,
             &geometry.draft,
             &monitor,
         )
-        .map_err(|error| GraphBackendError::Preparation(error.to_string()))?;
+        .map_err(GraphBackendError::Electrical)?;
         let callbacks =
             callbacks::prepare_callbacks(world, &geometry.draft, &mut electrical, &monitor)
-                .map_err(|error| GraphBackendError::Preparation(error.to_string()))?;
+                .map_err(GraphBackendError::Callbacks)?;
         if monitor.cancelled() {
-            return Err(GraphBackendError::Preparation(
-                "graph preparation cancelled".into(),
-            ));
+            return Err(GraphBackendError::Cancelled);
         }
 
         let power_links = electrical
@@ -317,9 +327,7 @@ impl GraphBackend {
         let mut backend = Self::new(program, state, world.piston_state().logical_tick)?;
         backend.import_ticks(world, ticks)?;
         if monitor.cancelled() {
-            return Err(GraphBackendError::Preparation(
-                "graph preparation cancelled".into(),
-            ));
+            return Err(GraphBackendError::Cancelled);
         }
         Ok(backend)
     }
@@ -472,6 +480,7 @@ impl GraphBackend {
             },
             dirty: vec![false; node_count],
             effects: Vec::new(),
+            counts: GraphExecutionCounts::default(),
             #[cfg(test)]
             trace: Vec::new(),
             #[cfg(test)]
@@ -574,6 +583,7 @@ impl GraphBackend {
     }
 
     pub(crate) fn tick(&mut self) -> Result<(), GraphExecutionError> {
+        self.counts.ticks += 1;
         self.clock.logical_tick += 1;
         self.clock.phase = GraphPhase::ScheduledTicks;
         self.clock.scheduled_advanced = false;
@@ -635,6 +645,7 @@ impl GraphBackend {
             };
             #[cfg(test)]
             self.trace.push(format!("dispatch {node:?}"));
+            self.counts.scheduled_ticks += 1;
             self.tick_component(node)?;
         }
         Ok(())
@@ -784,6 +795,7 @@ impl GraphBackend {
         if state.availability.base_pending() {
             return Ok(());
         }
+        self.counts.piston_samples += 1;
         #[cfg(test)]
         self.observed_operations
             .push(GraphObservedOperation::Sample {
@@ -878,6 +890,7 @@ impl GraphBackend {
                     request.piston, request.action
                 ));
                 self.extend_connections(request.piston)?;
+                self.accepted(request, state.extended);
                 #[cfg(test)]
                 self.observed_operations
                     .push(GraphObservedOperation::Accepted {
@@ -904,6 +917,7 @@ impl GraphBackend {
                     request.piston,
                     request.action == mchprs_world::PistonAction::RetractWithoutPull,
                 )?;
+                self.accepted(request, state.extended);
                 #[cfg(test)]
                 self.observed_operations
                     .push(GraphObservedOperation::Accepted {
@@ -920,6 +934,22 @@ impl GraphBackend {
             }
         }
         Ok(())
+    }
+
+    fn accepted(&mut self, request: PistonRequest, extended: bool) {
+        self.counts.piston_actions += 1;
+        let spec = self.program.pistons()[request.piston.index()];
+        self.effects.push(PresentationEffect::BlockAction {
+            position: self.position(spec.node),
+            action: BlockAction::Piston {
+                action: request.action,
+                piston: RedstonePiston {
+                    facing: spec.facing.into(),
+                    sticky: spec.sticky,
+                    extended,
+                },
+            },
+        });
     }
 
     fn set_resource_contact(
@@ -1265,6 +1295,7 @@ impl GraphBackend {
         let state = self.state.pistons[event.piston.index()];
         let spec = self.program.pistons()[event.piston.index()];
         let actor_valid = state.revision == event.revision;
+        self.counts.deferred_publications += 1;
 
         if event.extending {
             self.apply_deferred_resource(event, spec)?;
@@ -1420,6 +1451,7 @@ impl GraphBackend {
         }
         wire.power = power;
         self.set_wire(node, wire);
+        self.counts.wire_walks += 1;
         self.evaluate_turbo_wire(node)
     }
 
@@ -1725,6 +1757,19 @@ impl GraphBackend {
         let Some(receiver) = observed.receiver else {
             return Ok(());
         };
+        self.counts.callbacks += 1;
+        // Dust-to-dust steps stay inside the walk; native dispatches only the rest.
+        #[cfg(test)]
+        if self.has_semantic_callback(receiver)
+            && !matches!(receiver, CallbackReceiver::Component(node)
+                if matches!(self.program.nodes()[node.index()].kind, CircuitNodeKind::Wire(_)))
+        {
+            self.observed_operations
+                .push(GraphObservedOperation::Callback {
+                    target: self.program.sites()[site.index()].position,
+                    direction: None,
+                });
+        }
         #[cfg(test)]
         self.trace.push(format!(
             "wire deliver {:?} layer={} Update {{ direction: None }} receiver={receiver:?}",
@@ -2592,6 +2637,7 @@ impl GraphBackend {
                 }
             });
             let Some(receiver) = receiver else { continue };
+            self.counts.callbacks += 1;
             #[cfg(test)]
             if self.has_semantic_callback(receiver)
                 && matches!(delivery.kind, DeliveryKind::Update { .. })
@@ -2679,34 +2725,72 @@ impl GraphBackend {
         )
     }
 
-    pub(crate) fn flush<W: World>(&mut self, world: &mut W) {
+    pub(crate) fn execution_counts(&self) -> GraphExecutionCounts {
+        self.counts
+    }
+
+    pub(crate) fn node_count(&self) -> usize {
+        self.program.nodes().len()
+    }
+
+    pub(crate) fn inspect(&self, position: BlockPos) {
+        match self.positions.get(&position) {
+            Some(&node) => tracing::debug!(
+                "Graph node {node:?}: {:?} {:?}",
+                self.program.nodes()[node.index()].kind,
+                self.state.components[node.index()]
+            ),
+            None => tracing::debug!("could not find graph node at {position:?}"),
+        }
+    }
+
+    fn is_io(&self, node: NodeId) -> bool {
+        matches!(
+            self.program.nodes()[node.index()].kind,
+            CircuitNodeKind::Observer { .. }
+                | CircuitNodeKind::Electrical(
+                    NodeType::Lever
+                        | NodeType::Button
+                        | NodeType::PressurePlate
+                        | NodeType::Lamp
+                        | NodeType::CopperBulb
+                )
+        )
+    }
+
+    /// Presentation only: writes current graph state and drains effects. It
+    /// reads no World state, so suppressed display cannot alter execution.
+    pub(crate) fn flush<W: World>(&mut self, world: &mut W, io_only: bool) {
         for index in 0..self.dirty.len() {
-            if !self.dirty[index] {
-                continue;
-            }
             let node = NodeId::try_from_index(index).unwrap();
-            let spec = &self.program.nodes()[index];
-            let Some(position) = spec.position else {
-                self.dirty[index] = false;
+            // Hidden nodes stay dirty; reset materializes every node regardless.
+            if !self.dirty[index] || (io_only && !self.is_io(node)) {
                 continue;
-            };
-            let block = self.node_block(node);
-            world.set_block(position, block);
-            if matches!(
-                spec.kind,
-                CircuitNodeKind::Electrical(NodeType::Comparator { .. })
-            ) {
-                world.set_block_entity(
-                    position,
-                    BlockEntity::Comparator {
-                        output_strength: self.node_state(node).output_strength,
-                    },
-                );
             }
+            self.write_node(world, node);
             self.dirty[index] = false;
+        }
+        if !io_only {
+            for contact in 0..self.program.contacts().len() {
+                let contact = ContactId::new(contact as u32);
+                let position = self.program.contacts()[contact.index()].position;
+                if self.cell_owned_by_node(position) {
+                    continue;
+                }
+                // Clients see pending cells as empty; reset supplies interpreter motion.
+                let block = match self.contact_block(contact) {
+                    Block::MovingPiston { .. } => Block::Air,
+                    block => block,
+                };
+                world.set_block(position, block);
+            }
         }
         for effect in self.effects.drain(..) {
             match effect {
+                PresentationEffect::BlockAction { .. } if io_only => {}
+                PresentationEffect::BlockAction { position, action } => {
+                    world.block_action(position, action)
+                }
                 PresentationEffect::Sound {
                     position,
                     id,
@@ -2716,6 +2800,185 @@ impl GraphBackend {
                 } => world.play_sound(position, id, category, volume, pitch),
             }
         }
+    }
+
+    /// Whether a node's state owns its cell. Constants are compile-time
+    /// templates; a moved redstone resource is owned by its contacts instead.
+    fn owns_cell(&self, node: NodeId) -> bool {
+        matches!(
+            self.program.nodes()[node.index()].kind,
+            CircuitNodeKind::Observer { .. } | CircuitNodeKind::Wire(_)
+        ) || matches!(
+            &self.program.nodes()[node.index()].kind,
+            CircuitNodeKind::Electrical(kind) if *kind != NodeType::Constant
+        )
+    }
+
+    fn cell_owned_by_node(&self, position: BlockPos) -> bool {
+        self.positions
+            .get(&position)
+            .is_some_and(|&node| self.owns_cell(node))
+    }
+
+    fn write_node<W: World>(&self, world: &mut W, node: NodeId) {
+        let spec = &self.program.nodes()[node.index()];
+        let Some(position) = spec.position else {
+            return;
+        };
+        if !self.owns_cell(node) {
+            return;
+        }
+        world.set_block(position, self.node_block(node));
+        if matches!(
+            spec.kind,
+            CircuitNodeKind::Electrical(NodeType::Comparator { .. })
+        ) {
+            world.set_block_entity(
+                position,
+                BlockEntity::Comparator {
+                    output_strength: self.node_state(node).output_strength,
+                },
+            );
+        }
+    }
+
+    /// Hand the current graph future back to the interpreter at a tick
+    /// boundary and drop graph-owned pending work. Pending transitions are
+    /// reproduced, never settled.
+    pub(crate) fn reset<W: World>(&mut self, world: &mut W) {
+        self.project_future(world);
+        self.dirty.fill(false);
+        self.scheduler.clear();
+        self.pending.clear();
+        self.piston_requests.clear();
+        self.deferred_pistons.clear();
+    }
+
+    /// Write the interpreter state equivalent to the current graph future:
+    /// component and contact blocks, motions derived from live deferred
+    /// events, ordinary scheduled ticks, queued requests, and the clock.
+    /// Reads no World state and changes no graph state.
+    pub(crate) fn project_future<W: World>(&self, world: &mut W) {
+        debug_assert_eq!(self.clock.phase, GraphPhase::BetweenTicks);
+        let interpreter = world.piston_state_mut();
+        interpreter.logical_tick = self.clock.logical_tick;
+        interpreter.phase = mchprs_world::AdvancePhase::BetweenTicks;
+        interpreter.scheduled_advanced = false;
+        interpreter.events.clear();
+        interpreter.movement_work.clear();
+        interpreter.movement_cursor = 0;
+
+        for index in 0..self.program.nodes().len() {
+            self.write_node(world, NodeId::try_from_index(index).unwrap());
+        }
+        let motions = self.pending_motions();
+        for index in 0..self.program.contacts().len() {
+            let contact = ContactId::new(index as u32);
+            let position = self.program.contacts()[index].position;
+            if self.cell_owned_by_node(position)
+                || motions.iter().any(|motion| motion.position == position)
+            {
+                continue;
+            }
+            let block = self.contact_block(contact);
+            debug_assert!(
+                !matches!(block, Block::MovingPiston { .. }),
+                "pending contact at {position:?} has no live deferred event"
+            );
+            world.set_block(position, block);
+        }
+        for motion in &motions {
+            motion.materialize(world);
+        }
+
+        for (tick, delay, priority) in self.scheduler.iter() {
+            world.restore_scheduled_tick(TickEntry {
+                pos: tick.position,
+                block_type: Some(tick.registry_type),
+                ticks_left: delay as u32,
+                tick_priority: priority,
+            });
+        }
+        for request in &self.piston_requests {
+            let spec = self.program.pistons()[request.piston.index()];
+            world.enqueue_piston_event(PistonEvent {
+                pos: self.program.contacts()[spec.base.index()].position,
+                sticky: spec.sticky,
+                facing: spec.facing,
+                action: request.action,
+            });
+        }
+    }
+
+    /// Interpreter motions implied by live deferred events, in native creation
+    /// order. Stale actor or resource parts were interrupted or replaced and
+    /// have no interpreter motion.
+    fn pending_motions(&self) -> Vec<MotionProjection> {
+        let mut motions = Vec::new();
+        for event in &self.deferred_pistons {
+            let spec = self.program.pistons()[event.piston.index()];
+            let piston = RedstonePiston {
+                facing: spec.facing.into(),
+                sticky: spec.sticky,
+                extended: false,
+            };
+            let remaining = event.due_tick.saturating_sub(self.clock.logical_tick);
+            debug_assert!(
+                (1..=2).contains(&remaining),
+                "deferred event outside its window"
+            );
+            let position = |contact: ContactId| self.program.contacts()[contact.index()].position;
+            let actor =
+                (self.state.pistons[event.piston.index()].revision == event.revision).then(|| {
+                    MotionProjection {
+                        position: position(if event.extending {
+                            spec.near
+                        } else {
+                            spec.base
+                        }),
+                        actor: piston,
+                        carried: if event.extending {
+                            Block::PistonHead {
+                                head: piston.into(),
+                            }
+                        } else {
+                            Block::Piston { piston }
+                        },
+                        extending: event.extending,
+                        source: true,
+                        remaining,
+                    }
+                });
+            let resource = event.resource.and_then(|transfer| {
+                let state = self.state.resources[transfer.resource.index()];
+                (state.revision == transfer.revision
+                    && state.at == transfer.contact
+                    && !state.enabled)
+                    .then(|| MotionProjection {
+                        position: position(transfer.contact),
+                        actor: piston,
+                        carried: self
+                            .program
+                            .profile_block(
+                                self.program.resources()[transfer.resource.index()].material,
+                            )
+                            .expect("resource material profile was validated"),
+                        extending: event.extending,
+                        source: false,
+                        remaining,
+                    })
+            });
+            // Native extension installs the payload before the head; retraction
+            // moves the base before the pulled payload.
+            if event.extending {
+                motions.extend(resource);
+                motions.extend(actor);
+            } else {
+                motions.extend(actor);
+                motions.extend(resource);
+            }
+        }
+        motions
     }
 
     #[cfg(test)]
@@ -2737,6 +3000,61 @@ impl GraphBackend {
     }
 }
 
+/// Boundary metadata for one interpreter motion. Derived only during reset
+/// from an event deadline; graph execution never stores progress.
+struct MotionProjection {
+    position: BlockPos,
+    actor: RedstonePiston,
+    carried: Block,
+    extending: bool,
+    source: bool,
+    /// Ticks until the event publishes; the interpreter restores on the
+    /// movement visit after progress reaches 1.
+    remaining: u64,
+}
+
+impl MotionProjection {
+    fn materialize<W: World>(&self, world: &mut W) {
+        let advances = 3.0 - self.remaining as f32;
+        let progress = (advances * 0.5).min(1.0);
+        let previous_progress = (advances - 1.0) * 0.5;
+        world.set_block(
+            self.position,
+            Block::MovingPiston {
+                moving: self.actor.into(),
+            },
+        );
+        let mut entity = MovingPistonEntity {
+            facing: self.actor.facing.into(),
+            progress: 0,
+            block_state: self.carried.get_id(),
+            extending: self.extending,
+            source: self.source,
+        };
+        entity.set_progress(previous_progress);
+        world.set_block_entity(self.position, BlockEntity::MovingPiston(entity));
+        // Worlds that do not register motions with their entities get one here.
+        let index = world.piston_motion_index(self.position, None);
+        let state = world.piston_state_mut();
+        let index = index.unwrap_or_else(|| {
+            state.next_identity += 1;
+            state.motions.push_back(mchprs_world::PistonMotion {
+                pos: self.position,
+                identity: state.next_identity,
+                progress,
+                previous_progress,
+                last_tick: state.logical_tick,
+                carried_entity: None,
+            });
+            state.motions.len() - 1
+        });
+        let motion = &mut state.motions[index];
+        motion.progress = progress;
+        motion.previous_progress = previous_progress;
+        motion.last_tick = state.logical_tick;
+    }
+}
+
 #[cfg(test)]
 #[path = "graph_tests.rs"]
 mod tests;
@@ -2744,6 +3062,10 @@ mod tests;
 #[cfg(test)]
 #[path = "graph_fuzz_tests.rs"]
 mod fuzz_tests;
+
+#[cfg(test)]
+#[path = "graph_test_family_tests.rs"]
+mod test_family_tests;
 
 fn emits_weak(block: Block, side: BlockFace) -> bool {
     match block {

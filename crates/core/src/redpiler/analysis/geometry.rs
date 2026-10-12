@@ -762,15 +762,34 @@ fn validate_support<W: World>(
             let Some((_, support_face)) = interaction::attachment_support(block, dependent) else {
                 continue;
             };
-            if interaction::attachment_support(block, dependent)
-                .is_some_and(|(support, _)| support != changed)
+            if let Some((support, _)) = interaction::attachment_support(block, dependent)
+                && support != changed
             {
-                continue;
+                // A changing neighbor's shape callback removes a dependent
+                // that is already unsupported at entry.
+                if interaction::supports_attachment(probe.block(actor, support)?, support_face) {
+                    continue;
+                }
+                return Err(GeometryError::Rejected(GeometryIssue::SupportLoss {
+                    actor,
+                    changed: support,
+                    dependent,
+                    block: block.get_id(),
+                }));
             }
-            if alternatives
-                .iter()
-                .any(|(_, support)| !interaction::supports_attachment(*support, support_face))
-            {
+            // Like interaction::supports_dust, a retracting downward base keeps
+            // its upper face; its moving-base view only arises from retraction.
+            let keeps_dust = |id: PistonId, support: Block| {
+                let owner = &actors[id.index()];
+                matches!(block, Block::RedstoneWire { .. })
+                    && matches!(support, Block::MovingPiston { .. })
+                    && changed == owner.position
+                    && face == BlockFace::Top
+                    && owner.facing == BlockFace::Bottom
+            };
+            if alternatives.iter().any(|&(id, support)| {
+                !interaction::supports_attachment(support, support_face) && !keeps_dust(id, support)
+            }) {
                 return Err(GeometryError::Rejected(GeometryIssue::SupportLoss {
                     actor,
                     changed,
@@ -1061,8 +1080,20 @@ fn classify_material<W: World>(
 ) -> Result<(), GeometryError> {
     let name = block.get_name();
     let entity_free = !block.has_block_entity() && world.get_block_entity(position).is_none();
+    // Registry wool/concrete/quartz states are opaque cubes without handlers;
+    // modeled blocks qualify by the same facts. Anything with a callback,
+    // comparator override, transparency, or entity keeps its own rejection.
+    let modeled_inert = !matches!(block, Block::Unknown { .. })
+        && block.is_solid()
+        && !block.is_transparent()
+        && !crate::redstone::has_neighbor_update(block)
+        && !crate::redstone::comparator::has_override(block)
+        && !matches!(block, Block::RedstoneBlock {});
     let inert_cube = block.is_cube()
-        && (name.ends_with("_wool") || name.ends_with("_concrete") || name.contains("quartz"));
+        && (modeled_inert
+            || name.ends_with("_wool")
+            || name.ends_with("_concrete")
+            || name.contains("quartz"));
     if entity_free && (matches!(block, Block::RedstoneBlock {}) || inert_cube) {
         Ok(())
     } else {

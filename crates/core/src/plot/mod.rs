@@ -51,7 +51,7 @@ use mchprs_blocks::{BlockColorVariant, BlockFace, BlockPos};
 use mchprs_network::PlayerPacketSender;
 use mchprs_network::packets::clientbound::*;
 use mchprs_save_data::plot_data::{ChunkData, PistonAnimation, PlotData, Tps, WorldSendRate};
-use mchprs_world::{AdvancePhase, PistonMotion, PistonState, TickPriority};
+use mchprs_world::{AdvancePhase, PistonMotion, PistonState, TickEntry, TickPriority};
 use monitor::TimingsMonitor;
 use scoreboard::RedpilerState;
 use serde_json::json;
@@ -886,6 +886,16 @@ impl World for PlotWorld {
                 .schedule_half_tick(node, delay as usize, priority);
             self.tick_index.pushed(node);
         }
+    }
+
+    fn restore_scheduled_tick(&mut self, entry: TickEntry) {
+        let node = ScheduledBlockTick {
+            pos: entry.pos,
+            block_type: entry.block_type,
+        };
+        self.to_be_ticked
+            .schedule_half_tick(node, entry.ticks_left as usize, entry.tick_priority);
+        self.tick_index.pushed(node);
     }
 
     fn pending_tick_at(&mut self, pos: BlockPos) -> bool {

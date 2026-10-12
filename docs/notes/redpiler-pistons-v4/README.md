@@ -1,6 +1,6 @@
 # Redpiler pistons, attempt four
 
-Status: Steps 01-05 implemented and reviewed; the supported static parser audit is approved. Step 06 is next. Side projects scoped on 2026-10-12.
+Status (2026-10-12): Steps 01-09 implemented; Steps 10 (activation and continuation) and 11 (TEST family) implemented together under one authorization and awaiting human review. Step 12 is not started. Side projects scoped on 2026-10-12.
 
 The first deliverable is a readable, executable graph representing supported piston circuits without physical or interpreted redstone execution. The interpreter is the differential-test oracle. Generalized dust remains explicit initially; a later pass may eliminate it when power, updates, timing, and continuation are preserved. Pistons select compiled connections and publish events: the runtime has no physical Motion objects or progress simulation.
 

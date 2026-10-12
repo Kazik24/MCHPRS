@@ -374,7 +374,7 @@ fn graph_route_powers_lamp_synchronously_and_flush_only_projects_state() {
     let scheduled = backend.scheduled_ticks();
     let pending = backend.pending.clone();
     let clock = backend.clock;
-    backend.flush(&mut graph_world);
+    backend.flush(&mut graph_world, false);
     assert_eq!(backend.state, state);
     assert_eq!(backend.scheduled_ticks(), scheduled);
     assert_eq!(backend.pending, pending);
@@ -411,7 +411,7 @@ fn dust_output_uses_regulated_sides_from_compiled_neighbors() {
 
     backend.use_block(LEVER_POS).unwrap();
     set_native_lever(&mut native, LEVER_POS, true);
-    backend.flush(&mut graph_world);
+    backend.flush(&mut graph_world, false);
 
     assert_eq!(graph_world.get_block(lamp_pos), native.get_block(lamp_pos));
     assert!(matches!(
@@ -444,7 +444,7 @@ fn external_torch_boundary_supplies_power_to_selected_lamp() {
 
     backend.update_lamp(lamp, None).unwrap();
     redstone::update(native.get_block(lamp_pos), &mut native, lamp_pos, None);
-    backend.flush(&mut graph_world);
+    backend.flush(&mut graph_world, false);
     assert_eq!(graph_world.get_block(lamp_pos), native.get_block(lamp_pos));
     assert!(matches!(
         graph_world.get_block(lamp_pos),
@@ -476,7 +476,7 @@ fn dust_strong_output_uses_regulated_sides_through_a_conductor() {
 
     backend.use_block(LEVER_POS).unwrap();
     set_native_lever(&mut native, LEVER_POS, true);
-    backend.flush(&mut graph_world);
+    backend.flush(&mut graph_world, false);
 
     assert_eq!(graph_world.get_block(lamp_pos), native.get_block(lamp_pos));
     assert!(matches!(
@@ -536,7 +536,7 @@ fn wire_seed_and_turbo_rise_and_fall_match_native_order() {
             })
             .collect();
 
-        backend.flush(&mut graph_world);
+        backend.flush(&mut graph_world, false);
         assert_eq!(
             graph_callbacks,
             native_callbacks,
@@ -627,7 +627,7 @@ fn stale_wire_sides_and_strength_remain_untouched_until_a_rule_changes_them() {
     world.set_block(wire_pos, Block::RedstoneWire { wire });
     let mut backend = graph(&world, vec![]);
 
-    backend.flush(&mut world);
+    backend.flush(&mut world, false);
 
     assert_eq!(world.get_block(wire_pos), Block::RedstoneWire { wire });
     assert_eq!(backend.wire_state(backend.positions[&wire_pos]), wire);
@@ -668,7 +668,7 @@ fn wire_shape_callback_regulates_sides_then_uses_native_neighbor_route() {
             None,
         )
         .unwrap();
-    backend.flush(&mut graph_world);
+    backend.flush(&mut graph_world, false);
 
     let native_callbacks: Vec<_> = native_trace
         .iter()
@@ -723,7 +723,7 @@ fn wire_turbo_walk_matches_native_across_ascent_and_descent() {
     let mut backend = graph(&graph_world, vec![]);
     backend.use_block(lever_pos).unwrap();
     set_native_lever(&mut native, lever_pos, true);
-    backend.flush(&mut graph_world);
+    backend.flush(&mut graph_world, false);
 
     for position in wires {
         assert_eq!(
@@ -803,7 +803,7 @@ fn wire_turbo_heading_orders_match_native_for_all_horizontal_directions() {
             "direction={direction:?}; graph trace: {:#?}",
             backend.trace()
         );
-        backend.flush(&mut graph_world);
+        backend.flush(&mut graph_world, false);
         for position in &wires {
             assert_eq!(
                 graph_world.get_block(*position),
@@ -837,7 +837,7 @@ fn wire_reads_live_strong_power_through_a_compiled_conductor() {
     for powered in [true, false] {
         backend.use_block(lever_pos).unwrap();
         set_native_lever(&mut native, lever_pos, powered);
-        backend.flush(&mut graph_world);
+        backend.flush(&mut graph_world, false);
         assert_eq!(
             graph_world.get_block(wire_pos),
             native.get_block(wire_pos),
@@ -1056,7 +1056,7 @@ fn bulb_callback_starts_a_nested_wire_walk_and_outer_order_resumes() {
             && line.ends_with("0 -> 14")
     }));
 
-    backend.flush(&mut graph_world);
+    backend.flush(&mut graph_world, false);
     for position in [outer_wire, inner_wire, continuation, bulb_pos] {
         assert_eq!(graph_world.get_block(position), native.get_block(position));
     }
@@ -1131,7 +1131,7 @@ fn observer_filters_direction_suppresses_pending_and_uses_two_tick_edges() {
     for (tick, expected_powered) in [(1, false), (2, true), (3, true), (4, false)] {
         backend.tick().unwrap();
         native.tick_interpreted();
-        backend.flush(&mut graph_world);
+        backend.flush(&mut graph_world, false);
         assert_eq!(
             state_at(&backend, observer_pos).powered,
             expected_powered,
@@ -1474,7 +1474,7 @@ fn due_at_entry_comparator_repeats_same_value_notification() {
 
     backend.tick().unwrap();
     native.tick_interpreted();
-    backend.flush(&mut graph_world);
+    backend.flush(&mut graph_world, false);
     assert!(
         state_at(&backend, lamp_pos).powered,
         "unchanged comparator output still delivers its callback"
@@ -1548,7 +1548,7 @@ fn repeater_keeps_short_pulse_and_delayed_off_transition() {
     for expected in [true, true, false] {
         backend.tick().unwrap();
         native.tick_interpreted();
-        backend.flush(&mut graph_world);
+        backend.flush(&mut graph_world, false);
         assert_eq!(state_at(&backend, repeater_pos).powered, expected);
         assert_eq!(
             graph_world.get_block(repeater_pos),
@@ -1634,7 +1634,7 @@ fn copper_bulb_uses_power_latch_separately_from_lit_state() {
     for (powered, lit) in [(true, true), (false, true), (true, false)] {
         backend.use_block(LEVER_POS).unwrap();
         set_native_lever(&mut native, LEVER_POS, powered);
-        backend.flush(&mut graph_world);
+        backend.flush(&mut graph_world, false);
         assert_eq!(graph_world.get_block(bulb_pos), native.get_block(bulb_pos));
         assert_eq!(
             graph_world.get_block(bulb_pos).copper_bulb_state(),
@@ -1758,7 +1758,7 @@ fn torch_uses_compiled_conductor_query_and_scheduled_edges() {
     for expected in [true, false] {
         backend.tick().unwrap();
         native.tick_interpreted();
-        backend.flush(&mut graph_world);
+        backend.flush(&mut graph_world, false);
         assert_eq!(state_at(&backend, torch_pos).powered, expected);
         assert_eq!(
             graph_world.get_block(torch_pos),
@@ -1771,7 +1771,7 @@ fn torch_uses_compiled_conductor_query_and_scheduled_edges() {
     for expected in [false, true] {
         backend.tick().unwrap();
         native.tick_interpreted();
-        backend.flush(&mut graph_world);
+        backend.flush(&mut graph_world, false);
         assert_eq!(state_at(&backend, torch_pos).powered, expected);
         assert_eq!(
             graph_world.get_block(torch_pos),
@@ -2818,7 +2818,7 @@ fn adder_inhibition_matches_native_for_a_bounded_shared_resource_episode() {
                               graph_world: &mut PlotWorld,
                               boundary: &str| {
         assert_resource_invariants(backend);
-        backend.flush(graph_world);
+        backend.flush(graph_world, false);
         for &position in &component_positions {
             assert_eq!(
                 graph_world.get_block(position),
@@ -3319,7 +3319,7 @@ fn piston_early_reversal_matches_interpreter_and_invalidates_old_restoration() {
         )
     );
 
-    backend.flush(&mut graph_world);
+    backend.flush(&mut graph_world, false);
     assert_eq!(graph_world.get_block(far_lamp), native.get_block(far_lamp));
     assert_eq!(
         native.get_block(far_lamp),
@@ -3331,7 +3331,7 @@ fn piston_early_reversal_matches_interpreter_and_invalidates_old_restoration() {
         let graph_start = backend.callback_order.len();
         let native_trace = capture_at(&[far_lamp], || tick_native_bounded(&mut native));
         backend.tick().unwrap();
-        backend.flush(&mut graph_world);
+        backend.flush(&mut graph_world, false);
         assert_eq!(
             graph_callbacks_at(&backend, graph_start, &[far_lamp]),
             native_callbacks_at(&native_trace, &[far_lamp]),
@@ -3400,7 +3400,7 @@ fn piston_delayed_restoration_matches_interpreter() {
     for _ in 0..3 {
         tick_native_bounded(&mut native);
         backend.tick().unwrap();
-        backend.flush(&mut graph_world);
+        backend.flush(&mut graph_world, false);
         let state = piston_state_at(&backend, base);
         if native.piston_state().logical_tick < 3 {
             assert_eq!(state.availability, PistonAvailability::HeadPending);

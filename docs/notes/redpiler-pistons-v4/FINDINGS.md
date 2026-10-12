@@ -8,7 +8,7 @@ Status: research and agreed design input, 2026-10-11. Runtime parity and perform
 2. Shared payload ownership, temporary detachment, drop, and recapture are allowed. The earlier example assumption that every piston always retains its own block is withdrawn.
 3. Compile only stationary piston entry. A moving piston is a valid compilation error. Initially also require BetweenTicks, no active motion work, and no queued piston events; preserve ordinary scheduled ticks.
 4. Empty ordinary pistons are update generators, subject to their real geometry and ordered transition behavior. Single-block pushes by ordinary pistons are outside the initial admission subset.
-5. Transport redstone blocks and explicitly supported entity-free inert cubes, including required wool, concrete, and quartz states. Reject transported observers, electrical components, containers, and pistons.
+5. Transport redstone blocks and entity-free inert cubes: wool, concrete, and quartz states, and modeled opaque solid cubes without a callback handler or comparator override (for example stone, required by the TEST family). Reject transported observers, electrical components, containers, and pistons.
 6. Stationary observers may watch any changing cell, including dust, bases, heads, and payload destinations.
 7. General execution handles arbitrary legal control histories. A protocol-dependent optimization needs checked or enforced preconditions.
 8. Start circuit coverage with TEST examples, then ADDER1BIT and ADDER_11BITS, Divider, counters, and FPU. ANPU supplies noninstant examples early and a full replay checkpoint later.
