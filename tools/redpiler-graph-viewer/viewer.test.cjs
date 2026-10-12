@@ -138,5 +138,48 @@ for (const count of [1, 20_001]) {
 
     assert.equal(viewer.elements.get("error").hidden, true, viewer.elements.get("error").textContent);
     assert.ok(viewer.cytoscapeOptions.elements.length <= 20_000);
+    if (count > 1) {
+      const last = `node:${count - 1}`;
+      assert.ok(!viewer.cytoscapeOptions.elements.some((element) => element.data.id === last));
+      viewer.elements.get("search").value = last;
+      viewer.elements.get("find").dispatch("click");
+      viewer.elements.get("matches").children[0].dispatch("click");
+      assert.ok(viewer.cytoscapeOptions.elements.some((element) => element.data.id === last));
+    }
   });
 }
+
+test("a high-degree fixture keeps the layout bounded and every edge endpoint present", async () => {
+  const viewer = makeViewer();
+  const document = JSON.parse(fs.readFileSync(path.join(__dirname, "../../docs/notes/redpiler-pistons-v4/fixtures/adder-1bit.graph.json"), "utf8"));
+  const first = document.graph.nodes[0].id;
+  const source = document.graph.power_links[0].from;
+  const guard = document.graph.guards[0].id;
+  const addedNodes = [];
+  const addedSites = [];
+  const addedLinks = [];
+  for (let index = 0; index < 1_000; index++) {
+    const id = `node:${document.graph.nodes.length + index}`;
+    const site = `site:${document.graph.sites.length + index}`;
+    addedNodes.push({ id, kind: { kind: "electrical", component: { type: "lamp" } }, position: { x: index, y: 0, z: 0 }, output_route: null });
+    addedSites.push({ id: site, source: { kind: "component", node: id }, position: { x: index, y: 0, z: 0 } });
+    addedLinks.push({ id: `power_link:${document.graph.power_links.length + index}`, from: { ...source, site }, to: { kind: "input", node: first, port: "main" }, face: "east", attenuation: 0, guard });
+  }
+  document.graph.nodes.push(...addedNodes);
+  document.graph.sites.push(...addedSites);
+  document.graph.power_links.push(...addedLinks);
+  const fileText = JSON.stringify(document);
+  await viewer.elements.get("file").dispatch("change", {
+    target: { files: [{ size: fileText.length, text: async () => fileText }] },
+  });
+  assert.equal(viewer.elements.get("error").hidden, true, viewer.elements.get("error").textContent);
+  const elements = viewer.cytoscapeOptions.elements;
+  const nodes = new Set(elements.filter((element) => !("source" in element.data)).map((element) => element.data.id));
+  const edges = elements.filter((element) => "source" in element.data);
+  assert.ok(nodes.size <= 200 + Object.keys(document.graph).length);
+  assert.ok(edges.length <= 400);
+  for (const edge of edges) {
+    assert.ok(nodes.has(edge.data.source));
+    assert.ok(nodes.has(edge.data.target));
+  }
+});

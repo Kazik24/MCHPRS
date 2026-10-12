@@ -210,7 +210,9 @@ pub(crate) fn try_for_each_block_optimized<E>(
     mut visit: impl FnMut(BlockPos) -> Result<(), E>,
 ) -> Result<(), E> {
     for (first, last) in section_bounds(first, last) {
-        if !section_has_blocks(world, first) { continue; }
+        if !section_has_blocks(world, first) {
+            continue;
+        }
         for y in first.y..=last.y {
             for z in first.z..=last.z {
                 for x in first.x..=last.x {

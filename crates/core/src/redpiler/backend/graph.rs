@@ -207,11 +207,16 @@ impl GraphBackend {
         let limits = AnalysisLimits::for_budget(monitor.budget_multiplier());
         let geometry = geometry::prepare_geometry(world, bounds, &ticks, &monitor, limits)
             .map_err(|error| GraphBackendError::Preparation(error.to_string()))?;
-        let mut electrical =
-            electrical::prepare_electrical(world, geometry.report.bounds, &geometry.draft, &monitor)
+        let mut electrical = electrical::prepare_electrical(
+            world,
+            geometry.report.bounds,
+            &geometry.draft,
+            &monitor,
+        )
+        .map_err(|error| GraphBackendError::Preparation(error.to_string()))?;
+        let callbacks =
+            callbacks::prepare_callbacks(world, &geometry.draft, &mut electrical, &monitor)
                 .map_err(|error| GraphBackendError::Preparation(error.to_string()))?;
-        let callbacks = callbacks::prepare_callbacks(world, &geometry.draft, &mut electrical, &monitor)
-            .map_err(|error| GraphBackendError::Preparation(error.to_string()))?;
         if monitor.cancelled() {
             return Err(GraphBackendError::Preparation(
                 "graph preparation cancelled".into(),
@@ -262,6 +267,11 @@ impl GraphBackend {
         Self::validate_supported(&program)?;
         let mut backend = Self::new(program, state, world.piston_state().logical_tick)?;
         backend.import_ticks(world, ticks)?;
+        if monitor.cancelled() {
+            return Err(GraphBackendError::Preparation(
+                "graph preparation cancelled".into(),
+            ));
+        }
         Ok(backend)
     }
 
@@ -414,7 +424,10 @@ impl GraphBackend {
     }
 
     fn registry_type(&self, node: NodeId) -> u32 {
-        self.program.nodes()[node.index()].block.unwrap().registry_id()
+        self.program.nodes()[node.index()]
+            .block
+            .unwrap()
+            .registry_id()
     }
 
     fn schedule(&mut self, node: NodeId, delay: usize, priority: TickPriority) {
@@ -798,7 +811,12 @@ impl GraphBackend {
                 return self.node_state(node).output_strength;
             }
         }
-        if matches!(self.program.sites()[site.index()].source, SiteSource::Contact(_)) {
+        let fixed_component = matches!(resolved.receiver, Some(CallbackReceiver::Component(_)));
+        let selectable_contact = matches!(
+            self.program.sites()[site.index()].source,
+            SiteSource::Contact(_)
+        );
+        if selectable_contact && !fixed_component {
             return self.contact_or_boundary_strength(site, resolved);
         }
         match resolved.block {
@@ -1517,10 +1535,15 @@ impl GraphBackend {
     }
 
     fn contact_or_boundary_strength(&self, site: SiteId, resolved: &ResolvedSite) -> u8 {
-        if matches!(self.program.sites()[site.index()].source, SiteSource::Constant(_)) {
+        if matches!(
+            self.program.sites()[site.index()].source,
+            SiteSource::Constant(_)
+        ) {
             return self.program.sites()[site.index()].source_strength;
         }
-        let Some(profile) = resolved.profile else { return 0 };
+        let Some(profile) = resolved.profile else {
+            return 0;
+        };
         match self.program.profiles()[profile.index()].electrical {
             ProfileElectrical::RedstoneSource => 15,
             ProfileElectrical::None | ProfileElectrical::Component => 0,
@@ -1637,9 +1660,7 @@ impl GraphBackend {
         }
         let spec = *self.program.sites().get(site.index())?;
         match spec.source {
-            SiteSource::Constant(profile) => {
-                Some(self.resolve_profile(profile, None))
-            }
+            SiteSource::Constant(profile) => Some(self.resolve_profile(profile, None)),
             SiteSource::Component(node) => {
                 let block = self.node_block(node);
                 Some(ResolvedSite {
@@ -1664,9 +1685,16 @@ impl GraphBackend {
         }
     }
 
-    fn resolve_profile(&self, profile: ProfileId, receiver: Option<CallbackReceiver>) -> ResolvedSite {
+    fn resolve_profile(
+        &self,
+        profile: ProfileId,
+        receiver: Option<CallbackReceiver>,
+    ) -> ResolvedSite {
         let facts = self.program.profiles()[profile.index()];
-        let block = self.program.profile_block(profile).expect("validated profile");
+        let block = self
+            .program
+            .profile_block(profile)
+            .expect("validated profile");
         ResolvedSite {
             profile: Some(profile),
             receiver,

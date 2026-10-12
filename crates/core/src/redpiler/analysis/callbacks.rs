@@ -65,7 +65,9 @@ impl fmt::Display for CallbackError {
 impl std::error::Error for CallbackError {}
 
 impl From<AnalysisError> for CallbackError {
-    fn from(error: AnalysisError) -> Self { Self::Preparation(error) }
+    fn from(error: AnalysisError) -> Self {
+        Self::Preparation(error)
+    }
 }
 
 #[derive(Debug, Clone)]

@@ -376,21 +376,29 @@ impl CircuitDraft {
     pub(crate) fn lower(mut self) -> Result<(CircuitProgram, CircuitState), GraphBuildError> {
         self.validate()?;
 
-        let nodes = self.nodes.iter().map(|node| NodeSpec {
+        let nodes = self
+            .nodes
+            .iter()
+            .map(|node| NodeSpec {
                 position: node.position,
                 raw_state: node.raw_state,
                 block: node.raw_state.map(Block::from_id),
                 kind: node.kind.clone(),
                 output_route: node.output_route,
-            }).collect::<Vec<_>>();
+            })
+            .collect::<Vec<_>>();
 
         self.power_links.sort_by_key(|link| link.to);
         let mut power_inputs: FxHashMap<PowerTarget, Range<usize>> = FxHashMap::default();
         for (index, link) in self.power_links.iter().enumerate() {
             power_inputs.entry(link.to).or_insert(index..index).end = index + 1;
         }
-        let profile_blocks = self.profiles.iter().map(|profile| Block::from_id(profile.raw_state))
-            .collect::<Vec<_>>().into_boxed_slice();
+        let profile_blocks = self
+            .profiles
+            .iter()
+            .map(|profile| Block::from_id(profile.raw_state))
+            .collect::<Vec<_>>()
+            .into_boxed_slice();
 
         let state = CircuitState {
             components: self
@@ -1457,7 +1465,9 @@ impl CircuitProgram {
     }
 
     pub(crate) fn power_links_to(&self, target: PowerTarget) -> &[PowerLink] {
-        let Some(range) = self.power_inputs.get(&target) else { return &[] };
+        let Some(range) = self.power_inputs.get(&target) else {
+            return &[];
+        };
         &self.power_links[range.clone()]
     }
 
@@ -1784,7 +1794,7 @@ mod tests {
     }
 
     #[test]
-    fn lowering_groups_links_without_losing_callback_duplicates_or_direction() {
+    fn lowering_preserves_callback_duplicates_and_direction() {
         let (program, state) = draft_with_mixed_links().lower().unwrap();
         assert_eq!(program.links().len(), 4);
         assert!(matches!(

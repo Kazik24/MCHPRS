@@ -10,7 +10,12 @@ const tables = {
 const $ = (id) => document.getElementById(id);
 let cy;
 let recordIndex;
+let graphData;
+let connections;
+let neighbors;
 let groups = [];
+const MAX_VIEW_NODES = 200;
+const MAX_VIEW_EDGES = 400;
 
 function typedIds(value, found = []) {
   if (typeof value === "string" && /^[a-z_]+:/.test(value)) {
@@ -63,7 +68,63 @@ function sourceNode(siteId, index) {
   return site?.source?.kind === "component" ? site.source.node : siteId;
 }
 
-function graphElements(data, index) {
+function indexConnections(data, index) {
+  const edges = new Map();
+  const adjacent = new Map();
+  function add(id, source, target, type, record) {
+    const connection = { id, source, target, type, record };
+    edges.set(id, connection);
+    for (const node of new Set([source, target])) {
+      if (!adjacent.has(node)) adjacent.set(node, []);
+      adjacent.get(node).push(connection);
+    }
+  }
+  for (const link of data.graph.power_links) {
+    const target = link.to.kind === "input" ? link.to.node : link.to.site;
+    add(link.id, sourceNode(link.from.site, index), target, "power_link", link);
+  }
+  for (const relation of data.graph.wire_relations) {
+    add(relation.id, relation.from, relation.to, "wire_relation", relation);
+  }
+  for (const route of data.graph.routes || []) {
+    route.deliveries.forEach((delivery, index) => {
+      add(`${route.id}:delivery:${index}`, route.id, delivery.target, "route_delivery", delivery);
+    });
+  }
+  return { edges, adjacent };
+}
+
+function selectNeighborhood(id) {
+  const selectedNodes = new Set();
+  const selectedEdges = [];
+  const selectedConnection = connections.get(id);
+  const center = selectedConnection ? selectedConnection.source : id;
+  if (center) selectedNodes.add(center);
+
+  function include(connection) {
+    selectedNodes.add(connection.source);
+    selectedNodes.add(connection.target);
+    selectedEdges.push(connection);
+  }
+  if (selectedConnection) include(selectedConnection);
+  for (const connection of neighbors.get(center) || []) {
+    if (selectedNodes.size >= MAX_VIEW_NODES || selectedEdges.length >= MAX_VIEW_EDGES) break;
+    if (connection !== selectedConnection) include(connection);
+  }
+  return { nodes: selectedNodes, edges: selectedEdges };
+}
+
+function connectionLabel(connection) {
+  const record = connection.record;
+  if (connection.type === "power_link") {
+    return `${record.from.site} · ${record.face} · −${record.attenuation} · ${record.guard}`;
+  }
+  if (connection.type === "wire_relation") return `${record.kind} · ${record.direction}`;
+  const direction = record.direction ? ` · ${record.direction}` : "";
+  return `${record.ordinal} · ${record.kind}${direction}`;
+}
+
+function graphElements(view, index) {
   const elements = [];
   const groupIds = new Set();
   const addGroup = (id, label) => {
@@ -79,19 +140,13 @@ function graphElements(data, index) {
     addGroup(parent, group);
     elements.push({ data: { id: row.id, parent, label: row.id, type, kind: label, searchable: JSON.stringify(row).toLowerCase() } });
   };
-  for (const row of data.graph.nodes) addRow(row, "node");
-  for (const row of data.graph.sites) addRow(row, "site");
-  if (Array.isArray(data.graph.routes)) for (const row of data.graph.routes) addRow(row, "route");
-
-  for (const link of data.graph.power_links) {
-    const target = link.to.kind === "input" ? link.to.node : link.to.site;
-    elements.push({ data: { id: link.id, source: sourceNode(link.from.site, index), target, type: "power_link", label: `${link.from.site} · ${link.face} · −${link.attenuation} · ${link.guard}`, searchable: JSON.stringify(link).toLowerCase() } });
-  }
-  for (const relation of data.graph.wire_relations) {
-    elements.push({ data: { id: relation.id, source: relation.from, target: relation.to, type: "wire_relation", label: `${relation.kind} · ${relation.direction}`, searchable: JSON.stringify(relation).toLowerCase() } });
-  }
-  if (Array.isArray(data.graph.routes)) for (const route of data.graph.routes) {
-    for (const delivery of route.deliveries) elements.push({ data: { id: `${route.id}:${delivery.ordinal}`, source: route.id, target: delivery.target, type: "route_delivery", label: `${delivery.ordinal} · ${delivery.kind}${delivery.direction ? ` · ${delivery.direction}` : ""}`, searchable: JSON.stringify(delivery).toLowerCase() } });
+  for (const id of view.nodes) addRow(index.get(id), id.split(":")[0]);
+  for (const connection of view.edges) {
+    elements.push({ data: {
+      id: connection.id, source: connection.source, target: connection.target,
+      type: connection.type, label: connectionLabel(connection),
+      searchable: JSON.stringify(connection.record).toLowerCase(),
+    } });
   }
   return elements;
 }
@@ -113,11 +168,24 @@ function check(value, label, checked, className) {
 }
 
 function initGraph(data) {
-  const nextRecordIndex = indexRecords(data);
-  const elements = graphElements(data, nextRecordIndex);
-  if (elements.length > 20000) throw Error(`This export has ${elements.length} visible graph elements; filter it with the CLI before opening (limit 20,000).`);
+  recordIndex = indexRecords(data);
+  graphData = data;
+  const topology = indexConnections(data, recordIndex);
+  connections = topology.edges;
+  neighbors = topology.adjacent;
+  controls(data);
+  const first = data.graph.nodes[0]?.id || data.graph.sites[0]?.id || data.graph.routes?.[0]?.id;
+  renderNeighborhood(first);
+  $("summary").textContent = `v${data.version.major}.${data.version.minor} · ${data.stage} · ${data.capabilities?.join(", ") || "no capabilities listed"}`;
+  $("drop-hint").hidden = true;
+  $("matches").replaceChildren();
+  $("details").textContent = "Search for a record to center its neighborhood, or click a record to inspect it.";
+}
+
+function renderNeighborhood(id) {
+  const view = selectNeighborhood(id);
+  const elements = graphElements(view, recordIndex);
   if (cy) cy.destroy();
-  recordIndex = nextRecordIndex;
   cy = cytoscape({
     container: $("graph"), elements, layout: { name: "cose", animate: false, nodeRepulsion: 5000, idealEdgeLength: 75, padding: 40 },
     style: [
@@ -136,13 +204,9 @@ function initGraph(data) {
   groups = cy.nodes("[?isGroup]");
   cy.on("tap", "node", (event) => inspect(event.target.id()));
   cy.on("tap", "edge", (event) => inspect(event.target.id()));
-  controls(data);
   applyFilters();
-  $("summary").textContent = `v${data.version.major}.${data.version.minor} · ${data.stage} · ${data.capabilities?.join(", ") || "no capabilities listed"}`;
-  $("counts").textContent = `${data.graph.nodes.length} nodes · ${data.graph.sites.length} sites · ${data.graph.power_links.length} power links · ${data.graph.wire_relations.length} wire relations · routes ${data.graph.routes === null ? "unavailable" : data.graph.routes.length} · trace ${data.trace === null ? "unavailable" : data.trace.length}`;
-  $("drop-hint").hidden = true;
-  $("matches").replaceChildren();
-  $("details").textContent = "Click a node, site, edge, or route to inspect its exported record.";
+  const data = graphData;
+  $("counts").textContent = `${data.graph.nodes.length} total nodes · ${data.graph.sites.length} sites · routes ${data.graph.routes === null ? "unavailable" : data.graph.routes.length} · trace ${data.trace === null ? "unavailable" : data.trace.length} · view ${view.nodes.size} nodes, ${view.edges.length} connections around ${id || "empty graph"}`;
 }
 
 function applyFilters() {
@@ -157,7 +221,7 @@ function applyFilters() {
 }
 
 function inspect(id) {
-  const record = recordIndex.get(id);
+  const record = recordIndex.get(id) || connections.get(id)?.record;
   $("details").textContent = record ? `${id}\n${JSON.stringify(record, null, 2)}` : JSON.stringify(cy.getElementById(id).data(), null, 2);
 }
 
@@ -176,6 +240,7 @@ function search() {
 }
 
 function focusRecord(id) {
+  if (/^(node|site|route):/.test(id) || connections.has(id)) renderNeighborhood(id);
   const element = cy.getElementById(id);
   if (element.empty()) { inspect(id); return; }
   const api = cy.expandCollapse("get");

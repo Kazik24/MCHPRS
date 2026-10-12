@@ -2,8 +2,8 @@
 #![allow(dead_code)] // Step 05 assembles this power plan with callback routes before graph activation.
 use super::geometry::{GeometryDraft, GeometryView};
 use super::{AnalysisError, PreparationBudget};
-use crate::redpiler::TaskMonitor;
 use crate::plot::PLOT_BLOCK_HEIGHT;
+use crate::redpiler::TaskMonitor;
 use crate::redpiler::compile_graph::{NodeState, NodeType};
 use crate::redpiler::passes::identify_block;
 use crate::redpiler::program_graph::{
@@ -43,7 +43,9 @@ impl fmt::Display for ElectricalError {
 impl std::error::Error for ElectricalError {}
 
 impl From<AnalysisError> for ElectricalError {
-    fn from(error: AnalysisError) -> Self { Self::Preparation(error) }
+    fn from(error: AnalysisError) -> Self {
+        Self::Preparation(error)
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -362,7 +364,8 @@ pub(crate) fn prepare_electrical(
             })
             .collect::<Vec<_>>()
             .into_boxed_slice();
-        budget.consume(variants.len() + guard_table.len() - previous_guards)?;
+        let added_guards = guard_table.len() - previous_guards;
+        budget.consume(variants.len() + added_guards)?;
         contacts.push(ContactSpec {
             node: contact.node,
             position: contact.position,
@@ -372,7 +375,13 @@ pub(crate) fn prepare_electrical(
 
     let mut links = Vec::new();
     let mut wire_relations = Vec::new();
-    compile_wire_relations(&wires, &site, &mut guard_table, &mut wire_relations, &mut budget)?;
+    compile_wire_relations(
+        &wires,
+        &site,
+        &mut guard_table,
+        &mut wire_relations,
+        &mut budget,
+    )?;
     for component in &components {
         budget.check()?;
         let mut roots = consumer_roots(component.block, component.position, world);
@@ -380,9 +389,6 @@ pub(crate) fn prepare_electrical(
             roots = wire_power_roots(component.position);
         }
         for root in roots {
-            budget.check()?;
-            let previous_links = links.len();
-            let previous_guards = guard_table.len();
             compile_root(
                 world,
                 geometry,
@@ -395,8 +401,8 @@ pub(crate) fn prepare_electrical(
                 &contact_guards,
                 &mut guard_table,
                 &mut links,
-            );
-            budget.consume(links.len() - previous_links + guard_table.len() - previous_guards)?;
+                &mut budget,
+            )?;
         }
     }
 
@@ -471,9 +477,6 @@ pub(crate) fn prepare_electrical(
         let normal = piston_power_roots(piston.position, piston.facing, false);
         let quasi = piston_power_roots(piston.position, piston.facing, true);
         for root in normal.into_iter().chain(quasi) {
-            budget.check()?;
-            let previous_links = links.len();
-            let previous_guards = guard_table.len();
             compile_root(
                 world,
                 geometry,
@@ -486,14 +489,17 @@ pub(crate) fn prepare_electrical(
                 &contact_guards,
                 &mut guard_table,
                 &mut links,
-            );
-            budget.consume(links.len() - previous_links + guard_table.len() - previous_guards)?;
+                &mut budget,
+            )?;
         }
     }
 
     // Direct comparator overrides replace rear power and therefore have no Main power link.
-    let overridden_inputs: FxHashSet<_> = comparators.iter()
-        .filter(|plan| plan.direct_override.is_some()).map(|plan| plan.node).collect();
+    let overridden_inputs: FxHashSet<_> = comparators
+        .iter()
+        .filter(|plan| plan.direct_override.is_some())
+        .map(|plan| plan.node)
+        .collect();
     links.retain(|link| {
         let ElectricalTarget::Input {
             node,
@@ -505,6 +511,7 @@ pub(crate) fn prepare_electrical(
         !overridden_inputs.contains(&node)
     });
 
+    budget.check()?;
     Ok(ElectricalDraft {
         remaining_cells: budget.remaining,
         nodes,
@@ -729,7 +736,11 @@ fn compile_root(
     contact_guards: &FxHashMap<(ContactId, usize), GuardId>,
     guards: &mut Vec<Guard>,
     links: &mut Vec<ElectricalLink>,
-) {
+    budget: &mut PreparationBudget<'_>,
+) -> Result<(), AnalysisError> {
+    budget.check()?;
+    let previous_links = links.len();
+    let previous_guards = guards.len();
     let variants: Vec<_> = if let Some((contact_id, contact)) = contact_at.get(&root.position) {
         contact
             .variants
@@ -895,6 +906,9 @@ fn compile_root(
             });
         }
     }
+    let added_links = links.len() - previous_links;
+    let added_guards = guards.len() - previous_guards;
+    budget.consume(added_links + added_guards)
 }
 
 fn is_comparator_side_source(block: Block) -> bool {
@@ -1000,7 +1014,9 @@ fn compile_wire_relations(
                 guard: descent,
             });
         }
-        budget.consume(guards.len() - previous_guards + relations.len() - previous_relations)?;
+        let added_guards = guards.len() - previous_guards;
+        let added_relations = relations.len() - previous_relations;
+        budget.consume(added_guards + added_relations)?;
     }
     Ok(())
 }

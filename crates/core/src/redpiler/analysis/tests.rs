@@ -345,8 +345,13 @@ fn prepare_geometry_with_bounds(
 
 fn prepare_electrical_for(world: &PlotWorld) -> (GeometryResult, ElectricalDraft) {
     let geometry = prepare_geometry_for(world).unwrap();
-    let electrical =
-        electrical::prepare_electrical(world, geometry.report.bounds, &geometry.draft, &Default::default()).unwrap();
+    let electrical = electrical::prepare_electrical(
+        world,
+        geometry.report.bounds,
+        &geometry.draft,
+        &Default::default(),
+    )
+    .unwrap();
     (geometry, electrical)
 }
 
@@ -357,10 +362,11 @@ fn assert_dynamic_override_outside_inventory(
     source: BlockPos,
 ) {
     let geometry = prepare_geometry_with_bounds(world, bounds).unwrap();
-    let error = match electrical::prepare_electrical(world, bounds, &geometry.draft, &Default::default()) {
-        Err(error) => error,
-        Ok(_) => panic!("external dynamic override must reject electrical preparation"),
-    };
+    let error =
+        match electrical::prepare_electrical(world, bounds, &geometry.draft, &Default::default()) {
+            Err(error) => error,
+            Ok(_) => panic!("external dynamic override must reject electrical preparation"),
+        };
     assert_eq!(
         error,
         ElectricalError::DynamicComparatorOverrideNotInventoried { comparator, source }

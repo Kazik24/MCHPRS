@@ -217,8 +217,13 @@ fn callback_preparation_stops_reading_after_cancellation() {
         AnalysisLimits::default(),
     )
     .unwrap();
-    let mut electrical =
-        super::super::electrical::prepare_electrical(&inner, bounds, &geometry.draft, &preparation_monitor).unwrap();
+    let mut electrical = super::super::electrical::prepare_electrical(
+        &inner,
+        bounds,
+        &geometry.draft,
+        &preparation_monitor,
+    )
+    .unwrap();
     let monitor = TaskMonitor::default();
     let world = CancelAtReadWorld {
         inner,
@@ -228,10 +233,23 @@ fn callback_preparation_stops_reading_after_cancellation() {
         reads_after_cancel: Cell::new(0),
     };
 
-    let result = super::super::callbacks::prepare_callbacks(&world, &geometry.draft, &mut electrical, &monitor);
+    let result = super::super::callbacks::prepare_callbacks(
+        &world,
+        &geometry.draft,
+        &mut electrical,
+        &monitor,
+    );
 
-    assert!(matches!(result, Err(super::super::callbacks::CallbackError::Preparation(AnalysisError::Cancelled))));
-    assert!(world.reads_after_cancel.get() <= 1, "only the read that triggers cancellation may finish");
+    assert!(matches!(
+        result,
+        Err(super::super::callbacks::CallbackError::Preparation(
+            AnalysisError::Cancelled
+        ))
+    ));
+    assert!(
+        world.reads_after_cancel.get() <= 1,
+        "only the read that triggers cancellation may finish"
+    );
 }
 
 #[test]

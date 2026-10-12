@@ -20,7 +20,7 @@ mod tests;
 
 #[derive(Debug, Clone, Copy)]
 pub struct AnalysisLimits {
-    /// Count inspected cells in occupied sections, including air.
+    /// Bound inspected cells (including air) and subsequent graph preparation work.
     pub max_cells: usize,
     pub max_pistons: usize,
 }
@@ -90,7 +90,10 @@ impl<'a> PreparationBudget<'a> {
 
     pub(crate) fn consume(&mut self, work: usize) -> Result<(), AnalysisError> {
         self.check()?;
-        self.remaining = self.remaining.checked_sub(work).ok_or(AnalysisError::CellLimit)?;
+        self.remaining = self
+            .remaining
+            .checked_sub(work)
+            .ok_or(AnalysisError::CellLimit)?;
         Ok(())
     }
 }

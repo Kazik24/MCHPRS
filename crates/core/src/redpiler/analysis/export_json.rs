@@ -1,7 +1,7 @@
 //! Versioned inspection JSON for the richer graph drafts.
 use super::electrical::{
-    ComparatorInputPlan, ComparatorOverride, ElectricalDraft, ElectricalError, ElectricalLink, ElectricalTarget,
-    WireRelationKind,
+    ComparatorInputPlan, ComparatorOverride, ElectricalDraft, ElectricalError, ElectricalLink,
+    ElectricalTarget, WireRelationKind,
 };
 use super::geometry::{GeometryDraft, GeometryError};
 use super::{AnalysisError, AnalysisLimits, AnalysisReport};
@@ -774,9 +774,13 @@ pub(crate) fn prepare<W: World>(
 ) -> Result<GraphExport, ExportError> {
     let prepared = super::geometry::prepare_geometry(world, bounds, ticks, monitor, limits)
         .map_err(map_geometry_error)?;
-    let electrical =
-        super::electrical::prepare_electrical(world, prepared.report.bounds, &prepared.draft, monitor)
-            .map_err(map_electrical_error)?;
+    let electrical = super::electrical::prepare_electrical(
+        world,
+        prepared.report.bounds,
+        &prepared.draft,
+        monitor,
+    )
+    .map_err(map_electrical_error)?;
     let export = from_drafts(&prepared.report, &prepared.draft, &electrical)?;
     check_export_cancellation(monitor)?;
     Ok(export)

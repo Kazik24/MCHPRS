@@ -151,7 +151,7 @@ struct CircuitProgram { // This owns the immutable descriptions used by graph ex
 struct NodeSpec { // This describes one node's behavior and compiled dependencies.
     position: BlockPos,                  // This records the source position for diagnostics and projection.
     kind: RuntimeNodeKind,               // This selects the node's behavior and specialized description.
-    incoming: std::ops::Range<usize>,     // This selects the node's incoming entries in program.links.
+    block: Block,                        // This retains the immutable template decoded during lowering.
     output_route: Option<RouteId>,       // This references an optional output notification procedure.
 }
 
@@ -204,7 +204,7 @@ struct PreparedCircuit { // This stages a read-only compilation result before va
 }
 ```
 
-Input links are grouped by target during lowering, making incoming ranges meaningful. Validate ranges, IDs, strengths, guard acyclicity, and kind/state correspondence before publication.
+Power query links are grouped by `PowerTarget` during lowering, with one indexed slice per node/input port or site/conductor dust policy. Queries visit only that slice. Callback edges retain construction provenance; route tables alone define delivery order. Validate IDs, strengths, guard acyclicity, and kind/state correspondence before publication. Decode immutable block templates once during lowering; runtime site geometry queries use compiled profile facts.
 
 CircuitDescriptions holds the not-yet-lowered contact/guard/route/wire/piston/resource descriptions using construction indices. InitialCircuitState holds imported fixed component properties, initial piston/resource state, ordinary pending ticks, and logical clock. These staging records lower once into the program/state above; they are not extra execution authorities.
 
@@ -566,6 +566,8 @@ Command activation, conditions, chain references, success counts, and feedback b
 ## 12. Activation, projection, and continuation
 
 Preparation borrows the world and stages everything. Validate/lower/check cancellation before publishing. Transfer scheduler ownership once after success. Failed preparation preserves blocks, entities, queues, clock, and active flags.
+
+Geometry passes its remaining preparation budget to electrical discovery and then callback construction. The existing cell budget also bounds subsequent reads, query sites, guards, links, and route deliveries; no stage receives a fresh budget. Both stages check the same cancellation monitor, and export checks it again before publishing an artifact.
 
 Positions/state templates are projection metadata. A display flush cannot change graph state, sample power, finish a transition, or settle dust. Graph inputs read authoritative logical state; geometry/configuration edits reset first. Preserve untouched context entities.
 
