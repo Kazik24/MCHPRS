@@ -6,7 +6,6 @@
   <title>Redpiler Graph Viewer</title>
   <link rel="stylesheet" href="style.css">
   <script src="vendor/cytoscape.min.js"></script>
-  <script src="vendor/cytoscape-expand-collapse.js"></script>
   <script defer src="viewer.js"></script>
 </head>
 <body>
@@ -22,8 +21,9 @@
       <label class="search-label" for="search">Find a record</label>
       <div class="search-row"><input id="search" type="search" placeholder="ID, kind, or text"><button id="find">Find</button></div>
       <div id="matches" class="matches" aria-live="polite"></div>
+      <section><h2>Inputs</h2><div id="inputs"></div></section>
       <section>
-        <h2>Node filters</h2>
+        <h2>Components / legend</h2>
         <div id="node-filters" class="checks"></div>
       </section>
       <section>
@@ -31,19 +31,32 @@
         <div id="edge-filters" class="checks"></div>
       </section>
       <section>
-        <h2>Collapse groups</h2>
-        <div class="button-row"><button id="collapse">Collapse all</button><button id="expand">Expand all</button><button id="relax" title="Run a force-directed layout from the current positions">Relax</button></div>
-      </section>
-      <section>
-        <h2>Selection</h2>
-        <pre id="details">No record selected.</pre>
+        <h2>Export</h2>
+        <div id="availability"></div>
+        <label class="field">Snapshot<select id="snapshot"><option value="">All potential connections</option></select></label>
+        <label class="check"><input id="hide-inactive" type="checkbox">Hide disabled connections</label>
+        <p class="muted">Snapshot guards: green enabled · faded disabled · dashed unknown. Site/captured queries remain unknown. This is an inspection view.</p>
       </section>
     </aside>
     <section class="graph-shell">
+      <div class="toolbar">
+        <label>View <select id="scope"><option value="overview">Circuit overview</option><option value="neighborhood">Selected neighborhood</option></select></label>
+        <label>Hops <select id="depth"><option>1</option><option selected>2</option><option>3</option></select></label>
+        <label>Layout <select id="layout"><option value="cose">Connections</option><option value="breadthfirst">Signal flow</option><option value="position">World X/Z by Y layer</option></select></label>
+        <label>Y <select id="layer"><option value="">All layers</option></select></label>
+        <button id="fit">Fit view</button><button id="center">Center selection</button><button id="relax">Relayout</button>
+        <label class="check"><input id="edge-labels" type="checkbox">Edge labels</label>
+      </div>
       <div id="drop-hint">Drop a graph JSON file here, or choose one above.</div>
       <div id="graph" aria-label="Redpiler graph"></div>
-      <footer><span id="counts">No graph loaded</span><span>Drag to pan · scroll to zoom · click a record to inspect</span></footer>
+      <footer><span id="counts">No graph loaded</span><span>Drag nodes to arrange · drag background to pan · scroll to zoom · Esc clears highlight</span></footer>
     </section>
+    <aside class="inspector">
+      <h2>Selection</h2>
+      <p id="selection-title">Click a component or connection.</p>
+      <div id="dependencies"></div>
+      <details open><summary>Record JSON</summary><pre id="details">No record selected.</pre></details>
+    </aside>
   </main>
   <div id="error" role="alert" hidden></div>
 </body>

@@ -9,11 +9,11 @@ use crate::redpiler::analysis::{AnalysisLimits, callbacks, electrical, geometry}
 use crate::redpiler::compile_graph::{NodeState, NodeType};
 use crate::redpiler::program_graph::*;
 use crate::world::World;
-use mchprs_blocks::block_entities::BlockEntity;
+use mchprs_blocks::block_entities::{BlockEntity, ContainerType};
 use mchprs_blocks::blocks::{Block, ComparatorMode, RedstoneWire, RedstoneWireSide};
 use mchprs_blocks::{BlockFace, BlockPos};
 use mchprs_world::{TickEntry, TickPriority};
-use rustc_hash::FxHashMap;
+use rustc_hash::{FxHashMap, FxHashSet};
 #[cfg(test)]
 use std::cell::Cell;
 use std::collections::VecDeque;
@@ -137,6 +137,32 @@ struct DeferredPistonEvent {
     extending: bool,
 }
 
+#[cfg(test)]
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum GraphObservedOperation {
+    Callback {
+        target: BlockPos,
+        direction: Option<BlockFace>,
+    },
+    Sample {
+        actor: BlockPos,
+        extended: bool,
+        powered: bool,
+    },
+    Request {
+        actor: BlockPos,
+        action: mchprs_world::PistonAction,
+    },
+    AcceptanceAttempt {
+        actor: BlockPos,
+        action: mchprs_world::PistonAction,
+    },
+    Accepted {
+        actor: BlockPos,
+        action: mchprs_world::PistonAction,
+    },
+}
+
 #[derive(Debug, Clone, Copy)]
 enum PresentationEffect {
     Sound {
@@ -209,6 +235,8 @@ pub(crate) struct GraphBackend {
     comparator_updates: Vec<BlockPos>,
     #[cfg(test)]
     power_links_examined: Cell<usize>,
+    #[cfg(test)]
+    observed_operations: Vec<GraphObservedOperation>,
 }
 
 impl GraphBackend {
@@ -327,33 +355,60 @@ impl GraphBackend {
                 }
             }
         }
-        for site in program.sites() {
-            let SiteSource::Constant(profile) = site.source else {
-                continue;
-            };
-            if !matches!(
-                program.profile_block(profile),
-                Some(Block::RedstoneWire { .. })
-            ) {
+        let external_wires: FxHashSet<_> = program
+            .sites()
+            .iter()
+            .enumerate()
+            .filter_map(|(index, site)| {
+                let SiteSource::Constant(profile) = site.source else {
+                    return None;
+                };
+                matches!(
+                    program.profile_block(profile),
+                    Some(Block::RedstoneWire { .. })
+                )
+                .then_some(SiteId::new(index as u32))
+            })
+            .collect();
+        let mut conducted_users: FxHashMap<PowerTarget, Vec<PowerTarget>> = FxHashMap::default();
+        let mut pending = Vec::new();
+        for link in program.power_links() {
+            if let PowerPort::Conducted { include_dust } = link.from_port {
+                conducted_users
+                    .entry(PowerTarget::Conductor {
+                        site: link.from,
+                        include_dust,
+                    })
+                    .or_default()
+                    .push(link.to);
+            }
+            if external_wires.contains(&link.from)
+                && matches!(link.from_port, PowerPort::Weak(_) | PowerPort::Strong(_))
+            {
+                pending.push((link.to, link.from));
+            }
+        }
+        let mut visited = FxHashSet::default();
+        while let Some((target, wire)) = pending.pop() {
+            if !visited.insert(target) {
                 continue;
             }
-            let adjacent_consumer = program.nodes().iter().any(|node| {
-                node.position.is_some_and(|position| {
-                    BlockFace::values()
-                        .into_iter()
-                        .any(|face| site.position.offset(face) == position)
-                }) && matches!(
-                    node.kind,
-                    CircuitNodeKind::Electrical(_)
-                        | CircuitNodeKind::Observer { .. }
-                        | CircuitNodeKind::Piston(_)
-                )
-            });
-            if adjacent_consumer {
-                return Err(GraphBackendError::UnsupportedComponent {
-                    position: Some(site.position),
-                    kind: "external redstone wire boundary",
-                });
+            match target {
+                PowerTarget::Input { .. } => {
+                    return Err(GraphBackendError::UnsupportedComponent {
+                        position: Some(program.sites()[wire.index()].position),
+                        kind: "external redstone wire boundary",
+                    });
+                }
+                PowerTarget::Conductor { .. } => {
+                    pending.extend(
+                        conducted_users
+                            .get(&target)
+                            .into_iter()
+                            .flatten()
+                            .map(|user| (*user, wire)),
+                    );
+                }
             }
         }
         Ok(())
@@ -441,6 +496,8 @@ impl GraphBackend {
             comparator_updates: Vec::new(),
             #[cfg(test)]
             power_links_examined: Cell::new(0),
+            #[cfg(test)]
+            observed_operations: Vec::new(),
         })
     }
 
@@ -740,14 +797,29 @@ impl GraphBackend {
         let powered = self.input_strength(spec.node, InputPort::Main) > 0
             || self.input_strength(spec.node, InputPort::Quasi) > 0;
         let state = self.state.pistons[piston.index()];
+        #[cfg(test)]
+        self.observed_operations
+            .push(GraphObservedOperation::Sample {
+                actor: self.program.nodes()[spec.node.index()].position.unwrap(),
+                extended: state.extended,
+                powered,
+            });
         if state.availability == PistonAvailability::BasePending {
             return Ok(());
         }
         let action = match (powered, state.extended) {
-            (true, false) => mchprs_world::PistonAction::Extend,
+            (true, false) if self.piston_lane_available(piston) => {
+                mchprs_world::PistonAction::Extend
+            }
             (false, true) => {
                 if state.availability == PistonAvailability::HeadPending
-                    && matches!(spec.lane, PistonLane::SingleResource { .. })
+                    && self.piston_resource(piston).is_some_and(|resource| {
+                        let PistonLane::SingleResource { far } = spec.lane else {
+                            return false;
+                        };
+                        let resource = self.state.resources[resource.index()];
+                        resource.at == far && !resource.enabled
+                    })
                 {
                     mchprs_world::PistonAction::RetractWithoutPull
                 } else {
@@ -767,6 +839,15 @@ impl GraphBackend {
             .any(|queued| queued.piston == request.piston && queued.action == request.action)
         {
             #[cfg(test)]
+            self.observed_operations
+                .push(GraphObservedOperation::Request {
+                    actor: self.program.nodes()
+                        [self.program.pistons()[request.piston.index()].node.index()]
+                    .position
+                    .unwrap(),
+                    action: request.action,
+                });
+            #[cfg(test)]
             self.trace.push(format!(
                 "piston request {:?} {:?}",
                 request.piston, request.action
@@ -785,13 +866,20 @@ impl GraphBackend {
     fn accept_action(&mut self, request: PistonRequest) -> Result<(), GraphExecutionError> {
         let spec = self.program.pistons()[request.piston.index()];
         let state = self.state.pistons[request.piston.index()];
+        #[cfg(test)]
+        self.observed_operations
+            .push(GraphObservedOperation::AcceptanceAttempt {
+                actor: self.program.nodes()[spec.node.index()].position.unwrap(),
+                action: request.action,
+            });
         let powered = self.input_strength(spec.node, InputPort::Main) > 0
             || self.input_strength(spec.node, InputPort::Quasi) > 0;
         match request.action {
             mchprs_world::PistonAction::Extend
                 if powered
                     && !state.extended
-                    && state.availability == PistonAvailability::Ready =>
+                    && state.availability == PistonAvailability::Ready
+                    && self.piston_lane_available(request.piston) =>
             {
                 #[cfg(test)]
                 self.trace.push(format!(
@@ -799,10 +887,18 @@ impl GraphBackend {
                     request.piston, request.action
                 ));
                 self.extend_connections(request.piston)?;
+                #[cfg(test)]
+                self.observed_operations
+                    .push(GraphObservedOperation::Accepted {
+                        actor: self.program.nodes()[spec.node.index()].position.unwrap(),
+                        action: request.action,
+                    });
             }
             mchprs_world::PistonAction::Retract
             | mchprs_world::PistonAction::RetractWithoutPull
-                if !powered && state.extended =>
+                if !powered
+                    && state.extended
+                    && state.availability != PistonAvailability::BasePending =>
             {
                 #[cfg(test)]
                 self.trace.push(format!(
@@ -813,6 +909,12 @@ impl GraphBackend {
                     request.piston,
                     request.action == mchprs_world::PistonAction::RetractWithoutPull,
                 )?;
+                #[cfg(test)]
+                self.observed_operations
+                    .push(GraphObservedOperation::Accepted {
+                        actor: self.program.nodes()[spec.node.index()].position.unwrap(),
+                        action: request.action,
+                    });
             }
             _ => {
                 #[cfg(test)]
@@ -831,23 +933,57 @@ impl GraphBackend {
         contact: ContactId,
         enabled: bool,
     ) -> Option<(ResourceId, u64)> {
-        let spec = self.program.pistons()[piston.index()];
-        let PistonLane::SingleResource { far } = spec.lane else {
-            return None;
-        };
-        let (index, _) = self
-            .program
-            .resources()
-            .iter()
-            .enumerate()
-            .find(|(_, resource)| {
-                resource.contacts.contains(&spec.near) && resource.contacts.contains(&far)
-            })?;
+        let index = self.piston_resource(piston)?.index();
         let state = &mut self.state.resources[index];
+        if state.at == contact && state.enabled == enabled {
+            return None;
+        }
         state.at = contact;
         state.enabled = enabled;
         state.revision = state.revision.wrapping_add(1);
         Some((ResourceId::new(index as u32), state.revision))
+    }
+
+    fn piston_resource(&self, piston: PistonId) -> Option<ResourceId> {
+        let spec = self.program.pistons()[piston.index()];
+        let PistonLane::SingleResource { far } = spec.lane else {
+            return None;
+        };
+        self.program
+            .resources()
+            .iter()
+            .position(|resource| {
+                resource.contacts.contains(&spec.near) && resource.contacts.contains(&far)
+            })
+            .map(|index| ResourceId::new(index as u32))
+    }
+
+    fn contact_block(&self, contact: ContactId) -> Block {
+        let variant = self.program.contacts()[contact.index()]
+            .variants
+            .iter()
+            .find(|variant| self.guard_matches(variant.when, None))
+            .expect("compiled contact has a selected variant");
+        self.program
+            .profile_block(variant.profile)
+            .expect("compiled contact profile was validated")
+    }
+
+    fn piston_lane_available(&self, piston: PistonId) -> bool {
+        let spec = self.program.pistons()[piston.index()];
+        let near = self.contact_block(spec.near);
+        if ContainerType::from_block(near).is_some()
+            || matches!(near, Block::MovingPiston { .. } | Block::PistonHead { .. })
+        {
+            return false;
+        }
+        if near == Block::Air {
+            return true;
+        }
+        self.piston_resource(piston).is_some_and(|resource| {
+            let state = self.state.resources[resource.index()];
+            state.at == spec.near && state.enabled
+        })
     }
 
     fn release_resource(
@@ -867,10 +1003,19 @@ impl GraphBackend {
             state.revision
         };
         let resource = match spec.lane {
-            PistonLane::SingleResource { far } => self.release_resource(piston, far),
-            PistonLane::Empty => None,
+            PistonLane::SingleResource { far }
+                if self.piston_resource(piston).is_some_and(|resource| {
+                    let state = self.state.resources[resource.index()];
+                    state.at == spec.near && state.enabled
+                }) =>
+            {
+                self.release_resource(piston, far)
+            }
+            PistonLane::SingleResource { .. } | PistonLane::Empty => None,
         };
-        if let Some(route) = spec.routes.far_changed {
+        if resource.is_some()
+            && let Some(route) = spec.routes.far_changed
+        {
             self.deliver_route(route, None)?;
         }
         self.deliver_route(spec.routes.near_changed, None)?;
@@ -897,17 +1042,29 @@ impl GraphBackend {
         without_pull: bool,
     ) -> Result<(), GraphExecutionError> {
         let spec = self.program.pistons()[piston.index()];
+        let interrupted_head =
+            self.state.pistons[piston.index()].availability == PistonAvailability::HeadPending;
         let revision = {
             let state = &mut self.state.pistons[piston.index()];
             state.revision = state.revision.wrapping_add(1);
-            state.availability = PistonAvailability::BasePending;
+            state.availability = if interrupted_head {
+                PistonAvailability::PublishingHeadRemoval
+            } else {
+                PistonAvailability::BasePending
+            };
             state.revision
         };
+        if interrupted_head {
+            self.deliver_route(spec.routes.near_changed, None)?;
+            self.state.pistons[piston.index()].availability = PistonAvailability::BasePending;
+        }
         self.deliver_route(spec.routes.base_changed, None)?;
         let resource = match spec.lane {
             PistonLane::SingleResource { far } if without_pull => {
-                self.set_resource_contact(piston, far, true);
-                if let Some(route) = spec.routes.resource_restored_far {
+                let restored = self.set_resource_contact(piston, far, true);
+                if restored.is_some()
+                    && let Some(route) = spec.routes.resource_restored_far
+                {
                     self.deliver_route(route, None)?;
                 }
                 None
@@ -915,7 +1072,7 @@ impl GraphBackend {
             PistonLane::SingleResource { .. } => self.release_resource(piston, spec.near),
             PistonLane::Empty => None,
         };
-        if !without_pull {
+        if !without_pull && resource.is_some() {
             if let Some(route) = spec.routes.far_changed {
                 self.deliver_route(route, None)?;
             }
@@ -961,16 +1118,11 @@ impl GraphBackend {
             return Ok(());
         }
         let spec = self.program.pistons()[event.piston.index()];
-        if let (PistonLane::SingleResource { far }, Some(expected)) =
-            (spec.lane, event.resource_revision)
-        {
-            let contact = if event.extending { far } else { spec.near };
-            let Some(resource_index) = self.program.resources().iter().position(|resource| {
-                resource.contacts.contains(&spec.near) && resource.contacts.contains(&far)
-            }) else {
+        let resource = if let Some(expected) = event.resource_revision {
+            let Some(resource) = self.piston_resource(event.piston) else {
                 return Ok(());
             };
-            if self.state.resources[resource_index].revision != expected {
+            if self.state.resources[resource.index()].revision != expected {
                 #[cfg(test)]
                 self.trace.push(format!(
                     "resource stale {:?} revision={expected}",
@@ -978,9 +1130,25 @@ impl GraphBackend {
                 ));
                 return Ok(());
             }
-            if let Some((resource, revision)) =
-                self.set_resource_contact(event.piston, contact, true)
-            {
+            Some((resource, expected))
+        } else {
+            None
+        };
+        if !event.extending {
+            self.state.pistons[event.piston.index()].extended = false;
+            self.state.pistons[event.piston.index()].availability = PistonAvailability::Ready;
+            self.deliver_route(spec.routes.base_restored, None)?;
+        }
+        if let Some((resource, expected)) = resource {
+            let contact = if event.extending {
+                let PistonLane::SingleResource { far } = spec.lane else {
+                    return Ok(());
+                };
+                far
+            } else {
+                spec.near
+            };
+            if let Some((_, revision)) = self.set_resource_contact(event.piston, contact, true) {
                 debug_assert_eq!(revision, expected.wrapping_add(1));
                 let route = if event.extending {
                     spec.routes.resource_restored_far
@@ -990,16 +1158,12 @@ impl GraphBackend {
                 if let Some(route) = route {
                     self.deliver_route(route, None)?;
                 }
-                let _ = resource;
+            } else {
+                debug_assert_eq!(self.state.resources[resource.index()].revision, expected);
             }
         }
         if event.extending {
             self.state.pistons[event.piston.index()].availability = PistonAvailability::Ready;
-            self.deliver_route(spec.routes.head_restored, None)?;
-        } else {
-            self.state.pistons[event.piston.index()].extended = false;
-            self.state.pistons[event.piston.index()].availability = PistonAvailability::Ready;
-            self.deliver_route(spec.routes.base_restored, None)?;
             self.deliver_route(spec.routes.head_restored, None)?;
         }
         #[cfg(test)]
@@ -2204,6 +2368,31 @@ impl GraphBackend {
         }
     }
 
+    #[cfg(test)]
+    fn has_semantic_callback(&self, receiver: CallbackReceiver) -> bool {
+        match receiver {
+            CallbackReceiver::PistonBase(_) | CallbackReceiver::PistonHead(_) => true,
+            CallbackReceiver::Component(node) => self.program.nodes()[node.index()]
+                .block
+                .is_some_and(|block| {
+                    matches!(
+                        block.get_name(),
+                        "redstone_wire"
+                            | "redstone_torch"
+                            | "redstone_wall_torch"
+                            | "redstone_repeater"
+                            | "redstone_comparator"
+                            | "redstone_lamp"
+                            | "observer"
+                            | "copper_bulb"
+                            | "note_block"
+                            | "iron_trapdoor"
+                    )
+                }),
+            CallbackReceiver::Contact(_) => false,
+        }
+    }
+
     fn deliver_route(
         &mut self,
         route: RouteId,
@@ -2228,6 +2417,17 @@ impl GraphBackend {
                 .resolve_site(delivery.target, observed)
                 .and_then(|site| site.receiver);
             let Some(receiver) = receiver else { continue };
+            #[cfg(test)]
+            if self.has_semantic_callback(receiver) {
+                self.observed_operations
+                    .push(GraphObservedOperation::Callback {
+                        target: self.program.sites()[delivery.target.index()].position,
+                        direction: match delivery.kind {
+                            DeliveryKind::Update { direction } => direction,
+                            DeliveryKind::Shape { direction } => Some(direction),
+                        },
+                    });
+            }
             #[cfg(test)]
             self.trace.push(format!(
                 "route {}:{} {:?}",
@@ -2363,6 +2563,10 @@ impl GraphBackend {
 #[cfg(test)]
 #[path = "graph_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "graph_fuzz_tests.rs"]
+mod fuzz_tests;
 
 fn emits_weak(block: Block, side: BlockFace) -> bool {
     match block {

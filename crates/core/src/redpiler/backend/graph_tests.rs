@@ -2343,6 +2343,41 @@ fn tick_native_bounded(world: &mut PlotWorld) {
     panic!("native piston tick did not settle within 128 operations");
 }
 
+fn native_callbacks_at(
+    trace: &[Value],
+    positions: &[BlockPos],
+) -> Vec<(BlockPos, Option<BlockFace>)> {
+    trace
+        .iter()
+        .filter(|entry| {
+            entry["kind"] == "callback"
+                && serde_json::from_value::<BlockPos>(entry["data"]["pos"].clone())
+                    .is_ok_and(|position| positions.contains(&position))
+        })
+        .map(|entry| {
+            (
+                serde_json::from_value(entry["data"]["pos"].clone()).unwrap(),
+                serde_json::from_value(entry["data"]["dir"].clone()).unwrap(),
+            )
+        })
+        .collect()
+}
+
+fn graph_callbacks_at(
+    backend: &GraphBackend,
+    start: usize,
+    positions: &[BlockPos],
+) -> Vec<(BlockPos, Option<BlockFace>)> {
+    backend.callback_order[start..]
+        .iter()
+        .filter(|(position, _)| positions.contains(position))
+        .filter_map(|(position, kind)| match kind {
+            DeliveryKind::Update { direction } => Some((*position, *direction)),
+            DeliveryKind::Shape { .. } => None,
+        })
+        .collect()
+}
+
 fn piston_contact_block(backend: &GraphBackend, position: BlockPos) -> Block {
     let site = backend
         .program
@@ -2411,9 +2446,56 @@ fn piston_acceptance_cancellation_matches_interpreter() {
 }
 
 #[test]
-fn piston_early_reversal_matches_interpreter_and_invalidates_old_restoration() {
-    let (mut native, graph_world, base, lever_pos) = isolated_piston_pair(true);
+fn blocked_piston_lane_rejects_extension_at_sampling_and_acceptance() {
+    let (mut native, mut graph_world, base, lever_pos) = isolated_piston_pair(false);
+    let near = base.offset(BlockFace::East);
+    let container = Block::from_name("barrel").unwrap();
+    native.set_block(near, container);
+    graph_world.set_block(near, container);
     let mut backend = graph(&graph_world, vec![]);
+
+    set_native_lever_with_support(&mut native, lever_pos, true, BlockFace::West);
+    backend.use_block(lever_pos).unwrap();
+    let piston = backend.program.pistons()[0].node;
+    let id = match backend.program.nodes()[piston.index()].kind {
+        CircuitNodeKind::Piston(id) => id,
+        _ => unreachable!(),
+    };
+    backend.sample_piston(id).unwrap();
+    assert!(
+        backend.piston_requests.is_empty(),
+        "sampling must reject the blocked lane"
+    );
+
+    backend.enqueue_piston(PistonRequest {
+        piston: id,
+        action: mchprs_world::PistonAction::Extend,
+    });
+    backend.drain_piston_actions().unwrap();
+    assert!(!piston_state_at(&backend, base).extended);
+    assert!(!matches!(native.get_block(base), Block::Piston { piston } if piston.extended));
+    assert!(native.piston_state().events.is_empty());
+    assert!(
+        backend
+            .trace()
+            .iter()
+            .any(|line| line.contains("piston cancelled"))
+    );
+}
+
+#[test]
+fn piston_early_reversal_matches_interpreter_and_invalidates_old_restoration() {
+    let (mut native, mut graph_world, base, lever_pos) = isolated_piston_pair(true);
+    let far = base.offset(BlockFace::East).offset(BlockFace::East);
+    let far_lamp = far.offset(BlockFace::North);
+    for world in [&mut native, &mut graph_world] {
+        world.set_block(far_lamp, Block::RedstoneLamp { lit: false });
+    }
+    let mut backend = graph(&graph_world, vec![]);
+    let far_contact = match backend.program.pistons()[0].lane {
+        PistonLane::SingleResource { far } => far,
+        PistonLane::Empty => unreachable!(),
+    };
     set_native_lever_with_support(&mut native, lever_pos, true, BlockFace::West);
     backend.use_block(lever_pos).unwrap();
     tick_native_bounded(&mut native);
@@ -2479,6 +2561,71 @@ fn piston_early_reversal_matches_interpreter_and_invalidates_old_restoration() {
             base.offset(BlockFace::East).offset(BlockFace::East)
         )
     );
+
+    backend.flush(&mut graph_world);
+    assert_eq!(graph_world.get_block(far_lamp), native.get_block(far_lamp));
+    assert_eq!(
+        native.get_block(far_lamp),
+        Block::RedstoneLamp { lit: true }
+    );
+    set_native_lever_with_support(&mut native, lever_pos, true, BlockFace::West);
+    backend.use_block(lever_pos).unwrap();
+    for tick in 1..=3 {
+        let graph_start = backend.callback_order.len();
+        let native_trace = capture_at(&[far_lamp], || tick_native_bounded(&mut native));
+        backend.tick().unwrap();
+        backend.flush(&mut graph_world);
+        assert_eq!(
+            graph_callbacks_at(&backend, graph_start, &[far_lamp]),
+            native_callbacks_at(&native_trace, &[far_lamp]),
+            "stationary far resource callback tick {tick}"
+        );
+        assert_eq!(graph_world.get_block(far_lamp), native.get_block(far_lamp));
+        assert_eq!(backend.state.resources[0].at, far_contact);
+        assert!(backend.state.resources[0].enabled);
+    }
+}
+
+#[test]
+fn ordinary_early_retraction_publishes_interrupted_head_before_base() {
+    let (mut native, mut graph_world, base, lever_pos) = isolated_piston_pair(false);
+    let far = base.offset(BlockFace::East).offset(BlockFace::East);
+    let observer = Block::Observer {
+        observer: RedstoneObserver {
+            facing: BlockFacing::West,
+            powered: false,
+        },
+    };
+    native.set_block(far, observer);
+    graph_world.set_block(far, observer);
+    let mut backend = graph(&graph_world, vec![]);
+
+    set_native_lever_with_support(&mut native, lever_pos, true, BlockFace::West);
+    backend.use_block(lever_pos).unwrap();
+    tick_native_bounded(&mut native);
+    backend.tick().unwrap();
+
+    set_native_lever_with_support(&mut native, lever_pos, false, BlockFace::West);
+    backend.use_block(lever_pos).unwrap();
+    assert!(
+        matches!(native.piston_state().events.back(), Some(event)
+            if event.action == mchprs_world::PistonAction::Retract),
+        "base={:?} events={:?}",
+        native.get_block(base),
+        native.piston_state().events
+    );
+
+    let graph_start = backend.callback_order.len();
+    let native_trace = capture_at(&[far], || native.nanotick_advance(1));
+    backend.tick().unwrap();
+    let native_callbacks = native_callbacks_at(&native_trace, &[far]);
+    let graph_callbacks = graph_callbacks_at(&backend, graph_start, &[far]);
+    assert_eq!(graph_callbacks, native_callbacks);
+    assert_eq!(
+        native_callbacks.len(),
+        2,
+        "interrupted head is removed before base retraction"
+    );
 }
 
 #[test]
@@ -2538,6 +2685,71 @@ fn piston_delayed_restoration_matches_interpreter() {
         Block::RedstoneLamp { lit: true }
     );
     assert_eq!(graph_world.get_block(far_lamp), native.get_block(far_lamp));
+}
+
+#[test]
+fn sticky_retraction_publishes_base_then_resource_once_in_native_order() {
+    let (mut native, mut graph_world, base, lever_pos) = isolated_piston_pair(true);
+    let near = base.offset(BlockFace::East);
+    let far = near.offset(BlockFace::East);
+    let watched = [
+        base.offset(BlockFace::North),
+        near.offset(BlockFace::North),
+        far.offset(BlockFace::North),
+    ];
+    for world in [&mut native, &mut graph_world] {
+        for position in watched {
+            world.set_block(
+                position,
+                Block::Observer {
+                    observer: RedstoneObserver {
+                        facing: BlockFacing::South,
+                        powered: false,
+                    },
+                },
+            );
+        }
+    }
+    let mut backend = graph(&graph_world, vec![]);
+
+    set_native_lever_with_support(&mut native, lever_pos, true, BlockFace::West);
+    backend.use_block(lever_pos).unwrap();
+    for _ in 0..3 {
+        tick_native_bounded(&mut native);
+        backend.tick().unwrap();
+    }
+    assert!(matches!(native.get_block(base), Block::Piston { piston } if piston.extended));
+
+    set_native_lever_with_support(&mut native, lever_pos, false, BlockFace::West);
+    backend.use_block(lever_pos).unwrap();
+    let mut final_callbacks = Vec::new();
+    for tick in 1..=3 {
+        let graph_start = backend.callback_order.len();
+        let native_trace = capture_at(&watched, || tick_native_bounded(&mut native));
+        backend.tick().unwrap();
+        let native_callbacks = native_callbacks_at(&native_trace, &watched);
+        assert_eq!(
+            graph_callbacks_at(&backend, graph_start, &watched),
+            native_callbacks,
+            "retraction tick {tick}"
+        );
+        if tick == 3 {
+            final_callbacks = native_callbacks;
+        }
+    }
+    let base_callback = final_callbacks
+        .iter()
+        .position(|(position, _)| *position == watched[0])
+        .expect("base completion should notify its observer");
+    let resource_callback = final_callbacks
+        .iter()
+        .position(|(position, _)| *position == watched[1])
+        .expect("resource completion should notify its observer");
+    assert!(base_callback < resource_callback);
+    assert!(matches!(native.get_block(base), Block::Piston { piston } if !piston.extended));
+    assert!(!piston_state_at(&backend, base).extended);
+    assert_eq!(piston_contact_block(&backend, near), Block::RedstoneBlock);
+    assert!(backend.state.resources[0].enabled);
 }
 
 #[test]
@@ -2639,6 +2851,73 @@ fn external_wire_boundary_uses_regulated_sides() {
         ),
         "until boundary dust neighborhoods are compiled, reject the query instead of sampling stored dot sides"
     );
+}
+
+#[test]
+fn external_wire_boundary_rejects_indirect_conductor_and_quasi_queries() {
+    let bounds = (BlockPos::new(0, 0, 0), BlockPos::new(10, 31, 15));
+    let mut conductor_world = empty_world();
+    let lamp = BlockPos::new(9, 20, 5);
+    let conductor = BlockPos::new(10, 20, 5);
+    let wire = BlockPos::new(11, 20, 5);
+    let source = BlockPos::new(12, 20, 5);
+    conductor_world.set_block(lamp, Block::RedstoneLamp { lit: false });
+    conductor_world.set_block(conductor, Block::Stone {});
+    conductor_world.set_block(
+        wire,
+        Block::RedstoneWire {
+            wire: RedstoneWire {
+                power: 15,
+                ..RedstoneWire::default()
+            },
+        },
+    );
+    conductor_world.set_block(wire.offset(BlockFace::Bottom), Block::Stone {});
+    conductor_world.set_block(source, lever(true));
+    conductor_world.set_block(source.offset(BlockFace::Bottom), Block::Stone {});
+    assert!(matches!(
+        GraphBackend::compile(&conductor_world, bounds, vec![], Arc::default()),
+        Err(GraphBackendError::UnsupportedComponent {
+            kind: "external redstone wire boundary",
+            ..
+        })
+    ));
+
+    let mut quasi_world = empty_world();
+    let base = BlockPos::new(9, 20, 5);
+    quasi_world.set_block(
+        base,
+        Block::Piston {
+            piston: mchprs_blocks::blocks::RedstonePiston {
+                facing: BlockFacing::East,
+                sticky: false,
+                extended: false,
+            },
+        },
+    );
+    let conductor = BlockPos::new(10, 21, 5);
+    let wire = BlockPos::new(11, 21, 5);
+    let source = BlockPos::new(12, 21, 5);
+    quasi_world.set_block(conductor, Block::Stone {});
+    quasi_world.set_block(
+        wire,
+        Block::RedstoneWire {
+            wire: RedstoneWire {
+                power: 15,
+                ..RedstoneWire::default()
+            },
+        },
+    );
+    quasi_world.set_block(wire.offset(BlockFace::Bottom), Block::Stone {});
+    quasi_world.set_block(source, lever(true));
+    quasi_world.set_block(source.offset(BlockFace::Bottom), Block::Stone {});
+    assert!(matches!(
+        GraphBackend::compile(&quasi_world, bounds, vec![], Arc::default()),
+        Err(GraphBackendError::UnsupportedComponent {
+            kind: "external redstone wire boundary",
+            ..
+        })
+    ));
 }
 
 #[test]

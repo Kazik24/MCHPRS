@@ -1,15 +1,15 @@
 use mchprs_blocks::block_entities::BlockEntity;
 use mchprs_blocks::{
-    blocks::{Block, ButtonFace},
     BlockFace, BlockPos,
+    blocks::{Block, ButtonFace},
 };
 use mchprs_core::{
     plot::{
+        PLOT_WIDTH, PlotWorld,
         worldedit::{load_schematic, paste_clipboard},
-        PlotWorld, PLOT_WIDTH,
     },
     redstone,
-    world::{storage::Chunk, World},
+    world::{World, storage::Chunk},
 };
 use mchprs_world::TickPriority;
 use serde::{Deserialize, Serialize};
@@ -452,9 +452,11 @@ pub fn replay_with_visuals(
     );
     if cpu.name == "pm1_sort" {
         assert_eq!(trace.len(), 1535); // Includes the manual stop message after SORT halted.
-        assert!(trace
-            .iter()
-            .any(|(tick, text)| *tick == 12_051 && text.contains("shut")));
+        assert!(
+            trace
+                .iter()
+                .any(|(tick, text)| *tick == 12_051 && text.contains("shut"))
+        );
     }
     if cpu.name == "anpu_pong" {
         let path = Path::new(env!("CARGO_MANIFEST_DIR"))

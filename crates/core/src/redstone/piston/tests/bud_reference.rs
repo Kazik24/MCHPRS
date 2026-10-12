@@ -1,6 +1,6 @@
 //! Supplementary physical BUD oracle; never replace the original CPU references.
 use crate::redstone::piston::trace::{self, Operation};
-use crate::world::{for_each_block_optimized, World};
+use crate::world::{World, for_each_block_optimized};
 use mchprs_blocks::blocks::Block;
 use mchprs_blocks::{BlockFace, BlockFacing, BlockPos};
 use rustc_hash::FxHashSet;

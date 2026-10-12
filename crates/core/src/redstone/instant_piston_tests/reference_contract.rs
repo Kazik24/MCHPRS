@@ -1217,10 +1217,12 @@ fn comparator_ignores_unobservable_progress_visits() {
         compare_records(&reference.records, &with_progress_visit),
         Ok(())
     );
-    assert!(reference
-        .native
-        .windows(2)
-        .all(|steps| { steps[0].operation <= steps[1].operation }));
+    assert!(
+        reference
+            .native
+            .windows(2)
+            .all(|steps| { steps[0].operation <= steps[1].operation })
+    );
 }
 
 fn deep_audit_record() -> ComparisonRecord {
