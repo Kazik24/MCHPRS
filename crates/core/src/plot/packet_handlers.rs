@@ -13,6 +13,7 @@ use mchprs_blocks::{BlockFace, BlockPos};
 use mchprs_network::packets::PacketEncoder;
 use mchprs_network::packets::clientbound::*;
 use mchprs_network::packets::serverbound::*;
+use mchprs_network::PlayerPacketSender;
 use serde_json::json;
 use std::path::PathBuf;
 use std::time::Instant;
@@ -52,17 +53,18 @@ impl Plot {
     }
 
     fn handle_approved_chat_message(&mut self, message: String, player: usize) {
-        if !CONFIG.native_chat && !message.starts_with('/') {
+        let command = message.starts_with('/');
+        if !command && !CONFIG.native_chat && !crate::redbox::enabled() {
             return;
         }
-        let max_length = if message.starts_with('/') { 32767 } else { 256 };
+        let max_length = if command { 32767 } else { 256 };
         if message.encode_utf16().count() > max_length
             || message.chars().any(|c| c.is_control())
             || !self.players[player].accept_chat_message()
         {
             return;
         }
-        if message.starts_with('/') {
+        if command {
             if self.players[player].command_queue.len() >= 16 {
                 return;
             }
@@ -75,10 +77,38 @@ impl Plot {
                 player.send_no_permission_message();
                 return;
             }
+            if crate::redbox::enabled() {
+                // The proxy owns network-wide chat formatting and muting.
+                let packet = CPluginMessage {
+                    channel: crate::redbox::CHANNEL.to_owned(),
+                    data: crate::redbox::encode_chat(player.uuid, &message),
+                }
+                .encode();
+                player.client.send_packet(&packet);
+                return;
+            }
             let broadcast_message =
                 Message::ChatInfo(player.uuid, player.username.clone(), message);
             self.message_sender.send(broadcast_message).unwrap();
         }
+    }
+
+    /// Reports a mouse click with the held item to the RedBox proxy, which runs
+    /// the command bound to it by /powertool.
+    fn send_powertool_click(&self, player: usize, button: i32) {
+        if !crate::redbox::enabled() {
+            return;
+        }
+        let packet = CPluginMessage {
+            channel: crate::redbox::CHANNEL.to_owned(),
+            data: crate::redbox::encode_pt_click(
+                self.players[player].uuid,
+                button,
+                self.players[player].held_item_name(),
+            ),
+        }
+        .encode();
+        self.players[player].client.send_packet(&packet);
     }
 
     pub(super) fn broadcast_player_packets(&self, player: usize, packets: &[&PacketEncoder]) {
@@ -456,43 +486,6 @@ impl Plot {
         }
     }
 
-    fn complete_warps(&self, player: usize, id: i32, text: &str) -> Option<CTabComplete> {
-        let (command, prefix) = text.split_once(' ')?;
-        let permission = match command {
-            "/warp" => "commands.warp",
-            "/setwarp" => "commands.setwarp",
-            _ => return None,
-        };
-        let mut response = CTabComplete {
-            id,
-            start: (command.encode_utf16().count() + 1) as i32,
-            length: prefix.encode_utf16().count() as i32,
-            matches: Vec::new(),
-        };
-        if (crate::permissions::dedicated_permissions()
-            && !self.players[player].has_permission(permission))
-            || prefix.chars().any(char::is_whitespace)
-        {
-            return Some(response);
-        }
-        match super::database::warp_names() {
-            Ok(names) => {
-                let prefix = prefix.to_ascii_lowercase();
-                response.matches = names
-                    .into_iter()
-                    .filter(|name| name.to_ascii_lowercase().starts_with(&prefix))
-                    .take(100)
-                    .map(|name| CTabCompleteMatch {
-                        match_: name,
-                        tooltip: None,
-                    })
-                    .collect();
-            }
-            Err(error) => error!("Could not complete warp names: {error}"),
-        }
-        Some(response)
-    }
-
     fn complete_plot_members(&self, player: usize, id: i32, text: &str) -> Option<CTabComplete> {
         let (command, tail) = text.split_once(' ')?;
         if !matches!(command, "/p" | "/plot") {
@@ -537,6 +530,43 @@ impl Plot {
                     .collect();
             }
             Err(error) => error!("Could not complete plot member names: {error}"),
+        }
+        Some(response)
+    }
+
+    fn complete_warps(&self, player: usize, id: i32, text: &str) -> Option<CTabComplete> {
+        let (command, prefix) = text.split_once(' ')?;
+        let permission = match command {
+            "/warp" => "commands.warp",
+            "/setwarp" => "commands.setwarp",
+            _ => return None,
+        };
+        let mut response = CTabComplete {
+            id,
+            start: (command.encode_utf16().count() + 1) as i32,
+            length: prefix.encode_utf16().count() as i32,
+            matches: Vec::new(),
+        };
+        if (crate::permissions::dedicated_permissions()
+            && !self.players[player].has_permission(permission))
+            || prefix.chars().any(char::is_whitespace)
+        {
+            return Some(response);
+        }
+        match super::database::warp_names() {
+            Ok(names) => {
+                let prefix = prefix.to_ascii_lowercase();
+                response.matches = names
+                    .into_iter()
+                    .filter(|name| name.to_ascii_lowercase().starts_with(&prefix))
+                    .take(100)
+                    .map(|name| CTabCompleteMatch {
+                        match_: name,
+                        tooltip: None,
+                    })
+                    .collect();
+            }
+            Err(error) => error!("Could not complete warp names: {error}"),
         }
         Some(response)
     }
@@ -661,19 +691,21 @@ impl ServerBoundPacketHandler for Plot {
         if !self.players[player_idx].can_use_commands() {
             return;
         }
-        if packet.text.starts_with("/tp ") || packet.text.starts_with("/teleport ") {
-            let _ = self.message_sender.send(Message::CompletePlayerNames(
-                mchprs_network::PlayerPacketSender::new(&self.players[player_idx].client),
-                packet.transaction_id,
-                packet.text,
-            ));
-            return;
-        }
-        if let Some(completion) =
-            self.complete_warps(player_idx, packet.transaction_id, &packet.text)
-        {
-            self.players[player_idx].send_packet(&completion.encode());
-            return;
+        if !crate::redbox::enabled() {
+            if packet.text.starts_with("/tp ") || packet.text.starts_with("/teleport ") {
+                let _ = self.message_sender.send(Message::CompletePlayerNames(
+                    PlayerPacketSender::new(&self.players[player_idx].client),
+                    packet.transaction_id,
+                    packet.text,
+                ));
+                return;
+            }
+            if let Some(completion) =
+                self.complete_warps(player_idx, packet.transaction_id, &packet.text)
+            {
+                self.players[player_idx].send_packet(&completion.encode());
+                return;
+            }
         }
         if let Some(completion) =
             super::commands::complete_redpiler(packet.transaction_id, &packet.text)
@@ -838,6 +870,7 @@ impl ServerBoundPacketHandler for Plot {
             &self.players[player].client,
             packet.sequence,
         );
+        self.send_powertool_click(player, 1);
         if self.use_wire_tool(player, packet.hand, packet.yaw, packet.pitch) {
             return;
         }
@@ -856,6 +889,7 @@ impl ServerBoundPacketHandler for Plot {
             &self.players[player].client,
             player_block_placement.sequence,
         );
+        self.send_powertool_click(player, 1);
         let previous = self.world.set_authoritative_updates(true);
         let pos = BlockPos::from_packed(player_block_placement.pos);
         let face = BlockFace::try_from_id(player_block_placement.face as u32);
@@ -869,13 +903,16 @@ impl ServerBoundPacketHandler for Plot {
     }
 
     fn handle_chat_message(&mut self, chat_message: SChatMessage, player: usize) {
-        if CONFIG.velocity.is_some() {
+        // With the RedBox bridge the proxy owns chat moderation and formatting,
+        // so input is forwarded directly instead of waiting for SignedVelocity
+        // decisions (which require the SignedVelocity plugin on the proxy).
+        if crate::redbox::enabled() || CONFIG.velocity.is_none() {
+            self.handle_approved_chat_message(chat_message.message, player);
+        } else {
             let result = self.players[player]
                 .signed_velocity
                 .submit(chat_message.message);
             self.handle_signed_velocity_result(result, player);
-        } else {
-            self.handle_approved_chat_message(chat_message.message, player);
         }
     }
 
@@ -895,6 +932,55 @@ impl ServerBoundPacketHandler for Plot {
                     .signed_velocity
                     .receive(&plugin_message.data, sender.uuid);
                 self.handle_signed_velocity_result(result, player);
+            }
+            return;
+        }
+        if plugin_message.channel == crate::redbox::CHANNEL {
+            if crate::redbox::enabled() {
+                let incoming = match crate::redbox::decode(&plugin_message.data) {
+                    Ok(incoming) => incoming,
+                    Err(error) => {
+                        warn!(%error, "Rejected malformed RedBox message");
+                        return;
+                    }
+                };
+                if incoming.uuid() != self.players[player].uuid {
+                    warn!(player = %self.players[player].username, "Rejected RedBox message for another player");
+                    return;
+                }
+                match incoming {
+                    crate::redbox::Incoming::Teleport { uuid, position } => {
+                        let _ = self
+                            .message_sender
+                            .send(Message::RedBoxTeleport { uuid, position });
+                    }
+                    crate::redbox::Incoming::Gamemode { uuid, mode } => {
+                        if let Some(gamemode) = crate::redbox::gamemode_from_id(mode) {
+                            let _ = self
+                                .message_sender
+                                .send(Message::RedBoxGamemode(uuid, gamemode));
+                        } else {
+                            warn!(mode, "Ignored unsupported RedBox gamemode");
+                        }
+                    }
+                    crate::redbox::Incoming::Permissions {
+                        uuid,
+                        group,
+                        prefix,
+                        suffix: _,
+                        permissions,
+                    } => {
+                        let _ = self.message_sender.send(Message::RedBoxPermissions {
+                            uuid,
+                            group,
+                            prefix,
+                            permissions,
+                        });
+                    }
+                    crate::redbox::Incoming::PtRun { command, .. } => {
+                        self.handle_approved_chat_message(format!("/{command}"), player);
+                    }
+                }
             }
             return;
         }
@@ -977,6 +1063,10 @@ impl ServerBoundPacketHandler for Plot {
         let previous = self.world.set_authoritative_updates(true);
         let pos = BlockPos::from_packed(player_digging.pos);
         let predicts_block = (0..=2).contains(&player_digging.status);
+        // shortcut: only block-targeted left clicks emit a digging start; add swing handling if air/entity clicks are needed.
+        if player_digging.status == 0 {
+            self.send_powertool_click(player, 0);
+        }
         self.dig_block(player_digging, player);
         self.world.flush_block_changes();
         self.world.set_authoritative_updates(previous);

@@ -1,5 +1,5 @@
 use crate::utils::HyphenatedUUID;
-use anyhow::{Context, Result, anyhow, bail};
+use anyhow::{Context, Result, anyhow, bail, ensure};
 use mysql::prelude::*;
 use mysql::{OptsBuilder, Pool};
 use once_cell::sync::OnceCell;
@@ -12,6 +12,17 @@ mod rank;
 pub use rank::{Rank, RankProfile};
 
 static DATABASE: OnceCell<Database> = OnceCell::new();
+
+#[derive(Default, Serialize, Deserialize, Clone, Copy, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+enum Source {
+    /// Read raw nodes from the LuckPerms database.
+    #[default]
+    Database,
+    /// Receive effective permissions from LuckPerms on the Velocity proxy.
+    #[serde(alias = "proxy")]
+    Redbox,
+}
 
 #[derive(Default, Serialize, Deserialize, Clone, Copy)]
 #[serde(rename_all = "lowercase")]
@@ -31,12 +42,18 @@ fn global_context() -> String {
 #[derive(Serialize, Deserialize, Clone)]
 pub struct PermissionsConfig {
     #[serde(default)]
+    source: Source,
+    #[serde(default)]
     storage: Storage,
+    #[serde(default)]
     host: String,
     #[serde(default)]
     port: Option<u16>,
+    #[serde(default)]
     db_name: String,
+    #[serde(default)]
     username: String,
+    #[serde(default)]
     password: String,
     #[serde(default = "default_prefix")]
     table_prefix: String,
@@ -49,6 +66,13 @@ pub struct PermissionsConfig {
     pub redstonefun_ranks: bool,
     #[serde(default)]
     pub mchprs_permissions: bool,
+}
+
+impl PermissionsConfig {
+    /// Whether permissions come from the RedBox bridge instead of a database.
+    pub fn from_redbox(&self) -> bool {
+        matches!(self.source, Source::Redbox)
+    }
 }
 struct Database {
     config: PermissionsConfig,
@@ -310,6 +334,60 @@ impl PlayerPermissionsCache {
         }
     }
 
+    /// Builds a cache from LuckPerms data already resolved on the Velocity
+    /// proxy: the effective permission map plus primary group and prefix.
+    /// Wildcards and negations arrive as-is and are matched locally.
+    pub(crate) fn from_proxy(
+        group: String,
+        prefix: String,
+        permissions: Vec<(String, bool)>,
+    ) -> Self {
+        let config = crate::config::CONFIG.luckperms.as_ref();
+        let plotsquared_compat = config.is_some_and(|config| config.plotsquared_compat);
+        let mchprs_permissions = config.is_some_and(|config| config.mchprs_permissions);
+        let redstonefun_ranks = config.is_some_and(|config| config.redstonefun_ranks);
+        let nodes = permissions
+            .into_iter()
+            .filter(|(permission, _)| {
+                !["group.", "weight.", "prefix.", "suffix."]
+                    .iter()
+                    .any(|prefix| permission.starts_with(prefix))
+            })
+            .map(|(permission, value)| {
+                let segments = permission.split('.').take_while(|s| *s != "*").count();
+                PermissionNode {
+                    priority: (
+                        true,
+                        0,
+                        segments,
+                        !permission.contains('*'),
+                        std::cmp::Reverse(0),
+                        0,
+                    ),
+                    permission,
+                    value,
+                    expiry: 0,
+                }
+            })
+            .collect();
+        let mut result = Self {
+            nodes,
+            plotsquared_compat,
+            rank_profile: None,
+            rank_budget_expiry: 0,
+            mchprs_permissions,
+            valid_until: Some(Instant::now() + Duration::from_secs(30)),
+        };
+        if redstonefun_ranks {
+            let rank = Rank::from_group(&group).unwrap_or_default();
+            result.rank_profile = Some(RankProfile {
+                rank,
+                prefix: (!prefix.is_empty()).then_some(prefix),
+            });
+        }
+        result
+    }
+
     pub fn compilation_budget_multiplier(&self) -> usize {
         if (self.rank_budget_expiry != 0 && self.rank_budget_expiry <= now())
             || self.valid_until.is_none_or(|until| Instant::now() >= until)
@@ -527,6 +605,13 @@ impl PlayerPermissionsCache {
     }
 }
 pub fn init(config: PermissionsConfig) -> Result<()> {
+    if config.from_redbox() {
+        ensure!(
+            crate::config::CONFIG.redbox,
+            "LuckPerms source = \"redbox\" requires redbox = true"
+        );
+        return Ok(());
+    }
     let database = Database::new(config)?;
     // Validate connection/schema/SELECT access before accepting players.
     database.read_nodes("00000000-0000-0000-0000-000000000000")?;
@@ -565,6 +650,76 @@ mod tests {
             contexts: "{}".into(),
         }
     }
+
+    #[test]
+    fn redbox_source_config_needs_no_database_credentials() {
+        let redbox: PermissionsConfig = toml::from_str(
+            "source='redbox'\nserver_context='mchprs'\nworld_context='redstoneplots'",
+        )
+        .unwrap();
+        assert!(redbox.from_redbox());
+        // The previous spelling remains an accepted alias.
+        let alias: PermissionsConfig = toml::from_str("source='proxy'\nserver_context='global'").unwrap();
+        assert!(alias.from_redbox());
+        let database: PermissionsConfig = toml::from_str(
+            "host='localhost'\ndb_name='rf'\nusername='reader'\npassword='unused'\nserver_context='global'",
+        )
+        .unwrap();
+        assert!(!database.from_redbox());
+    }
+
+    #[test]
+    fn proxy_wildcard_grants_namespaced_nodes() {
+        let mut cache = PlayerPermissionsCache::from_proxy(
+            "admin".into(),
+            "[A] ".into(),
+            vec![
+                ("*".into(), true),
+                ("meta.lp-editor-key.example".into(), true),
+                ("group.admin".into(), true),
+                ("weight.10".into(), true),
+                ("prefix.5.&8[A] ".into(), true),
+            ],
+        );
+        cache.mchprs_permissions = true;
+        assert_eq!(cache.get_node_val("mchprs.access.join"), Some(1));
+        assert_eq!(cache.get_node_val("mchprs.access.commands"), Some(1));
+        assert_eq!(cache.get_node_val("mchprs.access.chat"), Some(1));
+        assert_eq!(cache.get_node_val("mchprs.build"), Some(1));
+    }
+
+    #[test]
+    fn proxy_permissions_match_the_effective_map_with_wildcards_and_denials() {
+        let cache = PlayerPermissionsCache::from_proxy(
+            "vip".into(),
+            "[VIP] ".into(),
+            vec![
+                ("mchprs.access.commands".into(), true),
+                ("mchprs.*".into(), true),
+                ("mchprs.admin".into(), false),
+                ("plots.permpack.basic".into(), true),
+            ],
+        );
+        // An exact grant is kept.
+        assert_eq!(cache.get_node_val("mchprs.access.commands"), Some(1));
+        // A wildcard grant covers unrelated nodes.
+        assert_eq!(cache.get_node_val("mchprs.build"), Some(1));
+        // An exact denial overrides the wildcard grant.
+        assert_eq!(cache.get_node_val("mchprs.admin"), Some(0));
+        // Unknown nodes stay unknown.
+        assert_eq!(cache.get_node_val("other.missing"), None);
+
+        let limits = PlayerPermissionsCache::from_proxy(
+            "vip".into(),
+            "".into(),
+            vec![
+                ("mchprs.history.limit.200".into(), true),
+                ("mchprs.history.limit.50".into(), true),
+            ],
+        );
+        assert_eq!(limits.numeric_limit("mchprs.history.limit."), Some(200));
+    }
+
     #[test]
     fn compilation_budget_follows_effective_rank_and_rejects_stale_cache() {
         let mut config = config();

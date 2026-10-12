@@ -102,6 +102,7 @@ gen_config! {
     motd: String = "§4§lmroww.redstoneFUN.pl §r§71.21.5\n§cMinecraft Redstone o Wysokiej Wydajności".to_string(),
     chat_format: String = "<{username}> {message}".to_string(),
     native_chat: bool = true,
+    redbox: bool = false,
     max_players: i64 = 99999,
     view_distance: i64 = 8,
     neighbor_update_interval_ms: u64 = 2000,

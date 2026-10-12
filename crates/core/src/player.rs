@@ -33,16 +33,19 @@ pub(crate) fn allocate_entity_id() -> EntityId {
     ENTITY_ID_COUNTER.fetch_add(1, Ordering::Relaxed)
 }
 
-#[derive(Copy, Clone, Debug, Serialize, Deserialize)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Gamemode {
     Creative,
     Spectator,
     Adventure,
+    // Appended to preserve the bincode variant indices of existing saves.
+    Survival,
 }
 
 impl Gamemode {
     pub fn get_id(self) -> i32 {
         match self {
+            Gamemode::Survival => 0,
             Gamemode::Creative => 1,
             Gamemode::Adventure => 2,
             Gamemode::Spectator => 3,
@@ -162,7 +165,7 @@ bitflags! {
     }
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub struct PlayerPos {
     pub x: f64,
     pub y: f64,
@@ -263,6 +266,12 @@ pub struct Player {
     pub(crate) redstone_tools: crate::plot::redstone_tools::PlayerTools,
     next_window_id: u8,
     permissions_cache: Option<PlayerPermissionsCache>,
+    /// Whether the gamemode implied by LuckPerms has been applied once.
+    permissions_initialized: bool,
+    /// The player's saved gamemode, restored when build access is granted.
+    default_gamemode: Gamemode,
+    /// The held item name last reported to the RedBox proxy.
+    reported_held_item: Option<&'static str>,
 }
 
 pub(crate) struct SmallModel {
@@ -397,15 +406,31 @@ impl Player {
                 nbt,
             });
         }
-        let permissions_cache = CONFIG
+        let proxy_permissions = CONFIG
             .luckperms
-            .is_some()
-            .then(|| {
-                permissions::load_player_cache(uuid).unwrap_or_else(|error| {
-                    tracing::error!("Could not load LuckPerms permissions: {error}; denying permissions for this session");
-                    PlayerPermissionsCache::default()
-                })
-            });
+            .as_ref()
+            .is_some_and(|config| config.from_redbox());
+        let permissions_cache = (CONFIG.luckperms.is_some() && !proxy_permissions).then(|| {
+            permissions::load_player_cache(uuid).unwrap_or_else(|error| {
+                tracing::error!("Could not load LuckPerms permissions: {error}; denying permissions for this session");
+                PlayerPermissionsCache::default()
+            })
+        });
+        let default_gamemode = player_data.gamemode;
+        // With the proxy source the permission data arrives after login, so the
+        // saved gamemode is kept and corrected once it is applied. This avoids
+        // switching the client's gamemode during the join sequence.
+        let gamemode = if permissions::dedicated_permissions()
+            && !proxy_permissions
+            && !permissions_cache
+                .as_ref()
+                .and_then(|cache| cache.get_node_val("mchprs.build"))
+                .is_some_and(|value| value > 0)
+        {
+            Gamemode::Spectator
+        } else {
+            player_data.gamemode
+        };
         Player {
             uuid,
             username,
@@ -414,7 +439,11 @@ impl Player {
             inventory,
             selected_slot: player_data.selected_item_slot as u32,
             permissions_refresh: None,
-            next_permissions_refresh: Instant::now() + std::time::Duration::from_secs(25),
+            next_permissions_refresh: if proxy_permissions {
+                Instant::now()
+            } else {
+                Instant::now() + std::time::Duration::from_secs(25)
+            },
             chat_window: Instant::now(),
             chat_count: 0,
             signed_velocity: Default::default(),
@@ -437,16 +466,7 @@ impl Player {
             small_model: player_data.small.then(SmallModel::new),
             small_animal: player_data.small_animal,
             last_compass_use: None,
-            gamemode: if permissions::dedicated_permissions()
-                && !permissions_cache
-                    .as_ref()
-                    .and_then(|cache| cache.get_node_val("mchprs.build"))
-                    .is_some_and(|value| value > 0)
-            {
-                Gamemode::Spectator
-            } else {
-                player_data.gamemode
-            },
+            gamemode,
             on_ground: player_data.on_ground,
             walk_speed: player_data.walk_speed,
             fly_speed: player_data.fly_speed,
@@ -462,6 +482,9 @@ impl Player {
             redstone_tools: Default::default(),
             next_window_id: 0,
             permissions_cache,
+            permissions_initialized: !proxy_permissions,
+            default_gamemode,
+            reported_held_item: None,
         }
     }
 
@@ -596,6 +619,20 @@ impl Player {
             self.send_keep_alive();
         }
 
+        // Tell the proxy which item is held so /powertool can bind to it.
+        if crate::redbox::enabled() {
+            let held = self.held_item_name();
+            if self.reported_held_item != Some(held) {
+                self.reported_held_item = Some(held);
+                let packet = CPluginMessage {
+                    channel: crate::redbox::CHANNEL.to_owned(),
+                    data: crate::redbox::encode_held_item(self.uuid, held),
+                }
+                .encode();
+                self.client.send_packet(&packet);
+            }
+        }
+
         // Prevent from locking player position at Infinity or NaN
         if !self.pos.x.is_finite() || !self.pos.y.is_finite() || !self.pos.z.is_finite() {
             self.pos.x = 128.0;
@@ -623,8 +660,14 @@ impl Player {
         self.last_keep_alive_sent = Instant::now();
     }
 
-    pub fn get_direction(&self) -> BlockDirection {
-        match ((self.yaw / 90.0 + 0.5).floor() as i32 & 3).unsigned_abs() {
+    /// The Minecraft item id of the item in the player's main hand, or "air".
+    pub fn held_item_name(&self) -> &'static str {
+        self.inventory[36 + self.selected_slot as usize]
+            .as_ref()
+            .map_or("air", |stack| stack.item_type.get_name())
+    }
+
+    pub fn get_direction(&self) -> BlockDirection {        match ((self.yaw / 90.0 + 0.5).floor() as i32 & 3).unsigned_abs() {
             0 => BlockDirection::South,
             1 => BlockDirection::West,
             2 => BlockDirection::North,
@@ -816,6 +859,7 @@ impl Player {
                 Gamemode::Creative => 0x0D | ((self.flying as u8) << 1),
                 Gamemode::Spectator => 0x07,
                 Gamemode::Adventure => 0x01,
+                Gamemode::Survival => (self.flying as u8) << 1,
             },
             fly_speed: 0.05 * self.fly_speed,
             fov_modifier: 0.1,
@@ -833,15 +877,23 @@ impl Player {
         .encode();
         self.client.send_packet(&change_game_state);
         match gamemode {
-            Gamemode::Adventure => self.flying = false,
+            Gamemode::Adventure | Gamemode::Survival => self.flying = false,
             Gamemode::Spectator => self.flying = true,
             Gamemode::Creative => {}
         }
         self.update_player_abilities();
     }
 
-    pub fn has_permission(&self, node: &str) -> bool {
-        if let Some(cache) = &self.permissions_cache {
+    /// True while the proxy permission source has not delivered data yet.
+    pub(crate) fn proxy_permissions_pending(&self) -> bool {
+        CONFIG
+            .luckperms
+            .as_ref()
+            .is_some_and(|config| config.from_redbox())
+            && self.permissions_cache.is_none()
+    }
+
+    pub fn has_permission(&self, node: &str) -> bool {        if let Some(cache) = &self.permissions_cache {
             if let Some(val) = cache.get_node_val(node) {
                 val > 0
             } else {
@@ -867,8 +919,16 @@ impl Player {
     }
 
     /// Refresh off the plot thread. A stale cache stops granting permissions
-    /// after 30 seconds even if the database is slow or unavailable.
+    /// after 30 seconds even if the database is slow or unavailable. With the
+    /// proxy source the request travels over the RedBox bridge instead.
     pub(super) fn refresh_permissions(&mut self) {
+        let Some(config) = CONFIG.luckperms.as_ref() else {
+            return;
+        };
+        if config.from_redbox() {
+            self.refresh_proxy_permissions();
+            return;
+        }
         if self.permissions_cache.is_none() {
             return;
         }
@@ -897,6 +957,85 @@ impl Player {
             std::thread::spawn(move || {
                 let _ = sender.send(permissions::load_player_cache(uuid));
             });
+        }
+    }
+
+    /// Asks the Velocity proxy for this player's LuckPerms data over RedBox.
+    fn refresh_proxy_permissions(&mut self) {
+        if Instant::now() < self.next_permissions_refresh {
+            return;
+        }
+        // Resend after a short interval if the previous request was lost; the
+        // cache itself expires after 30 seconds, so a lost reply must not lock
+        // the player out permanently.
+        self.next_permissions_refresh = Instant::now() + std::time::Duration::from_secs(10);
+        let packet = CPluginMessage {
+            channel: crate::redbox::CHANNEL.to_owned(),
+            data: crate::redbox::encode_permissions_request(self.uuid),
+        }
+        .encode();
+        self.client.send_packet(&packet);
+    }
+
+    /// Applies effective LuckPerms data received from the Velocity proxy.
+    pub fn apply_proxy_permissions(
+        &mut self,
+        group: String,
+        prefix: String,
+        permissions: Vec<(String, bool)>,
+    ) {
+        if !self.permissions_initialized {
+            tracing::info!(
+                player = %self.username,
+                group = %group,
+                nodes = permissions.len(),
+                "Applied proxy LuckPerms permissions"
+            );
+        }
+        self.permissions_cache = Some(PlayerPermissionsCache::from_proxy(group, prefix, permissions));
+        self.next_permissions_refresh = Instant::now() + std::time::Duration::from_secs(25);
+        if !self.permissions_initialized {
+            self.permissions_initialized = true;
+            // The join gate could not run before this data arrived.
+            if permissions::dedicated_permissions() && !self.has_permission("mchprs.access.join") {
+                self.kick(json!({ "text": messages::PERMISSION_DENIED }).to_string());
+                self.client.close_connection();
+                return;
+            }
+            self.apply_permission_gamemode();
+            // The command tree was sent before this data arrived.
+            let commands = if self.can_use_commands() {
+                &crate::plot::commands::DECLARE_COMMANDS
+            } else {
+                &crate::plot::commands::NO_COMMANDS
+            };
+            self.client.send_packet(commands);
+        }
+    }
+
+    /// Keeps a player without build access in spectator; restores the saved
+    /// gamemode once build access is granted.
+    fn apply_permission_gamemode(&mut self) {
+        if !permissions::dedicated_permissions() {
+            return;
+        }
+        let can_build = self
+            .permissions_cache
+            .as_ref()
+            .and_then(|cache| cache.get_node_val("mchprs.build"))
+            .is_some_and(|value| value > 0);
+        tracing::debug!(
+            player = %self.username,
+            can_build,
+            gamemode = ?self.gamemode,
+            "Applying permission gamemode"
+        );
+        if can_build {
+            if matches!(self.gamemode, Gamemode::Spectator) {
+                self.set_gamemode(self.default_gamemode);
+            }
+        } else if !matches!(self.gamemode, Gamemode::Spectator) {
+            self.set_gamemode(Gamemode::Spectator);
         }
     }
 

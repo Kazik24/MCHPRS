@@ -30,11 +30,7 @@ fn init_warps(conn: &Connection) -> rusqlite::Result<()> {
 }
 
 pub fn set_warp(name: &str, warp: Warp) -> rusqlite::Result<()> {
-    set_warp_in(&lock(), name, warp)
-}
-
-fn set_warp_in(conn: &Connection, name: &str, warp: Warp) -> rusqlite::Result<()> {
-    conn.execute(
+    lock().execute(
         "INSERT INTO warp(name, x, y, z, yaw, pitch) VALUES(?1, ?2, ?3, ?4, ?5, ?6)
          ON CONFLICT(name) DO UPDATE SET x=excluded.x, y=excluded.y, z=excluded.z,
              yaw=excluded.yaw, pitch=excluded.pitch",
@@ -46,29 +42,23 @@ fn set_warp_in(conn: &Connection, name: &str, warp: Warp) -> rusqlite::Result<()
 }
 
 pub fn get_warp(name: &str) -> rusqlite::Result<Option<Warp>> {
-    get_warp_in(&lock(), name)
-}
-
-fn get_warp_in(conn: &Connection, name: &str) -> rusqlite::Result<Option<Warp>> {
-    conn.query_row(
-        "SELECT x, y, z, yaw, pitch FROM warp WHERE name=?1",
-        [name],
-        |row| {
-            Ok(Warp {
-                pos: PlayerPos::new(row.get(0)?, row.get(1)?, row.get(2)?),
-                yaw: row.get(3)?,
-                pitch: row.get(4)?,
-            })
-        },
-    )
-    .optional()
+    lock()
+        .query_row(
+            "SELECT x, y, z, yaw, pitch FROM warp WHERE name=?1",
+            [name],
+            |row| {
+                Ok(Warp {
+                    pos: PlayerPos::new(row.get(0)?, row.get(1)?, row.get(2)?),
+                    yaw: row.get(3)?,
+                    pitch: row.get(4)?,
+                })
+            },
+        )
+        .optional()
 }
 
 pub fn warp_names() -> rusqlite::Result<Vec<String>> {
-    warp_names_in(&lock())
-}
-
-fn warp_names_in(conn: &Connection) -> rusqlite::Result<Vec<String>> {
+    let conn = lock();
     let mut stmt = conn.prepare_cached("SELECT name FROM warp ORDER BY name COLLATE NOCASE")?;
     let names = stmt.query_map([], |row| row.get(0))?.collect();
     names

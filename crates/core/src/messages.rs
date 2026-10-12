@@ -25,16 +25,16 @@ macro_rules! catalog {
 catalog! {
     fixed {
         USAGE_SMALL = "Usage: /small [on|off|wolf|fox|cat|ocelot|baby]";
-        SMALL_ENABLED = "Smol paws mode on";
-        SMALL_DISABLED = "Small mode off. You're back to your normal size.";
-        SMALL_NO_ROOM = "There isn't room to return to full size here. Move into an open space first.";
-        HELP_SMALL = "Small mode\n/small toggles half-size movement and an animal appearance for other players.\n/small on and /small off select the mode explicitly.\n/small wolf|fox|cat|ocelot|baby changes your saved animal; ocelot is the default. Baby ocelot uses an even smaller model and hitbox.\n/gm cat enables creative play in small mode; other gamemodes restore normal size.\nYour own view stays a scaled player so the preview cannot block your clicks.\nMove into an open space before turning it off. Your mode and animal follow you between plots and are saved when you leave.";
         USAGE_SETWARP = "Usage: /setwarp <name> (creates or replaces a shared warp)";
         USAGE_WARP = "Usage: /warp [name] (omit the name to list shared warps)";
         INVALID_WARP_NAME = "Warp names must be 1-32 letters, digits, underscores or hyphens.";
         NO_WARPS = "No saved warps. Use /setwarp <name> to save your current position.";
         WARP_STORAGE_FAILED = "Could not access saved warps. Please try again.";
-        HELP_WARPS = "Shared warps\n/setwarp <name> saves your exact position and facing direction for everyone.\nUsing an existing name replaces its destination.\n/warp <name> visits a saved destination, including on another plot.\n/warp lists destinations; Tab completes their names.\nNames are case-insensitive and use 1-32 letters, digits, underscores or hyphens.";
+        HELP_WARPS = "Shared warps\n/setwarp <name> saves your current position for everyone.\n/warp <name> visits that saved destination.\n/warp lists destinations; Tab completes their names.";
+        SMALL_ENABLED = "Smol paws mode on";
+        SMALL_DISABLED = "Small mode off. You're back to your normal size.";
+        SMALL_NO_ROOM = "There isn't room to return to full size here. Move into an open space first.";
+        HELP_SMALL = "Small mode\n/small toggles half-size movement and an animal appearance for other players.\n/small on and /small off select the mode explicitly.\n/small wolf|fox|cat|ocelot|baby changes your saved animal; ocelot is the default. Baby ocelot uses an even smaller model and hitbox.\n/gm cat enables creative play in small mode; other gamemodes restore normal size.\nYour own view stays a scaled player so the preview cannot block your clicks.\nMove into an open space before turning it off. Your mode and animal follow you between plots and are saved when you leave.";
         USAGE_GIT_REBASE = "Usage: /git rebase <branch>";
         GIT_REBASE_NAMED_BRANCH_REQUIRED = "Name this detached trail first with /git branch <name>, then /git checkout <name> before rebasing, pup.";
         GIT_REBASE_SOURCE_BRANCH_REQUIRED = "These paws need an existing source branch. Use /git branch to sniff out its name :3";
@@ -219,7 +219,7 @@ catalog! {
         ARGUMENT_UNKNOWN_DIRECTION = "unknown direction";
         CONTAINER_INVALID_POWER = "Pup, container power must be 0..15 or lowercase a..f.";
         HELP_CHAT = "Chat and command blocks\n/say <text> sends a message to everyone.\n/tellraw @a {\"text\":\"Hello\"} sends formatted text.\nUse @a, @s or a player name; selector filters are ignored.\nCommand blocks support say and tellraw. They require creative mode and permission. Other commands are saved in schematics but do not run.";
-        HELP_HISTORY = "Tick history\n/rhistory on [ticks] records ticks (default 100); /rhistory off clears it.\n/rhistory shows count and memory. /back [ticks] rewinds; resume with /tps 20.\nRewind clears WorldEdit undo/redo. History needs the interpreter and resets when the plot becomes empty, on compile or restart.\nOld ticks drop at the shared 2 GiB limit. Admins can use /rhistory limit <MiB>.";
+        HELP_HISTORY = "Tick history\n/rhistory on [ticks] records ticks (default 100); /rhistory off clears it.\n/rhistory shows count and memory. /rhistory rewind [ticks] rewinds; /back [ticks] also works without RedBox. Resume with /tps 20.\nRewind clears WorldEdit undo/redo. History needs the interpreter and resets when the plot becomes empty, on compile or restart.\nOld ticks drop at the shared 2 GiB limit. Admins can use /rhistory limit <MiB>.";
         HELP_PISTONS = "Visual settings\n/visual shows this plot's settings.\n/visual pistons [auto|on|off] controls piston animation.\n/visual rate [0-1000] sets update speed; 0 stops periodic updates. Above the server TPS threshold (200 by default), updates cap at 10 Hz.\n/visual displayonly [on|off] sends only lamp updates. Block edits still happen, but may not appear to players.";
         HELP_PLOTS = "Plots\n/p auto claims an empty plot; /p claim claims the plot you're in.\n/p info shows the owner; /p middle goes to the centre.\n/p home visits your first plot; /p visit <player> [number] visits a plot.\n/p add <nick> and /p remove <nick> manage plot members.\n/p tp <x> <z> uses plot coordinates.\n/p lock and /p unlock control leaving. /p select selects the plot for WorldEdit.";
         HELP_QUICK_START = "MROWW — Minecraft Redstone o Wysokiej Wydajności\n/p auto claims a plot.\n/help plots - Claim and visit plots.\n/help warps - Save and visit shared destinations.\n/help tps - Control and step simulation.\n/help we - WorldEdit.\n/help tools - Redstone tools.\n/help wire - Draw redstone wires.\n/help schematics - Load and save builds.\n/help visual - Set visual representation.\n/help rewind - Tick history.\n/help git - Plot commits, branches and glowing diffs.\n/help chat - Chat and command blocks.\n/help redpiler - Compiled simulation.";
@@ -411,13 +411,13 @@ catalog! {
         UNBALANCED_MASK_PROPERTIES = "The mask has unbalanced property brackets. Pair each [ with ] so these paws can read it.";
         UNCLOSED_SELECTOR_OPTIONS = "Missing ] after the selector options. Close that bracket tail.";
         UNKNOWN_CONTAINER_TYPE_USE_CHEST_BARREL = "Can't fetch that container type. Choose chest, barrel, hopper or furnace.";
-        UNKNOWN_GAMEMODE = "That's not a gamemode in my trick book. Choose creative (1), adventure (2), spectator (3), or cat.";
+        UNKNOWN_GAMEMODE = "That's not a gamemode in my trick book. Choose survival (0), creative (1), adventure (2), spectator (3), or cat.";
         UNKNOWN_HELP_TOPIC_USE_HELP_TOPICS = "That topic isn't in my pawbook. Use /help for topics, or //help <command> for WorldEdit.";
         USAGE_CONTAINER_CHEST_BARREL_HOPPER_FURNACE = "Fetch a powered stash with /container <chest|barrel|hopper|furnace> <0..15|a..f>.";
         USAGE_CURSEL = "Peek at your selection's pawprints with /cursel.";
         USAGE_FIND_MASK_OR_FIND_P = "Send the block sniff patrol with //find <mask>, or revisit //find -p <page>.";
         USAGE_HELP_TOPIC = "Looking for a pawbook? Use /help [topic].";
-        USAGE_RBACK_TICKS = "Follow the tick trail backward with /back [ticks].";
+        USAGE_RBACK_TICKS = "Follow the tick trail backward with /rhistory rewind [ticks] (or /back when RedBox is off).";
         USAGE_RHISTORY_ON_TICKS_OFF_STATUS = "Tend the tick-history trail with /rhistory [on [ticks]|off|status|limit [MiB]].";
         USAGE_RSTACK_DIRECTION_COUNT_SPACING_E = "Line up your copies with //rstack [direction] [count] [spacing] [-e] [-w].";
         USAGE_SAY_MESSAGE = "Bark to the server with /say <message>.";
@@ -438,11 +438,12 @@ catalog! {
         YOU_NOT_WHITELISTED_ON_SERVER = "You are not whitelisted on this server";
     }
     formatted {
-        small_animal(animal: impl Display) = "Small appearance set to {animal}.";
         warp_saved(name: impl Display) = "Saved shared warp '{name}'. Visit it with /warp {name}.";
         warp_not_found(name: impl Display) = "Warp '{name}' was not found. Use /warp to list destinations.";
         warp_teleport(name: impl Display) = "Teleporting to warp '{name}'.";
         warp_list(names: impl Display) = "Shared warps: {names}";
+        teleport_player(player: impl Display) = "Following {player}'s scent—teleporting now.";
+        small_animal(animal: impl Display) = "Small appearance set to {animal}.";
         git_rebased(branch: impl Display, source: impl Display, recovery: impl Display) = "Fetched {source}'s saved plot into {branch}'s working build. Branch tips unchanged; simulation paused. Edit, then /git commit <message> to tuck it away :3{recovery}";
         worldedit_work_limit(limit: u64) = "These WorldEdit paws can handle at most {limit} blocks.";
         advance_progress(advanced: u32, requested: u32, unit: impl Display) = "{advanced} of {requested} {unit}";
@@ -590,7 +591,6 @@ catalog! {
         stack_block_limit(max_stack_blocks: impl Display) = "This stack would exceed the {max_stack_blocks}-block limit, pup. Reduce the selection or copy count.";
         stack_copy_limit(max_copies: impl Display) = "These stacking paws can make at most {max_copies} copies per command.";
         teleport_coordinates(x: impl Display, y: impl Display, z: impl Display) = "Pouncing to ({x}, {y}, {z})!";
-        teleport_player(player: impl Display) = "Following {player}'s scent—teleporting now.";
         unknown_block(name: impl Display) = "Couldn't sniff out a block named {name}.";
         unknown_block_state(id: impl Display) = "Unknown block state ID: {id}. My sniff book has no entry for it.";
         unknown_command(command: impl Display) = "{command} isn't a command trick I know.";

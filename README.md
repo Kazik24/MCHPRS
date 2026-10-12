@@ -47,6 +47,7 @@ defined in [config.rs](crates/core/src/config.rs); Docker's example is
 | `fast_render_threshold` | `200` | Configured TPS above which visual updates are throttled. |
 | `fast_render_send_rate` | `10` | Throttled visual flush rate. |
 | `native_chat` | `true` | Render public chat and join/leave notices; false leaves public chat entirely to an external provider. |
+| `redbox` | `false` | Enable the RedBox proxy bridge (positions, teleports, gamemode, and chat forwarding). Requires a Velocity proxy running RedBox. |
 | `schematic_save_prefix` | `""` | Prepend to saved schematic names: `./mroww/` creates a subfolder, `aaa@` adds a filename prefix, and `./mroww/aaa@` combines both. Relative to `schems/`, or the player's UUID folder with `schemati = true`. |
 | `worldedit_max_blocks` | `67108864` | Maximum blocks per WorldEdit operation; matches the schematic import/export cap and fits a full 512 × 256 × 512 arena. |
 | `worldedit_history_blocks` | `134217728` | Maximum blocks retained in undo/redo per player. |
@@ -60,6 +61,17 @@ or join/leave notices. It does not relay approved messages or format external
 messages. `/say`, `/tellraw`, and command-block chat remain visible only to matching
 players on the plot where they execute, regardless of `native_chat`. Other command
 feedback and player-list updates still work.
+
+With `redbox = true`, MROWW speaks the RedBox plugin-message bridge on the
+`redbox:main` channel. It reports every online player's position a few times per
+second (and their deaths, when they occur), forwards public chat for the proxy to
+format and broadcast, and applies the teleports and gamemode changes RedBox sends
+back. The proxy then owns the network-wide `/home`, `/warp`, `/tp`, `/spawn`, and
+`/back` commands, so MROWW no longer declares or handles `/warp`, `/setwarp`, or
+the player/coordinate forms of `/tp`; the internal diagnostic `--highlight`
+teleport links used by redstone tools still work. The bridge needs a Velocity
+proxy with RedBox installed; chat forwarding also replaces `native_chat` and the
+proxy's join/leave notices are used instead of MROWW's.
 
 Authenticated `[velocity]` forwarding automatically honors the proxy's allow,
 cancel, and replacement decisions for chat and commands using the
@@ -76,8 +88,40 @@ read-only secret mount at `/run/velocity/forwarding.secret`. The current proxy's
 ChatRegulator and SignedVelocity plugins moderate messages but do not relay
 public chat; an external broadcaster is needed to make public chat visible in
 this mode. For a standalone launch, remove `[velocity]` and set
-`native_chat = true`. Keep the production config's existing `[luckperms]` section
-and credentials; the commented example documents its non-secret options.
+`native_chat = true`.
+
+## RedBox bridge (optional)
+
+RedBox is a Velocity proxy plugin. The bridge is opt-in and off by default, so a
+standalone MROWW (or one behind a proxy without RedBox) keeps its previous
+behaviour: native chat, `native_chat`, and the SignedVelocity integration.
+
+Set `redbox = true` to enable the bridge. MROWW then reports player positions and
+chat, and applies the teleports and gamemode changes RedBox sends. The proxy owns
+the network-wide `/home`, `/warp`, `/tp`, `/spawn`, and `/back` commands, so MROWW
+does not declare `/warp`, `/setwarp`, or the player/coordinate `/tp`; the internal
+redstone-tool `--highlight` links still work. With the bridge enabled, chat and
+commands no longer wait for SignedVelocity decisions (RedBox handles moderation),
+and the proxy's join/leave notices replace MROWW's.
+
+## LuckPerms permissions
+
+MROWW sources LuckPerms from either RedBox on the proxy or a database:
+
+- `[luckperms] source = "redbox"` asks RedBox for the player's effective
+  permissions and meta over the `redbox:main` channel. The proxy resolves
+  inheritance, wildcards and negations with the native LuckPerms API and sends the
+  resulting permission map; MROWW matches it locally. This needs `redbox = true`
+  and never opens a database connection. Permissions refresh every 25 seconds, a
+  lost reply is retried after 10 seconds, and stale data stops granting after 30
+  seconds. The older `source = "proxy"` spelling is accepted as an alias.
+- `source = "database"` (the default) reads raw nodes from a LuckPerms
+  MySQL/PostgreSQL database and resolves inheritance locally. It needs `host`,
+  `db_name`, `username` and `password`; the other options are unchanged.
+
+`mchprs_permissions`, `redstonefun_ranks`, and `plotsquared_compat` keep their
+meaning in both modes. With the RedBox source, a player without `mchprs.build` is
+kept in spectator (the saved gamemode is restored if build access is granted).
 
 Plot speed and rendering settings are separate. Neighbor plots appear as
 read-only snapshots; entering a plot changes the active simulation context.

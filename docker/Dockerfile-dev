@@ -1,0 +1,39 @@
+# syntax=docker/dockerfile:1
+
+# Classic-builder friendly variant of Dockerfile-plot-scale-5. The production
+# image uses BuildKit cache mounts; this one avoids them so it also builds with
+# the legacy builder when the buildx CLI plugin is unavailable.
+
+# Keep the compiler stable so a new Rust release does not invalidate the cache.
+ARG RUST_VERSION=1.98.1
+FROM rust:${RUST_VERSION}-slim-bookworm AS builder
+ARG RUST_VERSION
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+        git pkg-config libssl-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+ENV CARGO_HOME=/var/cache/cargo \
+    CARGO_TARGET_DIR=/app/target
+
+COPY . ./
+RUN sed -i 's/pub const PLOT_SCALE: u32 = 4;/pub const PLOT_SCALE: u32 = 5;/' crates/core/src/plot/mod.rs \
+    && grep -q '^pub const PLOT_SCALE: u32 = 5;' crates/core/src/plot/mod.rs \
+    && cargo build --release --locked --bin mroww \
+    && install -D /app/target/release/mroww /out/mroww
+
+FROM debian:bookworm-slim AS runtime
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends ca-certificates libssl3 \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY --from=builder /out/mroww /usr/local/bin/mroww
+COPY docker/Config.toml /etc/mchprs/Config.toml
+ENV MCHPRS_CONFIG=/etc/mchprs/Config.toml
+WORKDIR /data
+VOLUME ["/data"]
+EXPOSE 25565
+
+CMD ["/usr/local/bin/mroww"]

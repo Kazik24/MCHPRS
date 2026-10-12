@@ -3,6 +3,8 @@ motd = "§4§lmroww.redstoneFUN.pl §r§71.21.5\n§cMinecraft Redstone o Wysokie
 chat_format = "<{username}> {message}"
 # Leave public chat and join/leave notices to an external provider.
 native_chat = false
+# Bridge to the RedBox proxy plugin: positions, teleports, gamemode, and chat.
+redbox = true
 max_players = 100
 view_distance = 8
 neighbor_update_interval_ms = 2000
@@ -36,9 +38,20 @@ git_session_seconds = 45
 [velocity]
 secret_file = "/run/velocity/forwarding.secret"
 
-# Preserve production's existing [luckperms] credentials when updating its config.
-# These non-secret options match the current backend; supply credentials locally.
+# LuckPerms permissions come from the Velocity proxy (RedBox bridge), not a
+# database. The proxy resolves inheritance, wildcards and negations with the
+# native LuckPerms API and sends the effective data to this backend.
+[luckperms]
+source = "redbox"
+server_context = "mchprs"
+world_context = "redstoneplots"
+plotsquared_compat = true
+redstonefun_ranks = true
+mchprs_permissions = true
+
+# Alternative: read raw nodes directly from a LuckPerms database.
 # [luckperms]
+# source = "database"
 # storage = "postgres"
 # host = "localhost"
 # port = 5432

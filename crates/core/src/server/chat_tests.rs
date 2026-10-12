@@ -14,6 +14,7 @@ fn native_chat_controls_public_output_without_losing_player_list_removal() {
         online_players: Default::default(),
         running_plots: Vec::new(),
         whitelist: None,
+        pending_redbox: Default::default(),
     };
     server.online_players.insert(
         1,

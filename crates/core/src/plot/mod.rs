@@ -47,7 +47,7 @@ use anyhow::Context;
 use bus::BusReader;
 use mchprs_blocks::block_entities::BlockEntity;
 use mchprs_blocks::blocks::Block;
-use mchprs_blocks::{BlockFace, BlockPos};
+use mchprs_blocks::{BlockColorVariant, BlockFace, BlockPos};
 use mchprs_network::PlayerPacketSender;
 use mchprs_network::packets::clientbound::*;
 use mchprs_save_data::plot_data::{ChunkData, PistonAnimation, PlotData, Tps, WorldSendRate};
@@ -121,6 +121,8 @@ pub struct Plot {
     async_rt: Runtime, //todo use one runtime for all plots since it's heavy object used just for some small requests
     scoreboard: Scoreboard,
     last_sidebar_update: Instant,
+    /// The last time player positions were reported to the RedBox proxy.
+    last_redbox_state: Instant,
     neighbor_views: neighbors::Views,
     neighbor_source: Option<neighbors::LiveSource>,
     git: git::State,
@@ -1162,6 +1164,7 @@ impl Plot {
                 Gamemode::Creative => "creative",
                 Gamemode::Adventure => "adventure",
                 Gamemode::Spectator => "spectator",
+                Gamemode::Survival => "survival",
             };
             if !self.players[player_idx].has_permission(&format!("commands.gamemode.{name}")) {
                 self.players[player_idx].send_no_permission_message();
@@ -1635,6 +1638,9 @@ impl Plot {
         }
         if self.world.x == plot_x && self.world.z == plot_z {
             self.owner = Some(player.uuid);
+            for chunk in &mut self.world.chunks {
+                Self::color_claimed_chunk(chunk, plot_x, plot_z);
+            }
         }
         let center = Plot::get_center(plot_x, plot_z);
         player.teleport(PlayerPos::new(center.0, 64.0, center.1));
@@ -1702,8 +1708,10 @@ impl Plot {
                     }
                 }
                 BroadcastMessage::PlayerJoinedInfo(player_join_info) => {
-                    let join_message = (CONFIG.native_chat && crate::permissions::ranked_chat())
-                        .then(|| ChatComponent::player_joined(&player_join_info.username));
+                    let join_message = (CONFIG.native_chat
+                        && crate::permissions::ranked_chat()
+                        && !crate::redbox::enabled())
+                    .then(|| ChatComponent::player_joined(&player_join_info.username));
                     let player_info = CPlayerInfo::AddPlayer(vec![CPlayerInfoAddPlayer {
                         name: player_join_info.username,
                         properties: player_join_info.properties,
@@ -1771,6 +1779,36 @@ impl Plot {
                     }
                     self.enter_plot(player);
                 }
+                PrivMessage::RedBoxTeleport { uuid, position } => {
+                    if let Some(player) = self.players.iter().position(|p| p.uuid == uuid) {
+                        if position.is_valid() {
+                            self.teleport_player_to(
+                                player,
+                                position.player_pos(),
+                                position.yaw,
+                                position.pitch,
+                            );
+                        }
+                    }
+                }
+                PrivMessage::RedBoxGamemode(uuid, gamemode) => {
+                    if let Some(player) = self.players.iter().position(|p| p.uuid == uuid) {
+                        self.players[player].set_gamemode(gamemode);
+                        let _ = self
+                            .message_sender
+                            .send(Message::PlayerUpdateGamemode(uuid, gamemode));
+                    }
+                }
+                PrivMessage::RedBoxPermissions {
+                    uuid,
+                    group,
+                    prefix,
+                    permissions,
+                } => {
+                    if let Some(player) = self.players.iter().position(|p| p.uuid == uuid) {
+                        self.players[player].apply_proxy_permissions(group, prefix, permissions);
+                    }
+                }
             }
         }
     }
@@ -1831,6 +1869,30 @@ impl Plot {
             self.destroy_entity(entity_id);
         }
         self.disable_empty_plot_history();
+    }
+
+    /// Report player positions to the RedBox proxy a few times per second so it
+    /// can resolve `/tp`, `/home`, `/warp`, and `/back`.
+    fn report_redbox_states(&mut self) {
+        if !crate::redbox::enabled() {
+            return;
+        }
+        let now = Instant::now();
+        if now.duration_since(self.last_redbox_state) < Duration::from_millis(500) {
+            return;
+        }
+        self.last_redbox_state = now;
+        let world = format!("plot_{}_{}", self.world.x, self.world.z);
+        for player in &self.players {
+            let position =
+                crate::redbox::Position::new(world.clone(), player.pos, player.yaw, player.pitch);
+            let packet = CPluginMessage {
+                channel: crate::redbox::CHANNEL.to_owned(),
+                data: crate::redbox::encode_player_state(player.uuid, &position),
+            }
+            .encode();
+            player.client.send_packet(&packet);
+        }
     }
 
     /// Update player view positions and handle packets
@@ -1944,6 +2006,7 @@ impl Plot {
         }
 
         self.update_players();
+        self.report_redbox_states();
 
         // Handle commands before removing players just in case they ran a command before leaving
         self.handle_commands();
@@ -1992,8 +2055,14 @@ impl Plot {
     }
 
     fn generate_chunk(layers: i32, x: i32, z: i32) -> Chunk {
-        let border: u32 = Block::StoneBricks {}.get_id();
-        let fill: u32 = Block::Sandstone {}.get_id();
+        let border = Block::Wool {
+            color: BlockColorVariant::Black,
+        }
+        .get_id();
+        let fill = Block::Wool {
+            color: BlockColorVariant::White,
+        }
+        .get_id();
 
         let mut chunk = Chunk::empty(x, z);
 
@@ -2018,6 +2087,34 @@ impl Plot {
         chunk
     }
 
+    fn color_claimed_chunk(chunk: &mut Chunk, plot_x: i32, plot_z: i32) {
+        let black = Block::Wool {
+            color: BlockColorVariant::Black,
+        }
+        .get_id();
+        let red = Block::Wool {
+            color: BlockColorVariant::Red,
+        }
+        .get_id();
+
+        for ry in 0..8 {
+            for rx in 0..16 {
+                for rz in 0..16 {
+                    let block_x = (chunk.x << 4) | rx;
+                    let block_z = (chunk.z << 4) | rz;
+                    if (block_x == plot_x * PLOT_BLOCK_WIDTH
+                        || block_x == (plot_x + 1) * PLOT_BLOCK_WIDTH - 1
+                        || block_z == plot_z * PLOT_BLOCK_WIDTH
+                        || block_z == (plot_z + 1) * PLOT_BLOCK_WIDTH - 1)
+                        && chunk.get_block(rx as u32, ry as u32, rz as u32) == black
+                    {
+                        chunk.set_block(rx as u32, ry as u32, rz as u32, red);
+                    }
+                }
+            }
+        }
+    }
+
     fn from_data(
         plot_data: PlotData<PLOT_SECTIONS>,
         x: i32,
@@ -2029,7 +2126,9 @@ impl Plot {
     ) -> Plot {
         let chunk_x_offset = x << PLOT_SCALE;
         let chunk_z_offset = z << PLOT_SCALE;
-        let chunks: Vec<Chunk> = plot_data
+        let owner = database::get_plot_owner(x, z)
+            .map(|s| s.parse::<HyphenatedUUID>().unwrap().0);
+        let mut chunks: Vec<Chunk> = plot_data
             .chunk_data
             .into_iter()
             .enumerate()
@@ -2041,6 +2140,11 @@ impl Plot {
                 )
             })
             .collect();
+        if owner.is_some() {
+            for chunk in &mut chunks {
+                Self::color_claimed_chunk(chunk, x, z);
+            }
+        }
         if chunks.len() != NUM_CHUNKS {
             error!("This plot has the wrong number of chunks!");
             let possible_scale = (chunks.len() as f64).sqrt().log2();
@@ -2090,10 +2194,11 @@ impl Plot {
             always_running,
             redpiler: Default::default(),
             timings: TimingsMonitor::new(tps),
-            owner: database::get_plot_owner(x, z).map(|s| s.parse::<HyphenatedUUID>().unwrap().0),
+            owner,
             async_rt: Plot::create_async_rt(),
             scoreboard: Default::default(),
             last_sidebar_update: Instant::now(),
+            last_redbox_state: Instant::now(),
             neighbor_views: Default::default(),
             neighbor_source: None,
             git: Default::default(),

@@ -15,6 +15,7 @@ mod permissions;
 mod player;
 pub mod plot;
 mod profile;
+mod redbox;
 pub mod redpiler;
 pub mod redstone;
 pub mod server;
