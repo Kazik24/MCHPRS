@@ -19,7 +19,7 @@ pub(super) fn page(topic: Option<&str>) -> Option<&'static str> {
         | "autostack" | "container" | "cursel" => messages::HELP_REDSTONE_TOOLS,
         "schematics" | "schematic" | "load" | "save" => messages::HELP_SCHEMATICS,
         "visual" | "pistons" | "animations" => messages::HELP_PISTONS,
-        "back" | "rewind" | "history" | "tick_rewind" | "rhistory" | "rback" => {
+        "rev" | "back" | "rewind" | "history" | "tick_rewind" | "rhistory" | "rback" => {
             messages::HELP_HISTORY
         }
         "chat" | "commands" | "commandblocks" | "command_blocks" | "say" | "tellraw" => {

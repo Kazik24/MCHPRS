@@ -942,7 +942,7 @@ impl Plot {
                     }
                 }
             }
-            "/back" if !crate::redbox::enabled() => {
+            "/rev" => {
                 if let Err(error) = self.rewind_plot(player, &args) {
                     warn!(%error, "Rewind rejected");
                     self.players[player].send_error_message(&error);
@@ -1507,7 +1507,7 @@ fn declared_command_nodes() -> Vec<Node<'static>> {
         .executable(),
         Node::literal("off", &[]).executable(),
         Node::literal("status", &[]).executable(),
-        Node::literal("back", &[102]).executable(),
+        Node::literal("rev", &[102]).executable(),
         Node::argument(
             messages::ADV_GAME_TICKS_LABEL,
             Parser::Integer(1, i32::MAX),
@@ -1653,7 +1653,7 @@ fn declared_command_nodes() -> Vec<Node<'static>> {
 
     if redbox {
         root_children.retain(|&id| {
-            !matches!(nodes[id as usize].name, Some("back" | "teleport" | "tp"))
+            !matches!(nodes[id as usize].name, Some("teleport" | "tp"))
         });
     } else {
         let warp = nodes.len() as i32;
@@ -2022,7 +2022,8 @@ mod security_tests {
         ] {
             assert!(names.contains(&retained), "missing command {retained}");
         }
-        assert_eq!(names.contains(&"back"), !crate::redbox::enabled());
+        assert!(names.contains(&"rev"));
+        assert!(!names.contains(&"back"));
         assert!(names.contains(&"rv"));
         for (alias, target) in [
             ("rp", "redpiler"),

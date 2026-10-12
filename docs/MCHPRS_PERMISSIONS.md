@@ -102,17 +102,18 @@ waive its plot or packet validation.
 | `/rp`, `/redpiler` | `mchprs.commands.redpiler.analyze`, `.compile`, `.reset`, `.inspect`, or `.help` |
 | `/toggleautorp` | `mchprs.commands.toggleautorp` |
 | `/rhistory` | `mchprs.commands.rhistory` plus the requested subcommand node |
-| `/back` | `mchprs.commands.rback` |
+| `/rev` | `mchprs.commands.rback` |
 | `/git` | `mchprs.commands.git` |
 
 Command spelling and permission spelling are separate: `/tps`, `/adv`, and
-`/back` retain the legacy permission-node names above. `/rtps`, `/radv`,
+`/rev` retain the legacy permission-node names above. `/rtps`, `/radv`,
 `/radvance`, and `/rback` are removed command aliases. Read-only `/rp analyze`
 has its own permission and does not require plot edit access. The network
 commands `/warp`, `/setwarp`, and `/tp` (player and coordinates) are provided by
 the RedBox proxy, not MROWW; the `commands.warp` and `commands.setwarp` nodes no
 longer exist. `/tp` remains only for the internal redstone-tool `--highlight`
 diagnostic links, which still require `mchprs.commands.teleport`.
+RedBox's network `/back` command is separate from the native tick rewind `/rev`.
 
 WorldEdit gates retain the `mchprs.worldedit.*` namespace for navigation,
 selection, region, clipboard, history, and analysis commands. Native additions

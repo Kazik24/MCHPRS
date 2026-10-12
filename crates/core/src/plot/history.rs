@@ -415,7 +415,7 @@ impl Plot {
             [value] => value
                 .parse::<usize>()
                 .map_err(|_| messages::SPECIFY_POSITIVE_NUMBER_GAME_TICKS.to_owned())?,
-            _ => return Err(messages::USAGE_RBACK_TICKS.into()),
+            _ => return Err(messages::USAGE_REV_TICKS.into()),
         };
         if self.redpiler.is_active() {
             return Err(messages::TICK_REWIND_ONLY_AVAILABLE_DURING_INTERPRETED.into());
