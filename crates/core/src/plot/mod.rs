@@ -2126,8 +2126,7 @@ impl Plot {
     ) -> Plot {
         let chunk_x_offset = x << PLOT_SCALE;
         let chunk_z_offset = z << PLOT_SCALE;
-        let owner = database::get_plot_owner(x, z)
-            .map(|s| s.parse::<HyphenatedUUID>().unwrap().0);
+        let owner = database::get_plot_owner(x, z).map(|s| s.parse::<HyphenatedUUID>().unwrap().0);
         let mut chunks: Vec<Chunk> = plot_data
             .chunk_data
             .into_iter()

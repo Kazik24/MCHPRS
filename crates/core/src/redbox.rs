@@ -121,8 +121,14 @@ pub(crate) fn encode_pt_click(uuid: u128, button: i32, item: &str) -> Vec<u8> {
 /// A message the proxy can send to the backend.
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) enum Incoming {
-    Teleport { uuid: u128, position: Position },
-    Gamemode { uuid: u128, mode: i32 },
+    Teleport {
+        uuid: u128,
+        position: Position,
+    },
+    Gamemode {
+        uuid: u128,
+        mode: i32,
+    },
     Permissions {
         uuid: u128,
         group: String,
@@ -389,23 +395,20 @@ mod tests {
 
     #[test]
     fn teleport_and_gamemode_round_trip() {
-        let teleport = encode(
-            TELEPORT,
-            |data| {
-                write_utf(data, &HyphenatedUUID(test_uuid()).to_string());
-                write_position(
-                    data,
-                    &Position {
-                        world: "world".into(),
-                        x: 1.5,
-                        y: 2.5,
-                        z: 3.5,
-                        yaw: 10.0,
-                        pitch: 20.0,
-                    },
-                );
-            },
-        );
+        let teleport = encode(TELEPORT, |data| {
+            write_utf(data, &HyphenatedUUID(test_uuid()).to_string());
+            write_position(
+                data,
+                &Position {
+                    world: "world".into(),
+                    x: 1.5,
+                    y: 2.5,
+                    z: 3.5,
+                    yaw: 10.0,
+                    pitch: 20.0,
+                },
+            );
+        });
         let Incoming::Teleport { uuid, position } = decode(&teleport).unwrap() else {
             panic!("expected a teleport");
         };
@@ -431,7 +434,10 @@ mod tests {
     #[test]
     fn permissions_round_trip() {
         let request = encode_permissions_request(test_uuid());
-        assert_eq!(&request[..2], &(("PERMISSIONS_REQUEST".len() as u16).to_be_bytes()));
+        assert_eq!(
+            &request[..2],
+            &(("PERMISSIONS_REQUEST".len() as u16).to_be_bytes())
+        );
 
         let payload = encode(PERMISSIONS, |data| {
             write_utf(data, &HyphenatedUUID(test_uuid()).to_string());
@@ -551,7 +557,9 @@ mod tests {
         let mut trailing = valid.clone();
         trailing.push(0);
         assert!(decode(&trailing).is_err());
-        let unknown = encode("NOPE", |data| write_utf(data, &HyphenatedUUID(test_uuid()).to_string()));
+        let unknown = encode("NOPE", |data| {
+            write_utf(data, &HyphenatedUUID(test_uuid()).to_string())
+        });
         assert!(decode(&unknown).is_err());
     }
 }

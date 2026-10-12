@@ -667,7 +667,8 @@ impl Player {
             .map_or("air", |stack| stack.item_type.get_name())
     }
 
-    pub fn get_direction(&self) -> BlockDirection {        match ((self.yaw / 90.0 + 0.5).floor() as i32 & 3).unsigned_abs() {
+    pub fn get_direction(&self) -> BlockDirection {
+        match ((self.yaw / 90.0 + 0.5).floor() as i32 & 3).unsigned_abs() {
             0 => BlockDirection::South,
             1 => BlockDirection::West,
             2 => BlockDirection::North,
@@ -893,7 +894,8 @@ impl Player {
             && self.permissions_cache.is_none()
     }
 
-    pub fn has_permission(&self, node: &str) -> bool {        if let Some(cache) = &self.permissions_cache {
+    pub fn has_permission(&self, node: &str) -> bool {
+        if let Some(cache) = &self.permissions_cache {
             if let Some(val) = cache.get_node_val(node) {
                 val > 0
             } else {
@@ -992,7 +994,11 @@ impl Player {
                 "Applied proxy LuckPerms permissions"
             );
         }
-        self.permissions_cache = Some(PlayerPermissionsCache::from_proxy(group, prefix, permissions));
+        self.permissions_cache = Some(PlayerPermissionsCache::from_proxy(
+            group,
+            prefix,
+            permissions,
+        ));
         self.next_permissions_refresh = Instant::now() + std::time::Duration::from_secs(25);
         if !self.permissions_initialized {
             self.permissions_initialized = true;

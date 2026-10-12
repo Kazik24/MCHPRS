@@ -659,7 +659,8 @@ mod tests {
         .unwrap();
         assert!(redbox.from_redbox());
         // The previous spelling remains an accepted alias.
-        let alias: PermissionsConfig = toml::from_str("source='proxy'\nserver_context='global'").unwrap();
+        let alias: PermissionsConfig =
+            toml::from_str("source='proxy'\nserver_context='global'").unwrap();
         assert!(alias.from_redbox());
         let database: PermissionsConfig = toml::from_str(
             "host='localhost'\ndb_name='rf'\nusername='reader'\npassword='unused'\nserver_context='global'",

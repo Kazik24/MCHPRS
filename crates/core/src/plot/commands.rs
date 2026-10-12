@@ -1316,13 +1316,19 @@ pub static NO_COMMANDS: Lazy<PacketEncoder> = Lazy::new(|| {
 fn declared_command_nodes() -> Vec<Node<'static>> {
     let mut nodes = vec![
         // Root Node
-        Node::root(&[1, 2, 7, 8, 10, 12, 14, 15, 16, 17, 18, 19, 20, 22, 25, 27, 29, 31, 42, 44, 48, 55, 56, 58, 60, 61, 62, 69, 70, 77, 78, 80, 86, 96, 101, 106, 107, 108, 109, 110, 111, 113, 115, 119, 126, 130, 131, 138, 139, 140, 141, 142, 146, 153, 154, 157, 158, 167]),
+        Node::root(&[
+            1, 2, 7, 8, 10, 12, 14, 15, 16, 17, 18, 19, 20, 22, 25, 27, 29, 31, 42, 44, 48, 55, 56,
+            58, 60, 61, 62, 69, 70, 77, 78, 80, 86, 96, 101, 106, 107, 108, 109, 110, 111, 113,
+            115, 119, 126, 130, 131, 138, 139, 140, 141, 142, 146, 153, 154, 157, 158, 167,
+        ]),
         // /stop
         Node::literal("stop", &[]).executable(),
         // /plot
         Node::literal(
             "plot",
-            &[3, 4, 5, 6, 33, 34, 35, 36, 38, 39, 41, 53, 54, 75, 76, 120, 121, 122, 124],
+            &[
+                3, 4, 5, 6, 33, 34, 35, 36, 38, 39, 41, 53, 54, 75, 76, 120, 121, 122, 124,
+            ],
         ),
         // /plot info
         Node::literal("info", &[]).executable(),
@@ -1652,9 +1658,7 @@ fn declared_command_nodes() -> Vec<Node<'static>> {
     nodes[history].children = Box::leak(history_children.into_boxed_slice());
 
     if redbox {
-        root_children.retain(|&id| {
-            !matches!(nodes[id as usize].name, Some("teleport" | "tp"))
-        });
+        root_children.retain(|&id| !matches!(nodes[id as usize].name, Some("teleport" | "tp")));
     } else {
         let warp = nodes.len() as i32;
         let warp_name = warp + 1;
