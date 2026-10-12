@@ -855,37 +855,32 @@ fn graph_deadlines(backend: &GraphBackend, fixture: &Fixture) -> Vec<Deadline> {
     let mut deadlines = Vec::new();
     for event in &backend.deferred_pistons {
         let state = backend.state.pistons[event.piston.index()];
-        if state.revision != event.revision {
-            continue;
-        }
+        let actor_valid = state.revision == event.revision;
         let spec = backend.program.pistons()[event.piston.index()];
         let base = backend.program.contacts()[spec.base.index()].position;
         let near = backend.program.contacts()[spec.near.index()].position;
         if event.extending {
-            deadlines.push(Deadline {
-                position: near,
-                kind: DeadlineKind::Head,
-                due_tick: event.due_tick,
-            });
-            if event.resource_revision.is_some() {
-                let PistonLane::SingleResource { far } = spec.lane else {
-                    unreachable!()
-                };
+            if actor_valid {
                 deadlines.push(Deadline {
-                    position: backend.program.contacts()[far.index()].position,
-                    kind: DeadlineKind::Resource,
+                    position: near,
+                    kind: DeadlineKind::Head,
                     due_tick: event.due_tick,
                 });
             }
         } else {
-            deadlines.push(Deadline {
-                position: base,
-                kind: DeadlineKind::Base,
-                due_tick: event.due_tick,
-            });
-            if event.resource_revision.is_some() {
+            if actor_valid {
                 deadlines.push(Deadline {
-                    position: near,
+                    position: base,
+                    kind: DeadlineKind::Base,
+                    due_tick: event.due_tick,
+                });
+            }
+        }
+        if let Some(resource_event) = event.resource {
+            let resource = backend.state.resources[resource_event.resource.index()];
+            if resource.revision == resource_event.revision && !resource.enabled {
+                deadlines.push(Deadline {
+                    position: backend.program.contacts()[resource_event.contact.index()].position,
                     kind: DeadlineKind::Resource,
                     due_tick: event.due_tick,
                 });

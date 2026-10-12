@@ -451,7 +451,7 @@ struct Callback { // This describes one callback ready for synchronous dispatch.
 
 Routes and typed callback edges are two views of the same construction relations. Lowering validates their correspondence. Retain procedure/sequence provenance; execution follows routes, never incidental edge order.
 
-deliver_route resolves each receiver at delivery and finishes its nested callback before the next delivery. Preserve literal direction/None, duplicates, shape-versus-power exclusions, and head-to-base forwarding. A generic state write is not an observer trigger.
+Each compiled route delivery stores its resolved component, piston, or contact receiver. At dispatch, execution checks the delivery guard and invokes that compiled receiver, finishing nested callbacks before proceeding to the next delivery. The only receiver fallback is an Update with no compiled receiver whose target is a fixed component site: it runs that component's native no-op update handler to preserve callback order. Shape deliveries and non-component sites have no fallback. Preserve literal direction/None, duplicates, shape-versus-power exclusions, and head-to-base forwarding. A generic state write is not an observer trigger.
 
 An observer watches a compiled site/contact and receives qualifying routes even when the watched contact changes only logical availability. Preserve powered/None recovery, pending suppression, and directional output power.
 

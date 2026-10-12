@@ -132,9 +132,16 @@ struct PistonRequest {
 struct DeferredPistonEvent {
     piston: PistonId,
     revision: u64,
-    resource_revision: Option<u64>,
+    resource: Option<DeferredResourceEvent>,
     due_tick: u64,
     extending: bool,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct DeferredResourceEvent {
+    resource: ResourceId,
+    revision: u64,
+    contact: ContactId,
 }
 
 #[cfg(test)]
@@ -330,29 +337,6 @@ impl GraphBackend {
                     position: node.position,
                     kind,
                 });
-            }
-        }
-        let mut resource_owners = vec![0usize; program.resources().len()];
-        for piston in program.pistons() {
-            let PistonLane::SingleResource { far } = piston.lane else {
-                continue;
-            };
-            if let Some((index, _)) =
-                program
-                    .resources()
-                    .iter()
-                    .enumerate()
-                    .find(|(_, resource)| {
-                        resource.contacts.contains(&piston.near) && resource.contacts.contains(&far)
-                    })
-            {
-                resource_owners[index] += 1;
-                if resource_owners[index] > 1 {
-                    return Err(GraphBackendError::UnsupportedComponent {
-                        position: program.nodes()[piston.node.index()].position,
-                        kind: "shared piston resource",
-                    });
-                }
             }
         }
         let external_wires: FxHashSet<_> = program
@@ -812,16 +796,19 @@ impl GraphBackend {
                 mchprs_world::PistonAction::Extend
             }
             (false, true) => {
-                if matches!(
+                let early_resource_retraction = matches!(
                     state.availability,
                     PistonAvailability::HeadPending | PistonAvailability::PublishingHeadRemoval
-                ) && self.piston_resource(piston).is_some_and(|resource| {
-                    let PistonLane::SingleResource { far } = spec.lane else {
-                        return false;
-                    };
-                    let resource = self.state.resources[resource.index()];
-                    resource.at == far && !resource.enabled
-                }) {
+                ) && match spec.lane {
+                    PistonLane::SingleResource { far } => self
+                        .piston_resource_at(piston, far)
+                        .is_some_and(|resource| {
+                            let state = self.state.resources[resource.index()];
+                            !state.enabled
+                        }),
+                    PistonLane::Empty => false,
+                };
+                if early_resource_retraction {
                     mchprs_world::PistonAction::RetractWithoutPull
                 } else {
                     mchprs_world::PistonAction::Retract
@@ -897,7 +884,13 @@ impl GraphBackend {
             }
             mchprs_world::PistonAction::Retract
             | mchprs_world::PistonAction::RetractWithoutPull
-                if !powered && state.extended && !state.availability.base_pending() =>
+                if !powered
+                    && state.extended
+                    && !state.availability.base_pending()
+                    && self.piston_retraction_available(
+                        request.piston,
+                        request.action == mchprs_world::PistonAction::RetractWithoutPull,
+                    ) =>
             {
                 #[cfg(test)]
                 self.trace.push(format!(
@@ -928,11 +921,19 @@ impl GraphBackend {
 
     fn set_resource_contact(
         &mut self,
-        piston: PistonId,
+        resource: ResourceId,
         contact: ContactId,
         enabled: bool,
     ) -> Option<(ResourceId, u64)> {
-        let index = self.piston_resource(piston)?.index();
+        let index = resource.index();
+        debug_assert!(self.program.resources()[index].contacts.contains(&contact));
+        debug_assert!(
+            self.state
+                .resources
+                .iter()
+                .enumerate()
+                .all(|(other, state)| other == index || state.at != contact)
+        );
         let state = &mut self.state.resources[index];
         if state.at == contact && state.enabled == enabled {
             return None;
@@ -943,7 +944,7 @@ impl GraphBackend {
         Some((ResourceId::new(index as u32), state.revision))
     }
 
-    fn piston_resource(&self, piston: PistonId) -> Option<ResourceId> {
+    fn resource_for_lane(&self, piston: PistonId) -> Option<ResourceId> {
         let spec = self.program.pistons()[piston.index()];
         let PistonLane::SingleResource { far } = spec.lane else {
             return None;
@@ -955,6 +956,101 @@ impl GraphBackend {
                 resource.contacts.contains(&spec.near) && resource.contacts.contains(&far)
             })
             .map(|index| ResourceId::new(index as u32))
+    }
+
+    fn piston_resource_at(&self, piston: PistonId, contact: ContactId) -> Option<ResourceId> {
+        let resource = self.resource_for_lane(piston)?;
+        (self.state.resources[resource.index()].at == contact).then_some(resource)
+    }
+
+    fn resource_extension_pending(
+        &self,
+        resource_id: ResourceId,
+        contact: ContactId,
+        facing: BlockFace,
+    ) -> bool {
+        let state = self.state.resources[resource_id.index()];
+        self.deferred_pistons.iter().any(|event| {
+            event.extending
+                && event.due_tick > self.clock.logical_tick
+                && self.program.pistons()[event.piston.index()].facing == facing
+                && event.resource.is_some_and(|resource| {
+                    resource.resource == resource_id
+                        && resource.revision == state.revision
+                        && resource.contact == contact
+                })
+        })
+    }
+
+    fn resource_contact_available(
+        &self,
+        resource: ResourceId,
+        contact: ContactId,
+        vacated_head: Option<PistonId>,
+    ) -> bool {
+        let Some(spec) = self.program.resources().get(resource.index()) else {
+            return false;
+        };
+        let Some(state) = self.state.resources.get(resource.index()).copied() else {
+            return false;
+        };
+        if !spec.contacts.contains(&contact)
+            || self
+                .state
+                .resources
+                .iter()
+                .enumerate()
+                .any(|(other, state)| other != resource.index() && state.at == contact)
+        {
+            return false;
+        }
+        for (index, piston) in self.program.pistons().iter().enumerate() {
+            let id = PistonId::new(index as u32);
+            let state = self.state.pistons[index];
+            if piston.base == contact && !state.availability.base_pending() {
+                return false;
+            }
+            let head_is_present = state.extended
+                && matches!(
+                    state.availability,
+                    PistonAvailability::Ready
+                        | PistonAvailability::HeadPending
+                        | PistonAvailability::BasePendingHeadPresent
+                );
+            if piston.near == contact
+                && head_is_present
+                && !(vacated_head == Some(id) && piston.near == contact)
+            {
+                return false;
+            }
+        }
+        if state.at == contact && state.enabled {
+            return true;
+        }
+        if vacated_head.is_some_and(|id| self.program.pistons()[id.index()].near == contact) {
+            return true;
+        }
+        self.contact_block(contact) == Block::Air
+    }
+
+    fn piston_retraction_available(&self, piston: PistonId, without_pull: bool) -> bool {
+        let spec = self.program.pistons()[piston.index()];
+        let PistonLane::SingleResource { far } = spec.lane else {
+            return true;
+        };
+        let Some(resource) = self.piston_resource_at(piston, far) else {
+            return true;
+        };
+        let state = self.state.resources[resource.index()];
+        let matching_extension = self.resource_extension_pending(resource, far, spec.facing);
+        if without_pull {
+            !(!state.enabled && matching_extension)
+                || self.resource_contact_available(resource, far, None)
+        } else if !state.enabled && !matching_extension {
+            true
+        } else {
+            self.resource_contact_available(resource, spec.near, Some(piston))
+        }
     }
 
     fn contact_block(&self, contact: ContactId) -> Block {
@@ -976,41 +1072,48 @@ impl GraphBackend {
         {
             return false;
         }
-        if near == Block::Air {
-            return true;
-        }
-        self.piston_resource(piston).is_some_and(|resource| {
-            let state = self.state.resources[resource.index()];
-            state.at == spec.near && state.enabled
-        })
+        let Some(resource) = self.piston_resource_at(piston, spec.near) else {
+            return near == Block::Air && self.resource_at_contact(spec.near).is_none();
+        };
+        let state = self.state.resources[resource.index()];
+        let PistonLane::SingleResource { far } = spec.lane else {
+            return false;
+        };
+        state.enabled
+            && near
+                == self
+                    .program
+                    .profile_block(self.program.resources()[resource.index()].material)
+                    .unwrap()
+            && self.resource_contact_available(resource, far, None)
     }
 
-    fn release_resource(
-        &mut self,
-        piston: PistonId,
-        contact: ContactId,
-    ) -> Option<(ResourceId, u64)> {
-        self.set_resource_contact(piston, contact, false)
+    fn resource_at_contact(&self, contact: ContactId) -> Option<ResourceId> {
+        self.state
+            .resources
+            .iter()
+            .position(|state| state.at == contact)
+            .map(|index| ResourceId::new(index as u32))
     }
 
     fn extend_connections(&mut self, piston: PistonId) -> Result<(), GraphExecutionError> {
         let spec = self.program.pistons()[piston.index()];
+        let resource_to_move = self.piston_resource_at(piston, spec.near);
+        if let (Some(resource), PistonLane::SingleResource { far }) = (resource_to_move, spec.lane)
+        {
+            debug_assert!(self.resource_contact_available(resource, far, None));
+        }
         let revision = {
             let state = &mut self.state.pistons[piston.index()];
             state.revision = state.revision.wrapping_add(1);
             state.availability = PistonAvailability::HeadPending;
             state.revision
         };
-        let resource = match spec.lane {
-            PistonLane::SingleResource { far }
-                if self.piston_resource(piston).is_some_and(|resource| {
-                    let state = self.state.resources[resource.index()];
-                    state.at == spec.near && state.enabled
-                }) =>
-            {
-                self.release_resource(piston, far)
+        let resource = match (resource_to_move, spec.lane) {
+            (Some(resource), PistonLane::SingleResource { far }) => {
+                self.set_resource_contact(resource, far, false)
             }
-            PistonLane::SingleResource { .. } | PistonLane::Empty => None,
+            _ => None,
         };
         if resource.is_some()
             && let Some(route) = spec.routes.far_shape_changed
@@ -1023,11 +1126,18 @@ impl GraphBackend {
         }
         self.state.pistons[piston.index()].extended = true;
         self.deliver_route(spec.routes.base_changed, None)?;
-        let resource_revision = resource.map(|(_, revision)| revision);
+        let deferred_resource = resource.map(|(resource, revision)| DeferredResourceEvent {
+            resource,
+            revision,
+            contact: match spec.lane {
+                PistonLane::SingleResource { far } => far,
+                PistonLane::Empty => unreachable!(),
+            },
+        });
         self.deferred_pistons.push_back(DeferredPistonEvent {
             piston,
             revision,
-            resource_revision,
+            resource: deferred_resource,
             due_tick: self.clock.logical_tick + 2,
             extending: true,
         });
@@ -1043,6 +1153,29 @@ impl GraphBackend {
         without_pull: bool,
     ) -> Result<(), GraphExecutionError> {
         let spec = self.program.pistons()[piston.index()];
+        let resource_at_far = match spec.lane {
+            PistonLane::SingleResource { far } => self.piston_resource_at(piston, far),
+            PistonLane::Empty => None,
+        };
+        let matching_extension = match (resource_at_far, spec.lane) {
+            (Some(resource), PistonLane::SingleResource { far }) => {
+                self.resource_extension_pending(resource, far, spec.facing)
+            }
+            _ => false,
+        };
+        let resource_enabled =
+            resource_at_far.is_some_and(|resource| self.state.resources[resource.index()].enabled);
+        let restore_far = without_pull && !resource_enabled && matching_extension;
+        let pull_resource = !without_pull && (resource_enabled || matching_extension);
+        if let (Some(resource), PistonLane::SingleResource { far }) = (resource_at_far, spec.lane) {
+            debug_assert!(if restore_far {
+                self.resource_contact_available(resource, far, None)
+            } else if pull_resource {
+                self.resource_contact_available(resource, spec.near, Some(piston))
+            } else {
+                true
+            });
+        }
         let interrupted_head =
             self.state.pistons[piston.index()].availability == PistonAvailability::HeadPending;
         let revision = {
@@ -1063,18 +1196,25 @@ impl GraphBackend {
             self.deliver_route(spec.routes.base_changed, None)?;
             self.state.pistons[piston.index()].availability = PistonAvailability::BasePending;
         }
-        let resource = match spec.lane {
-            PistonLane::SingleResource { far } if without_pull => {
-                let restored = self.set_resource_contact(piston, far, true);
-                if restored.is_some()
-                    && let Some(route) = spec.routes.resource_restored_far
-                {
-                    self.deliver_route(route, None)?;
-                }
-                None
+        let restored_far = if restore_far {
+            let resource = resource_at_far.expect("restore requires a selected resource");
+            let PistonLane::SingleResource { far } = spec.lane else {
+                unreachable!();
+            };
+            self.set_resource_contact(resource, far, true)
+        } else {
+            None
+        };
+        if restored_far.is_some()
+            && let Some(route) = spec.routes.resource_restored_far
+        {
+            self.deliver_route(route, None)?;
+        }
+        let resource = match (pull_resource, resource_at_far, spec.lane) {
+            (true, Some(resource), PistonLane::SingleResource { .. }) => {
+                self.set_resource_contact(resource, spec.near, false)
             }
-            PistonLane::SingleResource { .. } => self.release_resource(piston, spec.near),
-            PistonLane::Empty => None,
+            _ => None,
         };
         if !without_pull && resource.is_some() {
             if let Some(route) = spec.routes.far_changed {
@@ -1082,10 +1222,15 @@ impl GraphBackend {
             }
         }
         self.deliver_route(spec.routes.near_changed, None)?;
+        let deferred_resource = resource.map(|(resource, revision)| DeferredResourceEvent {
+            resource,
+            revision,
+            contact: spec.near,
+        });
         self.deferred_pistons.push_back(DeferredPistonEvent {
             piston,
             revision,
-            resource_revision: resource.map(|(_, revision)| revision),
+            resource: deferred_resource,
             due_tick: self.clock.logical_tick + 2,
             extending: false,
         });
@@ -1113,68 +1258,80 @@ impl GraphBackend {
         event: DeferredPistonEvent,
     ) -> Result<(), GraphExecutionError> {
         let state = self.state.pistons[event.piston.index()];
-        if state.revision != event.revision {
-            #[cfg(test)]
-            self.trace.push(format!(
-                "piston stale {:?} revision={}",
-                event.piston, event.revision
-            ));
-            return Ok(());
-        }
         let spec = self.program.pistons()[event.piston.index()];
-        let resource = if let Some(expected) = event.resource_revision {
-            let Some(resource) = self.piston_resource(event.piston) else {
-                return Ok(());
-            };
-            if self.state.resources[resource.index()].revision != expected {
+        let actor_valid = state.revision == event.revision;
+
+        if event.extending {
+            self.apply_deferred_resource(event, spec)?;
+            if actor_valid {
+                self.state.pistons[event.piston.index()].availability = PistonAvailability::Ready;
+                self.deliver_route(spec.routes.head_restored, None)?;
+            } else {
                 #[cfg(test)]
                 self.trace.push(format!(
-                    "resource stale {:?} revision={expected}",
-                    event.piston
+                    "piston stale {:?} revision={}",
+                    event.piston, event.revision
                 ));
-                return Ok(());
             }
-            Some((resource, expected))
         } else {
-            None
-        };
-        if !event.extending {
-            self.state.pistons[event.piston.index()].extended = false;
-            self.state.pistons[event.piston.index()].availability = PistonAvailability::Ready;
-            self.deliver_route(spec.routes.base_restored, None)?;
-        }
-        if let Some((resource, expected)) = resource {
-            let contact = if event.extending {
-                let PistonLane::SingleResource { far } = spec.lane else {
-                    return Ok(());
-                };
-                far
+            if actor_valid {
+                self.state.pistons[event.piston.index()].extended = false;
+                self.state.pistons[event.piston.index()].availability = PistonAvailability::Ready;
+                self.deliver_route(spec.routes.base_restored, None)?;
             } else {
-                spec.near
-            };
-            if let Some((_, revision)) = self.set_resource_contact(event.piston, contact, true) {
-                debug_assert_eq!(revision, expected.wrapping_add(1));
-                let route = if event.extending {
-                    spec.routes.resource_restored_far
-                } else {
-                    spec.routes.resource_restored_near
-                };
-                if let Some(route) = route {
-                    self.deliver_route(route, None)?;
-                }
-            } else {
-                debug_assert_eq!(self.state.resources[resource.index()].revision, expected);
+                #[cfg(test)]
+                self.trace.push(format!(
+                    "piston stale {:?} revision={}",
+                    event.piston, event.revision
+                ));
             }
-        }
-        if event.extending {
-            self.state.pistons[event.piston.index()].availability = PistonAvailability::Ready;
-            self.deliver_route(spec.routes.head_restored, None)?;
+            self.apply_deferred_resource(event, spec)?;
         }
         #[cfg(test)]
         self.trace.push(format!(
             "piston restored {:?} revision={}",
             event.piston, event.revision
         ));
+        Ok(())
+    }
+
+    fn apply_deferred_resource(
+        &mut self,
+        event: DeferredPistonEvent,
+        spec: PistonSpec,
+    ) -> Result<(), GraphExecutionError> {
+        let Some(resource_event) = event.resource else {
+            return Ok(());
+        };
+        let current = self.state.resources[resource_event.resource.index()];
+        if current.revision != resource_event.revision
+            || current.at != resource_event.contact
+            || current.enabled
+            || !self.resource_contact_available(
+                resource_event.resource,
+                resource_event.contact,
+                None,
+            )
+        {
+            #[cfg(test)]
+            self.trace.push(format!(
+                "resource stale {:?} revision={}",
+                resource_event.resource, resource_event.revision
+            ));
+            return Ok(());
+        }
+        let (_, revision) = self
+            .set_resource_contact(resource_event.resource, resource_event.contact, true)
+            .expect("validated disabled resource must become enabled");
+        debug_assert_eq!(revision, resource_event.revision.wrapping_add(1));
+        let route = if event.extending {
+            spec.routes.resource_restored_far
+        } else {
+            spec.routes.resource_restored_near
+        };
+        if let Some(route) = route {
+            self.deliver_route(route, None)?;
+        }
         Ok(())
     }
 
@@ -2431,7 +2588,9 @@ impl GraphBackend {
             });
             let Some(receiver) = receiver else { continue };
             #[cfg(test)]
-            if self.has_semantic_callback(receiver) {
+            if self.has_semantic_callback(receiver)
+                && matches!(delivery.kind, DeliveryKind::Update { .. })
+            {
                 self.observed_operations
                     .push(GraphObservedOperation::Callback {
                         target: self.program.sites()[delivery.target.index()].position,

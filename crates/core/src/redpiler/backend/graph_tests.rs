@@ -1,7 +1,7 @@
 //! Graph backend differential and regression tests.
 use super::*;
-use crate::plot::PlotWorld;
-use crate::plot::worldedit::{WorldEditClipboard, load_schematic};
+use crate::plot::worldedit::{WorldEditClipboard, load_schematic, paste_clipboard};
+use crate::plot::{PLOT_WIDTH, PlotWorld};
 use crate::redpiler::backend::ScheduledBlockTick;
 use crate::redstone;
 use crate::redstone::instant_piston_tests::capture_at;
@@ -21,6 +21,17 @@ const NEXT_POS: BlockPos = BlockPos::new(6, 20, 5);
 
 fn empty_world() -> PlotWorld {
     PlotWorld::from_chunks(0, 0, vec![Chunk::empty(0, 0)], Default::default())
+}
+
+fn fixture_world() -> PlotWorld {
+    PlotWorld::from_chunks(
+        0,
+        0,
+        (0..PLOT_WIDTH)
+            .flat_map(|x| (0..PLOT_WIDTH).map(move |z| Chunk::empty(x, z)))
+            .collect(),
+        Default::default(),
+    )
 }
 
 fn lever(powered: bool) -> Block {
@@ -49,6 +60,24 @@ fn set_native_lever_with_support(
     world.set_block(position, Block::Lever { lever });
     redstone::update_surrounding_blocks(world, position);
     redstone::update_surrounding_blocks(world, position.offset(support));
+}
+
+fn set_native_lever_as_interaction(world: &mut PlotWorld, position: BlockPos, powered: bool) {
+    let Block::Lever { mut lever } = world.get_block(position) else {
+        panic!("expected lever at {position:?}");
+    };
+    if lever.powered == powered {
+        return;
+    }
+    lever.powered = powered;
+    world.set_block(position, Block::Lever { lever });
+    redstone::update_surrounding_blocks(world, position);
+    let attachment = match lever.face {
+        LeverFace::Ceiling => BlockFace::Top,
+        LeverFace::Floor => BlockFace::Bottom,
+        LeverFace::Wall => lever.facing.opposite().block_face(),
+    };
+    redstone::update_surrounding_blocks(world, position.offset(attachment));
 }
 
 fn graph(world: &PlotWorld, ticks: Vec<TickEntry>) -> GraphBackend {
@@ -2291,6 +2320,451 @@ fn isolated_empty_ordinary_and_sticky_pistons_compile() {
     }
 }
 
+fn opposing_shared_pistons() -> (PlotWorld, PlotWorld, [BlockPos; 2], [BlockPos; 2], BlockPos) {
+    let mut native = empty_world();
+    let mut graph_world = empty_world();
+    let bases = [BlockPos::new(5, 20, 5), BlockPos::new(5, 20, 9)];
+    let facings = [BlockFacing::South, BlockFacing::North];
+    let near = [
+        bases[0].offset(BlockFace::South),
+        bases[1].offset(BlockFace::North),
+    ];
+    let resource = BlockPos::new(5, 20, 7);
+    for world in [&mut native, &mut graph_world] {
+        for (base, facing) in bases.into_iter().zip(facings) {
+            let piston = mchprs_blocks::blocks::RedstonePiston {
+                facing,
+                sticky: true,
+                extended: true,
+            };
+            world.set_block(base, Block::Piston { piston });
+            world.set_block(
+                base.offset(facing.into()),
+                Block::PistonHead {
+                    head: piston.into(),
+                },
+            );
+        }
+        world.set_block(resource, Block::RedstoneBlock);
+    }
+    (native, graph_world, bases, near, resource)
+}
+
+#[test]
+fn shared_payload_actor_orders_select_the_first_retracting_contact() {
+    for order in [[0usize, 1usize], [1, 0]] {
+        let (mut native, graph_world, bases, near, resource_pos) = opposing_shared_pistons();
+        let mut backend = GraphBackend::compile(&graph_world, BOUNDS, vec![], Arc::default())
+            .unwrap_or_else(|error| panic!("shared two-actor fixture rejected: {error}"));
+
+        for actor_index in order {
+            let base = bases[actor_index];
+            let Block::Piston { piston } = native.get_block(base) else {
+                unreachable!();
+            };
+            redstone::piston::update_piston_state(&mut native, piston, base);
+            let piston_id = backend
+                .program
+                .pistons()
+                .iter()
+                .find(|spec| backend.program.nodes()[spec.node.index()].position == Some(base))
+                .map(
+                    |spec| match backend.program.nodes()[spec.node.index()].kind {
+                        CircuitNodeKind::Piston(id) => id,
+                        _ => unreachable!(),
+                    },
+                )
+                .unwrap();
+            backend.sample_piston(piston_id).unwrap();
+            for _ in 0..3 {
+                tick_shared_and_compare_callbacks(&mut native, &mut backend);
+            }
+            for position in [bases[0], bases[1], near[0], near[1], resource_pos] {
+                assert_eq!(
+                    piston_contact_block(&backend, position),
+                    native.get_block(position),
+                    "contact projection at {position:?} for order {order:?}"
+                );
+            }
+        }
+
+        let expected = near[order[0]];
+        let resource = backend.state.resources[0];
+        assert_eq!(
+            resource.at,
+            backend
+                .program
+                .contacts()
+                .iter()
+                .position(|c| c.position == expected)
+                .map(|i| ContactId::new(i as u32))
+                .unwrap()
+        );
+        assert!(resource.enabled);
+        assert_eq!(
+            backend
+                .state
+                .pistons
+                .iter()
+                .filter(|state| !state.extended)
+                .count(),
+            2
+        );
+    }
+}
+
+#[test]
+fn shared_payload_overlapping_repeated_triggers_keep_fifo_and_conserve_one_token() {
+    for order in [[0usize, 1usize], [1, 0]] {
+        let (mut native, graph_world, bases, near, resource_pos) = opposing_shared_pistons();
+        let mut backend = GraphBackend::compile(&graph_world, BOUNDS, vec![], Arc::default())
+            .unwrap_or_else(|error| panic!("shared two-actor fixture rejected: {error}"));
+
+        for actor_index in order {
+            let base = bases[actor_index];
+            let Block::Piston { piston } = native.get_block(base) else {
+                unreachable!();
+            };
+            for _ in 0..2 {
+                redstone::piston::update_piston_state(&mut native, piston, base);
+                backend.sample_piston(piston_id_at(&backend, base)).unwrap();
+            }
+        }
+
+        let native_order: Vec<_> = native
+            .piston_state()
+            .events
+            .iter()
+            .map(|event| event.pos)
+            .collect();
+        let graph_order: Vec<_> = backend
+            .piston_requests
+            .iter()
+            .map(|request| {
+                let spec = backend.program.pistons()[request.piston.index()];
+                backend.program.nodes()[spec.node.index()].position.unwrap()
+            })
+            .collect();
+        assert_eq!(native_order, order.map(|index| bases[index]));
+        assert_eq!(graph_order, native_order);
+
+        for _ in 0..3 {
+            tick_shared_and_compare_callbacks(&mut native, &mut backend);
+        }
+        assert_eq!(backend.state.resources.len(), 1);
+        assert!(backend.state.resources[0].enabled);
+        assert_eq!(native.get_block(resource_pos), Block::Air);
+        let native_tokens = [near[0], near[1]]
+            .into_iter()
+            .filter(|position| native.get_block(*position) == Block::RedstoneBlock)
+            .count();
+        assert_eq!(native_tokens, 1);
+        assert_eq!(
+            piston_contact_block(&backend, near[order[0]]),
+            Block::RedstoneBlock
+        );
+        for position in [bases[0], bases[1], near[0], near[1], resource_pos] {
+            assert_eq!(
+                piston_contact_block(&backend, position),
+                native.get_block(position),
+                "contact projection at {position:?} for FIFO order {order:?}"
+            );
+        }
+    }
+}
+
+#[test]
+fn three_sticky_actors_share_one_conserved_resource() {
+    let mut native = empty_world();
+    let mut graph_world = empty_world();
+    let bases = [
+        (BlockPos::new(3, 20, 5), BlockFacing::East),
+        (BlockPos::new(7, 20, 5), BlockFacing::West),
+        (BlockPos::new(5, 20, 3), BlockFacing::South),
+    ];
+    let resource_pos = BlockPos::new(5, 20, 5);
+    for world in [&mut native, &mut graph_world] {
+        for (base, facing) in bases {
+            let piston = mchprs_blocks::blocks::RedstonePiston {
+                facing,
+                sticky: true,
+                extended: true,
+            };
+            world.set_block(base, Block::Piston { piston });
+            world.set_block(
+                base.offset(facing.into()),
+                Block::PistonHead {
+                    head: piston.into(),
+                },
+            );
+        }
+        world.set_block(resource_pos, Block::RedstoneBlock);
+    }
+    let mut backend = GraphBackend::compile(&graph_world, BOUNDS, vec![], Arc::default())
+        .unwrap_or_else(|error| panic!("three-actor shared fixture rejected: {error}"));
+    assert_eq!(backend.program.resources().len(), 1);
+    assert_eq!(backend.program.resources()[0].contacts.len(), 4);
+
+    let first = 2usize;
+    let Block::Piston { piston } = native.get_block(bases[first].0) else {
+        unreachable!();
+    };
+    redstone::piston::update_piston_state(&mut native, piston, bases[first].0);
+    backend
+        .sample_piston(piston_id_at(&backend, bases[first].0))
+        .unwrap();
+    for _ in 0..3 {
+        tick_shared_and_compare_callbacks(&mut native, &mut backend);
+    }
+    let near = bases[first].0.offset(bases[first].1.into());
+    assert_eq!(native.get_block(near), Block::RedstoneBlock);
+    assert_eq!(piston_contact_block(&backend, near), Block::RedstoneBlock);
+    assert!(backend.state.resources[0].enabled);
+    assert_eq!(backend.state.resources.len(), 1);
+}
+
+#[test]
+fn shared_resource_drop_and_recapture_ignore_the_obsolete_actor_event() {
+    let (mut native, mut graph_world, bases, near, resource_pos) = opposing_shared_pistons();
+    let controls = [
+        bases[0].offset(BlockFace::East),
+        bases[1].offset(BlockFace::East),
+    ];
+    for world in [&mut native, &mut graph_world] {
+        for (index, control) in controls.into_iter().enumerate() {
+            world.set_block(control.offset(BlockFace::Bottom), Block::Stone {});
+            world.set_block(control, lever(index == 1));
+        }
+    }
+    let mut backend = GraphBackend::compile(&graph_world, BOUNDS, vec![], Arc::default())
+        .unwrap_or_else(|error| panic!("shared drop/recapture fixture rejected: {error}"));
+
+    let Block::Piston { piston } = native.get_block(bases[0]) else {
+        unreachable!();
+    };
+    redstone::piston::update_piston_state(&mut native, piston, bases[0]);
+    backend
+        .sample_piston(piston_id_at(&backend, bases[0]))
+        .unwrap();
+    for _ in 0..3 {
+        tick_shared_and_compare_callbacks(&mut native, &mut backend);
+    }
+    assert_eq!(native.get_block(near[0]), Block::RedstoneBlock);
+
+    set_shared_lever_and_compare_callbacks(&mut native, &mut backend, controls[0], true);
+    assert!(matches!(
+        native.piston_state().events.back(),
+        Some(event) if event.action == mchprs_world::PistonAction::Extend
+    ));
+    tick_shared_and_compare_callbacks(&mut native, &mut backend);
+    assert!(!backend.state.resources[0].enabled);
+    assert_eq!(
+        backend.state.resources[0].at,
+        contact_at(&backend, resource_pos)
+    );
+
+    set_shared_lever_and_compare_callbacks(&mut native, &mut backend, controls[0], false);
+    assert!(matches!(
+        native.piston_state().events.back(),
+        Some(event) if event.action == mchprs_world::PistonAction::RetractWithoutPull
+    ));
+    assert!(backend.piston_requests.iter().any(|request| {
+        request.piston == piston_id_at(&backend, bases[0])
+            && request.action == mchprs_world::PistonAction::RetractWithoutPull
+    }));
+    tick_shared_and_compare_callbacks(&mut native, &mut backend);
+    assert_eq!(native.get_block(resource_pos), Block::RedstoneBlock);
+    assert_eq!(
+        piston_contact_block(&backend, resource_pos),
+        Block::RedstoneBlock
+    );
+    assert!(backend.state.resources[0].enabled);
+
+    set_shared_lever_and_compare_callbacks(&mut native, &mut backend, controls[1], false);
+    tick_shared_and_compare_callbacks(&mut native, &mut backend);
+    assert_eq!(native.get_block(resource_pos), Block::Air);
+    assert!(matches!(
+        native.get_block(near[1]),
+        Block::MovingPiston { .. }
+    ));
+    assert_eq!(backend.state.resources[0].at, contact_at(&backend, near[1]));
+    assert!(!backend.state.resources[0].enabled);
+    assert!(
+        backend
+            .trace()
+            .iter()
+            .any(|line| line.contains("resource stale"))
+    );
+    assert!(
+        backend
+            .trace()
+            .iter()
+            .any(|line| line.contains("piston stale"))
+    );
+
+    for _ in 0..3 {
+        tick_shared_and_compare_callbacks(&mut native, &mut backend);
+    }
+    assert_eq!(native.get_block(near[1]), Block::RedstoneBlock);
+    assert_eq!(
+        piston_contact_block(&backend, near[1]),
+        Block::RedstoneBlock
+    );
+    assert!(backend.state.resources[0].enabled);
+    assert_eq!(native.get_block(resource_pos), Block::Air);
+    for position in [bases[0], bases[1], near[0], near[1], resource_pos] {
+        assert_eq!(
+            piston_contact_block(&backend, position),
+            native.get_block(position),
+            "contact projection at {position:?} after drop and recapture"
+        );
+    }
+}
+
+#[test]
+fn stale_resource_publication_does_not_cancel_a_valid_actor_publication() {
+    let (_, graph_world, bases, _, resource_pos) = opposing_shared_pistons();
+    let mut backend = GraphBackend::compile(&graph_world, BOUNDS, vec![], Arc::default())
+        .unwrap_or_else(|error| panic!("shared two-actor fixture rejected: {error}"));
+    let actor = piston_id_at(&backend, bases[0]);
+    backend.retract_connections(actor, false).unwrap();
+    let event = backend.deferred_pistons.pop_front().unwrap();
+    assert_eq!(
+        backend.state.pistons[actor.index()].availability,
+        PistonAvailability::BasePending
+    );
+
+    // Model a legal recapture at the shared contact before the original restore arrives.
+    backend.set_resource_contact(ResourceId::new(0), contact_at(&backend, resource_pos), true);
+    backend.apply_deferred_event(event).unwrap();
+    assert_resource_invariants(&backend);
+
+    assert_eq!(
+        backend.state.pistons[actor.index()].availability,
+        PistonAvailability::Ready
+    );
+    assert!(!backend.state.pistons[actor.index()].extended);
+    assert_eq!(
+        backend.state.resources[0].at,
+        contact_at(&backend, resource_pos)
+    );
+    assert!(backend.state.resources[0].enabled);
+    assert!(
+        backend
+            .trace()
+            .iter()
+            .any(|line| line.contains("resource stale"))
+    );
+    assert!(
+        !backend
+            .trace()
+            .iter()
+            .any(|line| line.contains("piston stale"))
+    );
+}
+
+#[test]
+fn adder_inhibition_matches_native_for_a_bounded_shared_resource_episode() {
+    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let clipboard = frozen_clipboard("ADDER_1BIT.schem");
+    let dimensions = (clipboard.size_x, clipboard.size_y, clipboard.size_z);
+    let origin = BlockPos::new(40, 30, 40);
+    let paste_anchor =
+        origin + BlockPos::new(clipboard.offset_x, clipboard.offset_y, clipboard.offset_z);
+    let bounds = (
+        origin,
+        origin
+            + BlockPos::new(
+                dimensions.0 as i32 - 1,
+                dimensions.1 as i32 - 1,
+                dimensions.2 as i32 - 1,
+            ),
+    );
+    let mut native = fixture_world();
+    let mut graph_world = fixture_world();
+    for world in [&mut native, &mut graph_world] {
+        paste_clipboard(world, &clipboard, paste_anchor, false);
+    }
+    let mut backend = GraphBackend::compile(&graph_world, bounds, vec![], Arc::default())
+        .unwrap_or_else(|error| panic!("bounded adder fixture rejected: {error}"));
+    let mut component_positions = non_resource_component_positions(&backend);
+    component_positions.sort_by_key(|position| (position.x, position.y, position.z));
+    let manifest: Value = serde_json::from_slice(
+        &std::fs::read(root.join("test_data/instant-pistons-io/fixtures/adder_1bit.json")).unwrap(),
+    )
+    .unwrap();
+    let case = manifest["cases"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|case| case["id"] == "prepared-1-1-0")
+        .unwrap();
+
+    let compare_components = |backend: &mut GraphBackend,
+                              native: &PlotWorld,
+                              graph_world: &mut PlotWorld,
+                              boundary: &str| {
+        assert_resource_invariants(backend);
+        backend.flush(graph_world);
+        for &position in &component_positions {
+            assert_eq!(
+                graph_world.get_block(position),
+                native.get_block(position),
+                "adder component at {position:?} diverged at {boundary}"
+            );
+        }
+    };
+    let advance = |backend: &mut GraphBackend,
+                   native: &mut PlotWorld,
+                   graph_world: &mut PlotWorld,
+                   boundary: &str| {
+        native.tick_interpreted();
+        backend.tick().unwrap();
+        compare_components(backend, native, graph_world, boundary);
+    };
+
+    for (index, action) in case["actions"].as_array().unwrap().iter().enumerate() {
+        match action["op"].as_str().unwrap() {
+            "lever" => {
+                let position = origin
+                    + BlockPos::new(
+                        action["pos"][0].as_i64().unwrap() as i32,
+                        action["pos"][1].as_i64().unwrap() as i32,
+                        action["pos"][2].as_i64().unwrap() as i32,
+                    );
+                let powered = action["powered"].as_bool().unwrap();
+                let Block::Lever { lever } = graph_world.get_block(position) else {
+                    panic!("expected adder control lever at {position:?}");
+                };
+                if lever.powered != powered {
+                    backend.use_block(position).unwrap();
+                }
+                set_native_lever_as_interaction(&mut native, position, powered);
+                compare_components(&mut backend, &native, &mut graph_world, "control action");
+            }
+            "wait_ready" | "wait" => {
+                for tick in 0..action["ticks"].as_u64().unwrap() {
+                    advance(
+                        &mut backend,
+                        &mut native,
+                        &mut graph_world,
+                        &format!("setup action {index}, tick {tick}"),
+                    );
+                }
+            }
+            operation => panic!("unexpected adder operation {operation}"),
+        }
+    }
+    for tick in 0..case["ticks"].as_u64().unwrap() {
+        advance(
+            &mut backend,
+            &mut native,
+            &mut graph_world,
+            &format!("inhibition response tick {tick}"),
+        );
+    }
+}
+
 fn isolated_piston_pair(sticky: bool) -> (PlotWorld, PlotWorld, BlockPos, BlockPos) {
     let mut native = empty_world();
     let mut graph_world = empty_world();
@@ -2330,6 +2804,122 @@ fn piston_state_at(backend: &GraphBackend, position: BlockPos) -> PistonState {
     backend.state.pistons[index]
 }
 
+fn piston_id_at(backend: &GraphBackend, position: BlockPos) -> PistonId {
+    let spec = backend
+        .program
+        .pistons()
+        .iter()
+        .find(|spec| backend.program.nodes()[spec.node.index()].position == Some(position))
+        .unwrap();
+    match backend.program.nodes()[spec.node.index()].kind {
+        CircuitNodeKind::Piston(id) => id,
+        _ => unreachable!(),
+    }
+}
+
+fn contact_at(backend: &GraphBackend, position: BlockPos) -> ContactId {
+    backend
+        .program
+        .contacts()
+        .iter()
+        .position(|contact| contact.position == position)
+        .map(|index| ContactId::new(index as u32))
+        .unwrap()
+}
+
+fn assert_resource_invariants(backend: &GraphBackend) {
+    let mut selected = Vec::new();
+    for (index, state) in backend.state.resources.iter().enumerate() {
+        let spec = &backend.program.resources()[index];
+        assert!(spec.contacts.contains(&state.at));
+        assert!(
+            !selected.contains(&state.at),
+            "two resources selected one contact"
+        );
+        selected.push(state.at);
+    }
+    for contact in backend.program.contacts() {
+        assert_eq!(
+            contact
+                .variants
+                .iter()
+                .filter(|variant| backend.guard_matches(variant.when, None))
+                .count(),
+            1,
+            "contact {:?} must select exactly one variant",
+            contact.position
+        );
+    }
+}
+
+fn non_resource_component_positions(backend: &GraphBackend) -> Vec<BlockPos> {
+    let resource_contacts: Vec<_> = backend
+        .program
+        .resources()
+        .iter()
+        .flat_map(|resource| resource.contacts.iter())
+        .map(|contact| backend.program.contacts()[contact.index()].position)
+        .collect();
+    // These positions are projected through ResourceState, not component flushes.
+    backend
+        .positions
+        .keys()
+        .copied()
+        .filter(|position| !resource_contacts.contains(position))
+        .collect()
+}
+
+fn shared_callback_positions(backend: &GraphBackend) -> Vec<BlockPos> {
+    let mut positions: Vec<_> = backend
+        .positions
+        .iter()
+        .filter(|(_, node)| backend.has_semantic_callback(CallbackReceiver::Component(**node)))
+        .map(|(position, _)| *position)
+        .collect();
+    for piston in backend.program.pistons() {
+        for contact in [piston.base, piston.near] {
+            let position = backend.program.contacts()[contact.index()].position;
+            if !positions.contains(&position) {
+                positions.push(position);
+            }
+        }
+    }
+    positions
+}
+
+fn tick_shared_and_compare_callbacks(native: &mut PlotWorld, backend: &mut GraphBackend) {
+    let watched = shared_callback_positions(backend);
+    let graph_start = backend.observed_operations.len();
+    let native_trace = capture_at(&watched, || tick_native_bounded(native));
+    backend.tick().unwrap();
+    let native_callbacks = native_shared_callbacks_at(&native_trace, &watched);
+    let graph_callbacks = graph_routed_callbacks_at(backend, graph_start, &watched);
+    assert_eq!(
+        graph_callbacks,
+        native_callbacks,
+        "shared callbacks at tick {}: {:#?}",
+        backend.clock.logical_tick,
+        backend.trace.iter().rev().take(24).collect::<Vec<_>>()
+    );
+    assert_resource_invariants(backend);
+}
+
+fn set_shared_lever_and_compare_callbacks(
+    native: &mut PlotWorld,
+    backend: &mut GraphBackend,
+    position: BlockPos,
+    powered: bool,
+) {
+    let watched = shared_callback_positions(backend);
+    let graph_start = backend.observed_operations.len();
+    let native_trace = capture_at(&watched, || set_native_lever(native, position, powered));
+    backend.use_block(position).unwrap();
+    let native_callbacks = native_shared_callbacks_at(&native_trace, &watched);
+    let graph_callbacks = graph_routed_callbacks_at(backend, graph_start, &watched);
+    assert_eq!(graph_callbacks, native_callbacks);
+    assert_resource_invariants(backend);
+}
+
 fn tick_native_bounded(world: &mut PlotWorld) {
     let target_tick = world.piston_state().logical_tick + 1;
     for _ in 0..128 {
@@ -2363,6 +2953,42 @@ fn native_callbacks_at(
         .collect()
 }
 
+fn native_shared_callbacks_at(
+    trace: &[Value],
+    positions: &[BlockPos],
+) -> Vec<(BlockPos, Option<BlockFace>)> {
+    trace
+        .iter()
+        .filter(|entry| {
+            entry["kind"] == "callback"
+                && matches!(
+                    entry["data"]["block"].as_str(),
+                    Some(
+                        "redstone_wire"
+                            | "redstone_torch"
+                            | "redstone_wall_torch"
+                            | "redstone_repeater"
+                            | "redstone_comparator"
+                            | "redstone_lamp"
+                            | "observer"
+                            | "piston"
+                            | "sticky_piston"
+                            | "piston_head"
+                            | "copper_bulb"
+                    )
+                )
+                && serde_json::from_value::<BlockPos>(entry["data"]["pos"].clone())
+                    .is_ok_and(|position| positions.contains(&position))
+        })
+        .map(|entry| {
+            (
+                serde_json::from_value(entry["data"]["pos"].clone()).unwrap(),
+                serde_json::from_value(entry["data"]["dir"].clone()).unwrap(),
+            )
+        })
+        .collect()
+}
+
 fn graph_callbacks_at(
     backend: &GraphBackend,
     start: usize,
@@ -2374,6 +3000,24 @@ fn graph_callbacks_at(
         .filter_map(|(position, kind)| match kind {
             DeliveryKind::Update { direction } => Some((*position, *direction)),
             DeliveryKind::Shape { .. } => None,
+        })
+        .collect()
+}
+
+fn graph_routed_callbacks_at(
+    backend: &GraphBackend,
+    start: usize,
+    positions: &[BlockPos],
+) -> Vec<(BlockPos, Option<BlockFace>)> {
+    backend.observed_operations[start..]
+        .iter()
+        .filter_map(|operation| match operation {
+            GraphObservedOperation::Callback { target, direction }
+                if positions.contains(target) =>
+            {
+                Some((*target, *direction))
+            }
+            _ => None,
         })
         .collect()
 }

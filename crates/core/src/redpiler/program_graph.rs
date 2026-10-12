@@ -807,6 +807,7 @@ impl CircuitDraft {
             });
         }
 
+        let mut contact_owners = HashMap::new();
         for (index, resource) in self.resources.iter().enumerate() {
             let id = ResourceId::try_from_index(index).expect("resource count was checked");
             check_id("profiles", resource.material.index(), self.profiles.len())?;
@@ -815,6 +816,13 @@ impl CircuitDraft {
             }
             for contact in resource.contacts.iter() {
                 check_id("contacts", contact.index(), self.contacts.len())?;
+                if let Some(first) = contact_owners.insert(*contact, id) {
+                    return Err(GraphBuildError::ResourcesShareContact {
+                        first,
+                        second: id,
+                        contact: *contact,
+                    });
+                }
             }
             let state = self
                 .initial_resources
@@ -1423,7 +1431,7 @@ impl std::fmt::Display for GraphBuildError {
                 contact,
             } => write!(
                 f,
-                "resources {} and {} both select contact {} initially",
+                "resources {} and {} both claim contact {}",
                 first.index(),
                 second.index(),
                 contact.index()
@@ -1978,10 +1986,10 @@ mod tests {
         let mut conflicting_resources = draft_with_mixed_links();
         conflicting_resources.resources.push(ResourceSpec {
             material: ProfileId::new(0),
-            contacts: vec![ContactId::new(0)].into_boxed_slice(),
+            contacts: vec![ContactId::new(0), ContactId::new(1)].into_boxed_slice(),
         });
         conflicting_resources.initial_resources.push(ResourceState {
-            at: ContactId::new(0),
+            at: ContactId::new(1),
             enabled: true,
             revision: 0,
         });

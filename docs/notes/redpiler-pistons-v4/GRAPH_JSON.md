@@ -260,7 +260,7 @@ type ComponentState =
   | { kind: "wire"; power: number; north: WireSide; south: WireSide; east: WireSide; west: WireSide } // Stores wire power and four directional side shapes.
   | { kind: "specialized" }; // Marks a specialized node whose detailed state is represented elsewhere.
 type WireSide = "up" | "side" | "none"; // Names the exported wire connection shape for one horizontal side.
-type PistonAvailability = "ready" | "head_pending" | "publishing_head_removal" | "base_pending"; // Names the piston connection-availability phase.
+type PistonAvailability = "ready" | "head_pending" | "publishing_head_removal" | "base_pending" | "base_pending_head_present"; // Names the piston connection-availability phase, including settled retraction while the head remains present.
 type PistonSnapshot = {
   piston: string; // References the piston whose state is captured.
   extended: boolean; // Records the piston extension flag.
