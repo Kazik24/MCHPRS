@@ -1774,6 +1774,12 @@ impl Plot {
                 PrivMessage::PlayerEnterPlot(player) => {
                     self.enter_plot(player);
                 }
+                PrivMessage::PlayerTeleportOther(mut player, username) => {
+                    if let Some(other) = self.players.iter().find(|p| p.username == username) {
+                        player.teleport(other.pos);
+                    }
+                    self.enter_plot(player);
+                }
                 PrivMessage::RedBoxTeleport { uuid, position } => {
                     if let Some(player) = self.players.iter().position(|p| p.uuid == uuid) {
                         if position.is_valid() {

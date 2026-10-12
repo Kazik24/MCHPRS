@@ -129,6 +129,41 @@ fn parse_teleport_coord(coord: &str, reference: f64, center: bool) -> Result<f64
     }
 }
 
+pub(crate) fn complete_teleport<'a>(
+    id: i32,
+    text: &str,
+    names: impl Iterator<Item = &'a str>,
+) -> Option<CTabComplete> {
+    let (command, prefix) = text.split_once(' ')?;
+    if !matches!(command, "/tp" | "/teleport") {
+        return None;
+    }
+    let normalized_prefix = prefix.to_ascii_lowercase();
+    let mut names: Vec<_> = names
+        .filter(|name| name.to_ascii_lowercase().starts_with(&normalized_prefix))
+        .collect();
+    names.sort_unstable();
+    Some(CTabComplete {
+        id,
+        start: (command.encode_utf16().count() + 1) as i32,
+        length: prefix.encode_utf16().count() as i32,
+        matches: names
+            .into_iter()
+            .map(|name| CTabCompleteMatch {
+                match_: name.to_owned(),
+                tooltip: None,
+            })
+            .collect(),
+    })
+}
+
+fn valid_warp_name(name: &str) -> bool {
+    (1..=32).contains(&name.len())
+        && name
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b'-'))
+}
+
 fn advance_bounded(ticks: u32, mut step: impl FnMut()) -> u32 {
     let started = Instant::now();
     let budget = std::time::Duration::from_millis(crate::config::CONFIG.command_work_time_ms);
@@ -850,17 +885,28 @@ impl Plot {
                 self.reset_timings();
                 self.players[player].send_system_message(messages::RTPS_SET);
             }
-            "/rhistory" => match self.control_history(player, &args) {
-                Ok(message) => {
-                    info!(%message, "Tick history command completed");
-                    self.players[player].send_system_message(&message);
+            "/rhistory" => {
+                if args.first() == Some(&"rewind") {
+                    if let Err(error) = self.rewind_plot(player, &args[1..]) {
+                        warn!(%error, "Rewind rejected");
+                        self.players[player].send_error_message(&error);
+                    } else {
+                        info!("Rewind completed");
+                    }
+                } else {
+                    match self.control_history(player, &args) {
+                        Ok(message) => {
+                            info!(%message, "Tick history command completed");
+                            self.players[player].send_system_message(&message);
+                        }
+                        Err(error) => {
+                            warn!(%error, "Tick history command rejected");
+                            self.players[player].send_error_message(&error);
+                        }
+                    }
                 }
-                Err(error) => {
-                    warn!(%error, "Tick history command rejected");
-                    self.players[player].send_error_message(&error);
-                }
-            },
-            "/back" => {
+            }
+            "/back" if !crate::redbox::enabled() => {
                 if let Err(error) = self.rewind_plot(player, &args) {
                     warn!(%error, "Rewind rejected");
                     self.players[player].send_error_message(&error);
@@ -917,38 +963,126 @@ impl Plot {
                     self.players[player].send_system_message(messages::REDPILER_AUTO_DISABLED);
                 }
             }
-            // Coordinate teleportation and /warp are owned by the proxy (RedBox).
-            // Only the internal diagnostic links with a highlight flag stay here.
+            "/setwarp" if !crate::redbox::enabled() => {
+                let [name] = args.as_slice() else {
+                    self.players[player].send_error_message(messages::USAGE_SETWARP);
+                    return false;
+                };
+                if !valid_warp_name(name) {
+                    self.players[player].send_error_message(messages::INVALID_WARP_NAME);
+                    return false;
+                }
+                let actor = &self.players[player];
+                let warp = database::Warp {
+                    pos: actor.pos,
+                    yaw: actor.yaw,
+                    pitch: actor.pitch,
+                };
+                match database::set_warp(name, warp) {
+                    Ok(()) => actor.send_system_message(&messages::warp_saved(name)),
+                    Err(error) => {
+                        warn!("Could not save warp {name}: {error}");
+                        actor.send_error_message(messages::WARP_STORAGE_FAILED);
+                    }
+                }
+            }
+            "/warp" if !crate::redbox::enabled() => {
+                if args.is_empty() {
+                    match database::warp_names() {
+                        Ok(names) if names.is_empty() => {
+                            self.players[player].send_system_message(messages::NO_WARPS)
+                        }
+                        Ok(names) => self.players[player]
+                            .send_system_message(&messages::warp_list(names.join(", "))),
+                        Err(error) => {
+                            warn!("Could not list warps: {error}");
+                            self.players[player].send_error_message(messages::WARP_STORAGE_FAILED);
+                        }
+                    }
+                    return false;
+                }
+                let [name] = args.as_slice() else {
+                    self.players[player].send_error_message(messages::USAGE_WARP);
+                    return false;
+                };
+                if !valid_warp_name(name) {
+                    self.players[player].send_error_message(messages::INVALID_WARP_NAME);
+                    return false;
+                }
+                match database::get_warp(name) {
+                    Ok(Some(warp)) => {
+                        if !warp.is_valid() {
+                            self.players[player]
+                                .send_error_message(messages::INVALID_TELEPORT_COORDINATES);
+                            return false;
+                        }
+                        self.players[player].send_system_message(&messages::warp_teleport(name));
+                        return self.teleport_player_to(player, warp.pos, warp.yaw, warp.pitch);
+                    }
+                    Ok(None) => {
+                        self.players[player].send_error_message(&messages::warp_not_found(name))
+                    }
+                    Err(error) => {
+                        warn!("Could not read warp {name}: {error}");
+                        self.players[player].send_error_message(messages::WARP_STORAGE_FAILED);
+                    }
+                }
+            }
             "/teleport" | "/tp" => {
+                let redbox = crate::redbox::enabled();
                 let highlight_only = args.len() == 4 && args[3] == "--highlight-only";
                 let highlight = highlight_only || (args.len() == 4 && args[3] == "--highlight");
-                if !highlight {
+                if redbox && !highlight {
                     self.players[player].send_error_message(messages::COMMAND_NOT_FOUND);
                     return false;
                 }
-                args.pop();
+                if !redbox && args.len() == 1 && !highlight {
+                    self.players[player].send_system_message(&messages::teleport_player(args[0]));
+                    let uuid = self.players[player].uuid;
+                    let player = self.leave_plot(uuid);
+                    let _ = self
+                        .message_sender
+                        .send(Message::PlayerTeleportOther(player, args[0].to_owned()));
+                    return true;
+                }
+                if args.len() != 3 + usize::from(highlight) {
+                    self.players[player]
+                        .send_error_message(messages::INVALID_NUMBER_ARGUMENTS_TELEPORT_COMMAND);
+                    return false;
+                }
+                if highlight {
+                    args.pop();
+                }
                 let player_pos = self.players[player].pos;
-                let Ok(x) = parse_teleport_coord(args[0], player_pos.x, true) else {
-                    self.players[player].send_error_message(messages::INVALID_X_COORDINATE);
-                    return false;
+                let x = match parse_teleport_coord(args[0], player_pos.x, true) {
+                    Ok(value) => value,
+                    Err(_) => {
+                        self.players[player].send_error_message(messages::INVALID_X_COORDINATE);
+                        return false;
+                    }
                 };
-                let Ok(y) = parse_teleport_coord(args[1], player_pos.y, false) else {
-                    self.players[player].send_error_message(messages::INVALID_Y_COORDINATE);
-                    return false;
+                let y = match parse_teleport_coord(args[1], player_pos.y, false) {
+                    Ok(value) => value,
+                    Err(_) => {
+                        self.players[player].send_error_message(messages::INVALID_Y_COORDINATE);
+                        return false;
+                    }
                 };
-                let Ok(z) = parse_teleport_coord(args[2], player_pos.z, true) else {
-                    self.players[player].send_error_message(messages::INVALID_Z_COORDINATE);
-                    return false;
+                let z = match parse_teleport_coord(args[2], player_pos.z, true) {
+                    Ok(value) => value,
+                    Err(_) => {
+                        self.players[player].send_error_message(messages::INVALID_Z_COORDINATE);
+                        return false;
+                    }
                 };
                 let target = PlayerPos::new(x, y, z);
                 let mut destination = target;
-                if !highlight_only {
+                if highlight && !highlight_only {
                     // Error links target the block center with the viewer's current head height.
                     destination.y -= self.players[player].eye_position().y - player_pos.y;
                 }
                 if !destination.is_valid() {
-                    self.players[player]
-                        .send_error_message(messages::INVALID_TELEPORT_COORDINATES);
+                    self.players[player].send_error_message(messages::INVALID_TELEPORT_COORDINATES);
                     return false;
                 }
                 if !highlight_only {
@@ -956,7 +1090,9 @@ impl Plot {
                         .send_system_message(&messages::teleport_coordinates(x, y, z));
                     self.players[player].teleport(destination);
                 }
-                self.show_block_highlight(player, target.block_pos(), false);
+                if highlight {
+                    self.show_block_highlight(player, target.block_pos(), false);
+                }
             }
             "/stop" => {
                 let _ = self.message_sender.send(Message::Shutdown);
@@ -1083,6 +1219,8 @@ fn native_command_permission(command: &str, args: &[&str]) -> Option<String> {
         "/git" | "/rv" => "git".to_owned(),
         "/version" => "version".to_owned(),
         "/teleport" | "/tp" => "teleport".to_owned(),
+        "/warp" if !crate::redbox::enabled() => "warp".to_owned(),
+        "/setwarp" if !crate::redbox::enabled() => "setwarp".to_owned(),
         "/speed" => "speed".to_owned(),
         "/small" => "small".to_owned(),
         "/gmsp" | "/gmc" | "/gamemode" | "/gm" => "gamemode".to_owned(),
@@ -1140,7 +1278,7 @@ pub static NO_COMMANDS: Lazy<PacketEncoder> = Lazy::new(|| {
 /// The `DeclareCommands` packet that is sent when the player joins.
 /// This is used for command autocomplete.
 fn declared_command_nodes() -> Vec<Node<'static>> {
-    vec![
+    let mut nodes = vec![
         // Root Node
         Node::root(&[1, 2, 7, 8, 10, 12, 14, 15, 16, 17, 18, 19, 20, 22, 25, 27, 29, 31, 42, 44, 48, 55, 56, 58, 60, 61, 62, 69, 70, 77, 78, 80, 86, 96, 101, 106, 107, 108, 109, 110, 111, 113, 115, 119, 126, 130, 131, 138, 139, 140, 141, 142, 146, 153, 154, 157, 158, 167]),
         // /stop
@@ -1444,7 +1582,70 @@ fn declared_command_nodes() -> Vec<Node<'static>> {
         Node::literal("visual", &[168]).executable(),
         Node::argument("settings", Parser::String(2), &[]).executable(),
         Node::literal("visual", &[]).executable(),
-    ]
+    ];
+
+    let redbox = crate::redbox::enabled();
+    let mut root_children = nodes[0].children.to_vec();
+    let mut history_children = nodes[96].children.to_vec();
+    let rewind = nodes.len() as i32;
+    let rewind_ticks = rewind + 1;
+    nodes.push(
+        Node::literal("rewind", Box::leak(vec![rewind_ticks].into_boxed_slice())).executable(),
+    );
+    nodes.push(
+        Node::argument(
+            messages::ADV_GAME_TICKS_LABEL,
+            Parser::Integer(1, i32::MAX),
+            &[],
+        )
+        .executable(),
+    );
+    history_children.push(rewind);
+    nodes[96].children = Box::leak(history_children.into_boxed_slice());
+
+    if redbox {
+        root_children.retain(|node| *node != 101);
+    } else {
+        let warp = nodes.len() as i32;
+        let warp_name = warp + 1;
+        nodes.push(
+            Node::literal("warp", Box::leak(vec![warp_name].into_boxed_slice())).executable(),
+        );
+        nodes.push(
+            Node::argument("name", Parser::String(0), &[])
+                .executable()
+                .suggestions("minecraft:ask_server"),
+        );
+        let setwarp = nodes.len() as i32;
+        let setwarp_name = setwarp + 1;
+        nodes.push(Node::literal(
+            "setwarp",
+            Box::leak(vec![setwarp_name].into_boxed_slice()),
+        ));
+        nodes.push(
+            Node::argument("name", Parser::String(0), &[])
+                .executable()
+                .suggestions("minecraft:ask_server"),
+        );
+        let teleport = nodes.len() as i32;
+        let coordinates = teleport + 1;
+        let target_player = teleport + 2;
+        nodes.push(Node::literal(
+            "teleport",
+            Box::leak(vec![coordinates, target_player].into_boxed_slice()),
+        ));
+        nodes.push(Node::argument("x, y, z", Parser::Vec3, &[]).executable());
+        nodes.push(
+            Node::argument("player", Parser::String(0), &[])
+                .executable()
+                .suggestions("minecraft:ask_server"),
+        );
+        let tp = nodes.len() as i32;
+        nodes.push(Node::redirect("tp", teleport));
+        root_children.extend([warp, setwarp, teleport, tp]);
+    }
+    nodes[0].children = Box::leak(root_children.into_boxed_slice());
+    nodes
 }
 
 pub static DECLARE_COMMANDS: Lazy<PacketEncoder> = Lazy::new(|| {
@@ -1557,11 +1758,15 @@ mod security_tests {
             assert_eq!(spawn.read_double().unwrap(), 35.0);
             assert_eq!(read_frame(&mut peer, false).unwrap().0, 0x5c);
 
-            // Plain /tp is now proxied (RedBox), so the backend rejects it.
             let before = plot.players[0].pos;
             plot.handle_command(0, "/tp", vec!["33.5", "21.5", "35.5"]);
-            assert_eq!(plot.players[0].pos.y, before.y);
-            assert_eq!(read_frame(&mut peer, false).unwrap().0, 0x72);
+            if crate::redbox::enabled() {
+                assert_eq!(plot.players[0].pos.y, before.y);
+                assert_eq!(read_frame(&mut peer, false).unwrap().0, 0x72);
+            } else {
+                assert_eq!(plot.players[0].pos.y, 21.5);
+                assert_ne!(read_frame(&mut peer, false).unwrap().0, 0x72);
+            }
 
             for args in [
                 vec!["invalid", "21.5", "35.5", "--highlight"],
@@ -1627,15 +1832,15 @@ mod security_tests {
             .any(|&id| nodes[id as usize].name == Some("cat")));
     }
     #[test]
-    fn network_teleport_is_not_declared_but_plot_teleport_remains() {
+    fn teleport_declarations_follow_the_redbox_setting_and_plot_teleport_remains() {
         let nodes = declared_command_nodes();
         let root_names: Vec<_> = nodes[0]
             .children
             .iter()
             .filter_map(|&id| nodes[id as usize].name)
             .collect();
-        assert!(!root_names.contains(&"teleport"));
-        assert!(!root_names.contains(&"tp"));
+        assert_eq!(root_names.contains(&"teleport"), !crate::redbox::enabled());
+        assert_eq!(root_names.contains(&"tp"), !crate::redbox::enabled());
         let plot = nodes.iter().find(|node| node.name == Some("plot")).unwrap();
         assert!(plot.children.iter().any(|&id| {
             nodes[id as usize].name == Some("teleport")
@@ -1688,7 +1893,10 @@ mod security_tests {
     #[test]
     fn command_declarations_have_valid_edges_and_no_legacy_tick_aliases() {
         let nodes = declared_command_nodes();
-        assert_eq!(nodes.len(), 170);
+        assert_eq!(
+            nodes.len(),
+            if crate::redbox::enabled() { 172 } else { 180 }
+        );
         for node in &nodes {
             for edge in node.children.iter().copied().chain(node.redirect_node) {
                 assert!(edge >= 0 && (edge as usize) < nodes.len());
@@ -1705,14 +1913,16 @@ mod security_tests {
             assert!(native_command_permission(&command, &["1"]).is_none());
             assert!(!changes_plot(&command, &["1"]));
         }
-        // Network commands are owned by the RedBox proxy and must not be declared.
         for proxied in ["warp", "setwarp", "tp", "teleport"] {
-            assert!(!names.contains(&proxied), "declared proxied command {proxied}");
+            assert_eq!(
+                names.contains(&proxied),
+                !crate::redbox::enabled(),
+                "incorrect declaration for {proxied}"
+            );
         }
         for retained in [
             "tps",
             "adv",
-            "back",
             "rhistory",
             "redpiler",
             "rp",
@@ -1722,6 +1932,7 @@ mod security_tests {
         ] {
             assert!(names.contains(&retained), "missing command {retained}");
         }
+        assert_eq!(names.contains(&"back"), !crate::redbox::enabled());
         assert!(names.contains(&"rv"));
         for (alias, target) in [
             ("rp", "redpiler"),

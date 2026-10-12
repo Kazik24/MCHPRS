@@ -1,7 +1,66 @@
+use crate::player::PlayerPos;
 use once_cell::sync::Lazy;
 use rusqlite::{params, Connection, OptionalExtension};
 use std::collections::HashSet;
 use std::sync::{Mutex, MutexGuard, RwLock};
+
+#[derive(Clone, Copy, Debug)]
+pub struct Warp {
+    pub pos: PlayerPos,
+    pub yaw: f32,
+    pub pitch: f32,
+}
+
+impl Warp {
+    pub fn is_valid(&self) -> bool {
+        self.pos.is_valid() && self.yaw.is_finite() && self.pitch.is_finite()
+    }
+}
+
+fn init_warps(conn: &Connection) -> rusqlite::Result<()> {
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS warp(
+            name TEXT PRIMARY KEY COLLATE NOCASE NOT NULL,
+            x REAL NOT NULL, y REAL NOT NULL, z REAL NOT NULL,
+            yaw REAL NOT NULL, pitch REAL NOT NULL
+        )",
+        [],
+    )?;
+    Ok(())
+}
+
+pub fn set_warp(name: &str, warp: Warp) -> rusqlite::Result<()> {
+    lock().execute(
+        "INSERT INTO warp(name, x, y, z, yaw, pitch) VALUES(?1, ?2, ?3, ?4, ?5, ?6)
+         ON CONFLICT(name) DO UPDATE SET x=excluded.x, y=excluded.y, z=excluded.z,
+             yaw=excluded.yaw, pitch=excluded.pitch",
+        params![name, warp.pos.x, warp.pos.y, warp.pos.z, warp.yaw, warp.pitch],
+    )?;
+    Ok(())
+}
+
+pub fn get_warp(name: &str) -> rusqlite::Result<Option<Warp>> {
+    lock()
+        .query_row(
+            "SELECT x, y, z, yaw, pitch FROM warp WHERE name=?1",
+            [name],
+            |row| {
+                Ok(Warp {
+                    pos: PlayerPos::new(row.get(0)?, row.get(1)?, row.get(2)?),
+                    yaw: row.get(3)?,
+                    pitch: row.get(4)?,
+                })
+            },
+        )
+        .optional()
+}
+
+pub fn warp_names() -> rusqlite::Result<Vec<String>> {
+    let conn = lock();
+    let mut stmt = conn.prepare_cached("SELECT name FROM warp ORDER BY name COLLATE NOCASE")?;
+    let names = stmt.query_map([], |row| row.get(0))?.collect();
+    names
+}
 
 // Interaction checks read memory rather than querying SQLite for every block action.
 static MEMBERS: Lazy<RwLock<HashSet<(i32, i32, u128)>>> = Lazy::new(Default::default);
@@ -385,6 +444,8 @@ pub fn init() {
         .expect("Could not enable plot foreign keys");
     conn.busy_timeout(std::time::Duration::from_secs(5))
         .expect("Could not set plot database timeout");
+
+    init_warps(&conn).expect("Could not initialize saved warps");
 
     conn.execute(
         "CREATE TABLE IF NOT EXISTS plot_visual_settings(

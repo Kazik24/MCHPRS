@@ -13,6 +13,7 @@ use mchprs_blocks::{BlockFace, BlockPos};
 use mchprs_network::packets::clientbound::*;
 use mchprs_network::packets::serverbound::*;
 use mchprs_network::packets::PacketEncoder;
+use mchprs_network::PlayerPacketSender;
 use serde_json::json;
 use std::path::PathBuf;
 use std::time::Instant;
@@ -90,6 +91,24 @@ impl Plot {
                 Message::ChatInfo(player.uuid, player.username.clone(), message);
             self.message_sender.send(broadcast_message).unwrap();
         }
+    }
+
+    /// Reports a mouse click with the held item to the RedBox proxy, which runs
+    /// the command bound to it by /powertool.
+    fn send_powertool_click(&self, player: usize, button: i32) {
+        if !crate::redbox::enabled() {
+            return;
+        }
+        let packet = CPluginMessage {
+            channel: crate::redbox::CHANNEL.to_owned(),
+            data: crate::redbox::encode_pt_click(
+                self.players[player].uuid,
+                button,
+                self.players[player].held_item_name(),
+            ),
+        }
+        .encode();
+        self.players[player].client.send_packet(&packet);
     }
 
     pub(super) fn broadcast_player_packets(&self, player: usize, packets: &[&PacketEncoder]) {
@@ -515,6 +534,43 @@ impl Plot {
         Some(response)
     }
 
+    fn complete_warps(&self, player: usize, id: i32, text: &str) -> Option<CTabComplete> {
+        let (command, prefix) = text.split_once(' ')?;
+        let permission = match command {
+            "/warp" => "commands.warp",
+            "/setwarp" => "commands.setwarp",
+            _ => return None,
+        };
+        let mut response = CTabComplete {
+            id,
+            start: (command.encode_utf16().count() + 1) as i32,
+            length: prefix.encode_utf16().count() as i32,
+            matches: Vec::new(),
+        };
+        if (crate::permissions::dedicated_permissions()
+            && !self.players[player].has_permission(permission))
+            || prefix.chars().any(char::is_whitespace)
+        {
+            return Some(response);
+        }
+        match super::database::warp_names() {
+            Ok(names) => {
+                let prefix = prefix.to_ascii_lowercase();
+                response.matches = names
+                    .into_iter()
+                    .filter(|name| name.to_ascii_lowercase().starts_with(&prefix))
+                    .take(100)
+                    .map(|name| CTabCompleteMatch {
+                        match_: name,
+                        tooltip: None,
+                    })
+                    .collect();
+            }
+            Err(error) => error!("Could not complete warp names: {error}"),
+        }
+        Some(response)
+    }
+
     pub(super) fn handle_packets_for_player(&mut self, player: usize) {
         self.players[player].refresh_permissions();
         let packets = self.players[player].client.receive_packets();
@@ -634,6 +690,22 @@ impl ServerBoundPacketHandler for Plot {
     fn handle_tab_complete(&mut self, packet: STabComplete, player_idx: usize) {
         if !self.players[player_idx].can_use_commands() {
             return;
+        }
+        if !crate::redbox::enabled() {
+            if packet.text.starts_with("/tp ") || packet.text.starts_with("/teleport ") {
+                let _ = self.message_sender.send(Message::CompletePlayerNames(
+                    PlayerPacketSender::new(&self.players[player_idx].client),
+                    packet.transaction_id,
+                    packet.text,
+                ));
+                return;
+            }
+            if let Some(completion) =
+                self.complete_warps(player_idx, packet.transaction_id, &packet.text)
+            {
+                self.players[player_idx].send_packet(&completion.encode());
+                return;
+            }
         }
         if let Some(completion) =
             super::commands::complete_redpiler(packet.transaction_id, &packet.text)
@@ -793,24 +865,6 @@ impl ServerBoundPacketHandler for Plot {
         }
     }
 
-    /// Reports a mouse click with the held item to the RedBox proxy, which runs
-    /// the command bound to it by /powertool.
-    fn send_powertool_click(&self, player: usize, button: i32) {
-        if !crate::redbox::enabled() {
-            return;
-        }
-        let packet = CPluginMessage {
-            channel: crate::redbox::CHANNEL.to_owned(),
-            data: crate::redbox::encode_pt_click(
-                self.players[player].uuid,
-                button,
-                self.players[player].held_item_name(),
-            ),
-        }
-        .encode();
-        self.players[player].client.send_packet(&packet);
-    }
-
     fn handle_use_item(&mut self, packet: SUseItem, player: usize) {
         let _acknowledgement = mchprs_network::BlockActionAcknowledgement::new(
             &self.players[player].client,
@@ -883,27 +937,39 @@ impl ServerBoundPacketHandler for Plot {
         }
         if plugin_message.channel == crate::redbox::CHANNEL {
             if crate::redbox::enabled() {
-                match crate::redbox::decode(&plugin_message.data) {
-                    Ok(crate::redbox::Incoming::Teleport { uuid, position }) => {
+                let incoming = match crate::redbox::decode(&plugin_message.data) {
+                    Ok(incoming) => incoming,
+                    Err(error) => {
+                        warn!(%error, "Rejected malformed RedBox message");
+                        return;
+                    }
+                };
+                if incoming.uuid() != self.players[player].uuid {
+                    warn!(player = %self.players[player].username, "Rejected RedBox message for another player");
+                    return;
+                }
+                match incoming {
+                    crate::redbox::Incoming::Teleport { uuid, position } => {
                         let _ = self
                             .message_sender
                             .send(Message::RedBoxTeleport { uuid, position });
                     }
-                    Ok(crate::redbox::Incoming::Gamemode { uuid, mode }) => {
+                    crate::redbox::Incoming::Gamemode { uuid, mode } => {
                         if let Some(gamemode) = crate::redbox::gamemode_from_id(mode) {
-                            let _ =
-                                self.message_sender.send(Message::RedBoxGamemode(uuid, gamemode));
+                            let _ = self
+                                .message_sender
+                                .send(Message::RedBoxGamemode(uuid, gamemode));
                         } else {
                             warn!(mode, "Ignored unsupported RedBox gamemode");
                         }
                     }
-                    Ok(crate::redbox::Incoming::Permissions {
+                    crate::redbox::Incoming::Permissions {
                         uuid,
                         group,
                         prefix,
                         suffix: _,
                         permissions,
-                    }) => {
+                    } => {
                         let _ = self.message_sender.send(Message::RedBoxPermissions {
                             uuid,
                             group,
@@ -911,7 +977,9 @@ impl ServerBoundPacketHandler for Plot {
                             permissions,
                         });
                     }
-                    Err(error) => warn!(%error, "Rejected malformed RedBox message"),
+                    crate::redbox::Incoming::PtRun { command, .. } => {
+                        self.handle_approved_chat_message(format!("/{command}"), player);
+                    }
                 }
             }
             return;
@@ -995,6 +1063,10 @@ impl ServerBoundPacketHandler for Plot {
         let previous = self.world.set_authoritative_updates(true);
         let pos = BlockPos::from_packed(player_digging.pos);
         let predicts_block = (0..=2).contains(&player_digging.status);
+        // shortcut: only block-targeted left clicks emit a digging start; add swing handling if air/entity clicks are needed.
+        if player_digging.status == 0 {
+            self.send_powertool_click(player, 0);
+        }
         self.dig_block(player_digging, player);
         self.world.flush_block_changes();
         self.world.set_authoritative_updates(previous);

@@ -137,6 +137,17 @@ pub(crate) enum Incoming {
     },
 }
 
+impl Incoming {
+    pub(crate) fn uuid(&self) -> u128 {
+        match self {
+            Self::Teleport { uuid, .. }
+            | Self::Gamemode { uuid, .. }
+            | Self::Permissions { uuid, .. }
+            | Self::PtRun { uuid, .. } => *uuid,
+        }
+    }
+}
+
 /// Decodes one plugin message payload, rejecting anything malformed.
 pub(crate) fn decode(data: &[u8]) -> Result<Incoming, String> {
     let mut data = data;
