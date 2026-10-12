@@ -208,9 +208,9 @@ impl GraphBackend {
         let geometry = geometry::prepare_geometry(world, bounds, &ticks, &monitor, limits)
             .map_err(|error| GraphBackendError::Preparation(error.to_string()))?;
         let mut electrical =
-            electrical::prepare_electrical(world, geometry.report.bounds, &geometry.draft)
+            electrical::prepare_electrical(world, geometry.report.bounds, &geometry.draft, &monitor)
                 .map_err(|error| GraphBackendError::Preparation(error.to_string()))?;
-        let callbacks = callbacks::prepare_callbacks(world, &geometry.draft, &mut electrical)
+        let callbacks = callbacks::prepare_callbacks(world, &geometry.draft, &mut electrical, &monitor)
             .map_err(|error| GraphBackendError::Preparation(error.to_string()))?;
         if monitor.cancelled() {
             return Err(GraphBackendError::Preparation(

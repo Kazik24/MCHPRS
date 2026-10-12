@@ -180,34 +180,35 @@ pub(crate) fn prepare_electrical(
         });
     }
 
+    budget.consume(block_positions.len())?;
     let mut positions: FxHashSet<BlockPos> = block_positions.iter().copied().collect();
     for contact in &geometry.contacts {
         budget.check()?;
-        positions.insert(contact.position);
+        add_site_position(&mut positions, contact.position, &mut budget)?;
     }
     for observation in &geometry.observations {
         budget.check()?;
-        positions.insert(observation.position);
+        add_site_position(&mut positions, observation.position, &mut budget)?;
     }
     for component in &components {
         budget.check()?;
         for face in BlockFace::values() {
             let adjacent = component.position.offset(face);
-            positions.insert(adjacent);
+            add_site_position(&mut positions, adjacent, &mut budget)?;
             for side in BlockFace::values() {
-                positions.insert(adjacent.offset(side));
+                add_site_position(&mut positions, adjacent.offset(side), &mut budget)?;
             }
         }
     }
     for piston in &geometry.pistons {
         budget.check()?;
         for center in [piston.position, piston.position.offset(BlockFace::Top)] {
-            positions.insert(center);
+            add_site_position(&mut positions, center, &mut budget)?;
             for face in BlockFace::values() {
                 let adjacent = center.offset(face);
-                positions.insert(adjacent);
+                add_site_position(&mut positions, adjacent, &mut budget)?;
                 for side in BlockFace::values() {
-                    positions.insert(adjacent.offset(side));
+                    add_site_position(&mut positions, adjacent.offset(side), &mut budget)?;
                 }
             }
         }
@@ -219,11 +220,10 @@ pub(crate) fn prepare_electrical(
     for wire in &wires {
         budget.check()?;
         for neighbor in wire_cache::positions(wire.position) {
-            positions.insert(neighbor);
+            add_site_position(&mut positions, neighbor, &mut budget)?;
         }
     }
     let mut positions: Vec<_> = positions.into_iter().collect();
-    budget.consume(positions.len())?;
     positions.sort_by_key(|p| (p.y, p.z, p.x));
 
     let mut profiles = geometry.profiles.clone();
@@ -517,6 +517,18 @@ pub(crate) fn prepare_electrical(
         wire_relations,
         comparators,
     })
+}
+
+fn add_site_position(
+    positions: &mut FxHashSet<BlockPos>,
+    position: BlockPos,
+    budget: &mut PreparationBudget<'_>,
+) -> Result<(), AnalysisError> {
+    if !positions.contains(&position) {
+        budget.consume(1)?;
+        positions.insert(position);
+    }
+    Ok(())
 }
 
 fn consumer_roots(block: Block, position: BlockPos, world: &impl World) -> Vec<Root> {

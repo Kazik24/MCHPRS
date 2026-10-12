@@ -291,8 +291,8 @@ fn restored_head_has_no_native_excluded_self_update() {
     world.set_block(BASE, piston_block(BlockFace::East, false, false));
     let geometry = prepare_geometry_for(&world).unwrap();
     let mut electrical =
-        electrical::prepare_electrical(&world, geometry.report.bounds, &geometry.draft).unwrap();
-    let callbacks = callbacks::prepare_callbacks(&world, &geometry.draft, &mut electrical).unwrap();
+        electrical::prepare_electrical(&world, geometry.report.bounds, &geometry.draft, &Default::default()).unwrap();
+    let callbacks = callbacks::prepare_callbacks(&world, &geometry.draft, &mut electrical, &Default::default()).unwrap();
     let piston = &callbacks.pistons[0];
     let near = electrical.contacts[piston.near.index()].position;
     let route = &callbacks.routes[piston.routes.head_restored.index()];
@@ -336,8 +336,8 @@ fn inert_supported_sign_does_not_require_an_update_receiver() {
     assert!(!crate::redstone::has_neighbor_update(world.get_block(sign)));
     let geometry = prepare_geometry_for(&world).unwrap();
     let mut electrical =
-        electrical::prepare_electrical(&world, geometry.report.bounds, &geometry.draft).unwrap();
-    let result = callbacks::prepare_callbacks(&world, &geometry.draft, &mut electrical);
+        electrical::prepare_electrical(&world, geometry.report.bounds, &geometry.draft, &Default::default()).unwrap();
+    let result = callbacks::prepare_callbacks(&world, &geometry.draft, &mut electrical, &Default::default());
     assert!(
         result.is_ok(),
         "ordinary callbacks to a fixed supported sign are inert: {result:?}"
@@ -360,9 +360,9 @@ fn fixture_callback_projection(name: &str) -> (FixturePrepStage, Option<String>)
         let geometry = prepare_geometry_for(&world)
             .map_err(|error| (FixturePrepStage::Geometry, error.to_string()))?;
         let mut electrical =
-            electrical::prepare_electrical(&world, geometry.report.bounds, &geometry.draft)
+            electrical::prepare_electrical(&world, geometry.report.bounds, &geometry.draft, &Default::default())
                 .map_err(|error| (FixturePrepStage::Electrical, error.to_string()))?;
-        let callbacks = callbacks::prepare_callbacks(&world, &geometry.draft, &mut electrical)
+        let callbacks = callbacks::prepare_callbacks(&world, &geometry.draft, &mut electrical, &Default::default())
             .map_err(|error| (FixturePrepStage::Callbacks, error.to_string()))?;
         // Electrical query plans are not yet part of CircuitDraft; this checks callback/state bindings.
         let draft = CircuitDraft {

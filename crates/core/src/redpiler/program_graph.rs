@@ -832,13 +832,12 @@ impl CircuitDraft {
         contact: ContactId,
         root: GuardId,
     ) -> Result<(), GraphBuildError> {
-        let mut visited = vec![false; self.guards.len()];
+        let mut visited = rustc_hash::FxHashSet::default();
         let mut pending = vec![root];
         while let Some(id) = pending.pop() {
-            if visited[id.index()] {
+            if !visited.insert(id) {
                 continue;
             }
-            visited[id.index()] = true;
             let guard = &self.guards[id.index()];
             if let Guard::Site { site, .. } = guard {
                 return Err(GraphBuildError::ContactGuardReadsSite {

@@ -1,6 +1,6 @@
 //! Versioned inspection JSON for the richer graph drafts.
 use super::electrical::{
-    ComparatorInputPlan, ComparatorOverride, ElectricalDraft, ElectricalLink, ElectricalTarget,
+    ComparatorInputPlan, ComparatorOverride, ElectricalDraft, ElectricalError, ElectricalLink, ElectricalTarget,
     WireRelationKind,
 };
 use super::geometry::{GeometryDraft, GeometryError};
@@ -775,9 +775,11 @@ pub(crate) fn prepare<W: World>(
     let prepared = super::geometry::prepare_geometry(world, bounds, ticks, monitor, limits)
         .map_err(map_geometry_error)?;
     let electrical =
-        super::electrical::prepare_electrical(world, prepared.report.bounds, &prepared.draft)
-            .map_err(|error| ExportError::new("electrical", error.to_string()))?;
-    from_drafts(&prepared.report, &prepared.draft, &electrical)
+        super::electrical::prepare_electrical(world, prepared.report.bounds, &prepared.draft, monitor)
+            .map_err(map_electrical_error)?;
+    let export = from_drafts(&prepared.report, &prepared.draft, &electrical)?;
+    check_export_cancellation(monitor)?;
+    Ok(export)
 }
 
 /// prepare_and_write serializes and validates first, then publishes exactly one artifact.
@@ -794,9 +796,26 @@ pub(crate) fn prepare_and_write<W: World>(
     let export = prepare(world, bounds, ticks, monitor, limits)?;
     let counts = export.counts();
     let bytes = export.to_bytes()?;
+    check_export_cancellation(monitor)?;
     let path = write_artifact(directory, plot_x, plot_z, &bytes)
         .map_err(|error| ExportError::new("write", error.to_string()))?;
     Ok((path, counts))
+}
+
+fn check_export_cancellation(monitor: &TaskMonitor) -> Result<(), ExportError> {
+    if monitor.cancelled() {
+        return Err(ExportError::new("cancelled", "graph export cancelled"));
+    }
+    Ok(())
+}
+
+fn map_electrical_error(error: ElectricalError) -> ExportError {
+    let code = match error {
+        ElectricalError::Preparation(AnalysisError::Cancelled) => "cancelled",
+        ElectricalError::Preparation(_) => "analysis",
+        _ => "electrical",
+    };
+    ExportError::new(code, error.to_string())
 }
 
 fn map_geometry_error(error: GeometryError) -> ExportError {

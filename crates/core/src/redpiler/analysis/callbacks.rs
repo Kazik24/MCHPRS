@@ -3,6 +3,8 @@
 
 use super::electrical::ElectricalDraft;
 use super::geometry::GeometryDraft;
+use super::{AnalysisError, PreparationBudget};
+use crate::redpiler::TaskMonitor;
 use crate::redpiler::compile_graph::NodeType;
 use crate::redpiler::program_graph::{
     CallbackEdgeRef, CallbackReceiver, CircuitNodeKind, DeliveryKind, Guard, GuardId, LinkKind,
@@ -16,8 +18,9 @@ use mchprs_blocks::{BlockFace, BlockPos};
 use rustc_hash::FxHashMap;
 use std::fmt;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum CallbackError {
+    Preparation(AnalysisError),
     UnloadedTarget {
         position: BlockPos,
     },
@@ -37,6 +40,7 @@ pub(crate) enum CallbackError {
 impl fmt::Display for CallbackError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            Self::Preparation(error) => error.fmt(f),
             Self::UnloadedTarget { position } => {
                 write!(f, "callback route reaches unloaded position {position:?}")
             }
@@ -59,6 +63,10 @@ impl fmt::Display for CallbackError {
 }
 
 impl std::error::Error for CallbackError {}
+
+impl From<AnalysisError> for CallbackError {
+    fn from(error: AnalysisError) -> Self { Self::Preparation(error) }
+}
 
 #[derive(Debug, Clone)]
 pub(crate) struct CallbackDraft {
@@ -119,7 +127,10 @@ pub(crate) fn prepare_callbacks<W: World>(
     world: &W,
     geometry: &GeometryDraft,
     electrical: &mut ElectricalDraft,
+    monitor: &TaskMonitor,
 ) -> Result<CallbackDraft, CallbackError> {
+    let budget = PreparationBudget::new(monitor, electrical.remaining_cells);
+    budget.check()?;
     let contact_at: FxHashMap<_, _> = electrical
         .contacts
         .iter()
@@ -148,6 +159,7 @@ pub(crate) fn prepare_callbacks<W: World>(
         })
         .collect();
     let mut builder = Builder {
+        budget,
         world,
         geometry,
         electrical,
@@ -167,6 +179,8 @@ pub(crate) fn prepare_callbacks<W: World>(
     builder.compile_component_routes()?;
     builder.compile_wire_routes()?;
     let pistons = builder.compile_piston_routes()?;
+    builder.budget.check()?;
+    builder.electrical.remaining_cells = builder.budget.remaining;
     Ok(CallbackDraft {
         routes: builder.routes,
         links: builder.links,
@@ -175,6 +189,7 @@ pub(crate) fn prepare_callbacks<W: World>(
 }
 
 struct Builder<'a, W> {
+    budget: PreparationBudget<'a>,
     world: &'a W,
     geometry: &'a GeometryDraft,
     electrical: &'a mut ElectricalDraft,
@@ -190,6 +205,7 @@ struct Builder<'a, W> {
 impl<W: World> Builder<'_, W> {
     fn compile_component_routes(&mut self) -> Result<(), CallbackError> {
         for index in 0..self.electrical.nodes.len() {
+            self.budget.check()?;
             let Some(position) = self.electrical.nodes[index].position else {
                 continue;
             };
@@ -225,6 +241,7 @@ impl<W: World> Builder<'_, W> {
 
     fn compile_wire_routes(&mut self) -> Result<(), CallbackError> {
         for wire_index in 0..self.electrical.wires.len() {
+            self.budget.check()?;
             let node = self.electrical.wires[wire_index].node;
             let canonical_neighbors = self.electrical.wires[wire_index].canonical_neighbors;
             let position = self.electrical.nodes[node.index()]
@@ -250,6 +267,7 @@ impl<W: World> Builder<'_, W> {
     fn compile_piston_routes(&mut self) -> Result<Vec<PistonSpec>, CallbackError> {
         let mut specs = Vec::with_capacity(self.geometry.pistons.len());
         for piston in self.geometry.pistons.iter().copied() {
+            self.budget.consume(1)?;
             let mut base_changed = Vec::new();
             append_notify(&mut base_changed, piston.position);
             let mut near_changed = Vec::new();
@@ -313,10 +331,12 @@ impl<W: World> Builder<'_, W> {
         source_position: BlockPos,
         events: Vec<Event>,
     ) -> Result<RouteId, CallbackError> {
+        self.budget.consume(1)?;
         let route_id = RouteId::try_from_index(self.routes.len())
             .ok_or(CallbackError::TooManyEntries { table: "routes" })?;
         let mut deliveries = Vec::new();
         for (sequence, event) in events.into_iter().enumerate() {
+            self.budget.check()?;
             let sequence = u32::try_from(sequence).map_err(|_| CallbackError::TooManyEntries {
                 table: "deliveries",
             })?;
@@ -333,6 +353,7 @@ impl<W: World> Builder<'_, W> {
             }
             let branches = self.branches(target, event, source_position)?;
             for (guard, receiver) in branches {
+                self.budget.consume(1)?;
                 deliveries.push(RouteDelivery {
                     target,
                     kind: event.kind,
@@ -349,6 +370,7 @@ impl<W: World> Builder<'_, W> {
                     DeliveryKind::Update { direction } => LinkKind::Update { direction, guard },
                     DeliveryKind::Shape { direction } => LinkKind::Shape { direction, guard },
                 };
+                self.budget.consume(1)?;
                 self.links.push(LinkSpec {
                     from: source,
                     to,
@@ -380,6 +402,7 @@ impl<W: World> Builder<'_, W> {
             SiteSource::Contact(contact_id) => {
                 let contact = self.electrical.contacts[contact_id.index()].clone();
                 for variant in contact.variants.iter() {
+                    self.budget.check()?;
                     let block =
                         Block::from_id(self.electrical.profiles[variant.profile.index()].raw_state);
                     if !self.allowed(event.filter, block, event.position) {
@@ -478,6 +501,7 @@ impl<W: World> Builder<'_, W> {
     }
 
     fn ensure_site(&mut self, position: BlockPos) -> Result<SiteId, CallbackError> {
+        self.budget.check()?;
         if let Some(&site) = self.site_at.get(&position) {
             return Ok(site);
         }
@@ -488,6 +512,7 @@ impl<W: World> Builder<'_, W> {
         {
             return Err(CallbackError::UnloadedTarget { position });
         }
+        self.budget.consume(1)?;
         let block = self.world.get_block(position);
         let source = if let Some(&contact) = self.contact_at.get(&position) {
             SiteSource::Contact(contact)
@@ -506,6 +531,7 @@ impl<W: World> Builder<'_, W> {
         };
         let site = SiteId::try_from_index(self.electrical.sites.len())
             .ok_or(CallbackError::TooManyEntries { table: "sites" })?;
+        self.budget.consume(1)?;
         self.electrical.sites.push(SiteSpec {
             position,
             source,
@@ -526,6 +552,7 @@ impl<W: World> Builder<'_, W> {
             self.electrical.profiles.len(),
         )
         .ok_or(CallbackError::TooManyEntries { table: "profiles" })?;
+        self.budget.consume(1)?;
         self.electrical
             .profiles
             .push(crate::redpiler::program_graph::Profile {
@@ -586,15 +613,11 @@ impl<W: World> Builder<'_, W> {
         if first == self.always_guard() {
             return Ok(second);
         }
-        let guard = GuardId::try_from_index(self.electrical.guards.len())
-            .ok_or(CallbackError::TooManyEntries { table: "guards" })?;
-        self.electrical
-            .guards
-            .push(Guard::All(vec![first, second].into_boxed_slice()));
-        Ok(guard)
+        self.push_guard(Guard::All(vec![first, second].into_boxed_slice()))
     }
 
     fn push_guard(&mut self, value: Guard) -> Result<GuardId, CallbackError> {
+        self.budget.consume(1)?;
         let guard = GuardId::try_from_index(self.electrical.guards.len())
             .ok_or(CallbackError::TooManyEntries { table: "guards" })?;
         self.electrical.guards.push(value);

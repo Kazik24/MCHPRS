@@ -13,8 +13,8 @@ fn prepare_callbacks_for(
 ) -> (GeometryResult, ElectricalDraft, callbacks::CallbackDraft) {
     let geometry = prepare_geometry_for(world).unwrap();
     let mut electrical =
-        electrical::prepare_electrical(world, geometry.report.bounds, &geometry.draft).unwrap();
-    let callbacks = callbacks::prepare_callbacks(world, &geometry.draft, &mut electrical).unwrap();
+        electrical::prepare_electrical(world, geometry.report.bounds, &geometry.draft, &Default::default()).unwrap();
+    let callbacks = callbacks::prepare_callbacks(world, &geometry.draft, &mut electrical, &Default::default()).unwrap();
     (geometry, electrical, callbacks)
 }
 
@@ -552,8 +552,8 @@ fn callback_targets_outside_component_inventory_are_rejected() {
     world.set_block(external, repeater);
     let bounds = (BASE, BASE);
     let geometry = prepare_geometry_with_bounds(&world, bounds).unwrap();
-    let mut electrical = electrical::prepare_electrical(&world, bounds, &geometry.draft).unwrap();
-    let error = callbacks::prepare_callbacks(&world, &geometry.draft, &mut electrical).unwrap_err();
+    let mut electrical = electrical::prepare_electrical(&world, bounds, &geometry.draft, &Default::default()).unwrap();
+    let error = callbacks::prepare_callbacks(&world, &geometry.draft, &mut electrical, &Default::default()).unwrap_err();
     assert_eq!(
         error,
         callbacks::CallbackError::UninventoriedReceiver {
