@@ -381,6 +381,11 @@ pub(crate) fn tick_motion(world: &mut impl World, pos: BlockPos, identity: u64) 
     }
 }
 
+#[cfg(test)]
+pub(crate) fn finish_interrupted_for_test(world: &mut impl World, pos: BlockPos) {
+    finish(world, pos, true);
+}
+
 fn finish(world: &mut impl World, pos: BlockPos, interrupted: bool) {
     if !matches!(world.get_block(pos), Block::MovingPiston { .. }) {
         return;

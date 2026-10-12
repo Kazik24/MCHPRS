@@ -11,6 +11,7 @@ use std::fmt;
 
 pub(crate) mod callbacks;
 pub(crate) mod electrical;
+pub(crate) mod export_json;
 pub(crate) mod geometry;
 pub mod graph;
 

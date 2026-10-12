@@ -4,7 +4,11 @@ Date: 2026-10-12. B1 source research complete; B2 remains a proposed slice for h
 
 ## Decision and evidence boundary
 
-Start with local literal guard simplification, retaining explicit old-to-new guard IDs. Consider exact guard interning only after measuring duplicate records. Skip profile interning initially: geometry, electrical preparation, and callback preparation already intern profiles by raw block state within their respective construction stages. A second profile table rewrite needs measured residual duplication, not an assumption that there is one profile per site.
+The user's clarified goal is behavioral graph reduction in three stages: certify instant pistons and specialize them; eliminate behaviorally redundant update work; then replace certified instant subcircuits with smaller logic graphs. Literal guard cleanup below is supporting preparation work, not the intended optimization deliverable. These reductions must analyze cable/power dependencies and ordered update relations together, rather than classify actors from their saved pose or proximity.
+
+The detailed [behavioral pass scope](side-b-behavioral-pass-scope.md) maps these goals to current Redpiler records, reference transitions, replacement models, proof boundaries, and first implementation slices. It supersedes the shorthand below where “instant” could be read as eliminating delayed restoration: the reference instant response can coexist with delayed reset/rearm.
+
+For supporting immutable preparation, use local literal guard simplification with explicit old-to-new guard IDs. Consider exact guard interning only after measuring duplicate records. Skip profile interning initially: geometry, electrical preparation, and callback preparation already intern profiles by raw block state within their respective construction stages. A second profile table rewrite needs measured residual duplication, not an assumption that there is one profile per site.
 
 The current rich electrical plan is not an executable graph. This review establishes preparation legality, not interpreter parity, execution admission, or speedup. Step 05 is still awaiting review. B2 must use the reviewed assembly boundary when it exists; it must not invent a conversion that discards site-based electrical plans to get an optimizer running.
 
@@ -73,7 +77,47 @@ No paired CPU/memory measurement was performed in B1, and no preparation or exec
 
 Runtime-sensitive reachability, electrical constant folding, coalescing, dust elimination, and piston/BUD/instant grouping wait for Steps 06-10 and differential replay. [Step 15](15-dust-optimization.md) additionally requires dust eligibility certificates, observer/shape/24-site liveness, stale-strength reconstruction, and paired active execution timings. A constant electrical value alone does not discharge these obligations.
 
-## Concrete next implementation prompt (requires review)
+## Target behavioral passes, following the user's clarification
+
+Each pass runs on the complete graph before lowering. A failed certificate keeps the original region. The first correct graph must still contain the power, callbacks, dust, resources, and pending-work distinctions needed to prove a reduction; an omitted dependency cannot serve as evidence of independence.
+
+### 1. Certify and specialize instant pistons
+
+Find a piston and its relevant normal/QC power sources, cable paths, callback producers, and resource/contact dependencies. Prove a complete instant-response and restoration/rearm contract for admitted external input histories. Read the reference sampling/acceptance rules and their causal context: a connected update wire or an initially instant response alone is not a certificate. If a second callback source breaks the proposed contract, retain the general piston.
+
+The replacement is a compact instant piston transition model: live sampling, request, acceptance/cancellation, resource/contact selection, and ordered notifications. It may remove deferred connection machinery only when no reachable operation needs it. It must retain pending action order and shared resource identity. Instant does not mean stateless, immediate request acceptance, or absence of observable intermediate callbacks.
+
+After specialization, identify update circuitry whose only observable purpose was serving machinery now proven unnecessary. Remove it only with the update-elimination certificate below; specialization alone does not prove the circuitry dead.
+
+Positive witness: an isolated admitted piston region whose complete causal input paths establish a same-phase response and a defined later restoration/rearm sequence. Negative witness: add an independent neighbor callback or inhibition path that can change response timing or acceptance order. The same power level with a different delivered update must be part of the check. Derive actual fixtures from reference transitions; do not assume this positive witness exists for an arbitrary cable arrangement.
+
+### 2. Eliminate updates and update-only nodes with no behavioral effect
+
+For a candidate delivery, prove that executing it or omitting it yields equivalent boundary behavior and future work for every reachable admitted state and external input history. Equality of immediate output strength is insufficient: a delivery may sample QC, append/cancel a request, alter a tick deadline, trigger an observer, change dust shape, or cause nested callbacks before the next delivery.
+
+Trace dependencies transitively through routes, captured/live operands, resource guards, scheduling, host effects, and reset. Preserve route order and duplicate deliveries unless each removed occurrence is independently certified. A repeated callback may be redundant for one receiver state and necessary in another. Remove an update-only producer or region only after all of its observable effects are discharged, including its own state and continuation obligations.
+
+First useful restricted case: a delivery whose receiver is proven absent for every reachable contact selection, with no Shape/support or observer dispatch effect. This is stronger than seeing air in the saved pose. Another candidate is a receiver transition proved to leave state, pending work, nested deliveries, and host effects unchanged in every reachable state; the receiver's actual transition rules supply that proof.
+
+Negative witness: a QC-powered piston sees unchanged power but receives its first qualifying update, creating a request. Another: two same-target deliveries straddle a nested contact change, so the second resolves a different receiver. Both must prevent elimination.
+
+### 3. Replace certified instant subcircuits with smaller logic graphs
+
+Choose a bounded region of already certified instant actors and their supporting circuitry. Define its complete boundary: normal/QC and analog inputs, incoming ordered callbacks, outgoing power channels and callbacks, shared resources, host effects, pending work, and reset state. Derive a smaller graph that preserves this boundary for arbitrary admitted histories. Remove internal nodes only after accounting for every externally visible effect and future continuation.
+
+A stateless logic replacement requires proof that no retained history changes any future response and that internal callback/event ordering is unobservable at the boundary. Otherwise use a smaller stateful transition graph, or keep the region. Avoid precomputed results from one saved pose or a truth table of final power values alone. A protocol assumption must be enforced at admission or the input boundary, not merely documented.
+
+Candidate example: an instant contact network implementing a Boolean combination may collapse to ordinary logic if shared ownership, updates, analog strength, observer visibility, and continuation introduce no additional behavior. Counterexample: a BUD or storage region retains state after input power falls; replacing it with a combinational gate loses its next response. A shared-resource instant chain with order-dependent acceptance also cannot be replaced by its settled truth table.
+
+### Proof and execution gate
+
+The intended sequence is general executable graph -> instant-piston certificates -> update-effect elimination -> certified instant-region replacement. Repeat the latter analyses only where a preceding reduction changes their evidence. No generic fixed-point pass framework is required.
+
+For each rewrite, retain a reviewable certificate describing the region, boundary, supported state/input domain, assumptions, source transition rules, and replacement state mapping. Finite enumeration can prove a small bounded model only when its domain and transition model are complete; sampled differential replay is regression evidence, not an all-histories proof. Replay original graph, reduced graph, and interpreter on positive/negative witnesses, cancellation, both action orders, shared contacts, and reset with pending work. Report node, route-delivery, and event reductions separately from paired runtime measurements.
+
+Steps 06-10 and the reference replay harness remain prerequisites for implementing these runtime-sensitive passes. The next behavioral research prompt is to inspect reference sampling, acceptance, same-phase response, and restoration/reset callers, identify one certifiable graph motif and a nearby counterexample, and specify its boundary and proof before writing a replacement. This document does not yet provide such a certificate.
+
+## Supporting preparation implementation prompt (requires review)
 
 Implement B2a only after the parser review and this scope are approved. Read the current assembly and every guard caller first. Add one local preparation operation for the reviewed staged graph that simplifies the literal rules above and returns `Vec<GuardId>` mapping every old guard ID to its new ID plus before/after record counts. Preserve all node/resource/site/route identities and all non-guard semantic records. Do not add profile interning, guard interning, power-link deduplication, branch removal, runtime logic, or a pass framework in B2a.
 

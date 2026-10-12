@@ -2,9 +2,11 @@ use super::*;
 use crate::redpiler::analysis::callbacks;
 use crate::redpiler::program_graph::{
     CallbackEdgeRef, CallbackReceiver, CircuitNodeKind, DeliveryKind, Guard, LinkKind, OperandView,
-    SiteSource,
+    Route, SiteSource,
 };
+use mchprs_blocks::block_entities::MovingPistonEntity;
 use mchprs_blocks::blocks::{Block, Lever, LeverFace, RedstoneObserver};
+use mchprs_blocks::blocks::{RedstoneMovingPiston, RedstonePistonHead};
 
 fn prepare_callbacks_for(
     world: &PlotWorld,
@@ -35,6 +37,95 @@ fn route_position(
     delivery: &crate::redpiler::program_graph::RouteDelivery,
 ) -> BlockPos {
     electrical.sites[delivery.target.index()].position
+}
+
+fn selected_updates(
+    world: &PlotWorld,
+    electrical: &ElectricalDraft,
+    route: &Route,
+) -> Vec<(BlockPos, Option<BlockFace>)> {
+    route
+        .deliveries
+        .iter()
+        .filter_map(|delivery| {
+            let DeliveryKind::Update { direction } = delivery.kind else {
+                return None;
+            };
+            let site = electrical.sites[delivery.target.index()];
+            let selected = match site.source {
+                SiteSource::Contact(contact) => electrical.contacts[contact.index()]
+                    .variants
+                    .iter()
+                    .any(|variant| {
+                        variant.when == delivery.guard
+                            && electrical.profiles[variant.profile.index()].raw_state
+                                == world.get_block(site.position).get_id()
+                    }),
+                _ => true,
+            };
+            selected.then_some((site.position, direction))
+        })
+        .collect()
+}
+
+fn native_completion_updates(
+    world: &mut PlotWorld,
+    electrical: &ElectricalDraft,
+    route: &Route,
+    position: BlockPos,
+    piston: RedstonePiston,
+    restored: Block,
+    source: bool,
+    extending: bool,
+    interrupted: bool,
+) -> Vec<(BlockPos, Option<BlockFace>)> {
+    let moving = Block::MovingPiston {
+        moving: RedstoneMovingPiston {
+            facing: piston.facing,
+            sticky: piston.sticky,
+        },
+    };
+    world.set_block(position, moving);
+    world.set_block_entity(
+        position,
+        BlockEntity::MovingPiston(MovingPistonEntity {
+            facing: piston.facing.into(),
+            source,
+            extending,
+            block_state: restored.get_id(),
+            progress: u8::MAX,
+        }),
+    );
+    let motion = world.piston_motion_index(position, None).unwrap();
+    let identity = world.piston_state().motions[motion].identity;
+    let watched: Vec<_> = route
+        .deliveries
+        .iter()
+        .map(|delivery| route_position(electrical, delivery))
+        .chain(std::iter::once(position))
+        .collect();
+    let trace = crate::redstone::instant_piston_tests::capture_at(&watched, || {
+        if interrupted {
+            crate::redstone::piston::finish_interrupted_for_test(world, position);
+        } else {
+            crate::redstone::piston::tick_motion(world, position, identity);
+        }
+    });
+    trace
+        .iter()
+        .filter(|entry| {
+            entry["kind"] == "callback"
+                && entry["data"]["parents"]
+                    .as_array()
+                    .is_some_and(Vec::is_empty)
+        })
+        .map(|entry| {
+            (
+                serde_json::from_value(entry["data"]["pos"].clone()).unwrap(),
+                serde_json::from_value(entry["data"]["dir"].clone()).unwrap(),
+            )
+        })
+        .collect()
 }
 
 #[test]
@@ -256,6 +347,145 @@ fn piston_route_separates_shape_observer_and_power_notifications() {
         }),
         "the prospective head is selected by the near contact at delivery"
     );
+}
+
+#[test]
+fn restoration_routes_match_native_head_and_resource_completions() {
+    let mut head_world = empty();
+    head_world.set_block(BASE, piston_block(BlockFace::East, false, false));
+    head_world.set_block(BASE.offset(BlockFace::Bottom), Block::Stone {});
+    let (head_geometry, head_electrical, head_callbacks) = prepare_callbacks_for(&head_world);
+    let head_piston = head_callbacks.pistons[0];
+    let head_route = &head_callbacks.routes[head_piston.routes.head_restored.index()];
+    let head_pos = head_geometry.draft.contacts[head_piston.near.index()].position;
+    let normal = RedstonePiston {
+        facing: mchprs_blocks::BlockFacing::East,
+        sticky: false,
+        extended: true,
+    };
+    head_world.set_block(BASE, Block::Piston { piston: normal });
+    let head_actual = native_completion_updates(
+        &mut head_world,
+        &head_electrical,
+        head_route,
+        head_pos,
+        normal,
+        Block::PistonHead {
+            head: RedstonePistonHead::from(normal),
+        },
+        true,
+        true,
+        false,
+    );
+    let head_expected = selected_updates(&head_world, &head_electrical, head_route);
+    assert_eq!(head_actual, head_expected);
+    assert!(!head_actual.contains(&(head_pos, None)));
+
+    let make_resource_world = || {
+        let mut world = empty();
+        world.set_block(BASE, piston_block(BlockFace::East, true, false));
+        world.set_block(BASE.offset(BlockFace::Bottom), Block::Stone {});
+        world.set_block(BASE.offset(BlockFace::East), Block::RedstoneBlock {});
+        world
+    };
+    let entry = make_resource_world();
+    let (geometry, electrical, callbacks) = prepare_callbacks_for(&entry);
+    let piston = callbacks.pistons[0];
+    let near_pos = geometry.draft.contacts[piston.near.index()].position;
+    let far_contact = match piston.lane {
+        crate::redpiler::program_graph::PistonLane::SingleResource { far } => far,
+        crate::redpiler::program_graph::PistonLane::Empty => panic!("expected resource lane"),
+    };
+    let far_pos = geometry.draft.contacts[far_contact.index()].position;
+    let near_route_id = piston.routes.resource_restored_near.unwrap();
+    let far_route_id = piston.routes.resource_restored_far.unwrap();
+    let near_route = &callbacks.routes[near_route_id.index()];
+    let far_route = &callbacks.routes[far_route_id.index()];
+    let sticky = RedstonePiston {
+        facing: mchprs_blocks::BlockFacing::East,
+        sticky: true,
+        extended: false,
+    };
+
+    let mut extension = make_resource_world();
+    extension.set_block(
+        BASE,
+        Block::Piston {
+            piston: sticky.extend(true),
+        },
+    );
+    extension.set_block(
+        near_pos,
+        Block::PistonHead {
+            head: RedstonePistonHead::from(sticky.extend(true)),
+        },
+    );
+    let extension_actual = native_completion_updates(
+        &mut extension,
+        &electrical,
+        far_route,
+        far_pos,
+        sticky,
+        Block::RedstoneBlock {},
+        false,
+        true,
+        false,
+    );
+    assert_eq!(
+        extension_actual,
+        selected_updates(&extension, &electrical, far_route)
+    );
+    assert_eq!(extension_actual.first(), Some(&(far_pos, None)));
+
+    let mut pull = empty();
+    pull.set_block(BASE, piston_block(BlockFace::East, true, false));
+    pull.set_block(BASE.offset(BlockFace::Bottom), Block::Stone {});
+    let pull_actual = native_completion_updates(
+        &mut pull,
+        &electrical,
+        near_route,
+        near_pos,
+        sticky,
+        Block::RedstoneBlock {},
+        false,
+        false,
+        false,
+    );
+    assert_eq!(
+        pull_actual,
+        selected_updates(&pull, &electrical, near_route)
+    );
+    assert_eq!(pull_actual.first(), Some(&(near_pos, None)));
+
+    let mut interrupted = make_resource_world();
+    interrupted.set_block(
+        BASE,
+        Block::Piston {
+            piston: sticky.extend(true),
+        },
+    );
+    interrupted.set_block(
+        near_pos,
+        Block::PistonHead {
+            head: RedstonePistonHead::from(sticky.extend(true)),
+        },
+    );
+    let interrupted_actual = native_completion_updates(
+        &mut interrupted,
+        &electrical,
+        far_route,
+        far_pos,
+        sticky,
+        Block::RedstoneBlock {},
+        false,
+        true,
+        true,
+    );
+    assert_eq!(
+        interrupted_actual,
+        selected_updates(&interrupted, &electrical, far_route)
+    );
+    assert_eq!(interrupted_actual.first(), Some(&(far_pos, None)));
 }
 
 #[test]

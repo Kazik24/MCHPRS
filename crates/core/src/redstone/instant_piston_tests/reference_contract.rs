@@ -775,20 +775,10 @@ fn compare_records(
     Ok(())
 }
 
-fn same_pending_tick_work(left: &[PendingTick], right: &[PendingTick]) -> bool {
-    left.len() == right.len()
-        && left.iter().zip(right).all(|(left, right)| {
-            left.position == right.position
-                && left.priority == right.priority
-                && left.expected_block_type == right.expected_block_type
-                && left.order == right.order
-        })
-}
-
 fn same_semantic_state(left: &ComparisonRecord, right: &ComparisonRecord) -> bool {
     left.components == right.components
         && left.resources == right.resources
-        && same_pending_tick_work(&left.pending_ticks, &right.pending_ticks)
+        && left.pending_ticks == right.pending_ticks
         && left.pending_requests == right.pending_requests
         && left.deadlines == right.deadlines
 }
@@ -812,7 +802,11 @@ fn semantic_boundaries(records: &[ComparisonRecord]) -> Vec<ComparisonRecord> {
             (last.tick, last.phase, last.stage, last.action)
                 == (record.tick, record.phase, record.stage, record.action)
         });
-        if same_boundary {
+        if same_boundary
+            && boundaries
+                .last()
+                .is_some_and(|last| same_semantic_state(last, record))
+        {
             let boundary = boundaries.last_mut().unwrap();
             boundary.ordered.extend(record.ordered.iter().cloned());
             boundary
@@ -1223,10 +1217,97 @@ fn comparator_ignores_unobservable_progress_visits() {
         compare_records(&reference.records, &with_progress_visit),
         Ok(())
     );
+    assert!(reference
+        .native
+        .windows(2)
+        .all(|steps| { steps[0].operation <= steps[1].operation }));
+}
+
+fn deep_audit_record() -> ComparisonRecord {
+    ComparisonRecord {
+        tick: 2,
+        phase: AdvancePhase::PistonEvents,
+        stage: ObservationStage::Continuation,
+        action: 0,
+        ordered: Vec::new(),
+        components: Vec::new(),
+        published_cells: Vec::new(),
+        resources: vec![SharedResourceObservation {
+            source: FixturePosition([0, 0, 0]),
+            selected_contact: Some(FixturePosition([0, 0, 1])),
+            enabled: true,
+        }],
+        pending_ticks: Vec::new(),
+        pending_requests: Vec::new(),
+        deadlines: Vec::new(),
+    }
+}
+
+#[test]
+fn deep_audit_comparison_preserves_resource_state_at_callback_boundary() {
+    let start = deep_audit_record();
+    let mut callback = start.clone();
+    callback.ordered.push(OrderedObservation::PistonSample {
+        actor: FixturePosition([5, 0, 0]),
+        extended: false,
+        powered: false,
+    });
+    let finish = start.clone();
+    let expected = vec![start.clone(), callback.clone(), finish.clone()];
+    callback.resources[0].enabled = false;
+    let actual = vec![start, callback, finish];
     assert!(
-        reference
-            .native
-            .windows(2)
-            .all(|steps| { steps[0].operation <= steps[1].operation })
+        compare_records(&expected, &actual).is_err(),
+        "later restoration must not erase a resource discrepancy at the same ordered sample"
+    );
+}
+
+#[test]
+fn deep_audit_comparison_preserves_deadline_at_callback_boundary() {
+    let mut start = deep_audit_record();
+    start.deadlines.push(PendingDeadline {
+        position: FixturePosition([0, 0, 1]),
+        due_tick: 4,
+        order: 0,
+    });
+    let mut callback = start.clone();
+    callback.ordered.push(OrderedObservation::PistonSample {
+        actor: FixturePosition([5, 0, 0]),
+        extended: false,
+        powered: false,
+    });
+    let finish = start.clone();
+    let expected = vec![start.clone(), callback.clone(), finish.clone()];
+    callback.deadlines[0].due_tick += 1;
+    let actual = vec![start, callback, finish];
+    assert!(
+        compare_records(&expected, &actual).is_err(),
+        "later snapshots must not erase the wrong pending deadline at an observed boundary"
+    );
+}
+
+#[test]
+fn deep_audit_comparison_preserves_pending_tick_at_callback_boundary() {
+    let mut start = deep_audit_record();
+    start.pending_ticks.push(PendingTick {
+        position: FixturePosition([0, 0, 1]),
+        ticks_left: 2,
+        priority: TickPriority::Normal,
+        expected_block_type: Some(1),
+        order: 0,
+    });
+    let mut callback = start.clone();
+    callback.ordered.push(OrderedObservation::PistonSample {
+        actor: FixturePosition([5, 0, 0]),
+        extended: false,
+        powered: false,
+    });
+    let finish = start.clone();
+    let expected = vec![start.clone(), callback.clone(), finish.clone()];
+    callback.pending_ticks[0].ticks_left += 1;
+    let actual = vec![start, callback, finish];
+    assert!(
+        compare_records(&expected, &actual).is_err(),
+        "an observed boundary must retain the exact pending scheduled-work state"
     );
 }

@@ -1,9 +1,9 @@
 //! Timing, lifecycle and completion regressions; movement rules are deferred.
 mod bud_reference;
 use crate::plot::worldedit::{load_schematic, paste_clipboard};
-use crate::plot::{PLOT_WIDTH, PlotWorld};
-use crate::world::World;
+use crate::plot::{PlotWorld, PLOT_WIDTH};
 use crate::world::storage::Chunk;
+use crate::world::World;
 use mchprs_blocks::block_entities::{BlockEntity, MovingPistonEntity};
 use mchprs_blocks::blocks::{Block, RedstoneObserver, RedstonePiston, RedstonePistonHead};
 use mchprs_blocks::{BlockFace, BlockFacing, BlockPos};
@@ -673,13 +673,11 @@ fn movement_progress_advances_before_completion() {
     world.tick_interpreted();
     let head = pos.offset(BlockFace::East);
     println!("PROGRESS entity={:?}", world.get_block_entity(head));
-    assert!(
-        world
-            .piston_state()
-            .motions
-            .iter()
-            .any(|m| m.pos == head && m.progress == 0.5)
-    );
+    assert!(world
+        .piston_state()
+        .motions
+        .iter()
+        .any(|m| m.pos == head && m.progress == 0.5));
 }
 
 #[test]
@@ -975,13 +973,11 @@ fn power_off_request_ignores_unrelated_future_base_tick() {
     world.schedule_half_tick(base(), 3, mchprs_world::TickPriority::Normal);
     world.set_block(base().offset(BlockFace::Bottom), Block::Air);
     crate::redstone::update(world.get_block(base()), &mut world, base(), None);
-    assert!(
-        world
-            .piston_state()
-            .events
-            .iter()
-            .any(|e| e.pos == base() && e.action == mchprs_world::PistonAction::Retract)
-    );
+    assert!(world
+        .piston_state()
+        .events
+        .iter()
+        .any(|e| e.pos == base() && e.action == mchprs_world::PistonAction::Retract));
     world.picotick_advance(1);
     assert!(matches!(
         world.get_block(base()),

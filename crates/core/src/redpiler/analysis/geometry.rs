@@ -1049,11 +1049,10 @@ fn classify_material<W: World>(
     world: &W,
 ) -> Result<(), GeometryError> {
     let name = block.get_name();
+    let entity_free = !block.has_block_entity() && world.get_block_entity(position).is_none();
     let inert_cube = block.is_cube()
-        && !block.has_block_entity()
-        && world.get_block_entity(position).is_none()
         && (name.ends_with("_wool") || name.ends_with("_concrete") || name.contains("quartz"));
-    if matches!(block, Block::RedstoneBlock {}) || inert_cube {
+    if entity_free && (matches!(block, Block::RedstoneBlock {}) || inert_cube) {
         Ok(())
     } else {
         Err(GeometryError::Rejected(

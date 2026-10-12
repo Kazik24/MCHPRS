@@ -1,5 +1,7 @@
 use super::*;
 mod callback_routes;
+mod deep_parser_audit;
+mod export_json;
 mod redstone_fuzz;
 mod research;
 

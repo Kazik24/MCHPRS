@@ -6,7 +6,7 @@ Status: research scoped, 2026-10-12. No rewrite is authorized by this document u
 
 Read [AGENT_GUIDE](../AGENT_GUIDE.md), [ARCHITECTURE](../ARCHITECTURE.md), Step 15, current `program_graph.rs`, `analysis/electrical.rs`, and every existing pass before proposing reuse. Keep ongoing Step 05 work untouched. Report concrete legality conditions and examples, not a list of generic optimizer names.
 
-The first graph must represent the circuit correctly. Basic preparation passes can simplify immutable descriptions now; behavior-changing optimizations require graph execution and differential replay. Preserve analog power, QC sampling, callbacks including duplicates/order, observers, requests/acceptance/cancellation, pending work, resource identity, and exact continuation. No motion or interpreter fallback.
+The first graph must represent the circuit correctly. Research can identify immutable-description simplifications now; all optimization implementation waits for executable differential parity through Steps 06-10. Preserve analog power, QC sampling, callbacks including duplicates/order, observers, requests/acceptance/cancellation, pending work, resource identity, and exact continuation. No motion or interpreter fallback.
 
 ## Findings from the current sources
 
@@ -34,6 +34,8 @@ Intermediate goal: document which small passes are useful, when they may run, an
 Compare each candidate with actual legacy implementations and record reuse as: reusable helper, reusable rule after proof, or incompatible. Provide one counterexample per unsafe legacy rule. Identify preparation CPU/memory costs through measurement before proposing more passes.
 
 ## B2: First implementation slice, subject to review
+
+Start implementation only after Steps 06-10 establish executable differential parity and continuation. Step 05 approval alone is insufficient; B1 can proceed as research now.
 
 Recommend only local guard simplification plus exact profile/guard interning if measured duplication warrants it. Keep these in one readable preparation operation or small pass module; do not create a plugin/pass framework. Return an explicit old-to-new ID map when records change. Keep source provenance and report before/after counts. Validate after transformation.
 

@@ -268,16 +268,22 @@ impl<W: World> Builder<'_, W> {
 
             let mut base_restored = vec![Event::update(piston.position, None)];
             append_notify(&mut base_restored, piston.position);
-            let mut head_restored = vec![Event::update(near_pos, None)];
+            let mut head_restored = Vec::new();
             append_notify(&mut head_restored, near_pos);
-            let resource_restored = if matches!(piston.lane, PistonLane::SingleResource { .. }) {
-                let far_pos = self.electrical.contacts[piston.far.index()].position;
-                let mut events = vec![Event::update(far_pos, None)];
-                append_notify(&mut events, far_pos);
-                Some(self.compile_route(piston.node, piston.position, events)?)
-            } else {
-                None
-            };
+            let (resource_restored_near, resource_restored_far) =
+                if matches!(piston.lane, PistonLane::SingleResource { .. }) {
+                    let mut near_events = vec![Event::update(near_pos, None)];
+                    append_notify(&mut near_events, near_pos);
+                    let far_pos = self.electrical.contacts[piston.far.index()].position;
+                    let mut far_events = vec![Event::update(far_pos, None)];
+                    append_notify(&mut far_events, far_pos);
+                    (
+                        Some(self.compile_route(piston.node, piston.position, near_events)?),
+                        Some(self.compile_route(piston.node, piston.position, far_events)?),
+                    )
+                } else {
+                    (None, None)
+                };
 
             let routes = PistonRoutes {
                 base_changed: self.compile_route(piston.node, piston.position, base_changed)?,
@@ -285,7 +291,8 @@ impl<W: World> Builder<'_, W> {
                 far_changed,
                 base_restored: self.compile_route(piston.node, piston.position, base_restored)?,
                 head_restored: self.compile_route(piston.node, piston.position, head_restored)?,
-                resource_restored,
+                resource_restored_near,
+                resource_restored_far,
             };
             specs.push(PistonSpec {
                 node: piston.node,
@@ -425,9 +432,18 @@ impl<W: World> Builder<'_, W> {
             SiteSource::Constant(profile) => {
                 let block = Block::from_id(self.electrical.profiles[profile.index()].raw_state);
                 if self.allowed(event.filter, block, event.position) {
-                    if redstone::has_neighbor_update(block)
-                        || crate::interaction::attachment_support(block, event.position).is_some()
-                    {
+                    let requires_receiver = match event.kind {
+                        DeliveryKind::Update { .. } => redstone::has_neighbor_update(block),
+                        DeliveryKind::Shape { .. } => {
+                            crate::interaction::attachment_support(block, event.position).is_some()
+                                && !crate::interaction::is_valid_position(
+                                    block,
+                                    self.world,
+                                    event.position,
+                                )
+                        }
+                    };
+                    if requires_receiver {
                         return Err(CallbackError::UninventoriedReceiver {
                             source: source_position,
                             target: event.position,

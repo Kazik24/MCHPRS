@@ -1,6 +1,6 @@
 # Redpiler pistons, attempt four
 
-Status: Steps 01-04 implemented and reviewed; Step 05 is implemented and awaiting review. Side projects scoped on 2026-10-12.
+Status: Steps 01-05 implemented and reviewed; the supported static parser audit is approved. Step 06 is next. Side projects scoped on 2026-10-12.
 
 The first deliverable is a readable, executable graph representing supported piston circuits without physical or interpreted redstone execution. The interpreter is the differential-test oracle. Generalized dust remains explicit initially; a later pass may eliminate it when power, updates, timing, and continuation are preserved. Pistons select compiled connections and publish events: the runtime has no physical Motion objects or progress simulation.
 
@@ -62,6 +62,8 @@ Each slice stops for human review. Side agents preserve the active core agent's 
 ## Parser audit gate
 
 After Step 05, use [the complete parser review checklist](STEP_05_REVIEW.md) to review Steps 02-05 together, run focused regressions and real fixture preparation, and compare query/route plans with interpreter procedures before starting Step 06.
+
+The [2026-10-12 deeper audit](PARSER_AUDIT_2026-10-12.md) records counterexamples, fixes, and passing follow-up checks. Its supported static parser gate is approved; runtime parity remains for Steps 06-10.
 
 ## Later implementation direction
 

@@ -1,6 +1,6 @@
 # Step 05: Ordered neighbor and shape routes
 
-Status: implemented; awaiting human review. [Step 04](./04-electrical-parser.md) is reviewed.
+Status: implemented and reviewed; supported static parser audit approved. See [the follow-up audit](../PARSER_AUDIT_2026-10-12.md). Runtime delivery remains Step 06; electrical query plans must be retained in executable assembly. [Step 04](./04-electrical-parser.md) is reviewed.
 
 ## Agent prompt
 
@@ -23,9 +23,10 @@ Read-only ordered route construction and correspondence with graph callback edge
 1. Compile source-specific route templates for controls, torches, diodes, observers, wire shape, and piston mutation/restoration. Reuse existing position-only route generators during compilation.
 2. Retain Update versus Shape, literal direction/None, duplicate deliveries, and source procedure/sequence position. Do not sort targets or deduplicate event routes.
 3. Include prospective head contacts and head-to-base forwarding without moving-block nodes. Select eligibility at delivery, using live state for ordinary routes and captured state where Turbo supplies it.
-4. Preserve diagonal observer/piston exclusions, piston shape order versus power order, and repeater/comparator first-direction differences.
-5. Associate observers with watched site/contact IDs, including switched contacts and dust. A generic state write is not an observer trigger.
-6. Validate every potential target/guard binding. Electrical distance cutoffs do not remove independent update routes.
+4. Keep head restoration free of a self-update and bind resource restoration separately to the Near and Far completion contacts, including the resource self-recheck.
+5. Preserve diagonal observer/piston exclusions, piston shape order versus power order, and repeater/comparator first-direction differences.
+6. Associate observers with watched site/contact IDs, including switched contacts and dust. A generic state write is not an observer trigger.
+7. Validate every potential target/guard binding. Electrical distance cutoffs do not remove independent update routes.
 
 ## Acceptance checks
 

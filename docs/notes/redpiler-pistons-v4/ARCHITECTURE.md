@@ -308,8 +308,9 @@ struct PistonRoutes { // This binds actuator operations to their ordered callbac
     near_changed: RouteId,              // This references notifications published when the Near contact changes.
     far_changed: Option<RouteId>,       // This references optional notifications for changes at the resource's Far contact.
     base_restored: RouteId,             // This references notifications and rechecks for base restoration.
-    head_restored: RouteId,             // This references notifications for restored head forwarding.
-    resource_restored: Option<RouteId>, // This references optional notifications for restored resource channels.
+    head_restored: RouteId,             // This references head notifications without a native self-recheck.
+    resource_restored_near: Option<RouteId>, // This references a resource self-recheck and notifications at Near.
+    resource_restored_far: Option<RouteId>, // This references a resource self-recheck and notifications at Far.
 }
 
 struct PistonRequest { // This records a sampled action awaiting live acceptance.

@@ -229,7 +229,8 @@ pub(crate) struct PistonRoutes {
     pub(crate) far_changed: Option<RouteId>,
     pub(crate) base_restored: RouteId,
     pub(crate) head_restored: RouteId,
-    pub(crate) resource_restored: Option<RouteId>,
+    pub(crate) resource_restored_near: Option<RouteId>,
+    pub(crate) resource_restored_far: Option<RouteId>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -599,9 +600,7 @@ impl CircuitDraft {
     fn validate_sites_and_wires(&self) -> Result<(), GraphBuildError> {
         for site in &self.sites {
             match site.source {
-                SiteSource::Component(node) => {
-                    check_id("nodes", node.index(), self.nodes.len())?;
-                }
+                SiteSource::Component(node) => self.validate_component_binding(node)?,
                 SiteSource::Contact(contact) => {
                     check_id("contacts", contact.index(), self.contacts.len())?;
                 }
@@ -684,7 +683,7 @@ impl CircuitDraft {
             if let PistonLane::SingleResource { far } = piston.lane {
                 check_id("contacts", far.index(), self.contacts.len())?;
             }
-            self.validate_piston_routes(piston.node, piston.routes)?;
+            self.validate_piston_routes(piston.node, piston.lane, piston.routes)?;
         }
 
         if self.initial_pistons.len() != self.pistons.len() {
@@ -765,7 +764,7 @@ impl CircuitDraft {
 
     fn validate_receiver(&self, receiver: CallbackReceiver) -> Result<(), GraphBuildError> {
         match receiver {
-            CallbackReceiver::Component(node) => check_id("nodes", node.index(), self.nodes.len()),
+            CallbackReceiver::Component(node) => self.validate_component_binding(node),
             CallbackReceiver::PistonBase(piston) | CallbackReceiver::PistonHead(piston) => {
                 check_id("pistons", piston.index(), self.pistons.len())
             }
@@ -775,18 +774,49 @@ impl CircuitDraft {
         }
     }
 
+    fn validate_component_binding(&self, node: NodeId) -> Result<(), GraphBuildError> {
+        let kind = &self
+            .nodes
+            .get(node.index())
+            .ok_or(GraphBuildError::InvalidReference {
+                table: "nodes",
+                index: node.index(),
+                len: self.nodes.len(),
+            })?
+            .kind;
+        if matches!(
+            kind,
+            CircuitNodeKind::Electrical(_)
+                | CircuitNodeKind::Observer { .. }
+                | CircuitNodeKind::Wire(_)
+        ) {
+            Ok(())
+        } else {
+            Err(GraphBuildError::InvalidComponentBinding { node })
+        }
+    }
+
     fn validate_piston_routes(
         &self,
         source: NodeId,
+        lane: PistonLane,
         routes: PistonRoutes,
     ) -> Result<(), GraphBuildError> {
+        let has_resource_routes =
+            routes.resource_restored_near.is_some() && routes.resource_restored_far.is_some();
+        if matches!(lane, PistonLane::SingleResource { .. }) != has_resource_routes
+            || routes.resource_restored_near.is_some() != routes.resource_restored_far.is_some()
+        {
+            return Err(GraphBuildError::PistonResourceRestorationMismatch { node: source });
+        }
         for route in [
             Some(routes.base_changed),
             Some(routes.near_changed),
             routes.far_changed,
             Some(routes.base_restored),
             Some(routes.head_restored),
-            routes.resource_restored,
+            routes.resource_restored_near,
+            routes.resource_restored_far,
         ]
         .into_iter()
         .flatten()
@@ -897,60 +927,70 @@ impl CircuitDraft {
         contact: ContactId,
         profile: Option<ProfileId>,
     ) -> bool {
-        let matching: Vec<_> = self.contacts[contact.index()]
-            .variants
-            .iter()
-            .filter(|variant| profile.map_or(true, |profile| variant.profile == profile))
-            .map(|variant| (variant.when, variant.profile))
-            .collect();
         match delivery.view {
-            OperandView::Live => matching.iter().any(|(guard, _)| {
-                matches!(self.guards[guard.index()], Guard::Always)
-                    || self.guard_contains(delivery.guard, *guard)
-            }),
-            OperandView::Captured => matching.iter().any(|(_, profile)| {
-                self.guard_contains_site_profile(delivery.guard, delivery.target, *profile)
-            }),
+            OperandView::Live => self.contacts[contact.index()]
+                .variants
+                .iter()
+                .filter(|variant| profile.map_or(true, |profile| variant.profile == profile))
+                .any(|variant| {
+                    matches!(self.guards[variant.when.index()], Guard::Always)
+                        || self.guard_implies(delivery.guard, variant.when)
+                }),
+            OperandView::Captured => self.contacts[contact.index()]
+                .variants
+                .iter()
+                .filter(|variant| profile.map_or(true, |profile| variant.profile == profile))
+                .any(|variant| {
+                    self.guard_implies_site_profile(
+                        delivery.guard,
+                        delivery.target,
+                        variant.profile,
+                    )
+                }),
         }
     }
 
-    fn guard_contains(&self, root: GuardId, expected: GuardId) -> bool {
-        let mut pending = vec![root];
-        let mut visited = vec![false; self.guards.len()];
-        while let Some(id) = pending.pop() {
-            if id == expected {
-                return true;
-            }
-            if visited[id.index()] {
-                continue;
-            }
-            visited[id.index()] = true;
-            pending.extend(guard_children(&self.guards[id.index()]).iter().copied());
+    fn guard_implies(&self, root: GuardId, expected: GuardId) -> bool {
+        if root == expected {
+            return true;
         }
-        false
+        match &self.guards[root.index()] {
+            Guard::All(children) => children
+                .iter()
+                .any(|child| self.guard_implies(*child, expected)),
+            Guard::Any(children) => {
+                !children.is_empty()
+                    && children
+                        .iter()
+                        .all(|child| self.guard_implies(*child, expected))
+            }
+            _ => false,
+        }
     }
 
-    fn guard_contains_site_profile(&self, root: GuardId, site: SiteId, profile: ProfileId) -> bool {
-        let mut pending = vec![root];
-        let mut visited = vec![false; self.guards.len()];
-        while let Some(id) = pending.pop() {
-            if visited[id.index()] {
-                continue;
-            }
-            visited[id.index()] = true;
-            if matches!(
-                self.guards[id.index()],
+    fn guard_implies_site_profile(&self, root: GuardId, site: SiteId, profile: ProfileId) -> bool {
+        if matches!(
+            self.guards[root.index()],
                 Guard::Site {
                     site: candidate_site,
                     view: OperandView::Captured,
                     test: SiteTest::Profile(candidate_profile),
                 } if candidate_site == site && candidate_profile == profile
-            ) {
-                return true;
-            }
-            pending.extend(guard_children(&self.guards[id.index()]).iter().copied());
+        ) {
+            return true;
         }
-        false
+        match &self.guards[root.index()] {
+            Guard::All(children) => children
+                .iter()
+                .any(|child| self.guard_implies_site_profile(*child, site, profile)),
+            Guard::Any(children) => {
+                !children.is_empty()
+                    && children
+                        .iter()
+                        .all(|child| self.guard_implies_site_profile(*child, site, profile))
+            }
+            _ => false,
+        }
     }
 
     fn validate_links(&self) -> Result<(), GraphBuildError> {
@@ -1026,7 +1066,13 @@ impl CircuitDraft {
                         sequence: delivery.sequence,
                     });
                 };
-                *count -= 1;
+                let Some(remaining) = count.checked_sub(1) else {
+                    return Err(GraphBuildError::CallbackEdgeMismatch {
+                        route: route_id,
+                        sequence: delivery.sequence,
+                    });
+                };
+                *count = remaining;
             }
         }
         if let Some(((reference, _, _, _), _)) =
@@ -1092,6 +1138,9 @@ pub(crate) enum GraphBuildError {
     InvalidNodeState {
         node: NodeId,
     },
+    InvalidComponentBinding {
+        node: NodeId,
+    },
     UseSpecializedNode {
         node: NodeId,
     },
@@ -1115,6 +1164,9 @@ pub(crate) enum GraphBuildError {
     CallbackEdgeMissingReference {
         from: NodeId,
         to: NodeId,
+    },
+    PistonResourceRestorationMismatch {
+        node: NodeId,
     },
     ContactGuardReadsSite {
         contact: ContactId,
@@ -1180,6 +1232,11 @@ impl std::fmt::Display for GraphBuildError {
                     node.index()
                 )
             }
+            Self::InvalidComponentBinding { node } => write!(
+                f,
+                "generic component binding references specialized node {}",
+                node.index()
+            ),
             Self::UseSpecializedNode { node } => write!(
                 f,
                 "node {} must use its typed wire or observer form",
@@ -1214,6 +1271,11 @@ impl std::fmt::Display for GraphBuildError {
                 "callback edge {} -> {} is missing its route reference",
                 from.index(),
                 to.index()
+            ),
+            Self::PistonResourceRestorationMismatch { node } => write!(
+                f,
+                "piston node {} has restoration routes that do not match its resource lane",
+                node.index()
             ),
             Self::ContactGuardReadsSite {
                 contact,
@@ -1564,7 +1626,8 @@ mod tests {
                     far_changed: None,
                     base_restored: route,
                     head_restored: route,
-                    resource_restored: None,
+                    resource_restored_near: None,
+                    resource_restored_far: None,
                 },
             }],
             resources: vec![ResourceSpec {
@@ -1686,6 +1749,32 @@ mod tests {
     }
 
     #[test]
+    fn duplicate_callback_delivery_without_a_matching_edge_is_rejected() {
+        let mut duplicate = draft_with_mixed_links();
+        let duplicate_delivery = duplicate.routes[0].deliveries[0];
+        let mut deliveries = duplicate.routes[0].deliveries.to_vec();
+        deliveries.insert(1, duplicate_delivery);
+        duplicate.routes[0].deliveries = deliveries.into_boxed_slice();
+
+        assert!(matches!(
+            duplicate.lower(),
+            Err(GraphBuildError::CallbackEdgeMismatch { sequence: 0, .. })
+        ));
+    }
+
+    #[test]
+    fn resource_lane_requires_both_destination_restoration_routes() {
+        let mut missing = draft_with_mixed_links();
+        missing.pistons[0].lane = PistonLane::SingleResource {
+            far: ContactId::new(1),
+        };
+        assert!(matches!(
+            missing.lower(),
+            Err(GraphBuildError::PistonResourceRestorationMismatch { .. })
+        ));
+    }
+
+    #[test]
     fn invalid_contact_binding_and_guard_cycle_are_rejected() {
         let mut invalid_contact = draft_with_mixed_links();
         invalid_contact.contacts[0].node = NodeId::new(1);
@@ -1753,5 +1842,127 @@ mod tests {
         let nested = WireWalk::new(2);
         assert!(outer.sites.iter().all(Option::is_none));
         assert_eq!(outer, nested);
+    }
+
+    #[test]
+    fn deep_audit_missing_duplicate_callback_edge_returns_error_without_panicking() {
+        let mut draft = draft_with_mixed_links();
+        draft.routes[0].deliveries[1].sequence = 0;
+        draft.links.retain(|link| {
+            link.callback
+                != Some(CallbackEdgeRef {
+                    route: RouteId::new(0),
+                    sequence: 1,
+                })
+        });
+        let result = std::panic::catch_unwind(|| draft.lower());
+        assert!(
+            result.is_ok(),
+            "invalid multiplicity must return a validation error, not panic"
+        );
+        assert!(matches!(
+            result.unwrap(),
+            Err(GraphBuildError::CallbackEdgeMismatch { .. })
+        ));
+    }
+
+    fn deep_audit_contact_delivery_draft(bypass_selection: bool) -> CircuitDraft {
+        let mut draft = draft_with_mixed_links();
+        let selector = GuardId::new(draft.guards.len() as u32);
+        draft
+            .guards
+            .push(Guard::State(StateTest::ResourceEnabled(ResourceId::new(0))));
+        draft.contacts[0].variants[0].when = selector;
+        draft.contacts[0].variants[0].receiver = Some(CallbackReceiver::Component(NodeId::new(1)));
+        draft.sites[0].source = SiteSource::Contact(ContactId::new(0));
+        let delivery_guard = GuardId::new(draft.guards.len() as u32);
+        draft.guards.push(if bypass_selection {
+            Guard::Any(vec![selector, GuardId::new(0)].into_boxed_slice())
+        } else {
+            Guard::Not(selector)
+        });
+        let mut delivery = draft.routes[0].deliveries[0];
+        delivery.guard = delivery_guard;
+        draft.routes[0].deliveries = vec![delivery].into_boxed_slice();
+        draft.links.retain(|link| {
+            link.callback.is_none()
+                || link.callback
+                    == Some(CallbackEdgeRef {
+                        route: RouteId::new(0),
+                        sequence: 0,
+                    })
+        });
+        for link in &mut draft.links {
+            if let LinkKind::Update { guard, .. } = &mut link.kind {
+                *guard = delivery_guard;
+            }
+        }
+        draft
+    }
+
+    #[test]
+    fn deep_audit_negated_receiver_selection_is_rejected() {
+        assert!(
+            matches!(
+                deep_audit_contact_delivery_draft(false).lower(),
+                Err(GraphBuildError::CallbackEdgeMismatch { .. })
+            ),
+            "containing a selector under Not does not imply that receiver is selected"
+        );
+    }
+
+    #[test]
+    fn deep_audit_optional_receiver_selection_is_rejected() {
+        assert!(
+            matches!(
+                deep_audit_contact_delivery_draft(true).lower(),
+                Err(GraphBuildError::CallbackEdgeMismatch { .. })
+            ),
+            "Any(selector, Always) permits delivering to an unselected receiver"
+        );
+    }
+
+    #[test]
+    fn deep_audit_component_sites_cannot_alias_specialized_owners() {
+        for target in [NodeId::new(2), NodeId::new(3)] {
+            let mut draft = draft_with_mixed_links();
+            draft.sites[0].source = SiteSource::Component(target);
+            for delivery in draft.routes[0].deliveries.iter_mut() {
+                delivery.receiver = Some(CallbackReceiver::Component(target));
+            }
+            for link in draft
+                .links
+                .iter_mut()
+                .filter(|link| link.callback.is_some())
+            {
+                link.to = target;
+            }
+            assert!(
+                matches!(
+                    draft.lower(),
+                    Err(GraphBuildError::InvalidComponentBinding { node }) if node == target
+                ),
+                "piston/contact owners need their specialized site and receiver bindings: {target:?}"
+            );
+
+            let mut receiver_alias = draft_with_mixed_links();
+            for delivery in receiver_alias.routes[0].deliveries.iter_mut() {
+                delivery.receiver = Some(CallbackReceiver::Component(target));
+            }
+            for link in receiver_alias
+                .links
+                .iter_mut()
+                .filter(|link| link.callback.is_some())
+            {
+                link.to = target;
+            }
+            assert!(
+                matches!(
+                    receiver_alias.lower(),
+                    Err(GraphBuildError::InvalidComponentBinding { node }) if node == target
+                ),
+                "component receivers cannot alias specialized owners: {target:?}"
+            );
+        }
     }
 }

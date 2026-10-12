@@ -14,6 +14,7 @@ use mchprs_network::packets::clientbound::{
 };
 use mchprs_save_data::plot_data::{Tps, WorldSendRate};
 use once_cell::sync::Lazy;
+use std::path::Path;
 use std::str::FromStr;
 use std::sync::Arc;
 use std::time::Instant;
@@ -65,6 +66,7 @@ pub(super) fn complete_redpiler(id: i32, text: &str) -> Option<CTabComplete> {
         "--update",
         "--export",
         "--export-dot",
+        "--export-json",
         "--graph",
         "-o",
         "-i",
@@ -76,6 +78,7 @@ pub(super) fn complete_redpiler(id: i32, text: &str) -> Option<CTabComplete> {
     .filter(|flag| match *flag {
         "--graph" => analyze,
         "--export" | "--export-dot" | "-e" => !analyze,
+        "--export-json" => analyze,
         _ => true,
     })
     .map(|flag| CTabCompleteMatch {
@@ -457,7 +460,7 @@ impl Plot {
                 let flags = args
                     .iter()
                     .copied()
-                    .filter(|&arg| arg != "--graph")
+                    .filter(|&arg| !matches!(arg, "--graph" | "--export-json"))
                     .collect::<Vec<_>>()
                     .join(" ");
                 let mut options = match CompilerOptions::parse(&flags) {
@@ -467,6 +470,44 @@ impl Plot {
                         return;
                     }
                 };
+                if args.contains(&"--export-json") {
+                    if options.export || options.export_dot_graph {
+                        self.players[player].send_error_message(
+                            "Use --export-json separately from the legacy --export flags.",
+                        );
+                        return;
+                    }
+                    options.budget_multiplier =
+                        self.players[player].compilation_budget_multiplier();
+                    let monitor = Arc::new(crate::redpiler::TaskMonitor::default());
+                    let result = crate::redpiler::analysis::export_json::prepare_and_write(
+                        &self.world,
+                        self.world.get_corners(),
+                        &ticks,
+                        &monitor,
+                        crate::redpiler::analysis::AnalysisLimits::for_budget(
+                            options.budget_multiplier,
+                        ),
+                        Path::new("./redpiler-exports"),
+                        self.world.x,
+                        self.world.z,
+                    );
+                    match result {
+                        Ok((path, counts)) => self.players[player].send_system_message(&format!(
+                            "Graph JSON v1 electrical_draft written to {} ({} nodes, {} power links, {} sites, {} guards, {} resources)",
+                            path.display(), counts.nodes, counts.power_links, counts.sites,
+                            counts.guards, counts.resources,
+                        )),
+                        Err(error) => {
+                            warn!(code = error.code, error = %error, "Redpiler graph JSON export failed");
+                            self.players[player].send_error_message(&format!(
+                                "Graph JSON export failed ({}): {}",
+                                error.code, error,
+                            ));
+                        }
+                    }
+                    return;
+                }
                 if options.export || options.export_dot_graph {
                     self.players[player].send_error_message(
                         "Export flags are unavailable during read-only analysis.",
@@ -2149,7 +2190,7 @@ mod security_tests {
                     "-e",
                 ],
             ),
-            ("/rp analyze --ex", vec![]),
+            ("/rp analyze --ex", vec!["--export-json"]),
             ("/rp compile --unknown", vec![]),
         ] {
             let response = complete_redpiler(42, text).unwrap();
@@ -2166,7 +2207,11 @@ mod security_tests {
                 expected
             );
             for item in response.matches {
-                assert!(item.match_ == "--graph" || CompilerOptions::parse(&item.match_).is_ok());
+                assert!(
+                    item.match_ == "--graph"
+                        || item.match_ == "--export-json"
+                        || CompilerOptions::parse(&item.match_).is_ok()
+                );
             }
         }
         let response = complete_redpiler(0, "/rp analyze --graph ").unwrap();
