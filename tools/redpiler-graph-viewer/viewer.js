@@ -73,6 +73,16 @@ function sourceNode(siteId, index) {
 function indexConnections(data, index) {
   const edges = new Map();
   const adjacent = new Map();
+  const routeOwners = new Map();
+  function ownRoute(route, node) {
+    if (!route) return;
+    if (!routeOwners.has(route)) routeOwners.set(route, new Set());
+    routeOwners.get(route).add(node);
+  }
+  for (const node of data.graph.nodes) ownRoute(node.output_route, node.id);
+  for (const piston of data.graph.pistons) {
+    for (const route of Object.values(piston.routes || {})) ownRoute(route, piston.node);
+  }
   function add(id, source, target, type, record) {
     const connection = { id, source, target, type, record };
     edges.set(id, connection);
@@ -90,7 +100,11 @@ function indexConnections(data, index) {
   }
   for (const route of data.graph.routes || []) {
     route.deliveries.forEach((delivery, ordinal) => {
-      add(`${route.id}:delivery:${ordinal}`, route.id, sourceNode(delivery.target, index), "route_delivery", delivery);
+      const owners = [...(routeOwners.get(route.id) || [route.id])];
+      owners.forEach((owner, ownerIndex) => {
+        const suffix = owners.length > 1 ? `:owner:${ownerIndex}` : "";
+        add(`${route.id}:delivery:${ordinal}${suffix}`, owner, sourceNode(delivery.target, index), "route_delivery", delivery);
+      });
     });
   }
   return { edges, adjacent };
@@ -115,7 +129,7 @@ function selectView(center, overview, edgeTypes, depth) {
     edges.set(connection.id, connection);
   }
   if (overview) {
-    for (const row of [...graphData.graph.nodes, ...(graphData.graph.routes || [])]) {
+    for (const row of graphData.graph.nodes) {
       if (nodes.size >= MAX_VIEW_NODES) { truncated = true; break; }
       nodes.add(row.id);
     }

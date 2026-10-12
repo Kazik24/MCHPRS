@@ -279,10 +279,12 @@ test('invalid imports report errors and preserve the previously loaded graph', a
   }
 });
 
-test('route delivery duplicates keep their ordinals, operand views, and component targets', async (t) => {
+test('route deliveries run from their owning piston to the delivered component', async (t) => {
   const viewer = makeViewer();
   t.after(() => viewer.cy?.destroy());
   const graph = adderFixture();
+  const piston = graph.graph.pistons[0];
+  piston.routes = Object.fromEntries(['base_changed', 'near_changed', 'base_restored', 'head_restored'].map((name) => [name, 'route:0']));
   graph.graph.routes = [{ id: 'route:0', deliveries: [0, 1].map((ordinal) => ({
     ordinal, target: 'site:70', kind: 'update', direction: 'north', guard: 'guard:0', view: 'captured',
   })) }];
@@ -291,7 +293,9 @@ test('route delivery duplicates keep their ordinals, operand views, and componen
   assert.equal(edges.length, 2);
   for (let ordinal = 0; ordinal < 2; ordinal++) {
     const edge = viewer.cy.getElementById(`route:0:delivery:${ordinal}`);
+    assert.equal(edge.source().id(), piston.node);
     assert.equal(edge.target().id(), 'node:50');
     assert.equal(edge.data('label'), `#${ordinal} · update · north · captured`);
   }
+  assert.equal(viewer.cy.getElementById('route:0').empty(), true);
 });
