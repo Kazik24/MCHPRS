@@ -46,7 +46,7 @@ use anyhow::Context;
 use bus::BusReader;
 use mchprs_blocks::block_entities::BlockEntity;
 use mchprs_blocks::blocks::Block;
-use mchprs_blocks::{BlockFace, BlockPos};
+use mchprs_blocks::{BlockColorVariant, BlockFace, BlockPos};
 use mchprs_network::packets::clientbound::*;
 use mchprs_network::PlayerPacketSender;
 use mchprs_save_data::plot_data::{ChunkData, PistonAnimation, PlotData, Tps, WorldSendRate};
@@ -1642,6 +1642,9 @@ impl Plot {
         }
         if self.world.x == plot_x && self.world.z == plot_z {
             self.owner = Some(player.uuid);
+            for chunk in &mut self.world.chunks {
+                Self::color_claimed_chunk(chunk, plot_x, plot_z);
+            }
         }
         let center = Plot::get_center(plot_x, plot_z);
         player.teleport(PlayerPos::new(center.0, 64.0, center.1));
@@ -2050,8 +2053,14 @@ impl Plot {
     }
 
     fn generate_chunk(layers: i32, x: i32, z: i32) -> Chunk {
-        let border: u32 = Block::StoneBricks {}.get_id();
-        let fill: u32 = Block::Sandstone {}.get_id();
+        let border = Block::Wool {
+            color: BlockColorVariant::Black,
+        }
+        .get_id();
+        let fill = Block::Wool {
+            color: BlockColorVariant::White,
+        }
+        .get_id();
 
         let mut chunk = Chunk::empty(x, z);
 
@@ -2076,6 +2085,34 @@ impl Plot {
         chunk
     }
 
+    fn color_claimed_chunk(chunk: &mut Chunk, plot_x: i32, plot_z: i32) {
+        let black = Block::Wool {
+            color: BlockColorVariant::Black,
+        }
+        .get_id();
+        let red = Block::Wool {
+            color: BlockColorVariant::Red,
+        }
+        .get_id();
+
+        for ry in 0..8 {
+            for rx in 0..16 {
+                for rz in 0..16 {
+                    let block_x = (chunk.x << 4) | rx;
+                    let block_z = (chunk.z << 4) | rz;
+                    if (block_x == plot_x * PLOT_BLOCK_WIDTH
+                        || block_x == (plot_x + 1) * PLOT_BLOCK_WIDTH - 1
+                        || block_z == plot_z * PLOT_BLOCK_WIDTH
+                        || block_z == (plot_z + 1) * PLOT_BLOCK_WIDTH - 1)
+                        && chunk.get_block(rx as u32, ry as u32, rz as u32) == black
+                    {
+                        chunk.set_block(rx as u32, ry as u32, rz as u32, red);
+                    }
+                }
+            }
+        }
+    }
+
     fn from_data(
         plot_data: PlotData<PLOT_SECTIONS>,
         x: i32,
@@ -2087,7 +2124,9 @@ impl Plot {
     ) -> Plot {
         let chunk_x_offset = x << PLOT_SCALE;
         let chunk_z_offset = z << PLOT_SCALE;
-        let chunks: Vec<Chunk> = plot_data
+        let owner = database::get_plot_owner(x, z)
+            .map(|s| s.parse::<HyphenatedUUID>().unwrap().0);
+        let mut chunks: Vec<Chunk> = plot_data
             .chunk_data
             .into_iter()
             .enumerate()
@@ -2099,6 +2138,11 @@ impl Plot {
                 )
             })
             .collect();
+        if owner.is_some() {
+            for chunk in &mut chunks {
+                Self::color_claimed_chunk(chunk, x, z);
+            }
+        }
         if chunks.len() != NUM_CHUNKS {
             error!("This plot has the wrong number of chunks!");
             let possible_scale = (chunks.len() as f64).sqrt().log2();
@@ -2145,7 +2189,7 @@ impl Plot {
             always_running,
             redpiler: Default::default(),
             timings: TimingsMonitor::new(tps),
-            owner: database::get_plot_owner(x, z).map(|s| s.parse::<HyphenatedUUID>().unwrap().0),
+            owner,
             async_rt: Plot::create_async_rt(),
             scoreboard: Default::default(),
             last_sidebar_update: Instant::now(),

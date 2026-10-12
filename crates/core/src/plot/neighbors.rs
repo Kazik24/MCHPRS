@@ -114,7 +114,7 @@ fn file_stamp(path: &Path) -> std::io::Result<Option<FileStamp>> {
 #[derive(Clone, PartialEq, Eq)]
 enum Version {
     Live((u64, u64)),
-    Saved(bool, Option<FileStamp>),
+    Saved(bool, Option<FileStamp>, bool),
 }
 
 struct Cached {
@@ -190,7 +190,12 @@ fn disk_snapshots(root: &Path, request: &Request, cache: &mut Cache) -> anyhow::
     } else {
         None
     };
-    let version = Version::Saved(stamp.is_some(), stamp.clone().or(template_stamp.clone()));
+    let claimed = super::database::is_claimed(request.plot.0, request.plot.1).unwrap_or(false);
+    let version = Version::Saved(
+        stamp.is_some(),
+        stamp.clone().or(template_stamp.clone()),
+        claimed,
+    );
     let chunks: Vec<_> = request
         .chunks
         .iter()
@@ -213,7 +218,7 @@ fn disk_snapshots(root: &Path, request: &Request, cache: &mut Cache) -> anyhow::
             );
             loaded = Some(data);
         }
-        let chunk = if let Some(data) = &loaded {
+        let mut chunk = if let Some(data) = &loaded {
             let x = coord.0.rem_euclid(PLOT_WIDTH);
             let z = coord.1.rem_euclid(PLOT_WIDTH);
             Chunk::load(
@@ -224,6 +229,9 @@ fn disk_snapshots(root: &Path, request: &Request, cache: &mut Cache) -> anyhow::
         } else {
             Plot::generate_chunk(8, coord.0, coord.1)
         };
+        if claimed {
+            Plot::color_claimed_chunk(&mut chunk, request.plot.0, request.plot.1);
+        }
         let packet = Arc::new(chunk.encode_packet_for_client(true));
         cache.insert(coord, version.clone(), packet.clone());
         result.push((coord, packet));
