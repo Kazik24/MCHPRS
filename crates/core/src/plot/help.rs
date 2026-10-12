@@ -10,7 +10,6 @@ pub(super) fn page(topic: Option<&str>) -> Option<&'static str> {
     Some(match topic.as_str() {
         "" => messages::HELP_QUICK_START,
         "plots" | "plot" | "p" => messages::HELP_PLOTS,
-        "warp" | "warps" | "setwarp" => messages::HELP_WARPS,
         "tps" | "adv" | "rtps" | "ticks" | "radvance" | "radv" => messages::HELP_TICKS,
         "we" | "worldedit" => messages::HELP_WORLD_EDIT,
         "wire" => messages::HELP_WIRE,

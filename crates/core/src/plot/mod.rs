@@ -120,6 +120,8 @@ pub struct Plot {
     async_rt: Runtime, //todo use one runtime for all plots since it's heavy object used just for some small requests
     scoreboard: Scoreboard,
     last_sidebar_update: Instant,
+    /// The last time player positions were reported to the RedBox proxy.
+    last_redbox_state: Instant,
     neighbor_views: neighbors::Views,
     neighbor_source: Option<neighbors::LiveSource>,
     git: git::State,
@@ -1161,6 +1163,7 @@ impl Plot {
                 Gamemode::Creative => "creative",
                 Gamemode::Adventure => "adventure",
                 Gamemode::Spectator => "spectator",
+                Gamemode::Survival => "survival",
             };
             if !self.players[player_idx].has_permission(&format!("commands.gamemode.{name}")) {
                 self.players[player_idx].send_no_permission_message();
@@ -1706,8 +1709,10 @@ impl Plot {
                     }
                 }
                 BroadcastMessage::PlayerJoinedInfo(player_join_info) => {
-                    let join_message = (CONFIG.native_chat && crate::permissions::ranked_chat())
-                        .then(|| ChatComponent::player_joined(&player_join_info.username));
+                    let join_message = (CONFIG.native_chat
+                        && crate::permissions::ranked_chat()
+                        && !crate::redbox::enabled())
+                    .then(|| ChatComponent::player_joined(&player_join_info.username));
                     let player_info = CPlayerInfo::AddPlayer(vec![CPlayerInfoAddPlayer {
                         name: player_join_info.username,
                         properties: player_join_info.properties,
@@ -1769,11 +1774,35 @@ impl Plot {
                 PrivMessage::PlayerEnterPlot(player) => {
                     self.enter_plot(player);
                 }
-                PrivMessage::PlayerTeleportOther(mut player, username) => {
-                    if let Some(other) = self.players.iter().find(|p| p.username == username) {
-                        player.teleport(other.pos);
+                PrivMessage::RedBoxTeleport { uuid, position } => {
+                    if let Some(player) = self.players.iter().position(|p| p.uuid == uuid) {
+                        if position.is_valid() {
+                            self.teleport_player_to(
+                                player,
+                                position.player_pos(),
+                                position.yaw,
+                                position.pitch,
+                            );
+                        }
                     }
-                    self.enter_plot(player);
+                }
+                PrivMessage::RedBoxGamemode(uuid, gamemode) => {
+                    if let Some(player) = self.players.iter().position(|p| p.uuid == uuid) {
+                        self.players[player].set_gamemode(gamemode);
+                        let _ = self
+                            .message_sender
+                            .send(Message::PlayerUpdateGamemode(uuid, gamemode));
+                    }
+                }
+                PrivMessage::RedBoxPermissions {
+                    uuid,
+                    group,
+                    prefix,
+                    permissions,
+                } => {
+                    if let Some(player) = self.players.iter().position(|p| p.uuid == uuid) {
+                        self.players[player].apply_proxy_permissions(group, prefix, permissions);
+                    }
                 }
             }
         }
@@ -1829,6 +1858,30 @@ impl Plot {
             self.destroy_entity(entity_id);
         }
         self.disable_empty_plot_history();
+    }
+
+    /// Report player positions to the RedBox proxy a few times per second so it
+    /// can resolve `/tp`, `/home`, `/warp`, and `/back`.
+    fn report_redbox_states(&mut self) {
+        if !crate::redbox::enabled() {
+            return;
+        }
+        let now = Instant::now();
+        if now.duration_since(self.last_redbox_state) < Duration::from_millis(500) {
+            return;
+        }
+        self.last_redbox_state = now;
+        let world = format!("plot_{}_{}", self.world.x, self.world.z);
+        for player in &self.players {
+            let position =
+                crate::redbox::Position::new(world.clone(), player.pos, player.yaw, player.pitch);
+            let packet = CPluginMessage {
+                channel: crate::redbox::CHANNEL.to_owned(),
+                data: crate::redbox::encode_player_state(player.uuid, &position),
+            }
+            .encode();
+            player.client.send_packet(&packet);
+        }
     }
 
     /// Update player view positions and handle packets
@@ -1942,6 +1995,7 @@ impl Plot {
         }
 
         self.update_players();
+        self.report_redbox_states();
 
         // Handle commands before removing players just in case they ran a command before leaving
         self.handle_commands();
@@ -2089,6 +2143,7 @@ impl Plot {
             async_rt: Plot::create_async_rt(),
             scoreboard: Default::default(),
             last_sidebar_update: Instant::now(),
+            last_redbox_state: Instant::now(),
             neighbor_views: Default::default(),
             neighbor_source: None,
             git: Default::default(),

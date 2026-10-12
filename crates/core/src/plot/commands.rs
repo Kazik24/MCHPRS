@@ -98,33 +98,6 @@ impl RelativeCoordinate for f64 {
     }
 }
 
-pub(crate) fn complete_teleport<'a>(
-    id: i32,
-    text: &str,
-    names: impl Iterator<Item = &'a str>,
-) -> Option<CTabComplete> {
-    let (command, prefix) = text.split_once(' ')?;
-    if !matches!(command, "/tp" | "/teleport") {
-        return None;
-    }
-    let normalized_prefix = prefix.to_ascii_lowercase();
-    let mut names: Vec<_> = names
-        .filter(|name| name.to_ascii_lowercase().starts_with(&normalized_prefix))
-        .collect();
-    names.sort_unstable();
-    Some(CTabComplete {
-        id,
-        start: (command.encode_utf16().count() + 1) as i32,
-        length: prefix.encode_utf16().count() as i32,
-        matches: names
-            .into_iter()
-            .map(|name| CTabCompleteMatch {
-                match_: name.to_owned(),
-                tooltip: None,
-            })
-            .collect(),
-    })
-}
 fn parse_relative_coord<F: RelativeCoordinate>(
     coord: &str,
     ref_coord: F,
@@ -154,13 +127,6 @@ fn parse_teleport_coord(coord: &str, reference: f64, center: bool) -> Result<f64
     } else {
         Ok(value)
     }
-}
-
-fn valid_warp_name(name: &str) -> bool {
-    (1..=32).contains(&name.len())
-        && name
-            .bytes()
-            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b'-'))
 }
 
 fn advance_bounded(ticks: u32, mut step: impl FnMut()) -> u32 {
@@ -210,17 +176,20 @@ impl AdvanceUnit {
 }
 
 impl Plot {
-    /// Transfers immediately so later queued commands cannot affect the old plot.
-    pub(super) fn teleport_to_warp(&mut self, player: usize, warp: database::Warp) -> bool {
-        if !warp.is_valid() {
-            self.players[player].send_error_message(messages::INVALID_TELEPORT_COORDINATES);
-            return false;
-        }
+    /// Teleports an indexed player, transferring to another plot through the
+    /// normal routing when the destination lies there.
+    pub(super) fn teleport_player_to(
+        &mut self,
+        player: usize,
+        pos: PlayerPos,
+        yaw: f32,
+        pitch: f32,
+    ) -> bool {
         self.close_open_container(player);
-        self.players[player].yaw = warp.yaw;
-        self.players[player].pitch = warp.pitch;
-        self.players[player].teleport(warp.pos);
-        if warp.pos.plot_pos() != (self.world.x, self.world.z) {
+        self.players[player].yaw = yaw;
+        self.players[player].pitch = pitch;
+        self.players[player].teleport(pos);
+        if pos.plot_pos() != (self.world.x, self.world.z) {
             let uuid = self.players[player].uuid;
             let player = self.leave_plot(uuid);
             let _ = self.message_sender.send(Message::PlayerLeavePlot(player));
@@ -948,133 +917,46 @@ impl Plot {
                     self.players[player].send_system_message(messages::REDPILER_AUTO_DISABLED);
                 }
             }
-            "/setwarp" => {
-                let [name] = args.as_slice() else {
-                    self.players[player].send_error_message(messages::USAGE_SETWARP);
-                    return false;
-                };
-                if !valid_warp_name(name) {
-                    self.players[player].send_error_message(messages::INVALID_WARP_NAME);
-                    return false;
-                }
-                let actor = &self.players[player];
-                let warp = database::Warp {
-                    pos: actor.pos,
-                    yaw: actor.yaw,
-                    pitch: actor.pitch,
-                };
-                if !warp.is_valid() {
-                    actor.send_error_message(messages::INVALID_TELEPORT_COORDINATES);
-                    return false;
-                }
-                match database::set_warp(name, warp) {
-                    Ok(()) => actor.send_system_message(&messages::warp_saved(name)),
-                    Err(error) => {
-                        warn!("Could not save warp {name}: {error}");
-                        actor.send_error_message(messages::WARP_STORAGE_FAILED);
-                    }
-                }
-            }
-            "/warp" => {
-                if args.is_empty() {
-                    match database::warp_names() {
-                        Ok(names) if names.is_empty() => {
-                            self.players[player].send_system_message(messages::NO_WARPS)
-                        }
-                        Ok(names) => self.players[player]
-                            .send_system_message(&messages::warp_list(names.join(", "))),
-                        Err(error) => {
-                            warn!("Could not list warps: {error}");
-                            self.players[player].send_error_message(messages::WARP_STORAGE_FAILED);
-                        }
-                    }
-                    return false;
-                }
-                let [name] = args.as_slice() else {
-                    self.players[player].send_error_message(messages::USAGE_WARP);
-                    return false;
-                };
-                if !valid_warp_name(name) {
-                    self.players[player].send_error_message(messages::INVALID_WARP_NAME);
-                    return false;
-                }
-                match database::get_warp(name) {
-                    Ok(Some(warp)) => {
-                        if warp.is_valid() {
-                            self.players[player]
-                                .send_system_message(&messages::warp_teleport(name));
-                        }
-                        return self.teleport_to_warp(player, warp);
-                    }
-                    Ok(None) => {
-                        self.players[player].send_error_message(&messages::warp_not_found(name))
-                    }
-                    Err(error) => {
-                        warn!("Could not read warp {name}: {error}");
-                        self.players[player].send_error_message(messages::WARP_STORAGE_FAILED);
-                    }
-                }
-            }
+            // Coordinate teleportation and /warp are owned by the proxy (RedBox).
+            // Only the internal diagnostic links with a highlight flag stay here.
             "/teleport" | "/tp" => {
                 let highlight_only = args.len() == 4 && args[3] == "--highlight-only";
                 let highlight = highlight_only || (args.len() == 4 && args[3] == "--highlight");
-                if highlight {
-                    args.pop();
+                if !highlight {
+                    self.players[player].send_error_message(messages::COMMAND_NOT_FOUND);
+                    return false;
                 }
-                if args.len() == 3 {
-                    let player_pos = self.players[player].pos;
-                    let x;
-                    let y;
-                    let z;
-                    if let Ok(x_arg) = parse_teleport_coord(args[0], player_pos.x, true) {
-                        x = x_arg;
-                    } else {
-                        self.players[player].send_error_message(messages::INVALID_X_COORDINATE);
-                        return false;
-                    }
-                    if let Ok(y_arg) = parse_teleport_coord(args[1], player_pos.y, false) {
-                        y = y_arg;
-                    } else {
-                        self.players[player].send_error_message(messages::INVALID_Y_COORDINATE);
-                        return false;
-                    }
-                    if let Ok(z_arg) = parse_teleport_coord(args[2], player_pos.z, true) {
-                        z = z_arg;
-                    } else {
-                        self.players[player].send_error_message(messages::INVALID_Z_COORDINATE);
-                        return false;
-                    }
-                    let target = PlayerPos::new(x, y, z);
-                    let mut destination = target;
-                    if highlight && !highlight_only {
-                        // Error links target the block center with the viewer's current head height.
-                        destination.y -= self.players[player].eye_position().y - player_pos.y;
-                    }
-                    if !destination.is_valid() {
-                        self.players[player]
-                            .send_error_message(messages::INVALID_TELEPORT_COORDINATES);
-                        return false;
-                    }
-                    if !highlight_only {
-                        self.players[player]
-                            .send_system_message(&messages::teleport_coordinates(x, y, z));
-                        self.players[player].teleport(destination);
-                    }
-                    if highlight {
-                        self.show_block_highlight(player, target.block_pos(), false);
-                    }
-                } else if args.len() == 1 {
-                    self.players[player].send_system_message(&messages::teleport_player(args[0]));
-                    let uuid = self.players[player].uuid;
-                    let player = self.leave_plot(uuid);
-                    let _ = self
-                        .message_sender
-                        .send(Message::PlayerTeleportOther(player, args[0].to_string()));
-                    return true;
-                } else {
+                args.pop();
+                let player_pos = self.players[player].pos;
+                let Ok(x) = parse_teleport_coord(args[0], player_pos.x, true) else {
+                    self.players[player].send_error_message(messages::INVALID_X_COORDINATE);
+                    return false;
+                };
+                let Ok(y) = parse_teleport_coord(args[1], player_pos.y, false) else {
+                    self.players[player].send_error_message(messages::INVALID_Y_COORDINATE);
+                    return false;
+                };
+                let Ok(z) = parse_teleport_coord(args[2], player_pos.z, true) else {
+                    self.players[player].send_error_message(messages::INVALID_Z_COORDINATE);
+                    return false;
+                };
+                let target = PlayerPos::new(x, y, z);
+                let mut destination = target;
+                if !highlight_only {
+                    // Error links target the block center with the viewer's current head height.
+                    destination.y -= self.players[player].eye_position().y - player_pos.y;
+                }
+                if !destination.is_valid() {
                     self.players[player]
-                        .send_error_message(messages::INVALID_NUMBER_ARGUMENTS_TELEPORT_COMMAND);
+                        .send_error_message(messages::INVALID_TELEPORT_COORDINATES);
+                    return false;
                 }
+                if !highlight_only {
+                    self.players[player]
+                        .send_system_message(&messages::teleport_coordinates(x, y, z));
+                    self.players[player].teleport(destination);
+                }
+                self.show_block_highlight(player, target.block_pos(), false);
             }
             "/stop" => {
                 let _ = self.message_sender.send(Message::Shutdown);
@@ -1159,6 +1041,7 @@ impl Plot {
                     "c" | "creative" | "1" | "cat" => Gamemode::Creative,
                     "a" | "adventure" | "2" => Gamemode::Adventure,
                     "s" | "spectator" | "3" => Gamemode::Spectator,
+                    "survival" | "0" => Gamemode::Survival,
                     _ => {
                         self.players[player].send_error_message(messages::UNKNOWN_GAMEMODE);
                         return false;
@@ -1200,8 +1083,6 @@ fn native_command_permission(command: &str, args: &[&str]) -> Option<String> {
         "/git" | "/rv" => "git".to_owned(),
         "/version" => "version".to_owned(),
         "/teleport" | "/tp" => "teleport".to_owned(),
-        "/warp" => "warp".to_owned(),
-        "/setwarp" => "setwarp".to_owned(),
         "/speed" => "speed".to_owned(),
         "/small" => "small".to_owned(),
         "/gmsp" | "/gmc" | "/gamemode" | "/gm" => "gamemode".to_owned(),
@@ -1260,195 +1141,178 @@ pub static NO_COMMANDS: Lazy<PacketEncoder> = Lazy::new(|| {
 /// This is used for command autocomplete.
 fn declared_command_nodes() -> Vec<Node<'static>> {
     vec![
-        // 0: Root Node
-        Node::root(&[
-            1, 4, 5, 6, 11, 12, 14, 16, 18, 19, 20, 21, 22, 23, 24, 26, 29, 31, 33, 35, 46, 48, 52,
-            59, 60, 62, 64, 65, 66, 73, 74, 81, 82, 84, 90, 100, 105, 110, 111, 112, 113, 114, 115,
-            117, 119, 123, 130, 134, 135, 142, 143, 144, 145, 146, 150, 152, 153, 160, 161, 164,
-            165, 176,
-        ]),
-        // 1: /teleport
-        Node::literal("teleport", &[3, 2]),
-        // 2: /teleport [x, y, z]
-        Node::argument("x, y, z", Parser::Vec3, &[169, 170]).executable(),
-        // 3: /teleport [player]
-        Node::argument("player", Parser::String(0), &[])
-            .executable()
-            .suggestions("minecraft:ask_server"),
-        // 4: /tp
-        Node::redirect("tp", 1),
-        // 5: /stop
+        // Root Node
+        Node::root(&[1, 2, 7, 8, 10, 12, 14, 15, 16, 17, 18, 19, 20, 22, 25, 27, 29, 31, 42, 44, 48, 55, 56, 58, 60, 61, 62, 69, 70, 77, 78, 80, 86, 96, 101, 106, 107, 108, 109, 110, 111, 113, 115, 119, 126, 130, 131, 138, 139, 140, 141, 142, 146, 153, 154, 157, 158, 167]),
+        // /stop
         Node::literal("stop", &[]).executable(),
-        // 6: /plot
+        // /plot
         Node::literal(
             "plot",
-            &[
-                7, 8, 9, 10, 37, 38, 39, 40, 42, 43, 45, 57, 58, 79, 80, 124, 125, 126, 128,
-            ],
+            &[3, 4, 5, 6, 33, 34, 35, 36, 38, 39, 41, 53, 54, 75, 76, 120, 121, 122, 124],
         ),
-        // 7: /plot info
+        // /plot info
         Node::literal("info", &[]).executable(),
-        // 8: /plot i
-        Node::redirect("i", 7),
-        // 9: /plot claim
+        // /plot i
+        Node::redirect("i", 3),
+        // /plot claim
         Node::literal("claim", &[]).executable(),
-        // 10: /plot c
-        Node::redirect("c", 9),
-        // 11: /p
-        Node::redirect("p", 6),
-        // 12: /tps
-        Node::literal("tps", &[13, 116]).executable(),
-        // 13: /tps [tps]
+        // /plot c
+        Node::redirect("c", 5),
+        // /p
+        Node::redirect("p", 2),
+        // /tps
+        Node::literal("tps", &[9, 112]).executable(),
+        // /tps [tps]
         Node::argument("tps", Parser::Integer(0, i32::MAX), &[]).executable(),
-        // 14: //pos1
-        Node::literal("/pos1", &[15]).executable(),
-        // 15: //pos1 [pos]
+        // //pos1
+        Node::literal("/pos1", &[11]).executable(),
+        // //pos1 [pos]
         Node::argument("pos", Parser::BlockPos, &[]).executable(),
-        // 16: //pos2
-        Node::literal("/pos2", &[17]).executable(),
-        // 17: //pos2 [pos]
+        // //pos2
+        Node::literal("/pos2", &[13]).executable(),
+        // //pos2 [pos]
         Node::argument("pos", Parser::BlockPos, &[]).executable(),
-        // 18: /1
-        Node::redirect("/1", 14),
-        // 19: /2
-        Node::redirect("/2", 16),
-        // 20: //copy
+        // /1
+        Node::redirect("/1", 10),
+        // /2
+        Node::redirect("/2", 12),
+        // //copy
         Node::literal("/copy", &[]).executable(),
-        // 21: //c
-        Node::redirect("/c", 20),
-        // 22: //paste
+        // //c
+        Node::redirect("/c", 16),
+        // //paste
         Node::literal("/paste", &[]).executable(),
-        // 23: //p
-        Node::redirect("/p", 22),
-        // 24: //set
-        Node::literal("/set", &[25]),
-        // 25: //set [block]
+        // //p
+        Node::redirect("/p", 18),
+        // //set
+        Node::literal("/set", &[21]),
+        // //set [block]
         Node::argument("block", Parser::String(0), &[]).executable(),
-        // 26: //replace
-        Node::literal("/replace", &[27]),
-        // 27: //replace [oldblock]
-        Node::argument("oldblock", Parser::BlockState, &[28]),
-        // 28: //replace [oldblock] [newblock]
+        // //replace
+        Node::literal("/replace", &[23]),
+        // //replace [oldblock]
+        Node::argument("oldblock", Parser::BlockState, &[24]),
+        // //replace [oldblock] [newblock]
         Node::argument("newblock", Parser::BlockState, &[]).executable(),
-        // 29: /adv
-        Node::literal("adv", &[30, 75, 77]),
-        // 30: /adv [rticks]
+        // /adv
+        Node::literal("adv", &[26, 71, 73]),
+        // /adv [rticks]
         Node::argument("rticks", Parser::Integer(0, 100000), &[]).executable(),
-        // 31: /speed
-        Node::literal("speed", &[32]),
-        // 32: /speed [speed]
+        // /speed
+        Node::literal("speed", &[28]),
+        // /speed [speed]
         Node::argument("speed", Parser::Float(0.0, 10.0), &[]).executable(),
-        // 33: //stack
-        Node::literal("/stack", &[34]).executable(),
-        // 34: //stack [amount]
+        // //stack
+        Node::literal("/stack", &[30]).executable(),
+        // //stack [amount]
         Node::argument("amount", Parser::Integer(0, 256), &[]).executable(),
-        // 35: //undo
+        // //undo
         Node::literal("/undo", &[]).executable(),
-        // 36: //sel
+        // //sel
         Node::literal("/sel", &[]).executable(),
-        // 37: /p auto
+        // /p auto
         Node::literal("auto", &[]).executable(),
-        // 38: /p a
-        Node::redirect("a", 9),
-        // 39: /p middle
+        // /p a
+        Node::redirect("a", 5),
+        // /p middle
         Node::literal("middle", &[]).executable(),
-        // 40: /p visit
-        Node::literal("visit", &[41]),
-        // 41: /p visit [player]
+        // /p visit
+        Node::literal("visit", &[37]),
+        // /p visit [player]
         Node::argument("player", Parser::Entity(3), &[]).executable(),
-        // 42: /p v
-        Node::redirect("v", 40),
-        // 43: /p teleport
-        Node::literal("teleport", &[44]),
-        // 44: /p teleport [x, z]
+        // /p v
+        Node::redirect("v", 36),
+        // /p teleport
+        Node::literal("teleport", &[40]),
+        // /p teleport [x, z]
         Node::argument("x, z", Parser::Vec2, &[]).executable(),
-        // 45: /p tp
-        Node::redirect("tp", 43),
-        // 46: //shift
-        Node::literal("/shift", &[34]).executable(),
-        // 47: //shift [amount]
+        // /p tp
+        Node::redirect("tp", 39),
+        // //shift
+        Node::literal("/shift", &[30]).executable(),
+        // //shift [amount]
         Node::argument("amount", Parser::Integer(0, 256), &[]).executable(),
-        // 48: /whitelist
-        Node::literal("whitelist", &[49, 50]),
-        // 49: /whitelist add
-        Node::literal("add", &[51]),
-        // 50: /whitelist remove
-        Node::literal("remove", &[51]),
-        // 51: /whitelist add|remove [username]
+        // /whitelist
+        Node::literal("whitelist", &[45, 46]),
+        // /whitelist add
+        Node::literal("add", &[47]),
+        // /whitelist remove
+        Node::literal("remove", &[47]),
+        // /whitelist add|remove [username]
         Node::argument("username", Parser::Entity(3), &[]).executable(),
-        // 52-56: /container <type> <power>
-        Node::literal("container", &[53, 54, 55]),
-        Node::argument("type", Parser::String(0), &[56]).suggestions("minecraft:ask_server"),
+        // /container <type> <power>
+        Node::literal("container", &[49, 50, 51]),
+        Node::argument("type", Parser::String(0), &[52]).suggestions("minecraft:ask_server"),
         // Preserve the existing literal alternatives and their node indices.
-        Node::literal("hopper", &[56]),
-        Node::literal("furnace", &[56]),
+        Node::literal("hopper", &[52]),
+        Node::literal("furnace", &[52]),
         Node::argument("power", Parser::String(0), &[])
             .executable()
             .suggestions("minecraft:ask_server"),
-        // 57: /plot lock
+        // /plot lock
         Node::literal("lock", &[]).executable(),
-        // 58: /plot unlock
+        // /plot unlock
         Node::literal("unlock", &[]).executable(),
-        // 59: //wand
+        // //wand
         Node::literal("/wand", &[]).executable(),
-        // 60: //save
-        Node::literal("/save", &[61]),
-        // 61: //save [filename]
+        // //save
+        Node::literal("/save", &[57]),
+        // //save [filename]
         Node::argument("filename", Parser::String(0), &[]).executable(),
-        // 62: //load
-        Node::literal("/load", &[63]),
-        // 63: //load [filename]
+        // //load
+        Node::literal("/load", &[59]),
+        // //load [filename]
         Node::argument("filename", Parser::String(0), &[])
             .executable()
             .suggestions("minecraft:ask_server"),
-        // 64: /toggleautorp
+        // /toggleautorp
         Node::literal("toggleautorp", &[]).executable(),
-        // 65: /redpiler
-        Node::literal("redpiler", &[67, 68, 69, 131, 147, 148, 149]),
-        // 66: /rp
-        Node::redirect("rp", 65),
-        // 67: /redpiler compile
-        Node::literal("compile", &[133]).executable(),
-        // 68: /redpiler inspect
+        // /redpiler
+        Node::literal("redpiler", &[63, 64, 65, 127, 143, 144, 145]),
+        // /rp
+        Node::redirect("rp", 61),
+        // /redpiler compile
+        Node::literal("compile", &[129]).executable(),
+        // /redpiler inspect
         Node::literal("inspect", &[]).executable(),
-        // 69: /redpiler reset
+        // /redpiler reset
         Node::literal("reset", &[]).executable(),
-        // 70: /worldsendrate
-        Node::literal("worldsendrate", &[71]).executable(),
-        // 71: /worldsendrate [rticks]
+        // /worldsendrate
+        Node::literal("worldsendrate", &[67]).executable(),
+        // /worldsendrate [rticks]
         Node::argument("hertz", Parser::Integer(0, 1000), &[]).executable(),
-        // 72: /wsr
-        Node::redirect("wsr", 70),
-        // 73: /curse
+        // /wsr
+        Node::redirect("wsr", 66),
+        // /curse
         Node::literal("curse", &[]),
-        // 74: /bless
+        // /bless
         Node::literal("bless", &[]),
-        // 75: /adv nano
-        Node::literal("nano", &[76]),
-        // 76: /adv nano [nticks]
+        // /adv nano
+        Node::literal("nano", &[72]),
+        // /adv nano [nticks]
         Node::argument("nticks", Parser::Integer(0, 100000), &[]).executable(),
-        // 77: /adv pico
-        Node::literal("pico", &[78]),
-        // 78: /adv pico [pticks]
+        // /adv pico
+        Node::literal("pico", &[74]),
+        // /adv pico [pticks]
         Node::argument("pticks", Parser::Integer(0, 100000), &[]).executable(),
-        // 79: /plot select
+        // /plot select
         Node::literal("select", &[]).executable(),
-        // 80: /plot sel
-        Node::redirect("sel", 79),
-        // 81: /version
+        // /plot sel
+        Node::redirect("sel", 75),
+        // /version
         Node::literal("version", &[]).executable(),
-        // 82–86: /say <message>, /tellraw <targets> <JSON text>
-        Node::literal("say", &[83]),
+        // /say <message>, /tellraw <targets> <JSON text>
+        Node::literal("say", &[79]),
         Node::argument("message", Parser::String(2), &[]).executable(),
-        Node::literal("tellraw", &[85]),
-        Node::argument("targets", Parser::Entity(2), &[86]),
+        Node::literal("tellraw", &[81]),
+        Node::argument("targets", Parser::Entity(2), &[82]),
         Node::argument("message", Parser::String(2), &[]).executable(),
-        // 87–89: animation preference and alias
-        Node::literal("piston_anim", &[88]).executable(),
+        // animation preference and alias
+        Node::literal("piston_anim", &[84]).executable(),
         Node::argument("mode", Parser::String(0), &[]).executable(),
-        Node::redirect("bisdon_anim", 87).executable(),
-        // 90–99: /help and its topic suggestions
-        Node::literal("help", &[91, 92, 93, 94, 95, 96, 97, 98, 99, 178]).executable(),
+        Node::redirect("bisdon_anim", 83).executable(),
+        // /help and its topic suggestions
+        Node::literal("help", &[87, 88, 89, 90, 91, 92, 93, 94, 95, 169]).executable(),
         Node::argument("topic", Parser::String(0), &[]).executable(),
         Node::literal("plots", &[]).executable(),
         Node::literal("tps", &[]).executable(),
@@ -1458,9 +1322,9 @@ fn declared_command_nodes() -> Vec<Node<'static>> {
         Node::literal("rewind", &[]).executable(),
         Node::literal("chat", &[]).executable(),
         Node::literal("redpiler", &[]).executable(),
-        // 100–106: tick history and whole-game-tick rewind
-        Node::literal("rhistory", &[101, 103, 104, 107]).executable(),
-        Node::literal("on", &[102]).executable(),
+        // tick history and whole-game-tick rewind
+        Node::literal("rhistory", &[97, 99, 100, 103]).executable(),
+        Node::literal("on", &[98]).executable(),
         Node::argument(
             messages::ADV_GAME_TICKS_LABEL,
             Parser::Integer(1, i32::MAX),
@@ -1469,69 +1333,69 @@ fn declared_command_nodes() -> Vec<Node<'static>> {
         .executable(),
         Node::literal("off", &[]).executable(),
         Node::literal("status", &[]).executable(),
-        Node::literal("back", &[106]).executable(),
+        Node::literal("back", &[102]).executable(),
         Node::argument(
             messages::ADV_GAME_TICKS_LABEL,
             Parser::Integer(1, i32::MAX),
             &[],
         )
         .executable(),
-        // 107–108: server history memory limit, in MiB
-        Node::literal("limit", &[108]).executable(),
+        // server history memory limit, in MiB
+        Node::literal("limit", &[104]).executable(),
         Node::argument("MiB", Parser::Integer(0, i32::MAX), &[]).executable(),
-        // 109: flexible tool arguments, validated by the command handler
+        // flexible tool arguments, validated by the command handler
         Node::argument("arguments", Parser::String(2), &[])
             .executable()
             .suggestions("minecraft:ask_server"),
-        // 110: //find
-        Node::literal("/find", &[109]).executable(),
-        // 111: //signsearch
-        Node::literal("/signsearch", &[109]).executable(),
-        // 112: //ss
-        Node::literal("/ss", &[109]).executable(),
-        // 113: //rstack
-        Node::literal("/rstack", &[109]).executable(),
-        // 114: //rs
-        Node::literal("/rs", &[109]).executable(),
-        // 115: /cursel
-        Node::literal("cursel", &[109]).executable(),
-        // 116: /tps timings
+        // //find
+        Node::literal("/find", &[105]).executable(),
+        // //signsearch
+        Node::literal("/signsearch", &[105]).executable(),
+        // //ss
+        Node::literal("/ss", &[105]).executable(),
+        // //rstack
+        Node::literal("/rstack", &[105]).executable(),
+        // //rs
+        Node::literal("/rs", &[105]).executable(),
+        // /cursel
+        Node::literal("cursel", &[105]).executable(),
+        // /tps timings
         Node::literal("timings", &[]).executable(),
-        // 117: //update
-        Node::literal("/update", &[118]).executable(),
-        // 118: //update -p
+        // //update
+        Node::literal("/update", &[114]).executable(),
+        // //update -p
         Node::literal("-p", &[]).executable(),
-        // 119: //invalidatecaches
+        // //invalidatecaches
         Node::literal("/invalidatecaches", &[]).executable(),
-        // 120-122: /screenonly [on|off]
-        Node::literal("screenonly", &[121, 122]).executable(),
+        // /screenonly [on|off]
+        Node::literal("screenonly", &[117, 118]).executable(),
         Node::literal("on", &[]).executable(),
         Node::literal("off", &[]).executable(),
-        // 123: /autostack
-        Node::literal("autostack", &[109]).executable(),
-        // 124-129: /p home, /p h, /p add <nick>, /p remove <nick>.
+        // /autostack
+        Node::literal("autostack", &[105]).executable(),
+        // /p home, /p h, /p add <nick>, /p remove <nick>.
         Node::literal("home", &[]).executable(),
-        Node::redirect("h", 124),
-        Node::literal("add", &[127]),
+        Node::redirect("h", 120),
+        Node::literal("add", &[123]),
         Node::argument("nick", Parser::String(0), &[])
             .executable()
             .suggestions("minecraft:ask_server"),
-        Node::literal("remove", &[129]),
+        Node::literal("remove", &[125]),
         Node::argument("nick", Parser::String(0), &[])
             .executable()
             .suggestions("minecraft:ask_server"),
-        // 130: /git uses the existing greedy, server-completed arguments node.
-        Node::literal("git", &[109]).executable(),
-        // 131: /redpiler analyze
-        Node::literal("analyze", &[132, 133]).executable(),
-        // 132-133: read-only graph preparation and ordinary optimization flags.
-        Node::literal("--graph", &[133]).executable(),
+        // /git uses the existing greedy, server-completed arguments node.
+        Node::literal("git", &[105]).executable(),
+        // /redpiler analyze
+        Node::literal("analyze", &[128, 129]).executable(),
+        // read-only graph preparation and ordinary optimization flags.
+        Node::literal("--graph", &[129]).executable(),
         Node::argument("options", Parser::String(2), &[])
             .executable()
             .suggestions("minecraft:ask_server"),
-        // 134-143: gamemode alias, names, IDs and legacy shortcuts.
-        Node::redirect("gm", 135),
-        Node::literal("gamemode", &[136, 137, 138, 139, 140, 141, 168]),
+        // gamemode alias, names, IDs and legacy shortcuts.
+        Node::redirect("gm", 131),
+        Node::literal("gamemode", &[132, 133, 134, 135, 136, 137, 161]),
         Node::literal("creative", &[]).executable(),
         Node::literal("adventure", &[]).executable(),
         Node::literal("spectator", &[]).executable(),
@@ -1540,53 +1404,44 @@ fn declared_command_nodes() -> Vec<Node<'static>> {
         Node::literal("3", &[]).executable(),
         Node::literal("gmc", &[]).executable(),
         Node::literal("gmsp", &[]).executable(),
-        // 144-145: clear the WorldEdit selection.
-        Node::redirect("/desel", 36).executable(),
-        Node::redirect("desel", 36).executable(),
-        // 146: /set accepts the same block patterns as //set.
-        Node::redirect("set", 24),
-        // 147-149: Redpiler subcommand aliases share arguments and suggestions.
-        Node::redirect("c", 67).executable(),
-        Node::redirect("i", 68).executable(),
-        Node::redirect("r", 69).executable(),
-        // 150-152: shared, saved destinations.
-        Node::literal("warp", &[151]).executable(),
-        Node::argument("name", Parser::String(0), &[])
-            .executable()
-            .suggestions("minecraft:ask_server"),
-        Node::literal("setwarp", &[151]),
-        // 153-159: administrator diagnostics and optional page/plot arguments.
-        Node::literal("serverinfo", &[154, 156, 159]).executable(),
-        Node::literal("plots", &[155]).executable(),
+        // clear the WorldEdit selection.
+        Node::redirect("/desel", 32).executable(),
+        Node::redirect("desel", 32).executable(),
+        // /set accepts the same block patterns as //set.
+        Node::redirect("set", 20),
+        // Redpiler subcommand aliases share arguments and suggestions.
+        Node::redirect("c", 63).executable(),
+        Node::redirect("i", 64).executable(),
+        Node::redirect("r", 65).executable(),
+        // administrator diagnostics and optional page/plot arguments.
+        Node::literal("serverinfo", &[147, 149, 152]).executable(),
+        Node::literal("plots", &[148]).executable(),
         Node::argument("page", Parser::Integer(1, i32::MAX), &[]).executable(),
-        Node::literal("plot", &[157]).executable(),
-        Node::argument("x", Parser::Integer(i32::MIN, i32::MAX), &[158]),
+        Node::literal("plot", &[150]).executable(),
+        Node::argument("x", Parser::Integer(i32::MIN, i32::MAX), &[151]),
         Node::argument("z", Parser::Integer(i32::MIN, i32::MAX), &[]).executable(),
         Node::literal("settings", &[]).executable(),
-        // 160-163: wire pen, alias, and aiming modes reuse the existing off literal.
-        Node::literal("wire", &[162, 163, 103]).executable(),
-        Node::redirect("/wire", 160).executable(),
+        // wire pen, alias, and aiming modes reuse the existing off literal.
+        Node::literal("wire", &[155, 156, 99]).executable(),
+        Node::redirect("/wire", 153).executable(),
         Node::literal("free", &[]).executable(),
         Node::literal("plane", &[]).executable(),
-        // 164: /rv shares the server-completed git arguments.
-        Node::literal("rv", &[109]).executable(),
-        // 165-167: /small and its explicit states.
-        Node::literal("small", &[166, 167, 171, 172, 173, 174, 175]).executable(),
+        // /rv shares the server-completed git arguments.
+        Node::literal("rv", &[105]).executable(),
+        // /small and its explicit states.
+        Node::literal("small", &[159, 160, 162, 163, 164, 165, 166]).executable(),
         Node::literal("on", &[]).executable(),
         Node::literal("off", &[]).executable(),
-        // 168: /gm cat selects creative play with the small ocelot disguise.
+        // /gm cat selects creative play with the small ocelot disguise.
         Node::literal("cat", &[]).executable(),
-        // 169: error-coordinate links reuse teleportation and the existing block outline.
-        Node::literal("--highlight", &[]).executable(),
-        Node::literal("--highlight-only", &[]).executable(),
-        // 171-174: saved small-mode animal choices.
+        // saved small-mode animal choices.
         Node::literal("wolf", &[]).executable(),
         Node::literal("fox", &[]).executable(),
         Node::literal("cat", &[]).executable(),
         Node::literal("ocelot", &[]).executable(),
         Node::literal("baby", &[]).executable(),
-        // 176-179: unified visual settings and legacy command spellings.
-        Node::literal("visual", &[177]).executable(),
+        // unified visual settings and legacy command spellings.
+        Node::literal("visual", &[168]).executable(),
         Node::argument("settings", Parser::String(2), &[]).executable(),
         Node::literal("visual", &[]).executable(),
     ]
@@ -1702,11 +1557,11 @@ mod security_tests {
             assert_eq!(spawn.read_double().unwrap(), 35.0);
             assert_eq!(read_frame(&mut peer, false).unwrap().0, 0x5c);
 
-            // Ordinary teleport coordinates still position the player's feet.
+            // Plain /tp is now proxied (RedBox), so the backend rejects it.
+            let before = plot.players[0].pos;
             plot.handle_command(0, "/tp", vec!["33.5", "21.5", "35.5"]);
-            assert_eq!(plot.players[0].pos.y, 21.5);
+            assert_eq!(plot.players[0].pos.y, before.y);
             assert_eq!(read_frame(&mut peer, false).unwrap().0, 0x72);
-            assert_eq!(read_frame(&mut peer, false).unwrap().0, 0x41);
 
             for args in [
                 vec!["invalid", "21.5", "35.5", "--highlight"],
@@ -1719,7 +1574,7 @@ mod security_tests {
             ] {
                 assert!(!plot.handle_command(0, "/tp", args));
                 assert_eq!(read_frame(&mut peer, false).unwrap().0, 0x72);
-                assert_eq!(plot.players[0].pos.y, 21.5);
+                assert_eq!(plot.players[0].pos.y, before.y);
             }
         }
         assert_eq!(
@@ -1730,7 +1585,12 @@ mod security_tests {
             "/tp",
             &["33.5", "21.5", "35.5", "--highlight"]
         ));
-        assert!(declared_command_nodes()[68].children.is_empty());
+        let nodes = declared_command_nodes();
+        let inspect = nodes
+            .iter()
+            .find(|node| node.name == Some("inspect"))
+            .unwrap();
+        assert!(inspect.children.is_empty());
     }
 
     #[test]
@@ -1767,32 +1627,23 @@ mod security_tests {
             .any(|&id| nodes[id as usize].name == Some("cat")));
     }
     #[test]
-    fn teleport_autocomplete_suggests_player_names_without_selectors() {
+    fn network_teleport_is_not_declared_but_plot_teleport_remains() {
         let nodes = declared_command_nodes();
-        assert_eq!(nodes[1].children, &[3, 2]);
-        assert!(matches!(nodes[3].parser, Some(Parser::String(0))));
-        assert_eq!(nodes[3].suggestions_type, Some("minecraft:ask_server"));
-        let names = ["Zoe", "Alice", "Alex"];
-        for (text, expected) in [
-            ("/tp ", vec!["Alex", "Alice", "Zoe"]),
-            ("/teleport al", vec!["Alex", "Alice"]),
-            ("/tp @", vec![]),
-            ("/tp 1 2 ", vec![]),
-        ] {
-            let response = complete_teleport(42, text, names.into_iter()).unwrap();
-            let start = text.find(' ').unwrap() + 1;
-            assert_eq!(response.id, 42);
-            assert_eq!(response.start, start as i32);
-            assert_eq!(response.length, text[start..].encode_utf16().count() as i32);
-            assert_eq!(
-                response
-                    .matches
-                    .into_iter()
-                    .map(|item| item.match_)
-                    .collect::<Vec<_>>(),
-                expected
-            );
-        }
+        let root_names: Vec<_> = nodes[0]
+            .children
+            .iter()
+            .filter_map(|&id| nodes[id as usize].name)
+            .collect();
+        assert!(!root_names.contains(&"teleport"));
+        assert!(!root_names.contains(&"tp"));
+        let plot = nodes.iter().find(|node| node.name == Some("plot")).unwrap();
+        assert!(plot.children.iter().any(|&id| {
+            nodes[id as usize].name == Some("teleport")
+                && nodes[id as usize]
+                    .children
+                    .iter()
+                    .any(|&child| matches!(nodes[child as usize].parser, Some(Parser::Vec2)))
+        }));
     }
     #[test]
     fn serverinfo_autocomplete_declares_subcommands_and_numeric_arguments() {
@@ -1817,10 +1668,12 @@ mod security_tests {
                 "subcommands must be executable literals"
             );
         }
-        let page = &nodes[nodes[154].children[0] as usize];
+        let plots = &nodes[serverinfo.children[0] as usize];
+        let page = &nodes[plots.children[0] as usize];
         assert_eq!(page.name, Some("page"));
         assert!(matches!(page.parser, Some(Parser::Integer(1, i32::MAX))));
-        let x = &nodes[nodes[156].children[0] as usize];
+        let plot = &nodes[serverinfo.children[1] as usize];
+        let x = &nodes[plot.children[0] as usize];
         let z = &nodes[x.children[0] as usize];
         assert_eq!((x.name, z.name), (Some("x"), Some("z")));
         for node in [x, z] {
@@ -1835,7 +1688,7 @@ mod security_tests {
     #[test]
     fn command_declarations_have_valid_edges_and_no_legacy_tick_aliases() {
         let nodes = declared_command_nodes();
-        assert_eq!(nodes.len(), 176);
+        assert_eq!(nodes.len(), 170);
         for node in &nodes {
             for edge in node.children.iter().copied().chain(node.redirect_node) {
                 assert!(edge >= 0 && (edge as usize) < nodes.len());
@@ -1852,6 +1705,10 @@ mod security_tests {
             assert!(native_command_permission(&command, &["1"]).is_none());
             assert!(!changes_plot(&command, &["1"]));
         }
+        // Network commands are owned by the RedBox proxy and must not be declared.
+        for proxied in ["warp", "setwarp", "tp", "teleport"] {
+            assert!(!names.contains(&proxied), "declared proxied command {proxied}");
+        }
         for retained in [
             "tps",
             "adv",
@@ -1860,8 +1717,6 @@ mod security_tests {
             "redpiler",
             "rp",
             "gm",
-            "warp",
-            "setwarp",
             "serverinfo",
             "wire",
         ] {
@@ -1871,7 +1726,6 @@ mod security_tests {
         for (alias, target) in [
             ("rp", "redpiler"),
             ("gm", "gamemode"),
-            ("tp", "teleport"),
             ("/desel", "/sel"),
             ("desel", "/sel"),
             ("set", "/set"),
@@ -1897,32 +1751,6 @@ mod security_tests {
             .all(|&id| nodes[id as usize].flags & 0x04 != 0));
         assert_eq!(NO_COMMANDS.packet_id, 0x10);
     }
-    #[test]
-    fn warp_names_and_permissions_are_checked() {
-        for name in ["spawn", "CPU-1", "my_plot", &"a".repeat(32)] {
-            assert!(valid_warp_name(name));
-        }
-        for name in ["", "two words", "../spawn", "café", "'", &"a".repeat(33)] {
-            assert!(!valid_warp_name(name));
-        }
-        let nodes = declared_command_nodes();
-        for command in ["warp", "setwarp"] {
-            let node = nodes
-                .iter()
-                .find(|node| node.name == Some(command))
-                .unwrap();
-            assert_eq!(
-                nodes[node.children[0] as usize].suggestions_type,
-                Some("minecraft:ask_server")
-            );
-            assert_eq!(
-                native_command_permission(&format!("/{command}"), &["spawn"]),
-                Some(format!("commands.{command}"))
-            );
-            assert!(!changes_plot(&format!("/{command}"), &["spawn"]));
-        }
-    }
-
     #[test]
     fn advance_arguments_preserve_units_limits_and_error_messages() {
         for (args, expected) in [
@@ -2112,10 +1940,12 @@ mod security_tests {
                 nodes[id as usize].suggestions_type == Some("minecraft:ask_server")
             }));
         }
-        assert_eq!(
-            nodes[nodes[147].redirect_node.unwrap() as usize].name,
-            Some("compile")
-        );
+        assert!(nodes.iter().any(|node| {
+            node.name == Some("c")
+                && node
+                    .redirect_node
+                    .is_some_and(|target| nodes[target as usize].name == Some("compile"))
+        }));
         for (text, expected) in [
             ("/rp compile --ass", vec![]),
             ("/redpiler c --optimize --i", vec!["--io-only"]),

@@ -7,10 +7,28 @@ policy belongs to the deployment, so rank names alone do not grant actions.
 
 ## Configuration and evaluation
 
-Example configuration, with deployment-specific credentials supplied locally:
+Two sources are supported. The default is the database; `source = "redbox"`
+instead asks RedBox on the proxy to resolve the player's LuckPerms data with the
+native API and send the effective permission map plus group/prefix over the
+`redbox:main` channel. No database connection is opened and inheritance,
+wildcards, negations and dynamic contexts are handled by LuckPerms itself.
 
 ```toml
 [luckperms]
+source = "redbox" # requires redbox = true; "proxy" is an accepted alias
+server_context = "mchprs"
+world_context = "redstoneplots"
+plotsquared_compat = true
+redstonefun_ranks = true
+mchprs_permissions = true
+```
+
+The alternative reads raw nodes directly from a database and resolves inheritance
+in MROWW. Deployment-specific credentials are supplied locally:
+
+```toml
+[luckperms]
+source = "database" # default when omitted
 storage = "postgres" # "postgresql" alias, or "mysql" for MySQL/MariaDB
 host = "localhost"
 db_name = "permissions"
@@ -32,12 +50,14 @@ Legacy mode checks the original nodes and optionally the supported PlotSquared
 permission-pack mappings. Standalone behavior is defined by
 [Player::has_permission](../crates/core/src/player.rs).
 
-Evaluation supports user nodes, inherited groups, explicit denials, wildcards,
-expiry, and configured static `server`/`world` contexts. Other dynamic contexts
-are outside this reader. Matching nodes have an implementation-defined priority
-from user/group depth, specificity, and scope; a denial wins an equal-priority
-tie. The applicable cache expires after 30 seconds and stale data cannot keep
-granting access when refresh fails. This is a subset of the LuckPerms engine.
+Database evaluation supports user nodes, inherited groups, explicit denials,
+wildcards, expiry, and configured static `server`/`world` contexts. Other dynamic
+contexts are outside this reader. Matching nodes have an implementation-defined
+priority from user/group depth, specificity, and scope; a denial wins an
+equal-priority tie. The applicable cache expires after 30 seconds and stale data
+cannot keep granting access when refresh fails. This is a subset of the LuckPerms
+engine. In proxy mode LuckPerms performs that resolution and MROWW only matches the
+resulting map, so those caveats do not apply.
 
 `redstonefun_ranks` selects rank metadata and styled messages; it does not assign
 group permissions. Login identity is a UUID, not a current display name. Database
@@ -73,7 +93,7 @@ waive its plot or packet validation.
 | Command | Dedicated permission |
 | --- | --- |
 | `/help`, `/version` | `mchprs.commands.help`, `.version` |
-| `/tp`, `/warp`, `/setwarp`, `/speed` | `mchprs.commands.teleport`, `.warp`, `.setwarp`, `.speed` |
+| `/tp` (internal `--highlight` links only), `/speed` | `mchprs.commands.teleport`, `.speed` |
 | `/small [on|off]` | `mchprs.commands.small` |
 | `/gm cat` | `mchprs.commands.gamemode`, `.gamemode.creative`, and `.small` |
 | `/tps` | `mchprs.commands.rtps.view` or `.set` |
@@ -88,7 +108,11 @@ waive its plot or packet validation.
 Command spelling and permission spelling are separate: `/tps`, `/adv`, and
 `/back` retain the legacy permission-node names above. `/rtps`, `/radv`,
 `/radvance`, and `/rback` are removed command aliases. Read-only `/rp analyze`
-has its own permission and does not require plot edit access.
+has its own permission and does not require plot edit access. The network
+commands `/warp`, `/setwarp`, and `/tp` (player and coordinates) are provided by
+the RedBox proxy, not MROWW; the `commands.warp` and `commands.setwarp` nodes no
+longer exist. `/tp` remains only for the internal redstone-tool `--highlight`
+diagnostic links, which still require `mchprs.commands.teleport`.
 
 WorldEdit gates retain the `mchprs.worldedit.*` namespace for navigation,
 selection, region, clipboard, history, and analysis commands. Native additions

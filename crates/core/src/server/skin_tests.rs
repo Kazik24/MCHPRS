@@ -18,6 +18,7 @@ fn configuration_skin_settings_reach_the_player_before_the_first_spawn() {
             online_players: Default::default(),
             running_plots: Vec::new(),
             whitelist: None,
+            pending_redbox: Default::default(),
         };
         let client = &mut server.network.handshaking_clients[0];
         client.username = Some("SkinTest".into());

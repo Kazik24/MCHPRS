@@ -59,9 +59,20 @@ pub enum Message {
     PlayerLeft(u128),
     /// This message is sent to the server thread when a player goes outside of their plot.
     PlayerLeavePlot(Player),
-    /// This message is sent to the server thread when a player runs /tp <name>.
-    PlayerTeleportOther(Player, String),
-    CompletePlayerNames(PlayerPacketSender, i32, String),
+    /// The proxy asked RedBox to teleport a player to a position.
+    RedBoxTeleport {
+        uuid: u128,
+        position: crate::redbox::Position,
+    },
+    /// The proxy asked RedBox to change a player's gamemode.
+    RedBoxGamemode(u128, Gamemode),
+    /// The proxy resolved a player's effective LuckPerms data.
+    RedBoxPermissions {
+        uuid: u128,
+        group: String,
+        prefix: String,
+        permissions: Vec<(String, bool)>,
+    },
     ServerInfo {
         sender: PlayerPacketSender,
         page: usize,
@@ -108,7 +119,20 @@ pub enum BroadcastMessage {
 #[derive(Debug)]
 pub enum PrivMessage {
     PlayerEnterPlot(Player),
-    PlayerTeleportOther(Player, String),
+    /// The proxy asked RedBox to teleport a player already in this plot.
+    RedBoxTeleport {
+        uuid: u128,
+        position: crate::redbox::Position,
+    },
+    /// The proxy asked RedBox to change a player's gamemode.
+    RedBoxGamemode(u128, Gamemode),
+    /// Effective LuckPerms data resolved by the proxy for a player.
+    RedBoxPermissions {
+        uuid: u128,
+        group: String,
+        prefix: String,
+        permissions: Vec<(String, bool)>,
+    },
     Diagnostics(PlayerPacketSender, tracing::Span),
 }
 
@@ -153,6 +177,8 @@ pub struct MinecraftServer {
     online_players: FxHashMap<u128, PlayerListEntry>,
     running_plots: Vec<PlotListEntry>,
     whitelist: Option<Vec<WhitelistEntry>>,
+    /// RedBox messages that arrived before the player finished logging in.
+    pending_redbox: FxHashMap<u128, Vec<crate::redbox::Incoming>>,
 }
 
 impl MinecraftServer {
@@ -215,6 +241,7 @@ impl MinecraftServer {
             online_players: FxHashMap::default(),
             running_plots: Vec::new(),
             whitelist,
+            pending_redbox: FxHashMap::default(),
         };
 
         // Load the spawn area plot on server start
@@ -407,9 +434,33 @@ impl MinecraftServer {
         let Some(mut player) = Player::load_player(uuid, username, client.into()) else {
             return;
         };
+        // Apply any RedBox message that arrived during login, so a cross-server
+        // teleport places the player before the world is sent.
+        if let Some(messages) = self.pending_redbox.remove(&uuid) {
+            for message in messages {
+                match message {
+                    crate::redbox::Incoming::Teleport { position, .. } if position.is_valid() => {
+                        player.pos = position.player_pos();
+                        player.yaw = position.yaw;
+                        player.pitch = position.pitch;
+                    }
+                    crate::redbox::Incoming::Gamemode { mode, .. } => {
+                        if let Some(gamemode) = crate::redbox::gamemode_from_id(mode) {
+                            player.gamemode = gamemode;
+                        }
+                    }
+                    _ => {}
+                }
+            }
+        }
         player.profile_properties = properties;
         player.skin_parts = skin_parts;
-        if permissions::dedicated_permissions() && !player.has_permission("mchprs.access.join") {
+        // With the proxy permission source the cache arrives after login; the
+        // join gate runs once it is applied instead.
+        if permissions::dedicated_permissions()
+            && !player.proxy_permissions_pending()
+            && !player.has_permission("mchprs.access.join")
+        {
             player.kick(json!({"text": messages::PERMISSION_DENIED}).to_string());
             player.client.close_connection();
             return;
@@ -525,6 +576,21 @@ impl MinecraftServer {
             .unwrap();
     }
 
+    /// Routes a proxy message to the plot thread that currently owns the player.
+    fn send_to_player_plot(&self, uuid: u128, message: PrivMessage) {
+        let Some(entry) = self.online_players.get(&uuid) else {
+            return;
+        };
+        let (plot_x, plot_z) = (entry.plot_x, entry.plot_z);
+        if let Some(plot) = self
+            .running_plots
+            .iter()
+            .find(|plot| plot.plot_x == plot_x && plot.plot_z == plot_z)
+        {
+            let _ = plot.priv_message_sender.send(message);
+        }
+    }
+
     fn handle_message(&mut self, message: Message) {
         match message {
             Message::ServerInfo {
@@ -607,7 +673,7 @@ impl MinecraftServer {
             Message::PlayerLeft(uuid) => {
                 if let Some((_, player)) = self.online_players.remove_entry(&uuid) {
                     info!(player = %player.username, uuid = %format_args!("{uuid:032x}"), "Player left");
-                    if CONFIG.native_chat {
+                    if CONFIG.native_chat && !crate::redbox::enabled() {
                         self.broadcaster.broadcast(BroadcastMessage::Chat(
                             0,
                             ChatComponent::player_left(&player.username),
@@ -628,12 +694,14 @@ impl MinecraftServer {
                 let players = initial_player
                     .into_iter()
                     .chain(queued.try_iter().filter_map(|message| match message {
-                        PrivMessage::PlayerEnterPlot(player)
-                        | PrivMessage::PlayerTeleportOther(player, _) => Some(player),
+                        PrivMessage::PlayerEnterPlot(player) => Some(player),
                         PrivMessage::Diagnostics(sender, _) => {
                             sender.send_error_message("Plot failed to load");
                             None
                         }
+                        PrivMessage::RedBoxTeleport { .. }
+                        | PrivMessage::RedBoxGamemode(..)
+                        | PrivMessage::RedBoxPermissions { .. } => None,
                     }));
                 for mut player in players {
                     player.kick(json!({"text": messages::plot_load_failed(x, z)}).to_string());
@@ -670,44 +738,27 @@ impl MinecraftServer {
             Message::Shutdown => {
                 self.graceful_shutdown();
             }
-            Message::CompletePlayerNames(sender, id, text) => {
-                if let Some(response) = plot::commands::complete_teleport(
-                    id,
-                    &text,
-                    self.online_players
-                        .values()
-                        .map(|player| player.username.as_str()),
-                ) {
-                    sender.send_packet(&response.encode());
-                }
+            Message::RedBoxTeleport { uuid, position } => {
+                self.send_to_player_plot(uuid, PrivMessage::RedBoxTeleport { uuid, position });
             }
-            Message::PlayerTeleportOther(player, other_username) => {
-                let username_lower = other_username.to_lowercase();
-                if let Some((_, other_player)) = self
-                    .online_players
-                    .iter()
-                    .find(|(_, p)| p.username.to_lowercase().starts_with(&username_lower))
-                {
-                    let plot_x = other_player.plot_x;
-                    let plot_z = other_player.plot_z;
-
-                    let plot_index = self
-                        .running_plots
-                        .iter()
-                        .position(|p| p.plot_x == plot_x && p.plot_z == plot_z);
-                    if let Some(index) = plot_index {
-                        self.update_player_entry(player.uuid, plot_x, plot_z);
-                        let _ = self.running_plots[index]
-                            .priv_message_sender
-                            .send(PrivMessage::PlayerTeleportOther(player, other_username));
-                    } else {
-                        player.send_system_message(messages::TARGET_PLOT_NOT_LOADED);
-                        self.send_player_to_plot(player, false);
-                    }
-                } else {
-                    player.send_system_message(messages::PLAYER_NOT_FOUND);
-                    self.send_player_to_plot(player, false);
-                }
+            Message::RedBoxGamemode(uuid, gamemode) => {
+                self.send_to_player_plot(uuid, PrivMessage::RedBoxGamemode(uuid, gamemode));
+            }
+            Message::RedBoxPermissions {
+                uuid,
+                group,
+                prefix,
+                permissions,
+            } => {
+                self.send_to_player_plot(
+                    uuid,
+                    PrivMessage::RedBoxPermissions {
+                        uuid,
+                        group,
+                        prefix,
+                        permissions,
+                    },
+                );
             }
             Message::PlayerUpdateGamemode(uuid, gamemode) => {
                 if let Some(player) = self.online_players.get_mut(&uuid) {
@@ -793,6 +844,25 @@ impl ServerBoundPacketHandler for MinecraftServer {
     ) {
         self.network.handshaking_clients[idx].displayed_skin_parts = packet.displayed_skin_parts;
     }
+    /// RedBox may answer before the player reaches the play phase (for example a
+    /// cross-server `/warp` teleport sent on Velocity's server-connected event).
+    /// Buffer those messages and apply them when the player finishes logging in.
+    fn handle_plugin_message(
+        &mut self,
+        packet: mchprs_network::packets::serverbound::SPluginMessage,
+        idx: usize,
+    ) {
+        if packet.channel != crate::redbox::CHANNEL || !crate::redbox::enabled() {
+            return;
+        }
+        let Some(uuid) = self.network.handshaking_clients[idx].uuid else {
+            return;
+        };
+        match crate::redbox::decode(&packet.data) {
+            Ok(message) => self.pending_redbox.entry(uuid).or_default().push(message),
+            Err(error) => warn!(%error, "Rejected malformed RedBox message during login"),
+        }
+    }
     fn handle_login_plugin_response(&mut self, packet: SLoginPluginResponse, idx: usize) {
         let client = &mut self.network.handshaking_clients[idx];
         if CONFIG.velocity.is_none() || !client.forwarding_pending || packet.message_id != 0 {
@@ -809,6 +879,8 @@ impl ServerBoundPacketHandler for MinecraftServer {
             Ok(profile) => {
                 client.uuid = Some(profile.uuid);
                 client.profile_properties = profile.properties;
+                // Drop any stale RedBox message from a previous login attempt.
+                self.pending_redbox.remove(&profile.uuid);
                 self.accept_player_login(idx);
             }
             Err(error) => {

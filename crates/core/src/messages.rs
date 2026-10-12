@@ -29,12 +29,6 @@ catalog! {
         SMALL_DISABLED = "Small mode off. You're back to your normal size.";
         SMALL_NO_ROOM = "There isn't room to return to full size here. Move into an open space first.";
         HELP_SMALL = "Small mode\n/small toggles half-size movement and an animal appearance for other players.\n/small on and /small off select the mode explicitly.\n/small wolf|fox|cat|ocelot|baby changes your saved animal; ocelot is the default. Baby ocelot uses an even smaller model and hitbox.\n/gm cat enables creative play in small mode; other gamemodes restore normal size.\nYour own view stays a scaled player so the preview cannot block your clicks.\nMove into an open space before turning it off. Your mode and animal follow you between plots and are saved when you leave.";
-        USAGE_SETWARP = "Usage: /setwarp <name> (creates or replaces a shared warp)";
-        USAGE_WARP = "Usage: /warp [name] (omit the name to list shared warps)";
-        INVALID_WARP_NAME = "Warp names must be 1-32 letters, digits, underscores or hyphens.";
-        NO_WARPS = "No saved warps. Use /setwarp <name> to save your current position.";
-        WARP_STORAGE_FAILED = "Could not access saved warps. Please try again.";
-        HELP_WARPS = "Shared warps\n/setwarp <name> saves your exact position and facing direction for everyone.\nUsing an existing name replaces its destination.\n/warp <name> visits a saved destination, including on another plot.\n/warp lists destinations; Tab completes their names.\nNames are case-insensitive and use 1-32 letters, digits, underscores or hyphens.";
         USAGE_GIT_REBASE = "Usage: /git rebase <branch>";
         GIT_REBASE_NAMED_BRANCH_REQUIRED = "Name this detached trail first with /git branch <name>, then /git checkout <name> before rebasing, pup.";
         GIT_REBASE_SOURCE_BRANCH_REQUIRED = "These paws need an existing source branch. Use /git branch to sniff out its name :3";
@@ -222,7 +216,7 @@ catalog! {
         HELP_HISTORY = "Tick history\n/rhistory on [ticks] records ticks (default 100); /rhistory off clears it.\n/rhistory shows count and memory. /back [ticks] rewinds; resume with /tps 20.\nRewind clears WorldEdit undo/redo. History needs the interpreter and resets when the plot becomes empty, on compile or restart.\nOld ticks drop at the shared 2 GiB limit. Admins can use /rhistory limit <MiB>.";
         HELP_PISTONS = "Visual settings\n/visual shows this plot's settings.\n/visual pistons [auto|on|off] controls piston animation.\n/visual rate [0-1000] sets update speed; 0 stops periodic updates. Above the server TPS threshold (200 by default), updates cap at 10 Hz.\n/visual displayonly [on|off] sends only lamp updates. Block edits still happen, but may not appear to players.";
         HELP_PLOTS = "Plots\n/p auto claims an empty plot; /p claim claims the plot you're in.\n/p info shows the owner; /p middle goes to the centre.\n/p home visits your first plot; /p visit <player> [number] visits a plot.\n/p add <nick> and /p remove <nick> manage plot members.\n/p tp <x> <z> uses plot coordinates.\n/p lock and /p unlock control leaving. /p select selects the plot for WorldEdit.";
-        HELP_QUICK_START = "MROWW — Minecraft Redstone o Wysokiej Wydajności\n/p auto claims a plot.\n/help plots - Claim and visit plots.\n/help warps - Save and visit shared destinations.\n/help tps - Control and step simulation.\n/help we - WorldEdit.\n/help tools - Redstone tools.\n/help wire - Draw redstone wires.\n/help schematics - Load and save builds.\n/help visual - Set visual representation.\n/help rewind - Tick history.\n/help git - Plot commits, branches and glowing diffs.\n/help chat - Chat and command blocks.\n/help redpiler - Compiled simulation.";
+        HELP_QUICK_START = "MROWW — Minecraft Redstone o Wysokiej Wydajności\n/p auto claims a plot.\n/help plots - Claim and visit plots.\n/help tps - Control and step simulation.\n/help we - WorldEdit.\n/help tools - Redstone tools.\n/help wire - Draw redstone wires.\n/help schematics - Load and save builds.\n/help visual - Set visual representation.\n/help rewind - Tick history.\n/help git - Plot commits, branches and glowing diffs.\n/help chat - Chat and command blocks.\n/help redpiler - Compiled simulation.";
         HELP_REDPILER = "Compiled simulation\n/rp compile enables compiled mode; /rp reset returns to the interpreter.\nPiston circuits require the interpreter and cannot be compiled.\n/rp inspect checks the targeted block. /toggleautorp toggles automatic compilation.\n/rp analyze checks whether the plot can compile. It accepts the same compilation flags.\n/rp analyze --graph prepares a read-only candidate graph; optional --optimize and --io-only check optimization.\nUse /tps 0 and /adv 1 to step compiled execution. Nano/pico stepping requires /rp reset first.";
         HELP_REDSTONE_TOOLS = "Redstone tools\n//find <block> searches your selection.\n//ss <regex> searches signs; -p <page> shows more.\n//rs [direction] [count] [spacing] stacks copies; -e expands selection; -w includes air.\n/autostack [direction] [count] [spacing] [-e] automatically stacks your placements and removals in the selected region; /autostack off stops it. Leaving the plot stops it.\n/wire draws dust with a live preview; /help wire explains controls and safety limits.\n/container <type> <0..15> creates a comparator container.\n/cursel toggles the selection sidebar.";
         HELP_WIRE = "Wire pen\nHold any carrot on a stick and right-click to draw. /wire gives a named pen or resets your route.\nRight-click a block to use it as the first support, with dust directly above, or existing dust to reuse that endpoint.\nAim on the drawing plane. Right-click builds the green preview and continues from its end.\nF cycles horizontal (X/Z), vertical X (X/Y), vertical Z (Y/Z), then Free aiming. Sneak + F changes the preferred bend. The action bar shows the aiming mode.\n/wire free aims directly at blocks in any direction; /wire plane restores horizontal aiming. These commands keep your current start. F returns from Free to horizontal.\nPlanes control aiming; the router can take safe 3D detours. Vertical dust routes use staircases. Build an intermediate point, then change plane to draw in 3D.\nSneak + right-click or changing held item cancels the route. Hold the pen and right-click to start again while enabled.\n/wire off disables the pen for this login, including after item or plot changes. /wire, /wire free, or /wire plane enables it again.\nNew supports copy the starting support's passive material and color. Clicking dust samples the block below it. Active blocks or blocks with stored data fall back to glass; transparent materials may need white wool on steps.\nNo repeaters or signal-range check. Unsafe or unsupported circuit interactions are refused.\n//undo restores the last segment's geometry; it does not rewind simulation.";
@@ -323,7 +317,6 @@ catalog! {
         HISTORY_SIZE_OVERFLOW = "History size overflow.";
         IP_FORWARDING_REQUIRED = "If you wish to use IP forwarding, please enable it in your BungeeCord config as well!";
         INVALID_ARGUMENT_COUNT = "Wrong number of arguments for this command trick. Check its syntax.";
-        INVALID_NUMBER_ARGUMENTS_TELEPORT_COMMAND = "Wrong number of arguments for this teleport trick. Use /tp <player> or /tp <x> <y> <z>.";
         INVALID_REGULAR_EXPRESSION = "Invalid regular expression; that search pattern tangled the scent trail. Check its syntax.";
         INVALID_TELEPORT_COORDINATES = "Invalid teleport coordinates. Choose finite coordinates, little floof :3";
         INVALID_X_COORDINATE = "Invalid x coordinate; these paws need a number or a relative coordinate such as ~1.";
@@ -341,7 +334,6 @@ catalog! {
         PAGE_NUMBERS_START_AT = "Page numbers start at 1, pup.";
         PERFORMANCE_REASONS_PLAYER_SPEED_CANNOT_HIGHER = "Flying zoomies top out at 10 for performance reasons.";
         PERMISSION_DENIED = "These paws don't have permission to perform that action.";
-        PLAYER_NOT_FOUND = "No player on that scent trail. Check their name.";
         PLAYER_SAVE_COULD_NOT_LOADED_ASK = "Your player save could not be loaded. Ask the administrator to inspect the server log; your original file was preserved.";
         PLOT_ALREADY_CLAIMED = "Someone has already claimed this patch of turf.";
         PLOT_ALREADY_LOCKED = "You're already leashed to this plot.";
@@ -393,7 +385,6 @@ catalog! {
         SWITCH_CREATIVE_MODE_FIRST = "These building paws need creative mode first.";
         TEXT_COMPONENT_NESTING_TOO_DEEP = "This text component is nested too deeply for these paws. Reduce its nesting.";
         THAT_PLAYER_NOT_WHITELISTED_ON_SERVER = "That player isn't in the whitelist pack, so there's no entry to remove.";
-        TARGET_PLOT_NOT_LOADED = "Can't follow their trail: the target player's plot isn't loaded.";
         THERE_NOTHING_LEFT_REDO = "Redo has no later pawprints left to fetch.";
         THERE_NOTHING_LEFT_UNDO = "Undo has no earlier pawprints left to follow.";
         THERE_NO_CACHED_RESULTS_PAGINATE = "No cached search results to paginate, pup. Run a new search.";
@@ -411,7 +402,7 @@ catalog! {
         UNBALANCED_MASK_PROPERTIES = "The mask has unbalanced property brackets. Pair each [ with ] so these paws can read it.";
         UNCLOSED_SELECTOR_OPTIONS = "Missing ] after the selector options. Close that bracket tail.";
         UNKNOWN_CONTAINER_TYPE_USE_CHEST_BARREL = "Can't fetch that container type. Choose chest, barrel, hopper or furnace.";
-        UNKNOWN_GAMEMODE = "That's not a gamemode in my trick book. Choose creative (1), adventure (2), spectator (3), or cat.";
+        UNKNOWN_GAMEMODE = "That's not a gamemode in my trick book. Choose survival (0), creative (1), adventure (2), spectator (3), or cat.";
         UNKNOWN_HELP_TOPIC_USE_HELP_TOPICS = "That topic isn't in my pawbook. Use /help for topics, or //help <command> for WorldEdit.";
         USAGE_CONTAINER_CHEST_BARREL_HOPPER_FURNACE = "Fetch a powered stash with /container <chest|barrel|hopper|furnace> <0..15|a..f>.";
         USAGE_CURSEL = "Peek at your selection's pawprints with /cursel.";
@@ -439,10 +430,6 @@ catalog! {
     }
     formatted {
         small_animal(animal: impl Display) = "Small appearance set to {animal}.";
-        warp_saved(name: impl Display) = "Saved shared warp '{name}'. Visit it with /warp {name}.";
-        warp_not_found(name: impl Display) = "Warp '{name}' was not found. Use /warp to list destinations.";
-        warp_teleport(name: impl Display) = "Teleporting to warp '{name}'.";
-        warp_list(names: impl Display) = "Shared warps: {names}";
         git_rebased(branch: impl Display, source: impl Display, recovery: impl Display) = "Fetched {source}'s saved plot into {branch}'s working build. Branch tips unchanged; simulation paused. Edit, then /git commit <message> to tuck it away :3{recovery}";
         worldedit_work_limit(limit: u64) = "These WorldEdit paws can handle at most {limit} blocks.";
         advance_progress(advanced: u32, requested: u32, unit: impl Display) = "{advanced} of {requested} {unit}";
@@ -590,7 +577,6 @@ catalog! {
         stack_block_limit(max_stack_blocks: impl Display) = "This stack would exceed the {max_stack_blocks}-block limit, pup. Reduce the selection or copy count.";
         stack_copy_limit(max_copies: impl Display) = "These stacking paws can make at most {max_copies} copies per command.";
         teleport_coordinates(x: impl Display, y: impl Display, z: impl Display) = "Pouncing to ({x}, {y}, {z})!";
-        teleport_player(player: impl Display) = "Following {player}'s scent—teleporting now.";
         unknown_block(name: impl Display) = "Couldn't sniff out a block named {name}.";
         unknown_block_state(id: impl Display) = "Unknown block state ID: {id}. My sniff book has no entry for it.";
         unknown_command(command: impl Display) = "{command} isn't a command trick I know.";
