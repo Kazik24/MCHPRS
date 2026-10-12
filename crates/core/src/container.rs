@@ -101,6 +101,23 @@ pub(crate) fn eat_cake(world: &mut impl crate::world::World, pos: BlockPos) {
 }
 
 pub(crate) fn set_barrel_open(world: &mut impl crate::world::World, pos: BlockPos, open: bool) {
+    set_barrel_open_inner(world, pos, open, true);
+}
+
+pub(crate) fn set_barrel_open_without_updates(
+    world: &mut impl crate::world::World,
+    pos: BlockPos,
+    open: bool,
+) {
+    set_barrel_open_inner(world, pos, open, false);
+}
+
+fn set_barrel_open_inner(
+    world: &mut impl crate::world::World,
+    pos: BlockPos,
+    open: bool,
+    notify: bool,
+) {
     let Block::Barrel {
         facing,
         open: previous,
@@ -125,7 +142,9 @@ pub(crate) fn set_barrel_open(world: &mut impl crate::world::World, pos: BlockPo
         0.95,
         None,
     );
-    crate::redstone::update_surrounding_blocks(world, pos);
+    if notify {
+        crate::redstone::update_surrounding_blocks(world, pos);
+    }
 }
 
 /// Java chooses the largest look-vector component, including diagonal vertical views.

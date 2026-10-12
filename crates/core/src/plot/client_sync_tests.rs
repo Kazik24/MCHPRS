@@ -67,6 +67,142 @@ pub(super) fn fixture(compressed: bool) -> (Plot, TcpStream) {
     (plot, conn.peer)
 }
 
+#[test]
+fn redpiler_activation_stages_barrel_close_notifications() {
+    use mchprs_blocks::BlockFacing;
+    use mchprs_blocks::block_entities::ContainerType;
+    use mchprs_blocks::blocks::{RedstoneObserver, RedstonePiston};
+
+    let (mut plot, _peer) = fixture(false);
+    let barrel = BlockPos::new(34, 20, 32);
+    let observer = BlockPos::new(33, 20, 32);
+    plot.world.set_block(
+        barrel,
+        Block::Barrel {
+            facing: BlockFacing::North,
+            open: true,
+        },
+    );
+    plot.world.set_block(
+        observer,
+        Block::Observer {
+            observer: RedstoneObserver {
+                facing: BlockFacing::East,
+                powered: false,
+            },
+        },
+    );
+    plot.world.set_block(
+        BlockPos::new(38, 20, 32),
+        Block::Piston {
+            piston: RedstonePiston {
+                facing: BlockFacing::East,
+                sticky: false,
+                extended: false,
+            },
+        },
+    );
+    plot.players[0].open_container(barrel, &[], ContainerType::Barrel);
+
+    plot.start_redpiler(CompilerOptions::default());
+
+    assert!(plot.redpiler.is_active());
+    assert_eq!(
+        plot.redpiler.backend_kind(),
+        Some(crate::redpiler::BackendKind::Graph)
+    );
+    assert!(plot.players[0].open_container.is_none());
+    assert!(matches!(
+        plot.world.get_block(barrel),
+        Block::Barrel { open: false, .. }
+    ));
+    assert!(plot.world.scheduler().iter_entries().next().is_none());
+
+    plot.redpiler.tick();
+    plot.redpiler.tick();
+    plot.redpiler.flush(&mut plot.world);
+    assert!(matches!(
+        plot.world.get_block(observer),
+        Block::Observer { observer } if observer.powered
+    ));
+}
+
+#[test]
+fn failed_redpiler_activation_preserves_open_barrels_and_container_state() {
+    use mchprs_blocks::BlockFacing;
+    use mchprs_blocks::block_entities::ContainerType;
+
+    let (mut plot, _peer) = fixture(false);
+    let barrel = BlockPos::new(34, 20, 32);
+    plot.world.set_block(
+        barrel,
+        Block::Barrel {
+            facing: BlockFacing::North,
+            open: true,
+        },
+    );
+    plot.world.set_block(
+        BlockPos::new(36, 20, 32),
+        Block::from_name("piston").unwrap(),
+    );
+    plot.players[0].open_container(barrel, &[], ContainerType::Barrel);
+
+    plot.start_redpiler(CompilerOptions {
+        export: true,
+        ..Default::default()
+    });
+
+    assert!(!plot.redpiler.is_active());
+    assert!(plot.players[0].open_container.is_some());
+    assert!(matches!(
+        plot.world.get_block(barrel),
+        Block::Barrel { open: true, .. }
+    ));
+}
+
+#[test]
+fn pressure_plate_enter_then_leave_before_flush_releases_graph_input() {
+    use mchprs_blocks::blocks::RedstonePiston;
+
+    let (mut plot, _peer) = fixture(false);
+    let plate = BlockPos::new(34, 20, 34);
+    let outside = PlayerPos::new(33.5, 20.0, 34.5);
+    let on_plate = PlayerPos::new(34.5, 20.0, 34.5);
+    plot.world
+        .set_block(plate.offset(BlockFace::Bottom), Block::Stone {});
+    plot.world
+        .set_block(plate, Block::StonePressurePlate { powered: false });
+    plot.world.set_block(
+        BlockPos::new(38, 20, 34),
+        Block::Piston {
+            piston: RedstonePiston {
+                facing: mchprs_blocks::BlockFacing::East,
+                sticky: false,
+                extended: false,
+            },
+        },
+    );
+    plot.start_redpiler(CompilerOptions::default());
+    assert!(plot.redpiler.is_active());
+    assert_eq!(
+        plot.redpiler.backend_kind(),
+        Some(crate::redpiler::BackendKind::Graph)
+    );
+    plot.players[0].on_ground = true;
+
+    plot.players[0].pos = outside;
+    plot.on_player_move(0, outside, on_plate);
+    plot.players[0].pos = outside;
+    plot.on_player_move(0, on_plate, outside);
+
+    plot.redpiler.flush(&mut plot.world);
+    assert_eq!(
+        plot.world.get_block(plate).pressure_plate_powered(),
+        Some(false),
+        "the graph must observe release even though its displayed state was never flushed"
+    );
+}
+
 fn placement(pos: BlockPos, sequence: i32) -> SPlayerBlockPlacemnt {
     SPlayerBlockPlacemnt {
         hand: 0,

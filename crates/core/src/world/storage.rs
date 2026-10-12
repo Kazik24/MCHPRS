@@ -256,6 +256,20 @@ pub struct ChunkSection {
 }
 
 impl ChunkSection {
+    fn staging_clone(&self, chunk_x: i32, chunk_z: i32, section_y: u32) -> Self {
+        Self {
+            buffer: self.buffer.clone(),
+            block_count: self.block_count,
+            multi_block: CMultiBlockChange {
+                chunk_x,
+                chunk_z,
+                chunk_y: section_y,
+                records: Vec::new(),
+            },
+            changed_blocks: self.changed_blocks.clone(),
+        }
+    }
+
     fn get_index(x: u32, y: u32, z: u32) -> usize {
         ((y << 8) | (z << 4) | x) as usize
     }
@@ -438,6 +452,43 @@ pub struct Chunk {
 }
 
 impl Chunk {
+    pub(crate) fn staging_clone(&self) -> Self {
+        Self {
+            sections: std::array::from_fn(|index| {
+                self.sections[index].staging_clone(self.x, self.z, index as u32)
+            }),
+            x: self.x,
+            z: self.z,
+            block_entities: self.block_entities.clone(),
+            instance: CHUNK_INSTANCE.fetch_add(1, Ordering::Relaxed),
+            revision: self.revision,
+            routing_revision: self.routing_revision,
+            block_light: self.block_light.clone(),
+        }
+    }
+
+    pub(crate) fn changed_blocks(&self) -> Vec<(BlockPos, u32)> {
+        let mut changes = Vec::new();
+        for (section_y, section) in self.sections.iter().enumerate() {
+            let Some(changed) = &section.changed_blocks else {
+                continue;
+            };
+            for (index, &block) in changed.iter().enumerate() {
+                if block >= 0 {
+                    changes.push((
+                        BlockPos::new(
+                            self.x * 16 + (index & 15) as i32,
+                            section_y as i32 * 16 + ((index >> 8) & 15) as i32,
+                            self.z * 16 + ((index >> 4) & 15) as i32,
+                        ),
+                        block as u32,
+                    ));
+                }
+            }
+        }
+        changes
+    }
+
     pub(crate) fn light_arrays(&self) -> Vec<Option<Vec<u8>>> {
         std::iter::once(None)
             .chain(self.block_light.iter().cloned())

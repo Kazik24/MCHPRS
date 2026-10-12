@@ -7,6 +7,16 @@ use mchprs_network::packets::serverbound::SContainerClick;
 
 impl Plot {
     pub(super) fn close_open_container(&mut self, player: usize) {
+        self.close_open_container_inner(player, true);
+    }
+
+    pub(super) fn close_all_containers_after_redpiler(&mut self) {
+        for player in 0..self.players.len() {
+            self.close_open_container_inner(player, false);
+        }
+    }
+
+    fn close_open_container_inner(&mut self, player: usize, notify: bool) {
         if let Some((pos, ty)) = self.players[player].close_container() {
             let still_open = self.players.iter().any(|p| {
                 p.open_container
@@ -15,7 +25,11 @@ impl Plot {
             });
             if !still_open {
                 if ty == ContainerType::Barrel {
-                    container::set_barrel_open(&mut self.world, pos, false);
+                    if notify {
+                        container::set_barrel_open(&mut self.world, pos, false);
+                    } else {
+                        container::set_barrel_open_without_updates(&mut self.world, pos, false);
+                    }
                 } else if ty == ContainerType::Chest && self.world.open_chests.remove(&pos) {
                     crate::sound::play(&mut self.world, pos, "block.chest.close", 0.5, 0.95, None);
                 }

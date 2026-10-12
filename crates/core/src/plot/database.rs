@@ -531,6 +531,38 @@ pub fn init() {
 mod tests {
     use super::*;
 
+    fn set_warp_in(conn: &Connection, name: &str, warp: Warp) -> rusqlite::Result<()> {
+        conn.execute(
+            "INSERT INTO warp(name, x, y, z, yaw, pitch) VALUES(?1, ?2, ?3, ?4, ?5, ?6)
+             ON CONFLICT(name) DO UPDATE SET x=excluded.x, y=excluded.y, z=excluded.z,
+                 yaw=excluded.yaw, pitch=excluded.pitch",
+            params![
+                name, warp.pos.x, warp.pos.y, warp.pos.z, warp.yaw, warp.pitch
+            ],
+        )?;
+        Ok(())
+    }
+
+    fn get_warp_in(conn: &Connection, name: &str) -> rusqlite::Result<Option<Warp>> {
+        conn.query_row(
+            "SELECT x, y, z, yaw, pitch FROM warp WHERE name=?1",
+            [name],
+            |row| {
+                Ok(Warp {
+                    pos: PlayerPos::new(row.get(0)?, row.get(1)?, row.get(2)?),
+                    yaw: row.get(3)?,
+                    pitch: row.get(4)?,
+                })
+            },
+        )
+        .optional()
+    }
+
+    fn warp_names_in(conn: &Connection) -> rusqlite::Result<Vec<String>> {
+        let mut stmt = conn.prepare_cached("SELECT name FROM warp ORDER BY name COLLATE NOCASE")?;
+        stmt.query_map([], |row| row.get(0))?.collect()
+    }
+
     #[test]
     fn warps_survive_reopening_and_replace_names_case_insensitively() {
         let path = std::env::temp_dir().join(format!("mchprs-warps-{}.db", rand::random::<u128>()));

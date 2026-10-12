@@ -8,7 +8,7 @@ use rustc_hash::{FxHashMap, FxHashSet};
 use std::collections::BTreeMap;
 use std::time::Instant;
 
-#[derive(Default)]
+#[derive(Clone, Default)]
 pub(super) struct ScreenUpdates {
     dirty: BTreeMap<u32, FxHashSet<BlockPos>>,
     visible: FxHashMap<BlockPos, u32>,

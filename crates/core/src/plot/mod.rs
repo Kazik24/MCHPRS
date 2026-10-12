@@ -360,6 +360,31 @@ impl PlotWorld {
         (first_pos, second_pos)
     }
 
+    fn activation_snapshot(&self) -> Self {
+        let mut snapshot = Self::from_chunks(
+            self.x,
+            self.z,
+            self.chunks.iter().map(Chunk::staging_clone).collect(),
+            self.to_be_ticked.clone(),
+        );
+        snapshot.piston_state = self.piston_state.clone();
+        snapshot.is_cursed = self.is_cursed;
+        snapshot.fast_rendering = self.fast_rendering;
+        snapshot.screen_updates = self.screen_updates.clone();
+        snapshot
+    }
+
+    fn publish_activation_changes(&mut self, staged: &Self) {
+        let changes: Vec<_> = staged
+            .chunks
+            .iter()
+            .flat_map(Chunk::changed_blocks)
+            .collect();
+        for (pos, block) in changes {
+            self.set_block(pos, Block::from_id(block));
+        }
+    }
+
     pub fn get_chunks(&self) -> &[Chunk] {
         &self.chunks
     }
@@ -1214,13 +1239,21 @@ impl Plot {
         let old_block = old.block_pos();
         let new_block = new.block_pos();
 
-        if self.world.get_block(old_block).pressure_plate_powered() == Some(true)
+        if self
+            .world
+            .get_block(old_block)
+            .pressure_plate_powered()
+            .is_some()
             && !self.are_players_on_block(old_block)
         {
             self.set_pressure_plate(old_block, false);
         }
 
-        if self.world.get_block(new_block).pressure_plate_powered() == Some(false)
+        if self
+            .world
+            .get_block(new_block)
+            .pressure_plate_powered()
+            .is_some()
             && self.players[player_idx].on_ground
         {
             self.set_pressure_plate(new_block, true);
@@ -1436,12 +1469,25 @@ impl Plot {
         let bounds = self.world.get_corners();
         // TODO: use monitor
         let monitor = Default::default();
-        let ticks = self.world.to_be_ticked.iter_entries().collect();
+        let mut staged_world = self.world.activation_snapshot();
+        let open_barrels: HashSet<_> = self
+            .players
+            .iter()
+            .filter_map(|player| player.open_container.as_ref())
+            .filter(|container| {
+                container.ty == mchprs_blocks::block_entities::ContainerType::Barrel
+            })
+            .map(|container| container.pos)
+            .collect();
+        for pos in open_barrels {
+            crate::container::set_barrel_open(&mut staged_world, pos, false);
+        }
+        let ticks = staged_world.to_be_ticked.iter_entries().collect();
 
         let mut players_need_updates = HashSet::new();
         let result = thread::scope(|s| {
-            // Move an exclusive borrow: the world's RefCell caches are Send, not Sync.
-            let world = &mut self.world;
+            // Compile the post-container-close state without changing the live plot on failure.
+            let world = &mut staged_world;
             let compiler = &mut self.redpiler;
             let span = tracing::Span::current();
             let handle = s.spawn(move || {
@@ -1483,9 +1529,10 @@ impl Plot {
                         }
                     }
                 }
+                self.world.publish_activation_changes(&staged_world);
                 // Transfer scheduled work only after the complete backend exists.
                 self.world.clear_scheduled_ticks();
-                self.close_all_containers();
+                self.close_all_containers_after_redpiler();
                 if self.world.history.enabled() {
                     let bytes = self.world.history.disable();
                     self.broadcast_plot_chat_message(&messages::history_disabled_for_compilation(
