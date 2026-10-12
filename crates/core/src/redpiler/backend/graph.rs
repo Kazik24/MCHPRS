@@ -797,6 +797,9 @@ impl GraphBackend {
         let powered = self.input_strength(spec.node, InputPort::Main) > 0
             || self.input_strength(spec.node, InputPort::Quasi) > 0;
         let state = self.state.pistons[piston.index()];
+        if state.availability.base_pending() {
+            return Ok(());
+        }
         #[cfg(test)]
         self.observed_operations
             .push(GraphObservedOperation::Sample {
@@ -804,23 +807,21 @@ impl GraphBackend {
                 extended: state.extended,
                 powered,
             });
-        if state.availability == PistonAvailability::BasePending {
-            return Ok(());
-        }
         let action = match (powered, state.extended) {
             (true, false) if self.piston_lane_available(piston) => {
                 mchprs_world::PistonAction::Extend
             }
             (false, true) => {
-                if state.availability == PistonAvailability::HeadPending
-                    && self.piston_resource(piston).is_some_and(|resource| {
-                        let PistonLane::SingleResource { far } = spec.lane else {
-                            return false;
-                        };
-                        let resource = self.state.resources[resource.index()];
-                        resource.at == far && !resource.enabled
-                    })
-                {
+                if matches!(
+                    state.availability,
+                    PistonAvailability::HeadPending | PistonAvailability::PublishingHeadRemoval
+                ) && self.piston_resource(piston).is_some_and(|resource| {
+                    let PistonLane::SingleResource { far } = spec.lane else {
+                        return false;
+                    };
+                    let resource = self.state.resources[resource.index()];
+                    resource.at == far && !resource.enabled
+                }) {
                     mchprs_world::PistonAction::RetractWithoutPull
                 } else {
                     mchprs_world::PistonAction::Retract
@@ -896,9 +897,7 @@ impl GraphBackend {
             }
             mchprs_world::PistonAction::Retract
             | mchprs_world::PistonAction::RetractWithoutPull
-                if !powered
-                    && state.extended
-                    && state.availability != PistonAvailability::BasePending =>
+                if !powered && state.extended && !state.availability.base_pending() =>
             {
                 #[cfg(test)]
                 self.trace.push(format!(
@@ -999,7 +998,7 @@ impl GraphBackend {
         let revision = {
             let state = &mut self.state.pistons[piston.index()];
             state.revision = state.revision.wrapping_add(1);
-            state.availability = PistonAvailability::PublishingHeadRemoval;
+            state.availability = PistonAvailability::HeadPending;
             state.revision
         };
         let resource = match spec.lane {
@@ -1014,13 +1013,15 @@ impl GraphBackend {
             PistonLane::SingleResource { .. } | PistonLane::Empty => None,
         };
         if resource.is_some()
-            && let Some(route) = spec.routes.far_changed
+            && let Some(route) = spec.routes.far_shape_changed
         {
             self.deliver_route(route, None)?;
         }
         self.deliver_route(spec.routes.near_changed, None)?;
+        if resource.is_some() {
+            self.deliver_route(spec.routes.near_changed, None)?;
+        }
         self.state.pistons[piston.index()].extended = true;
-        self.state.pistons[piston.index()].availability = PistonAvailability::HeadPending;
         self.deliver_route(spec.routes.base_changed, None)?;
         let resource_revision = resource.map(|(_, revision)| revision);
         self.deferred_pistons.push_back(DeferredPistonEvent {
@@ -1050,15 +1051,18 @@ impl GraphBackend {
             state.availability = if interrupted_head {
                 PistonAvailability::PublishingHeadRemoval
             } else {
-                PistonAvailability::BasePending
+                PistonAvailability::BasePendingHeadPresent
             };
             state.revision
         };
         if interrupted_head {
             self.deliver_route(spec.routes.near_changed, None)?;
             self.state.pistons[piston.index()].availability = PistonAvailability::BasePending;
+            self.deliver_route(spec.routes.base_changed, None)?;
+        } else {
+            self.deliver_route(spec.routes.base_changed, None)?;
+            self.state.pistons[piston.index()].availability = PistonAvailability::BasePending;
         }
-        self.deliver_route(spec.routes.base_changed, None)?;
         let resource = match spec.lane {
             PistonLane::SingleResource { far } if without_pull => {
                 let restored = self.set_resource_contact(piston, far, true);
@@ -2413,9 +2417,18 @@ impl GraphBackend {
             if delivery.view == OperandView::Captured && observed.is_none() {
                 continue;
             }
-            let receiver = self
-                .resolve_site(delivery.target, observed)
-                .and_then(|site| site.receiver);
+            // Inert component updates still visit their no-op handler in native order.
+            let receiver = delivery.receiver.or_else(|| {
+                match (
+                    self.program.sites()[delivery.target.index()].source,
+                    delivery.kind,
+                ) {
+                    (SiteSource::Component(node), DeliveryKind::Update { .. }) => {
+                        Some(CallbackReceiver::Component(node))
+                    }
+                    _ => None,
+                }
+            });
             let Some(receiver) = receiver else { continue };
             #[cfg(test)]
             if self.has_semantic_callback(receiver) {

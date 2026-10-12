@@ -285,6 +285,16 @@ impl<W: World> Builder<'_, W> {
             } else {
                 None
             };
+            let far_shape_changed = if matches!(piston.lane, PistonLane::SingleResource { .. }) {
+                let mut events = Vec::new();
+                append_shape_changed(
+                    &mut events,
+                    self.electrical.contacts[piston.far.index()].position,
+                );
+                Some(self.compile_route(piston.node, piston.position, events)?)
+            } else {
+                None
+            };
 
             let mut base_restored = vec![Event::update(piston.position, None)];
             append_notify(&mut base_restored, piston.position);
@@ -309,6 +319,7 @@ impl<W: World> Builder<'_, W> {
                 base_changed: self.compile_route(piston.node, piston.position, base_changed)?,
                 near_changed: self.compile_route(piston.node, piston.position, near_changed)?,
                 far_changed,
+                far_shape_changed,
                 base_restored: self.compile_route(piston.node, piston.position, base_restored)?,
                 head_restored: self.compile_route(piston.node, piston.position, head_restored)?,
                 resource_restored_near,
@@ -790,6 +801,22 @@ fn wire_shape_events(position: BlockPos) -> Vec<Event> {
 }
 
 fn append_notify(events: &mut Vec<Event>, position: BlockPos) {
+    append_shape_changed(events, position);
+    redstone::piston::neighbor_notifications(position, |target, direction| {
+        events.push(Event {
+            position: target,
+            kind: DeliveryKind::Update {
+                direction: Some(direction),
+            },
+            filter: Filter::ExcludeObservers,
+            condition: None,
+            solid_at: None,
+            view: OperandView::Live,
+        });
+    });
+}
+
+fn append_shape_changed(events: &mut Vec<Event>, position: BlockPos) {
     redstone::piston::shape_notifications(position, |target, direction| {
         events.push(Event::shape(target, direction));
         events.push(Event {
@@ -798,18 +825,6 @@ fn append_notify(events: &mut Vec<Event>, position: BlockPos) {
                 direction: Some(direction.opposite()),
             },
             filter: Filter::ObserversOnly,
-            condition: None,
-            solid_at: None,
-            view: OperandView::Live,
-        });
-    });
-    redstone::piston::neighbor_notifications(position, |target, direction| {
-        events.push(Event {
-            position: target,
-            kind: DeliveryKind::Update {
-                direction: Some(direction),
-            },
-            filter: Filter::ExcludeObservers,
             condition: None,
             solid_at: None,
             view: OperandView::Live,

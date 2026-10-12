@@ -3,7 +3,7 @@ use super::*;
 use crate::plot::PlotWorld;
 use crate::redstone;
 use crate::redstone::instant_piston_tests::capture_at;
-use crate::world::{storage::Chunk, World};
+use crate::world::{World, storage::Chunk};
 use mchprs_blocks::block_entities::BlockEntity;
 use mchprs_blocks::blocks::{
     Block, Lever, LeverFace, RedstoneObserver, RedstonePiston, RedstonePistonHead,
@@ -545,18 +545,17 @@ fn graph_notify(
     position: BlockPos,
     direction: Option<BlockFace>,
 ) -> Result<(), GraphExecutionError> {
-    let receiver = backend
+    let site = backend
         .program
         .sites()
         .iter()
         .enumerate()
         .filter(|(_, site)| site.position == position)
-        .find_map(|(index, _)| {
-            backend
-                .resolve_site(SiteId::new(index as u32), None)?
-                .receiver
-        });
-    match receiver {
+        .find_map(|(index, _)| backend.resolve_site(SiteId::new(index as u32), None));
+    let Some(site) = site.filter(|site| redstone::has_neighbor_update(site.block)) else {
+        return Ok(());
+    };
+    match site.receiver {
         Some(CallbackReceiver::Component(node)) => {
             let receiver = CallbackReceiver::Component(node);
             if backend.has_semantic_callback(receiver) {
@@ -605,6 +604,9 @@ fn native_channels(world: &PlotWorld, base: BlockPos, facing: BlockFace) -> (u8,
 
 fn native_availability(world: &PlotWorld, fixture: &Fixture) -> PistonAvailability {
     if matches!(world.get_block(fixture.base), Block::MovingPiston { .. }) {
+        if matches!(world.get_block(fixture.near), Block::PistonHead { .. }) {
+            return PistonAvailability::BasePendingHeadPresent;
+        }
         return PistonAvailability::BasePending;
     }
     if matches!(world.get_block(fixture.near), Block::MovingPiston { .. }) {
@@ -710,6 +712,20 @@ fn graph_block(backend: &GraphBackend, position: BlockPos) -> Block {
             },
         };
     }
+    if let Some((index, _)) = backend
+        .program
+        .sites()
+        .iter()
+        .enumerate()
+        .find(|(_, site)| {
+            site.position == position && matches!(site.source, SiteSource::Contact(_))
+        })
+    {
+        return backend
+            .resolve_site(SiteId::new(index as u32), None)
+            .map(|site| site.block)
+            .unwrap_or(Block::Air);
+    }
     if let Some(&node) = backend.positions.get(&position) {
         return backend.node_block(node);
     }
@@ -736,7 +752,7 @@ fn native_cell(world: &PlotWorld, position: BlockPos) -> Block {
 
 fn graph_cell(backend: &GraphBackend, fixture: &Fixture, position: BlockPos) -> Block {
     let (_, state) = graph_piston(backend, fixture.base);
-    if position == fixture.base && state.availability == PistonAvailability::BasePending {
+    if position == fixture.base && state.availability.base_pending() {
         return Block::Air;
     }
     if position == fixture.near && state.availability == PistonAvailability::HeadPending {
@@ -867,11 +883,6 @@ fn graph_deadlines(backend: &GraphBackend, fixture: &Fixture) -> Vec<Deadline> {
                 kind: DeadlineKind::Base,
                 due_tick: event.due_tick,
             });
-            deadlines.push(Deadline {
-                position: near,
-                kind: DeadlineKind::Head,
-                due_tick: event.due_tick,
-            });
             if event.resource_revision.is_some() {
                 deadlines.push(Deadline {
                     position: near,
@@ -999,7 +1010,7 @@ fn observe_graph(
         action,
         normal_strength: backend.input_strength(spec.node, InputPort::Main),
         quasi_strength: backend.input_strength(spec.node, InputPort::Quasi),
-        pose: (state.availability != PistonAvailability::BasePending).then_some(state.extended),
+        pose: (!state.availability.base_pending()).then_some(state.extended),
         availability: state.availability,
         cells: [
             fixture.base,
@@ -1463,6 +1474,84 @@ fn isolated_piston_baselines_match_interpreter() {
     );
 }
 
+fn assert_replay_matches_interpreter(template: Template, protocol: Protocol) {
+    let result = replay(template, &protocol).expect("fixture should compile and replay");
+    assert_eq!(
+        result.divergence, None,
+        "{}: {}",
+        protocol.id, result.descriptor
+    );
+}
+
+#[test]
+fn extension_publication_does_not_resample_the_installing_head() {
+    let template = Template {
+        form: ActorForm::StickyEmpty,
+        facing: BlockFacing::North,
+        extended: false,
+    };
+    let protocol = protocols()
+        .into_iter()
+        .find(|protocol| protocol.id == "pulse_one")
+        .unwrap();
+
+    assert_replay_matches_interpreter(template, protocol);
+}
+
+#[test]
+fn settled_retraction_notifies_the_present_head_before_removal() {
+    let template = Template {
+        form: ActorForm::StickyEmpty,
+        facing: BlockFacing::North,
+        extended: true,
+    };
+    let protocol = Protocol {
+        id: "settled_retraction",
+        actions: vec![
+            set(Input::Normal, true, Delivery::NormalUse),
+            set(Input::Normal, false, Delivery::NormalUse),
+            tick(1),
+        ],
+    };
+
+    assert_replay_matches_interpreter(template, protocol);
+}
+
+#[test]
+fn moving_base_updates_do_not_dispatch_as_stationary_piston_samples() {
+    let template = Template {
+        form: ActorForm::StickyEmpty,
+        facing: BlockFacing::North,
+        extended: true,
+    };
+    let protocol = Protocol {
+        id: "moving_base_update",
+        actions: vec![
+            set(Input::Normal, true, Delivery::NormalUse),
+            set(Input::Normal, false, Delivery::NormalUse),
+            tick(1),
+            notify(NotifyTarget::Base),
+        ],
+    };
+
+    assert_replay_matches_interpreter(template, protocol);
+}
+
+#[test]
+fn payload_extension_preserves_native_near_notification_order() {
+    let template = Template {
+        form: ActorForm::StickyRedstone,
+        facing: BlockFacing::North,
+        extended: false,
+    };
+    let protocol = Protocol {
+        id: "payload_extension",
+        actions: vec![set(Input::Normal, true, Delivery::NormalUse), tick(1)],
+    };
+
+    assert_replay_matches_interpreter(template, protocol);
+}
+
 #[test]
 fn dropped_payload_reuse_keeps_far_resource_live() {
     let mut divergences = Vec::new();
@@ -1506,10 +1595,12 @@ fn dropped_payload_reuse_keeps_far_resource_live() {
             native.piston_state().events.back(),
             Some(event) if event.action == PistonAction::RetractWithoutPull
         ));
-        assert!(backend
-            .piston_requests
-            .iter()
-            .any(|request| { request.action == PistonAction::RetractWithoutPull }));
+        assert!(
+            backend
+                .piston_requests
+                .iter()
+                .any(|request| { request.action == PistonAction::RetractWithoutPull })
+        );
         for _ in 0..6 {
             native.tick_interpreted();
             backend.tick().unwrap();
@@ -1539,15 +1630,19 @@ fn dropped_payload_reuse_keeps_far_resource_live() {
         backend.use_block(fixture.normal).unwrap();
         let expected_input = native_operations(&native_input, &fixture.watched);
         let actual_input = graph_operations_since(&backend, input_start, &fixture.watched);
-        assert!(native
-            .piston_state()
-            .events
-            .iter()
-            .any(|event| { event.action == PistonAction::Extend }));
-        assert!(backend
-            .piston_requests
-            .iter()
-            .any(|request| request.action == PistonAction::Extend));
+        assert!(
+            native
+                .piston_state()
+                .events
+                .iter()
+                .any(|event| { event.action == PistonAction::Extend })
+        );
+        assert!(
+            backend
+                .piston_requests
+                .iter()
+                .any(|request| request.action == PistonAction::Extend)
+        );
         if expected_input != actual_input && failure.is_none() {
             failure = Some(format!(
                 "{form:?} re-extension input operations differ: native={expected_input:?}, graph={actual_input:?}"

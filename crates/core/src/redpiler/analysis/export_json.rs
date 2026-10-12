@@ -1405,6 +1405,7 @@ fn piston_availability(value: PistonAvailability) -> &'static str {
         PistonAvailability::Ready => "ready",
         PistonAvailability::HeadPending => "head_pending",
         PistonAvailability::PublishingHeadRemoval => "publishing_head_removal",
+        PistonAvailability::BasePendingHeadPresent => "base_pending_head_present",
         PistonAvailability::BasePending => "base_pending",
     }
 }

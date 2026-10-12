@@ -171,6 +171,7 @@ pub(crate) enum GeometryView {
     Air,
     PistonBase { piston: PistonId, extended: bool },
     MovingPistonBase(PistonId),
+    MovingPistonHead(PistonId),
     PistonHead(PistonId),
     Resource(ResourceId),
 }
@@ -890,6 +891,12 @@ fn build_draft<W: World>(
         let head = Block::PistonHead {
             head: actor.piston.into(),
         };
+        add_variant(
+            &mut variants,
+            actor.near,
+            GeometryView::MovingPistonHead(actor.id),
+            profile(moving),
+        );
         add_variant(
             &mut variants,
             actor.near,

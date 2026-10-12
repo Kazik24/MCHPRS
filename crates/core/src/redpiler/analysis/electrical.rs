@@ -349,6 +349,7 @@ pub(crate) fn prepare_electrical(
                     | GeometryView::MovingPistonBase(piston) => {
                         Some(CallbackReceiver::PistonBase(piston))
                     }
+                    GeometryView::MovingPistonHead(_) => None,
                     GeometryView::PistonHead(piston) => Some(CallbackReceiver::PistonHead(piston)),
                     GeometryView::Fixed => component_at
                         .get(&contact.position)
@@ -1035,15 +1036,26 @@ fn variant_guard(
         }
         GeometryView::PistonHead(piston) => {
             let extended = push_guard(guards, Guard::State(StateTest::PistonExtended(piston)));
-            let ready = push_guard(
-                guards,
-                Guard::State(StateTest::PistonAvailability {
-                    piston,
-                    is: crate::redpiler::program_graph::PistonAvailability::Ready,
-                }),
-            );
-            join_guards(guards, &[extended, ready])
+            let available = [
+                crate::redpiler::program_graph::PistonAvailability::Ready,
+                crate::redpiler::program_graph::PistonAvailability::BasePendingHeadPresent,
+            ]
+            .map(|is| {
+                push_guard(
+                    guards,
+                    Guard::State(StateTest::PistonAvailability { piston, is }),
+                )
+            });
+            let available = any_guards(guards, &available);
+            join_guards(guards, &[extended, available])
         }
+        GeometryView::MovingPistonHead(piston) => push_guard(
+            guards,
+            Guard::State(StateTest::PistonAvailability {
+                piston,
+                is: crate::redpiler::program_graph::PistonAvailability::HeadPending,
+            }),
+        ),
         GeometryView::MovingPistonBase(piston) => moving_base_guard(guards, piston),
         GeometryView::Resource(resource) => {
             let at = push_guard(
@@ -1070,15 +1082,26 @@ fn variant_guard(
                     GeometryView::PistonHead(piston) => {
                         let extended =
                             push_guard(guards, Guard::State(StateTest::PistonExtended(piston)));
-                        let ready = push_guard(
-                            guards,
-                            Guard::State(StateTest::PistonAvailability {
-                                piston,
-                                is: crate::redpiler::program_graph::PistonAvailability::Ready,
-                            }),
-                        );
-                        join_guards(guards, &[extended, ready])
+                        let available = [
+                            crate::redpiler::program_graph::PistonAvailability::Ready,
+                            crate::redpiler::program_graph::PistonAvailability::BasePendingHeadPresent,
+                        ]
+                        .map(|is| {
+                            push_guard(
+                                guards,
+                                Guard::State(StateTest::PistonAvailability { piston, is }),
+                            )
+                        });
+                        let available = any_guards(guards, &available);
+                        join_guards(guards, &[extended, available])
                     }
+                    GeometryView::MovingPistonHead(piston) => push_guard(
+                        guards,
+                        Guard::State(StateTest::PistonAvailability {
+                            piston,
+                            is: crate::redpiler::program_graph::PistonAvailability::HeadPending,
+                        }),
+                    ),
                     GeometryView::Resource(resource) => {
                         let at = push_guard(
                             guards,
@@ -1128,13 +1151,17 @@ fn moving_base_guard(
     guards: &mut Vec<Guard>,
     piston: crate::redpiler::program_graph::PistonId,
 ) -> GuardId {
-    push_guard(
-        guards,
-        Guard::State(StateTest::PistonAvailability {
-            piston,
-            is: crate::redpiler::program_graph::PistonAvailability::BasePending,
-        }),
-    )
+    let availability = [
+        crate::redpiler::program_graph::PistonAvailability::BasePendingHeadPresent,
+        crate::redpiler::program_graph::PistonAvailability::BasePending,
+    ]
+    .map(|is| {
+        push_guard(
+            guards,
+            Guard::State(StateTest::PistonAvailability { piston, is }),
+        )
+    });
+    any_guards(guards, &availability)
 }
 
 fn push_guard(guards: &mut Vec<Guard>, guard: Guard) -> GuardId {

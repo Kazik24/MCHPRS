@@ -259,6 +259,7 @@ fn single_resource_contact_guards_partition_legal_stationary_states() {
         for availability in [
             PistonAvailability::HeadPending,
             PistonAvailability::PublishingHeadRemoval,
+            PistonAvailability::BasePendingHeadPresent,
             PistonAvailability::BasePending,
         ] {
             let mut pistons = geometry.draft.initial_pistons.clone();

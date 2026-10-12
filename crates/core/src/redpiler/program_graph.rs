@@ -231,6 +231,7 @@ pub(crate) struct PistonRoutes {
     pub(crate) base_changed: RouteId,
     pub(crate) near_changed: RouteId,
     pub(crate) far_changed: Option<RouteId>,
+    pub(crate) far_shape_changed: Option<RouteId>,
     pub(crate) base_restored: RouteId,
     pub(crate) head_restored: RouteId,
     pub(crate) resource_restored_near: Option<RouteId>,
@@ -253,7 +254,14 @@ pub(crate) enum PistonAvailability {
     Ready,
     HeadPending,
     PublishingHeadRemoval,
+    BasePendingHeadPresent,
     BasePending,
+}
+
+impl PistonAvailability {
+    pub(crate) fn base_pending(self) -> bool {
+        matches!(self, Self::BasePendingHeadPresent | Self::BasePending)
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -910,6 +918,7 @@ impl CircuitDraft {
             Some(routes.base_changed),
             Some(routes.near_changed),
             routes.far_changed,
+            routes.far_shape_changed,
             Some(routes.base_restored),
             Some(routes.head_restored),
             routes.resource_restored_near,
@@ -1769,6 +1778,7 @@ mod tests {
                     base_changed: route,
                     near_changed: route,
                     far_changed: None,
+                    far_shape_changed: None,
                     base_restored: route,
                     head_restored: route,
                     resource_restored_near: None,

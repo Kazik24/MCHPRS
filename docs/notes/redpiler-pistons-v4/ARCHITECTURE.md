@@ -298,8 +298,9 @@ struct PistonState { // This stores the compact logical state needed for actuato
 
 enum PistonAvailability { // This describes contact publication state without physical progress.
     Ready,                 // This enables base sampling and derives head forwarding from the pose.
-    HeadPending,           // This permits base sampling while head forwarding awaits publication.
+    HeadPending,           // This keeps the moving head contact occupied while the base remains sampleable.
     PublishingHeadRemoval, // This exposes a removed head while nested callbacks still see a sampleable base.
+    BasePendingHeadPresent,// This disables base sampling while retaining the stationary head for its callback.
     BasePending,           // This disables base sampling and head forwarding until base restoration.
 }
 
@@ -307,6 +308,7 @@ struct PistonRoutes { // This binds actuator operations to their ordered callbac
     base_changed: RouteId,              // This references notifications published when the base contact changes.
     near_changed: RouteId,              // This references notifications published when the Near contact changes.
     far_changed: Option<RouteId>,       // This references optional notifications for changes at the resource's Far contact.
+    far_shape_changed: Option<RouteId>, // This references shape-only Far notifications during extension.
     base_restored: RouteId,             // This references notifications and rechecks for base restoration.
     head_restored: RouteId,             // This references head notifications without a native self-recheck.
     resource_restored_near: Option<RouteId>, // This references a resource self-recheck and notifications at Near.
@@ -342,7 +344,7 @@ struct DeferredEvent { // This schedules one logical connection publication.
 }
 ```
 
-The pose bit and availability describe graph eligibility. Ready enables base sampling and lets head forwarding follow the pose. HeadPending keeps base sampling while head forwarding is unavailable. BasePending disables base sampling and removes head forwarding. Contact facts are derived from this state; no independent head/base flags are needed initially.
+The pose bit and availability describe graph eligibility. Ready enables base sampling and lets head forwarding follow the pose. HeadPending keeps the near contact occupied by the moving head while base callbacks remain sampleable. BasePendingHeadPresent selects a moving base while retaining the stationary head during the base notification. BasePending disables both base sampling and head forwarding after that head is removed. Contact facts are derived from this state; no independent head/base flags are needed.
 
 PublishingHeadRemoval is a transient publication state required by a concrete reference sequence: retraction interrupts an unavailable head and notifies its removal while the base is still extended and sampleable, before making the base unavailable. Nested callbacks must see that view. It cannot be a stationary entry state and does not survive the completed synchronous action. Similarly, extension notifications preceding the late pose write see the old pose. These distinctions are ordered graph publication, not physical movement stages.
 

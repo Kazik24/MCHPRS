@@ -190,6 +190,15 @@ Let $f$ be the live base facing, $h=p+f$, and $r=p+2f$. Let $f_c$ be the event's
 
 A nonsticky base does not pull. RetractWithoutPull suppresses the ordinary stationary-payload pull branch. The pull branch has no separate full extension-scan validation and does not reject every block excluded by Minecraft's general piston rules.
 
+Graph parity coverage for these notification boundaries lives in
+[`graph_fuzz_tests.rs`](../crates/core/src/redpiler/backend/graph_fuzz_tests.rs):
+`settled_retraction_notifies_the_present_head_before_removal`,
+`moving_base_updates_do_not_dispatch_as_stationary_piston_samples`, and
+`isolated_piston_baselines_match_interpreter`. Extension publication and
+payload notification order are covered by
+`extension_publication_does_not_resample_the_installing_head` and
+`payload_extension_preserves_native_near_notification_order` in the same file.
+
 ### 3.5 Movement snapshot and identity
 
 After all currently queued piston events are consumed, the game tick snapshots

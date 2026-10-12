@@ -357,6 +357,37 @@ fn piston_route_separates_shape_observer_and_power_notifications() {
 }
 
 #[test]
+fn piston_extension_far_route_contains_only_shape_notifications() {
+    let mut world = empty();
+    world.set_block(BASE, piston_block(BlockFace::East, true, false));
+    world.set_block(BASE.offset(BlockFace::East), Block::RedstoneBlock {});
+    let (_, electrical, callbacks) = prepare_callbacks_for(&world);
+    let piston = callbacks.pistons[0];
+    let shape_route = &callbacks.routes[piston.routes.far_shape_changed.unwrap().index()];
+    let notify_route = &callbacks.routes[piston.routes.far_changed.unwrap().index()];
+
+    assert!(!shape_route.deliveries.is_empty());
+    assert!(
+        shape_route
+            .deliveries
+            .iter()
+            .all(|delivery| matches!(delivery.kind, DeliveryKind::Shape { .. }))
+    );
+    assert!(
+        notify_route
+            .deliveries
+            .iter()
+            .any(|delivery| matches!(delivery.kind, DeliveryKind::Update { .. }))
+    );
+    assert!(
+        electrical
+            .sites
+            .iter()
+            .any(|site| site.position == BASE.offset(BlockFace::East).offset(BlockFace::East))
+    );
+}
+
+#[test]
 fn restoration_routes_match_native_head_and_resource_completions() {
     let mut head_world = empty();
     head_world.set_block(BASE, piston_block(BlockFace::East, false, false));
