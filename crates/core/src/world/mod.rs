@@ -203,6 +203,25 @@ pub fn for_each_block_mut_optimized<F, W: World>(
     }
 }
 
+pub(crate) fn try_for_each_block_optimized<E>(
+    world: &impl World,
+    first: BlockPos,
+    last: BlockPos,
+    mut visit: impl FnMut(BlockPos) -> Result<(), E>,
+) -> Result<(), E> {
+    for (first, last) in section_bounds(first, last) {
+        if !section_has_blocks(world, first) { continue; }
+        for y in first.y..=last.y {
+            for z in first.z..=last.z {
+                for x in first.x..=last.x {
+                    visit(BlockPos::new(x, y, z))?;
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
 /// Intersect the selection with each aligned section, including partial sections.
 fn section_bounds(
     first_pos: BlockPos,

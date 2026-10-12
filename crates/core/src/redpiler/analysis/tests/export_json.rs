@@ -1,7 +1,12 @@
 use super::*;
 use crate::redpiler::analysis::export_json as adapter;
+use crate::world::{BlockAction, World};
+use mchprs_blocks::BlockPos;
+use mchprs_blocks::block_entities::{BlockEntity, ContainerType};
 use mchprs_blocks::blocks::{Block, ComparatorMode, Lever, LeverFace, RedstoneComparator};
+use mchprs_world::TickPriority;
 use serde_json::Value;
+use std::cell::Cell;
 
 fn exported(world: &PlotWorld) -> adapter::GraphExport {
     let ticks = world.scheduler().iter_entries().collect::<Vec<_>>();
@@ -13,6 +18,219 @@ fn exported(world: &PlotWorld) -> adapter::GraphExport {
         AnalysisLimits::default(),
     )
     .unwrap()
+}
+
+struct CancelAtReadWorld<'a> {
+    inner: PlotWorld,
+    monitor: &'a TaskMonitor,
+    cancel_on_read: usize,
+    raw_reads: Cell<usize>,
+    reads_after_cancel: Cell<usize>,
+}
+
+impl World for CancelAtReadWorld<'_> {
+    fn get_block_raw(&self, pos: BlockPos) -> u32 {
+        let reads = self.raw_reads.get() + 1;
+        self.raw_reads.set(reads);
+        if reads == self.cancel_on_read {
+            self.monitor.cancel();
+        }
+        if self.monitor.cancelled() {
+            self.reads_after_cancel
+                .set(self.reads_after_cancel.get() + 1);
+        }
+        self.inner.get_block_raw(pos)
+    }
+
+    fn set_block_raw(&mut self, pos: BlockPos, block: u32) -> bool {
+        self.inner.set_block_raw(pos, block)
+    }
+
+    fn delete_block_entity(&mut self, pos: BlockPos) {
+        self.inner.delete_block_entity(pos);
+    }
+
+    fn get_block_entity(&self, pos: BlockPos) -> Option<&BlockEntity> {
+        self.inner.get_block_entity(pos)
+    }
+
+    fn get_block_entity_mut(&mut self, pos: BlockPos) -> Option<&mut BlockEntity> {
+        self.inner.get_block_entity_mut(pos)
+    }
+
+    fn piston_state(&self) -> &mchprs_world::PistonState {
+        self.inner.piston_state()
+    }
+
+    fn piston_state_mut(&mut self) -> &mut mchprs_world::PistonState {
+        self.inner.piston_state_mut()
+    }
+
+    fn set_block_entity(&mut self, pos: BlockPos, entity: BlockEntity) {
+        self.inner.set_block_entity(pos, entity);
+    }
+
+    fn get_chunk(&self, x: i32, z: i32) -> Option<&crate::world::storage::Chunk> {
+        self.inner.get_chunk(x, z)
+    }
+
+    fn get_chunk_mut(&mut self, x: i32, z: i32) -> Option<&mut crate::world::storage::Chunk> {
+        self.inner.get_chunk_mut(x, z)
+    }
+
+    fn schedule_tick(&mut self, pos: BlockPos, delay: u32, priority: TickPriority) {
+        self.inner.schedule_tick(pos, delay, priority);
+    }
+
+    fn schedule_half_tick(&mut self, pos: BlockPos, delay: u32, priority: TickPriority) {
+        self.inner.schedule_half_tick(pos, delay, priority);
+    }
+
+    fn pending_tick_at(&mut self, pos: BlockPos) -> bool {
+        self.inner.pending_tick_at(pos)
+    }
+
+    fn block_action(&mut self, pos: BlockPos, action: BlockAction) {
+        self.inner.block_action(pos, action);
+    }
+
+    fn play_sound(&mut self, pos: BlockPos, id: i32, category: i32, volume: f32, pitch: f32) {
+        self.inner.play_sound(pos, id, category, volume, pitch);
+    }
+
+    fn container_opened(&mut self, pos: BlockPos, kind: ContainerType) {
+        self.inner.container_opened(pos, kind);
+    }
+}
+
+#[test]
+fn electrical_preparation_stops_after_cancellation_and_export_reports_it() {
+    let mut inner = PlotWorld::from_chunks(
+        0,
+        0,
+        vec![crate::world::storage::Chunk::empty(0, 0)],
+        Default::default(),
+    );
+    inner.set_block(BlockPos::new(1, 20, 1), Block::RedstoneLamp { lit: false });
+    let monitor = TaskMonitor::default();
+    let world = CancelAtReadWorld {
+        inner,
+        monitor: &monitor,
+        // Geometry inspects the occupied 16x16x16 section before electrical preparation starts.
+        cancel_on_read: 4_097,
+        raw_reads: Cell::new(0),
+        reads_after_cancel: Cell::new(0),
+    };
+    let bounds = (BlockPos::new(0, 16, 0), BlockPos::new(15, 31, 15));
+
+    let directory = std::env::temp_dir().join(format!(
+        "mchprs-redpiler-cancel-{}-{:?}",
+        std::process::id(),
+        std::thread::current().id()
+    ));
+    std::fs::create_dir_all(&directory).unwrap();
+    let result = adapter::prepare_and_write(
+        &world,
+        bounds,
+        &[],
+        &monitor,
+        AnalysisLimits::default(),
+        &directory,
+        0,
+        0,
+    );
+    let cancelled = result
+        .as_ref()
+        .err()
+        .is_some_and(|error| error.code == "cancelled");
+    let published_files = std::fs::read_dir(&directory).unwrap().count();
+    std::fs::remove_dir_all(&directory).unwrap();
+
+    assert!(
+        cancelled,
+        "cancelled preparation must not publish an export"
+    );
+    assert_eq!(published_files, 0);
+    assert!(world.reads_after_cancel.get() < 64);
+}
+
+#[test]
+fn electrical_graph_expansion_obeys_the_preparation_budget() {
+    let mut world = PlotWorld::from_chunks(
+        0,
+        0,
+        vec![crate::world::storage::Chunk::empty(0, 0)],
+        Default::default(),
+    );
+    let lamp = BlockPos::new(5, 20, 5);
+    world.set_block(lamp, Block::RedstoneLamp { lit: false });
+
+    let result = adapter::prepare(
+        &world,
+        (lamp, lamp),
+        &[],
+        &TaskMonitor::default(),
+        AnalysisLimits {
+            max_cells: 1,
+            ..Default::default()
+        },
+    );
+
+    assert!(
+        result.is_err(),
+        "the expanded electrical graph exceeds one cell of preparation budget"
+    );
+}
+
+#[test]
+fn callback_preparation_stops_reading_after_cancellation() {
+    let bounds = (BlockPos::new(0, 0, 0), BlockPos::new(15, 31, 15));
+    let mut inner = PlotWorld::from_chunks(
+        0,
+        0,
+        vec![crate::world::storage::Chunk::empty(0, 0)],
+        Default::default(),
+    );
+    for index in 0..6 {
+        let lever = BlockPos::new(1 + index * 2, 20, 2);
+        inner.set_block(
+            lever.offset(mchprs_blocks::BlockFace::Bottom),
+            Block::Stone {},
+        );
+        inner.set_block(
+            lever,
+            Block::Lever {
+                lever: Lever::new(LeverFace::Floor, Default::default(), false),
+            },
+        );
+        inner.set_block(
+            lever.offset(mchprs_blocks::BlockFace::East),
+            Block::RedstoneLamp { lit: false },
+        );
+    }
+    let preparation_monitor = TaskMonitor::default();
+    let geometry = super::super::geometry::prepare_geometry(
+        &inner,
+        bounds,
+        &[],
+        &preparation_monitor,
+        AnalysisLimits::default(),
+    )
+    .unwrap();
+    let mut electrical =
+        super::super::electrical::prepare_electrical(&inner, bounds, &geometry.draft).unwrap();
+    let monitor = TaskMonitor::default();
+    let world = CancelAtReadWorld {
+        inner,
+        monitor: &monitor,
+        cancel_on_read: 1,
+        raw_reads: Cell::new(0),
+        reads_after_cancel: Cell::new(0),
+    };
+
+    let _ = super::super::callbacks::prepare_callbacks(&world, &geometry.draft, &mut electrical);
+
+    assert!(world.reads_after_cancel.get() < world.raw_reads.get() / 2);
 }
 
 #[test]

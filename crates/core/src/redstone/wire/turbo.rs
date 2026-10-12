@@ -114,12 +114,6 @@ struct Neighborhood {
 }
 
 impl RedstoneWireTurbo {
-    // Internal numbering for cardinal directions
-    const NORTH: usize = 0;
-    const EAST: usize = 1;
-    const SOUTH: usize = 2;
-    const WEST: usize = 3;
-
     fn new() -> RedstoneWireTurbo {
         RedstoneWireTurbo {
             nodes: Vec::new(),
@@ -135,22 +129,6 @@ impl RedstoneWireTurbo {
 
     fn get_node(&self, node_id: NodeId) -> &UpdateNode {
         &self.nodes[node_id.index()]
-    }
-
-    fn compute_heading(rx: i32, rz: i32) -> usize {
-        let code = (rx + 1) + 3 * (rz + 1);
-        match code {
-            0 => Self::NORTH,
-            1 => Self::NORTH,
-            2 => Self::EAST,
-            3 => Self::WEST,
-            4 => Self::WEST,
-            5 => Self::EAST,
-            6 => Self::SOUTH,
-            7 => Self::SOUTH,
-            8 => Self::SOUTH,
-            _ => unreachable!(),
-        }
     }
 
     // const UPDATE_REDSTONE: [bool; 24] = [
@@ -210,7 +188,7 @@ impl RedstoneWireTurbo {
 
         let heading;
         if cx == 0 && cz == 0 {
-            heading = Self::compute_heading(xbias, zbias);
+            heading = super::compute_heading(xbias, zbias);
 
             for node_id in &neighbor_nodes {
                 // if let Some(node_id) = node_id {
@@ -228,7 +206,7 @@ impl RedstoneWireTurbo {
                     cx = 0;
                 }
             }
-            heading = Self::compute_heading(cx, cz);
+            heading = super::compute_heading(cx, cz);
 
             for node_id in &neighbor_nodes {
                 // if let Some(node_id) = node_id {

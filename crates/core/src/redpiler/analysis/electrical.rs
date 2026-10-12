@@ -1,6 +1,8 @@
 //! Read-only power-channel discovery over the stationary geometry draft.
 #![allow(dead_code)] // Step 05 assembles this power plan with callback routes before graph activation.
 use super::geometry::{GeometryDraft, GeometryView};
+use super::{AnalysisError, PreparationBudget};
+use crate::redpiler::TaskMonitor;
 use crate::plot::PLOT_BLOCK_HEIGHT;
 use crate::redpiler::compile_graph::{NodeState, NodeType};
 use crate::redpiler::passes::identify_block;
@@ -11,14 +13,15 @@ use crate::redpiler::program_graph::{
 };
 pub(crate) use crate::redpiler::program_graph::{ComparatorInputPlan, ComparatorOverride};
 use crate::redstone::{comparator, power};
-use crate::world::{World, for_each_block_optimized, wire_cache};
+use crate::world::{World, try_for_each_block_optimized, wire_cache};
 use mchprs_blocks::blocks::Block;
 use mchprs_blocks::{BlockFace, BlockPos};
 use rustc_hash::{FxHashMap, FxHashSet};
 use std::fmt;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum ElectricalError {
+    Preparation(AnalysisError),
     DynamicComparatorOverrideNotInventoried {
         comparator: BlockPos,
         source: BlockPos,
@@ -28,6 +31,7 @@ pub(crate) enum ElectricalError {
 impl fmt::Display for ElectricalError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            Self::Preparation(error) => error.fmt(f),
             Self::DynamicComparatorOverrideNotInventoried { comparator, source } => write!(
                 f,
                 "comparator at {comparator:?} has dynamic override source at {source:?} outside the compiled electrical inventory"
@@ -37,6 +41,10 @@ impl fmt::Display for ElectricalError {
 }
 
 impl std::error::Error for ElectricalError {}
+
+impl From<AnalysisError> for ElectricalError {
+    fn from(error: AnalysisError) -> Self { Self::Preparation(error) }
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum ElectricalTarget {
@@ -73,6 +81,7 @@ pub(crate) struct WireRelation {
 
 #[derive(Debug, Clone)]
 pub(crate) struct ElectricalDraft {
+    pub(crate) remaining_cells: usize,
     pub(crate) nodes: Vec<CircuitNodeDraft>,
     pub(crate) profiles: Vec<Profile>,
     pub(crate) guards: Vec<Guard>,
@@ -121,14 +130,18 @@ pub(crate) fn prepare_electrical(
     world: &impl World,
     bounds: (BlockPos, BlockPos),
     geometry: &GeometryDraft,
+    monitor: &TaskMonitor,
 ) -> Result<ElectricalDraft, ElectricalError> {
+    let mut budget = PreparationBudget::new(monitor, geometry.remaining_cells);
     let bounds = (bounds.0.min(bounds.1), bounds.0.max(bounds.1));
     let mut block_positions = Vec::new();
-    for_each_block_optimized(world, bounds.0, bounds.1, |position| {
+    try_for_each_block_optimized(world, bounds.0, bounds.1, |position| {
+        budget.consume(1)?;
         if block_at(world, position) != Block::Air {
             block_positions.push(position);
         }
-    });
+        budget.check()
+    })?;
     block_positions.sort_by_key(|p| (p.y, p.z, p.x));
     block_positions.dedup();
 
@@ -142,6 +155,7 @@ pub(crate) fn prepare_electrical(
     let mut component_at = FxHashMap::default();
     let mut nodes = geometry.nodes.clone();
     for &position in &block_positions {
+        budget.consume(1)?;
         let block = block_at(world, position);
         let Some((ty, state)) = identify_block(block, position, world) else {
             continue;
@@ -156,6 +170,7 @@ pub(crate) fn prepare_electrical(
             block,
         });
         // Specialized nodes receive their site-backed plans after sites are interned below.
+        budget.consume(1)?;
         nodes.push(CircuitNodeDraft {
             position: Some(position),
             raw_state: Some(block.get_id()),
@@ -167,12 +182,15 @@ pub(crate) fn prepare_electrical(
 
     let mut positions: FxHashSet<BlockPos> = block_positions.iter().copied().collect();
     for contact in &geometry.contacts {
+        budget.check()?;
         positions.insert(contact.position);
     }
     for observation in &geometry.observations {
+        budget.check()?;
         positions.insert(observation.position);
     }
     for component in &components {
+        budget.check()?;
         for face in BlockFace::values() {
             let adjacent = component.position.offset(face);
             positions.insert(adjacent);
@@ -182,6 +200,7 @@ pub(crate) fn prepare_electrical(
         }
     }
     for piston in &geometry.pistons {
+        budget.check()?;
         for center in [piston.position, piston.position.offset(BlockFace::Top)] {
             positions.insert(center);
             for face in BlockFace::values() {
@@ -198,15 +217,18 @@ pub(crate) fn prepare_electrical(
         .filter_map(|component| matches!(component.ty, NodeType::Wire).then_some(component.clone()))
         .collect();
     for wire in &wires {
+        budget.check()?;
         for neighbor in wire_cache::positions(wire.position) {
             positions.insert(neighbor);
         }
     }
     let mut positions: Vec<_> = positions.into_iter().collect();
+    budget.consume(positions.len())?;
     positions.sort_by_key(|p| (p.y, p.z, p.x));
 
     let mut profiles = geometry.profiles.clone();
     for profile in &mut profiles {
+        budget.check()?;
         let block = Block::from_id(profile.raw_state);
         profile.electrical = if matches!(block, Block::RedstoneBlock) {
             ProfileElectrical::RedstoneSource
@@ -253,6 +275,7 @@ pub(crate) fn prepare_electrical(
     let mut sites = Vec::with_capacity(positions.len());
     let mut site_at = FxHashMap::default();
     for position in positions {
+        budget.consume(1)?;
         let site = SiteId::new(sites.len() as u32);
         let block = block_at(world, position);
         let source = if let Some((contact, _)) = contact_at.get(&position) {
@@ -273,6 +296,7 @@ pub(crate) fn prepare_electrical(
 
     let mut wire_plans = Vec::new();
     for wire in &wires {
+        budget.consume(1)?;
         let mut canonical_neighbors = [SiteId::new(0); 24];
         for (index, neighbor) in wire_cache::positions(wire.position).into_iter().enumerate() {
             canonical_neighbors[index] = site(neighbor);
@@ -292,6 +316,7 @@ pub(crate) fn prepare_electrical(
         });
     }
     for component in &components {
+        budget.check()?;
         if let NodeType::Observer { watched } = component.ty {
             let Block::Observer { observer } = component.block else {
                 unreachable!();
@@ -307,6 +332,8 @@ pub(crate) fn prepare_electrical(
     let mut contacts = Vec::with_capacity(geometry.contacts.len());
     let mut contact_guards = FxHashMap::default();
     for (index, contact) in geometry.contacts.iter().enumerate() {
+        budget.check()?;
+        let previous_guards = guard_table.len();
         let id = ContactId::new(index as u32);
         let variants = contact
             .variants
@@ -335,6 +362,7 @@ pub(crate) fn prepare_electrical(
             })
             .collect::<Vec<_>>()
             .into_boxed_slice();
+        budget.consume(variants.len() + guard_table.len() - previous_guards)?;
         contacts.push(ContactSpec {
             node: contact.node,
             position: contact.position,
@@ -344,13 +372,17 @@ pub(crate) fn prepare_electrical(
 
     let mut links = Vec::new();
     let mut wire_relations = Vec::new();
-    compile_wire_relations(&wires, &site, &mut guard_table, &mut wire_relations);
+    compile_wire_relations(&wires, &site, &mut guard_table, &mut wire_relations, &mut budget)?;
     for component in &components {
+        budget.check()?;
         let mut roots = consumer_roots(component.block, component.position, world);
         if matches!(component.ty, NodeType::Wire) {
             roots = wire_power_roots(component.position);
         }
         for root in roots {
+            budget.check()?;
+            let previous_links = links.len();
+            let previous_guards = guard_table.len();
             compile_root(
                 world,
                 geometry,
@@ -364,11 +396,13 @@ pub(crate) fn prepare_electrical(
                 &mut guard_table,
                 &mut links,
             );
+            budget.consume(links.len() - previous_links + guard_table.len() - previous_guards)?;
         }
     }
 
     let mut comparators = Vec::new();
     for component in &components {
+        budget.check()?;
         let Block::RedstoneComparator { comparator: state } = component.block else {
             continue;
         };
@@ -421,6 +455,7 @@ pub(crate) fn prepare_electrical(
         } else {
             None
         };
+        budget.consume(1)?;
         comparators.push(ComparatorInputPlan {
             node: component.node,
             rear: site(rear_pos),
@@ -432,9 +467,13 @@ pub(crate) fn prepare_electrical(
 
     // Geometry piston ports intentionally remain independent; a QC link is only a sampled input.
     for piston in &geometry.pistons {
+        budget.check()?;
         let normal = piston_power_roots(piston.position, piston.facing, false);
         let quasi = piston_power_roots(piston.position, piston.facing, true);
         for root in normal.into_iter().chain(quasi) {
+            budget.check()?;
+            let previous_links = links.len();
+            let previous_guards = guard_table.len();
             compile_root(
                 world,
                 geometry,
@@ -448,10 +487,13 @@ pub(crate) fn prepare_electrical(
                 &mut guard_table,
                 &mut links,
             );
+            budget.consume(links.len() - previous_links + guard_table.len() - previous_guards)?;
         }
     }
 
     // Direct comparator overrides replace rear power and therefore have no Main power link.
+    let overridden_inputs: FxHashSet<_> = comparators.iter()
+        .filter(|plan| plan.direct_override.is_some()).map(|plan| plan.node).collect();
     links.retain(|link| {
         let ElectricalTarget::Input {
             node,
@@ -460,12 +502,11 @@ pub(crate) fn prepare_electrical(
         else {
             return true;
         };
-        !comparators
-            .iter()
-            .any(|plan| plan.node == node && plan.direct_override.is_some())
+        !overridden_inputs.contains(&node)
     });
 
     Ok(ElectricalDraft {
+        remaining_cells: budget.remaining,
         nodes,
         profiles,
         guards: guard_table,
@@ -854,8 +895,12 @@ fn compile_wire_relations(
     site_for: &impl Fn(BlockPos) -> SiteId,
     guards: &mut Vec<Guard>,
     relations: &mut Vec<WireRelation>,
-) {
+    budget: &mut PreparationBudget<'_>,
+) -> Result<(), AnalysisError> {
     for wire in wires {
+        budget.check()?;
+        let previous_guards = guards.len();
+        let previous_relations = relations.len();
         let above = push_guard(
             guards,
             Guard::Site {
@@ -943,7 +988,9 @@ fn compile_wire_relations(
                 guard: descent,
             });
         }
+        budget.consume(guards.len() - previous_guards + relations.len() - previous_relations)?;
     }
+    Ok(())
 }
 
 fn variant_guard(

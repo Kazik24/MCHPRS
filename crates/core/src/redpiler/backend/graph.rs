@@ -10,10 +10,12 @@ use crate::redpiler::compile_graph::{NodeState, NodeType};
 use crate::redpiler::program_graph::*;
 use crate::world::World;
 use mchprs_blocks::block_entities::BlockEntity;
-use mchprs_blocks::blocks::{Block, ComparatorMode, RedstoneWireSide};
+use mchprs_blocks::blocks::{Block, ComparatorMode, RedstoneWire, RedstoneWireSide};
 use mchprs_blocks::{BlockFace, BlockPos};
 use mchprs_world::{TickEntry, TickPriority};
 use rustc_hash::FxHashMap;
+#[cfg(test)]
+use std::cell::Cell;
 use std::fmt;
 use std::sync::Arc;
 
@@ -25,6 +27,13 @@ pub(crate) enum GraphBackendError {
     Graph(GraphBuildError),
     MissingBlockState {
         node: NodeId,
+    },
+    MissingComponentSite {
+        node: NodeId,
+    },
+    IncompleteWireNeighborhood {
+        node: NodeId,
+        position: BlockPos,
     },
     TickOutsideScheduler {
         delay: u32,
@@ -54,6 +63,18 @@ impl fmt::Display for GraphBackendError {
                     node.index()
                 )
             }
+            Self::MissingComponentSite { node } => {
+                write!(
+                    f,
+                    "wire node {} has no compiled component site",
+                    node.index()
+                )
+            }
+            Self::IncompleteWireNeighborhood { node, position } => write!(
+                f,
+                "wire node {} is missing compiled query site at {position:?}",
+                node.index()
+            ),
             Self::TickOutsideScheduler { delay } => write!(
                 f,
                 "imported tick delay {delay} exceeds the graph scheduler ring"
@@ -141,6 +162,9 @@ struct ResolvedSite {
     receiver: Option<CallbackReceiver>,
     block: Block,
     properties: ObservedProperties,
+    solid: bool,
+    transparent: bool,
+    cube: bool,
 }
 
 impl ResolvedSite {
@@ -157,6 +181,7 @@ pub(crate) struct GraphBackend {
     program: CircuitProgram,
     state: CircuitState,
     positions: FxHashMap<BlockPos, NodeId>,
+    component_sites: Vec<Option<SiteId>>,
     scheduler: TickScheduler<ScheduledNodeTick>,
     pending: FxHashMap<ScheduledNodeTick, usize>,
     clock: Clock,
@@ -168,6 +193,8 @@ pub(crate) struct GraphBackend {
     callback_order: Vec<(BlockPos, DeliveryKind)>,
     #[cfg(test)]
     comparator_updates: Vec<BlockPos>,
+    #[cfg(test)]
+    power_links_examined: Cell<usize>,
 }
 
 impl GraphBackend {
@@ -244,7 +271,6 @@ impl GraphBackend {
                 CircuitNodeKind::Electrical(NodeType::CommandBlock { .. }) => Some("command block"),
                 CircuitNodeKind::Electrical(NodeType::NoteBlock { .. }) => Some("note block"),
                 CircuitNodeKind::Electrical(NodeType::Trapdoor) => Some("trapdoor"),
-                CircuitNodeKind::Wire(_) => Some("redstone wire"),
                 CircuitNodeKind::Piston(_) => Some("piston transition"),
                 _ => None,
             };
@@ -264,6 +290,7 @@ impl GraphBackend {
         logical_tick: u64,
     ) -> Result<Self, GraphBackendError> {
         let mut positions = FxHashMap::default();
+        let mut component_sites = vec![None; program.nodes().len()];
         for (index, node) in program.nodes().iter().enumerate() {
             let id = NodeId::try_from_index(index).expect("graph node count was validated");
             if matches!(
@@ -280,6 +307,34 @@ impl GraphBackend {
                 }
             }
         }
+        for (index, site) in program.sites().iter().enumerate() {
+            if let SiteSource::Component(node) = site.source {
+                component_sites[node.index()] = Some(SiteId::new(index as u32));
+            }
+        }
+        for wire in program.wires() {
+            let Some(root_site) = component_sites[wire.node.index()] else {
+                return Err(GraphBackendError::MissingComponentSite { node: wire.node });
+            };
+            let position = program.nodes()[wire.node.index()]
+                .position
+                .expect("wire nodes have positions");
+            if program.sites()[root_site.index()].position != position {
+                return Err(GraphBackendError::MissingComponentSite { node: wire.node });
+            }
+            for (site, expected) in wire
+                .canonical_neighbors
+                .iter()
+                .zip(crate::world::wire_cache::positions(position))
+            {
+                if program.sites()[site.index()].position != expected {
+                    return Err(GraphBackendError::IncompleteWireNeighborhood {
+                        node: wire.node,
+                        position: expected,
+                    });
+                }
+            }
+        }
         // Imported component flags are descriptive only; scheduler membership owns pending work.
         for component in &mut state.components {
             if let ComponentState::Electrical(electrical) = component {
@@ -291,6 +346,7 @@ impl GraphBackend {
             program,
             state,
             positions,
+            component_sites,
             scheduler: TickScheduler::default(),
             pending: FxHashMap::default(),
             clock: Clock {
@@ -306,6 +362,8 @@ impl GraphBackend {
             callback_order: Vec::new(),
             #[cfg(test)]
             comparator_updates: Vec::new(),
+            #[cfg(test)]
+            power_links_examined: Cell::new(0),
         })
     }
 
@@ -356,7 +414,7 @@ impl GraphBackend {
     }
 
     fn registry_type(&self, node: NodeId) -> u32 {
-        Block::from_id(self.program.nodes()[node.index()].raw_state.unwrap()).registry_id()
+        self.program.nodes()[node.index()].block.unwrap().registry_id()
     }
 
     fn schedule(&mut self, node: NodeId, delay: usize, priority: TickPriority) {
@@ -494,6 +552,7 @@ impl GraphBackend {
 
     fn tick_component(&mut self, node: NodeId) -> Result<(), GraphExecutionError> {
         match self.program.nodes()[node.index()].kind.clone() {
+            CircuitNodeKind::Wire(_) => Ok(()),
             CircuitNodeKind::Observer { .. } => self.tick_observer(node),
             CircuitNodeKind::Electrical(NodeType::Torch) => self.tick_torch(node),
             CircuitNodeKind::Electrical(NodeType::Repeater { delay, .. }) => {
@@ -531,7 +590,6 @@ impl GraphBackend {
             CircuitNodeKind::Electrical(NodeType::Trapdoor) => {
                 Err(self.unsupported(node, "trapdoor"))
             }
-            CircuitNodeKind::Wire(_) => Err(self.unsupported(node, "redstone wire")),
             CircuitNodeKind::Piston(_) => Err(GraphExecutionError::UnsupportedPistonWork),
             CircuitNodeKind::Contact(_) => Ok(()),
         }
@@ -543,8 +601,18 @@ impl GraphBackend {
         kind: DeliveryKind,
         captured: Option<&ObservedSite>,
     ) -> Result<(), GraphExecutionError> {
-        let DeliveryKind::Update { direction } = kind else {
-            return Ok(());
+        let direction = match kind {
+            DeliveryKind::Update { direction } => direction,
+            DeliveryKind::Shape { direction } => {
+                return if matches!(
+                    self.program.nodes()[node.index()].kind,
+                    CircuitNodeKind::Wire(_)
+                ) {
+                    self.update_wire_shape(node, direction, captured)
+                } else {
+                    Ok(())
+                };
+            }
         };
         #[cfg(test)]
         self.callback_order.push((self.position(node), kind));
@@ -559,7 +627,7 @@ impl GraphBackend {
             }
             CircuitNodeKind::Electrical(NodeType::Lamp) => self.update_lamp(node, captured),
             CircuitNodeKind::Electrical(NodeType::CopperBulb) => self.update_bulb(node),
-            CircuitNodeKind::Wire(_) => Err(self.unsupported(node, "redstone wire")),
+            CircuitNodeKind::Wire(_) => self.evaluate_seed(node, captured),
             CircuitNodeKind::Electrical(NodeType::CommandBlock { .. }) => {
                 Err(self.unsupported(node, "command block"))
             }
@@ -578,6 +646,503 @@ impl GraphBackend {
             CircuitNodeKind::Electrical(NodeType::Observer { .. } | NodeType::Wire) => {
                 Err(self.unsupported(node, "invalid generic observer or wire"))
             }
+        }
+    }
+
+    fn wire_plan(&self, node: NodeId) -> &WirePlan {
+        let CircuitNodeKind::Wire(index) = &self.program.nodes()[node.index()].kind else {
+            unreachable!("wire handler received a non-wire node");
+        };
+        &self.program.wires()[*index]
+    }
+
+    fn wire_state(&self, node: NodeId) -> RedstoneWire {
+        match &self.state.components[node.index()] {
+            ComponentState::Wire(wire) => *wire,
+            _ => unreachable!("wire node has non-wire state"),
+        }
+    }
+
+    fn set_wire(&mut self, node: NodeId, wire: RedstoneWire) {
+        let ComponentState::Wire(current) = &mut self.state.components[node.index()] else {
+            unreachable!("wire node has non-wire state");
+        };
+        if *current == wire {
+            return;
+        }
+        #[cfg(test)]
+        let old = *current;
+        *current = wire;
+        self.dirty[node.index()] = true;
+        #[cfg(test)]
+        self.trace
+            .push(format!("wire state {node:?} {old:?} -> {wire:?}"));
+    }
+
+    fn update_wire_shape(
+        &mut self,
+        node: NodeId,
+        direction: BlockFace,
+        captured: Option<&ObservedSite>,
+    ) -> Result<(), GraphExecutionError> {
+        let wire = captured
+            .and_then(|site| match site.properties {
+                ObservedProperties::Wire(wire) => Some(wire),
+                _ => None,
+            })
+            .unwrap_or_else(|| self.wire_state(node));
+        let plan = self.wire_plan(node).clone();
+        let raw = self.raw_wire_sides(&plan, wire);
+        let updated = crate::redstone::wire::on_neighbor_changed_from(wire, raw, direction);
+        if updated != wire {
+            self.set_wire(node, updated);
+            if let Some(route) = plan.shape_route {
+                self.deliver_route(route, None)?;
+            }
+        }
+        Ok(())
+    }
+
+    fn evaluate_seed(
+        &mut self,
+        node: NodeId,
+        captured: Option<&ObservedSite>,
+    ) -> Result<(), GraphExecutionError> {
+        let mut wire = captured
+            .and_then(|site| match site.properties {
+                ObservedProperties::Wire(wire) => Some(wire),
+                _ => None,
+            })
+            .unwrap_or_else(|| self.wire_state(node));
+        let plan = self.wire_plan(node).clone();
+        #[cfg(test)]
+        let (power, block_power, wire_power) = self.seed_power(&plan);
+        #[cfg(not(test))]
+        let (power, _, _) = self.seed_power(&plan);
+        #[cfg(test)]
+        self.trace.push(format!(
+            "wire seed {node:?} operands=live-sites/live-strong block={block_power} wire={wire_power} power {} -> {power}",
+            wire.power,
+        ));
+        if wire.power == power {
+            return Ok(());
+        }
+        wire.power = power;
+        self.set_wire(node, wire);
+        self.evaluate_turbo_wire(node)
+    }
+
+    fn seed_power(&self, plan: &WirePlan) -> (u8, u8, u8) {
+        let up_solid = self.live_site(plan.canonical_neighbors[3]).solid;
+        let mut block_power = 0;
+        let mut wire_power = 0;
+        for face in BlockFace::values() {
+            let (index, above, below) = match face {
+                BlockFace::Top => (3, None, None),
+                BlockFace::Bottom => (2, None, None),
+                BlockFace::North => (4, Some(20), Some(17)),
+                BlockFace::South => (5, Some(21), Some(18)),
+                BlockFace::East => (1, Some(13), Some(12)),
+                BlockFace::West => (0, Some(8), Some(7)),
+            };
+            let site = plan.canonical_neighbors[index];
+            let neighbor = self.live_site(site);
+            block_power = block_power.max(self.power_no_dust(site, face, None));
+            if let Block::RedstoneWire { wire } = neighbor.block {
+                wire_power = wire_power.max(wire.power);
+            }
+            if let (Some(above), Some(below)) = (above, below) {
+                if !up_solid && !neighbor.transparent {
+                    if let Block::RedstoneWire { wire } =
+                        self.site_block(plan.canonical_neighbors[above])
+                    {
+                        wire_power = wire_power.max(wire.power);
+                    }
+                }
+                if !neighbor.solid {
+                    if let Block::RedstoneWire { wire } =
+                        self.site_block(plan.canonical_neighbors[below])
+                    {
+                        wire_power = wire_power.max(wire.power);
+                    }
+                }
+            }
+        }
+        (
+            block_power.max(wire_power.saturating_sub(1)),
+            block_power,
+            wire_power,
+        )
+    }
+
+    fn site_block(&self, site: SiteId) -> Block {
+        self.live_site(site).block
+    }
+
+    fn live_site(&self, site: SiteId) -> ResolvedSite {
+        self.resolve_site(site, None)
+            .expect("wire query site was validated during preparation")
+    }
+
+    fn raw_wire_sides(&self, plan: &WirePlan, wire: RedstoneWire) -> RedstoneWire {
+        let neighbors = plan.canonical_neighbors.map(|site| self.site_block(site));
+        crate::redstone::wire::get_raw_sides_from_neighbors(wire, &neighbors)
+    }
+
+    fn site_source_strength(&self, site: SiteId, resolved: &ResolvedSite) -> u8 {
+        if let Some(CallbackReceiver::Component(node)) = resolved.receiver {
+            if matches!(
+                self.program.nodes()[node.index()].kind,
+                CircuitNodeKind::Electrical(NodeType::Comparator { .. })
+            ) {
+                return self.node_state(node).output_strength;
+            }
+        }
+        if matches!(self.program.sites()[site.index()].source, SiteSource::Contact(_)) {
+            return self.contact_or_boundary_strength(site, resolved);
+        }
+        match resolved.block {
+            Block::RedstoneTorch { lit: true } | Block::RedstoneWallTorch { lit: true, .. } => 15,
+            Block::RedstoneBlock => 15,
+            Block::StonePressurePlate { powered: true } => 15,
+            block if block.pressure_plate_powered() == Some(true) => 15,
+            Block::Lever { lever } if lever.powered => 15,
+            Block::StoneButton { button } if button.powered => 15,
+            Block::RedstoneRepeater { repeater } if repeater.powered => 15,
+            Block::RedstoneComparator { .. } => self.program.sites()[site.index()].source_strength,
+            Block::RedstoneWire { wire } => wire.power,
+            Block::Observer { observer } if observer.powered => 15,
+            _ if resolved.receiver.is_none() => self.program.sites()[site.index()].source_strength,
+            _ => 0,
+        }
+    }
+
+    fn power_no_dust(
+        &self,
+        site: SiteId,
+        face: BlockFace,
+        captured_emitter: Option<&ObservedSite>,
+    ) -> u8 {
+        let resolved = self
+            .resolve_site(site, captured_emitter)
+            .expect("wire query site was validated during preparation");
+        if resolved.solid {
+            return self.strong_power_at(site);
+        }
+        if matches!(resolved.block, Block::RedstoneWire { .. }) {
+            return 0;
+        }
+        let strength = self.site_source_strength(site, &resolved);
+        if strength > 0 && emits_weak(resolved.block, face) {
+            strength
+        } else {
+            0
+        }
+    }
+
+    fn strong_power_at(&self, site: SiteId) -> u8 {
+        self.conducted_power(site, false)
+    }
+
+    fn capture_walk_site(&mut self, walk: &mut WireWalk, site: SiteId) {
+        if walk.sites.contains_key(&site) {
+            return;
+        }
+        let observed = self
+            .resolve_site(site, None)
+            .expect("wire traversal site was validated during preparation")
+            .observed();
+        #[cfg(test)]
+        self.trace.push(format!(
+            "wire discover {:?} receiver={:?} properties={:?}",
+            self.program.sites()[site.index()].position,
+            observed.receiver,
+            observed.properties
+        ));
+        walk.sites.insert(
+            site,
+            WalkSite {
+                observed,
+                visited: false,
+                x_bias: 0,
+                z_bias: 0,
+                layer: 0,
+                heading: None,
+            },
+        );
+    }
+
+    fn identify_wire_neighbors(&mut self, node: NodeId, walk: &mut WireWalk) -> [SiteId; 24] {
+        let plan = self.wire_plan(node).clone();
+        let root = self.component_sites[node.index()]
+            .expect("wire root site was validated during preparation");
+        self.capture_walk_site(walk, root);
+        if let Some(heading) = walk.sites[&root].heading {
+            return crate::redstone::wire::TURBO_ORDER[heading as usize]
+                .map(|index| plan.canonical_neighbors[index]);
+        }
+        for site in plan.canonical_neighbors {
+            self.capture_walk_site(walk, site);
+        }
+
+        let visited = plan
+            .canonical_neighbors
+            .map(|site| walk.sites[&site].visited);
+        let from_west = visited[0] || visited[7] || visited[8];
+        let from_east = visited[1] || visited[12] || visited[13];
+        let from_north = visited[4] || visited[17] || visited[20];
+        let from_south = visited[5] || visited[18] || visited[21];
+        let mut x_bias = i32::from(from_west) - i32::from(from_east);
+        let mut z_bias = i32::from(from_north) - i32::from(from_south);
+        let (old_x_bias, old_z_bias) = {
+            let root = &walk.sites[&root];
+            (root.x_bias, root.z_bias)
+        };
+        let heading = if x_bias == 0 && z_bias == 0 {
+            x_bias = old_x_bias;
+            z_bias = old_z_bias;
+            crate::redstone::wire::compute_heading(x_bias, z_bias)
+        } else {
+            if x_bias != 0 && z_bias != 0 {
+                if old_x_bias != 0 {
+                    z_bias = 0;
+                }
+                if old_z_bias != 0 {
+                    x_bias = 0;
+                }
+            }
+            crate::redstone::wire::compute_heading(x_bias, z_bias)
+        };
+        for site in plan.canonical_neighbors {
+            let neighbor = walk.sites.get_mut(&site).unwrap();
+            neighbor.x_bias = x_bias;
+            neighbor.z_bias = z_bias;
+        }
+        walk.sites.get_mut(&root).unwrap().heading = Some(heading as u8);
+        #[cfg(test)]
+        self.trace.push(format!(
+            "wire heading {node:?} bias=({x_bias},{z_bias}) order={heading}"
+        ));
+        crate::redstone::wire::TURBO_ORDER[heading].map(|index| plan.canonical_neighbors[index])
+    }
+
+    fn wire_route_delivery(
+        &self,
+        route: RouteId,
+        target: SiteId,
+        observed: &ObservedSite,
+    ) -> Option<RouteDelivery> {
+        self.program.routes()[route.index()]
+            .deliveries
+            .iter()
+            .copied()
+            .find(|delivery| {
+                delivery.target == target
+                    && delivery.receiver.is_some()
+                    && delivery.view == OperandView::Captured
+                    && self.guard_matches_for_site(delivery.guard, target, observed)
+            })
+    }
+
+    fn propagate_wire_changes(&mut self, node: NodeId, walk: &mut WireWalk, layer: u32) {
+        let plan = self.wire_plan(node).clone();
+        let Some(route) = plan.turbo_route else {
+            return;
+        };
+        let ordered = self.identify_wire_neighbors(node, walk);
+        for &site in &ordered {
+            let next_layer = layer + 1;
+            let changed = {
+                let neighbor = walk.sites.get_mut(&site).unwrap();
+                if next_layer > neighbor.layer {
+                    neighbor.layer = next_layer;
+                    true
+                } else {
+                    false
+                }
+            };
+            if changed
+                && self
+                    .wire_route_delivery(route, site, &walk.sites[&site].observed)
+                    .is_some()
+            {
+                walk.queues[1].push_back(site);
+            }
+        }
+        for &site in &ordered[..4] {
+            let next_layer = layer + 2;
+            let changed = {
+                let neighbor = walk.sites.get_mut(&site).unwrap();
+                if next_layer > neighbor.layer {
+                    neighbor.layer = next_layer;
+                    true
+                } else {
+                    false
+                }
+            };
+            if changed
+                && self
+                    .wire_route_delivery(route, site, &walk.sites[&site].observed)
+                    .is_some()
+            {
+                walk.queues[2].push_back(site);
+            }
+        }
+    }
+
+    fn shift_wire_queues(&self, walk: &mut WireWalk) {
+        walk.queues.rotate_left(1);
+        walk.queues[2].clear();
+    }
+
+    fn evaluate_turbo_wire(&mut self, node: NodeId) -> Result<(), GraphExecutionError> {
+        let root = self.component_sites[node.index()]
+            .expect("wire root site was validated during preparation");
+        let mut walk = WireWalk::new();
+        self.capture_walk_site(&mut walk, root);
+        walk.sites.get_mut(&root).unwrap().visited = true;
+        #[cfg(test)]
+        self.trace.push(format!("wire turbo start {node:?}"));
+        self.propagate_wire_changes(node, &mut walk, 0);
+        self.shift_wire_queues(&mut walk);
+        walk.layer = 1;
+        while !walk.queues[0].is_empty() || !walk.queues[1].is_empty() {
+            let count = walk.queues[0].len();
+            for _ in 0..count {
+                let site = walk.queues[0].pop_front().unwrap();
+                self.dispatch_turbo_site(site, &mut walk)?;
+            }
+            self.shift_wire_queues(&mut walk);
+            walk.layer += 1;
+        }
+        #[cfg(test)]
+        self.trace.push(format!("wire turbo end {node:?}"));
+        Ok(())
+    }
+
+    fn dispatch_turbo_site(
+        &mut self,
+        site: SiteId,
+        walk: &mut WireWalk,
+    ) -> Result<(), GraphExecutionError> {
+        let observed = walk.sites[&site].observed.clone();
+        let Some(receiver) = observed.receiver else {
+            return Ok(());
+        };
+        #[cfg(test)]
+        self.trace.push(format!(
+            "wire deliver {:?} layer={} Update {{ direction: None }} receiver={receiver:?}",
+            self.program.sites()[site.index()].position,
+            walk.layer
+        ));
+        match receiver {
+            CallbackReceiver::Component(node)
+                if matches!(
+                    self.program.nodes()[node.index()].kind,
+                    CircuitNodeKind::Wire(_)
+                ) =>
+            {
+                self.evaluate_turbo_wire_node(node, walk)
+            }
+            CallbackReceiver::Component(node) => self.update_component(
+                node,
+                DeliveryKind::Update { direction: None },
+                Some(&observed),
+            ),
+            CallbackReceiver::PistonBase(_) | CallbackReceiver::PistonHead(_) => {
+                Err(GraphExecutionError::UnsupportedPistonWork)
+            }
+            CallbackReceiver::Contact(_) => Ok(()),
+        }
+    }
+
+    fn evaluate_turbo_wire_node(
+        &mut self,
+        node: NodeId,
+        walk: &mut WireWalk,
+    ) -> Result<(), GraphExecutionError> {
+        let root = self.component_sites[node.index()]
+            .expect("wire root site was validated during preparation");
+        self.capture_walk_site(walk, root);
+        walk.sites.get_mut(&root).unwrap().visited = true;
+        let ordered = self.identify_wire_neighbors(node, walk);
+        let plan = self.wire_plan(node).clone();
+        let mut wire = match walk.sites[&root].observed.properties {
+            ObservedProperties::Wire(wire) => wire,
+            _ => unreachable!("captured wire site has non-wire properties"),
+        };
+        #[cfg(test)]
+        let (new_power, block_power, wire_power) = self.turbo_wire_power(&plan, &ordered, walk);
+        #[cfg(not(test))]
+        let (new_power, _, _) = self.turbo_wire_power(&plan, &ordered, walk);
+        #[cfg(test)]
+        self.trace.push(format!(
+            "wire query {node:?} layer={} operands=captured-walk/live-strong block={block_power} direct={wire_power}",
+            walk.layer,
+        ));
+        if wire.power == new_power {
+            return Ok(());
+        }
+        #[cfg(test)]
+        let old_power = wire.power;
+        wire.power = new_power;
+        walk.sites.get_mut(&root).unwrap().observed.properties = ObservedProperties::Wire(wire);
+        self.set_wire(node, wire);
+        #[cfg(test)]
+        self.trace.push(format!(
+            "wire strength {node:?} layer={} {old_power} -> {new_power}",
+            walk.layer
+        ));
+        self.propagate_wire_changes(node, walk, walk.layer);
+        Ok(())
+    }
+
+    fn turbo_wire_power(
+        &self,
+        plan: &WirePlan,
+        ordered: &[SiteId; 24],
+        walk: &WireWalk,
+    ) -> (u8, u8, u8) {
+        let mut wire_power = 0;
+        for (face, index) in BlockFace::values().into_iter().zip([3, 2, 4, 5, 1, 0]) {
+            let site = plan.canonical_neighbors[index];
+            let observed = &walk.sites[&site].observed;
+            wire_power = wire_power.max(self.power_no_dust(site, face, Some(observed)));
+        }
+        let mut block_power = 0;
+        if wire_power < 15 {
+            let center_up_solid = self.walk_site(ordered[1], walk).solid;
+            let horizontal = [4, 5, 6, 7];
+            let down = [8, 10, 12, 14];
+            let up = [9, 11, 13, 15];
+            for index in 0..4 {
+                let neighbor = ordered[horizontal[index]];
+                let neighbor_site = self.walk_site(neighbor, walk);
+                block_power = self.walk_wire_strength(neighbor, walk, block_power);
+                if !neighbor_site.solid {
+                    block_power = self.walk_wire_strength(ordered[down[index]], walk, block_power);
+                } else if !center_up_solid && !neighbor_site.transparent {
+                    block_power = self.walk_wire_strength(ordered[up[index]], walk, block_power);
+                }
+            }
+        }
+        (
+            wire_power.max(block_power.saturating_sub(1)),
+            block_power,
+            wire_power,
+        )
+    }
+
+    fn walk_site(&self, site: SiteId, walk: &WireWalk) -> ResolvedSite {
+        let observed = &walk.sites[&site].observed;
+        self.resolve_site(site, Some(observed))
+            .expect("captured wire site is valid")
+    }
+
+    fn walk_wire_strength(&self, site: SiteId, walk: &WireWalk, strength: u8) -> u8 {
+        match walk.sites[&site].observed.properties {
+            ObservedProperties::Wire(wire) => strength.max(wire.power),
+            _ => strength,
         }
     }
 
@@ -892,11 +1457,16 @@ impl GraphBackend {
     }
 
     fn input_strength(&self, node: NodeId, port: InputPort) -> u8 {
+        self.query_power(PowerTarget::Input { node, port })
+    }
+
+    fn query_power(&self, target: PowerTarget) -> u8 {
         let mut maximum = 0;
-        for link in self.program.power_links() {
-            if link.to != (PowerTarget::Input { node, port })
-                || !self.guard_matches(link.guard, None)
-            {
+        for link in self.program.power_links_to(target) {
+            #[cfg(test)]
+            self.power_links_examined
+                .set(self.power_links_examined.get() + 1);
+            if !self.guard_matches(link.guard, None) {
                 continue;
             }
             maximum = maximum.max(self.link_strength(link));
@@ -924,19 +1494,19 @@ impl GraphBackend {
                 | CallbackReceiver::PistonHead(_)
                 | CallbackReceiver::Contact(_),
             )
-            | None => self.program.sites()[site.index()].source_strength,
+            | None => self.contact_or_boundary_strength(site, &resolved),
         };
         match port {
             PowerPort::Output | PowerPort::Stored => stored,
             PowerPort::Weak(face) => {
-                if emits_weak(resolved.block, face) {
+                if self.emits_weak(site, resolved.block, face) {
                     stored
                 } else {
                     0
                 }
             }
             PowerPort::Strong(face) => {
-                if emits_strong(resolved.block, face) {
+                if self.emits_strong(site, resolved.block, face) {
                     stored
                 } else {
                     0
@@ -946,20 +1516,73 @@ impl GraphBackend {
         }
     }
 
+    fn contact_or_boundary_strength(&self, site: SiteId, resolved: &ResolvedSite) -> u8 {
+        if matches!(self.program.sites()[site.index()].source, SiteSource::Constant(_)) {
+            return self.program.sites()[site.index()].source_strength;
+        }
+        let Some(profile) = resolved.profile else { return 0 };
+        match self.program.profiles()[profile.index()].electrical {
+            ProfileElectrical::RedstoneSource => 15,
+            ProfileElectrical::None | ProfileElectrical::Component => 0,
+        }
+    }
+
+    fn emits_weak(&self, site: SiteId, block: Block, side: BlockFace) -> bool {
+        let Block::RedstoneWire { wire } = block else {
+            return emits_weak(block, side);
+        };
+        if side == BlockFace::Top {
+            return true;
+        }
+        if side == BlockFace::Bottom {
+            return false;
+        }
+        let SiteSource::Component(node) = self.program.sites()[site.index()].source else {
+            // shortcut: moved wire contacts lack per-position plans until Step 08.
+            return crate::redstone::wire::get_current_side(
+                wire,
+                side.unwrap_direction().opposite(),
+            ) != RedstoneWireSide::None;
+        };
+        let CircuitNodeKind::Wire(_) = self.program.nodes()[node.index()].kind else {
+            return crate::redstone::wire::get_current_side(
+                wire,
+                side.unwrap_direction().opposite(),
+            ) != RedstoneWireSide::None;
+        };
+        let plan = self.wire_plan(node);
+        let raw = self.raw_wire_sides(plan, wire);
+        let regulated = crate::redstone::wire::regulate_sides(wire, raw);
+        crate::redstone::wire::get_current_side(regulated, side.unwrap_direction().opposite())
+            != RedstoneWireSide::None
+    }
+
+    fn emits_strong(&self, site: SiteId, block: Block, side: BlockFace) -> bool {
+        if matches!(block, Block::RedstoneWire { .. }) {
+            self.emits_weak(site, block, side)
+        } else {
+            emits_strong(block, side)
+        }
+    }
+
     fn conducted_power(&self, site: SiteId, include_dust: bool) -> u8 {
-        self.program
-            .power_links()
-            .iter()
-            .filter(|link| {
-                link.to == (PowerTarget::Conductor { site, include_dust })
-                    && self.guard_matches(link.guard, None)
-            })
-            .map(|link| self.link_strength(link))
-            .max()
-            .unwrap_or(0)
+        self.query_power(PowerTarget::Conductor { site, include_dust })
     }
 
     fn guard_matches(&self, id: GuardId, captured: Option<&[Option<ObservedSite>]>) -> bool {
+        self.guard_matches_using(id, captured, None)
+    }
+
+    fn guard_matches_for_site(&self, id: GuardId, site: SiteId, observed: &ObservedSite) -> bool {
+        self.guard_matches_using(id, None, Some((site, observed)))
+    }
+
+    fn guard_matches_using(
+        &self,
+        id: GuardId,
+        captured: Option<&[Option<ObservedSite>]>,
+        captured_site: Option<(SiteId, &ObservedSite)>,
+    ) -> bool {
         match &self.program.guards()[id.index()] {
             Guard::Always => true,
             Guard::State(test) => match *test {
@@ -977,29 +1600,34 @@ impl GraphBackend {
             Guard::Site { site, view, test } => {
                 let resolved = match view {
                     OperandView::Live => self.resolve_site(*site, None),
-                    OperandView::Captured => captured
-                        .and_then(|sites| sites.get(site.index()))
-                        .and_then(Option::as_ref)
+                    OperandView::Captured => captured_site
+                        .filter(|(captured_id, _)| captured_id == site)
+                        .map(|(_, observed)| observed)
+                        .or_else(|| {
+                            captured
+                                .and_then(|sites| sites.get(site.index()))
+                                .and_then(Option::as_ref)
+                        })
                         .and_then(|observed| self.resolve_observed_site(observed)),
                 };
                 let Some(resolved) = resolved else {
                     return false;
                 };
                 match test {
-                    SiteTest::Solid => resolved.block.is_solid(),
-                    SiteTest::Transparent => resolved.block.is_transparent(),
-                    SiteTest::Cube => resolved.block.is_cube(),
+                    SiteTest::Solid => resolved.solid,
+                    SiteTest::Transparent => resolved.transparent,
+                    SiteTest::Cube => resolved.cube,
                     SiteTest::IsWire => matches!(resolved.block, Block::RedstoneWire { .. }),
                     SiteTest::Profile(profile) => resolved.profile == Some(*profile),
                 }
             }
-            Guard::Not(child) => !self.guard_matches(*child, captured),
+            Guard::Not(child) => !self.guard_matches_using(*child, captured, captured_site),
             Guard::All(children) => children
                 .iter()
-                .all(|child| self.guard_matches(*child, captured)),
+                .all(|child| self.guard_matches_using(*child, captured, captured_site)),
             Guard::Any(children) => children
                 .iter()
-                .any(|child| self.guard_matches(*child, captured)),
+                .any(|child| self.guard_matches_using(*child, captured, captured_site)),
         }
     }
 
@@ -1010,13 +1638,7 @@ impl GraphBackend {
         let spec = *self.program.sites().get(site.index())?;
         match spec.source {
             SiteSource::Constant(profile) => {
-                let block = Block::from_id(self.program.profiles()[profile.index()].raw_state);
-                Some(ResolvedSite {
-                    profile: Some(profile),
-                    receiver: None,
-                    block,
-                    properties: ObservedProperties::Passive,
-                })
+                Some(self.resolve_profile(profile, None))
             }
             SiteSource::Component(node) => {
                 let block = self.node_block(node);
@@ -1025,25 +1647,34 @@ impl GraphBackend {
                     receiver: Some(CallbackReceiver::Component(node)),
                     properties: self.node_properties(node),
                     block,
+                    solid: block.is_solid(),
+                    transparent: block.is_transparent(),
+                    cube: block.is_cube(),
                 })
             }
             SiteSource::Contact(contact) => {
                 let spec = &self.program.contacts()[contact.index()];
                 for variant in spec.variants.iter() {
                     if self.guard_matches(variant.when, None) {
-                        let block = Block::from_id(
-                            self.program.profiles()[variant.profile.index()].raw_state,
-                        );
-                        return Some(ResolvedSite {
-                            profile: Some(variant.profile),
-                            receiver: variant.receiver,
-                            block,
-                            properties: self.contact_properties(variant.receiver, block),
-                        });
+                        return Some(self.resolve_profile(variant.profile, variant.receiver));
                     }
                 }
                 None
             }
+        }
+    }
+
+    fn resolve_profile(&self, profile: ProfileId, receiver: Option<CallbackReceiver>) -> ResolvedSite {
+        let facts = self.program.profiles()[profile.index()];
+        let block = self.program.profile_block(profile).expect("validated profile");
+        ResolvedSite {
+            profile: Some(profile),
+            receiver,
+            block,
+            properties: self.contact_properties(receiver, block),
+            solid: facts.solid,
+            transparent: facts.transparent,
+            cube: facts.cube,
         }
     }
 
@@ -1058,18 +1689,25 @@ impl GraphBackend {
         } else {
             self.block_for_profile(observed.profile?)?
         };
+        let (solid, transparent, cube) = if let Some(profile) = observed.profile {
+            let facts = self.program.profiles()[profile.index()];
+            (facts.solid, facts.transparent, facts.cube)
+        } else {
+            (block.is_solid(), block.is_transparent(), block.is_cube())
+        };
         Some(ResolvedSite {
             profile: observed.profile,
             receiver: observed.receiver,
             block,
             properties: observed.properties.clone(),
+            solid,
+            transparent,
+            cube,
         })
     }
 
     fn block_for_profile(&self, profile: ProfileId) -> Option<Block> {
-        Some(Block::from_id(
-            self.program.profiles().get(profile.index())?.raw_state,
-        ))
+        self.program.profile_block(profile)
     }
 
     fn contact_properties(
@@ -1117,7 +1755,17 @@ impl GraphBackend {
     }
 
     fn node_block_with_properties(&self, node: NodeId, properties: &ObservedProperties) -> Block {
-        let mut block = Block::from_id(self.program.nodes()[node.index()].raw_state.unwrap());
+        let mut block = self.program.nodes()[node.index()].block.unwrap();
+        if matches!(
+            self.program.nodes()[node.index()].kind,
+            CircuitNodeKind::Wire(_)
+        ) {
+            let wire = match properties {
+                ObservedProperties::Wire(wire) => *wire,
+                _ => self.wire_state(node),
+            };
+            return Block::RedstoneWire { wire };
+        }
         let state = self.node_state(node);
         if block.is_copper_bulb() {
             let (powered, lit) = match properties {

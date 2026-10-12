@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Redpiler Graph Viewer</title>
+  <link rel="stylesheet" href="style.css">
+  <script src="vendor/cytoscape.min.js"></script>
+  <script src="vendor/cytoscape-expand-collapse.js"></script>
+  <script defer src="viewer.js"></script>
+</head>
+<body>
+  <header>
+    <div>
+      <h1>Redpiler Graph Viewer</h1>
+      <p id="summary">Choose a versioned graph export to begin.</p>
+    </div>
+    <label class="file-button">Open graph JSON<input id="file" type="file" accept=".json,application/json"></label>
+  </header>
+  <main>
+    <aside>
+      <label class="search-label" for="search">Find a record</label>
+      <div class="search-row"><input id="search" type="search" placeholder="ID, kind, or text"><button id="find">Find</button></div>
+      <div id="matches" class="matches" aria-live="polite"></div>
+      <section>
+        <h2>Node filters</h2>
+        <div id="node-filters" class="checks"></div>
+      </section>
+      <section>
+        <h2>Connections</h2>
+        <div id="edge-filters" class="checks"></div>
+      </section>
+      <section>
+        <h2>Collapse groups</h2>
+        <div class="button-row"><button id="collapse">Collapse all</button><button id="expand">Expand all</button><button id="relax" title="Run a force-directed layout from the current positions">Relax</button></div>
+      </section>
+      <section>
+        <h2>Selection</h2>
+        <pre id="details">No record selected.</pre>
+      </section>
+    </aside>
+    <section class="graph-shell">
+      <div id="drop-hint">Drop a graph JSON file here, or choose one above.</div>
+      <div id="graph" aria-label="Redpiler graph"></div>
+      <footer><span id="counts">No graph loaded</span><span>Drag to pan · scroll to zoom · click a record to inspect</span></footer>
+    </section>
+  </main>
+  <div id="error" role="alert" hidden></div>
+</body>
+</html>

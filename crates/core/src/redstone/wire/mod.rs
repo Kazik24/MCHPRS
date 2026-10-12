@@ -15,6 +15,17 @@ pub(crate) const TURBO_ORDER: [[usize; 24]; 4] = [
     ],
 ];
 
+pub(crate) fn compute_heading(rx: i32, rz: i32) -> usize {
+    let code = (rx + 1) + 3 * (rz + 1);
+    match code {
+        0 | 1 => 0,
+        2 | 5 => 1,
+        3 | 4 => 3,
+        6 | 7 | 8 => 2,
+        _ => unreachable!("wire traversal bias is outside -1..=1"),
+    }
+}
+
 use crate::interaction::ActionResult;
 use crate::world::World;
 use mchprs_blocks::blocks::{Block, RedstoneWire, RedstoneWireSide};
@@ -194,17 +205,32 @@ fn get_side_from(
 ) -> RedstoneWireSide {
     let neighbor_pos = pos.offset(side.block_face());
     let neighbor = read(neighbor_pos);
-
     if crate::world::wire_cache::connects(neighbor, side) {
         return RedstoneWireSide::Side;
     }
 
     let up_solid = *above_solid.get_or_insert_with(|| read(pos.offset(BlockFace::Top)).is_solid());
+    let neighbor_above = (!up_solid).then(|| read(neighbor_pos.offset(BlockFace::Top)));
+    let neighbor_below =
+        (!neighbor.is_solid()).then(|| read(neighbor_pos.offset(BlockFace::Bottom)));
+    side_from_blocks(side, neighbor, up_solid, neighbor_above, neighbor_below)
+}
 
-    if !up_solid && can_connect_diagonal_to(read(neighbor_pos.offset(BlockFace::Top))) {
+fn side_from_blocks(
+    side: BlockDirection,
+    neighbor: Block,
+    up_solid: bool,
+    neighbor_above: Option<Block>,
+    neighbor_below: Option<Block>,
+) -> RedstoneWireSide {
+    if crate::world::wire_cache::connects(neighbor, side) {
+        RedstoneWireSide::Side
+    } else if !up_solid
+        && can_connect_diagonal_to(neighbor_above.expect("wire can ascend only with clear space"))
+    {
         RedstoneWireSide::Up
     } else if !neighbor.is_solid()
-        && can_connect_diagonal_to(read(neighbor_pos.offset(BlockFace::Bottom)))
+        && can_connect_diagonal_to(neighbor_below.expect("wire descends beside a non-solid block"))
     {
         RedstoneWireSide::Side
     } else {
@@ -237,6 +263,34 @@ pub(crate) fn get_raw_sides_from(
     state.east = get_side_from(pos, BlockDirection::East, &mut above, &read);
     state.west = get_side_from(pos, BlockDirection::West, &mut above, &read);
     state
+}
+
+pub(crate) fn get_raw_sides_from_neighbors(
+    mut wire: RedstoneWire,
+    neighbors: &[Block; 24],
+) -> RedstoneWire {
+    let up_solid = neighbors[3].is_solid();
+    for (side, neighbor, above, below) in [
+        (BlockDirection::North, 4, 20, 17),
+        (BlockDirection::South, 5, 21, 18),
+        (BlockDirection::East, 1, 13, 12),
+        (BlockDirection::West, 0, 8, 7),
+    ] {
+        let side_state = side_from_blocks(
+            side,
+            neighbors[neighbor],
+            up_solid,
+            Some(neighbors[above]),
+            Some(neighbors[below]),
+        );
+        match side {
+            BlockDirection::North => wire.north = side_state,
+            BlockDirection::South => wire.south = side_state,
+            BlockDirection::East => wire.east = side_state,
+            BlockDirection::West => wire.west = side_state,
+        }
+    }
+    wire
 }
 
 pub(crate) fn regulate_sides(wire: RedstoneWire, mut state: RedstoneWire) -> RedstoneWire {

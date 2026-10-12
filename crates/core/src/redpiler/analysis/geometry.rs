@@ -231,6 +231,7 @@ pub(crate) struct GeometryObservation {
 
 #[derive(Debug, Clone)]
 pub(crate) struct GeometryDraft {
+    pub(crate) remaining_cells: usize,
     pub(crate) profiles: Vec<Profile>,
     pub(crate) nodes: Vec<CircuitNodeDraft>,
     pub(crate) contacts: Vec<GeometryContact>,
@@ -1020,6 +1021,7 @@ fn build_draft<W: World>(
     let mut observations: Vec<_> = observations.into_values().collect();
     observations.sort_by_key(|site| (site.position.y, site.position.z, site.position.x));
     Ok(GeometryDraft {
+        remaining_cells: probe.budget - probe.reads,
         profiles,
         nodes,
         contacts,

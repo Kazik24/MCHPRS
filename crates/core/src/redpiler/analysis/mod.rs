@@ -70,6 +70,31 @@ impl fmt::Display for AnalysisError {
 
 impl std::error::Error for AnalysisError {}
 
+/// One work budget follows preparation across reads and graph expansion.
+pub(crate) struct PreparationBudget<'a> {
+    monitor: &'a TaskMonitor,
+    pub(crate) remaining: usize,
+}
+
+impl<'a> PreparationBudget<'a> {
+    pub(crate) fn new(monitor: &'a TaskMonitor, remaining: usize) -> Self {
+        Self { monitor, remaining }
+    }
+
+    pub(crate) fn check(&self) -> Result<(), AnalysisError> {
+        if self.monitor.cancelled() {
+            return Err(AnalysisError::Cancelled);
+        }
+        Ok(())
+    }
+
+    pub(crate) fn consume(&mut self, work: usize) -> Result<(), AnalysisError> {
+        self.check()?;
+        self.remaining = self.remaining.checked_sub(work).ok_or(AnalysisError::CellLimit)?;
+        Ok(())
+    }
+}
+
 #[derive(Debug, Clone, Serialize)]
 pub enum AdmissionIssue {
     PistonRuntimeUnavailable { pos: BlockPos },

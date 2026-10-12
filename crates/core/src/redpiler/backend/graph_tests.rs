@@ -9,7 +9,7 @@ use crate::redstone::instant_piston_tests::capture_at;
 use crate::world::storage::Chunk;
 use mchprs_blocks::blocks::{
     Block, ButtonFace, ComparatorMode, Lever, LeverFace, RedstoneComparator, RedstoneObserver,
-    RedstoneRepeater, StoneButton,
+    RedstoneRepeater, RedstoneWire, RedstoneWireSide, StoneButton,
 };
 use mchprs_blocks::{BlockDirection, BlockFacing};
 use serde_json::Value;
@@ -76,6 +76,232 @@ fn ticks_at(
         .collect()
 }
 
+fn test_profile(block: Block, electrical: ProfileElectrical) -> Profile {
+    Profile {
+        raw_state: block.get_id(),
+        registry_type: block.registry_id(),
+        solid: block.is_solid(),
+        transparent: block.is_transparent(),
+        cube: block.is_cube(),
+        electrical,
+    }
+}
+
+fn contact_resource_backend() -> GraphBackend {
+    let resource = ResourceId::new(0);
+    let first = ContactId::new(0);
+    let second = ContactId::new(1);
+    let first_at = GuardId::new(1);
+    let enabled = GuardId::new(2);
+    let at_first_and_enabled = GuardId::new(3);
+    let second_at = GuardId::new(4);
+    let at_second_and_enabled = GuardId::new(6);
+    let redstone = ProfileId::new(1);
+    let air = ProfileId::new(0);
+    let guards = vec![
+        Guard::Always,
+        Guard::State(StateTest::ResourceAt {
+            resource,
+            contact: first,
+        }),
+        Guard::State(StateTest::ResourceEnabled(resource)),
+        Guard::All(vec![first_at, enabled].into_boxed_slice()),
+        Guard::State(StateTest::ResourceAt {
+            resource,
+            contact: second,
+        }),
+        Guard::State(StateTest::ResourceEnabled(resource)),
+        Guard::All(vec![second_at, GuardId::new(5)].into_boxed_slice()),
+        Guard::Not(at_first_and_enabled),
+        Guard::Not(at_second_and_enabled),
+    ];
+    let (program, state) = CircuitDraft {
+        nodes: vec![first, second]
+            .into_iter()
+            .enumerate()
+            .map(|(index, contact)| CircuitNodeDraft {
+                position: Some(BlockPos::new(index as i32, 0, 0)),
+                raw_state: None,
+                kind: CircuitNodeKind::Contact(contact),
+                state: ComponentState::Specialized,
+                output_route: None,
+            })
+            .collect(),
+        links: vec![],
+        power_links: vec![],
+        comparator_inputs: vec![],
+        profiles: vec![
+            test_profile(Block::Air, ProfileElectrical::None),
+            test_profile(Block::RedstoneBlock, ProfileElectrical::RedstoneSource),
+            test_profile(
+                Block::RedstoneComparator {
+                    comparator: RedstoneComparator::new(
+                        BlockDirection::South,
+                        ComparatorMode::Compare,
+                        true,
+                    ),
+                },
+                ProfileElectrical::Component,
+            ),
+        ],
+        guards,
+        contacts: vec![
+            ContactSpec {
+                node: NodeId::new(0),
+                position: BlockPos::new(0, 0, 0),
+                variants: vec![
+                    ContactVariant {
+                        when: at_first_and_enabled,
+                        profile: redstone,
+                        receiver: None,
+                    },
+                    ContactVariant {
+                        when: GuardId::new(7),
+                        profile: air,
+                        receiver: None,
+                    },
+                ]
+                .into_boxed_slice(),
+            },
+            ContactSpec {
+                node: NodeId::new(1),
+                position: BlockPos::new(1, 0, 0),
+                variants: vec![
+                    ContactVariant {
+                        when: at_second_and_enabled,
+                        profile: redstone,
+                        receiver: None,
+                    },
+                    ContactVariant {
+                        when: GuardId::new(8),
+                        profile: air,
+                        receiver: None,
+                    },
+                ]
+                .into_boxed_slice(),
+            },
+        ],
+        routes: vec![],
+        wires: vec![],
+        sites: vec![
+            SiteSpec {
+                position: BlockPos::new(1, 0, 0),
+                source: SiteSource::Contact(second),
+                source_strength: 0,
+            },
+            SiteSpec {
+                position: BlockPos::new(2, 0, 0),
+                source: SiteSource::Constant(ProfileId::new(2)),
+                source_strength: 7,
+            },
+        ],
+        pistons: vec![],
+        resources: vec![ResourceSpec {
+            material: redstone,
+            contacts: vec![first, second].into_boxed_slice(),
+        }],
+        initial_pistons: vec![],
+        initial_resources: vec![ResourceState {
+            at: first,
+            enabled: true,
+            revision: 0,
+        }],
+    }
+    .lower()
+    .unwrap();
+    GraphBackend::new(program, state, 0).unwrap()
+}
+
+fn backend_with_unrelated_power_links(unrelated: usize) -> GraphBackend {
+    let node = NodeId::new(0);
+    let source = SiteId::new(0);
+    let conductor = SiteId::new(1);
+    let mut power_links = vec![
+        PowerLink {
+            from: source,
+            from_port: PowerPort::Output,
+            to: PowerTarget::Input {
+                node,
+                port: InputPort::Main,
+            },
+            face: BlockFace::Top,
+            attenuation: 0,
+            guard: GuardId::new(0),
+        },
+        PowerLink {
+            from: conductor,
+            from_port: PowerPort::Output,
+            to: PowerTarget::Conductor {
+                site: conductor,
+                include_dust: false,
+            },
+            face: BlockFace::Top,
+            attenuation: 0,
+            guard: GuardId::new(0),
+        },
+    ];
+    for _ in 0..unrelated {
+        power_links.push(PowerLink {
+            from: source,
+            from_port: PowerPort::Output,
+            to: PowerTarget::Input {
+                node,
+                port: InputPort::Side,
+            },
+            face: BlockFace::Top,
+            attenuation: 0,
+            guard: GuardId::new(0),
+        });
+        power_links.push(PowerLink {
+            from: source,
+            from_port: PowerPort::Output,
+            to: PowerTarget::Conductor {
+                site: conductor,
+                include_dust: true,
+            },
+            face: BlockFace::Top,
+            attenuation: 0,
+            guard: GuardId::new(0),
+        });
+    }
+    let (program, state) = CircuitDraft {
+        nodes: vec![CircuitNodeDraft {
+            position: Some(BlockPos::new(0, 0, 0)),
+            raw_state: Some(Block::RedstoneLamp { lit: false }.get_id()),
+            kind: CircuitNodeKind::Electrical(NodeType::Lamp),
+            state: ComponentState::Electrical(NodeState::default()),
+            output_route: None,
+        }],
+        links: vec![],
+        power_links,
+        comparator_inputs: vec![],
+        profiles: vec![test_profile(Block::Stone {}, ProfileElectrical::None)],
+        guards: vec![Guard::Always],
+        contacts: vec![],
+        routes: vec![],
+        wires: vec![],
+        sites: vec![
+            SiteSpec {
+                position: BlockPos::new(1, 0, 0),
+                source: SiteSource::Constant(ProfileId::new(0)),
+                source_strength: 15,
+            },
+            SiteSpec {
+                position: BlockPos::new(2, 0, 0),
+                source: SiteSource::Constant(ProfileId::new(0)),
+                source_strength: 13,
+            },
+        ],
+        pistons: vec![],
+        resources: vec![],
+        initial_pistons: vec![],
+        initial_resources: vec![],
+    }
+    .lower()
+    .unwrap();
+    GraphBackend::new(program, state, 0).unwrap()
+}
+
 #[test]
 fn graph_route_powers_lamp_synchronously_and_flush_only_projects_state() {
     let lamp_pos = LEVER_POS.offset(BlockFace::East);
@@ -131,6 +357,48 @@ fn graph_route_powers_lamp_synchronously_and_flush_only_projects_state() {
 }
 
 #[test]
+fn dust_output_uses_regulated_sides_from_compiled_neighbors() {
+    let wire_pos = LEVER_POS.offset(BlockFace::East);
+    let lamp_pos = wire_pos.offset(BlockFace::East);
+    let mut native = empty_world();
+    let mut graph_world = empty_world();
+    for world in [&mut native, &mut graph_world] {
+        world.set_block(LEVER_POS.offset(BlockFace::Bottom), Block::Stone {});
+        world.set_block(LEVER_POS, lever(false));
+        world.set_block(wire_pos.offset(BlockFace::Bottom), Block::Stone {});
+        world.set_block(
+            wire_pos,
+            Block::RedstoneWire {
+                wire: Default::default(),
+            },
+        );
+        world.set_block(lamp_pos, Block::RedstoneLamp { lit: false });
+    }
+    let mut backend = graph(&graph_world, vec![]);
+    assert!(
+        matches!(backend.node_block(backend.positions[&wire_pos]), Block::RedstoneWire { wire }
+        if wire.north == RedstoneWireSide::None && wire.south == RedstoneWireSide::None
+            && wire.east == RedstoneWireSide::None && wire.west == RedstoneWireSide::None)
+    );
+
+    backend.use_block(LEVER_POS).unwrap();
+    set_native_lever(&mut native, LEVER_POS, true);
+    backend.flush(&mut graph_world);
+
+    assert_eq!(graph_world.get_block(lamp_pos), native.get_block(lamp_pos));
+    assert!(matches!(
+        graph_world.get_block(lamp_pos),
+        Block::RedstoneLamp { lit: true }
+    ));
+    assert!(
+        matches!(graph_world.get_block(wire_pos), Block::RedstoneWire { wire }
+        if wire.power == 15 && wire.north == RedstoneWireSide::None
+            && wire.south == RedstoneWireSide::None && wire.east == RedstoneWireSide::None
+            && wire.west == RedstoneWireSide::None)
+    );
+}
+
+#[test]
 fn external_torch_boundary_supplies_power_to_selected_lamp() {
     let lamp_pos = BlockPos::new(10, 20, 5);
     let torch_pos = lamp_pos.offset(BlockFace::East);
@@ -154,6 +422,629 @@ fn external_torch_boundary_supplies_power_to_selected_lamp() {
         graph_world.get_block(lamp_pos),
         Block::RedstoneLamp { lit: true }
     ));
+}
+
+#[test]
+fn dust_strong_output_uses_regulated_sides_through_a_conductor() {
+    let wire_pos = LEVER_POS.offset(BlockFace::East);
+    let conductor_pos = wire_pos.offset(BlockFace::East);
+    let lamp_pos = conductor_pos.offset(BlockFace::East);
+    let mut native = empty_world();
+    let mut graph_world = empty_world();
+    for world in [&mut native, &mut graph_world] {
+        world.set_block(LEVER_POS.offset(BlockFace::Bottom), Block::Stone {});
+        world.set_block(LEVER_POS, lever(false));
+        world.set_block(wire_pos.offset(BlockFace::Bottom), Block::Stone {});
+        world.set_block(
+            wire_pos,
+            Block::RedstoneWire {
+                wire: Default::default(),
+            },
+        );
+        world.set_block(conductor_pos, Block::Stone {});
+        world.set_block(lamp_pos, Block::RedstoneLamp { lit: false });
+    }
+    let mut backend = graph(&graph_world, vec![]);
+
+    backend.use_block(LEVER_POS).unwrap();
+    set_native_lever(&mut native, LEVER_POS, true);
+    backend.flush(&mut graph_world);
+
+    assert_eq!(graph_world.get_block(lamp_pos), native.get_block(lamp_pos));
+    assert!(matches!(
+        graph_world.get_block(lamp_pos),
+        Block::RedstoneLamp { lit: true }
+    ));
+}
+
+#[test]
+fn wire_seed_and_turbo_rise_and_fall_match_native_order() {
+    let lever_pos = BlockPos::new(4, 20, 6);
+    let wire_positions: Vec<_> = (5..=10).map(|x| BlockPos::new(x, 20, 6)).collect();
+    let lamp_pos = BlockPos::new(10, 20, 7);
+    let observed: Vec<_> = wire_positions.iter().copied().chain([lamp_pos]).collect();
+    let mut native = empty_world();
+    let mut graph_world = empty_world();
+    for world in [&mut native, &mut graph_world] {
+        world.set_block(lever_pos.offset(BlockFace::Bottom), Block::Stone {});
+        world.set_block(lever_pos, lever(false));
+        for position in &wire_positions {
+            world.set_block(position.offset(BlockFace::Bottom), Block::Stone {});
+            world.set_block(
+                *position,
+                Block::RedstoneWire {
+                    wire: Default::default(),
+                },
+            );
+        }
+        world.set_block(lamp_pos, Block::RedstoneLamp { lit: false });
+    }
+    let mut backend = graph(&graph_world, vec![]);
+
+    for powered in [true, false] {
+        let graph_start = backend.callback_order.len();
+        backend.use_block(lever_pos).unwrap();
+        let native_trace = capture_at(&observed, || {
+            set_native_lever(&mut native, lever_pos, powered)
+        });
+        let native_callbacks: Vec<_> = native_trace
+            .iter()
+            .filter(|entry| entry["kind"] == "callback")
+            .map(|entry| {
+                (
+                    serde_json::from_value(entry["data"]["pos"].clone()).unwrap(),
+                    serde_json::from_value(entry["data"]["dir"].clone()).unwrap(),
+                )
+            })
+            .collect();
+        let graph_callbacks: Vec<_> = backend.callback_order[graph_start..]
+            .iter()
+            .filter(|(position, _)| observed.contains(position))
+            .map(|(position, kind)| {
+                let DeliveryKind::Update { direction } = kind else {
+                    unreachable!()
+                };
+                (*position, *direction)
+            })
+            .collect();
+
+        backend.flush(&mut graph_world);
+        assert_eq!(
+            graph_callbacks,
+            native_callbacks,
+            "graph trace: {:#?}",
+            backend.trace()
+        );
+        for position in &wire_positions {
+            assert_eq!(
+                graph_world.get_block(*position),
+                native.get_block(*position),
+                "wire at {position:?} after powered={powered}; trace: {:#?}",
+                backend.trace()
+            );
+        }
+        assert_eq!(graph_world.get_block(lamp_pos), native.get_block(lamp_pos));
+        for prefix in [
+            "wire seed ",
+            "wire turbo start ",
+            "wire discover ",
+            "wire heading ",
+            "wire query ",
+            "wire strength ",
+            "wire deliver ",
+        ] {
+            assert!(
+                backend
+                    .trace()
+                    .iter()
+                    .any(|entry| entry.starts_with(prefix)),
+                "missing trace operation {prefix:?}: {:#?}",
+                backend.trace()
+            );
+        }
+    }
+}
+
+#[test]
+fn wire_seed_with_unchanged_power_does_not_start_a_turbo_walk() {
+    let lever_pos = BlockPos::new(7, 20, 8);
+    let wire_pos = lever_pos.offset(BlockFace::East);
+    let wire = RedstoneWire {
+        power: 15,
+        ..Default::default()
+    };
+    let mut native = empty_world();
+    let mut graph_world = empty_world();
+    for world in [&mut native, &mut graph_world] {
+        world.set_block(lever_pos.offset(BlockFace::Bottom), Block::Stone {});
+        world.set_block(lever_pos, lever(true));
+        world.set_block(wire_pos.offset(BlockFace::Bottom), Block::Stone {});
+        world.set_block(wire_pos, Block::RedstoneWire { wire });
+    }
+    let mut backend = graph(&graph_world, vec![]);
+    let node = backend.positions[&wire_pos];
+    backend
+        .update_component(node, DeliveryKind::Update { direction: None }, None)
+        .unwrap();
+    redstone::update(native.get_block(wire_pos), &mut native, wire_pos, None);
+
+    assert_eq!(backend.wire_state(node), wire);
+    assert_eq!(graph_world.get_block(wire_pos), native.get_block(wire_pos));
+    assert!(
+        backend
+            .trace()
+            .iter()
+            .any(|entry| entry.starts_with("wire seed "))
+    );
+    assert!(
+        !backend
+            .trace()
+            .iter()
+            .any(|entry| entry.starts_with("wire turbo start "))
+    );
+}
+
+#[test]
+fn stale_wire_sides_and_strength_remain_untouched_until_a_rule_changes_them() {
+    let wire_pos = BlockPos::new(8, 20, 8);
+    let wire = RedstoneWire {
+        north: RedstoneWireSide::Up,
+        south: RedstoneWireSide::None,
+        east: RedstoneWireSide::Side,
+        west: RedstoneWireSide::None,
+        power: 7,
+    };
+    let mut world = empty_world();
+    world.set_block(wire_pos.offset(BlockFace::Bottom), Block::Stone {});
+    world.set_block(wire_pos, Block::RedstoneWire { wire });
+    let mut backend = graph(&world, vec![]);
+
+    backend.flush(&mut world);
+
+    assert_eq!(world.get_block(wire_pos), Block::RedstoneWire { wire });
+    assert_eq!(backend.wire_state(backend.positions[&wire_pos]), wire);
+}
+
+#[test]
+fn wire_shape_callback_regulates_sides_then_uses_native_neighbor_route() {
+    let wire_pos = BlockPos::new(8, 20, 8);
+    let source_pos = wire_pos.offset(BlockFace::East);
+    let mut native = empty_world();
+    let mut graph_world = empty_world();
+    for world in [&mut native, &mut graph_world] {
+        world.set_block(wire_pos.offset(BlockFace::Bottom), Block::Stone {});
+        world.set_block(
+            wire_pos,
+            Block::RedstoneWire {
+                wire: Default::default(),
+            },
+        );
+        world.set_block(source_pos, Block::RedstoneBlock {});
+    }
+    let mut backend = graph(&graph_world, vec![]);
+    let node = backend.positions[&wire_pos];
+    let native_trace = capture_at(&[wire_pos], || {
+        crate::interaction::change(
+            native.get_block(wire_pos),
+            &mut native,
+            wire_pos,
+            BlockFace::West,
+        );
+    });
+    backend
+        .update_component(
+            node,
+            DeliveryKind::Shape {
+                direction: BlockFace::West,
+            },
+            None,
+        )
+        .unwrap();
+    backend.flush(&mut graph_world);
+
+    let native_callbacks: Vec<_> = native_trace
+        .iter()
+        .filter(|entry| entry["kind"] == "callback")
+        .map(|entry| serde_json::from_value(entry["data"]["dir"].clone()).unwrap())
+        .collect();
+    let graph_callbacks: Vec<_> = backend
+        .callback_order
+        .iter()
+        .filter_map(|(position, kind)| {
+            (*position == wire_pos).then_some(match kind {
+                DeliveryKind::Update { direction } => *direction,
+                DeliveryKind::Shape { .. } => unreachable!(),
+            })
+        })
+        .collect();
+    assert_eq!(graph_callbacks, native_callbacks);
+    assert_eq!(graph_world.get_block(wire_pos), native.get_block(wire_pos));
+    assert!(matches!(
+        graph_world.get_block(wire_pos),
+        Block::RedstoneWire { wire } if wire.power == 15 && wire.east == RedstoneWireSide::Side
+    ));
+}
+
+#[test]
+fn wire_turbo_walk_matches_native_across_ascent_and_descent() {
+    let lever_pos = BlockPos::new(4, 20, 6);
+    let wires = [
+        BlockPos::new(5, 20, 6),
+        BlockPos::new(6, 21, 6),
+        BlockPos::new(7, 21, 6),
+        BlockPos::new(8, 20, 6),
+        BlockPos::new(9, 20, 6),
+    ];
+    let mut native = empty_world();
+    let mut graph_world = empty_world();
+    for world in [&mut native, &mut graph_world] {
+        world.set_block(lever_pos.offset(BlockFace::Bottom), Block::Stone {});
+        world.set_block(lever_pos, lever(false));
+        world.set_block(BlockPos::new(6, 20, 6), Block::Stone {});
+        world.set_block(BlockPos::new(7, 20, 6), Block::Stone {});
+        for position in wires {
+            world.set_block(position.offset(BlockFace::Bottom), Block::Stone {});
+            world.set_block(
+                position,
+                Block::RedstoneWire {
+                    wire: Default::default(),
+                },
+            );
+        }
+    }
+    let mut backend = graph(&graph_world, vec![]);
+    backend.use_block(lever_pos).unwrap();
+    set_native_lever(&mut native, lever_pos, true);
+    backend.flush(&mut graph_world);
+
+    for position in wires {
+        assert_eq!(
+            graph_world.get_block(position),
+            native.get_block(position),
+            "wire at {position:?}"
+        );
+    }
+    assert!(matches!(
+        graph_world.get_block(wires[1]),
+        Block::RedstoneWire { wire } if wire.power > 0
+    ));
+    assert!(matches!(
+        graph_world.get_block(wires[3]),
+        Block::RedstoneWire { wire } if wire.power > 0
+    ));
+}
+
+#[test]
+fn wire_turbo_heading_orders_match_native_for_all_horizontal_directions() {
+    for direction in [
+        BlockFace::North,
+        BlockFace::South,
+        BlockFace::East,
+        BlockFace::West,
+    ] {
+        let first_wire = BlockPos::new(8, 20, 8);
+        let wires: Vec<_> = std::iter::successors(Some(first_wire), |position| {
+            Some(position.offset(direction))
+        })
+        .take(6)
+        .collect();
+        let lever_pos = first_wire.offset(direction.opposite());
+        let mut native = empty_world();
+        let mut graph_world = empty_world();
+        for world in [&mut native, &mut graph_world] {
+            world.set_block(lever_pos.offset(BlockFace::Bottom), Block::Stone {});
+            world.set_block(lever_pos, lever(false));
+            for position in &wires {
+                world.set_block(position.offset(BlockFace::Bottom), Block::Stone {});
+                world.set_block(
+                    *position,
+                    Block::RedstoneWire {
+                        wire: Default::default(),
+                    },
+                );
+            }
+        }
+        let mut backend = graph(&graph_world, vec![]);
+        backend.use_block(lever_pos).unwrap();
+        let native_trace = capture_at(&wires, || set_native_lever(&mut native, lever_pos, true));
+        let native_callbacks: Vec<_> = native_trace
+            .iter()
+            .filter(|entry| entry["kind"] == "callback")
+            .map(|entry| {
+                (
+                    serde_json::from_value(entry["data"]["pos"].clone()).unwrap(),
+                    serde_json::from_value(entry["data"]["dir"].clone()).unwrap(),
+                )
+            })
+            .collect();
+        let graph_callbacks: Vec<_> = backend
+            .callback_order
+            .iter()
+            .filter(|(position, _)| wires.contains(position))
+            .map(|(position, kind)| {
+                let DeliveryKind::Update { direction } = kind else {
+                    unreachable!()
+                };
+                (*position, *direction)
+            })
+            .collect();
+
+        assert_eq!(
+            graph_callbacks,
+            native_callbacks,
+            "direction={direction:?}; graph trace: {:#?}",
+            backend.trace()
+        );
+        backend.flush(&mut graph_world);
+        for position in &wires {
+            assert_eq!(
+                graph_world.get_block(*position),
+                native.get_block(*position),
+                "direction={direction:?}, wire={position:?}"
+            );
+        }
+    }
+}
+
+#[test]
+fn wire_reads_live_strong_power_through_a_compiled_conductor() {
+    let conductor_pos = BlockPos::new(8, 20, 8);
+    let lever_pos = conductor_pos.offset(BlockFace::Top);
+    let wire_pos = conductor_pos.offset(BlockFace::East);
+    let mut native = empty_world();
+    let mut graph_world = empty_world();
+    for world in [&mut native, &mut graph_world] {
+        world.set_block(conductor_pos, Block::Stone {});
+        world.set_block(lever_pos, lever(false));
+        world.set_block(wire_pos.offset(BlockFace::Bottom), Block::Stone {});
+        world.set_block(
+            wire_pos,
+            Block::RedstoneWire {
+                wire: Default::default(),
+            },
+        );
+    }
+    let mut backend = graph(&graph_world, vec![]);
+
+    for powered in [true, false] {
+        backend.use_block(lever_pos).unwrap();
+        set_native_lever(&mut native, lever_pos, powered);
+        backend.flush(&mut graph_world);
+        assert_eq!(
+            graph_world.get_block(wire_pos),
+            native.get_block(wire_pos),
+            "powered={powered}; graph trace: {:#?}",
+            backend.trace()
+        );
+    }
+    assert!(backend.trace().iter().any(|entry| {
+        entry.starts_with("wire seed ")
+            && entry.contains("operands=live-sites/live-strong")
+            && entry.contains("block=15")
+    }));
+}
+
+#[test]
+fn compiled_wire_side_sites_match_native_vertical_and_horizontal_rules() {
+    let wire_pos = BlockPos::new(8, 20, 8);
+    let north = wire_pos.offset(BlockFace::North);
+    let east = wire_pos.offset(BlockFace::East);
+    let west = wire_pos.offset(BlockFace::West);
+    let mut world = empty_world();
+    world.set_block(north, Block::Stone {});
+    world.set_block(
+        north.offset(BlockFace::Top),
+        Block::RedstoneWire {
+            wire: Default::default(),
+        },
+    );
+    world.set_block(
+        east.offset(BlockFace::Bottom),
+        Block::RedstoneWire {
+            wire: Default::default(),
+        },
+    );
+    world.set_block(west, Block::RedstoneBlock {});
+
+    let sites =
+        crate::world::wire_cache::positions(wire_pos).map(|position| world.get_block(position));
+    let wire = RedstoneWire::default();
+    let compiled = crate::redstone::wire::get_raw_sides_from_neighbors(wire, &sites);
+    let native = crate::redstone::wire::get_raw_sides_from(wire, wire_pos, |position| {
+        world.get_block(position)
+    });
+
+    assert_eq!(compiled, native);
+    assert_eq!(compiled.north, RedstoneWireSide::Up);
+    assert_eq!(compiled.east, RedstoneWireSide::Side);
+    assert_eq!(compiled.south, RedstoneWireSide::None);
+    assert_eq!(compiled.west, RedstoneWireSide::Side);
+}
+
+#[test]
+fn bulb_callback_starts_a_nested_wire_walk_and_outer_order_resumes() {
+    let lever_pos = BlockPos::new(5, 20, 5);
+    let outer_wire = lever_pos.offset(BlockFace::East);
+    let bulb_pos = outer_wire.offset(BlockFace::South);
+    let inner_wire = bulb_pos.offset(BlockFace::East);
+    let inner_source = inner_wire.offset(BlockFace::North);
+    let continuation = inner_wire.offset(BlockFace::East);
+    let bulb_source = bulb_pos.offset(BlockFace::South);
+    let observed = [
+        lever_pos,
+        outer_wire,
+        bulb_pos,
+        inner_wire,
+        inner_source,
+        continuation,
+    ];
+    let mut native = empty_world();
+    let mut graph_world = empty_world();
+    let bulb = Block::from_name("copper_bulb").unwrap();
+    for position in [lever_pos, outer_wire, inner_wire, continuation] {
+        for world in [&mut native, &mut graph_world] {
+            world.set_block(position.offset(BlockFace::Bottom), Block::Stone {});
+        }
+    }
+    for world in [&mut native, &mut graph_world] {
+        world.set_block(lever_pos, lever(false));
+        world.set_block(
+            outer_wire,
+            Block::RedstoneWire {
+                wire: Default::default(),
+            },
+        );
+        world.set_block(
+            inner_wire,
+            Block::RedstoneWire {
+                wire: Default::default(),
+            },
+        );
+        world.set_block(
+            continuation,
+            Block::RedstoneWire {
+                wire: Default::default(),
+            },
+        );
+        world.set_block(bulb_pos, bulb);
+        world.set_block(inner_source, lever(false));
+        world.set_block(bulb_source, Block::RedstoneBlock);
+    }
+    let mut backend = graph(&graph_world, vec![]);
+    let inner_source_node = backend.positions[&inner_source];
+    let outer_node = backend.positions[&outer_wire];
+    let inner_node = backend.positions[&inner_wire];
+    let continuation_node = backend.positions[&continuation];
+
+    backend
+        .set_node(inner_source_node, true, 15, None, false)
+        .unwrap();
+    native.set_block(inner_source, lever(true));
+
+    backend.use_block(lever_pos).unwrap();
+    let native_trace = capture_at(&observed, || set_native_lever(&mut native, lever_pos, true));
+    let native_callbacks: Vec<_> = native_trace
+        .iter()
+        .filter(|entry| entry["kind"] == "callback")
+        .map(|entry| {
+            (
+                serde_json::from_value(entry["data"]["pos"].clone()).unwrap(),
+                serde_json::from_value(entry["data"]["dir"].clone()).unwrap(),
+            )
+        })
+        .collect();
+    let graph_callbacks: Vec<_> = backend
+        .callback_order
+        .iter()
+        .filter(|(position, _)| observed.contains(position))
+        .map(|(position, kind)| {
+            let DeliveryKind::Update { direction } = kind else {
+                unreachable!()
+            };
+            (*position, *direction)
+        })
+        .collect();
+    assert_eq!(graph_callbacks, native_callbacks, "{:#?}", backend.trace());
+
+    let bulb_callback_index = backend
+        .callback_order
+        .iter()
+        .position(|(position, _)| *position == bulb_pos)
+        .unwrap();
+    let inner_callback_index = backend
+        .callback_order
+        .iter()
+        .enumerate()
+        .skip(bulb_callback_index + 1)
+        .find_map(|(index, (position, _))| (*position == inner_wire).then_some(index))
+        .unwrap();
+    assert!(
+        bulb_callback_index < inner_callback_index,
+        "{:#?}",
+        backend.callback_order
+    );
+
+    let native_nested_callback = native_trace
+        .iter()
+        .position(|entry| {
+            entry["kind"] == "callback"
+                && entry["data"]["pos"] == serde_json::to_value(inner_wire).unwrap()
+                && entry["data"]["parents"]
+                    .as_array()
+                    .unwrap()
+                    .contains(&serde_json::to_value(bulb_pos).unwrap())
+        })
+        .unwrap_or_else(|| panic!("bulb did not notify the inner wire: {native_trace:#?}"));
+    let native_nested_strength = native_trace
+        .iter()
+        .position(|entry| {
+            entry["kind"] == "wire_strength"
+                && serde_json::from_value::<BlockPos>(entry["data"]["pos"].clone()).unwrap()
+                    == continuation
+        })
+        .unwrap_or_else(|| {
+            panic!("nested walk did not write the continuation wire: {native_trace:#?}")
+        });
+    assert!(
+        native_nested_callback < native_nested_strength,
+        "{native_trace:#?}"
+    );
+    assert_eq!(native_trace[native_nested_strength]["data"]["old"], 0);
+    assert_eq!(native_trace[native_nested_strength]["data"]["new"], 14);
+
+    let starts: Vec<_> = backend
+        .trace()
+        .iter()
+        .enumerate()
+        .filter_map(|(index, line)| {
+            line.starts_with("wire turbo start ")
+                .then_some((index, line))
+        })
+        .collect();
+    let ends: Vec<_> = backend
+        .trace()
+        .iter()
+        .enumerate()
+        .filter_map(|(index, line)| line.starts_with("wire turbo end ").then_some((index, line)))
+        .collect();
+    assert_eq!(starts.len(), 2, "{:#?}", backend.trace());
+    assert_eq!(ends.len(), 2, "{:#?}", backend.trace());
+    assert!(starts[0].1.contains(&format!("{outer_node:?}")));
+    assert!(starts[1].1.contains(&format!("{inner_node:?}")));
+    assert!(ends[0].1.contains(&format!("{inner_node:?}")));
+    assert!(ends[1].1.contains(&format!("{outer_node:?}")));
+    assert!(
+        starts[0].0 < starts[1].0 && starts[1].0 < ends[0].0 && ends[0].0 < ends[1].0,
+        "{:#?}",
+        backend.trace()
+    );
+    assert!(
+        backend.trace()[ends[0].0 + 1..ends[1].0]
+            .iter()
+            .any(|line| line.starts_with("wire deliver "))
+    );
+    assert!(backend.trace().iter().any(|line| {
+        line.starts_with(&format!("wire strength {continuation_node:?}"))
+            && line.ends_with("0 -> 14")
+    }));
+
+    backend.flush(&mut graph_world);
+    for position in [outer_wire, inner_wire, continuation, bulb_pos] {
+        assert_eq!(graph_world.get_block(position), native.get_block(position));
+    }
+    assert!(
+        matches!(graph_world.get_block(outer_wire), Block::RedstoneWire { wire } if wire.power == 15)
+    );
+    assert!(
+        matches!(graph_world.get_block(inner_wire), Block::RedstoneWire { wire } if wire.power == 15)
+    );
+    assert!(
+        matches!(graph_world.get_block(continuation), Block::RedstoneWire { wire } if wire.power == 14)
+    );
+    assert_eq!(
+        graph_world.get_block(bulb_pos).copper_bulb_state(),
+        Some((true, true))
+    );
 }
 
 #[test]
@@ -403,6 +1294,44 @@ fn imported_ticks_keep_duplicates_priority_fifo_and_reject_stale_types() {
             .filter(|line| line.as_str() == "clock.advance")
             .count(),
         2
+    );
+}
+
+#[test]
+fn imported_wire_tick_is_consumed_as_a_native_noop() {
+    let position = BlockPos::new(8, 20, 5);
+    let block = Block::RedstoneWire {
+        wire: Default::default(),
+    };
+    let entry = TickEntry {
+        pos: position,
+        block_type: Some(block.registry_id()),
+        ticks_left: 2,
+        tick_priority: TickPriority::High,
+    };
+    let scheduler = vec![entry.clone()]
+        .into_iter()
+        .collect::<TickScheduler<ScheduledBlockTick>>();
+    let mut native = PlotWorld::from_chunks(0, 0, vec![Chunk::empty(0, 0)], scheduler);
+    native.set_block(position, block);
+    let mut backend = graph(&native, vec![entry.clone()]);
+    let node = backend.positions[&position];
+    assert_eq!(backend.scheduled_ticks(), [entry]);
+
+    backend.tick().unwrap();
+    native.tick_interpreted();
+    assert_eq!(backend.scheduled_ticks().len(), 1);
+    assert_eq!(backend.scheduled_ticks()[0].ticks_left, 1);
+    backend.tick().unwrap();
+    native.tick_interpreted();
+
+    assert!(backend.scheduled_ticks().is_empty());
+    assert_eq!(backend.node_block(node), native.get_block(position));
+    assert!(
+        backend
+            .trace()
+            .iter()
+            .any(|line| line == &format!("dispatch {node:?}"))
     );
 }
 
@@ -1367,7 +2296,89 @@ fn piston_schematics_require_an_unsupported_component_error() {
                     ..
                 })
             ),
-            "{name} must not claim graph execution before piston/dust steps"
+            "{name} must reject piston execution until the piston transition step"
         );
     }
+}
+
+#[test]
+fn moved_redstone_resource_uses_its_selected_profile_strength() {
+    let mut backend = contact_resource_backend();
+    let target = SiteId::new(0);
+    assert_eq!(
+        backend.site_power(target, PowerPort::Weak(BlockFace::West)),
+        0
+    );
+
+    backend.state.resources[0].at = ContactId::new(1);
+
+    assert_eq!(
+        backend.site_power(target, PowerPort::Weak(BlockFace::West)),
+        15
+    );
+}
+
+#[test]
+fn fixed_boundary_comparator_keeps_its_sampled_analog_strength() {
+    let backend = contact_resource_backend();
+    assert_eq!(backend.site_power(SiteId::new(1), PowerPort::Output), 7);
+    assert_eq!(
+        backend.site_power(SiteId::new(1), PowerPort::Weak(BlockFace::South)),
+        7
+    );
+}
+
+#[test]
+fn local_power_queries_examine_only_links_for_the_requested_destination() {
+    let backend = backend_with_unrelated_power_links(2_000);
+
+    assert_eq!(backend.input_strength(NodeId::new(0), InputPort::Main), 15);
+    let input_visits = backend.power_links_examined.get();
+
+    backend.power_links_examined.set(0);
+    assert_eq!(backend.conducted_power(SiteId::new(1), false), 13);
+    let conductor_visits = backend.power_links_examined.get();
+    assert_eq!((input_visits, conductor_visits), (1, 1));
+}
+
+#[test]
+fn site_geometry_guards_use_compiled_profile_facts() {
+    // Deliberately conflicting metadata tests which representation owns query facts.
+    let site = SiteId::new(0);
+    let (program, state) = CircuitDraft {
+        nodes: vec![],
+        links: vec![],
+        power_links: vec![],
+        comparator_inputs: vec![],
+        profiles: vec![Profile {
+            raw_state: Block::Stone {}.get_id(),
+            registry_type: Block::Stone {}.registry_id(),
+            solid: false,
+            transparent: true,
+            cube: false,
+            electrical: ProfileElectrical::None,
+        }],
+        guards: vec![Guard::Site {
+            site,
+            view: OperandView::Live,
+            test: SiteTest::Solid,
+        }],
+        contacts: vec![],
+        routes: vec![],
+        wires: vec![],
+        sites: vec![SiteSpec {
+            position: BlockPos::new(0, 0, 0),
+            source: SiteSource::Constant(ProfileId::new(0)),
+            source_strength: 0,
+        }],
+        pistons: vec![],
+        resources: vec![],
+        initial_pistons: vec![],
+        initial_resources: vec![],
+    }
+    .lower()
+    .unwrap();
+    let backend = GraphBackend::new(program, state, 0).unwrap();
+
+    assert!(!backend.guard_matches(GuardId::new(0), None));
 }

@@ -5,8 +5,9 @@
 #![allow(dead_code)] // This representation is consumed by the parser and backend in later steps.
 
 use crate::redpiler::compile_graph::{NodeState, NodeType};
-use mchprs_blocks::blocks::RedstoneWire;
+use mchprs_blocks::blocks::{Block, RedstoneWire};
 use mchprs_blocks::{BlockFace, BlockPos};
+use rustc_hash::FxHashMap;
 use std::collections::{HashMap, VecDeque};
 use std::ops::Range;
 
@@ -40,7 +41,7 @@ graph_id!(ProfileId);
 graph_id!(GuardId);
 graph_id!(RouteId);
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub(crate) enum InputPort {
     Main,
     Side,
@@ -119,8 +120,8 @@ pub(crate) struct CircuitNodeDraft {
 pub(crate) struct NodeSpec {
     pub(crate) position: Option<BlockPos>,
     pub(crate) raw_state: Option<u32>,
+    pub(crate) block: Option<Block>,
     pub(crate) kind: CircuitNodeKind,
-    pub(crate) incoming: Range<usize>,
     pub(crate) output_route: Option<RouteId>,
 }
 
@@ -307,7 +308,7 @@ pub(crate) struct Route {
     pub(crate) deliveries: Box<[RouteDelivery]>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub(crate) enum PowerTarget {
     Input { node: NodeId, port: InputPort },
     Conductor { site: SiteId, include_dust: bool },
@@ -375,42 +376,21 @@ impl CircuitDraft {
     pub(crate) fn lower(mut self) -> Result<(CircuitProgram, CircuitState), GraphBuildError> {
         self.validate()?;
 
-        // Links are grouped by destination for dense incoming ranges. Their order
-        // is not callback order; ordered deliveries live only in Route tables.
-        self.links.sort_by_key(|link| link.to.index());
-        let mut nodes = Vec::with_capacity(self.nodes.len());
-        let mut start = 0;
-        for (index, node) in self.nodes.iter().enumerate() {
-            let id = NodeId::try_from_index(index)
-                .ok_or(GraphBuildError::TooManyEntries { table: "nodes" })?;
-            let incoming_start = start;
-            while start < self.links.len() && self.links[start].to == id {
-                start += 1;
-            }
-            if start > self.links.len() || incoming_start > start {
-                return Err(GraphBuildError::InvalidIncomingRange {
-                    node: Some(id),
-                    start: incoming_start,
-                    end: start,
-                    links: self.links.len(),
-                });
-            }
-            nodes.push(NodeSpec {
+        let nodes = self.nodes.iter().map(|node| NodeSpec {
                 position: node.position,
                 raw_state: node.raw_state,
+                block: node.raw_state.map(Block::from_id),
                 kind: node.kind.clone(),
-                incoming: incoming_start..start,
                 output_route: node.output_route,
-            });
+            }).collect::<Vec<_>>();
+
+        self.power_links.sort_by_key(|link| link.to);
+        let mut power_inputs: FxHashMap<PowerTarget, Range<usize>> = FxHashMap::default();
+        for (index, link) in self.power_links.iter().enumerate() {
+            power_inputs.entry(link.to).or_insert(index..index).end = index + 1;
         }
-        if start != self.links.len() {
-            return Err(GraphBuildError::InvalidIncomingRange {
-                node: self.links.get(start).map(|link| link.to),
-                start,
-                end: self.links.len(),
-                links: self.links.len(),
-            });
-        }
+        let profile_blocks = self.profiles.iter().map(|profile| Block::from_id(profile.raw_state))
+            .collect::<Vec<_>>().into_boxed_slice();
 
         let state = CircuitState {
             components: self
@@ -426,8 +406,10 @@ impl CircuitDraft {
             nodes: nodes.into_boxed_slice(),
             links: self.links.into_boxed_slice(),
             power_links: self.power_links.into_boxed_slice(),
+            power_inputs,
             comparator_inputs: self.comparator_inputs.into_boxed_slice(),
             profiles: self.profiles.into_boxed_slice(),
+            profile_blocks,
             guards: self.guards.into_boxed_slice(),
             contacts: self.contacts.into_boxed_slice(),
             routes: self.routes.into_boxed_slice(),
@@ -1308,12 +1290,6 @@ pub(crate) enum GraphBuildError {
         descriptions: usize,
         states: usize,
     },
-    InvalidIncomingRange {
-        node: Option<NodeId>,
-        start: usize,
-        end: usize,
-        links: usize,
-    },
 }
 
 impl std::fmt::Display for GraphBuildError {
@@ -1444,15 +1420,6 @@ impl std::fmt::Display for GraphBuildError {
                 f,
                 "{table} table has {descriptions} descriptions but {states} initial states"
             ),
-            Self::InvalidIncomingRange {
-                node,
-                start,
-                end,
-                links,
-            } => write!(
-                f,
-                "node {node:?} has incoming range {start}..{end} for {links} links",
-            ),
         }
     }
 }
@@ -1464,8 +1431,10 @@ pub(crate) struct CircuitProgram {
     nodes: Box<[NodeSpec]>,
     links: Box<[LinkSpec]>,
     power_links: Box<[PowerLink]>,
+    power_inputs: FxHashMap<PowerTarget, Range<usize>>,
     comparator_inputs: Box<[ComparatorInputPlan]>,
     profiles: Box<[Profile]>,
+    profile_blocks: Box<[Block]>,
     guards: Box<[Guard]>,
     contacts: Box<[ContactSpec]>,
     routes: Box<[Route]>,
@@ -1486,6 +1455,15 @@ impl CircuitProgram {
 
     pub(crate) fn power_links(&self) -> &[PowerLink] {
         &self.power_links
+    }
+
+    pub(crate) fn power_links_to(&self, target: PowerTarget) -> &[PowerLink] {
+        let Some(range) = self.power_inputs.get(&target) else { return &[] };
+        &self.power_links[range.clone()]
+    }
+
+    pub(crate) fn profile_block(&self, profile: ProfileId) -> Option<Block> {
+        self.profile_blocks.get(profile.index()).copied()
     }
 
     pub(crate) fn comparator_inputs(&self) -> &[ComparatorInputPlan] {
@@ -1555,21 +1533,22 @@ pub(crate) struct WalkSite {
     pub(crate) x_bias: i32,
     pub(crate) z_bias: i32,
     pub(crate) layer: u32,
+    pub(crate) heading: Option<u8>,
 }
 
 /// Per-invocation dust scratch. It is constructed separately from persistent
 /// circuit state, so nested walks cannot overwrite a caller's captured sites.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct WireWalk {
-    pub(crate) sites: Vec<Option<WalkSite>>,
+    pub(crate) sites: FxHashMap<SiteId, WalkSite>,
     pub(crate) queues: [VecDeque<SiteId>; 3],
     pub(crate) layer: u32,
 }
 
 impl WireWalk {
-    pub(crate) fn new(site_count: usize) -> Self {
+    pub(crate) fn new() -> Self {
         Self {
-            sites: vec![None; site_count],
+            sites: FxHashMap::default(),
             queues: std::array::from_fn(|_| VecDeque::new()),
             layer: 0,
         }
@@ -1808,7 +1787,6 @@ mod tests {
     #[test]
     fn lowering_groups_links_without_losing_callback_duplicates_or_direction() {
         let (program, state) = draft_with_mixed_links().lower().unwrap();
-        assert_eq!(program.nodes()[1].incoming, 0..4);
         assert_eq!(program.links().len(), 4);
         assert!(matches!(
             program.links()[0].kind,
@@ -1996,10 +1974,44 @@ mod tests {
 
     #[test]
     fn walk_state_is_fresh_and_separate_from_circuit_state() {
-        let outer = WireWalk::new(2);
-        let nested = WireWalk::new(2);
-        assert!(outer.sites.iter().all(Option::is_none));
-        assert_eq!(outer, nested);
+        let mut outer = WireWalk::new();
+        let mut nested = WireWalk::new();
+        let site = SiteId::new(0);
+        outer.sites.insert(
+            site,
+            WalkSite {
+                observed: ObservedSite {
+                    profile: None,
+                    receiver: None,
+                    properties: ObservedProperties::Passive,
+                },
+                visited: true,
+                x_bias: 1,
+                z_bias: 0,
+                layer: 2,
+                heading: Some(1),
+            },
+        );
+        assert!(nested.sites.is_empty());
+        nested.sites.insert(
+            site,
+            WalkSite {
+                observed: ObservedSite {
+                    profile: None,
+                    receiver: None,
+                    properties: ObservedProperties::Passive,
+                },
+                visited: false,
+                x_bias: 0,
+                z_bias: 0,
+                layer: 0,
+                heading: None,
+            },
+        );
+        assert!(outer.sites[&site].visited);
+        assert!(!nested.sites[&site].visited);
+        assert_eq!(outer.queues, std::array::from_fn(|_| VecDeque::new()));
+        assert_eq!(nested.queues, std::array::from_fn(|_| VecDeque::new()));
     }
 
     #[test]
