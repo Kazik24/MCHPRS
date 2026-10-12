@@ -11,7 +11,7 @@ use crate::world::World;
 
 use super::direct::node::NodeId;
 
-const NUM_QUEUES: usize = 32;
+pub(crate) const NUM_QUEUES: usize = 32;
 
 #[derive(Debug, Clone)]
 pub struct Queues<T>([VecDeque<T>; TickPriority::COUNT]);

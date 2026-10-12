@@ -108,6 +108,8 @@ pub(crate) enum ComponentState {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct CircuitNodeDraft {
     pub(crate) position: Option<BlockPos>,
+    /// Original registry state; runtime uses it for static properties and tick type.
+    pub(crate) raw_state: Option<u32>,
     pub(crate) kind: CircuitNodeKind,
     pub(crate) state: ComponentState,
     pub(crate) output_route: Option<RouteId>,
@@ -116,6 +118,7 @@ pub(crate) struct CircuitNodeDraft {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct NodeSpec {
     pub(crate) position: Option<BlockPos>,
+    pub(crate) raw_state: Option<u32>,
     pub(crate) kind: CircuitNodeKind,
     pub(crate) incoming: Range<usize>,
     pub(crate) output_route: Option<RouteId>,
@@ -270,6 +273,7 @@ pub(crate) enum SiteSource {
 pub(crate) struct SiteSpec {
     pub(crate) position: BlockPos,
     pub(crate) source: SiteSource,
+    pub(crate) source_strength: u8,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -303,6 +307,37 @@ pub(crate) struct Route {
     pub(crate) deliveries: Box<[RouteDelivery]>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum PowerTarget {
+    Input { node: NodeId, port: InputPort },
+    Conductor { site: SiteId, include_dust: bool },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct PowerLink {
+    pub(crate) from: SiteId,
+    pub(crate) from_port: PowerPort,
+    pub(crate) to: PowerTarget,
+    pub(crate) face: BlockFace,
+    pub(crate) attenuation: u8,
+    pub(crate) guard: GuardId,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum ComparatorOverride {
+    Literal(u8),
+    LiveComponentOutput(NodeId),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct ComparatorInputPlan {
+    pub(crate) node: NodeId,
+    pub(crate) rear: SiteId,
+    pub(crate) direct_override: Option<ComparatorOverride>,
+    pub(crate) far_override: Option<(SiteId, ComparatorOverride, GuardId)>,
+    pub(crate) far_threshold: u8,
+}
+
 impl RouteDelivery {
     fn link_kind(self) -> LinkKind {
         match self.kind {
@@ -322,6 +357,8 @@ impl RouteDelivery {
 pub(crate) struct CircuitDraft {
     pub(crate) nodes: Vec<CircuitNodeDraft>,
     pub(crate) links: Vec<LinkSpec>,
+    pub(crate) power_links: Vec<PowerLink>,
+    pub(crate) comparator_inputs: Vec<ComparatorInputPlan>,
     pub(crate) profiles: Vec<Profile>,
     pub(crate) guards: Vec<Guard>,
     pub(crate) contacts: Vec<ContactSpec>,
@@ -360,6 +397,7 @@ impl CircuitDraft {
             }
             nodes.push(NodeSpec {
                 position: node.position,
+                raw_state: node.raw_state,
                 kind: node.kind.clone(),
                 incoming: incoming_start..start,
                 output_route: node.output_route,
@@ -387,6 +425,8 @@ impl CircuitDraft {
         let program = CircuitProgram {
             nodes: nodes.into_boxed_slice(),
             links: self.links.into_boxed_slice(),
+            power_links: self.power_links.into_boxed_slice(),
+            comparator_inputs: self.comparator_inputs.into_boxed_slice(),
             profiles: self.profiles.into_boxed_slice(),
             guards: self.guards.into_boxed_slice(),
             contacts: self.contacts.into_boxed_slice(),
@@ -422,6 +462,65 @@ impl CircuitDraft {
         self.validate_contacts_and_pistons()?;
         self.validate_routes()?;
         self.validate_links()?;
+        self.validate_power()?;
+        Ok(())
+    }
+
+    fn validate_power(&self) -> Result<(), GraphBuildError> {
+        for link in &self.power_links {
+            check_id("sites", link.from.index(), self.sites.len())?;
+            check_id("guards", link.guard.index(), self.guards.len())?;
+            if link.attenuation > 15 {
+                return Err(GraphBuildError::InvalidPowerAttenuation {
+                    from: link.from,
+                    attenuation: link.attenuation,
+                });
+            }
+            match link.to {
+                PowerTarget::Input { node, .. } => {
+                    check_id("nodes", node.index(), self.nodes.len())?
+                }
+                PowerTarget::Conductor { site, .. } => {
+                    check_id("sites", site.index(), self.sites.len())?
+                }
+            }
+        }
+        for plan in &self.comparator_inputs {
+            check_id("nodes", plan.node.index(), self.nodes.len())?;
+            check_id("sites", plan.rear.index(), self.sites.len())?;
+            if !matches!(
+                self.nodes[plan.node.index()].kind,
+                CircuitNodeKind::Electrical(NodeType::Comparator { .. })
+            ) {
+                return Err(GraphBuildError::InvalidComponentBinding { node: plan.node });
+            }
+            let validate_override = |source| match source {
+                ComparatorOverride::Literal(strength) if strength > 15 => {
+                    Err(GraphBuildError::InvalidStrength {
+                        node: plan.node,
+                        strength,
+                    })
+                }
+                ComparatorOverride::LiveComponentOutput(node) => {
+                    check_id("nodes", node.index(), self.nodes.len())
+                }
+                _ => Ok(()),
+            };
+            if let Some(source) = plan.direct_override {
+                validate_override(source)?;
+            }
+            if let Some((site, source, guard)) = plan.far_override {
+                check_id("sites", site.index(), self.sites.len())?;
+                check_id("guards", guard.index(), self.guards.len())?;
+                validate_override(source)?;
+            }
+            if plan.far_threshold > 15 {
+                return Err(GraphBuildError::InvalidStrength {
+                    node: plan.node,
+                    strength: plan.far_threshold,
+                });
+            }
+        }
         Ok(())
     }
 
@@ -430,6 +529,9 @@ impl CircuitDraft {
             let id = NodeId::try_from_index(index).expect("node count was checked");
             let valid_state = match (&node.kind, &node.state) {
                 (CircuitNodeKind::Electrical(ty), ComponentState::Electrical(state)) => {
+                    if node.raw_state.is_none() {
+                        return Err(GraphBuildError::MissingComponentState { node: id });
+                    }
                     if matches!(ty, NodeType::Wire | NodeType::Observer { .. }) {
                         return Err(GraphBuildError::UseSpecializedNode { node: id });
                     }
@@ -444,11 +546,17 @@ impl CircuitDraft {
                     true
                 }
                 (CircuitNodeKind::Observer { watched, .. }, ComponentState::Electrical(state)) => {
+                    if node.raw_state.is_none() {
+                        return Err(GraphBuildError::MissingComponentState { node: id });
+                    }
                     check_id("sites", watched.index(), self.sites.len())?;
                     validate_strength(id, state.output_strength, None)?;
                     true
                 }
                 (CircuitNodeKind::Wire(plan), ComponentState::Wire(state)) => {
+                    if node.raw_state.is_none() {
+                        return Err(GraphBuildError::MissingComponentState { node: id });
+                    }
                     if state.power > 15 {
                         return Err(GraphBuildError::InvalidStrength {
                             node: id,
@@ -1135,10 +1243,17 @@ pub(crate) enum GraphBuildError {
         to: NodeId,
         attenuation: u8,
     },
+    InvalidPowerAttenuation {
+        from: SiteId,
+        attenuation: u8,
+    },
     InvalidNodeState {
         node: NodeId,
     },
     InvalidComponentBinding {
+        node: NodeId,
+    },
+    MissingComponentState {
         node: NodeId,
     },
     UseSpecializedNode {
@@ -1225,6 +1340,11 @@ impl std::fmt::Display for GraphBuildError {
                 from.index(),
                 to.index()
             ),
+            Self::InvalidPowerAttenuation { from, attenuation } => write!(
+                f,
+                "power source site {} has attenuation {attenuation}; expected 0..15",
+                from.index()
+            ),
             Self::InvalidNodeState { node } => {
                 write!(
                     f,
@@ -1235,6 +1355,11 @@ impl std::fmt::Display for GraphBuildError {
             Self::InvalidComponentBinding { node } => write!(
                 f,
                 "generic component binding references specialized node {}",
+                node.index()
+            ),
+            Self::MissingComponentState { node } => write!(
+                f,
+                "component node {} has no original block state",
                 node.index()
             ),
             Self::UseSpecializedNode { node } => write!(
@@ -1338,6 +1463,8 @@ impl std::error::Error for GraphBuildError {}
 pub(crate) struct CircuitProgram {
     nodes: Box<[NodeSpec]>,
     links: Box<[LinkSpec]>,
+    power_links: Box<[PowerLink]>,
+    comparator_inputs: Box<[ComparatorInputPlan]>,
     profiles: Box<[Profile]>,
     guards: Box<[Guard]>,
     contacts: Box<[ContactSpec]>,
@@ -1355,6 +1482,14 @@ impl CircuitProgram {
 
     pub(crate) fn links(&self) -> &[LinkSpec] {
         &self.links
+    }
+
+    pub(crate) fn power_links(&self) -> &[PowerLink] {
+        &self.power_links
+    }
+
+    pub(crate) fn comparator_inputs(&self) -> &[ComparatorInputPlan] {
+        &self.comparator_inputs
     }
 
     pub(crate) fn sites(&self) -> &[SiteSpec] {
@@ -1401,13 +1536,14 @@ pub(crate) struct CircuitState {
 pub(crate) enum ObservedProperties {
     Passive,
     Electrical { powered: bool, locked: bool },
+    CopperBulb { powered: bool, lit: bool },
     Wire(RedstoneWire),
     Piston { extended: bool },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct ObservedSite {
-    pub(crate) profile: ProfileId,
+    pub(crate) profile: Option<ProfileId>,
     pub(crate) receiver: Option<CallbackReceiver>,
     pub(crate) properties: ObservedProperties,
 }
@@ -1458,36 +1594,54 @@ mod tests {
             nodes: vec![
                 CircuitNodeDraft {
                     position: Some(BlockPos::new(0, 0, 0)),
+                    raw_state: Some(
+                        mchprs_blocks::blocks::Block::Lever {
+                            lever: Default::default(),
+                        }
+                        .get_id(),
+                    ),
                     kind: CircuitNodeKind::Electrical(NodeType::Lever),
                     state: ComponentState::Electrical(NodeState::default()),
                     output_route: None,
                 },
                 CircuitNodeDraft {
                     position: Some(BlockPos::new(1, 0, 0)),
+                    raw_state: Some(
+                        mchprs_blocks::blocks::Block::RedstoneLamp { lit: false }.get_id(),
+                    ),
                     kind: CircuitNodeKind::Electrical(NodeType::Lamp),
                     state: ComponentState::Electrical(NodeState::default()),
                     output_route: None,
                 },
                 CircuitNodeDraft {
                     position: Some(BlockPos::new(2, 0, 0)),
+                    raw_state: None,
                     kind: CircuitNodeKind::Piston(piston),
                     state: ComponentState::Specialized,
                     output_route: None,
                 },
                 CircuitNodeDraft {
                     position: Some(BlockPos::new(3, 0, 0)),
+                    raw_state: None,
                     kind: CircuitNodeKind::Contact(contact),
                     state: ComponentState::Specialized,
                     output_route: None,
                 },
                 CircuitNodeDraft {
                     position: Some(BlockPos::new(4, 0, 0)),
+                    raw_state: None,
                     kind: CircuitNodeKind::Contact(second_contact),
                     state: ComponentState::Specialized,
                     output_route: None,
                 },
                 CircuitNodeDraft {
                     position: Some(BlockPos::new(0, 0, 1)),
+                    raw_state: Some(
+                        mchprs_blocks::blocks::Block::RedstoneWire {
+                            wire: Default::default(),
+                        }
+                        .get_id(),
+                    ),
                     kind: CircuitNodeKind::Wire(0),
                     state: ComponentState::Wire(RedstoneWire {
                         power: 4,
@@ -1536,6 +1690,8 @@ mod tests {
                     callback: Some(CallbackEdgeRef { route, sequence: 2 }),
                 },
             ],
+            power_links: vec![],
+            comparator_inputs: vec![],
             profiles: vec![Profile {
                 raw_state: 0,
                 registry_type: 0,
@@ -1612,6 +1768,7 @@ mod tests {
             sites: vec![SiteSpec {
                 position: BlockPos::new(0, 0, 0),
                 source: SiteSource::Component(NodeId::new(1)),
+                source_strength: 0,
             }],
             pistons: vec![PistonSpec {
                 node: piston_node,
@@ -1804,6 +1961,7 @@ mod tests {
         self_dependent_contact.sites.push(SiteSpec {
             position: BlockPos::new(3, 1, 0),
             source: SiteSource::Contact(ContactId::new(0)),
+            source_strength: 0,
         });
         self_dependent_contact.guards.push(Guard::Site {
             site,

@@ -9,6 +9,7 @@ use crate::redpiler::program_graph::{
     ContactVariant, Guard, GuardId, InputPort, NodeId, OperandView, PowerPort, Profile,
     ProfileElectrical, ProfileId, SiteId, SiteSource, SiteSpec, SiteTest, StateTest, WirePlan,
 };
+pub(crate) use crate::redpiler::program_graph::{ComparatorInputPlan, ComparatorOverride};
 use crate::redstone::{comparator, power};
 use crate::world::{World, for_each_block_optimized, wire_cache};
 use mchprs_blocks::blocks::Block;
@@ -68,22 +69,6 @@ pub(crate) struct WireRelation {
     pub(crate) kind: WireRelationKind,
     pub(crate) direction: BlockFace,
     pub(crate) guard: GuardId,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum ComparatorOverride {
-    Literal(u8),
-    LiveComponentOutput(NodeId),
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct ComparatorInputPlan {
-    pub(crate) node: NodeId,
-    pub(crate) rear: SiteId,
-    pub(crate) direct_override: Option<ComparatorOverride>,
-    pub(crate) far_override: Option<(SiteId, ComparatorOverride, GuardId)>,
-    /// A far override replaces the rear signal only while that signal is below 15.
-    pub(crate) far_threshold: u8,
 }
 
 #[derive(Debug, Clone)]
@@ -173,6 +158,7 @@ pub(crate) fn prepare_electrical(
         // Specialized nodes receive their site-backed plans after sites are interned below.
         nodes.push(CircuitNodeDraft {
             position: Some(position),
+            raw_state: Some(block.get_id()),
             kind: CircuitNodeKind::Electrical(ty.clone()),
             state: ComponentState::Electrical(state.clone()),
             output_route: None,
@@ -268,15 +254,20 @@ pub(crate) fn prepare_electrical(
     let mut site_at = FxHashMap::default();
     for position in positions {
         let site = SiteId::new(sites.len() as u32);
+        let block = block_at(world, position);
         let source = if let Some((contact, _)) = contact_at.get(&position) {
             SiteSource::Contact(*contact)
         } else if let Some(component) = component_at.get(&position) {
             SiteSource::Component(*component)
         } else {
-            SiteSource::Constant(profile_for(block_at(world, position)))
+            SiteSource::Constant(profile_for(block))
         };
         site_at.insert(position, site);
-        sites.push(SiteSpec { position, source });
+        sites.push(SiteSpec {
+            position,
+            source,
+            source_strength: crate::redstone::source_strength(block, world, position),
+        });
     }
     let site = |position: BlockPos| site_at[&position];
 

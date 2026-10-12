@@ -833,6 +833,7 @@ fn build_draft<W: World>(
     for actor in actors {
         nodes.push(CircuitNodeDraft {
             position: Some(actor.position),
+            raw_state: None,
             kind: CircuitNodeKind::Piston(actor.id),
             state: ComponentState::Specialized,
             output_route: None,
@@ -841,6 +842,7 @@ fn build_draft<W: World>(
     for (index, &position) in positions.iter().enumerate() {
         nodes.push(CircuitNodeDraft {
             position: Some(position),
+            raw_state: None,
             kind: CircuitNodeKind::Contact(ContactId::new(index as u32)),
             state: ComponentState::Specialized,
             output_route: None,

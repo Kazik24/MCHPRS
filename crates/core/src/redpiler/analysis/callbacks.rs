@@ -488,6 +488,7 @@ impl<W: World> Builder<'_, W> {
         {
             return Err(CallbackError::UnloadedTarget { position });
         }
+        let block = self.world.get_block(position);
         let source = if let Some(&contact) = self.contact_at.get(&position) {
             SiteSource::Contact(contact)
         } else if let Some((index, _)) =
@@ -501,11 +502,15 @@ impl<W: World> Builder<'_, W> {
         {
             SiteSource::Component(crate::redpiler::program_graph::NodeId::new(index as u32))
         } else {
-            SiteSource::Constant(self.profile_for(self.world.get_block(position))?)
+            SiteSource::Constant(self.profile_for(block)?)
         };
         let site = SiteId::try_from_index(self.electrical.sites.len())
             .ok_or(CallbackError::TooManyEntries { table: "sites" })?;
-        self.electrical.sites.push(SiteSpec { position, source });
+        self.electrical.sites.push(SiteSpec {
+            position,
+            source,
+            source_strength: redstone::source_strength(block, self.world, position),
+        });
         self.site_at.insert(position, site);
         Ok(site)
     }

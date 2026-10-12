@@ -1,6 +1,6 @@
 # Step 06: Graph scheduler and fixed component callbacks
 
-Status: not started. [Step 05](./05-callback-parser.md) must be reviewed.
+Status: implementation complete; awaiting human review. [Step 05](./05-callback-parser.md) is reviewed.
 
 ## Agent prompt
 
@@ -39,6 +39,22 @@ Verify new tests are registered and actually run. Use the targeted release/locke
 Show a graph-only call path from input to route to scheduled transition, and a clock trace proving that advance occurs exactly once. Confirm that flush does not change any semantic field.
 
 Fixed-component callbacks and scheduled transitions match the oracle in the admitted tests; unsupported live operations cannot report success.
+
+## Implementation evidence
+
+The internal graph backend compiles the prepared geometry, electrical queries, and callback routes. Delivery resolves recipients against current graph state and finishes nested routes synchronously. Its clock drains current work, advances the existing scheduler exactly once, drains the next bucket, then enters empty piston-action and deferred-connection phases.
+
+The operation trace asserted by the lever/lamp episode is: lever state change -> ordered route delivery -> lamp state change. The same episode matches native lamp state. Observer, comparator, repeater, and bulb episodes also compare graph results with the native interpreter. Flush tests confirm that presentation projection leaves component state, scheduler contents, pending membership, and clock state unchanged.
+
+Compiled boundary sites retain the interpreter's sampled source strength, including block-entity-backed outputs. Imported duplicate ticks retain their scheduler order; stale ticks at uncompiled air positions remain pending until dispatch, while live non-air ticks without a graph node fail compilation. Registry-type mismatches are skipped at dispatch.
+
+Shape deliveries do not enter electrical update handlers; observers sample only their separately routed Update callbacks. Captured repeater power determines its stored output strength. Bulb-to-comparator callback order and count match native execution, with the compiled route as the sole notification path.
+
+Unsupported command blocks, note blocks, trapdoors, dust, and piston transitions return explicit errors. Commands are not deferred to flush.
+
+Verified with `cargo test -p mchprs_core --locked redpiler::backend::graph::tests` and `cargo test -p mchprs_core --release --locked redpiler::backend::graph::tests`: 13 passed in each profile. `git diff --check` and direct Rust 2024 formatting checks for changed Rust files passed. `cargo fmt --all -- --check` still reports formatting drift in unrelated baseline files restored during this change.
+
+Remaining boundary: piston actions/deferred events are empty phases, dust traversal and command execution are unsupported, and public rich-graph activation remains Step 10 work.
 
 ## Leave out
 

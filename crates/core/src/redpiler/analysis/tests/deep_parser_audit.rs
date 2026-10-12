@@ -85,11 +85,7 @@ fn channel_strength(
         }
         PowerPort::Conducted { .. } => unreachable!(),
     };
-    if emits {
-        strength
-    } else {
-        0
-    }
+    if emits { strength } else { 0 }
 }
 
 fn input_strength(
@@ -372,6 +368,8 @@ fn fixture_callback_projection(name: &str) -> (FixturePrepStage, Option<String>)
         let draft = CircuitDraft {
             nodes: electrical.nodes,
             links: callbacks.links,
+            power_links: vec![],
+            comparator_inputs: vec![],
             profiles: electrical.profiles,
             guards: electrical.guards,
             contacts: electrical.contacts,
