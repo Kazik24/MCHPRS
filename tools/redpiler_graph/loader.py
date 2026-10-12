@@ -19,6 +19,7 @@ TABLES = {
     "wire": "wire_plans",
     "wire_relation": "wire_relations",
     "comparator_plan": "comparator_plans",
+    "callback_link": "callback_links",
     "route": "routes",
 }
 ID_PATTERN = re.compile(r"([a-z_]+):(0|[1-9][0-9]*)\Z")
@@ -84,14 +85,14 @@ def _validate(data: Any) -> dict[str, dict[str, dict[str, Any]]]:
         raise GraphFormatError(f"unsupported graph major version: {version.get('major')}")
     if not isinstance(version.get("minor"), int) or version["minor"] < 0:
         raise GraphFormatError("version.minor must be a nonnegative integer")
-    if root.get("stage") not in ("electrical_draft", "program"):
+    if root.get("stage") not in ("electrical_draft", "callback_draft", "program"):
         raise GraphFormatError(f"unsupported graph stage: {root.get('stage')}")
 
     graph = _object(root.get("graph"), "graph")
     records: dict[str, dict[str, dict[str, Any]]] = {}
     for prefix, table in TABLES.items():
         values = graph.get(table)
-        if table == "routes" and values is None:
+        if table in ("routes", "callback_links") and values is None:
             values = []
         values = _array(values, f"graph.{table}")
         indexed: dict[str, dict[str, Any]] = {}
@@ -258,10 +259,25 @@ def _validate(data: Any) -> dict[str, dict[str, dict[str, Any]]]:
             _validate_override(far.get("value"), identifier, ref)
 
     for identifier, route in records["route"].items():
+        optional("node", route.get("source"), identifier)
         for delivery in _array(route.get("deliveries"), f"{identifier}.deliveries"):
             delivery = _object(delivery, f"{identifier}.delivery")
             ref("site", delivery.get("target"), identifier)
             ref("guard", delivery.get("guard"), identifier)
+            receiver = delivery.get("receiver")
+            if receiver is not None:
+                receiver = _object(receiver, f"{identifier}.receiver")
+                receiver_kind = receiver.get("kind")
+                target = {"component": "node", "piston_base": "piston", "piston_head": "piston", "contact": "contact"}.get(receiver_kind)
+                if target is None:
+                    raise GraphFormatError(f"{identifier} has unknown route receiver kind {receiver_kind!r}")
+                ref(target, receiver.get(target), identifier)
+
+    for identifier, link in records["callback_link"].items():
+        ref("node", link.get("from"), identifier)
+        ref("node", link.get("to"), identifier)
+        ref("guard", link.get("guard"), identifier)
+        ref("route", link.get("route"), identifier)
 
     for index, snapshot in enumerate(snapshots):
         identifier = snapshot["id"]

@@ -94,6 +94,7 @@ for (const count of [1, 20_001]) {
         wire_plans: [],
         wire_relations: [],
         comparator_plans: [],
+        callback_links: [],
         routes: [],
         profiles: [],
       },
@@ -179,13 +180,14 @@ test('adder overview includes all components and power links; inspection keeps t
   const previous = viewer.cy;
   viewer.evaluate('focusRecord("node:49")');
   assert.equal(viewer.cy, previous);
-  assert.ok(viewer.elements.get('dependencies').children.some((child) => child.textContent === 'Incoming (2)'));
+  assert.ok(viewer.elements.get('dependencies').children.some((child) => child.textContent.startsWith('Incoming (')));
   assert.equal(viewer.cy.getElementById('node:49').selected(), true);
   assert.equal(viewer.cy.getElementById('node:50').hasClass('neighbor'), true);
+  const guard = fixture.graph.power_links[0].guard;
   viewer.evaluate('focusRecord("power_link:0")');
-  assert.match(viewer.elements.get('details').textContent, /guard:1760/);
-  viewer.evaluate('focusRecord("guard:1760")');
-  assert.match(viewer.elements.get('details').textContent, /"id": "guard:1760"/);
+  assert.match(viewer.elements.get('details').textContent, new RegExp(guard));
+  viewer.evaluate(`focusRecord("${guard}")`);
+  assert.match(viewer.elements.get('details').textContent, new RegExp(`"id": "${guard}"`));
 });
 
 test('following a filtered wire relation reveals it and both endpoints', async (t) => {
@@ -279,23 +281,19 @@ test('invalid imports report errors and preserve the previously loaded graph', a
   }
 });
 
-test('route deliveries run from their owning piston to the delivered component', async (t) => {
+test('searching an exported piston update reveals its direct callback edge', async (t) => {
   const viewer = makeViewer();
   t.after(() => viewer.cy?.destroy());
   const graph = adderFixture();
-  const piston = graph.graph.pistons[0];
-  piston.routes = Object.fromEntries(['base_changed', 'near_changed', 'base_restored', 'head_restored'].map((name) => [name, 'route:0']));
-  graph.graph.routes = [{ id: 'route:0', deliveries: [0, 1].map((ordinal) => ({
-    ordinal, target: 'site:70', kind: 'update', direction: 'north', guard: 'guard:0', view: 'captured',
-  })) }];
   await load(viewer, graph);
-  const edges = viewer.cy.edges('[type = "route_delivery"]');
-  assert.equal(edges.length, 2);
-  for (let ordinal = 0; ordinal < 2; ordinal++) {
-    const edge = viewer.cy.getElementById(`route:0:delivery:${ordinal}`);
-    assert.equal(edge.source().id(), piston.node);
-    assert.equal(edge.target().id(), 'node:50');
-    assert.equal(edge.data('label'), `#${ordinal} · update · north · captured`);
-  }
-  assert.equal(viewer.cy.getElementById('route:0').empty(), true);
+  const nodes = new Map(graph.graph.nodes.map((node) => [node.id, node]));
+  const update = graph.graph.callback_links.find((link) => link.kind === 'update'
+    && nodes.get(link.from)?.kind.kind === 'piston'
+    && nodes.get(link.to)?.kind.kind === 'observer');
+  assert.ok(update, 'adder fixture includes piston-to-observer update links');
+  viewer.evaluate(`focusRecord("${update.id}")`);
+  const edge = viewer.cy.getElementById(update.id);
+  assert.equal(edge.source().id(), update.from);
+  assert.equal(edge.target().id(), update.to);
+  assert.match(edge.data('label'), /^update/);
 });

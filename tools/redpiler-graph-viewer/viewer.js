@@ -3,7 +3,7 @@
 const tables = {
   nodes: "node", sites: "site", contacts: "contact", resources: "resource", guards: "guard",
   pistons: "piston", power_links: "power_link", wire_plans: "wire", wire_relations: "wire_relation",
-  comparator_plans: "comparator_plan", routes: "route", profiles: "profile",
+  comparator_plans: "comparator_plan", callback_links: "callback_link", routes: "route", profiles: "profile",
 };
 const $ = (id) => document.getElementById(id);
 let cy;
@@ -37,6 +37,7 @@ function validateGraph(data) {
   for (const [table, prefix] of Object.entries(tables)) {
     const rows = data.graph[table];
     if (table === "routes" && rows === null) continue;
+    if (table === "callback_links" && rows === undefined) continue;
     if (!Array.isArray(rows)) throw Error(`graph.${table} must be an array or null for routes.`);
     for (const row of rows) {
       if (!row || typeof row.id !== "string" || !new RegExp(`^${prefix}:(0|[1-9][0-9]*)$`).test(row.id)) throw Error(`Invalid ID in graph.${table}.`);
@@ -101,11 +102,15 @@ function indexConnections(data, index) {
   for (const route of data.graph.routes || []) {
     route.deliveries.forEach((delivery, ordinal) => {
       const owners = [...(routeOwners.get(route.id) || [route.id])];
+      if (delivery.receiver) return;
       owners.forEach((owner, ownerIndex) => {
         const suffix = owners.length > 1 ? `:owner:${ownerIndex}` : "";
         add(`${route.id}:delivery:${ordinal}${suffix}`, owner, sourceNode(delivery.target, index), "route_delivery", delivery);
       });
     });
+  }
+  for (const link of data.graph.callback_links || []) {
+    add(link.id, link.from, link.to, "callback_link", link);
   }
   return { edges, adjacent };
 }
@@ -167,6 +172,7 @@ function connectionLabel(connection) {
     return `${sourcePort} → ${port} · ${record.face} · −${record.attenuation}`;
   }
   if (connection.type === 'wire_relation') return `${record.kind} · ${record.direction}`;
+  if (connection.type === 'callback_link') return `${record.kind}${record.direction ? ` · ${record.direction}` : ''} · ${record.route} #${record.sequence}`;
   return `#${record.ordinal} · ${record.kind}${record.direction ? ` · ${record.direction}` : ''} · ${record.view}`;
 }
 
@@ -215,8 +221,8 @@ function controls(data) {
   $('inputs').replaceChildren(...inputs.slice(0, 20).map((row) => referenceButton(row.id, `${category(row)} ${row.id}\n(${row.position?.x}, ${row.position?.y}, ${row.position?.z})`)));
   const kinds = [...new Set(['site', 'route', ...data.graph.nodes.map(category)])].sort();
   $('node-filters').replaceChildren(...kinds.map((kind) => check(kind, kind.replaceAll('_', ' '), true, 'node-filter')));
-  const edgeTypes = ['power_link', 'wire_relation', 'route_delivery'];
-  $('edge-filters').replaceChildren(...edgeTypes.map((kind) => check(kind, kind.replaceAll('_', ' '), kind === 'power_link' || (kind === 'route_delivery' && Array.isArray(data.graph.routes)), 'edge-filter')));
+  const edgeTypes = ['power_link', 'wire_relation', 'route_delivery', 'callback_link'];
+  $('edge-filters').replaceChildren(...edgeTypes.map((kind) => check(kind, kind.replaceAll('_', ' '), kind === 'power_link', 'edge-filter')));
   document.querySelectorAll('.node-filter').forEach((input) => input.addEventListener('change', applyFilters));
   document.querySelectorAll('.edge-filter').forEach((input) => input.addEventListener('change', () => renderView()));
   $('snapshot').replaceChildren(option('', 'All potential connections'), ...data.snapshots.map((snapshot) => option(snapshot.id, snapshot.id)));
@@ -276,6 +282,7 @@ function renderView() {
       { selector: 'edge', style: { width: 1.5, 'line-color': '#6589a4', 'target-arrow-color': '#8bbbdc', 'target-arrow-shape': 'triangle', 'curve-style': 'bezier', 'arrow-scale': 1, label: '', color: '#d6e4ee', 'font-size': 10, 'text-rotation': 'autorotate', 'text-background-color': '#111820', 'text-background-opacity': 0.95, 'text-background-padding': 3 } },
       { selector: 'edge[type = "wire_relation"]', style: { 'line-color': '#77ae72', 'target-arrow-color': '#77ae72', 'line-style': 'dashed' } },
       { selector: 'edge[type = "route_delivery"]', style: { 'line-color': '#c28b43', 'target-arrow-color': '#c28b43' } },
+      { selector: 'edge[type = "callback_link"]', style: { 'line-color': '#ee8fb0', 'target-arrow-color': '#ee8fb0', 'line-style': 'dashed' } },
       { selector: 'edge.enabled', style: { 'line-color': '#65c799', 'target-arrow-color': '#65c799' } },
       { selector: 'edge.disabled', style: { opacity: 0.15 } },
       { selector: 'edge.unknown', style: { 'line-style': 'dashed' } },
@@ -469,7 +476,8 @@ function search() {
 }
 
 function visualRecord(id) {
-  if (connections.has(id) || /^(node|route):/.test(id)) return id;
+  if (connections.has(id) || id.startsWith('node:')) return id;
+  if (id.startsWith('route:')) return recordIndex.get(id)?.source || id;
   if (id.startsWith('site:')) return sourceNode(id, recordIndex);
   if (id.startsWith('resource:')) return recordIndex.get(recordIndex.get(id)?.contacts[0])?.node;
   return recordIndex.get(id)?.node;

@@ -1492,7 +1492,7 @@ fn declared_command_nodes() -> Vec<Node<'static>> {
         Node::argument("mode", Parser::String(0), &[]).executable(),
         Node::redirect("bisdon_anim", 87).executable(),
         // 90–99: /help and its topic suggestions
-        Node::literal("help", &[91, 92, 93, 94, 95, 96, 97, 98, 99, 186]).executable(),
+        Node::literal("help", &[91, 92, 93, 94, 95, 96, 97, 98, 99]).executable(),
         Node::argument("topic", Parser::String(0), &[]).executable(),
         Node::literal("plots", &[]).executable(),
         Node::literal("tps", &[]).executable(),
@@ -1620,19 +1620,47 @@ fn declared_command_nodes() -> Vec<Node<'static>> {
         Node::literal("cat", &[]).executable(),
         Node::literal("ocelot", &[]).executable(),
         Node::literal("baby", &[]).executable(),
-        // 176-186: visual settings and their tab-completion options.
-        Node::literal("visual", &[177, 181, 183]).executable(),
-        Node::literal("pistons", &[178, 179, 180]).executable(),
-        Node::literal("auto", &[]).executable(),
-        Node::literal("on", &[]).executable(),
-        Node::literal("off", &[]).executable(),
-        Node::literal("rate", &[182]).executable(),
-        Node::argument("hertz", Parser::Integer(0, 1000), &[]).executable(),
-        Node::literal("displayonly", &[184, 185]).executable(),
-        Node::literal("on", &[]).executable(),
-        Node::literal("off", &[]).executable(),
-        Node::literal("visual", &[]).executable(),
     ];
+
+    let visual = nodes.len();
+    nodes.push(Node::literal("visual", &[]).executable());
+    let pistons = nodes.len();
+    nodes.push(Node::literal("pistons", &[]).executable());
+    let auto = nodes.len();
+    nodes.push(Node::literal("auto", &[]).executable());
+    let piston_on = nodes.len();
+    nodes.push(Node::literal("on", &[]).executable());
+    let piston_off = nodes.len();
+    nodes.push(Node::literal("off", &[]).executable());
+    let rate = nodes.len();
+    nodes.push(Node::literal("rate", &[]).executable());
+    let hertz = nodes.len();
+    nodes.push(Node::argument("hertz", Parser::Integer(0, 1000), &[]).executable());
+    let displayonly = nodes.len();
+    nodes.push(Node::literal("displayonly", &[]).executable());
+    let display_on = nodes.len();
+    nodes.push(Node::literal("on", &[]).executable());
+    let display_off = nodes.len();
+    nodes.push(Node::literal("off", &[]).executable());
+    let visual_help = nodes.len();
+    nodes.push(Node::literal("visual", &[]).executable());
+
+    nodes[visual].children =
+        Box::leak(vec![pistons as i32, rate as i32, displayonly as i32].into_boxed_slice());
+    nodes[pistons].children =
+        Box::leak(vec![auto as i32, piston_on as i32, piston_off as i32].into_boxed_slice());
+    nodes[rate].children = Box::leak(vec![hertz as i32].into_boxed_slice());
+    nodes[displayonly].children =
+        Box::leak(vec![display_on as i32, display_off as i32].into_boxed_slice());
+
+    // Keep the final `/help visual` topic linked if earlier command nodes move.
+    let help = nodes
+        .iter()
+        .position(|node| node.name == Some("help"))
+        .unwrap();
+    let mut help_children = nodes[help].children.to_vec();
+    help_children.push(visual_help as i32);
+    nodes[help].children = Box::leak(help_children.into_boxed_slice());
 
     let redbox = crate::redbox::enabled();
     let mut root_children = nodes[0].children.to_vec();

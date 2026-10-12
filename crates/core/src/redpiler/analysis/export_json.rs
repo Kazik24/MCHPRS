@@ -5,13 +5,13 @@ use super::electrical::{
 };
 use super::geometry::{GeometryDraft, GeometryError};
 use super::{AnalysisError, AnalysisLimits, AnalysisReport};
-use crate::redpiler::TaskMonitor;
 use crate::redpiler::compile_graph::{NodeState, NodeType};
 use crate::redpiler::program_graph::{
-    CallbackReceiver, CircuitNodeKind, ComponentState, Guard, InputPort, OperandView,
-    PistonAvailability, PistonLane, PowerPort, Profile, ProfileElectrical, SiteSource, SiteTest,
-    StateTest,
+    CallbackReceiver, CircuitNodeKind, ComponentState, Guard, InputPort, LinkKind, LinkSpec,
+    OperandView, PistonAvailability, PistonLane, PistonRoutes, PowerPort, Profile,
+    ProfileElectrical, SiteSource, SiteTest, StateTest,
 };
+use crate::redpiler::TaskMonitor;
 use crate::world::World;
 use mchprs_blocks::blocks::{Block, ComparatorMode, Instrument, RedstoneWireSide};
 use mchprs_blocks::{BlockFace, BlockPos};
@@ -60,7 +60,7 @@ pub(crate) struct ExportCounts {
     pub(crate) resources: usize,
 }
 
-/// GraphExport is the concrete v1 JSON contract; routes and traces stay null until available.
+/// GraphExport is the concrete v1 JSON contract; execution traces stay unavailable.
 #[derive(Debug, Serialize)]
 pub(crate) struct GraphExport {
     format: &'static str,
@@ -112,6 +112,7 @@ struct GraphTablesDto {
     wire_plans: Vec<WirePlanDto>,
     wire_relations: Vec<WireRelationDto>,
     comparator_plans: Vec<ComparatorPlanDto>,
+    callback_links: Vec<CallbackLinkDto>,
     routes: Option<Vec<RouteDto>>,
 }
 
@@ -309,9 +310,11 @@ struct PistonRouteBindingsDto {
     base_changed: String,
     near_changed: String,
     far_changed: Option<String>,
+    far_shape_changed: Option<String>,
     base_restored: String,
     head_restored: String,
-    resource_restored: Option<String>,
+    resource_restored_near: Option<String>,
+    resource_restored_far: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -411,17 +414,32 @@ enum ComparatorOverrideDto {
 #[derive(Debug, Serialize)]
 struct RouteDto {
     id: String,
+    source: String,
     deliveries: Vec<RouteDeliveryDto>,
 }
 
 #[derive(Debug, Serialize)]
 struct RouteDeliveryDto {
     ordinal: u32,
+    sequence: u32,
     target: String,
     kind: &'static str,
     direction: Option<String>,
     guard: String,
     view: &'static str,
+    receiver: Option<ReceiverDto>,
+}
+
+#[derive(Debug, Serialize)]
+struct CallbackLinkDto {
+    id: String,
+    from: String,
+    to: String,
+    kind: &'static str,
+    direction: Option<String>,
+    guard: String,
+    route: String,
+    sequence: u32,
 }
 
 #[derive(Debug, Serialize)]
@@ -517,7 +535,7 @@ impl GraphExport {
                 "invalid graph JSON format header",
             ));
         }
-        if self.stage != "electrical_draft" {
+        if self.stage != "callback_draft" {
             return Err(ExportError::new(
                 "stage",
                 "draft export has an invalid stage",
@@ -564,6 +582,13 @@ impl GraphExport {
             "wire_relation",
             self.graph
                 .wire_relations
+                .iter()
+                .map(|item| item.id.as_str()),
+        )?;
+        unique_ids(
+            "callback_link",
+            self.graph
+                .callback_links
                 .iter()
                 .map(|item| item.id.as_str()),
         )?;
@@ -663,9 +688,11 @@ impl GraphExport {
                     Some(bindings.base_changed.as_str()),
                     Some(bindings.near_changed.as_str()),
                     bindings.far_changed.as_deref(),
+                    bindings.far_shape_changed.as_deref(),
                     Some(bindings.base_restored.as_str()),
                     Some(bindings.head_restored.as_str()),
-                    bindings.resource_restored.as_deref(),
+                    bindings.resource_restored_near.as_deref(),
+                    bindings.resource_restored_far.as_deref(),
                 ] {
                     check_optional_ref(&routes, id, "piston route")?;
                 }
@@ -706,6 +733,12 @@ impl GraphExport {
             check_ref(&sites, &relation.to, "wire relation target")?;
             check_ref(&guards, &relation.guard, "wire relation guard")?;
         }
+        for link in &self.graph.callback_links {
+            check_ref(&nodes, &link.from, "callback source")?;
+            check_ref(&nodes, &link.to, "callback receiver")?;
+            check_ref(&guards, &link.guard, "callback guard")?;
+            check_ref(&routes, &link.route, "callback route")?;
+        }
         for plan in &self.graph.comparator_plans {
             check_ref(&nodes, &plan.node, "comparator node")?;
             check_ref(&sites, &plan.rear, "comparator rear site")?;
@@ -724,9 +757,24 @@ impl GraphExport {
         }
         if let Some(routes) = &self.graph.routes {
             for route in routes {
+                check_ref(&nodes, &route.source, "route source")?;
                 for delivery in &route.deliveries {
                     check_ref(&sites, &delivery.target, "route target")?;
                     check_ref(&guards, &delivery.guard, "route guard")?;
+                    if let Some(receiver) = &delivery.receiver {
+                        match receiver {
+                            ReceiverDto::Component { node } => {
+                                check_ref(&nodes, node, "route receiver")?
+                            }
+                            ReceiverDto::PistonBase { piston }
+                            | ReceiverDto::PistonHead { piston } => {
+                                check_ref(&pistons, piston, "route receiver")?
+                            }
+                            ReceiverDto::Contact { contact } => {
+                                check_ref(&contacts, contact, "route receiver")?
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -774,14 +822,17 @@ pub(crate) fn prepare<W: World>(
 ) -> Result<GraphExport, ExportError> {
     let prepared = super::geometry::prepare_geometry(world, bounds, ticks, monitor, limits)
         .map_err(map_geometry_error)?;
-    let electrical = super::electrical::prepare_electrical(
+    let mut electrical = super::electrical::prepare_electrical(
         world,
         prepared.report.bounds,
         &prepared.draft,
         monitor,
     )
     .map_err(map_electrical_error)?;
-    let export = from_drafts(&prepared.report, &prepared.draft, &electrical)?;
+    let callbacks =
+        super::callbacks::prepare_callbacks(world, &prepared.draft, &mut electrical, monitor)
+            .map_err(map_callback_error)?;
+    let export = from_drafts(&prepared.report, &prepared.draft, &electrical, &callbacks)?;
     check_export_cancellation(monitor)?;
     Ok(export)
 }
@@ -822,6 +873,16 @@ fn map_electrical_error(error: ElectricalError) -> ExportError {
     ExportError::new(code, error.to_string())
 }
 
+fn map_callback_error(error: super::callbacks::CallbackError) -> ExportError {
+    use super::callbacks::CallbackError;
+    let code = match error {
+        CallbackError::Preparation(AnalysisError::Cancelled) => "cancelled",
+        CallbackError::Preparation(_) => "analysis",
+        _ => "callbacks",
+    };
+    ExportError::new(code, error.to_string())
+}
+
 fn map_geometry_error(error: GeometryError) -> ExportError {
     let code = match error {
         GeometryError::Analysis(AnalysisError::Cancelled) => "cancelled",
@@ -836,6 +897,7 @@ fn from_drafts(
     report: &AnalysisReport,
     geometry: &GeometryDraft,
     electrical: &ElectricalDraft,
+    callbacks: &super::callbacks::CallbackDraft,
 ) -> Result<GraphExport, ExportError> {
     let graph = GraphTablesDto {
         nodes: electrical
@@ -910,7 +972,8 @@ fn from_drafts(
         pistons: geometry
             .pistons
             .iter()
-            .map(|item| PistonDto {
+            .zip(&callbacks.pistons)
+            .map(|(item, spec)| PistonDto {
                 id: typed_id("piston", item.id.index()),
                 node: typed_id("node", item.node.index()),
                 position: position(item.position),
@@ -925,7 +988,7 @@ fn from_drafts(
                         far: typed_id("contact", far.index()),
                     },
                 },
-                routes: None,
+                routes: Some(piston_routes_dto(spec.routes)),
             })
             .collect(),
         resources: geometry
@@ -992,7 +1055,52 @@ fn from_drafts(
             .enumerate()
             .map(|(index, item)| comparator_plan(index, item))
             .collect(),
-        routes: None,
+        callback_links: callbacks
+            .links
+            .iter()
+            .enumerate()
+            .map(|(index, link)| callback_link_dto(index, link))
+            .collect::<Result<_, _>>()?,
+        routes: Some(
+            callbacks
+                .routes
+                .iter()
+                .enumerate()
+                .map(|(index, route)| RouteDto {
+                    id: typed_id("route", index),
+                    source: typed_id("node", route.source.index()),
+                    deliveries: route
+                        .deliveries
+                        .iter()
+                        .enumerate()
+                        .map(|(ordinal, delivery)| RouteDeliveryDto {
+                            ordinal: ordinal as u32,
+                            sequence: delivery.sequence,
+                            target: typed_id("site", delivery.target.index()),
+                            kind: match delivery.kind {
+                                crate::redpiler::program_graph::DeliveryKind::Update { .. } => {
+                                    "update"
+                                }
+                                crate::redpiler::program_graph::DeliveryKind::Shape { .. } => {
+                                    "shape"
+                                }
+                            },
+                            direction: match delivery.kind {
+                                crate::redpiler::program_graph::DeliveryKind::Update {
+                                    direction,
+                                } => direction.map(face),
+                                crate::redpiler::program_graph::DeliveryKind::Shape {
+                                    direction,
+                                } => Some(face(direction)),
+                            },
+                            guard: typed_id("guard", delivery.guard.index()),
+                            view: operand_view(delivery.view),
+                            receiver: delivery.receiver.map(receiver_dto),
+                        })
+                        .collect(),
+                })
+                .collect(),
+        ),
     };
     let snapshot = SnapshotDto {
         id: "snapshot:initial",
@@ -1031,8 +1139,8 @@ fn from_drafts(
     };
     let export = GraphExport {
         format: "mchprs.redpiler.graph",
-        version: VersionDto { major: 1, minor: 0 },
-        stage: "electrical_draft",
+        version: VersionDto { major: 1, minor: 1 },
+        stage: "callback_draft",
         capabilities: vec![
             "electrical",
             "geometry",
@@ -1040,6 +1148,9 @@ fn from_drafts(
             "initial_snapshot",
             "wire_relations",
             "comparator_plans",
+            "callback_routes",
+            "callback_links",
+            "piston_routes",
         ],
         source: SourceDto {
             revision: None,
@@ -1051,11 +1162,7 @@ fn from_drafts(
         graph,
         snapshots: vec![snapshot],
         trace: None,
-        diagnostics: vec![DiagnosticDto {
-            code: "routes_unassembled",
-            message: "Callback routes are unavailable until complete program assembly is reviewed.",
-            positions: Vec::new(),
-        }],
+        diagnostics: Vec::new(),
     };
     export.validate()?;
     Ok(export)
@@ -1391,6 +1498,53 @@ fn input_port(port: InputPort) -> &'static str {
         InputPort::Quasi => "quasi",
         InputPort::StrongIncident => "strong_incident",
     }
+}
+
+fn piston_routes_dto(routes: PistonRoutes) -> PistonRouteBindingsDto {
+    PistonRouteBindingsDto {
+        base_changed: typed_id("route", routes.base_changed.index()),
+        near_changed: typed_id("route", routes.near_changed.index()),
+        far_changed: routes
+            .far_changed
+            .map(|route| typed_id("route", route.index())),
+        far_shape_changed: routes
+            .far_shape_changed
+            .map(|route| typed_id("route", route.index())),
+        base_restored: typed_id("route", routes.base_restored.index()),
+        head_restored: typed_id("route", routes.head_restored.index()),
+        resource_restored_near: routes
+            .resource_restored_near
+            .map(|route| typed_id("route", route.index())),
+        resource_restored_far: routes
+            .resource_restored_far
+            .map(|route| typed_id("route", route.index())),
+    }
+}
+
+fn callback_link_dto(index: usize, link: &LinkSpec) -> Result<CallbackLinkDto, ExportError> {
+    let callback = link
+        .callback
+        .ok_or_else(|| ExportError::new("validation", "callback link has no route reference"))?;
+    let (kind, direction, guard) = match link.kind {
+        LinkKind::Update { direction, guard } => ("update", direction.map(face), guard),
+        LinkKind::Shape { direction, guard } => ("shape", Some(face(direction)), guard),
+        LinkKind::Power { .. } => {
+            return Err(ExportError::new(
+                "validation",
+                "callback route contains an electrical power link",
+            ));
+        }
+    };
+    Ok(CallbackLinkDto {
+        id: typed_id("callback_link", index),
+        from: typed_id("node", link.from.index()),
+        to: typed_id("node", link.to.index()),
+        kind,
+        direction,
+        guard: typed_id("guard", guard.index()),
+        route: typed_id("route", callback.route.index()),
+        sequence: callback.sequence,
+    })
 }
 
 fn operand_view(view: OperandView) -> &'static str {
