@@ -1,6 +1,6 @@
 # Step 08: Piston connection switching and timed graph events
 
-Status: not started. [Step 07](./07-generalized-dust.md) must be reviewed.
+Status: implemented for isolated empty ordinary and single-resource sticky pistons; awaiting review. Same-value QC requests, unavailable resource channels, and observed completion callback order have parity coverage. Instant chained actor actions remain unverified; Step 09 is not started.
 
 ## Agent prompt
 
@@ -48,3 +48,5 @@ No Motion/progress implementation, private payload copy, ideal gate shortcut, gi
 ## Handoff
 
 Report changed files, invariants, exact test commands/counts/results, and remaining risks. Do not implement [Step 09](./09-shared-payloads.md) until the user reviews this result.
+
+Known limitation: instant chained actions are not covered by this isolated-actor subset. The native instant-chain trace depends on one piston transition delivering a callback that samples and queues a second piston action before the same event phase drains; reproducing that requires coupled actor execution and causal cross-actor publication. This step validates isolated actors and fixed foreign context only, so such chains remain deferred for review rather than being approximated here.

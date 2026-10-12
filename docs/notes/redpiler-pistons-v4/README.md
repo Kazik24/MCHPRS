@@ -56,6 +56,7 @@ Behavioral optimization and multithreading remain subsequent work. The user has 
 | [Side A: export and viewer](steps/side-a-export-and-viewer.md) | A1: read-only JSON export; A2: offline HTML inspection and recorded trace replay; true execution is a later A3. |
 | [JSON format contract](GRAPH_JSON.md) | Versioned typed records, stage/capability declarations, provenance, logical snapshots, and ordered routes. |
 | [Side B: basic passes](steps/side-b-basic-passes.md) | B1: source research and legality table; B2: reviewed local simplification/interning, before later runtime-sensitive rewrites. |
+| [Side C: graph differential fuzzing](steps/side-c-differential-fuzzing.md) | C0: isolated piston replay and comparison; C1-C4: local environment sweeps, seeded histories, and failure reduction; C5-C6: shared resources and continuation after their runtime prerequisites. |
 
 Each slice stops for human review. Side agents preserve the active core agent's files and must not implement unreviewed parser/runtime changes to satisfy an export or optimizer interface.
 

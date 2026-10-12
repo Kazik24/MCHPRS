@@ -16,6 +16,7 @@ use mchprs_world::{TickEntry, TickPriority};
 use rustc_hash::FxHashMap;
 #[cfg(test)]
 use std::cell::Cell;
+use std::collections::VecDeque;
 use std::fmt;
 use std::sync::Arc;
 
@@ -122,6 +123,21 @@ struct Clock {
 }
 
 #[derive(Debug, Clone, Copy)]
+struct PistonRequest {
+    piston: PistonId,
+    action: mchprs_world::PistonAction,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct DeferredPistonEvent {
+    piston: PistonId,
+    revision: u64,
+    resource_revision: Option<u64>,
+    due_tick: u64,
+    extending: bool,
+}
+
+#[derive(Debug, Clone, Copy)]
 enum PresentationEffect {
     Sound {
         position: BlockPos,
@@ -138,7 +154,6 @@ pub(crate) enum GraphExecutionError {
         position: Option<BlockPos>,
         kind: &'static str,
     },
-    UnsupportedPistonWork,
 }
 
 impl fmt::Display for GraphExecutionError {
@@ -146,9 +161,6 @@ impl fmt::Display for GraphExecutionError {
         match self {
             Self::UnsupportedComponent { position, kind } => {
                 write!(f, "graph execution does not support {kind} at {position:?}")
-            }
-            Self::UnsupportedPistonWork => {
-                f.write_str("graph piston actions are unavailable before piston transitions")
             }
         }
     }
@@ -184,6 +196,8 @@ pub(crate) struct GraphBackend {
     component_sites: Vec<Option<SiteId>>,
     scheduler: TickScheduler<ScheduledNodeTick>,
     pending: FxHashMap<ScheduledNodeTick, usize>,
+    piston_requests: VecDeque<PistonRequest>,
+    deferred_pistons: VecDeque<DeferredPistonEvent>,
     clock: Clock,
     dirty: Vec<bool>,
     effects: Vec<PresentationEffect>,
@@ -281,13 +295,64 @@ impl GraphBackend {
                 CircuitNodeKind::Electrical(NodeType::CommandBlock { .. }) => Some("command block"),
                 CircuitNodeKind::Electrical(NodeType::NoteBlock { .. }) => Some("note block"),
                 CircuitNodeKind::Electrical(NodeType::Trapdoor) => Some("trapdoor"),
-                CircuitNodeKind::Piston(_) => Some("piston transition"),
                 _ => None,
             };
             if let Some(kind) = unsupported {
                 return Err(GraphBackendError::UnsupportedComponent {
                     position: node.position,
                     kind,
+                });
+            }
+        }
+        let mut resource_owners = vec![0usize; program.resources().len()];
+        for piston in program.pistons() {
+            let PistonLane::SingleResource { far } = piston.lane else {
+                continue;
+            };
+            if let Some((index, _)) =
+                program
+                    .resources()
+                    .iter()
+                    .enumerate()
+                    .find(|(_, resource)| {
+                        resource.contacts.contains(&piston.near) && resource.contacts.contains(&far)
+                    })
+            {
+                resource_owners[index] += 1;
+                if resource_owners[index] > 1 {
+                    return Err(GraphBackendError::UnsupportedComponent {
+                        position: program.nodes()[piston.node.index()].position,
+                        kind: "shared piston resource",
+                    });
+                }
+            }
+        }
+        for site in program.sites() {
+            let SiteSource::Constant(profile) = site.source else {
+                continue;
+            };
+            if !matches!(
+                program.profile_block(profile),
+                Some(Block::RedstoneWire { .. })
+            ) {
+                continue;
+            }
+            let adjacent_consumer = program.nodes().iter().any(|node| {
+                node.position.is_some_and(|position| {
+                    BlockFace::values()
+                        .into_iter()
+                        .any(|face| site.position.offset(face) == position)
+                }) && matches!(
+                    node.kind,
+                    CircuitNodeKind::Electrical(_)
+                        | CircuitNodeKind::Observer { .. }
+                        | CircuitNodeKind::Piston(_)
+                )
+            });
+            if adjacent_consumer {
+                return Err(GraphBackendError::UnsupportedComponent {
+                    position: Some(site.position),
+                    kind: "external redstone wire boundary",
                 });
             }
         }
@@ -359,6 +424,8 @@ impl GraphBackend {
             component_sites,
             scheduler: TickScheduler::default(),
             pending: FxHashMap::default(),
+            piston_requests: VecDeque::new(),
+            deferred_pistons: VecDeque::new(),
             clock: Clock {
                 logical_tick,
                 phase: GraphPhase::BetweenTicks,
@@ -491,12 +558,18 @@ impl GraphBackend {
 
         self.clock.phase = GraphPhase::PistonActions;
         #[cfg(test)]
-        self.trace.push("phase piston_actions (empty)".into());
+        self.trace.push("phase piston_actions".into());
+        if let Err(error) = self.drain_piston_actions() {
+            self.clock.phase = GraphPhase::BetweenTicks;
+            return Err(error);
+        }
         self.clock.phase = GraphPhase::DeferredConnections;
-        // Deferred connection events are introduced with piston transitions. This
-        // explicit empty phase keeps the full-tick clock order fixed meanwhile.
         #[cfg(test)]
-        self.trace.push("phase deferred_connections (empty)".into());
+        self.trace.push("phase deferred_connections".into());
+        if let Err(error) = self.publish_deferred_pistons() {
+            self.clock.phase = GraphPhase::BetweenTicks;
+            return Err(error);
+        }
         self.clock.phase = GraphPhase::BetweenTicks;
         self.clock.scheduled_advanced = false;
         #[cfg(test)]
@@ -603,7 +676,7 @@ impl GraphBackend {
             CircuitNodeKind::Electrical(NodeType::Trapdoor) => {
                 Err(self.unsupported(node, "trapdoor"))
             }
-            CircuitNodeKind::Piston(_) => Err(GraphExecutionError::UnsupportedPistonWork),
+            CircuitNodeKind::Piston(piston) => self.sample_piston(piston),
             CircuitNodeKind::Contact(_) => Ok(()),
         }
     }
@@ -650,7 +723,7 @@ impl GraphBackend {
             CircuitNodeKind::Electrical(NodeType::Trapdoor) => {
                 Err(self.unsupported(node, "trapdoor"))
             }
-            CircuitNodeKind::Piston(_) => Err(GraphExecutionError::UnsupportedPistonWork),
+            CircuitNodeKind::Piston(piston) => self.sample_piston(piston),
             CircuitNodeKind::Contact(_) => Ok(()),
             CircuitNodeKind::Electrical(
                 NodeType::Lever | NodeType::Button | NodeType::PressurePlate,
@@ -660,6 +733,281 @@ impl GraphBackend {
                 Err(self.unsupported(node, "invalid generic observer or wire"))
             }
         }
+    }
+
+    fn sample_piston(&mut self, piston: PistonId) -> Result<(), GraphExecutionError> {
+        let spec = self.program.pistons()[piston.index()];
+        let powered = self.input_strength(spec.node, InputPort::Main) > 0
+            || self.input_strength(spec.node, InputPort::Quasi) > 0;
+        let state = self.state.pistons[piston.index()];
+        if state.availability == PistonAvailability::BasePending {
+            return Ok(());
+        }
+        let action = match (powered, state.extended) {
+            (true, false) => mchprs_world::PistonAction::Extend,
+            (false, true) => {
+                if state.availability == PistonAvailability::HeadPending
+                    && matches!(spec.lane, PistonLane::SingleResource { .. })
+                {
+                    mchprs_world::PistonAction::RetractWithoutPull
+                } else {
+                    mchprs_world::PistonAction::Retract
+                }
+            }
+            _ => return Ok(()),
+        };
+        self.enqueue_piston(PistonRequest { piston, action });
+        Ok(())
+    }
+
+    fn enqueue_piston(&mut self, request: PistonRequest) {
+        if !self
+            .piston_requests
+            .iter()
+            .any(|queued| queued.piston == request.piston && queued.action == request.action)
+        {
+            #[cfg(test)]
+            self.trace.push(format!(
+                "piston request {:?} {:?}",
+                request.piston, request.action
+            ));
+            self.piston_requests.push_back(request);
+        }
+    }
+
+    fn drain_piston_actions(&mut self) -> Result<(), GraphExecutionError> {
+        while let Some(request) = self.piston_requests.pop_front() {
+            self.accept_action(request)?;
+        }
+        Ok(())
+    }
+
+    fn accept_action(&mut self, request: PistonRequest) -> Result<(), GraphExecutionError> {
+        let spec = self.program.pistons()[request.piston.index()];
+        let state = self.state.pistons[request.piston.index()];
+        let powered = self.input_strength(spec.node, InputPort::Main) > 0
+            || self.input_strength(spec.node, InputPort::Quasi) > 0;
+        match request.action {
+            mchprs_world::PistonAction::Extend
+                if powered
+                    && !state.extended
+                    && state.availability == PistonAvailability::Ready =>
+            {
+                #[cfg(test)]
+                self.trace.push(format!(
+                    "piston accept {:?} {:?}",
+                    request.piston, request.action
+                ));
+                self.extend_connections(request.piston)?;
+            }
+            mchprs_world::PistonAction::Retract
+            | mchprs_world::PistonAction::RetractWithoutPull
+                if !powered && state.extended =>
+            {
+                #[cfg(test)]
+                self.trace.push(format!(
+                    "piston accept {:?} {:?}",
+                    request.piston, request.action
+                ));
+                self.retract_connections(
+                    request.piston,
+                    request.action == mchprs_world::PistonAction::RetractWithoutPull,
+                )?;
+            }
+            _ => {
+                #[cfg(test)]
+                self.trace.push(format!(
+                    "piston cancelled {:?} {:?}",
+                    request.piston, request.action
+                ));
+            }
+        }
+        Ok(())
+    }
+
+    fn set_resource_contact(
+        &mut self,
+        piston: PistonId,
+        contact: ContactId,
+        enabled: bool,
+    ) -> Option<(ResourceId, u64)> {
+        let spec = self.program.pistons()[piston.index()];
+        let PistonLane::SingleResource { far } = spec.lane else {
+            return None;
+        };
+        let (index, _) = self
+            .program
+            .resources()
+            .iter()
+            .enumerate()
+            .find(|(_, resource)| {
+                resource.contacts.contains(&spec.near) && resource.contacts.contains(&far)
+            })?;
+        let state = &mut self.state.resources[index];
+        state.at = contact;
+        state.enabled = enabled;
+        state.revision = state.revision.wrapping_add(1);
+        Some((ResourceId::new(index as u32), state.revision))
+    }
+
+    fn release_resource(
+        &mut self,
+        piston: PistonId,
+        contact: ContactId,
+    ) -> Option<(ResourceId, u64)> {
+        self.set_resource_contact(piston, contact, false)
+    }
+
+    fn extend_connections(&mut self, piston: PistonId) -> Result<(), GraphExecutionError> {
+        let spec = self.program.pistons()[piston.index()];
+        let revision = {
+            let state = &mut self.state.pistons[piston.index()];
+            state.revision = state.revision.wrapping_add(1);
+            state.availability = PistonAvailability::PublishingHeadRemoval;
+            state.revision
+        };
+        let resource = match spec.lane {
+            PistonLane::SingleResource { far } => self.release_resource(piston, far),
+            PistonLane::Empty => None,
+        };
+        if let Some(route) = spec.routes.far_changed {
+            self.deliver_route(route, None)?;
+        }
+        self.deliver_route(spec.routes.near_changed, None)?;
+        self.state.pistons[piston.index()].extended = true;
+        self.state.pistons[piston.index()].availability = PistonAvailability::HeadPending;
+        self.deliver_route(spec.routes.base_changed, None)?;
+        let resource_revision = resource.map(|(_, revision)| revision);
+        self.deferred_pistons.push_back(DeferredPistonEvent {
+            piston,
+            revision,
+            resource_revision,
+            due_tick: self.clock.logical_tick + 2,
+            extending: true,
+        });
+        #[cfg(test)]
+        self.trace
+            .push(format!("piston extend {:?} revision={revision}", piston));
+        Ok(())
+    }
+
+    fn retract_connections(
+        &mut self,
+        piston: PistonId,
+        without_pull: bool,
+    ) -> Result<(), GraphExecutionError> {
+        let spec = self.program.pistons()[piston.index()];
+        let revision = {
+            let state = &mut self.state.pistons[piston.index()];
+            state.revision = state.revision.wrapping_add(1);
+            state.availability = PistonAvailability::BasePending;
+            state.revision
+        };
+        self.deliver_route(spec.routes.base_changed, None)?;
+        let resource = match spec.lane {
+            PistonLane::SingleResource { far } if without_pull => {
+                self.set_resource_contact(piston, far, true);
+                if let Some(route) = spec.routes.resource_restored_far {
+                    self.deliver_route(route, None)?;
+                }
+                None
+            }
+            PistonLane::SingleResource { .. } => self.release_resource(piston, spec.near),
+            PistonLane::Empty => None,
+        };
+        if !without_pull {
+            if let Some(route) = spec.routes.far_changed {
+                self.deliver_route(route, None)?;
+            }
+        }
+        self.deliver_route(spec.routes.near_changed, None)?;
+        self.deferred_pistons.push_back(DeferredPistonEvent {
+            piston,
+            revision,
+            resource_revision: resource.map(|(_, revision)| revision),
+            due_tick: self.clock.logical_tick + 2,
+            extending: false,
+        });
+        #[cfg(test)]
+        self.trace
+            .push(format!("piston retract {:?} revision={revision}", piston));
+        Ok(())
+    }
+
+    fn publish_deferred_pistons(&mut self) -> Result<(), GraphExecutionError> {
+        let due = self
+            .deferred_pistons
+            .iter()
+            .take_while(|event| event.due_tick <= self.clock.logical_tick)
+            .count();
+        for _ in 0..due {
+            let event = self.deferred_pistons.pop_front().unwrap();
+            self.apply_deferred_event(event)?;
+        }
+        Ok(())
+    }
+
+    fn apply_deferred_event(
+        &mut self,
+        event: DeferredPistonEvent,
+    ) -> Result<(), GraphExecutionError> {
+        let state = self.state.pistons[event.piston.index()];
+        if state.revision != event.revision {
+            #[cfg(test)]
+            self.trace.push(format!(
+                "piston stale {:?} revision={}",
+                event.piston, event.revision
+            ));
+            return Ok(());
+        }
+        let spec = self.program.pistons()[event.piston.index()];
+        if let (PistonLane::SingleResource { far }, Some(expected)) =
+            (spec.lane, event.resource_revision)
+        {
+            let contact = if event.extending { far } else { spec.near };
+            let Some(resource_index) = self.program.resources().iter().position(|resource| {
+                resource.contacts.contains(&spec.near) && resource.contacts.contains(&far)
+            }) else {
+                return Ok(());
+            };
+            if self.state.resources[resource_index].revision != expected {
+                #[cfg(test)]
+                self.trace.push(format!(
+                    "resource stale {:?} revision={expected}",
+                    event.piston
+                ));
+                return Ok(());
+            }
+            if let Some((resource, revision)) =
+                self.set_resource_contact(event.piston, contact, true)
+            {
+                debug_assert_eq!(revision, expected.wrapping_add(1));
+                let route = if event.extending {
+                    spec.routes.resource_restored_far
+                } else {
+                    spec.routes.resource_restored_near
+                };
+                if let Some(route) = route {
+                    self.deliver_route(route, None)?;
+                }
+                let _ = resource;
+            }
+        }
+        if event.extending {
+            self.state.pistons[event.piston.index()].availability = PistonAvailability::Ready;
+            self.deliver_route(spec.routes.head_restored, None)?;
+        } else {
+            self.state.pistons[event.piston.index()].extended = false;
+            self.state.pistons[event.piston.index()].availability = PistonAvailability::Ready;
+            self.deliver_route(spec.routes.base_restored, None)?;
+            self.deliver_route(spec.routes.head_restored, None)?;
+        }
+        #[cfg(test)]
+        self.trace.push(format!(
+            "piston restored {:?} revision={}",
+            event.piston, event.revision
+        ));
+        Ok(())
     }
 
     fn wire_plan(&self, node: NodeId) -> &WirePlan {
@@ -1067,8 +1415,8 @@ impl GraphBackend {
                 DeliveryKind::Update { direction: None },
                 Some(&observed),
             ),
-            CallbackReceiver::PistonBase(_) | CallbackReceiver::PistonHead(_) => {
-                Err(GraphExecutionError::UnsupportedPistonWork)
+            CallbackReceiver::PistonBase(piston) | CallbackReceiver::PistonHead(piston) => {
+                self.sample_piston(piston)
             }
             CallbackReceiver::Contact(_) => Ok(()),
         }
@@ -1891,8 +2239,8 @@ impl GraphBackend {
                 CallbackReceiver::Component(node) => {
                     self.update_component(node, delivery.kind, observed)?;
                 }
-                CallbackReceiver::PistonBase(_) | CallbackReceiver::PistonHead(_) => {
-                    return Err(GraphExecutionError::UnsupportedPistonWork);
+                CallbackReceiver::PistonBase(piston) | CallbackReceiver::PistonHead(piston) => {
+                    self.sample_piston(piston)?;
                 }
                 CallbackReceiver::Contact(_) => {}
             }

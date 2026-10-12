@@ -1,8 +1,7 @@
 //! Graph backend differential and regression tests.
 use super::*;
-use crate::plot::PLOT_WIDTH;
 use crate::plot::PlotWorld;
-use crate::plot::worldedit::{WorldEditClipboard, load_schematic, paste_clipboard};
+use crate::plot::worldedit::{WorldEditClipboard, load_schematic};
 use crate::redpiler::backend::ScheduledBlockTick;
 use crate::redstone;
 use crate::redstone::instant_piston_tests::capture_at;
@@ -2265,40 +2264,381 @@ fn bulb_far_comparator_callbacks_match_native_order_and_multiplicity() {
 }
 
 #[test]
-fn piston_schematics_require_an_unsupported_component_error() {
-    for name in [
-        "INSTANT_TORCH.schem",
-        "INSTANT_OBSERVER.schem",
-        "ADDER_1BIT.schem",
-    ] {
-        let clipboard = frozen_clipboard(name);
-        let mut world = PlotWorld::from_chunks(
-            0,
-            0,
-            (0..PLOT_WIDTH)
-                .flat_map(|x| (0..PLOT_WIDTH).map(move |z| Chunk::empty(x, z)))
-                .collect(),
-            Default::default(),
+fn isolated_empty_ordinary_and_sticky_pistons_compile() {
+    for sticky in [false, true] {
+        let mut world = empty_world();
+        let base = BlockPos::new(5, 20, 5);
+        world.set_block(
+            base,
+            Block::Piston {
+                piston: mchprs_blocks::blocks::RedstonePiston {
+                    facing: mchprs_blocks::BlockFacing::East,
+                    sticky,
+                    extended: false,
+                },
+            },
         );
-        let origin = BlockPos::new(40, 30, 40);
-        paste_clipboard(
-            &mut world,
-            &clipboard,
-            origin + BlockPos::new(clipboard.offset_x, clipboard.offset_y, clipboard.offset_z),
-            false,
-        );
-        let result = GraphBackend::compile(&world, world.get_corners(), vec![], Arc::default());
+        if sticky {
+            world.set_block(base.offset(BlockFace::East), Block::RedstoneBlock);
+        }
         assert!(
             matches!(
-                result,
-                Err(GraphBackendError::UnsupportedComponent {
-                    kind: "piston transition",
-                    ..
-                })
+                GraphBackend::compile(&world, BOUNDS, vec![], Arc::default()),
+                Ok(_)
             ),
-            "{name} must reject piston execution until the piston transition step"
+            "isolated sticky={sticky} piston should be admitted"
         );
     }
+}
+
+fn isolated_piston_pair(sticky: bool) -> (PlotWorld, PlotWorld, BlockPos, BlockPos) {
+    let mut native = empty_world();
+    let mut graph_world = empty_world();
+    let base = BlockPos::new(5, 20, 5);
+    let lever_pos = base.offset(BlockFace::West);
+    let piston = Block::Piston {
+        piston: mchprs_blocks::blocks::RedstonePiston {
+            facing: mchprs_blocks::BlockFacing::East,
+            sticky,
+            extended: false,
+        },
+    };
+    for world in [&mut native, &mut graph_world] {
+        world.set_block(base, piston);
+        if sticky {
+            world.set_block(base.offset(BlockFace::East), Block::RedstoneBlock);
+        }
+        world.set_block(lever_pos.offset(BlockFace::West), Block::Stone {});
+        world.set_block(
+            lever_pos,
+            Block::Lever {
+                lever: Lever::new(LeverFace::Wall, BlockDirection::East, false),
+            },
+        );
+    }
+    (native, graph_world, base, lever_pos)
+}
+
+fn piston_state_at(backend: &GraphBackend, position: BlockPos) -> PistonState {
+    let (index, _) = backend
+        .program
+        .pistons()
+        .iter()
+        .enumerate()
+        .find(|(_, piston)| backend.program.nodes()[piston.node.index()].position == Some(position))
+        .unwrap();
+    backend.state.pistons[index]
+}
+
+fn tick_native_bounded(world: &mut PlotWorld) {
+    let target_tick = world.piston_state().logical_tick + 1;
+    for _ in 0..128 {
+        world.nanotick_advance(1);
+        if world.piston_state().logical_tick == target_tick
+            && world.piston_state().phase == mchprs_world::AdvancePhase::BetweenTicks
+        {
+            return;
+        }
+    }
+    panic!("native piston tick did not settle within 128 operations");
+}
+
+fn piston_contact_block(backend: &GraphBackend, position: BlockPos) -> Block {
+    let site = backend
+        .program
+        .sites()
+        .iter()
+        .position(|site| site.position == position && matches!(site.source, SiteSource::Contact(_)))
+        .unwrap();
+    backend
+        .resolve_site(SiteId::new(site as u32), None)
+        .unwrap()
+        .block
+}
+
+#[test]
+fn same_value_quasi_updates_match_native_and_deduplicate_extension() {
+    let (mut native, mut graph_world, base, _) = isolated_piston_pair(false);
+    let quasi_source = base.offset(BlockFace::Top).offset(BlockFace::East);
+    native.set_block(quasi_source, Block::RedstoneBlock);
+    graph_world.set_block(quasi_source, Block::RedstoneBlock);
+    let mut backend = graph(&graph_world, vec![]);
+    let piston_node = backend.program.pistons()[0].node;
+
+    assert_eq!(backend.input_strength(piston_node, InputPort::Main), 0);
+    assert!(backend.input_strength(piston_node, InputPort::Quasi) > 0);
+    assert!(redstone::piston::should_piston_extend(
+        &native,
+        mchprs_blocks::BlockFacing::East,
+        base
+    ));
+
+    for _ in 0..2 {
+        redstone::update(native.get_block(base), &mut native, base, None);
+        backend
+            .update_component(piston_node, DeliveryKind::Update { direction: None }, None)
+            .unwrap();
+    }
+    assert_eq!(native.piston_state().events.len(), 1);
+    assert_eq!(backend.piston_requests.len(), 1);
+
+    tick_native_bounded(&mut native);
+    backend.tick().unwrap();
+    assert!(matches!(native.get_block(base), Block::Piston { piston } if piston.extended));
+    assert!(piston_state_at(&backend, base).extended);
+}
+
+#[test]
+fn piston_acceptance_cancellation_matches_interpreter() {
+    let (mut native, graph_world, base, lever_pos) = isolated_piston_pair(true);
+    let mut backend = graph(&graph_world, vec![]);
+
+    set_native_lever_with_support(&mut native, lever_pos, true, BlockFace::West);
+    backend.use_block(lever_pos).unwrap();
+    set_native_lever_with_support(&mut native, lever_pos, false, BlockFace::West);
+    backend.use_block(lever_pos).unwrap();
+    tick_native_bounded(&mut native);
+    backend.tick().unwrap();
+
+    assert!(matches!(native.get_block(base), Block::Piston { piston } if !piston.extended));
+    assert!(!piston_state_at(&backend, base).extended);
+    assert!(
+        backend
+            .trace()
+            .iter()
+            .any(|line| line.contains("piston cancelled"))
+    );
+}
+
+#[test]
+fn piston_early_reversal_matches_interpreter_and_invalidates_old_restoration() {
+    let (mut native, graph_world, base, lever_pos) = isolated_piston_pair(true);
+    let mut backend = graph(&graph_world, vec![]);
+    set_native_lever_with_support(&mut native, lever_pos, true, BlockFace::West);
+    backend.use_block(lever_pos).unwrap();
+    tick_native_bounded(&mut native);
+    backend.tick().unwrap();
+    assert!(matches!(native.get_block(base), Block::Piston { piston } if piston.extended));
+    assert!(piston_state_at(&backend, base).extended);
+
+    set_native_lever_with_support(&mut native, lever_pos, false, BlockFace::West);
+    backend.use_block(lever_pos).unwrap();
+    assert!(matches!(native.piston_state().events.back(), Some(event)
+        if event.action == mchprs_world::PistonAction::RetractWithoutPull));
+    native.nanotick_advance(1);
+    backend.tick().unwrap();
+    assert_eq!(
+        piston_state_at(&backend, base).availability,
+        PistonAvailability::BasePending
+    );
+    assert!(
+        backend
+            .trace()
+            .iter()
+            .any(|line| line.contains("piston accept") && line.contains("RetractWithoutPull"))
+    );
+    assert_eq!(
+        native.get_block(base.offset(BlockFace::East).offset(BlockFace::East)),
+        Block::RedstoneBlock
+    );
+    assert_eq!(
+        piston_contact_block(
+            &backend,
+            base.offset(BlockFace::East).offset(BlockFace::East)
+        ),
+        Block::RedstoneBlock
+    );
+    tick_native_bounded(&mut native);
+    backend.tick().unwrap();
+    assert_eq!(
+        piston_state_at(&backend, base).availability,
+        PistonAvailability::BasePending
+    );
+    assert!(
+        backend
+            .trace()
+            .iter()
+            .any(|line| line.contains("piston stale"))
+    );
+    tick_native_bounded(&mut native);
+    backend.tick().unwrap();
+    assert!(matches!(native.get_block(base), Block::Piston { piston } if !piston.extended));
+    assert!(!piston_state_at(&backend, base).extended);
+    assert_eq!(
+        piston_state_at(&backend, base).availability,
+        PistonAvailability::Ready
+    );
+    assert_eq!(
+        piston_contact_block(&backend, base.offset(BlockFace::East)),
+        Block::Air
+    );
+    assert_eq!(
+        native.get_block(base.offset(BlockFace::East).offset(BlockFace::East)),
+        piston_contact_block(
+            &backend,
+            base.offset(BlockFace::East).offset(BlockFace::East)
+        )
+    );
+}
+
+#[test]
+fn piston_delayed_restoration_matches_interpreter() {
+    let (mut native, mut graph_world, base, lever_pos) = isolated_piston_pair(true);
+    let far = base.offset(BlockFace::East).offset(BlockFace::East);
+    let far_lamp = far.offset(BlockFace::North);
+    for world in [&mut native, &mut graph_world] {
+        world.set_block(far_lamp, Block::RedstoneLamp { lit: false });
+    }
+    let mut backend = graph(&graph_world, vec![]);
+    set_native_lever_with_support(&mut native, lever_pos, true, BlockFace::West);
+    backend.use_block(lever_pos).unwrap();
+
+    for _ in 0..3 {
+        tick_native_bounded(&mut native);
+        backend.tick().unwrap();
+        backend.flush(&mut graph_world);
+        let state = piston_state_at(&backend, base);
+        if native.piston_state().logical_tick < 3 {
+            assert_eq!(state.availability, PistonAvailability::HeadPending);
+            assert!(matches!(native.get_block(far), Block::MovingPiston { .. }));
+            assert_eq!(piston_contact_block(&backend, far), Block::Air);
+            assert_eq!(
+                native.get_block(far_lamp),
+                Block::RedstoneLamp { lit: false }
+            );
+            assert_eq!(
+                graph_world.get_block(far_lamp),
+                Block::RedstoneLamp { lit: false }
+            );
+        }
+    }
+    assert!(matches!(native.get_block(base), Block::Piston { piston } if piston.extended));
+    assert!(matches!(
+        native.get_block(base.offset(BlockFace::East)),
+        Block::PistonHead { .. }
+    ));
+    assert!(piston_state_at(&backend, base).extended);
+    assert_eq!(
+        piston_state_at(&backend, base).availability,
+        PistonAvailability::Ready
+    );
+    assert!(matches!(
+        piston_contact_block(&backend, base.offset(BlockFace::East)),
+        Block::PistonHead { .. }
+    ));
+    assert_eq!(
+        native.get_block(base.offset(BlockFace::East).offset(BlockFace::East)),
+        piston_contact_block(
+            &backend,
+            base.offset(BlockFace::East).offset(BlockFace::East)
+        )
+    );
+    assert_eq!(
+        native.get_block(far_lamp),
+        Block::RedstoneLamp { lit: true }
+    );
+    assert_eq!(graph_world.get_block(far_lamp), native.get_block(far_lamp));
+}
+
+#[test]
+fn ordinary_empty_piston_extension_restoration_matches_interpreter() {
+    let (mut native, graph_world, base, lever_pos) = isolated_piston_pair(false);
+    let far = base.offset(BlockFace::East).offset(BlockFace::East);
+    let observer = Block::Observer {
+        observer: RedstoneObserver {
+            facing: mchprs_blocks::BlockFacing::West,
+            powered: false,
+        },
+    };
+    native.set_block(far, observer);
+    let mut graph_world = graph_world;
+    graph_world.set_block(far, observer);
+    let mut backend = graph(&graph_world, vec![]);
+    let observer_node = backend.positions[&far];
+    set_native_lever_with_support(&mut native, lever_pos, true, BlockFace::West);
+    backend.use_block(lever_pos).unwrap();
+
+    for visit in 1..=3 {
+        let graph_start = backend.callback_order.len();
+        let native_trace = capture_at(&[far], || tick_native_bounded(&mut native));
+        backend.tick().unwrap();
+        let native_callbacks: Vec<_> = native_trace
+            .iter()
+            .filter(|entry| entry["kind"] == "callback")
+            .map(|entry| {
+                (
+                    serde_json::from_value(entry["data"]["pos"].clone()).unwrap(),
+                    serde_json::from_value(entry["data"]["dir"].clone()).unwrap(),
+                )
+            })
+            .collect();
+        let graph_callbacks: Vec<_> = backend.callback_order[graph_start..]
+            .iter()
+            .filter(|(position, _)| *position == far)
+            .map(|(position, kind)| {
+                let DeliveryKind::Update { direction } = kind else {
+                    unreachable!("observer callback should be an Update")
+                };
+                (*position, *direction)
+            })
+            .collect();
+        assert_eq!(graph_callbacks, native_callbacks, "visit {visit}");
+        let state = piston_state_at(&backend, base);
+        assert_eq!(
+            native.pending_tick_at(far),
+            backend.is_pending(observer_node)
+        );
+        assert!(state.extended);
+        if visit < 3 {
+            assert_eq!(state.availability, PistonAvailability::HeadPending);
+            assert!(matches!(native.get_block(base), Block::Piston { piston } if piston.extended));
+        } else {
+            assert_eq!(state.availability, PistonAvailability::Ready);
+            assert!(matches!(
+                native.get_block(base.offset(BlockFace::East)),
+                Block::PistonHead { .. }
+            ));
+            assert!(matches!(
+                piston_contact_block(&backend, base.offset(BlockFace::East)),
+                Block::PistonHead { .. }
+            ));
+        }
+    }
+}
+
+#[test]
+fn external_wire_boundary_uses_regulated_sides() {
+    let mut world = empty_world();
+    let lamp = BlockPos::new(10, 20, 5);
+    let wire = BlockPos::new(11, 20, 5);
+    let source = BlockPos::new(12, 20, 5);
+    world.set_block(lamp, Block::RedstoneLamp { lit: false });
+    world.set_block(
+        wire,
+        Block::RedstoneWire {
+            wire: RedstoneWire::default(),
+        },
+    );
+    world.set_block(wire.offset(BlockFace::Bottom), Block::Stone {});
+    world.set_block(source, lever(true));
+    world.set_block(source.offset(BlockFace::Bottom), Block::Stone {});
+
+    let result = GraphBackend::compile(
+        &world,
+        (BlockPos::new(0, 0, 0), BlockPos::new(10, 31, 15)),
+        vec![],
+        Arc::default(),
+    );
+    assert!(
+        matches!(
+            result,
+            Err(GraphBackendError::UnsupportedComponent {
+                kind: "external redstone wire boundary",
+                ..
+            })
+        ),
+        "until boundary dust neighborhoods are compiled, reject the query instead of sampling stored dot sides"
+    );
 }
 
 #[test]
