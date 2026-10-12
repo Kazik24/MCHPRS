@@ -796,15 +796,18 @@ impl GraphBackend {
                 mchprs_world::PistonAction::Extend
             }
             (false, true) => {
-                let early_resource_retraction = matches!(
-                    state.availability,
-                    PistonAvailability::HeadPending | PistonAvailability::PublishingHeadRemoval
-                ) && match spec.lane {
+                let early_resource_retraction = match spec.lane {
                     PistonLane::SingleResource { far } => self
                         .piston_resource_at(piston, far)
-                        .is_some_and(|resource| {
-                            let state = self.state.resources[resource.index()];
-                            !state.enabled
+                        .and_then(|resource| {
+                            self.pending_resource_extension(resource, far, spec.facing)
+                        })
+                        .is_some_and(|event| {
+                            event.due_tick > self.clock.logical_tick
+                                || matches!(
+                                    self.clock.phase,
+                                    GraphPhase::ScheduledTicks | GraphPhase::PistonActions
+                                )
                         }),
                     PistonLane::Empty => false,
                 };
@@ -963,16 +966,18 @@ impl GraphBackend {
         (self.state.resources[resource.index()].at == contact).then_some(resource)
     }
 
-    fn resource_extension_pending(
+    fn pending_resource_extension(
         &self,
         resource_id: ResourceId,
         contact: ContactId,
         facing: BlockFace,
-    ) -> bool {
+    ) -> Option<&DeferredPistonEvent> {
         let state = self.state.resources[resource_id.index()];
-        self.deferred_pistons.iter().any(|event| {
+        if state.enabled || state.at != contact {
+            return None;
+        }
+        self.deferred_pistons.iter().find(|event| {
             event.extending
-                && event.due_tick > self.clock.logical_tick
                 && self.program.pistons()[event.piston.index()].facing == facing
                 && event.resource.is_some_and(|resource| {
                     resource.resource == resource_id
@@ -1042,14 +1047,13 @@ impl GraphBackend {
             return true;
         };
         let state = self.state.resources[resource.index()];
-        let matching_extension = self.resource_extension_pending(resource, far, spec.facing);
-        if without_pull {
-            !(!state.enabled && matching_extension)
-                || self.resource_contact_available(resource, far, None)
-        } else if !state.enabled && !matching_extension {
-            true
+        let matching_extension = self
+            .pending_resource_extension(resource, far, spec.facing)
+            .is_some();
+        if !state.enabled {
+            !matching_extension || self.resource_contact_available(resource, far, None)
         } else {
-            self.resource_contact_available(resource, spec.near, Some(piston))
+            without_pull || self.resource_contact_available(resource, spec.near, Some(piston))
         }
     }
 
@@ -1115,6 +1119,22 @@ impl GraphBackend {
             }
             _ => None,
         };
+        let deferred_resource = resource.map(|(resource, revision)| DeferredResourceEvent {
+            resource,
+            revision,
+            contact: match spec.lane {
+                PistonLane::SingleResource { far } => far,
+                PistonLane::Empty => unreachable!(),
+            },
+        });
+        // Nested callbacks must see the transfer's direction and deadline.
+        self.deferred_pistons.push_back(DeferredPistonEvent {
+            piston,
+            revision,
+            resource: deferred_resource,
+            due_tick: self.clock.logical_tick + 2,
+            extending: true,
+        });
         if resource.is_some()
             && let Some(route) = spec.routes.far_shape_changed
         {
@@ -1126,21 +1146,6 @@ impl GraphBackend {
         }
         self.state.pistons[piston.index()].extended = true;
         self.deliver_route(spec.routes.base_changed, None)?;
-        let deferred_resource = resource.map(|(resource, revision)| DeferredResourceEvent {
-            resource,
-            revision,
-            contact: match spec.lane {
-                PistonLane::SingleResource { far } => far,
-                PistonLane::Empty => unreachable!(),
-            },
-        });
-        self.deferred_pistons.push_back(DeferredPistonEvent {
-            piston,
-            revision,
-            resource: deferred_resource,
-            due_tick: self.clock.logical_tick + 2,
-            extending: true,
-        });
         #[cfg(test)]
         self.trace
             .push(format!("piston extend {:?} revision={revision}", piston));
@@ -1158,15 +1163,15 @@ impl GraphBackend {
             PistonLane::Empty => None,
         };
         let matching_extension = match (resource_at_far, spec.lane) {
-            (Some(resource), PistonLane::SingleResource { far }) => {
-                self.resource_extension_pending(resource, far, spec.facing)
-            }
+            (Some(resource), PistonLane::SingleResource { far }) => self
+                .pending_resource_extension(resource, far, spec.facing)
+                .is_some(),
             _ => false,
         };
         let resource_enabled =
             resource_at_far.is_some_and(|resource| self.state.resources[resource.index()].enabled);
-        let restore_far = without_pull && !resource_enabled && matching_extension;
-        let pull_resource = !without_pull && (resource_enabled || matching_extension);
+        let restore_far = matching_extension;
+        let pull_resource = !without_pull && resource_enabled;
         if let (Some(resource), PistonLane::SingleResource { far }) = (resource_at_far, spec.lane) {
             debug_assert!(if restore_far {
                 self.resource_contact_available(resource, far, None)

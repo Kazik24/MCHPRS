@@ -2351,6 +2351,119 @@ fn opposing_shared_pistons() -> (PlotWorld, PlotWorld, [BlockPos; 2], [BlockPos;
 }
 
 #[test]
+fn shared_payload_opposite_direction_does_not_request_early_retraction() {
+    for extending_actor in [0usize, 1] {
+        let retracting_actor = 1 - extending_actor;
+        let (mut native, mut graph_world, bases, near, far) = opposing_shared_pistons();
+        let controls = bases.map(|base| base.offset(BlockFace::East));
+        for world in [&mut native, &mut graph_world] {
+            for index in 0..2 {
+                let Block::Piston { mut piston } = world.get_block(bases[index]) else {
+                    unreachable!();
+                };
+                piston.extended = false;
+                world.set_block(bases[index], Block::Piston { piston });
+                world.set_block(
+                    near[index],
+                    if index == extending_actor {
+                        Block::RedstoneBlock
+                    } else {
+                        Block::Air
+                    },
+                );
+                world.set_block(controls[index].offset(BlockFace::Bottom), Block::Stone {});
+                world.set_block(controls[index], lever(false));
+            }
+            world.set_block(far, Block::Air);
+        }
+        let mut backend = graph(&graph_world, vec![]);
+        assert_eq!(backend.program.resources().len(), 1);
+        for index in [extending_actor, retracting_actor] {
+            set_native_lever(&mut native, controls[index], true);
+            backend.use_block(controls[index]).unwrap();
+        }
+        tick_native_bounded(&mut native);
+        backend.tick().unwrap();
+        assert_resource_invariants(&backend);
+
+        set_native_lever(&mut native, controls[retracting_actor], false);
+        backend.use_block(controls[retracting_actor]).unwrap();
+        let native_request = native.piston_state().events.back().unwrap();
+        assert_eq!(native_request.pos, bases[retracting_actor]);
+        assert_eq!(native_request.action, mchprs_world::PistonAction::Retract);
+        let graph_request = backend.piston_requests.back().unwrap();
+        assert_eq!(
+            graph_request.piston,
+            piston_id_at(&backend, bases[retracting_actor])
+        );
+        assert_eq!(graph_request.action, native_request.action);
+    }
+}
+
+#[test]
+fn shared_payload_deadline_reversal_executes_notified_actor_in_same_tick() {
+    for extending_actor in [0usize, 1] {
+        let notified_actor = 1 - extending_actor;
+        let (mut native, mut graph_world, bases, near, far) = opposing_shared_pistons();
+        let control = bases[extending_actor].offset(BlockFace::East);
+        for world in [&mut native, &mut graph_world] {
+            let Block::Piston { mut piston } = world.get_block(bases[extending_actor]) else {
+                unreachable!();
+            };
+            piston.extended = false;
+            world.set_block(bases[extending_actor], Block::Piston { piston });
+            world.set_block(near[extending_actor], Block::RedstoneBlock);
+            world.set_block(far, Block::Air);
+            world.set_block(control.offset(BlockFace::Bottom), Block::Stone {});
+            world.set_block(control, lever(false));
+        }
+        let mut backend = graph(&graph_world, vec![]);
+        assert_eq!(backend.program.resources().len(), 1);
+        set_native_lever(&mut native, control, true);
+        backend.use_block(control).unwrap();
+        for _ in 0..2 {
+            tick_native_bounded(&mut native);
+            backend.tick().unwrap();
+            assert_resource_invariants(&backend);
+        }
+
+        set_native_lever(&mut native, control, false);
+        backend.use_block(control).unwrap();
+        tick_native_bounded(&mut native);
+        backend.tick().unwrap();
+        assert_resource_invariants(&backend);
+        assert!(matches!(
+            native.get_block(bases[notified_actor]),
+            Block::MovingPiston { .. }
+        ));
+        assert_eq!(
+            piston_state_at(&backend, bases[notified_actor]).availability,
+            PistonAvailability::BasePending,
+            "the notified actor must retract in the resource's interruption tick"
+        );
+        assert!(native.piston_state().events.is_empty());
+        assert!(backend.piston_requests.is_empty());
+        assert_eq!(
+            backend.state.resources[0].at,
+            contact_at(&backend, near[notified_actor])
+        );
+        assert!(!backend.state.resources[0].enabled);
+
+        for _ in 0..3 {
+            tick_native_bounded(&mut native);
+            backend.tick().unwrap();
+            assert_resource_invariants(&backend);
+        }
+        for position in [bases[0], bases[1], near[0], near[1], far] {
+            assert_eq!(
+                piston_contact_block(&backend, position),
+                native.get_block(position)
+            );
+        }
+    }
+}
+
+#[test]
 fn shared_payload_actor_orders_select_the_first_retracting_contact() {
     for order in [[0usize, 1usize], [1, 0]] {
         let (mut native, graph_world, bases, near, resource_pos) = opposing_shared_pistons();
