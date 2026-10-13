@@ -1,17 +1,14 @@
 //! Versioned inspection JSON for the richer graph drafts.
-use super::electrical::{
-    ComparatorInputPlan, ComparatorOverride, ElectricalDraft, ElectricalError, ElectricalLink,
-    ElectricalTarget, WireRelationKind,
-};
-use super::geometry::{GeometryDraft, GeometryError};
-use super::{AnalysisError, AnalysisLimits, AnalysisReport};
-use crate::redpiler::TaskMonitor;
+use super::electrical::{ComparatorInputPlan, ComparatorOverride, WireRelationKind};
+use super::{AnalysisLimits, AnalysisReport};
 use crate::redpiler::compile_graph::{NodeState, NodeType};
+use crate::redpiler::passes;
 use crate::redpiler::program_graph::{
-    CallbackReceiver, CircuitNodeKind, ComponentState, Guard, InputPort, LinkKind, LinkSpec,
-    OperandView, PistonAvailability, PistonLane, PistonRoutes, PowerPort, Profile,
-    ProfileElectrical, SiteSource, SiteTest, StateTest,
+    CallbackReceiver, CircuitNodeKind, CompileGraph, ComponentState, Guard, InputPort, LinkKind,
+    LinkSpec, OperandView, PistonAvailability, PistonLane, PistonRoutes, PowerLink, PowerPort,
+    PowerTarget, Profile, ProfileElectrical, SiteSource, SiteTest, StateTest,
 };
+use crate::redpiler::{CompilerOptions, TaskMonitor};
 use crate::world::World;
 use mchprs_blocks::blocks::{Block, ComparatorMode, Instrument, RedstoneWireSide};
 use mchprs_blocks::{BlockFace, BlockPos};
@@ -820,20 +817,22 @@ pub(crate) fn prepare<W: World>(
     monitor: &TaskMonitor,
     limits: AnalysisLimits,
 ) -> Result<GraphExport, ExportError> {
-    let prepared = super::geometry::prepare_geometry(world, bounds, ticks, monitor, limits)
-        .map_err(map_geometry_error)?;
-    let mut electrical = super::electrical::prepare_electrical(
-        world,
-        prepared.report.bounds,
-        &prepared.draft,
+    let mut prepared = passes::rich::prepare(world, bounds, ticks.to_vec(), monitor, limits)
+        .map_err(map_preparation_error)?;
+    let options = CompilerOptions::default();
+    let pipeline = passes::default_graph_pipeline(&options);
+    passes::run_graph_pipeline(
+        &mut prepared.graph,
+        &options,
+        &prepared.entry,
+        &pipeline,
         monitor,
     )
-    .map_err(map_electrical_error)?;
-    let callbacks =
-        super::callbacks::prepare_callbacks(world, &prepared.draft, &mut electrical, monitor)
-            .map_err(map_callback_error)?;
-    let export = from_drafts(&prepared.report, &prepared.draft, &electrical, &callbacks)?;
+    .map_err(map_pass_error)?;
+    prepared.finish_pipeline_statistics(monitor);
+    let export = from_graph(&prepared.report, &prepared.graph)?;
     check_export_cancellation(monitor)?;
+    monitor.inc_progress();
     Ok(export)
 }
 
@@ -864,43 +863,59 @@ fn check_export_cancellation(monitor: &TaskMonitor) -> Result<(), ExportError> {
     Ok(())
 }
 
-fn map_electrical_error(error: ElectricalError) -> ExportError {
-    let code = match error {
-        ElectricalError::Preparation(AnalysisError::Cancelled) => "cancelled",
-        ElectricalError::Preparation(_) => "analysis",
-        _ => "electrical",
+fn map_preparation_error(error: passes::rich::PreparationError) -> ExportError {
+    use passes::rich::PreparationError;
+    let (code, message) = match &error {
+        PreparationError::Geometry(error) => {
+            let code = match error {
+                super::geometry::GeometryError::Analysis(super::AnalysisError::Cancelled) => {
+                    "cancelled"
+                }
+                super::geometry::GeometryError::Analysis(_) => "analysis",
+                super::geometry::GeometryError::Entry(_) => "admission",
+                super::geometry::GeometryError::Rejected(_) => "geometry",
+            };
+            (code, error.to_string())
+        }
+        PreparationError::Electrical(error) => {
+            let code = match error {
+                super::electrical::ElectricalError::Preparation(
+                    super::AnalysisError::Cancelled,
+                ) => "cancelled",
+                super::electrical::ElectricalError::Preparation(_) => "analysis",
+                _ => "electrical",
+            };
+            (code, error.to_string())
+        }
+        PreparationError::Callbacks(error) => {
+            let code = match error {
+                super::callbacks::CallbackError::Preparation(super::AnalysisError::Cancelled) => {
+                    "cancelled"
+                }
+                super::callbacks::CallbackError::Preparation(_) => "analysis",
+                _ => "callbacks",
+            };
+            (code, error.to_string())
+        }
+    };
+    ExportError::new(code, message)
+}
+
+fn map_pass_error(error: passes::PassPipelineError) -> ExportError {
+    let code = if matches!(&error, passes::PassPipelineError::Cancelled) {
+        "cancelled"
+    } else {
+        "pass"
     };
     ExportError::new(code, error.to_string())
 }
 
-fn map_callback_error(error: super::callbacks::CallbackError) -> ExportError {
-    use super::callbacks::CallbackError;
-    let code = match error {
-        CallbackError::Preparation(AnalysisError::Cancelled) => "cancelled",
-        CallbackError::Preparation(_) => "analysis",
-        _ => "callbacks",
-    };
-    ExportError::new(code, error.to_string())
-}
-
-fn map_geometry_error(error: GeometryError) -> ExportError {
-    let code = match error {
-        GeometryError::Analysis(AnalysisError::Cancelled) => "cancelled",
-        GeometryError::Analysis(_) => "analysis",
-        GeometryError::Entry(_) => "admission",
-        GeometryError::Rejected(_) => "geometry",
-    };
-    ExportError::new(code, error.to_string())
-}
-
-fn from_drafts(
+pub(super) fn from_graph(
     report: &AnalysisReport,
-    geometry: &GeometryDraft,
-    electrical: &ElectricalDraft,
-    callbacks: &super::callbacks::CallbackDraft,
+    source: &CompileGraph,
 ) -> Result<GraphExport, ExportError> {
     let graph = GraphTablesDto {
-        nodes: electrical
+        nodes: source
             .nodes
             .iter()
             .enumerate()
@@ -915,13 +930,13 @@ fn from_drafts(
                 })
             })
             .collect::<Result<_, ExportError>>()?,
-        profiles: electrical
+        profiles: source
             .profiles
             .iter()
             .enumerate()
             .map(|(index, item)| profile_dto(index, item))
             .collect(),
-        sites: electrical
+        sites: source
             .sites
             .iter()
             .enumerate()
@@ -941,7 +956,7 @@ fn from_drafts(
                 },
             })
             .collect(),
-        guards: electrical
+        guards: source
             .guards
             .iter()
             .enumerate()
@@ -950,7 +965,7 @@ fn from_drafts(
                 expression: guard_dto(item),
             })
             .collect(),
-        contacts: electrical
+        contacts: source
             .contacts
             .iter()
             .enumerate()
@@ -969,12 +984,12 @@ fn from_drafts(
                     .collect(),
             })
             .collect(),
-        pistons: geometry
+        pistons: source
             .pistons
             .iter()
-            .zip(&callbacks.pistons)
-            .map(|(item, spec)| PistonDto {
-                id: typed_id("piston", item.id.index()),
+            .enumerate()
+            .map(|(index, item)| PistonDto {
+                id: typed_id("piston", index),
                 node: typed_id("node", item.node.index()),
                 position: position(item.position),
                 facing: face(item.facing),
@@ -988,31 +1003,30 @@ fn from_drafts(
                         far: typed_id("contact", far.index()),
                     },
                 },
-                routes: Some(piston_routes_dto(spec.routes)),
+                routes: Some(piston_routes_dto(item.routes)),
             })
             .collect(),
-        resources: geometry
+        resources: source
             .resources
             .iter()
             .enumerate()
             .map(|(index, item)| ResourceDto {
                 id: typed_id("resource", index),
-                material: typed_id("profile", item.spec.material.index()),
+                material: typed_id("profile", item.material.index()),
                 contacts: item
-                    .spec
                     .contacts
                     .iter()
                     .map(|contact| typed_id("contact", contact.index()))
                     .collect(),
             })
             .collect(),
-        power_links: electrical
-            .links
+        power_links: source
+            .power_links
             .iter()
             .enumerate()
             .map(|(index, item)| power_link(index, item))
             .collect(),
-        wire_plans: electrical
+        wire_plans: source
             .wires
             .iter()
             .enumerate()
@@ -1032,7 +1046,7 @@ fn from_drafts(
                     .map(|route| typed_id("route", route.index())),
             })
             .collect(),
-        wire_relations: electrical
+        wire_relations: source
             .wire_relations
             .iter()
             .enumerate()
@@ -1049,20 +1063,20 @@ fn from_drafts(
                 guard: typed_id("guard", item.guard.index()),
             })
             .collect(),
-        comparator_plans: electrical
-            .comparators
+        comparator_plans: source
+            .comparator_inputs
             .iter()
             .enumerate()
             .map(|(index, item)| comparator_plan(index, item))
             .collect(),
-        callback_links: callbacks
+        callback_links: source
             .links
             .iter()
             .enumerate()
             .map(|(index, link)| callback_link_dto(index, link))
             .collect::<Result<_, _>>()?,
         routes: Some(
-            callbacks
+            source
                 .routes
                 .iter()
                 .enumerate()
@@ -1104,7 +1118,7 @@ fn from_drafts(
     };
     let snapshot = SnapshotDto {
         id: "snapshot:initial",
-        components: electrical
+        components: source
             .nodes
             .iter()
             .enumerate()
@@ -1113,7 +1127,7 @@ fn from_drafts(
                 state: component_state(&node.state),
             })
             .collect(),
-        pistons: geometry
+        pistons: source
             .initial_pistons
             .iter()
             .enumerate()
@@ -1124,7 +1138,7 @@ fn from_drafts(
                 revision: state.revision.to_string(),
             })
             .collect(),
-        resources: geometry
+        resources: source
             .initial_resources
             .iter()
             .enumerate()
@@ -1323,7 +1337,7 @@ fn receiver_dto(receiver: CallbackReceiver) -> ReceiverDto {
     }
 }
 
-fn power_link(index: usize, link: &ElectricalLink) -> PowerLinkDto {
+fn power_link(index: usize, link: &PowerLink) -> PowerLinkDto {
     PowerLinkDto {
         id: typed_id("power_link", index),
         from: PowerSourceDto {
@@ -1341,11 +1355,11 @@ fn power_link(index: usize, link: &ElectricalLink) -> PowerLinkDto {
             },
         },
         to: match link.to {
-            ElectricalTarget::Input { node, port } => PowerTargetDto::Input {
+            PowerTarget::Input { node, port } => PowerTargetDto::Input {
                 node: typed_id("node", node.index()),
                 port: input_port(port),
             },
-            ElectricalTarget::Conductor { site, include_dust } => PowerTargetDto::Conductor {
+            PowerTarget::Conductor { site, include_dust } => PowerTargetDto::Conductor {
                 site: typed_id("site", site.index()),
                 include_dust,
             },

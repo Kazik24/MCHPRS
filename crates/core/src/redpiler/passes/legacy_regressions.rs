@@ -1,6 +1,6 @@
 use crate::plot::{PLOT_WIDTH, PlotWorld};
 use crate::redpiler::compile_graph::{
-    CompileGraph, CompileLink, CompileNode, LinkType, NodeState, NodeType,
+    CompileLink, CompileNode, LegacyCompileGraph, LinkType, NodeState, NodeType,
 };
 use crate::redpiler::{Compiler, CompilerOptions};
 use crate::redstone;
@@ -45,7 +45,7 @@ fn advance(compiler: &mut Compiler, world: &mut PlotWorld, ticks: usize) {
 
 #[test]
 fn coalescing_retains_transitive_physical_aliases() {
-    let mut graph = CompileGraph::new();
+    let mut graph = LegacyCompileGraph::new();
     let source = graph.add_node(CompileNode {
         ty: NodeType::Lever,
         block: None,
@@ -146,7 +146,7 @@ fn attenuated_constant_side_preserves_comparator_lamp_output() {
 
 #[test]
 fn comparator_pruning_preserves_a_larger_saved_output() {
-    let mut graph = CompileGraph::new();
+    let mut graph = LegacyCompileGraph::new();
     let node = |ty, strength| CompileNode {
         ty,
         block: None,
@@ -376,7 +376,7 @@ fn graph_coalescing_preserves_input_channel_and_attenuation() {
         (NodeType::Lever, repeater, LinkType::Default, 15, false),
         (NodeType::Lever, NodeType::Wire, LinkType::Default, 1, false),
     ] {
-        let mut graph = CompileGraph::new();
+        let mut graph = LegacyCompileGraph::new();
         let node = |ty, is_input| CompileNode {
             ty,
             block: None,

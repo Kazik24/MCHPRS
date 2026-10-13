@@ -6,7 +6,7 @@ mod tick;
 mod update;
 
 use super::{BackendError, TickScheduler};
-use crate::redpiler::compile_graph::CompileGraph;
+use crate::redpiler::compile_graph::LegacyCompileGraph;
 use crate::redpiler::{CompilerOptions, block_powered_mut};
 use crate::redstone::bool_to_ss;
 use crate::redstone::noteblock;
@@ -217,7 +217,7 @@ impl DirectBackend {
 
     pub(crate) fn compile(
         &mut self,
-        graph: CompileGraph,
+        graph: LegacyCompileGraph,
         ticks: Vec<TickEntry>,
         options: &CompilerOptions,
     ) -> Result<(), BackendError> {

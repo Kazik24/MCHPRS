@@ -1,5 +1,5 @@
 use crate::redpiler::CompilerOptions;
-use crate::redpiler::compile_graph::{CompileGraph, LinkType, NodeIdx};
+use crate::redpiler::compile_graph::{LegacyCompileGraph, LinkType, NodeIdx};
 use itertools::Itertools;
 use mchprs_blocks::BlockPos;
 use mchprs_blocks::blocks::{Block, Instrument};
@@ -26,7 +26,7 @@ struct FinalGraphStats {
 }
 
 fn compile_node(
-    graph: &CompileGraph,
+    graph: &LegacyCompileGraph,
     node_idx: NodeIdx,
     nodes_len: usize,
     nodes_map: &FxHashMap<NodeIdx, usize>,
@@ -147,7 +147,7 @@ fn compile_node(
 
 pub fn compile(
     backend: &mut DirectBackend,
-    graph: CompileGraph,
+    graph: LegacyCompileGraph,
     ticks: Vec<TickEntry>,
     options: &CompilerOptions,
 ) -> Result<(), BackendError> {
@@ -362,7 +362,7 @@ mod tests {
     #[test]
     fn invalid_strength_is_rejected_before_packed_input_initialization() {
         for strength in [16, 255] {
-            let mut graph = CompileGraph::new();
+            let mut graph = LegacyCompileGraph::new();
             graph.add_node(node(NodeType::Constant, strength));
             let mut backend = DirectBackend::default();
             assert_eq!(
@@ -378,7 +378,7 @@ mod tests {
 
     #[test]
     fn excessive_fan_in_is_rejected_without_overflowing_counters() {
-        let mut graph = CompileGraph::new();
+        let mut graph = LegacyCompileGraph::new();
         let target = graph.add_node(node(NodeType::Lamp, 0));
         for _ in 0..256 {
             let source = graph.add_node(node(NodeType::Constant, 15));
@@ -399,7 +399,7 @@ mod tests {
     #[test]
     fn source_changes_publish_all_inputs_before_notifying_comparators() {
         for side_first in [false, true] {
-            let mut graph = CompileGraph::new();
+            let mut graph = LegacyCompileGraph::new();
             let source = graph.add_node(node(NodeType::Lever, 0));
             let rear_source = graph.add_node(node(NodeType::Lever, 0));
             let comparator = graph.add_node(node(
@@ -476,7 +476,7 @@ mod tests {
             BlockPos::new(5, 30, 4),
             BlockPos::new(6, 30, 4),
         ];
-        let mut graph = CompileGraph::new();
+        let mut graph = LegacyCompileGraph::new();
         let mut lever = node(NodeType::Lever, 0);
         lever.block = Some((
             positions[0],
@@ -578,7 +578,7 @@ mod tests {
     fn observer_sees_comparator_block_state_but_not_entity_strength_alone() {
         let source_pos = BlockPos::new(4, 30, 4);
         let observer_pos = BlockPos::new(5, 30, 4);
-        let mut graph = CompileGraph::new();
+        let mut graph = LegacyCompileGraph::new();
         let mut source = node(
             NodeType::Comparator {
                 mode: mchprs_blocks::blocks::ComparatorMode::Compare,

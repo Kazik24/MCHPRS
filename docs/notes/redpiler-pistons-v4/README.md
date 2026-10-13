@@ -68,7 +68,9 @@ The [2026-10-12 deeper audit](PARSER_AUDIT_2026-10-12.md) records counterexample
 
 ## Later implementation direction
 
-The proposed [common compiler graph, extensible pass pipeline and single Graph runtime migration](GRAPH_PIPELINE_MIGRATION.md) has seven separate review steps. Parsing becomes the required front end; developers can configure and test graph transformations through a general API; execution/export share one compilation artifact. Direct and Native remain during migration and are retired after the coverage/admission gate. The final runtime is Graph only. This replaces the earlier generalized-Direct proposal and does not mark these steps implemented or authorize starting them together.
+The proposed [common compiler graph, extensible pass pipeline and single Graph runtime migration](GRAPH_PIPELINE_MIGRATION.md) has seven separate review steps. Parsing becomes the required front end; developers can configure and test graph transformations through a general API; execution/export share one compilation artifact. Direct and Native remain during migration and are retired after the coverage/admission gate. The final runtime is Graph only. This replaces the earlier generalized-Direct proposal. G1–G3 are implemented under batch 01 and await human review; G4–G7 remain unstarted.
+
+The user subsequently authorized [batch 01 for Luna6: G1–G3](BATCH_01_LUNA_PROMPT.md). That prompt permits sequential implementation of these three steps with internal checks and one human review at batch completion; G4–G7 remain outside its scope.
 
 These are follow-up projects, not instructions to add speculative node variants during the steps above. Write and review their individual implementation prompts once the general graph provides concrete evidence.
 

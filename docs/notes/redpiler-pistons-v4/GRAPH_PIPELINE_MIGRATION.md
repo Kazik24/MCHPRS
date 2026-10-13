@@ -1,6 +1,6 @@
 # One compiler graph, an extensible pass pipeline, and one Graph runtime
 
-Status: proposed for review, 2026-10-13. This is a migration plan, not evidence of execution parity or authorization to implement all steps at once.
+Status: G1–G3 implemented and awaiting human review, 2026-10-13. This does not establish execution parity; G4–G7 remain unstarted.
 
 ## Agreed direction
 

@@ -1,12 +1,14 @@
 use std::collections::hash_map::Entry;
 
-use crate::redpiler::compile_graph::{CompileGraph, CompileNode, NodeIdx, NodeState, NodeType};
+use crate::redpiler::compile_graph::{
+    CompileNode, LegacyCompileGraph, NodeIdx, NodeState, NodeType,
+};
 use petgraph::Direction;
 use petgraph::unionfind::UnionFind;
 use petgraph::visit::{EdgeRef, IntoEdgeReferences, NodeIndexable};
 use rustc_hash::{FxHashMap, FxHashSet};
 
-pub(super) fn run(graph: &mut CompileGraph) -> Result<(), super::GraphError> {
+pub(super) fn run(graph: &mut LegacyCompileGraph) -> Result<(), super::GraphError> {
     let mut vertex_sets = UnionFind::new(graph.node_bound());
     for edge in graph.edge_references() {
         let (src, dest) = (edge.source(), edge.target());
@@ -63,7 +65,7 @@ mod tests {
 
     #[test]
     fn replacement_constant_survives_reused_graph_slot() {
-        let mut graph = CompileGraph::new();
+        let mut graph = LegacyCompileGraph::new();
         let node = |ty, state, is_output| CompileNode {
             ty,
             state,

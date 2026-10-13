@@ -1,5 +1,5 @@
 use crate::redpiler::compile_graph::{
-    CompileGraph, LinkType as CLinkType, NodeIdx, NodeType as CNodeType,
+    LegacyCompileGraph, LinkType as CLinkType, NodeIdx, NodeType as CNodeType,
 };
 use itertools::Itertools;
 use mchprs_blocks::blocks::ComparatorMode as CComparatorMode;
@@ -12,7 +12,7 @@ use rustc_hash::FxHashMap;
 use std::fs;
 
 fn convert_node(
-    graph: &CompileGraph,
+    graph: &LegacyCompileGraph,
     node_idx: NodeIdx,
     nodes_map: &FxHashMap<NodeIdx, usize>,
 ) -> Node {
@@ -95,7 +95,7 @@ fn convert_node(
     }
 }
 
-pub(super) fn validate(graph: &CompileGraph) -> Result<(), super::GraphError> {
+pub(super) fn validate(graph: &LegacyCompileGraph) -> Result<(), super::GraphError> {
     if graph
         .node_weights()
         .any(|node| node.ty == CNodeType::CopperBulb)
@@ -117,7 +117,7 @@ pub(super) fn validate(graph: &CompileGraph) -> Result<(), super::GraphError> {
     Ok(())
 }
 
-pub(super) fn run(graph: &mut CompileGraph) -> Result<(), super::GraphError> {
+pub(super) fn run(graph: &mut LegacyCompileGraph) -> Result<(), super::GraphError> {
     validate(graph)?;
     let mut nodes_map = FxHashMap::with_capacity_and_hasher(graph.node_count(), Default::default());
     for node in graph.node_indices() {

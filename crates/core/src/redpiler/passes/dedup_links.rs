@@ -3,11 +3,11 @@
 //! For example, if two nodes are connected with two links of weights 13 and 15, the link with
 //! weight 15 is removed.
 
-use crate::redpiler::compile_graph::{CompileGraph, NodeIdx};
+use crate::redpiler::compile_graph::{LegacyCompileGraph, NodeIdx};
 use petgraph::Direction;
 use petgraph::visit::{EdgeRef, NodeIndexable};
 
-pub(super) fn run(graph: &mut CompileGraph) -> Result<(), super::GraphError> {
+pub(super) fn run(graph: &mut LegacyCompileGraph) -> Result<(), super::GraphError> {
     for i in 0..graph.node_bound() {
         let idx = NodeIdx::new(i);
         if !graph.contains_node(idx) {

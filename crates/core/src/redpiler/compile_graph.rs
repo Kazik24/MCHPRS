@@ -123,9 +123,8 @@ impl CompileLink {
     }
 }
 
-/// The legacy electrically lowered graph. Rich power/update/shape graphs use
-/// `program_graph` and cannot be passed to the legacy rewrites or backends.
-pub type CompileGraph = StableGraph<CompileNode, CompileLink>;
+/// The legacy electrical graph retained for Direct and Native during migration.
+pub(crate) type LegacyCompileGraph = StableGraph<CompileNode, CompileLink>;
 
 #[derive(Debug)]
 pub enum GraphError {

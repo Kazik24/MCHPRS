@@ -1,9 +1,9 @@
-use crate::redpiler::compile_graph::{CompileGraph, LinkType, NodeIdx, NodeType};
+use crate::redpiler::compile_graph::{LegacyCompileGraph, LinkType, NodeIdx, NodeType};
 use itertools::Itertools;
 use petgraph::Direction;
 use petgraph::visit::{EdgeRef, NodeIndexable};
 
-pub(super) fn run(graph: &mut CompileGraph) -> Result<(), super::GraphError> {
+pub(super) fn run(graph: &mut LegacyCompileGraph) -> Result<(), super::GraphError> {
     for i in 0..graph.node_bound() {
         let idx = NodeIdx::new(i);
         if !graph.contains_node(idx) {
@@ -37,7 +37,7 @@ pub(super) fn run(graph: &mut CompileGraph) -> Result<(), super::GraphError> {
 }
 
 fn coalesce_outgoing(
-    graph: &mut CompileGraph,
+    graph: &mut LegacyCompileGraph,
     source_idx: NodeIdx,
     into_idx: NodeIdx,
     attenuation: u8,
@@ -85,7 +85,7 @@ fn coalesce_outgoing(
     }
 }
 
-fn coalesce(graph: &mut CompileGraph, node: NodeIdx, into: NodeIdx) {
+fn coalesce(graph: &mut LegacyCompileGraph, node: NodeIdx, into: NodeIdx) {
     let mut walk_outgoing = graph.neighbors_directed(node, Direction::Outgoing).detach();
     while let Some(edge_idx) = walk_outgoing.next_edge(graph) {
         let dest = graph.edge_endpoints(edge_idx).unwrap().1;

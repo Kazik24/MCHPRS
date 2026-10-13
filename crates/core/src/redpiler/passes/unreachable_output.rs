@@ -5,12 +5,12 @@
 //! Basically, links from comparators that could never possibly output a signal great enough that
 //! it won't be zero'd out by the weight of the link get removed.
 
-use crate::redpiler::compile_graph::{CompileGraph, LinkType, NodeIdx, NodeType};
+use crate::redpiler::compile_graph::{LegacyCompileGraph, LinkType, NodeIdx, NodeType};
 use mchprs_blocks::blocks::ComparatorMode;
 use petgraph::Direction;
 use petgraph::visit::{EdgeRef, NodeIndexable};
 
-pub(super) fn run(graph: &mut CompileGraph) -> Result<(), super::GraphError> {
+pub(super) fn run(graph: &mut LegacyCompileGraph) -> Result<(), super::GraphError> {
     for i in 0..graph.node_bound() {
         let idx = NodeIdx::new(i);
         if !graph.contains_node(idx) || graph[idx].state.pending_tick {

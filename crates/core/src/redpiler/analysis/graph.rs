@@ -1,6 +1,6 @@
 //! Read-only graph preparation for ordinary, piston-free selections.
 use super::{AdmissionIssue, AnalysisError, AnalysisReport};
-use crate::redpiler::compile_graph::{CompileGraph, GraphError};
+use crate::redpiler::compile_graph::{GraphError, LegacyCompileGraph};
 use crate::redpiler::{CompilerInput, CompilerOptions, TaskMonitor};
 use crate::world::World;
 use mchprs_blocks::BlockPos;
@@ -39,7 +39,7 @@ pub struct GraphSummary {
 
 #[derive(Debug)]
 pub struct CandidateGraph {
-    pub(crate) graph: CompileGraph,
+    pub(crate) graph: LegacyCompileGraph,
     pub report: AnalysisReport,
 }
 

@@ -1,11 +1,14 @@
-use crate::redpiler::compile_graph::{CompileGraph, LinkType, NodeIdx, NodeType};
+use crate::redpiler::compile_graph::{LegacyCompileGraph, LinkType, NodeIdx, NodeType};
 use crate::world::World;
 use mchprs_blocks::blocks::{Block, ComparatorMode};
 use petgraph::Direction;
 use petgraph::visit::{EdgeRef, NodeIndexable};
 use tracing::trace;
 
-pub(super) fn run(graph: &mut CompileGraph, world: &impl World) -> Result<(), super::GraphError> {
+pub(super) fn run(
+    graph: &mut LegacyCompileGraph,
+    world: &impl World,
+) -> Result<(), super::GraphError> {
     loop {
         let num_folded = fold(graph, world);
         if num_folded == 0 {
@@ -16,7 +19,7 @@ pub(super) fn run(graph: &mut CompileGraph, world: &impl World) -> Result<(), su
     Ok(())
 }
 
-fn fold(graph: &mut CompileGraph, world: &impl World) -> usize {
+fn fold(graph: &mut LegacyCompileGraph, world: &impl World) -> usize {
     let mut num_folded = 0;
 
     'nodes: for i in 0..graph.node_bound() {

@@ -1,11 +1,11 @@
 //! This pass removes any nodes in the graph that aren't transitively connected to an output redstone component by using Depth-First-Search.
 
-use crate::redpiler::compile_graph::CompileGraph;
+use crate::redpiler::compile_graph::LegacyCompileGraph;
 use itertools::Itertools;
 use petgraph::Direction;
 use rustc_hash::FxHashSet;
 
-pub(super) fn run(graph: &mut CompileGraph) -> Result<(), super::GraphError> {
+pub(super) fn run(graph: &mut LegacyCompileGraph) -> Result<(), super::GraphError> {
     let mut to_visit = graph
         .node_indices()
         .filter(|&idx| !graph[idx].is_removable())

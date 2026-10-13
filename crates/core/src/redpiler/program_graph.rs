@@ -1,12 +1,9 @@
-//! Typed construction and immutable program storage for the graph-native model.
-//!
-//! This graph is deliberately separate from `compile_graph::CompileGraph`, the
-//! legacy electrical graph consumed by its rewrites, packed backend, and export.
-#![allow(dead_code)] // This representation is consumed by the parser and backend in later steps.
+//! Typed construction and immutable program storage for the general graph.
 
 use crate::redpiler::compile_graph::{NodeState, NodeType};
 use mchprs_blocks::blocks::{Block, RedstoneWire};
 use mchprs_blocks::{BlockFace, BlockPos};
+use mchprs_world::TickEntry;
 use rustc_hash::FxHashMap;
 use std::collections::{HashMap, VecDeque};
 use std::ops::Range;
@@ -241,10 +238,14 @@ pub(crate) struct PistonRoutes {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct PistonSpec {
     pub(crate) node: NodeId,
+    /// This records the piston base location for graph inspection and diagnostics.
+    pub(crate) position: BlockPos,
     pub(crate) facing: BlockFace,
     pub(crate) sticky: bool,
     pub(crate) base: ContactId,
     pub(crate) near: ContactId,
+    /// This identifies the far-side contact even when the piston lane is empty.
+    pub(crate) far: ContactId,
     pub(crate) lane: PistonLane,
     pub(crate) routes: PistonRoutes,
 }
@@ -347,6 +348,30 @@ pub(crate) struct ComparatorInputPlan {
     pub(crate) far_threshold: u8,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum WireRelationKind {
+    /// This denotes a same-level neighbor dependency.
+    Step,
+    /// This denotes a wire dependency that climbs a block face.
+    Ascend,
+    /// This denotes a wire dependency that descends a block face.
+    Descend,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct WireRelation {
+    /// This identifies the wire that discovered the dependency.
+    pub(crate) from: NodeId,
+    /// This identifies the dependent query site.
+    pub(crate) to: SiteId,
+    /// This classifies the geometric relation between wire and site.
+    pub(crate) kind: WireRelationKind,
+    /// This preserves the literal direction used during discovery.
+    pub(crate) direction: BlockFace,
+    /// This guards the relation under the selected contact state.
+    pub(crate) guard: GuardId,
+}
+
 impl RouteDelivery {
     fn link_kind(self) -> LinkKind {
         match self.kind {
@@ -373,6 +398,8 @@ pub(crate) struct CircuitDraft {
     pub(crate) contacts: Vec<ContactSpec>,
     pub(crate) routes: Vec<Route>,
     pub(crate) wires: Vec<WirePlan>,
+    /// This preserves the guarded geometric relations used to build dust channels.
+    pub(crate) wire_relations: Vec<WireRelation>,
     pub(crate) sites: Vec<SiteSpec>,
     pub(crate) pistons: Vec<PistonSpec>,
     pub(crate) resources: Vec<ResourceSpec>,
@@ -380,9 +407,24 @@ pub(crate) struct CircuitDraft {
     pub(crate) initial_resources: Vec<ResourceState>,
 }
 
+/// The complete mutable graph shared by preparation, transformations, and export.
+pub(crate) type CompileGraph = CircuitDraft;
+
+#[derive(Debug, Clone)]
+pub(crate) struct EntryState {
+    /// This initializes the executor clock from the compilation boundary.
+    pub(crate) logical_tick: u64,
+    /// This retains imported work and duplicate scheduling entries in order.
+    pub(crate) pending_ticks: Vec<TickEntry>,
+}
+
 impl CircuitDraft {
+    pub(crate) fn validate(&self) -> Result<(), GraphBuildError> {
+        self.validate_inner()
+    }
+
     pub(crate) fn lower(mut self) -> Result<(CircuitProgram, CircuitState), GraphBuildError> {
-        self.validate()?;
+        self.validate_inner()?;
 
         let nodes = self
             .nodes
@@ -437,7 +479,7 @@ impl CircuitDraft {
         Ok((program, state))
     }
 
-    fn validate(&self) -> Result<(), GraphBuildError> {
+    fn validate_inner(&self) -> Result<(), GraphBuildError> {
         for (name, len) in [
             ("nodes", self.nodes.len()),
             ("sites", self.sites.len()),
@@ -448,6 +490,7 @@ impl CircuitDraft {
             ("guards", self.guards.len()),
             ("routes", self.routes.len()),
             ("wires", self.wires.len()),
+            ("wire relations", self.wire_relations.len()),
         ] {
             if u32::try_from(len).is_err() {
                 return Err(GraphBuildError::TooManyEntries { table: name });
@@ -457,6 +500,7 @@ impl CircuitDraft {
         self.validate_nodes()?;
         self.validate_guards()?;
         self.validate_sites_and_wires()?;
+        self.validate_wire_relations()?;
         self.validate_contacts_and_pistons()?;
         self.validate_routes()?;
         self.validate_links()?;
@@ -744,6 +788,27 @@ impl CircuitDraft {
         Ok(())
     }
 
+    fn validate_wire_relations(&self) -> Result<(), GraphBuildError> {
+        for relation in &self.wire_relations {
+            let node =
+                self.nodes
+                    .get(relation.from.index())
+                    .ok_or(GraphBuildError::InvalidReference {
+                        table: "nodes",
+                        index: relation.from.index(),
+                        len: self.nodes.len(),
+                    })?;
+            if !matches!(node.kind, CircuitNodeKind::Wire(_)) {
+                return Err(GraphBuildError::NodeKindMismatch {
+                    node: relation.from,
+                });
+            }
+            check_id("sites", relation.to.index(), self.sites.len())?;
+            check_id("guards", relation.guard.index(), self.guards.len())?;
+        }
+        Ok(())
+    }
+
     fn validate_contacts_and_pistons(&self) -> Result<(), GraphBuildError> {
         for (index, contact) in self.contacts.iter().enumerate() {
             let id = ContactId::try_from_index(index).expect("contact count was checked");
@@ -784,8 +849,12 @@ impl CircuitDraft {
             if node.kind != CircuitNodeKind::Piston(id) {
                 return Err(GraphBuildError::NodeKindMismatch { node: piston.node });
             }
+            if node.position != Some(piston.position) {
+                return Err(GraphBuildError::NodeKindMismatch { node: piston.node });
+            }
             check_id("contacts", piston.base.index(), self.contacts.len())?;
             check_id("contacts", piston.near.index(), self.contacts.len())?;
+            check_id("contacts", piston.far.index(), self.contacts.len())?;
             if let PistonLane::SingleResource { far } = piston.lane {
                 check_id("contacts", far.index(), self.contacts.len())?;
             }
@@ -1770,6 +1839,7 @@ mod tests {
                 shape_route: None,
                 turbo_route: None,
             }],
+            wire_relations: vec![],
             sites: vec![SiteSpec {
                 position: BlockPos::new(0, 0, 0),
                 source: SiteSource::Component(NodeId::new(1)),
@@ -1777,10 +1847,12 @@ mod tests {
             }],
             pistons: vec![PistonSpec {
                 node: piston_node,
+                position: BlockPos::new(2, 0, 0),
                 facing: BlockFace::East,
                 sticky: false,
                 base: contact,
                 near: contact,
+                far: contact,
                 lane: PistonLane::Empty,
                 routes: PistonRoutes {
                     base_changed: route,
@@ -1875,6 +1947,13 @@ mod tests {
         assert!(matches!(
             invalid_strength.lower(),
             Err(GraphBuildError::InvalidStrength { strength: 16, .. })
+        ));
+
+        let mut invalid_piston_position = draft_with_mixed_links();
+        invalid_piston_position.pistons[0].position = BlockPos::new(3, 0, 0);
+        assert!(matches!(
+            invalid_piston_position.lower(),
+            Err(GraphBuildError::NodeKindMismatch { node }) if node == NodeId::new(2)
         ));
 
         let mut invalid_attenuation = draft_with_mixed_links();

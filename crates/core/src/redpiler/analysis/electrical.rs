@@ -11,7 +11,9 @@ use crate::redpiler::program_graph::{
     ContactVariant, Guard, GuardId, InputPort, NodeId, OperandView, PowerPort, Profile,
     ProfileElectrical, ProfileId, SiteId, SiteSource, SiteSpec, SiteTest, StateTest, WirePlan,
 };
-pub(crate) use crate::redpiler::program_graph::{ComparatorInputPlan, ComparatorOverride};
+pub(crate) use crate::redpiler::program_graph::{
+    ComparatorInputPlan, ComparatorOverride, WireRelation, WireRelationKind,
+};
 use crate::redstone::{comparator, power};
 use crate::world::{World, try_for_each_block_optimized, wire_cache};
 use mchprs_blocks::blocks::Block;
@@ -62,22 +64,6 @@ pub(crate) struct ElectricalLink {
     /// The literal query face is retained even when the selected port also names it.
     pub(crate) face: BlockFace,
     pub(crate) attenuation: u8,
-    pub(crate) guard: GuardId,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum WireRelationKind {
-    Step,
-    Ascend,
-    Descend,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct WireRelation {
-    pub(crate) from: NodeId,
-    pub(crate) to: SiteId,
-    pub(crate) kind: WireRelationKind,
-    pub(crate) direction: BlockFace,
     pub(crate) guard: GuardId,
 }
 

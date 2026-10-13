@@ -170,7 +170,14 @@ pub struct GraphCounts {
 }
 
 impl GraphCounts {
-    pub(crate) fn of(graph: &compile_graph::CompileGraph) -> Self {
+    pub(crate) fn of(graph: &program_graph::CompileGraph) -> Self {
+        Self {
+            nodes: graph.nodes.len(),
+            links: graph.links.len() + graph.power_links.len() + graph.wire_relations.len(),
+        }
+    }
+
+    pub(crate) fn of_legacy(graph: &compile_graph::LegacyCompileGraph) -> Self {
         Self {
             nodes: graph.node_count(),
             links: graph.edge_count(),
@@ -195,16 +202,20 @@ pub struct GraphStatistics {
     /// This occurs before the optimization baseline, not in an optional pass.
     pub wire_nodes_elided: bool,
     pub passes: Vec<PassStatistics>,
+    /// This records the graph after required parsing and before transformations.
+    pub parser_complete: Option<GraphCounts>,
+    /// This records the final graph independently of the supplied pass count.
+    pub final_counts: Option<GraphCounts>,
     pub duration: Duration,
 }
 
 impl GraphStatistics {
     pub fn baseline(&self) -> Option<GraphCounts> {
-        self.passes.get(2).map(|pass| pass.after)
+        self.parser_complete
     }
 
     pub fn final_graph(&self) -> Option<GraphCounts> {
-        self.passes.last().map(|pass| pass.after)
+        self.final_counts
     }
 
     pub fn summary_lines(&self) -> Vec<String> {
@@ -315,6 +326,18 @@ impl Compiler {
         ticks: Vec<TickEntry>,
         monitor: Arc<TaskMonitor>,
     ) -> Result<(), CompileError> {
+        self.compile_with_graph_pipeline(world, bounds, options, ticks, monitor, None)
+    }
+
+    fn compile_with_graph_pipeline<W: World>(
+        &mut self,
+        world: &W,
+        bounds: (BlockPos, BlockPos),
+        options: CompilerOptions,
+        ticks: Vec<TickEntry>,
+        monitor: Arc<TaskMonitor>,
+        graph_pipeline: Option<passes::PassPipeline>,
+    ) -> Result<(), CompileError> {
         let span = tracing::info_span!("redpiler", ?bounds, ?options);
         let _entered = span.enter();
         tracing::info!("Compiler started");
@@ -349,9 +372,53 @@ impl Compiler {
             if options.export || options.export_dot_graph {
                 return Err(CompileError::UnsupportedRichExport);
             }
+            let limits = analysis::AnalysisLimits::for_budget(monitor.budget_multiplier());
+            let mut prepared = passes::rich::prepare(world, bounds, ticks, &monitor, limits)
+                .map_err(|error| {
+                    let error = match error {
+                        passes::rich::PreparationError::Geometry(error) => {
+                            backend::graph::GraphBackendError::Geometry(error)
+                        }
+                        passes::rich::PreparationError::Electrical(error) => {
+                            backend::graph::GraphBackendError::Electrical(error)
+                        }
+                        passes::rich::PreparationError::Callbacks(error) => {
+                            backend::graph::GraphBackendError::Callbacks(error)
+                        }
+                    };
+                    if monitor.cancelled() {
+                        CompileError::Cancelled
+                    } else {
+                        CompileError::RichGraph(RichGraphError(error))
+                    }
+                })?;
+            let pipeline =
+                graph_pipeline.unwrap_or_else(|| passes::default_graph_pipeline(&options));
+            passes::run_graph_pipeline(
+                &mut prepared.graph,
+                &options,
+                &prepared.entry,
+                &pipeline,
+                &monitor,
+            )
+            .map_err(|error| {
+                if monitor.cancelled() {
+                    CompileError::Cancelled
+                } else {
+                    CompileError::RichGraph(RichGraphError(
+                        backend::graph::GraphBackendError::PassPipeline(error),
+                    ))
+                }
+            })?;
+            prepared.finish_pipeline_statistics(&monitor);
             let backend_start = Instant::now();
+            let (program, state, entry) = prepared.lower().map_err(|error| {
+                CompileError::RichGraph(RichGraphError(backend::graph::GraphBackendError::Graph(
+                    error,
+                )))
+            })?;
             let backend =
-                backend::graph::GraphBackend::compile(world, bounds, ticks, monitor.clone())
+                backend::graph::GraphBackend::from_program(world, program, state, entry, &monitor)
                     .map_err(|error| match error {
                         _ if monitor.cancelled() => CompileError::Cancelled,
                         error => CompileError::RichGraph(RichGraphError(error)),

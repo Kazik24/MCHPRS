@@ -5,7 +5,9 @@
 //!
 //! There are no requirements for this pass.
 
-use crate::redpiler::compile_graph::{CompileGraph, CompileNode, NodeIdx, NodeState, NodeType};
+use crate::redpiler::compile_graph::{
+    CompileNode, LegacyCompileGraph, NodeIdx, NodeState, NodeType,
+};
 use crate::redpiler::{CompilerInput, CompilerOptions};
 use crate::redstone::{self, comparator, noteblock};
 use crate::world::{World, for_each_block_optimized};
@@ -15,7 +17,7 @@ use mchprs_blocks::blocks::Block;
 use rustc_hash::{FxHashMap, FxHashSet};
 
 pub(super) fn run<W: World>(
-    graph: &mut CompileGraph,
+    graph: &mut LegacyCompileGraph,
     options: &CompilerOptions,
     input: &CompilerInput<'_, W>,
 ) -> Result<(), super::GraphError> {
@@ -78,7 +80,7 @@ pub(super) fn run<W: World>(
 }
 
 fn for_pos<W: World>(
-    graph: &mut CompileGraph,
+    graph: &mut LegacyCompileGraph,
     nodes_by_position: &mut FxHashMap<BlockPos, NodeIdx>,
     ignore_wires: bool,
     world: &W,

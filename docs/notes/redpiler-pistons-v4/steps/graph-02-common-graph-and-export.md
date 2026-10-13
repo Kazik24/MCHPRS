@@ -1,6 +1,6 @@
 # G2 — General CompileGraph and artifact export
 
-Status: proposed; requires reviewed G1. Read [the migration plan](../GRAPH_PIPELINE_MIGRATION.md).
+Status: implemented for G1–G3; awaiting human review. Rich graph rewrites remain deferred pending behavioral review.
 
 ## Goal
 

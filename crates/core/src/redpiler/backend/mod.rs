@@ -4,7 +4,9 @@ mod native;
 mod queue;
 pub use queue::*;
 
-fn validate_strengths(graph: &super::compile_graph::CompileGraph) -> Result<(), BackendError> {
+fn validate_strengths(
+    graph: &super::compile_graph::LegacyCompileGraph,
+) -> Result<(), BackendError> {
     for node in graph.node_weights() {
         let far_input = match node.ty {
             super::compile_graph::NodeType::Comparator { far_input, .. } => far_input,
@@ -32,7 +34,7 @@ impl Runtime {
     pub(crate) fn native(
         world: &impl crate::world::World,
         bounds: (mchprs_blocks::BlockPos, mchprs_blocks::BlockPos),
-        graph: &super::compile_graph::CompileGraph,
+        graph: &super::compile_graph::LegacyCompileGraph,
         ticks: Vec<mchprs_world::TickEntry>,
         monitor: &super::TaskMonitor,
     ) -> Result<Self, super::CompileError> {

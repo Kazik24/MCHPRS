@@ -1,5 +1,8 @@
 use super::*;
+use crate::redpiler::CompilerOptions;
 use crate::redpiler::analysis::export_json as adapter;
+use crate::redpiler::passes;
+use crate::redpiler::program_graph::CompileGraph;
 use crate::world::{BlockAction, World};
 use mchprs_blocks::BlockPos;
 use mchprs_blocks::block_entities::{BlockEntity, ContainerType};
@@ -18,6 +21,44 @@ fn exported(world: &PlotWorld) -> adapter::GraphExport {
         AnalysisLimits::default(),
     )
     .unwrap()
+}
+
+fn prepared_graph_export(world: &PlotWorld, optimize: bool) -> (CompileGraph, Vec<u8>) {
+    let monitor = TaskMonitor::default();
+    let ticks = world.scheduler().iter_entries().collect();
+    let mut prepared = passes::rich::prepare(
+        world,
+        world.get_corners(),
+        ticks,
+        &monitor,
+        AnalysisLimits::default(),
+    )
+    .unwrap();
+    let options = CompilerOptions {
+        optimize,
+        ..Default::default()
+    };
+    let pipeline = passes::default_graph_pipeline(&options);
+    passes::run_graph_pipeline(
+        &mut prepared.graph,
+        &options,
+        &prepared.entry,
+        &pipeline,
+        &monitor,
+    )
+    .unwrap();
+    prepared.finish_pipeline_statistics(&monitor);
+    let statistics = monitor.graph_statistics();
+    assert!(statistics.parser_complete.is_some());
+    assert_eq!(
+        statistics.final_counts,
+        Some(crate::redpiler::GraphCounts::of(&prepared.graph))
+    );
+    let bytes = adapter::from_graph(&prepared.report, &prepared.graph)
+        .unwrap()
+        .to_bytes()
+        .unwrap();
+    (prepared.graph, bytes)
 }
 
 struct CancelAtReadWorld<'a> {
@@ -411,6 +452,137 @@ fn export_preserves_guarded_shared_resource_references() {
             .unwrap()
             .iter()
             .any(|guard| guard["test"]["kind"] == "resource_at")
+    );
+}
+
+#[test]
+fn pinned_sticky_shared_graph_export_matches_the_pipeline_artifact() {
+    let world = geometry_io_fixture("ADDER_1BIT.schem");
+    let (plain_graph, plain_bytes) = prepared_graph_export(&world, false);
+    let (optimized_graph, optimized_bytes) = prepared_graph_export(&world, true);
+    assert_eq!(plain_graph, optimized_graph);
+    assert_eq!(plain_bytes, optimized_bytes);
+    let monitor = TaskMonitor::default();
+    let ticks = world.scheduler().iter_entries().collect::<Vec<_>>();
+    let standalone = adapter::prepare(
+        &world,
+        world.get_corners(),
+        &ticks,
+        &monitor,
+        AnalysisLimits::default(),
+    )
+    .unwrap();
+    assert_eq!(plain_bytes, standalone.to_bytes().unwrap());
+    assert_eq!(monitor.progress(), monitor.max_progress());
+
+    let document: Value = serde_json::from_slice(&plain_bytes).unwrap();
+    let graph = &document["graph"];
+    assert!(
+        graph["pistons"].as_array().unwrap().iter().any(|piston| {
+            piston["sticky"] == true && piston["lane"]["kind"] == "single_resource"
+        })
+    );
+    assert!(
+        graph["guards"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|guard| { guard["kind"] == "state" && guard["test"]["kind"] == "resource_at" })
+    );
+    assert!(
+        !document["snapshots"][0]["resources"]
+            .as_array()
+            .unwrap()
+            .is_empty()
+    );
+    for selection in document["snapshots"][0]["resources"].as_array().unwrap() {
+        let resource = graph["resources"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|resource| resource["id"] == selection["resource"])
+            .unwrap();
+        assert!(
+            resource["contacts"]
+                .as_array()
+                .unwrap()
+                .contains(&selection["selected_contact"])
+        );
+    }
+
+    assert!(graph["routes"].as_array().unwrap().iter().any(|route| {
+        let deliveries = route["deliveries"].as_array().unwrap();
+        deliveries
+            .iter()
+            .enumerate()
+            .all(|(index, delivery)| delivery["sequence"] == index)
+            && deliveries.iter().enumerate().any(|(index, delivery)| {
+                deliveries[..index]
+                    .iter()
+                    .any(|earlier| earlier["target"] == delivery["target"])
+            })
+    }));
+}
+
+#[test]
+fn ordinary_comparator_and_dust_graph_is_complete_in_both_modes_and_exports_from_itself() {
+    let mut world = empty();
+    let comparator_pos = BASE;
+    let comparator = RedstoneComparator::new(BlockDirection::South, ComparatorMode::Compare, false);
+    world.set_block(comparator_pos, Block::RedstoneComparator { comparator });
+    world.set_block_entity(
+        comparator_pos,
+        BlockEntity::Comparator { output_strength: 6 },
+    );
+    let wire = BASE + BlockPos::new(8, 0, 0);
+    let conductor = wire.offset(BlockFace::East);
+    let lamp = conductor.offset(BlockFace::East);
+    world.set_block(
+        wire,
+        Block::RedstoneWire {
+            wire: Default::default(),
+        },
+    );
+    world.set_block(conductor, Block::Stone {});
+    world.set_block(lamp, Block::RedstoneLamp { lit: false });
+
+    let (plain_graph, plain_bytes) = prepared_graph_export(&world, false);
+    let (optimized_graph, optimized_bytes) = prepared_graph_export(&world, true);
+    assert_eq!(plain_graph, optimized_graph);
+    assert_eq!(plain_bytes, optimized_bytes);
+    assert_eq!(plain_bytes, exported(&world).to_bytes().unwrap());
+    assert!(!plain_graph.wires.is_empty());
+    assert!(!plain_graph.wire_relations.is_empty());
+    assert!(!plain_graph.comparator_inputs.is_empty());
+
+    let document: Value = serde_json::from_slice(&plain_bytes).unwrap();
+    assert!(
+        !document["graph"]["wire_plans"]
+            .as_array()
+            .unwrap()
+            .is_empty()
+    );
+    assert!(
+        !document["graph"]["wire_relations"]
+            .as_array()
+            .unwrap()
+            .is_empty()
+    );
+    assert!(
+        !document["graph"]["comparator_plans"]
+            .as_array()
+            .unwrap()
+            .is_empty()
+    );
+    let comparator_node = node_at(&document, comparator_pos);
+    assert!(
+        document["snapshots"][0]["components"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|component| {
+                component["node"] == comparator_node && component["state"]["output_strength"] == 6
+            })
     );
 }
 

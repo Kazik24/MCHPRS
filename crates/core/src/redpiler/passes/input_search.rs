@@ -2,7 +2,7 @@
 //! This pass is *mandatory*. Without it, there would be no links between nodes.
 
 use crate::redpiler::CompilerInput;
-use crate::redpiler::compile_graph::{CompileGraph, CompileLink, LinkType, NodeIdx};
+use crate::redpiler::compile_graph::{CompileLink, LegacyCompileGraph, LinkType, NodeIdx};
 use crate::redstone::{self, comparator};
 use crate::world::World;
 use mchprs_blocks::blocks::{Block, RedstoneWire};
@@ -12,7 +12,7 @@ use rustc_hash::FxHashMap;
 use std::collections::VecDeque;
 
 pub(super) fn run<W: World>(
-    graph: &mut CompileGraph,
+    graph: &mut LegacyCompileGraph,
     input: &CompilerInput<'_, W>,
 ) -> Result<(), super::GraphError> {
     let mut state = InputSearchState::new(input.world, graph);
@@ -22,13 +22,13 @@ pub(super) fn run<W: World>(
 
 struct InputSearchState<'a, W: World> {
     world: &'a W,
-    graph: &'a mut CompileGraph,
+    graph: &'a mut LegacyCompileGraph,
     pos_map: FxHashMap<BlockPos, NodeIdx>,
     error: Option<super::GraphError>,
 }
 
 impl<'a, W: World> InputSearchState<'a, W> {
-    fn new(world: &'a W, graph: &'a mut CompileGraph) -> InputSearchState<'a, W> {
+    fn new(world: &'a W, graph: &'a mut LegacyCompileGraph) -> InputSearchState<'a, W> {
         let mut pos_map = FxHashMap::default();
         for id in graph.node_indices() {
             if let Some((pos, _)) = graph[id].block {

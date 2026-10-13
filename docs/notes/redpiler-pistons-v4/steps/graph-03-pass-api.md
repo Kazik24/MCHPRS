@@ -1,6 +1,6 @@
 # G3 — General graph-pass API and developer experiments
 
-Status: proposed; requires reviewed G2. Read [the migration plan and API shapes](../GRAPH_PIPELINE_MIGRATION.md), `../AGENT_GUIDE.md`, Side B legality research and existing pass statistics.
+Status: implemented for G1–G3; awaiting human review. The default rich transformation list is empty and identity remapping is deferred until an approved pass needs it.
 
 ## Goal
 

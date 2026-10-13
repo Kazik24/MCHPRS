@@ -211,6 +211,7 @@ fn contact_resource_backend() -> GraphBackend {
         ],
         routes: vec![],
         wires: vec![],
+        wire_relations: vec![],
         sites: vec![
             SiteSpec {
                 position: BlockPos::new(1, 0, 0),
@@ -308,6 +309,7 @@ fn backend_with_unrelated_power_links(unrelated: usize) -> GraphBackend {
         contacts: vec![],
         routes: vec![],
         wires: vec![],
+        wire_relations: vec![],
         sites: vec![
             SiteSpec {
                 position: BlockPos::new(1, 0, 0),
@@ -3742,6 +3744,7 @@ fn site_geometry_guards_use_compiled_profile_facts() {
         contacts: vec![],
         routes: vec![],
         wires: vec![],
+        wire_relations: vec![],
         sites: vec![SiteSpec {
             position: BlockPos::new(0, 0, 0),
             source: SiteSource::Constant(ProfileId::new(0)),

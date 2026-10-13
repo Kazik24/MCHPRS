@@ -327,10 +327,12 @@ impl<W: World> Builder<'_, W> {
             };
             specs.push(PistonSpec {
                 node: piston.node,
+                position: piston.position,
                 facing: piston.facing,
                 sticky: piston.sticky,
                 base: piston.base,
                 near: piston.near,
+                far: piston.far,
                 lane: piston.lane,
                 routes,
             });

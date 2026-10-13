@@ -1,6 +1,6 @@
 # G1 — Shared parser orchestration
 
-Status: proposed; implementation stops after this gate. Read [the migration plan](../GRAPH_PIPELINE_MIGRATION.md) and `../AGENT_GUIDE.md` first.
+Status: implemented for G1–G3; awaiting human review. Graph runtime boundary tick reads remain deferred to G4.
 
 ## Goal
 

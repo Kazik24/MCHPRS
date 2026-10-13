@@ -33,6 +33,14 @@ impl TaskMonitor {
         self.graph_statistics.lock().unwrap().passes.push(pass);
     }
 
+    pub(crate) fn set_parser_complete(&self, counts: super::GraphCounts) {
+        self.graph_statistics.lock().unwrap().parser_complete = Some(counts);
+    }
+
+    pub(crate) fn set_final_graph(&self, counts: super::GraphCounts) {
+        self.graph_statistics.lock().unwrap().final_counts = Some(counts);
+    }
+
     pub(crate) fn finish_graph_statistics(&self, duration: Duration) {
         self.graph_statistics.lock().unwrap().duration = duration;
     }

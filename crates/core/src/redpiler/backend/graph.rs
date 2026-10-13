@@ -4,8 +4,13 @@
 use super::TickScheduler;
 use crate::redpiler::GraphExecutionCounts;
 use crate::redpiler::TaskMonitor;
-use crate::redpiler::analysis::{AnalysisLimits, callbacks, electrical, geometry};
+#[cfg(test)]
+use crate::redpiler::analysis::AnalysisLimits;
+use crate::redpiler::analysis::{callbacks, electrical, geometry};
 use crate::redpiler::compile_graph::{NodeState, NodeType};
+use crate::redpiler::passes;
+#[cfg(test)]
+use crate::redpiler::passes::rich::PreparationError;
 use crate::redpiler::program_graph::*;
 use crate::world::{BlockAction, World};
 use mchprs_blocks::block_entities::{BlockEntity, ContainerType, MovingPistonEntity};
@@ -19,6 +24,7 @@ use rustc_hash::{FxHashMap, FxHashSet};
 use std::cell::Cell;
 use std::collections::VecDeque;
 use std::fmt;
+#[cfg(test)]
 use std::sync::Arc;
 
 const SCHEDULER_BUCKETS: usize = super::queue::NUM_QUEUES;
@@ -29,6 +35,7 @@ pub(crate) enum GraphBackendError {
     Geometry(geometry::GeometryError),
     Electrical(electrical::ElectricalError),
     Callbacks(callbacks::CallbackError),
+    PassPipeline(passes::PassPipelineError),
     Graph(GraphBuildError),
     MissingBlockState {
         node: NodeId,
@@ -63,6 +70,7 @@ impl fmt::Display for GraphBackendError {
             Self::Geometry(error) => error.fmt(f),
             Self::Electrical(error) => error.fmt(f),
             Self::Callbacks(error) => error.fmt(f),
+            Self::PassPipeline(error) => error.fmt(f),
             Self::Graph(error) => error.fmt(f),
             Self::MissingBlockState { node } => {
                 write!(
@@ -105,6 +113,15 @@ impl fmt::Display for GraphBackendError {
 }
 
 impl std::error::Error for GraphBackendError {}
+
+#[cfg(test)]
+fn map_preparation_error(error: PreparationError) -> GraphBackendError {
+    match error {
+        PreparationError::Geometry(error) => GraphBackendError::Geometry(error),
+        PreparationError::Electrical(error) => GraphBackendError::Electrical(error),
+        PreparationError::Callbacks(error) => GraphBackendError::Callbacks(error),
+    }
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 struct ScheduledNodeTick {
@@ -259,6 +276,7 @@ pub(crate) struct GraphBackend {
 }
 
 impl GraphBackend {
+    #[cfg(test)]
     pub(crate) fn compile<W: World>(
         world: &W,
         bounds: (BlockPos, BlockPos),
@@ -266,66 +284,33 @@ impl GraphBackend {
         monitor: Arc<TaskMonitor>,
     ) -> Result<Self, GraphBackendError> {
         let limits = AnalysisLimits::for_budget(monitor.budget_multiplier());
-        let geometry = geometry::prepare_geometry(world, bounds, &ticks, &monitor, limits)
-            .map_err(GraphBackendError::Geometry)?;
-        let mut electrical = electrical::prepare_electrical(
-            world,
-            geometry.report.bounds,
-            &geometry.draft,
+        let mut prepared = passes::rich::prepare(world, bounds, ticks, &monitor, limits)
+            .map_err(map_preparation_error)?;
+        let options = crate::redpiler::CompilerOptions::default();
+        let pipeline = passes::default_graph_pipeline(&options);
+        passes::run_graph_pipeline(
+            &mut prepared.graph,
+            &options,
+            &prepared.entry,
+            &pipeline,
             &monitor,
         )
-        .map_err(GraphBackendError::Electrical)?;
-        let callbacks =
-            callbacks::prepare_callbacks(world, &geometry.draft, &mut electrical, &monitor)
-                .map_err(GraphBackendError::Callbacks)?;
-        if monitor.cancelled() {
-            return Err(GraphBackendError::Cancelled);
-        }
+        .map_err(GraphBackendError::PassPipeline)?;
+        prepared.finish_pipeline_statistics(&monitor);
+        let (program, state, entry) = prepared.lower().map_err(GraphBackendError::Graph)?;
+        Self::from_program(world, program, state, entry, &monitor)
+    }
 
-        let power_links = electrical
-            .links
-            .iter()
-            .map(|link| PowerLink {
-                from: link.from,
-                from_port: link.from_port,
-                to: match link.to {
-                    electrical::ElectricalTarget::Input { node, port } => {
-                        PowerTarget::Input { node, port }
-                    }
-                    electrical::ElectricalTarget::Conductor { site, include_dust } => {
-                        PowerTarget::Conductor { site, include_dust }
-                    }
-                },
-                face: link.face,
-                attenuation: link.attenuation,
-                guard: link.guard,
-            })
-            .collect();
-        let draft = CircuitDraft {
-            nodes: electrical.nodes,
-            links: callbacks.links,
-            power_links,
-            comparator_inputs: electrical.comparators,
-            profiles: electrical.profiles,
-            guards: electrical.guards,
-            contacts: electrical.contacts,
-            routes: callbacks.routes,
-            wires: electrical.wires,
-            sites: electrical.sites,
-            pistons: callbacks.pistons,
-            resources: geometry
-                .draft
-                .resources
-                .iter()
-                .map(|resource| resource.spec.clone())
-                .collect(),
-            initial_pistons: geometry.draft.initial_pistons,
-            initial_resources: geometry.draft.initial_resources,
-        };
-        let (program, state) = draft.lower().map_err(GraphBackendError::Graph)?;
+    pub(crate) fn from_program<W: World>(
+        world: &W,
+        program: CircuitProgram,
+        state: CircuitState,
+        entry: EntryState,
+        monitor: &TaskMonitor,
+    ) -> Result<Self, GraphBackendError> {
         Self::validate_supported(&program)?;
-        let mut backend = Self::new(program, state, world.piston_state().logical_tick)?;
-        backend.import_ticks(world, ticks)?;
+        let mut backend = Self::new(program, state, entry.logical_tick)?;
+        backend.import_ticks(world, entry.pending_ticks)?;
         if monitor.cancelled() {
             return Err(GraphBackendError::Cancelled);
         }

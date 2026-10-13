@@ -1,6 +1,6 @@
 //! Native redstone propagation over a private snapshot; display writes are separate.
 use super::{ScheduledBlockTick, TickScheduler};
-use crate::redpiler::compile_graph::{CompileGraph, NodeType};
+use crate::redpiler::compile_graph::{LegacyCompileGraph, NodeType};
 use crate::redpiler::{CompileError, TaskMonitor};
 use crate::redstone;
 use crate::world::{BlockAction, World, for_each_block_optimized, storage::Chunk};
@@ -29,7 +29,7 @@ impl NativeBackend {
     pub(crate) fn compile(
         world: &impl World,
         bounds: (BlockPos, BlockPos),
-        graph: &CompileGraph,
+        graph: &LegacyCompileGraph,
         ticks: Vec<TickEntry>,
         monitor: &TaskMonitor,
     ) -> Result<Self, CompileError> {
