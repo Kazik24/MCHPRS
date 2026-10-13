@@ -424,7 +424,7 @@ pub(crate) struct WireRelation {
 }
 
 impl RouteDelivery {
-    fn link_kind(self) -> LinkKind {
+    pub(crate) fn link_kind(self) -> LinkKind {
         match self.kind {
             DeliveryKind::Update { direction } => LinkKind::Update {
                 direction,

@@ -80,7 +80,7 @@ The runner checks cancellation, validates the graph before execution and after e
 
 **A candidate that is not optimizable is not an invalid circuit.** Leave it unchanged and continue. Use errors for actual violated pass contracts or failed execution, not ordinary lack of an eligible motif. A proof timeout, excessive state space, unknown dependency, or unsupported optimization case retains general execution.
 
-Currently, the API and custom compiler entry point are crate-private, the default transformation list is empty, and `--optimize` performs no approved rich rewrites. When registering a reviewed default pass, make its enablement follow the compiler option and update tests and documentation. Keep supplied experimental order explicit; do not silently reorder passes or turn a custom pipeline into the default.
+The API and custom compiler entry point remain crate-private. Opt-01 registers `guard-and-update-reduction` only when `CompilerOptions.optimize` is enabled; the unoptimized pipeline still runs the complete general graph. The pass is implemented and awaiting human review. Keep supplied experimental order explicit; do not silently reorder passes or turn a custom pipeline into the default.
 
 Long discovery/proof loops must check cancellation at sensible boundaries. Compute eligibility and replacement data before mutating each candidate. The compiler stages the graph and publishes only after success; the runner does not roll back failed mutations. Do not clone an entire large graph merely to provide rollback, and never mutate the input World from a pass.
 

@@ -460,8 +460,9 @@ fn pinned_sticky_shared_graph_export_matches_the_pipeline_artifact() {
     let world = geometry_io_fixture("ADDER_1BIT.schem");
     let (plain_graph, plain_bytes) = prepared_graph_export(&world, false);
     let (optimized_graph, optimized_bytes) = prepared_graph_export(&world, true);
-    assert_eq!(plain_graph, optimized_graph);
-    assert_eq!(plain_bytes, optimized_bytes);
+    assert_graph_reduced(&plain_graph, &optimized_graph);
+    assert_export_matches_draft(&plain_bytes, &plain_graph);
+    assert_export_matches_draft(&optimized_bytes, &optimized_graph);
     let monitor = TaskMonitor::default();
     let ticks = world.scheduler().iter_entries().collect::<Vec<_>>();
     let standalone = adapter::prepare(
@@ -548,8 +549,9 @@ fn ordinary_comparator_and_dust_graph_is_complete_in_both_modes_and_exports_from
 
     let (plain_graph, plain_bytes) = prepared_graph_export(&world, false);
     let (optimized_graph, optimized_bytes) = prepared_graph_export(&world, true);
-    assert_eq!(plain_graph, optimized_graph);
-    assert_eq!(plain_bytes, optimized_bytes);
+    assert_graph_reduced(&plain_graph, &optimized_graph);
+    assert_export_matches_draft(&plain_bytes, &plain_graph);
+    assert_export_matches_draft(&optimized_bytes, &optimized_graph);
     assert_eq!(plain_bytes, exported(&world).to_bytes().unwrap());
     assert!(!plain_graph.wires.is_empty());
     assert!(!plain_graph.wire_relations.is_empty());
@@ -584,6 +586,58 @@ fn ordinary_comparator_and_dust_graph_is_complete_in_both_modes_and_exports_from
                 component["node"] == comparator_node && component["state"]["output_strength"] == 6
             })
     );
+}
+
+fn assert_graph_reduced(plain: &CompileGraph, optimized: &CompileGraph) {
+    plain.validate().unwrap();
+    optimized.validate().unwrap();
+    let deliveries = |graph: &CompileGraph| {
+        graph
+            .routes
+            .iter()
+            .map(|route| route.deliveries.len())
+            .sum::<usize>()
+    };
+    assert!(optimized.guards.len() <= plain.guards.len());
+    assert!(optimized.links.len() <= plain.links.len());
+    assert!(optimized.power_links.len() <= plain.power_links.len());
+    assert!(deliveries(optimized) <= deliveries(plain));
+    assert!(
+        optimized.guards.len() < plain.guards.len()
+            || optimized.links.len() < plain.links.len()
+            || optimized.power_links.len() < plain.power_links.len()
+            || deliveries(optimized) < deliveries(plain),
+        "the fixture should exercise at least one certified reduction"
+    );
+}
+
+fn assert_export_matches_draft(bytes: &[u8], graph: &CompileGraph) {
+    let document: Value = serde_json::from_slice(bytes).unwrap();
+    let exported = &document["graph"];
+    assert_eq!(
+        exported["guards"].as_array().unwrap().len(),
+        graph.guards.len()
+    );
+    assert_eq!(
+        exported["callback_links"].as_array().unwrap().len(),
+        graph.links.len()
+    );
+    assert_eq!(
+        exported["power_links"].as_array().unwrap().len(),
+        graph.power_links.len()
+    );
+    let routes = exported["routes"].as_array().unwrap();
+    assert_eq!(routes.len(), graph.routes.len());
+    for (route, draft) in routes.iter().zip(&graph.routes) {
+        let deliveries = route["deliveries"].as_array().unwrap();
+        assert_eq!(deliveries.len(), draft.deliveries.len());
+        for (ordinal, (delivery, draft)) in
+            deliveries.iter().zip(draft.deliveries.iter()).enumerate()
+        {
+            assert_eq!(delivery["ordinal"].as_u64(), Some(ordinal as u64));
+            assert_eq!(delivery["sequence"].as_u64(), Some(draft.sequence.into()));
+        }
+    }
 }
 
 #[test]

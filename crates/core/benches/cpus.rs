@@ -70,10 +70,24 @@ struct ShortSample {
     final_ram: Vec<Option<u16>>,
     elapsed: Duration,
     graph_counts: Option<GraphExecutionCounts>,
+    /// This records the lowered table sizes produced by the selected pipeline.
+    graph_tables: Option<GraphTableCounts>,
     /// This retains the parser's estimated table bytes after callback construction.
     retained_callback_bytes: usize,
     /// This retains the lowered program's estimated table bytes.
     retained_lowering_bytes: usize,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize)]
+struct GraphTableCounts {
+    /// This counts runtime guard expressions after lowering.
+    guards: usize,
+    /// This counts ordered route deliveries retained after lowering.
+    deliveries: usize,
+    /// This counts callback links retained in the post-pass draft.
+    callback_links: usize,
+    /// This counts power queries retained after lowering.
+    power_links: usize,
 }
 
 fn sign_free_world(cpu: Cpu) -> PlotWorld {
@@ -104,12 +118,13 @@ fn interpreter_sample(cpu: Cpu) -> ShortSample {
         final_ram: current_ram(&world, cpu),
         elapsed,
         graph_counts: None,
+        graph_tables: None,
         retained_callback_bytes: 0,
         retained_lowering_bytes: 0,
     }
 }
 
-fn graph_sample(cpu: Cpu, bounds: (BlockPos, BlockPos)) -> ShortSample {
+fn graph_sample(cpu: Cpu, bounds: (BlockPos, BlockPos), optimize: bool) -> ShortSample {
     let mut world = sign_free_world(cpu);
     let initial = checkpoint(&world, 0, &[]);
     let ticks = world.scheduler().iter_entries().collect();
@@ -118,17 +133,34 @@ fn graph_sample(cpu: Cpu, bounds: (BlockPos, BlockPos)) -> ShortSample {
         .compile(
             &world,
             bounds,
-            CompilerOptions::default(),
+            CompilerOptions {
+                optimize,
+                ..Default::default()
+            },
             ticks,
             Arc::new(TaskMonitor::default()),
         )
         .expect("CPU Graph compilation must succeed");
     assert_eq!(compiler.backend_kind(), Some(BackendKind::Graph));
     assert_eq!(compiler.stats().unwrap().backend, BackendKind::Graph);
+    let statistics = compiler.stats().unwrap();
+    let table_entries = |stage: &str, name: &str| {
+        statistics
+            .graph
+            .preparation_tables
+            .iter()
+            .find(|table| table.stage == stage && table.table == name)
+            .unwrap_or_else(|| panic!("missing {stage} {name} statistics"))
+            .entries
+    };
+    let graph_tables = GraphTableCounts {
+        guards: table_entries("lowering", "guards"),
+        deliveries: table_entries("lowering", "deliveries"),
+        callback_links: table_entries("lowering input", "callback links"),
+        power_links: table_entries("lowering", "power links"),
+    };
     let retained_bytes = |stage| {
-        compiler
-            .stats()
-            .unwrap()
+        statistics
             .graph
             .preparation_tables
             .iter()
@@ -160,6 +192,7 @@ fn graph_sample(cpu: Cpu, bounds: (BlockPos, BlockPos)) -> ShortSample {
         final_ram: current_ram(&world, cpu),
         elapsed,
         graph_counts: Some(graph_counts),
+        graph_tables: Some(graph_tables),
         retained_callback_bytes,
         retained_lowering_bytes,
     }
@@ -183,24 +216,38 @@ fn graph_short(cpu: Cpu, iterations: usize, output: Option<&str>, label: &str) {
     assert_eq!(cpu.name, "cpu_bubblesort");
     let bounds = short_bounds(cpu);
     let mut graph_times = Vec::with_capacity(iterations);
+    let mut optimized_times = Vec::with_capacity(iterations);
     let mut interpreter_times = Vec::with_capacity(iterations);
     let mut graph_counts = None;
+    let mut optimized_counts = None;
+    let mut graph_tables = None;
+    let mut optimized_tables = None;
     let mut retained_estimates = None;
 
     for sample in 0..iterations {
-        let (graph, interpreter) = if sample % 2 == 0 {
-            let graph = graph_sample(cpu, bounds);
+        let (graph, optimized, interpreter) = if sample % 2 == 0 {
+            let graph = graph_sample(cpu, bounds, false);
+            let optimized = graph_sample(cpu, bounds, true);
             let interpreter = interpreter_sample(cpu);
-            (graph, interpreter)
+            (graph, optimized, interpreter)
         } else {
             let interpreter = interpreter_sample(cpu);
-            let graph = graph_sample(cpu, bounds);
-            (graph, interpreter)
+            let optimized = graph_sample(cpu, bounds, true);
+            let graph = graph_sample(cpu, bounds, false);
+            (graph, optimized, interpreter)
         };
         assert_eq!(graph.initial, interpreter.initial, "sample {sample} inputs");
         assert_eq!(
+            optimized.initial, interpreter.initial,
+            "sample {sample} optimized inputs"
+        );
+        assert_eq!(
             graph.final_ram, interpreter.final_ram,
             "sample {sample} RAM"
+        );
+        assert_eq!(
+            optimized.final_ram, interpreter.final_ram,
+            "sample {sample} optimized RAM"
         );
         let counts = graph.graph_counts.unwrap();
         assert_eq!(counts, TEST_GRAPH_COUNTS, "sample {sample} Graph work");
@@ -208,19 +255,80 @@ fn graph_short(cpu: Cpu, iterations: usize, output: Option<&str>, label: &str) {
             assert_eq!(counts, previous, "Graph work changed between samples");
         }
         graph_counts = Some(counts);
-        let estimates = (graph.retained_callback_bytes, graph.retained_lowering_bytes);
+        let optimized_counts_sample = optimized.graph_counts.unwrap();
+        assert_eq!(optimized_counts_sample.ticks, TEST_GRAPH_COUNTS.ticks);
+        assert_eq!(
+            optimized_counts_sample.scheduled_ticks,
+            TEST_GRAPH_COUNTS.scheduled_ticks
+        );
+        assert_eq!(
+            optimized_counts_sample.wire_walks,
+            TEST_GRAPH_COUNTS.wire_walks
+        );
+        assert_eq!(
+            optimized_counts_sample.piston_samples,
+            TEST_GRAPH_COUNTS.piston_samples
+        );
+        assert_eq!(
+            optimized_counts_sample.piston_actions,
+            TEST_GRAPH_COUNTS.piston_actions
+        );
+        assert_eq!(
+            optimized_counts_sample.deferred_publications,
+            TEST_GRAPH_COUNTS.deferred_publications
+        );
+        assert!(
+            optimized_counts_sample.callbacks < counts.callbacks,
+            "the pass must remove executed callbacks"
+        );
+        if let Some(previous) = optimized_counts {
+            assert_eq!(
+                optimized_counts_sample, previous,
+                "optimized Graph work changed between samples"
+            );
+        }
+        optimized_counts = Some(optimized_counts_sample);
+
+        let plain_tables = graph.graph_tables.unwrap();
+        let optimized_tables_sample = optimized.graph_tables.unwrap();
+        assert!(optimized_tables_sample.guards <= plain_tables.guards);
+        assert!(optimized_tables_sample.deliveries <= plain_tables.deliveries);
+        assert!(optimized_tables_sample.callback_links <= plain_tables.callback_links);
+        assert!(optimized_tables_sample.power_links <= plain_tables.power_links);
+        if let Some(previous) = graph_tables {
+            assert_eq!(plain_tables, previous, "unoptimized table counts changed");
+        }
+        if let Some(previous) = optimized_tables {
+            assert_eq!(
+                optimized_tables_sample, previous,
+                "optimized table counts changed"
+            );
+        }
+        graph_tables = Some(plain_tables);
+        optimized_tables = Some(optimized_tables_sample);
+
+        let estimates = (
+            graph.retained_callback_bytes,
+            graph.retained_lowering_bytes,
+            optimized.retained_callback_bytes,
+            optimized.retained_lowering_bytes,
+        );
         if let Some(previous) = retained_estimates {
             assert_eq!(estimates, previous, "retained table estimates changed");
         }
         retained_estimates = Some(estimates);
         println!(
-            "cpu_bubblesort sample {}: Graph {:.6}s, interpreter {:.6}s; {} active ticks; RAM and Graph counters match",
+            "cpu_bubblesort sample {}: Graph {:.6}s, optimized Graph {:.6}s, interpreter {:.6}s; {} active ticks; RAM matches, callbacks {} -> {}",
             sample + 1,
             graph.elapsed.as_secs_f64(),
+            optimized.elapsed.as_secs_f64(),
             interpreter.elapsed.as_secs_f64(),
-            SHORT_ACTIVE_TICKS
+            SHORT_ACTIVE_TICKS,
+            counts.callbacks,
+            optimized_counts_sample.callbacks
         );
         graph_times.push(graph.elapsed);
+        optimized_times.push(optimized.elapsed);
         interpreter_times.push(interpreter.elapsed);
     }
 
@@ -229,26 +337,40 @@ fn graph_short(cpu: Cpu, iterations: usize, output: Option<&str>, label: &str) {
         (times[times.len() / 2], times[0], times[times.len() - 1])
     };
     let (graph_median, graph_min, graph_max) = summarize(&mut graph_times);
+    let (optimized_median, optimized_min, optimized_max) = summarize(&mut optimized_times);
     let (interpreter_median, interpreter_min, interpreter_max) = summarize(&mut interpreter_times);
     let counts = graph_counts.unwrap();
+    let optimized_counts = optimized_counts.unwrap();
     println!(
-        "Graph backend: {:?}; {} samples of {} ticks; Graph median {:.6}s [{:.6}, {:.6}], interpreter median {:.6}s [{:.6}, {:.6}]",
+        "Graph backend: {:?}; {} paired samples of {} ticks; Graph median {:.6}s [{:.6}, {:.6}], optimized Graph median {:.6}s [{:.6}, {:.6}], interpreter median {:.6}s [{:.6}, {:.6}]",
         BackendKind::Graph,
         iterations,
         SHORT_ACTIVE_TICKS,
         graph_median.as_secs_f64(),
         graph_min.as_secs_f64(),
         graph_max.as_secs_f64(),
+        optimized_median.as_secs_f64(),
+        optimized_min.as_secs_f64(),
+        optimized_max.as_secs_f64(),
         interpreter_median.as_secs_f64(),
         interpreter_min.as_secs_f64(),
         interpreter_max.as_secs_f64()
     );
-    println!("Graph work counters: {counts:?}");
-    let (callback_bytes, lowering_bytes) = retained_estimates.unwrap();
+    println!("Unoptimized Graph work counters: {counts:?}");
+    println!("Optimized Graph work counters: {optimized_counts:?}");
     println!(
-        "Estimated retained tables: after callbacks {:.2} MiB; after lowering {:.2} MiB",
+        "Post-pass graph tables: general={:?}; optimized={:?}",
+        graph_tables.unwrap(),
+        optimized_tables.unwrap()
+    );
+    let (callback_bytes, lowering_bytes, optimized_callback_bytes, optimized_lowering_bytes) =
+        retained_estimates.unwrap();
+    println!(
+        "Estimated retained tables: general after callbacks {:.2} MiB / lowering {:.2} MiB; optimized after callbacks {:.2} MiB / lowering {:.2} MiB",
         callback_bytes as f64 / (1024.0 * 1024.0),
         lowering_bytes as f64 / (1024.0 * 1024.0),
+        optimized_callback_bytes as f64 / (1024.0 * 1024.0),
+        optimized_lowering_bytes as f64 / (1024.0 * 1024.0),
     );
 
     if let Some(output) = output {
@@ -265,6 +387,9 @@ fn graph_short(cpu: Cpu, iterations: usize, output: Option<&str>, label: &str) {
             "graph_seconds": graph_times.iter().map(|time| time.as_secs_f64()).collect::<Vec<_>>(),
             "graph_median_seconds": graph_median.as_secs_f64(),
             "graph_range_seconds": [graph_min.as_secs_f64(), graph_max.as_secs_f64()],
+            "optimized_graph_seconds": optimized_times.iter().map(|time| time.as_secs_f64()).collect::<Vec<_>>(),
+            "optimized_graph_median_seconds": optimized_median.as_secs_f64(),
+            "optimized_graph_range_seconds": [optimized_min.as_secs_f64(), optimized_max.as_secs_f64()],
             "interpreter_seconds": interpreter_times.iter().map(|time| time.as_secs_f64()).collect::<Vec<_>>(),
             "interpreter_median_seconds": interpreter_median.as_secs_f64(),
             "interpreter_range_seconds": [interpreter_min.as_secs_f64(), interpreter_max.as_secs_f64()],
@@ -277,9 +402,24 @@ fn graph_short(cpu: Cpu, iterations: usize, output: Option<&str>, label: &str) {
                 "piston_actions": counts.piston_actions,
                 "deferred_publications": counts.deferred_publications,
             },
+            "optimized_graph_counters": {
+                "ticks": optimized_counts.ticks,
+                "scheduled_ticks": optimized_counts.scheduled_ticks,
+                "callbacks": optimized_counts.callbacks,
+                "wire_walks": optimized_counts.wire_walks,
+                "piston_samples": optimized_counts.piston_samples,
+                "piston_actions": optimized_counts.piston_actions,
+                "deferred_publications": optimized_counts.deferred_publications,
+            },
             "counters_match_cfg_test_episode": counts == TEST_GRAPH_COUNTS,
+            "graph_table_counts": {
+                "general": graph_tables.unwrap(),
+                "optimized": optimized_tables.unwrap(),
+            },
             "estimated_retained_table_bytes_after_callbacks": callback_bytes,
             "estimated_retained_table_bytes_after_lowering": lowering_bytes,
+            "optimized_estimated_retained_table_bytes_after_callbacks": optimized_callback_bytes,
+            "optimized_estimated_retained_table_bytes_after_lowering": optimized_lowering_bytes,
             "ram_matches_interpreter_each_sample": true,
             "timed_operations": "100 calls to tick_with_world or tick_interpreted; compile, input setup, flush, RAM reads, and counter checks excluded",
         });

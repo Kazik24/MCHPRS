@@ -401,7 +401,12 @@ fn graph_feedback_preserves_hidden_state_and_scheduler_on_reset() {
                         )
                         .unwrap();
                     assert_eq!(compiler.backend_kind(), Some(BackendKind::Graph));
-                    assert!(compiler.stats().unwrap().graph.transformations.is_empty());
+                    let statistics = compiler.stats().unwrap();
+                    let transformations = &statistics.graph.transformations;
+                    assert_eq!(transformations.len(), if optimize { 1 } else { 0 });
+                    if optimize {
+                        assert_eq!(transformations[0].name, "guard-and-update-reduction");
+                    }
                     compiled.clear_scheduled_ticks();
                     compiler.on_use_block(control);
                     let Block::Lever { lever } = native.get_block(control) else {

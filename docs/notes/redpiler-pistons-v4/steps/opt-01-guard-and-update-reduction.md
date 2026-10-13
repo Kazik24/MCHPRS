@@ -1,6 +1,6 @@
 # Optimization 01 — simplify queries and remove ineffective callbacks
 
-Status: implementation scope, not implemented or certified. This document is a self-contained assignment for an implementation agent. Implement one milestone at a time and stop with evidence for review. The user has requested a scope, not authorization to start all four optimization projects.
+Status: implemented, awaiting human review (2026-10-13). This document remains the scope and evidence checklist for opt-01; no later optimization project is included.
 
 ## Goal and first useful result
 
@@ -152,3 +152,15 @@ Discover new descriptive tests before running them. Run the affected pass/valida
 Completion means at least one real callback reduction, correct remapping, a declined unsafe candidate, and a measured paired result. Report graph size separately from guard/query/callback work and runtime. Stop for human review.
 
 Not included: a generic liveness solver, duplicate callback elimination, new runtime actors, region caching, or native fallback. Risk: a receiver fallback or missing captured operand can invalidate an apparently trivial deletion.
+
+## Implementation evidence — 2026-10-13
+
+The pass is registered in the general pipeline only when `CompilerOptions.optimize` is true. It preserves guard 0 as `Always`, orders guard dependencies child-first even when IDs are forward-referenced, folds Boolean constants and repeated operands, interns complete normalized expressions with exact equality after hash lookup, and folds `Guard::Site` only for Live reads from immutable Constant profiles. Captured reads and dynamic component/contact reads remain unknown. It remaps contact selectors, callback links, power links, comparator far overrides, wire relations, and route deliveries before validation.
+
+Power cleanup removes attenuation-15 and statically impossible contributions, then keeps the least attenuation for exact source-port, destination-channel, face, and normalized-guard keys. Callback cleanup removes impossible guards, Updates to the unconditional no-op Lever/Button/PressurePlate/Constant handlers (including the effective Component receiver fallback), and parser-validated Shape events to non-component Constant sites. It preserves duplicate meaningful deliveries, route order, original sequence gaps, and callback-link multiplicity. Component Shape deliveries stay because a captured Turbo route may use their eligibility to dispatch an Update; contacts, wires, pistons, observers, comparators, commands, and notes remain untouched.
+
+The short release benchmark ran five paired fresh sign-free BubbleSort inputs, removing the same in-memory sign from Graph and interpreter worlds. Each run executed 100 active ticks; compilation, activation setup, flush, RAM reads, and checks were outside timing. Public compilation asserted the Graph backend. Graph and optimized Graph matched interpreter RAM on every sample. Median/range were 1.206323 s [1.189515–1.264577] unoptimized Graph, 1.208503 s [1.163095–1.218643] optimized Graph, and 0.648246 s [0.631941–0.652365] interpreter. The ranges overlap; this run shows no runtime speedup.
+
+Unoptimized versus optimized work and lowered tables were: callbacks 2,059,909 -> 2,057,492; guards 3,758,922 -> 814,416; route deliveries 5,812,695 -> 5,354,102; callback links 1,973,211 -> 1,973,211; power links 196,784 -> 190,806. Other execution counts remained equal: 20,005 scheduled ticks, 32,505 wire walks, 302,784 piston samples, 27,884 accepted actions, and 27,884 deferred publications. Estimated retained tables after lowering were 267.95 MiB versus 184.94 MiB; these are retained table estimates, not RSS or peak memory.
+
+Verification completed: pass tests were discovered (13 tests under the pass filter; 7 new opt-01 tests) and run; the integrated Redpiler suite passed in debug and release (211 passed, 4 ignored in each); all 7 reference-contract tests passed; `cargo check -p mchprs_core --tests --locked`, `cargo check -p mroww --locked`, formatting, diff checks, and the five-pair benchmark passed. The CPU episode checks final RAM for the first 100 active ticks, not the full sort/history. No broad fuzz campaign, full CPU equivalence, peak-RSS measurement, or runtime speedup is established. Keep the pass behind `--optimize` pending review of the proof boundaries and the lack of measured runtime improvement.
