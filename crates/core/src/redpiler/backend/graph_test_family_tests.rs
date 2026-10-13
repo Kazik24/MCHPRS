@@ -183,6 +183,34 @@ fn load_circuit(name: &'static str) -> Circuit {
     }
 }
 
+#[cfg(feature = "graph-profile")]
+#[test]
+fn callback_research_inventory_covers_bud_at_o0_and_o1() {
+    let circuit = load_circuit("TEST_BUD_1");
+    for level in [0, 1] {
+        let world = circuit.build();
+        let mut compiler = Compiler::default();
+        compiler
+            .compile(
+                &world,
+                circuit.bounds(),
+                CompilerOptions {
+                    optimization_level: Some(level),
+                    ..Default::default()
+                },
+                world.scheduler().iter_entries().collect(),
+                std::sync::Arc::default(),
+            )
+            .unwrap_or_else(|error| panic!("{} O{level}: {error}", circuit.name));
+        let inventory = compiler.graph_callback_inventory().unwrap();
+        println!(
+            "CALLBACK_INVENTORY fixture={} optimization=O{level} data={}",
+            circuit.name,
+            serde_json::to_string(&inventory).unwrap()
+        );
+    }
+}
+
 fn empty_world() -> PlotWorld {
     PlotWorld::from_chunks(
         0,

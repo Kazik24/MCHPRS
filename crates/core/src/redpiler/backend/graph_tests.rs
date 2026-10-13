@@ -222,6 +222,45 @@ fn test_recording_can_be_toggled_around_a_graph_episode() {
     assert!(!backend.trace().is_empty());
 }
 
+#[cfg(feature = "graph-profile")]
+#[test]
+fn callback_profile_matches_dispatched_graph_callbacks_for_an_ordered_route() {
+    let mut world = empty_world();
+    world.set_block(LEVER_POS.offset(BlockFace::Bottom), Block::Stone {});
+    world.set_block(LEVER_POS, lever(false));
+    world.set_block(NEXT_POS.offset(BlockFace::Bottom), Block::Stone {});
+    world.set_block(
+        NEXT_POS,
+        Block::RedstoneWire {
+            wire: RedstoneWire::default(),
+        },
+    );
+    let mut backend = recording_graph(&world, vec![]);
+    let node = backend.positions[&LEVER_POS];
+
+    backend.fire_route(node).unwrap();
+
+    let profile = backend.callback_execution_profile();
+    assert_eq!(profile.route_calls, 1);
+    assert!(profile.delivery_records_examined > 0);
+    assert_eq!(
+        profile
+            .dispatches_by_receiver_and_kind
+            .iter()
+            .flatten()
+            .sum::<u64>(),
+        backend.execution_counts().callbacks
+    );
+    assert_eq!(
+        profile
+            .dispatches_by_role_and_kind
+            .iter()
+            .flatten()
+            .sum::<u64>(),
+        backend.execution_counts().callbacks
+    );
+}
+
 #[test]
 fn dust_path_seed_and_captured_queries_match_for_all_strength_transitions() {
     let world = analog_dust_world();
@@ -3276,6 +3315,22 @@ fn opposing_shared_pistons() -> (PlotWorld, PlotWorld, [BlockPos; 2], [BlockPos;
         world.set_block(resource, Block::RedstoneBlock);
     }
     (native, graph_world, bases, near, resource)
+}
+
+#[cfg(feature = "graph-profile")]
+#[test]
+fn callback_research_inventory_covers_shared_piston_contacts_at_o0_and_o1() {
+    let (_, world, _, _, _) = opposing_shared_pistons();
+    for level in [0, 1] {
+        let backend = dust_path_backend(&world, Some(level), false);
+        assert_eq!(backend.program.resources().len(), 1);
+        assert_eq!(backend.program.resources()[0].contacts.len(), 3);
+        let inventory = backend.callback_research_inventory();
+        println!(
+            "CALLBACK_INVENTORY fixture=opposing_shared_pistons optimization=O{level} data={}",
+            serde_json::to_string(&inventory).unwrap()
+        );
+    }
 }
 
 #[test]

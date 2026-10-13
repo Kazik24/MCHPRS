@@ -153,6 +153,241 @@ pub struct GraphExecutionProfile {
     pub piston_sample: GraphProfileMetric,
 }
 
+#[cfg(feature = "graph-profile")]
+impl GraphExecutionProfile {
+    /// Returns the inclusive counters accumulated after a snapshot.
+    pub fn delta_from(self, before: Self) -> Self {
+        let delta = |after: GraphProfileMetric, prior: GraphProfileMetric| GraphProfileMetric {
+            calls: after.calls.saturating_sub(prior.calls),
+            elapsed_ns: after.elapsed_ns.saturating_sub(prior.elapsed_ns),
+        };
+        Self {
+            tick_phases: delta(self.tick_phases, before.tick_phases),
+            scheduled_drain: delta(self.scheduled_drain, before.scheduled_drain),
+            piston_actions: delta(self.piston_actions, before.piston_actions),
+            deferred_connections: delta(self.deferred_connections, before.deferred_connections),
+            route_delivery: delta(self.route_delivery, before.route_delivery),
+            turbo_wire_walk: delta(self.turbo_wire_walk, before.turbo_wire_walk),
+            piston_sample: delta(self.piston_sample, before.piston_sample),
+        }
+    }
+}
+
+/// Callback work counters available only in an opt-in `graph-profile` build.
+#[cfg(feature = "graph-profile")]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, serde::Serialize)]
+pub struct GraphCallbackProfile {
+    /// Number of general ordered routes entered.
+    pub route_calls: u64,
+    /// Indexed by `ROUTE_ROLES`; roles are recovered from route owners.
+    pub route_calls_by_role: [u64; 12],
+    /// Number of ordered delivery records examined by general route calls.
+    pub delivery_records_examined: u64,
+    pub delivery_records_by_role: [u64; 12],
+    /// Number of top-level guard predicates evaluated by routes or Turbo lookup.
+    pub guard_roots_evaluated: u64,
+    /// Counts actual recursive operations: Always, State, Site, Not, All, Any.
+    pub guard_operations_by_kind: [u64; 6],
+    /// Number of top-level guards that evaluated to false.
+    pub guard_failures: u64,
+    /// Number of captured site operands missing during guard evaluation.
+    pub missing_captured_guard_operands: u64,
+    /// Number of captured site operands missing before delivery dispatch.
+    pub missing_captured_delivery_operands: u64,
+    /// Number of passing delivery rows with no runtime fallback or receiver.
+    pub deliveries_without_effective_receiver: u64,
+    /// Rows are Component, PistonBase, PistonHead, Contact; columns are Update, Shape.
+    /// Number of callbacks actually dispatched by compiled receiver and event kind.
+    pub dispatches_by_receiver_and_kind: [[u64; 2]; 4],
+    /// Rows use `ROUTE_ROLES`; columns are Update, Shape.
+    /// Number of callbacks actually dispatched by owner role and event kind.
+    pub dispatches_by_role_and_kind: [[u64; 2]; 12],
+    /// Families are observer, wire, repeater, comparator, torch, lamp, bulb, command, note, control, piston, other.
+    /// Number of concrete component or piston handlers invoked by family.
+    pub handler_invocations_by_family: [u64; 12],
+    /// Counts changed writes through component, wire, command, and note state handlers.
+    /// Number of changed component, wire, command, and note state writes.
+    pub component_state_changes: u64,
+    /// Number of attempts to schedule component work, including rejected/duplicate work.
+    pub tick_schedule_attempts: u64,
+    /// Number of scheduler insertions that added previously absent work.
+    pub newly_scheduled_ticks: u64,
+    /// Number of piston samples returned before the normal sample counter due to a pending base.
+    pub piston_samples_skipped_base_pending: u64,
+    /// Number of ordered Turbo route candidate searches.
+    pub turbo_route_lookups: u64,
+    /// Number of candidate delivery rows inspected across Turbo searches.
+    pub turbo_candidate_entries_scanned: u64,
+    /// Inspected Turbo rows whose target matched the requested site.
+    pub turbo_target_entries_scanned: u64,
+    /// Number of Turbo searches that found no matching captured receiver.
+    pub turbo_lookup_failures: u64,
+    /// Number of Turbo searches that returned their first matching candidate.
+    pub turbo_first_matches: u64,
+    /// Number of nested wire nodes whose captured power was recomputed in Turbo.
+    pub turbo_wire_node_evaluations: u64,
+    /// Rows are Other, ScheduledTicks, PistonActions, DeferredConnections; columns use `ROUTE_ROLES`.
+    pub route_calls_by_phase_and_role: [[u64; 12]; 4],
+    /// Counts handler dispatches in the same phase/role layout.
+    pub dispatches_by_phase_and_role: [[u64; 12]; 4],
+}
+
+#[cfg(feature = "graph-profile")]
+impl GraphCallbackProfile {
+    pub const ROUTE_ROLES: [&'static str; 12] = [
+        "component_output",
+        "wire_shape",
+        "wire_turbo_candidates",
+        "piston_base_changed",
+        "piston_near_changed",
+        "piston_far_changed",
+        "piston_far_shape_changed",
+        "piston_base_restored",
+        "piston_head_restored",
+        "piston_resource_restored_near",
+        "piston_resource_restored_far",
+        "unclassified",
+    ];
+
+    pub const PHASES: [&'static str; 4] = [
+        "other",
+        "scheduled_ticks",
+        "piston_actions",
+        "deferred_connections",
+    ];
+
+    pub const GUARD_KINDS: [&'static str; 6] = ["always", "state", "site", "not", "all", "any"];
+
+    pub const RECEIVER_FAMILIES: [&'static str; 4] =
+        ["component", "piston_base", "piston_head", "contact"];
+
+    pub const DELIVERY_KINDS: [&'static str; 2] = ["update", "shape"];
+
+    pub const HANDLER_FAMILIES: [&'static str; 12] = [
+        "observer",
+        "wire",
+        "repeater",
+        "comparator",
+        "torch",
+        "lamp",
+        "copper_bulb",
+        "command_block",
+        "note_block",
+        "control",
+        "piston",
+        "other",
+    ];
+
+    pub fn delta_from(self, before: Self) -> Self {
+        let delta = |after: u64, prior: u64| after.saturating_sub(prior);
+        Self {
+            route_calls: delta(self.route_calls, before.route_calls),
+            route_calls_by_role: std::array::from_fn(|index| {
+                delta(
+                    self.route_calls_by_role[index],
+                    before.route_calls_by_role[index],
+                )
+            }),
+            delivery_records_examined: delta(
+                self.delivery_records_examined,
+                before.delivery_records_examined,
+            ),
+            delivery_records_by_role: std::array::from_fn(|index| {
+                delta(
+                    self.delivery_records_by_role[index],
+                    before.delivery_records_by_role[index],
+                )
+            }),
+            guard_roots_evaluated: delta(self.guard_roots_evaluated, before.guard_roots_evaluated),
+            guard_operations_by_kind: std::array::from_fn(|index| {
+                delta(
+                    self.guard_operations_by_kind[index],
+                    before.guard_operations_by_kind[index],
+                )
+            }),
+            guard_failures: delta(self.guard_failures, before.guard_failures),
+            missing_captured_guard_operands: delta(
+                self.missing_captured_guard_operands,
+                before.missing_captured_guard_operands,
+            ),
+            missing_captured_delivery_operands: delta(
+                self.missing_captured_delivery_operands,
+                before.missing_captured_delivery_operands,
+            ),
+            deliveries_without_effective_receiver: delta(
+                self.deliveries_without_effective_receiver,
+                before.deliveries_without_effective_receiver,
+            ),
+            dispatches_by_receiver_and_kind: std::array::from_fn(|family| {
+                std::array::from_fn(|kind| {
+                    delta(
+                        self.dispatches_by_receiver_and_kind[family][kind],
+                        before.dispatches_by_receiver_and_kind[family][kind],
+                    )
+                })
+            }),
+            dispatches_by_role_and_kind: std::array::from_fn(|role| {
+                std::array::from_fn(|kind| {
+                    delta(
+                        self.dispatches_by_role_and_kind[role][kind],
+                        before.dispatches_by_role_and_kind[role][kind],
+                    )
+                })
+            }),
+            handler_invocations_by_family: std::array::from_fn(|index| {
+                delta(
+                    self.handler_invocations_by_family[index],
+                    before.handler_invocations_by_family[index],
+                )
+            }),
+            component_state_changes: delta(
+                self.component_state_changes,
+                before.component_state_changes,
+            ),
+            tick_schedule_attempts: delta(
+                self.tick_schedule_attempts,
+                before.tick_schedule_attempts,
+            ),
+            newly_scheduled_ticks: delta(self.newly_scheduled_ticks, before.newly_scheduled_ticks),
+            piston_samples_skipped_base_pending: delta(
+                self.piston_samples_skipped_base_pending,
+                before.piston_samples_skipped_base_pending,
+            ),
+            turbo_route_lookups: delta(self.turbo_route_lookups, before.turbo_route_lookups),
+            turbo_candidate_entries_scanned: delta(
+                self.turbo_candidate_entries_scanned,
+                before.turbo_candidate_entries_scanned,
+            ),
+            turbo_target_entries_scanned: delta(
+                self.turbo_target_entries_scanned,
+                before.turbo_target_entries_scanned,
+            ),
+            turbo_lookup_failures: delta(self.turbo_lookup_failures, before.turbo_lookup_failures),
+            turbo_first_matches: delta(self.turbo_first_matches, before.turbo_first_matches),
+            turbo_wire_node_evaluations: delta(
+                self.turbo_wire_node_evaluations,
+                before.turbo_wire_node_evaluations,
+            ),
+            route_calls_by_phase_and_role: std::array::from_fn(|phase| {
+                std::array::from_fn(|role| {
+                    delta(
+                        self.route_calls_by_phase_and_role[phase][role],
+                        before.route_calls_by_phase_and_role[phase][role],
+                    )
+                })
+            }),
+            dispatches_by_phase_and_role: std::array::from_fn(|phase| {
+                std::array::from_fn(|role| {
+                    delta(
+                        self.dispatches_by_phase_and_role[phase][role],
+                        before.dispatches_by_phase_and_role[phase][role],
+                    )
+                })
+            }),
+        }
+    }
+}
+
 #[derive(PartialEq, Eq, Debug)]
 /// Options that control graph preparation and reset behavior.
 pub struct CompilerOptions {
@@ -446,6 +681,18 @@ impl Compiler {
     #[cfg(feature = "graph-profile")]
     pub fn graph_execution_profile(&self) -> Option<GraphExecutionProfile> {
         self.backend.as_ref()?.graph_execution_profile()
+    }
+
+    /// Callback work counters for profiling-window snapshots.
+    #[cfg(feature = "graph-profile")]
+    pub fn graph_callback_profile(&self) -> Option<GraphCallbackProfile> {
+        self.backend.as_ref()?.graph_callback_profile()
+    }
+
+    /// Static route and guard inventory for a compiled graph, collected on demand.
+    #[cfg(feature = "graph-profile")]
+    pub fn graph_callback_inventory(&self) -> Option<serde_json::Value> {
+        self.backend.as_ref()?.graph_callback_inventory()
     }
 
     /// Actual canonical neighbor-power samples for diagnostic long dust candidates.

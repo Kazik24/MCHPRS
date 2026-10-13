@@ -413,6 +413,9 @@ pub(crate) struct RouteDelivery {
 pub(crate) struct Route {
     pub(crate) source: NodeId,
     pub(crate) deliveries: Box<[RouteDelivery]>,
+    #[cfg(feature = "graph-profile")]
+    /// Number of native notification occurrences before contact branching or filtering.
+    pub(crate) native_event_count: usize,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
@@ -2337,6 +2340,8 @@ mod tests {
                     },
                 ]
                 .into_boxed_slice(),
+                #[cfg(feature = "graph-profile")]
+                native_event_count: 1,
             }],
             wires: vec![WirePlan {
                 node: NodeId::new(5),

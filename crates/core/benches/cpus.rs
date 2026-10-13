@@ -5,11 +5,11 @@ mod support;
 use mchprs_blocks::BlockPos;
 use mchprs_blocks::blocks::Block;
 use mchprs_core::plot::PlotWorld;
-#[cfg(feature = "graph-profile")]
-use mchprs_core::redpiler::GraphExecutionProfile;
 use mchprs_core::redpiler::{
     BackendKind, Compiler, CompilerOptions, GraphExecutionCounts, TaskMonitor,
 };
+#[cfg(feature = "graph-profile")]
+use mchprs_core::redpiler::{GraphCallbackProfile, GraphExecutionProfile};
 use mchprs_core::world::World;
 use std::path::Path;
 use std::sync::Arc;
@@ -29,7 +29,7 @@ const TEST_GRAPH_COUNTS: GraphExecutionCounts = GraphExecutionCounts {
 };
 
 #[cfg(feature = "graph-profile")]
-fn print_graph_profile(profile: GraphExecutionProfile) {
+fn print_graph_profile(label: &str, profile: GraphExecutionProfile) {
     assert_eq!(profile.tick_phases.calls, u64::from(SHORT_ACTIVE_TICKS));
     assert_eq!(
         profile.scheduled_drain.calls,
@@ -43,7 +43,7 @@ fn print_graph_profile(profile: GraphExecutionProfile) {
     assert!(profile.route_delivery.calls > 0);
     assert_eq!(profile.turbo_wire_walk.calls, 32_505);
     assert!(profile.piston_sample.calls > 0);
-    println!("Graph operation timings (inclusive; nested buckets overlap):");
+    println!("{label} operation timings (inclusive; nested buckets overlap):");
     for (name, metric) in [
         ("tick phases", profile.tick_phases),
         ("scheduled drain", profile.scheduled_drain),
@@ -77,10 +77,24 @@ struct ShortSample {
     dust_path_tables: Vec<(String, usize)>,
     /// This counts executed six-direction power samples on long diagnostic candidates.
     dust_candidate_power_samples: Vec<(usize, u64)>,
+    /// These callbacks were caused by the starting control before the timed window.
+    callback_count_before_tick_window: u64,
+    /// Existing Graph callback count delta across only the 100 measured ticks.
+    callback_count_in_tick_window: u64,
+    /// Existing counted piston samples in the same active window.
+    piston_samples_in_tick_window: u64,
     /// This retains the parser's estimated table bytes after callback construction.
     retained_callback_bytes: usize,
     /// This retains the lowered program's estimated table bytes.
     retained_lowering_bytes: usize,
+    /// These are retained table snapshots by preparation stage, not process RSS.
+    preparation_tables: Vec<serde_json::Value>,
+    #[cfg(feature = "graph-profile")]
+    /// Callback work captured strictly around the 100 active ticks.
+    callback_profile: Option<GraphCallbackProfile>,
+    #[cfg(feature = "graph-profile")]
+    /// Static post-pass route/guard inventory, collected outside the timed window.
+    callback_inventory: Option<serde_json::Value>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize)]
@@ -126,8 +140,16 @@ fn interpreter_sample(cpu: Cpu) -> ShortSample {
         graph_tables: None,
         dust_path_tables: vec![],
         dust_candidate_power_samples: vec![],
+        callback_count_before_tick_window: 0,
+        callback_count_in_tick_window: 0,
+        piston_samples_in_tick_window: 0,
         retained_callback_bytes: 0,
         retained_lowering_bytes: 0,
+        preparation_tables: vec![],
+        #[cfg(feature = "graph-profile")]
+        callback_profile: None,
+        #[cfg(feature = "graph-profile")]
+        callback_inventory: None,
     }
 }
 
@@ -136,6 +158,7 @@ fn graph_sample(
     bounds: (BlockPos, BlockPos),
     optimize: bool,
     dust_paths: bool,
+    profile_label: &str,
 ) -> ShortSample {
     let mut world = sign_free_world(cpu);
     let initial = checkpoint(&world, 0, &[]);
@@ -191,22 +214,84 @@ fn graph_sample(
     };
     let retained_callback_bytes = retained_bytes("callbacks");
     let retained_lowering_bytes = retained_bytes("lowering");
+    let preparation_tables = statistics
+        .graph
+        .preparation_tables
+        .iter()
+        .map(|table| {
+            serde_json::json!({
+                "stage": table.stage,
+                "table": table.table,
+                "entries": table.entries,
+                "capacity": table.capacity,
+                "estimated_bytes": table.estimated_bytes,
+            })
+        })
+        .collect();
+    #[cfg(feature = "graph-profile")]
+    let callback_inventory = compiler
+        .graph_callback_inventory()
+        .expect("Graph callback inventory must be available in the profiling build");
 
     compiler.on_use_block(cpu.origin + cpu.start);
+    let counters_before_tick_window = compiler
+        .graph_execution_counts()
+        .expect("Graph backend must report work counters");
+    let callback_count_before_tick_window = counters_before_tick_window.callbacks;
+    #[cfg(feature = "graph-profile")]
+    let callback_profile_before = compiler
+        .graph_callback_profile()
+        .expect("Graph callback profile must be available in the profiling build");
+    #[cfg(feature = "graph-profile")]
+    let execution_profile_before = compiler
+        .graph_execution_profile()
+        .expect("Graph execution profile must be available in the profiling build");
     let started = Instant::now();
     for _ in 0..SHORT_ACTIVE_TICKS {
         compiler.tick_with_world(&mut world).unwrap();
     }
     let elapsed = started.elapsed();
     #[cfg(feature = "graph-profile")]
-    print_graph_profile(
-        compiler
-            .graph_execution_profile()
-            .expect("Graph profile must be available in the profiling build"),
+    let callback_profile = compiler
+        .graph_callback_profile()
+        .expect("Graph callback profile must be available in the profiling build")
+        .delta_from(callback_profile_before);
+    assert!(callback_profile.turbo_target_entries_scanned > 0);
+    assert!(
+        callback_profile.turbo_target_entries_scanned
+            <= callback_profile.turbo_candidate_entries_scanned
     );
+    #[cfg(feature = "graph-profile")]
+    let execution_profile = compiler
+        .graph_execution_profile()
+        .expect("Graph execution profile must be available in the profiling build")
+        .delta_from(execution_profile_before);
+    #[cfg(feature = "graph-profile")]
+    print_graph_profile(profile_label, execution_profile);
     let graph_counts = compiler
         .graph_execution_counts()
         .expect("Graph backend must report work counters");
+    let callback_count_in_tick_window = graph_counts
+        .callbacks
+        .saturating_sub(callback_count_before_tick_window);
+    let piston_samples_in_tick_window = graph_counts
+        .piston_samples
+        .saturating_sub(counters_before_tick_window.piston_samples);
+    #[cfg(feature = "graph-profile")]
+    assert_eq!(
+        callback_profile
+            .dispatches_by_receiver_and_kind
+            .iter()
+            .flatten()
+            .sum::<u64>(),
+        callback_count_in_tick_window,
+        "callback profile dispatch total must agree with the callback count delta for the same tick window"
+    );
+    assert_eq!(
+        execution_profile.piston_sample.calls,
+        piston_samples_in_tick_window + callback_profile.piston_samples_skipped_base_pending,
+        "piston wrapper calls equal counted samples plus its early pending-base returns"
+    );
     #[cfg(feature = "graph-profile")]
     let dust_candidate_power_samples = compiler
         .dust_candidate_power_samples()
@@ -222,8 +307,16 @@ fn graph_sample(
         graph_tables: Some(graph_tables),
         dust_path_tables,
         dust_candidate_power_samples,
+        callback_count_before_tick_window,
+        callback_count_in_tick_window,
+        piston_samples_in_tick_window,
         retained_callback_bytes,
         retained_lowering_bytes,
+        preparation_tables,
+        #[cfg(feature = "graph-profile")]
+        callback_profile: Some(callback_profile),
+        #[cfg(feature = "graph-profile")]
+        callback_inventory: Some(callback_inventory),
     }
 }
 
@@ -257,19 +350,40 @@ fn graph_short(cpu: Cpu, iterations: usize, output: Option<&str>, label: &str) {
     let mut dust_path_tables = None;
     let mut dust_candidate_power_samples = None;
     let mut retained_estimates = None;
+    let mut graph_preparation_tables = None;
+    let mut opt01_preparation_tables = None;
+    let mut dust_preparation_tables = None;
+    let mut graph_callback_window = None;
+    let mut opt01_callback_window = None;
+    let mut dust_callback_window = None;
+    let mut graph_piston_samples_window = None;
+    let mut opt01_piston_samples_window = None;
+    let mut dust_piston_samples_window = None;
+    #[cfg(feature = "graph-profile")]
+    let mut graph_callback_profile = None;
+    #[cfg(feature = "graph-profile")]
+    let mut opt01_callback_profile = None;
+    #[cfg(feature = "graph-profile")]
+    let mut dust_callback_profile = None;
+    #[cfg(feature = "graph-profile")]
+    let mut graph_callback_inventory = None;
+    #[cfg(feature = "graph-profile")]
+    let mut opt01_callback_inventory = None;
+    #[cfg(feature = "graph-profile")]
+    let mut dust_callback_inventory = None;
 
     for sample in 0..iterations {
         let (graph, opt01, dust, interpreter) = if sample % 2 == 0 {
-            let graph = graph_sample(cpu, bounds, false, false);
-            let opt01 = graph_sample(cpu, bounds, true, false);
-            let dust = graph_sample(cpu, bounds, true, true);
+            let graph = graph_sample(cpu, bounds, false, false, "O0 Graph");
+            let opt01 = graph_sample(cpu, bounds, true, false, "O1 Graph");
+            let dust = graph_sample(cpu, bounds, true, true, "O1+dust Graph");
             let interpreter = interpreter_sample(cpu);
             (graph, opt01, dust, interpreter)
         } else {
             let interpreter = interpreter_sample(cpu);
-            let dust = graph_sample(cpu, bounds, true, true);
-            let opt01 = graph_sample(cpu, bounds, true, false);
-            let graph = graph_sample(cpu, bounds, false, false);
+            let dust = graph_sample(cpu, bounds, true, true, "O1+dust Graph");
+            let opt01 = graph_sample(cpu, bounds, true, false, "O1 Graph");
+            let graph = graph_sample(cpu, bounds, false, false, "O0 Graph");
             (graph, opt01, dust, interpreter)
         };
         assert_eq!(graph.initial, interpreter.initial, "sample {sample} inputs");
@@ -299,6 +413,38 @@ fn graph_short(cpu: Cpu, iterations: usize, output: Option<&str>, label: &str) {
             assert_eq!(counts, previous, "Graph work changed between samples");
         }
         graph_counts = Some(counts);
+        graph_callback_window = Some((
+            graph.callback_count_before_tick_window,
+            graph.callback_count_in_tick_window,
+        ));
+        graph_piston_samples_window = Some(graph.piston_samples_in_tick_window);
+        #[cfg(feature = "graph-profile")]
+        {
+            let profile = graph.callback_profile.unwrap();
+            assert_eq!(
+                profile
+                    .dispatches_by_receiver_and_kind
+                    .iter()
+                    .flatten()
+                    .sum::<u64>(),
+                graph.callback_count_in_tick_window
+            );
+            if let Some(previous) = graph_callback_profile {
+                assert_eq!(
+                    profile, previous,
+                    "O0 callback work changed between samples"
+                );
+            }
+            graph_callback_profile = Some(profile);
+            let inventory = graph.callback_inventory.clone().unwrap();
+            if let Some(previous) = &graph_callback_inventory {
+                assert_eq!(
+                    &inventory, previous,
+                    "O0 static inventory changed between samples"
+                );
+            }
+            graph_callback_inventory = Some(inventory);
+        }
         let opt01_counts_sample = opt01.graph_counts.unwrap();
         assert_eq!(opt01_counts_sample.ticks, TEST_GRAPH_COUNTS.ticks);
         assert_eq!(
@@ -330,6 +476,38 @@ fn graph_short(cpu: Cpu, iterations: usize, output: Option<&str>, label: &str) {
             );
         }
         opt01_counts = Some(opt01_counts_sample);
+        opt01_callback_window = Some((
+            opt01.callback_count_before_tick_window,
+            opt01.callback_count_in_tick_window,
+        ));
+        opt01_piston_samples_window = Some(opt01.piston_samples_in_tick_window);
+        #[cfg(feature = "graph-profile")]
+        {
+            let profile = opt01.callback_profile.unwrap();
+            assert_eq!(
+                profile
+                    .dispatches_by_receiver_and_kind
+                    .iter()
+                    .flatten()
+                    .sum::<u64>(),
+                opt01.callback_count_in_tick_window
+            );
+            if let Some(previous) = opt01_callback_profile {
+                assert_eq!(
+                    profile, previous,
+                    "O1 callback work changed between samples"
+                );
+            }
+            opt01_callback_profile = Some(profile);
+            let inventory = opt01.callback_inventory.clone().unwrap();
+            if let Some(previous) = &opt01_callback_inventory {
+                assert_eq!(
+                    &inventory, previous,
+                    "O1 static inventory changed between samples"
+                );
+            }
+            opt01_callback_inventory = Some(inventory);
+        }
 
         let dust_counts_sample = dust.graph_counts.unwrap();
         let mut opt01_without_dust = opt01_counts_sample;
@@ -347,6 +525,38 @@ fn graph_short(cpu: Cpu, iterations: usize, output: Option<&str>, label: &str) {
             );
         }
         dust_counts = Some(dust_counts_sample);
+        dust_callback_window = Some((
+            dust.callback_count_before_tick_window,
+            dust.callback_count_in_tick_window,
+        ));
+        dust_piston_samples_window = Some(dust.piston_samples_in_tick_window);
+        #[cfg(feature = "graph-profile")]
+        {
+            let profile = dust.callback_profile.unwrap();
+            assert_eq!(
+                profile
+                    .dispatches_by_receiver_and_kind
+                    .iter()
+                    .flatten()
+                    .sum::<u64>(),
+                dust.callback_count_in_tick_window
+            );
+            if let Some(previous) = dust_callback_profile {
+                assert_eq!(
+                    profile, previous,
+                    "O1+dust callback work changed between samples"
+                );
+            }
+            dust_callback_profile = Some(profile);
+            let inventory = dust.callback_inventory.clone().unwrap();
+            if let Some(previous) = &dust_callback_inventory {
+                assert_eq!(
+                    &inventory, previous,
+                    "O1+dust static inventory changed between samples"
+                );
+            }
+            dust_callback_inventory = Some(inventory);
+        }
 
         let plain_tables = graph.graph_tables.unwrap();
         let opt01_tables_sample = opt01.graph_tables.unwrap();
@@ -401,6 +611,28 @@ fn graph_short(cpu: Cpu, iterations: usize, output: Option<&str>, label: &str) {
             assert_eq!(estimates, previous, "retained table estimates changed");
         }
         retained_estimates = Some(estimates);
+        for (tables, previous, label) in [
+            (
+                graph.preparation_tables.clone(),
+                &mut graph_preparation_tables,
+                "O0",
+            ),
+            (
+                opt01.preparation_tables.clone(),
+                &mut opt01_preparation_tables,
+                "O1",
+            ),
+            (
+                dust.preparation_tables.clone(),
+                &mut dust_preparation_tables,
+                "O1+dust",
+            ),
+        ] {
+            if let Some(previous) = previous {
+                assert_eq!(tables, *previous, "{label} preparation tables changed");
+            }
+            *previous = Some(tables);
+        }
         println!(
             "cpu_bubblesort sample {}: Graph {:.6}s, O1 {:.6}s, O1+dust {:.6}s, interpreter {:.6}s; {} active ticks; RAM matches; callbacks {} -> {}; dust samples elided {}",
             sample + 1,
@@ -430,6 +662,12 @@ fn graph_short(cpu: Cpu, iterations: usize, output: Option<&str>, label: &str) {
     let counts = graph_counts.unwrap();
     let opt01_counts = opt01_counts.unwrap();
     let dust_counts = dust_counts.unwrap();
+    let (graph_callbacks_before, graph_callbacks_window) = graph_callback_window.unwrap();
+    let (opt01_callbacks_before, opt01_callbacks_window) = opt01_callback_window.unwrap();
+    let (dust_callbacks_before, dust_callbacks_window) = dust_callback_window.unwrap();
+    let graph_piston_samples_window = graph_piston_samples_window.unwrap();
+    let opt01_piston_samples_window = opt01_piston_samples_window.unwrap();
+    let dust_piston_samples_window = dust_piston_samples_window.unwrap();
     println!(
         "Graph backend: {:?}; {} paired samples of {} ticks; Graph median {:.6}s [{:.6}, {:.6}], O1 median {:.6}s [{:.6}, {:.6}], O1+dust median {:.6}s [{:.6}, {:.6}], interpreter median {:.6}s [{:.6}, {:.6}]",
         BackendKind::Graph,
@@ -465,6 +703,25 @@ fn graph_short(cpu: Cpu, iterations: usize, output: Option<&str>, label: &str) {
         dust_callback_bytes,
         dust_lowering_bytes,
     ) = retained_estimates.unwrap();
+    #[cfg(feature = "graph-profile")]
+    let callback_research = serde_json::json!({
+        "sampling_window": "profile/counter deltas are snapshotted immediately around the 100 active ticks; static inventory and memory accounting are outside this window",
+        "counter_names": callback_profile_names_json(),
+        "o0": {
+            "work": callback_profile_json(graph_callback_profile.unwrap()),
+            "inventory": graph_callback_inventory.unwrap(),
+        },
+        "o1": {
+            "work": callback_profile_json(opt01_callback_profile.unwrap()),
+            "inventory": opt01_callback_inventory.unwrap(),
+        },
+        "o1_plus_dust": {
+            "work": callback_profile_json(dust_callback_profile.unwrap()),
+            "inventory": dust_callback_inventory.unwrap(),
+        },
+    });
+    #[cfg(not(feature = "graph-profile"))]
+    let callback_research = serde_json::Value::Null;
     println!(
         "Estimated retained tables: general callbacks/lowering {:.2}/{:.2} MiB; O1 {:.2}/{:.2} MiB; O1+dust {:.2}/{:.2} MiB",
         callback_bytes as f64 / (1024.0 * 1024.0),
@@ -497,28 +754,40 @@ fn graph_short(cpu: Cpu, iterations: usize, output: Option<&str>, label: &str) {
                 "median_seconds": graph_median.as_secs_f64(),
                 "range_seconds": [graph_min.as_secs_f64(), graph_max.as_secs_f64()],
                 "counters": graph_counts_json(counts),
+                "callbacks_before_tick_window": graph_callbacks_before,
+                "callbacks_in_tick_window": graph_callbacks_window,
+                "piston_samples_in_tick_window": graph_piston_samples_window,
                 "tables": graph_tables.unwrap(),
                 "estimated_retained_bytes_after_callbacks": callback_bytes,
                 "estimated_retained_bytes_after_lowering": lowering_bytes,
+                "preparation_tables": graph_preparation_tables.unwrap(),
             },
             "o1_only": {
                 "median_seconds": opt01_median.as_secs_f64(),
                 "range_seconds": [opt01_min.as_secs_f64(), opt01_max.as_secs_f64()],
                 "counters": graph_counts_json(opt01_counts),
+                "callbacks_before_tick_window": opt01_callbacks_before,
+                "callbacks_in_tick_window": opt01_callbacks_window,
+                "piston_samples_in_tick_window": opt01_piston_samples_window,
                 "tables": opt01_tables.unwrap(),
                 "estimated_retained_bytes_after_callbacks": opt01_callback_bytes,
                 "estimated_retained_bytes_after_lowering": opt01_lowering_bytes,
+                "preparation_tables": opt01_preparation_tables.unwrap(),
             },
             "o1_plus_dust": {
                 "median_seconds": dust_median.as_secs_f64(),
                 "range_seconds": [dust_min.as_secs_f64(), dust_max.as_secs_f64()],
                 "counters": graph_counts_json(dust_counts),
+                "callbacks_before_tick_window": dust_callbacks_before,
+                "callbacks_in_tick_window": dust_callbacks_window,
+                "piston_samples_in_tick_window": dust_piston_samples_window,
                 "tables": dust_graph_tables.unwrap(),
                 "candidate_coverage_tables": coverage,
                 "long_candidate_neighbor_power_samples": candidate_power_samples,
                 "query_sample_instrumentation_enabled": cfg!(feature = "graph-profile"),
                 "estimated_retained_bytes_after_callbacks": dust_callback_bytes,
                 "estimated_retained_bytes_after_lowering": dust_lowering_bytes,
+                "preparation_tables": dust_preparation_tables.unwrap(),
             },
             "interpreter": {
                 "median_seconds": interpreter_median.as_secs_f64(),
@@ -527,6 +796,7 @@ fn graph_short(cpu: Cpu, iterations: usize, output: Option<&str>, label: &str) {
             "general_counters_match_cfg_test_episode": counts == TEST_GRAPH_COUNTS,
             "ram_matches_interpreter_each_sample": true,
             "timed_operations": "100 calls to tick_with_world or tick_interpreted; compile, input setup, flush, RAM reads, and counter checks excluded",
+            "callback_research": callback_research,
         });
         let path = Path::new(env!("CARGO_MANIFEST_DIR"))
             .join("../..")
@@ -546,6 +816,33 @@ fn graph_counts_json(counts: GraphExecutionCounts) -> serde_json::Value {
         "piston_samples": counts.piston_samples,
         "piston_actions": counts.piston_actions,
         "deferred_publications": counts.deferred_publications,
+    })
+}
+
+#[cfg(feature = "graph-profile")]
+fn callback_profile_json(profile: GraphCallbackProfile) -> serde_json::Value {
+    serde_json::to_value(profile).unwrap()
+}
+
+#[cfg(feature = "graph-profile")]
+fn callback_profile_names_json() -> serde_json::Value {
+    serde_json::json!({
+        "route_roles": GraphCallbackProfile::ROUTE_ROLES,
+        "phases": GraphCallbackProfile::PHASES,
+        "guard_kinds": GraphCallbackProfile::GUARD_KINDS,
+        "receiver_families": GraphCallbackProfile::RECEIVER_FAMILIES,
+        "delivery_kinds": GraphCallbackProfile::DELIVERY_KINDS,
+        "handler_families": GraphCallbackProfile::HANDLER_FAMILIES,
+        "profile_notes": {
+            "dispatches_by_receiver_and_kind": "receiver rows, delivery kind columns",
+            "dispatches_by_role_and_kind": "route role rows, delivery kind columns",
+            "route_calls_by_role": "route role order",
+            "delivery_records_by_role": "route role order",
+            "route_calls_by_phase_and_role": "phase rows, route role columns",
+            "dispatches_by_phase_and_role": "phase rows, route role columns",
+            "guard_operations_by_kind": "guard kind order",
+            "handler_invocations_by_family": "handler family order",
+        }
     })
 }
 

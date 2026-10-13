@@ -32,6 +32,20 @@ impl Runtime {
     }
 
     #[cfg(feature = "graph-profile")]
+    pub(crate) fn graph_callback_profile(&self) -> Option<super::GraphCallbackProfile> {
+        match self {
+            Self::Graph(backend) => Some(backend.callback_execution_profile()),
+        }
+    }
+
+    #[cfg(feature = "graph-profile")]
+    pub(crate) fn graph_callback_inventory(&self) -> Option<serde_json::Value> {
+        match self {
+            Self::Graph(backend) => Some(backend.callback_research_inventory()),
+        }
+    }
+
+    #[cfg(feature = "graph-profile")]
     pub(crate) fn dust_candidate_power_samples(&self) -> Vec<(usize, u64)> {
         match self {
             Self::Graph(backend) => backend.dust_candidate_power_samples(),

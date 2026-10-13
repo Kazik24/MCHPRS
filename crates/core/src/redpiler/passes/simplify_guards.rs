@@ -1041,6 +1041,8 @@ mod tests {
             routes: vec![Route {
                 source: node,
                 deliveries: Vec::new().into_boxed_slice(),
+                #[cfg(feature = "graph-profile")]
+                native_event_count: 0,
             }],
             wires: Vec::new(),
             dust_paths: Vec::new(),
