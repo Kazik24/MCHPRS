@@ -2,6 +2,8 @@
 
 Status: proposal for review. This incorporates the user's explicit correction: **the graph does not simulate physical movement and has no Motion/progress model**. Read [requirements](FINDINGS.md) and [agent rules](AGENT_GUIDE.md) first.
 
+Integration direction updated 2026-10-13: follow [the common graph and pass API migration](GRAPH_PIPELINE_MIGRATION.md). The required parser front end produces the general CompileGraph; configurable graph transformations, export and lowering consume it. GraphBackend remains the sole target executor. Direct/Native coexist only during migration and are retired after coverage and admission review. The earlier generalized-Direct proposal is superseded; historical module sketches below do not require preserving legacy executors.
+
 ## 1. The model in one circuit
 
 A piston is a stateful switch with normal power, QC power, and update inputs. Its state selects electrical connections and ordered update outputs. A delivered update samples power; a queued action later validates it. A noninstant action can disable connections and schedule their restoration. Shared blocks are shared graph resources whose contact selection changes.
@@ -29,7 +31,7 @@ World snapshot + ordinary pending ticks
 Inventory -> piston/contact discovery -> power links -> ordered update routes
         |
         v
-Prepared circuit -> validation -> reviewed rewrites -> dense lowering
+General CompileGraph -> validation -> configurable passes -> export/lowering
         |
         v
 Graph backend: node state + shared resources + graph event queues
@@ -38,19 +40,24 @@ Graph backend: node state + shared resources + graph event queues
         +---- projection/continuation adapter at flush or reset
 ```
 
-The parser owns geometry. Execution follows compiled IDs, selects contacts, samples inputs, and delivers events. The host owns external commands, presentation, and interpreter handoff.
+The parser owns geometry and runs as the required front-end phase in the compiler pipeline. Graph-pass implementations consume the complete CompileGraph and a shared context; developers can supply ordered enabled/disabled entries through the general API. Execution follows compiled IDs, selects contacts, samples inputs, and delivers events. The host owns external commands, presentation, and interpreter handoff. Passes do not require World in their API; source facts needed after parsing belong to compilation metadata.
 
 ```text
 redpiler/
+  mod.rs                 front end, transformations, outputs, activation
   compile_graph.rs       typed construction graph and validation
-  parser/
-    mod.rs               preparation stages and diagnostics
+  program_graph.rs       dense program/state and lowering
+  passes/
+    mod.rs               extensible graph-pass API and default pipeline
+    rich.rs              required parser orchestration and diagnostics
+  analysis/
     geometry.rs          pistons, contacts, shared resources, closure
-    power.rs             guarded normal/side/QC/conductor links
-    updates.rs           ordered update/shape routes
+    electrical.rs        guarded normal/side/QC/conductor links
+    callbacks.rs         ordered update/shape routes
+    export_json.rs       serialization of the prepared compilation artifact
   backend/
     graph/
-      mod.rs             lowering, ownership, host boundary
+      mod.rs             execution ownership and host boundary
       schedule.rs        logical phases and pending graph events
       components.rs      fixed component rules and callbacks
       wire.rs            ordered generalized dust evaluation
@@ -59,7 +66,7 @@ redpiler/
 
 Create modules when their assigned step needs them. Reuse existing helpers and queues. No general instruction VM, physical World adapter, worker pool, or new dependency is needed.
 
-Keep the current fast ordinary direct backend working. A rich piston graph must never fall back to native simulation.
+Keep ordinary Direct and Native working during the reviewed migration. After covered ordinary circuits use Graph and unsupported-case policy is explicit, retire both legacy backends. A Graph circuit must never fall back to native simulation. Recover compact ordinary performance with reviewed passes and specialized Graph instructions, rather than an independent simulator.
 
 ## 3. Ownership and memory
 

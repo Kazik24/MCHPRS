@@ -19,7 +19,8 @@ The design targets the repository's interpreter behavior for the admitted subset
 - Stationary entry is required. Ordinary pending ticks and saved strengths are imported without eager normalization.
 - Failure and cancellation preserve the input world, scheduler, and piston state. No partially active backend or published success statistics.
 - Parser completeness, abstraction sufficiency, and resource exhaustion have explicit errors. Do not interpret out-of-footprint contacts as air.
-- Generalized dust exists before any dust-elimination pass. Keep the current fast ordinary backend working throughout implementation.
+- Generalized dust exists before any dust-elimination pass. Keep legacy ordinary backends working during migration; retire Direct/Native only at the reviewed activation gate in [the common graph migration](GRAPH_PIPELINE_MIGRATION.md). Graph remains the target executor; do not move it into Direct.
+- Use the general graph-pass API for transformations. Developer-defined passes and configurable order/enable states must not require runner changes or a closed pass enum. Parser stages and outputs retain their required boundaries; accepted reordered pipelines still require behavioral verification.
 - New edge families must not accidentally enter old electrical-only rewrites, cycle guards, packed link encoding, or binary export.
 - An added observer or analog consumer can invalidate an optimization's observability assumptions.
 

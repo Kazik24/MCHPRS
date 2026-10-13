@@ -1,6 +1,6 @@
 # Redpiler pistons, attempt four
 
-Status (2026-10-12): Steps 01-09 implemented; Steps 10 (activation and continuation) and 11 (TEST family) implemented together under one authorization and awaiting human review. Step 12 is not started. Side projects scoped on 2026-10-12.
+Status (2026-10-13): Steps 01-09 implemented; Steps 10-11 implemented as reported by the user; Step 12 (adders) implemented and differentially verified in this turn, awaiting human review. Side projects remain scoped on 2026-10-12.
 
 The first deliverable is a readable, executable graph representing supported piston circuits without physical or interpreted redstone execution. The interpreter is the differential-test oracle. Generalized dust remains explicit initially; a later pass may eliminate it when power, updates, timing, and continuation are preserved. Pistons select compiled connections and publish events: the runtime has no physical Motion objects or progress simulation.
 
@@ -67,6 +67,8 @@ After Step 05, use [the complete parser review checklist](STEP_05_REVIEW.md) to 
 The [2026-10-12 deeper audit](PARSER_AUDIT_2026-10-12.md) records counterexamples, fixes, and passing follow-up checks. Its supported static parser gate is approved; runtime parity remains for Steps 06-10.
 
 ## Later implementation direction
+
+The proposed [common compiler graph, extensible pass pipeline and single Graph runtime migration](GRAPH_PIPELINE_MIGRATION.md) has seven separate review steps. Parsing becomes the required front end; developers can configure and test graph transformations through a general API; execution/export share one compilation artifact. Direct and Native remain during migration and are retired after the coverage/admission gate. The final runtime is Graph only. This replaces the earlier generalized-Direct proposal and does not mark these steps implemented or authorize starting them together.
 
 These are follow-up projects, not instructions to add speculative node variants during the steps above. Write and review their individual implementation prompts once the general graph provides concrete evidence.
 

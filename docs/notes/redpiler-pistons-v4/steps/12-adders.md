@@ -1,6 +1,6 @@
 # Step 12: ADDER_1BIT followed by ADDER_11BITS
 
-Status: not started. [Step 11](./11-test-family.md) must be reviewed.
+Status: implemented; awaiting human review.
 
 ## Agent prompt
 
@@ -46,3 +46,51 @@ No specialized adder execution, instant-group recognition, changed sampling wind
 ## Handoff
 
 Report changed files, invariants, exact test commands/counts/results, and remaining risks. Do not implement [Step 13](./13-divider-and-anpu.md) until the user reviews this result.
+
+## Implemented result
+
+The test-only adder harness is registered from `graph.rs` in `graph_adder_tests.rs`. It loads the two frozen IO schematics without dust normalization, verifies both fixture hashes against their local manifest and the pinned download manifest, and uses the declared ports and input polarities. No runtime behavior or fixture data changed.
+
+The final targeted release run passed all six registered tests:
+
+```text
+cargo test -p mchprs_core --release --locked redpiler::backend::graph::adder_tests:: -- --test-threads=1
+6 passed; 0 failed
+```
+
+Discovery was checked with this command; it reported six tests:
+
+```text
+cargo test -p mchprs_core --release --locked redpiler::backend::graph::adder_tests:: -- --list
+```
+
+The successful group covers:
+
+- all 8 one-bit operand/carry vectors and all 40 eleven-bit manifest vectors, with 3,640 external-action/tick boundaries compared in order. At each boundary it compares native and graph operations plus projected cells (including wire state), block entities, scheduled ticks, event queues, motions, clock, and phase;
+- one-bit payload sum ticks 1–3, sum repeater ticks 3–7, and carry repeater ticks 5–9; eleven-bit payload sum ticks 1–3 and sum repeater ticks 3–7;
+- reversed operand order, same-tick trigger cancellation, held input, repeated trigger and rearm; a control change after a graph-accepted action; shared resource/contact invariants after every graph boundary;
+- reset at an active one-bit cut and at a stationary all-zero endpoint. The active cut hands back an interpreter future that stays matched for 256 ticks. The zero-vector endpoint recompiles and stays matched for four more ticks;
+- translated 90° one-bit and 270° eleven-bit cases, including one-bit carry and eleven-bit overflow. The block rotation remains horizontal, so world-up QC is checked against the interpreter.
+
+The eleven-bit manifest declares only the low eleven sum bits as observations. Its carry expectation is checked against the fixture operands, and overflow vectors verify the wrapped sum; there is no separate eleven-bit carry output port to compare.
+
+The pre-acceptance inhibition checks also passed independently: the bounded graph adder episode and the native trace that changes dust connections before pending-target validation. The new post-acceptance control-change episode passed in the six-test group above.
+
+```text
+cargo test -p mchprs_core --release --locked redpiler::backend::graph::tests::adder_inhibition_matches_native_for_a_bounded_shared_resource_episode -- --exact --test-threads=1
+cargo test -p mchprs_core --release --locked redstone::instant_piston_tests::adder_inhibition_changes_dust_connections_before_pending_target_validation -- --exact --test-threads=1
+```
+
+### Optimizer observations
+
+The executable graph inventory, repeated piston slices, Step 11 comparison, and a protocol contract for a possible near-total adder reduction are recorded in [the adder optimizer analysis](./12-adder-optimizer-analysis.md). No optimization was implemented in this verification step.
+
+The no-carry one-bit episode remained active through the 256-tick reset continuation horizon, while the all-zero vector provided a stationary reset/recompile cut. The active reset future matched the interpreter at every continued boundary; no stationary recompile is claimed for that waveform. Existing Step 11 stop/restart coverage remains the broader restart evidence.
+
+### Review evidence
+
+- Code: new `crates/core/src/redpiler/backend/graph_adder_tests.rs`; test registration in `graph.rs`; the shared resource/contact invariant helper is exposed to the sibling test module in `graph_tests.rs`.
+- Notes: this result and inventory are saved in `12-adders.md` and [the separate optimizer analysis](./12-adder-optimizer-analysis.md); the Redpiler README status was updated.
+- Fixture SHA-256: one-bit `e80092c97fc4637c313a735d38d0241b69b876f41dd2db7de571a6458369e526`; eleven-bit `335ab94a3ba7f89cd0a497a2ac606372ff2743cfcd549f4863ead310af4138b9`.
+- `cargo fmt --all` and `git diff --check` completed. The release build emitted existing dead-code warnings for `passes/rich.rs`; the adder tests themselves had no failures.
+- No optimization pass, broad benchmark, Step 13 work, or full Step 11 rerun was included. The next useful work is a measured guard/route sharing analysis, followed by the reviewed safe preparation pass described in [Side B](./side-b-basic-passes.md).

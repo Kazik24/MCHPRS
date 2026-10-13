@@ -1,4 +1,4 @@
-//! Fixed graph preparation pipeline for ordinary compilation.
+//! Graph preparation pipelines; backends receive prepared execution data.
 mod clamp_weights;
 mod coalesce;
 mod constant_coalesce;
@@ -10,6 +10,7 @@ mod input_search;
 #[cfg(test)]
 mod legacy_regressions;
 mod prune_orphans;
+pub(crate) mod rich;
 mod unreachable_output;
 
 pub(crate) use identify_nodes::identify_block;

@@ -5,13 +5,13 @@ use super::electrical::{
 };
 use super::geometry::{GeometryDraft, GeometryError};
 use super::{AnalysisError, AnalysisLimits, AnalysisReport};
+use crate::redpiler::TaskMonitor;
 use crate::redpiler::compile_graph::{NodeState, NodeType};
 use crate::redpiler::program_graph::{
     CallbackReceiver, CircuitNodeKind, ComponentState, Guard, InputPort, LinkKind, LinkSpec,
     OperandView, PistonAvailability, PistonLane, PistonRoutes, PowerPort, Profile,
     ProfileElectrical, SiteSource, SiteTest, StateTest,
 };
-use crate::redpiler::TaskMonitor;
 use crate::world::World;
 use mchprs_blocks::blocks::{Block, ComparatorMode, Instrument, RedstoneWireSide};
 use mchprs_blocks::{BlockFace, BlockPos};

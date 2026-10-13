@@ -3067,6 +3067,10 @@ mod fuzz_tests;
 #[path = "graph_test_family_tests.rs"]
 mod test_family_tests;
 
+#[cfg(test)]
+#[path = "graph_adder_tests.rs"]
+mod adder_tests;
+
 fn emits_weak(block: Block, side: BlockFace) -> bool {
     match block {
         Block::RedstoneTorch { .. } => side != BlockFace::Top,

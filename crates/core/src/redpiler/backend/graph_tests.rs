@@ -2940,7 +2940,7 @@ fn contact_at(backend: &GraphBackend, position: BlockPos) -> ContactId {
         .unwrap()
 }
 
-fn assert_resource_invariants(backend: &GraphBackend) {
+pub(super) fn assert_resource_invariants(backend: &GraphBackend) {
     let mut selected = Vec::new();
     for (index, state) in backend.state.resources.iter().enumerate() {
         let spec = &backend.program.resources()[index];

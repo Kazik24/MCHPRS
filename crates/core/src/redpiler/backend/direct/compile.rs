@@ -13,6 +13,7 @@ use tracing::trace;
 use super::DirectBackend;
 use super::node::{ForwardLink, Node, NodeId, NodeInput, NodeType, Nodes, NonMaxU8};
 use crate::redpiler::backend::BackendError;
+use crate::redpiler::compile_graph::NodeType as CNodeType;
 
 const MAX_INPUTS: usize = u8::MAX as usize;
 
@@ -63,7 +64,6 @@ fn compile_node(
     stats.default_link_count += default_input_count;
     stats.side_link_count += side_input_count;
 
-    use crate::redpiler::compile_graph::NodeType as CNodeType;
     let updates = if node.ty != CNodeType::Constant {
         graph
             .edges_directed(node_idx, Direction::Outgoing)
