@@ -1,5 +1,7 @@
 //! Graph preparation pipelines; backends receive prepared execution data.
 pub(crate) mod rich;
+pub(crate) mod simplify_guards;
+pub(crate) mod utils;
 
 use super::program_graph::{CompileGraph, EntryState, GraphBuildError};
 use super::{CompilerOptions, GraphCounts, PassStatistics, TaskMonitor};
@@ -145,31 +147,25 @@ pub(crate) fn run_graph_pipeline(
         monitor.set_message(name.to_string());
         let start = Instant::now();
         if let Err(message) = item.pass.validate_input(graph) {
-            record_failed_pass(monitor, name, before, graph, start);
+            utils::record_transformation(monitor, name, before, GraphCounts::of(graph), start);
             return Err(PassPipelineError::Precondition {
                 pass: name,
                 message,
             });
         }
         if let Err(message) = item.pass.run(graph, &context) {
-            record_failed_pass(monitor, name, before, graph, start);
+            utils::record_transformation(monitor, name, before, GraphCounts::of(graph), start);
             return Err(PassPipelineError::Failed {
                 pass: name,
                 message,
             });
         }
         if let Err(source) = graph.validate() {
-            record_failed_pass(monitor, name, before, graph, start);
+            utils::record_transformation(monitor, name, before, GraphCounts::of(graph), start);
             return Err(PassPipelineError::MalformedOutput { pass: name, source });
         }
         let after = GraphCounts::of(graph);
-        monitor.record_transformation(PassStatistics {
-            name,
-            enabled: true,
-            before,
-            after,
-            duration: start.elapsed(),
-        });
+        utils::record_transformation(monitor, name, before, after, start);
         monitor.inc_progress();
         if monitor.cancelled() {
             return Err(PassPipelineError::Cancelled);
@@ -186,25 +182,16 @@ pub(crate) fn run_graph_pipeline(
     Ok(())
 }
 
-fn record_failed_pass(
-    monitor: &TaskMonitor,
-    name: &'static str,
-    before: GraphCounts,
-    graph: &CompileGraph,
-    start: Instant,
-) {
-    monitor.record_transformation(PassStatistics {
-        name,
-        enabled: true,
-        before,
-        after: GraphCounts::of(graph),
-        duration: start.elapsed(),
-    });
-}
-
-/// No rich rewrite has passed the behavioral review gate yet.
-pub(crate) fn default_graph_pipeline(_options: &CompilerOptions) -> PassPipeline {
-    PassPipeline::default()
+/// `--optimize` enables the reviewed guard and ineffective-update reduction.
+pub(crate) fn default_graph_pipeline(options: &CompilerOptions) -> PassPipeline {
+    if options.optimize {
+        PassPipeline::new(vec![PassEntry {
+            pass: Box::new(simplify_guards::GuardAndUpdateReduction),
+            enabled: true,
+        }])
+    } else {
+        PassPipeline::default()
+    }
 }
 
 #[cfg(test)]

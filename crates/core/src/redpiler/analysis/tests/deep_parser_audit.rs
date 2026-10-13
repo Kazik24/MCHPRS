@@ -42,7 +42,6 @@ fn guard_holds(
             match test {
                 SiteTest::Solid => block.is_solid(),
                 SiteTest::Transparent => block.is_transparent(),
-                SiteTest::Cube => block.is_cube(),
                 SiteTest::IsWire => matches!(block, Block::RedstoneWire { .. }),
                 SiteTest::Profile(id) => block.get_id() == draft.profiles[id.index()].raw_state,
             }

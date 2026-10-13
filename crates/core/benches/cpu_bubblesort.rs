@@ -1,9 +1,9 @@
 //! Paired Graph/interpreter runtime measurements for the BubbleSort CPU.
+#[allow(dead_code)] // This benchmark only uses CPU loading from shared benchmark support.
 #[path = "support/cpus.rs"]
 mod support;
 
 use mchprs_core::redpiler::{BackendKind, Compiler, CompilerOptions};
-use mchprs_core::world::World;
 use std::sync::Arc;
 
 fn main() {

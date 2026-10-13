@@ -19,7 +19,7 @@ macro_rules! graph_id {
             }
 
             pub(crate) fn try_from_index(index: usize) -> Option<Self> {
-                u32::try_from(index).ok().map(Self)
+                u32::try_from(index).ok().map(Self::new)
             }
 
             pub(crate) const fn index(self) -> usize {
@@ -43,7 +43,6 @@ pub(crate) enum InputPort {
     Main,
     Side,
     Quasi,
-    StrongIncident,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -57,12 +56,6 @@ pub(crate) enum PowerPort {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub(crate) enum LinkKind {
-    Power {
-        from: PowerPort,
-        to: InputPort,
-        attenuation: u8,
-        guard: GuardId,
-    },
     Update {
         direction: Option<BlockFace>,
         guard: GuardId,
@@ -78,7 +71,7 @@ pub(crate) struct LinkSpec {
     pub(crate) from: NodeId,
     pub(crate) to: NodeId,
     pub(crate) kind: LinkKind,
-    pub(crate) callback: Option<CallbackEdgeRef>,
+    pub(crate) callback: CallbackEdgeRef,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -161,13 +154,13 @@ pub(crate) struct Profile {
     pub(crate) electrical: ProfileElectrical,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub(crate) enum OperandView {
     Live,
     Captured,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub(crate) enum StateTest {
     PistonExtended(PistonId),
     PistonHeadPresent(PistonId),
@@ -182,16 +175,15 @@ pub(crate) enum StateTest {
     ResourceEnabled(ResourceId),
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub(crate) enum SiteTest {
     Solid,
     Transparent,
-    Cube,
     IsWire,
     Profile(ProfileId),
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub(crate) enum Guard {
     Always,
     State(StateTest),
@@ -307,7 +299,7 @@ pub(crate) struct PistonSpec {
     pub(crate) routes: PistonRoutes,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub(crate) enum PistonAvailability {
     Ready,
     HeadPending,
@@ -1405,48 +1397,26 @@ impl CircuitDraft {
             check_id("nodes", link.from.index(), self.nodes.len())?;
             check_id("nodes", link.to.index(), self.nodes.len())?;
             let guard = match link.kind {
-                LinkKind::Power {
-                    attenuation, guard, ..
-                } => {
-                    if attenuation > 15 {
-                        return Err(GraphBuildError::InvalidAttenuation {
-                            from: link.from,
-                            to: link.to,
-                            attenuation,
-                        });
-                    }
-                    guard
-                }
                 LinkKind::Update { guard, .. } | LinkKind::Shape { guard, .. } => guard,
             };
             check_id("guards", guard.index(), self.guards.len())?;
-            match (link.kind, link.callback) {
-                (LinkKind::Power { .. }, None) => {}
-                (_, Some(reference)) => {
-                    let route = self.routes.get(reference.route.index()).ok_or(
-                        GraphBuildError::InvalidReference {
-                            table: "routes",
-                            index: reference.route.index(),
-                            len: self.routes.len(),
-                        },
-                    )?;
-                    if route.source != link.from || matches!(link.kind, LinkKind::Power { .. }) {
-                        return Err(GraphBuildError::CallbackEdgeMismatch {
-                            route: reference.route,
-                            sequence: reference.sequence,
-                        });
-                    }
-                    *callback_edges
-                        .entry((reference, link.from, link.to, link.kind))
-                        .or_default() += 1;
-                }
-                (_, None) => {
-                    return Err(GraphBuildError::CallbackEdgeMissingReference {
-                        from: link.from,
-                        to: link.to,
-                    });
-                }
+            let reference = link.callback;
+            let route = self.routes.get(reference.route.index()).ok_or(
+                GraphBuildError::InvalidReference {
+                    table: "routes",
+                    index: reference.route.index(),
+                    len: self.routes.len(),
+                },
+            )?;
+            if route.source != link.from {
+                return Err(GraphBuildError::CallbackEdgeMismatch {
+                    route: reference.route,
+                    sequence: reference.sequence,
+                });
             }
+            *callback_edges
+                .entry((reference, link.from, link.to, link.kind))
+                .or_default() += 1;
         }
 
         for (route_index, route) in self.routes.iter().enumerate() {
@@ -1551,11 +1521,6 @@ pub(crate) enum GraphBuildError {
         node: NodeId,
         strength: u8,
     },
-    InvalidAttenuation {
-        from: NodeId,
-        to: NodeId,
-        attenuation: u8,
-    },
     InvalidPowerAttenuation {
         from: SiteId,
         attenuation: u8,
@@ -1588,10 +1553,6 @@ pub(crate) enum GraphBuildError {
     CallbackEdgeMismatch {
         route: RouteId,
         sequence: u32,
-    },
-    CallbackEdgeMissingReference {
-        from: NodeId,
-        to: NodeId,
     },
     PistonFarContactMismatch {
         node: NodeId,
@@ -1650,16 +1611,6 @@ impl std::fmt::Display for GraphBuildError {
                     node.index()
                 )
             }
-            Self::InvalidAttenuation {
-                from,
-                to,
-                attenuation,
-            } => write!(
-                f,
-                "power link {} -> {} has attenuation {attenuation}; expected 0..15",
-                from.index(),
-                to.index()
-            ),
             Self::InvalidPowerAttenuation { from, attenuation } => write!(
                 f,
                 "power source site {} has attenuation {attenuation}; expected 0..15",
@@ -1711,12 +1662,7 @@ impl std::fmt::Display for GraphBuildError {
                 "route {} delivery {sequence} does not match its callback edge",
                 route.index()
             ),
-            Self::CallbackEdgeMissingReference { from, to } => write!(
-                f,
-                "callback edge {} -> {} is missing its route reference",
-                from.index(),
-                to.index()
-            ),
+
             Self::PistonFarContactMismatch { node } => write!(
                 f,
                 "piston node {} has conflicting far contacts in its description and lane",
@@ -1996,7 +1942,7 @@ mod tests {
         let contact = ContactId::new(0);
         let second_contact = ContactId::new(1);
         let piston = PistonId::new(0);
-        let route = RouteId::new(0);
+        let route = RouteId::try_from_index(0).unwrap();
         let profile = ProfileId::new(0);
         let piston_node = NodeId::new(2);
         let contact_node = NodeId::new(3);
@@ -2062,15 +2008,13 @@ mod tests {
             ],
             links: vec![
                 LinkSpec {
-                    from: NodeId::new(0),
+                    from: NodeId::new(2),
                     to: NodeId::new(1),
-                    kind: LinkKind::Power {
-                        from: PowerPort::Output,
-                        to: InputPort::Main,
-                        attenuation: 15,
+                    kind: LinkKind::Update {
+                        direction: Some(BlockFace::East),
                         guard,
                     },
-                    callback: None,
+                    callback: CallbackEdgeRef { route, sequence: 0 },
                 },
                 LinkSpec {
                     from: NodeId::new(2),
@@ -2079,16 +2023,7 @@ mod tests {
                         direction: Some(BlockFace::East),
                         guard,
                     },
-                    callback: Some(CallbackEdgeRef { route, sequence: 0 }),
-                },
-                LinkSpec {
-                    from: NodeId::new(2),
-                    to: NodeId::new(1),
-                    kind: LinkKind::Update {
-                        direction: Some(BlockFace::East),
-                        guard,
-                    },
-                    callback: Some(CallbackEdgeRef { route, sequence: 1 }),
+                    callback: CallbackEdgeRef { route, sequence: 1 },
                 },
                 LinkSpec {
                     from: NodeId::new(2),
@@ -2097,10 +2032,20 @@ mod tests {
                         direction: BlockFace::West,
                         guard,
                     },
-                    callback: Some(CallbackEdgeRef { route, sequence: 2 }),
+                    callback: CallbackEdgeRef { route, sequence: 2 },
                 },
             ],
-            power_links: vec![],
+            power_links: vec![PowerLink {
+                from: site,
+                from_port: PowerPort::Output,
+                to: PowerTarget::Input {
+                    node: NodeId::new(0),
+                    port: InputPort::Main,
+                },
+                face: BlockFace::East,
+                attenuation: 15,
+                guard,
+            }],
             comparator_inputs: vec![],
             profiles: vec![Profile {
                 raw_state: 0,
@@ -2224,14 +2169,8 @@ mod tests {
     fn lowering_preserves_callback_duplicates_and_direction() {
         let draft = draft_with_mixed_links();
         draft.validate().unwrap();
-        assert_eq!(draft.links.len(), 4);
-        assert!(matches!(
-            draft.links[0].kind,
-            LinkKind::Power {
-                attenuation: 15,
-                ..
-            }
-        ));
+        assert_eq!(draft.links.len(), 3);
+        assert_eq!(draft.power_links.len(), 1);
         assert_eq!(
             draft
                 .links
@@ -2241,7 +2180,7 @@ mod tests {
             2
         );
         assert!(matches!(
-            draft.links[3].kind,
+            draft.links[2].kind,
             LinkKind::Shape {
                 direction: BlockFace::West,
                 ..
@@ -2296,35 +2235,23 @@ mod tests {
         ));
 
         let mut invalid_attenuation = draft_with_mixed_links();
-        invalid_attenuation.links[0].kind = LinkKind::Power {
-            from: PowerPort::Output,
-            to: InputPort::Main,
-            attenuation: 16,
-            guard: GuardId::new(0),
-        };
+        invalid_attenuation.power_links[0].attenuation = 16;
         assert!(matches!(
             invalid_attenuation.lower(),
-            Err(GraphBuildError::InvalidAttenuation {
+            Err(GraphBuildError::InvalidPowerAttenuation {
                 attenuation: 16,
                 ..
             })
         ));
 
         let mut invalid_callback = draft_with_mixed_links();
-        invalid_callback.links[1].callback = Some(CallbackEdgeRef {
-            route: RouteId::new(0),
+        invalid_callback.links[1].callback = CallbackEdgeRef {
+            route: RouteId::try_from_index(0).unwrap(),
             sequence: 99,
-        });
+        };
         assert!(matches!(
             invalid_callback.lower(),
             Err(GraphBuildError::CallbackEdgeMismatch { .. })
-        ));
-
-        let mut missing_callback = draft_with_mixed_links();
-        missing_callback.links[1].callback = None;
-        assert!(matches!(
-            missing_callback.lower(),
-            Err(GraphBuildError::CallbackEdgeMissingReference { .. })
         ));
     }
 
@@ -2360,8 +2287,10 @@ mod tests {
         mismatch.pistons[0].lane = PistonLane::SingleResource {
             far: ContactId::new(1),
         };
-        mismatch.pistons[0].routes.resource_restored_near = Some(RouteId::new(0));
-        mismatch.pistons[0].routes.resource_restored_far = Some(RouteId::new(0));
+        mismatch.pistons[0].routes.resource_restored_near =
+            Some(RouteId::try_from_index(0).unwrap());
+        mismatch.pistons[0].routes.resource_restored_far =
+            Some(RouteId::try_from_index(0).unwrap());
 
         assert!(matches!(
             mismatch.lower(),
@@ -2480,10 +2409,10 @@ mod tests {
         draft.routes[0].deliveries[1].sequence = 0;
         draft.links.retain(|link| {
             link.callback
-                != Some(CallbackEdgeRef {
-                    route: RouteId::new(0),
+                != CallbackEdgeRef {
+                    route: RouteId::try_from_index(0).unwrap(),
                     sequence: 1,
-                })
+                }
         });
         let result = std::panic::catch_unwind(|| draft.lower());
         assert!(
@@ -2515,12 +2444,11 @@ mod tests {
         delivery.guard = delivery_guard;
         draft.routes[0].deliveries = vec![delivery].into_boxed_slice();
         draft.links.retain(|link| {
-            link.callback.is_none()
-                || link.callback
-                    == Some(CallbackEdgeRef {
-                        route: RouteId::new(0),
-                        sequence: 0,
-                    })
+            link.callback
+                == CallbackEdgeRef {
+                    route: RouteId::try_from_index(0).unwrap(),
+                    sequence: 0,
+                }
         });
         for link in &mut draft.links {
             if let LinkKind::Update { guard, .. } = &mut link.kind {
@@ -2560,11 +2488,7 @@ mod tests {
             for delivery in draft.routes[0].deliveries.iter_mut() {
                 delivery.receiver = Some(CallbackReceiver::Component(target));
             }
-            for link in draft
-                .links
-                .iter_mut()
-                .filter(|link| link.callback.is_some())
-            {
+            for link in draft.links.iter_mut() {
                 link.to = target;
             }
             assert!(
@@ -2579,11 +2503,7 @@ mod tests {
             for delivery in receiver_alias.routes[0].deliveries.iter_mut() {
                 delivery.receiver = Some(CallbackReceiver::Component(target));
             }
-            for link in receiver_alias
-                .links
-                .iter_mut()
-                .filter(|link| link.callback.is_some())
-            {
+            for link in receiver_alias.links.iter_mut() {
                 link.to = target;
             }
             assert!(

@@ -254,7 +254,6 @@ enum StateTestDto {
 enum SiteTestDto {
     Solid,
     Transparent,
-    Cube,
     IsWire,
     Profile { profile: String },
 }
@@ -1087,7 +1086,7 @@ pub(super) fn from_graph(
             .iter()
             .enumerate()
             .map(|(index, link)| callback_link_dto(index, link))
-            .collect::<Result<_, _>>()?,
+            .collect(),
         routes: Some(
             source
                 .routes
@@ -1312,7 +1311,6 @@ fn guard_dto(guard: &Guard) -> GuardExpressionDto {
             test: match test {
                 SiteTest::Solid => SiteTestDto::Solid,
                 SiteTest::Transparent => SiteTestDto::Transparent,
-                SiteTest::Cube => SiteTestDto::Cube,
                 SiteTest::IsWire => SiteTestDto::IsWire,
                 SiteTest::Profile(profile) => SiteTestDto::Profile {
                     profile: typed_id("profile", profile.index()),
@@ -1527,7 +1525,6 @@ fn input_port(port: InputPort) -> &'static str {
         InputPort::Main => "main",
         InputPort::Side => "side",
         InputPort::Quasi => "quasi",
-        InputPort::StrongIncident => "strong_incident",
     }
 }
 
@@ -1552,21 +1549,13 @@ fn piston_routes_dto(routes: PistonRoutes) -> PistonRouteBindingsDto {
     }
 }
 
-fn callback_link_dto(index: usize, link: &LinkSpec) -> Result<CallbackLinkDto, ExportError> {
-    let callback = link
-        .callback
-        .ok_or_else(|| ExportError::new("validation", "callback link has no route reference"))?;
+fn callback_link_dto(index: usize, link: &LinkSpec) -> CallbackLinkDto {
+    let callback = link.callback;
     let (kind, direction, guard) = match link.kind {
         LinkKind::Update { direction, guard } => ("update", direction.map(face), guard),
         LinkKind::Shape { direction, guard } => ("shape", Some(face(direction)), guard),
-        LinkKind::Power { .. } => {
-            return Err(ExportError::new(
-                "validation",
-                "callback route contains an electrical power link",
-            ));
-        }
     };
-    Ok(CallbackLinkDto {
+    CallbackLinkDto {
         id: typed_id("callback_link", index),
         from: typed_id("node", link.from.index()),
         to: typed_id("node", link.to.index()),
@@ -1575,7 +1564,7 @@ fn callback_link_dto(index: usize, link: &LinkSpec) -> Result<CallbackLinkDto, E
         guard: typed_id("guard", guard.index()),
         route: typed_id("route", callback.route.index()),
         sequence: callback.sequence,
-    })
+    }
 }
 
 fn operand_view(view: OperandView) -> &'static str {

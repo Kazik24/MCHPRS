@@ -426,10 +426,10 @@ impl<W: World> Builder<'_, W> {
                     from: source,
                     to,
                     kind,
-                    callback: Some(CallbackEdgeRef {
+                    callback: CallbackEdgeRef {
                         route: route_id,
                         sequence,
-                    }),
+                    },
                 });
                 self.budget.check_estimated_bytes(
                     "callbacks",

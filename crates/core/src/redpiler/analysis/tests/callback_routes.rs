@@ -267,7 +267,7 @@ fn repeater_and_comparator_keep_their_distinct_first_directions() {
             };
             assert!(
                 callbacks.links.iter().any(|link| {
-                    link.callback == Some(route_ref)
+                    link.callback == route_ref
                         && link.from == route.source
                         && link.to == to
                         && link.kind

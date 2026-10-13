@@ -334,7 +334,6 @@ struct ResolvedSite {
     properties: ObservedProperties,
     solid: bool,
     transparent: bool,
-    cube: bool,
 }
 
 impl ResolvedSite {
@@ -3037,7 +3036,6 @@ impl GraphBackend {
                 match test {
                     SiteTest::Solid => resolved.solid,
                     SiteTest::Transparent => resolved.transparent,
-                    SiteTest::Cube => resolved.cube,
                     SiteTest::IsWire => matches!(resolved.block, Block::RedstoneWire { .. }),
                     SiteTest::Profile(profile) => resolved.profile == Some(*profile),
                 }
@@ -3068,7 +3066,6 @@ impl GraphBackend {
                     block,
                     solid: block.is_solid(),
                     transparent: block.is_transparent(),
-                    cube: block.is_cube(),
                 })
             }
             SiteSource::Contact(contact) => {
@@ -3100,7 +3097,6 @@ impl GraphBackend {
             properties: self.contact_properties(receiver, block),
             solid: facts.solid,
             transparent: facts.transparent,
-            cube: facts.cube,
         }
     }
 
@@ -3115,11 +3111,11 @@ impl GraphBackend {
         } else {
             self.block_for_profile(observed.profile?)?
         };
-        let (solid, transparent, cube) = if let Some(profile) = observed.profile {
+        let (solid, transparent) = if let Some(profile) = observed.profile {
             let facts = self.program.profiles()[profile.index()];
-            (facts.solid, facts.transparent, facts.cube)
+            (facts.solid, facts.transparent)
         } else {
-            (block.is_solid(), block.is_transparent(), block.is_cube())
+            (block.is_solid(), block.is_transparent())
         };
         Some(ResolvedSite {
             profile: observed.profile,
@@ -3128,7 +3124,6 @@ impl GraphBackend {
             properties: observed.properties.clone(),
             solid,
             transparent,
-            cube,
         })
     }
 
