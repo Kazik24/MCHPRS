@@ -448,6 +448,12 @@ impl Compiler {
         self.backend.as_ref()?.graph_execution_profile()
     }
 
+    /// Actual canonical neighbor-power samples for diagnostic long dust candidates.
+    #[cfg(feature = "graph-profile")]
+    pub fn dust_candidate_power_samples(&self) -> Option<Vec<(usize, u64)>> {
+        Some(self.backend.as_ref()?.dust_candidate_power_samples())
+    }
+
     pub fn compile<W: World>(
         &mut self,
         world: &W,

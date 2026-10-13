@@ -31,6 +31,13 @@ impl Runtime {
         }
     }
 
+    #[cfg(feature = "graph-profile")]
+    pub(crate) fn dust_candidate_power_samples(&self) -> Vec<(usize, u64)> {
+        match self {
+            Self::Graph(backend) => backend.dust_candidate_power_samples(),
+        }
+    }
+
     pub(crate) fn tick(&mut self) -> Result<(), graph::GraphExecutionError> {
         let Self::Graph(backend) = self;
         backend.tick()

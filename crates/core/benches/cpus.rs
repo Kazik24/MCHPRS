@@ -75,6 +75,8 @@ struct ShortSample {
     graph_tables: Option<GraphTableCounts>,
     /// This records candidate coverage and decline reasons for the experimental pass.
     dust_path_tables: Vec<(String, usize)>,
+    /// This counts executed six-direction power samples on long diagnostic candidates.
+    dust_candidate_power_samples: Vec<(usize, u64)>,
     /// This retains the parser's estimated table bytes after callback construction.
     retained_callback_bytes: usize,
     /// This retains the lowered program's estimated table bytes.
@@ -123,6 +125,7 @@ fn interpreter_sample(cpu: Cpu) -> ShortSample {
         graph_counts: None,
         graph_tables: None,
         dust_path_tables: vec![],
+        dust_candidate_power_samples: vec![],
         retained_callback_bytes: 0,
         retained_lowering_bytes: 0,
     }
@@ -204,6 +207,12 @@ fn graph_sample(
     let graph_counts = compiler
         .graph_execution_counts()
         .expect("Graph backend must report work counters");
+    #[cfg(feature = "graph-profile")]
+    let dust_candidate_power_samples = compiler
+        .dust_candidate_power_samples()
+        .expect("Graph profile must report long-candidate query samples");
+    #[cfg(not(feature = "graph-profile"))]
+    let dust_candidate_power_samples = vec![];
     compiler.flush(&mut world);
     ShortSample {
         initial,
@@ -212,6 +221,7 @@ fn graph_sample(
         graph_counts: Some(graph_counts),
         graph_tables: Some(graph_tables),
         dust_path_tables,
+        dust_candidate_power_samples,
         retained_callback_bytes,
         retained_lowering_bytes,
     }
@@ -245,6 +255,7 @@ fn graph_short(cpu: Cpu, iterations: usize, output: Option<&str>, label: &str) {
     let mut opt01_tables = None;
     let mut dust_graph_tables = None;
     let mut dust_path_tables = None;
+    let mut dust_candidate_power_samples = None;
     let mut retained_estimates = None;
 
     for sample in 0..iterations {
@@ -369,6 +380,14 @@ fn graph_short(cpu: Cpu, iterations: usize, output: Option<&str>, label: &str) {
             );
         }
         dust_path_tables = Some(dust_path_tables_sample);
+        let candidate_power_samples = dust.dust_candidate_power_samples.clone();
+        if let Some(previous) = &dust_candidate_power_samples {
+            assert_eq!(
+                &candidate_power_samples, previous,
+                "long-candidate query counts changed between samples"
+            );
+        }
+        dust_candidate_power_samples = Some(candidate_power_samples);
 
         let estimates = (
             graph.retained_callback_bytes,
@@ -457,6 +476,11 @@ fn graph_short(cpu: Cpu, iterations: usize, output: Option<&str>, label: &str) {
     );
     let coverage = dust_path_tables.unwrap();
     println!("O1+dust preparation coverage tables: {coverage:?}");
+    let candidate_power_samples = dust_candidate_power_samples.unwrap();
+    println!(
+        "Long-candidate canonical neighbor-power samples in the profiled O1+dust episode: {:?}",
+        candidate_power_samples
+    );
 
     if let Some(output) = output {
         let report = serde_json::json!({
@@ -491,6 +515,8 @@ fn graph_short(cpu: Cpu, iterations: usize, output: Option<&str>, label: &str) {
                 "counters": graph_counts_json(dust_counts),
                 "tables": dust_graph_tables.unwrap(),
                 "candidate_coverage_tables": coverage,
+                "long_candidate_neighbor_power_samples": candidate_power_samples,
+                "query_sample_instrumentation_enabled": cfg!(feature = "graph-profile"),
                 "estimated_retained_bytes_after_callbacks": dust_callback_bytes,
                 "estimated_retained_bytes_after_lowering": dust_lowering_bytes,
             },

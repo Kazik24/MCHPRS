@@ -4,22 +4,62 @@ Status: first query-contraction milestone implemented and awaiting human review.
 
 ## Implemented first milestone
 
-`passes/contract_dust_paths.rs` recognizes private, horizontal paths of two or three wires with one direct electrical ingress (lever or comparator). The input may produce any strength from 0 through 15. The candidate must have fixed non-contact geometry, no other nearby wire, no additional live or conducted source, no external power reader/observer, no comparator reading a path wire, stable saved sides, and entry strengths equal to the input minus wire distance. A parser-generated conducted read of a constant support block is accepted only when its compiled conductor has no incoming power links and is therefore identically zero. Matching imported wire ticks remain intact; a mismatched type declines the candidate.
+`passes/contract_dust_paths.rs` executes private, horizontal paths of two or three wires with one direct electrical ingress (lever or comparator). The input may produce any strength from 0 through 15. A candidate must have fixed non-contact geometry, no other nearby wire, no additional live or conducted source, no external power reader/observer, no comparator reading a path wire, stable saved sides, and entry strengths equal to the input minus wire distance. A parser-generated conducted read of a constant support block is accepted only when its compiled conductor has no incoming power links and is therefore identically zero. Matching imported wire ticks remain intact; a mismatched type declines the candidate.
 
 The plan retains the original wire state slots, input node/site/face, and ordered path node IDs. `GraphBackend` uses it only to bypass local neighbor-power sampling in the seed and captured Turbo power queries; the Turbo walk, ordered routes, intermediate writes, callback dispatch, scheduling, reset, and projection continue through the general executor. The returned diagnostic power tuple keeps the same direct-source/wire classifications as the general query. Later graph passes invalidate certificates before they can become stale. The pass is the second O1 entry but stays disabled unless the experimental option is explicitly selected.
 
 The correctness argument is local: the certificate accounts for every compiled power link into each path wire, admits only unconditional adjacent path-wire links at attenuation one plus the single direct input, and rejects any other nonzero or contact-dependent source. The first wire starts at the input strength and each later wire starts one level lower. Since runtime recomputes from the same live input and captured adjacent path-wire values, each specialized query matches the general query; the executor still performs all corresponding writes and notifications in their original order. This establishes the query rule, not a wholesale replacement of transient propagation.
 
-Focused evidence currently includes all 256 old/new analog strength pairs at all three path positions for both seed and Turbo queries, a separate captured-old/live-new check, a synchronous comparator callback episode comparing ordered callbacks and intermediate wire state, a seeded lever history against general Graph and the interpreter, reset/materialization/continue checks, and negative fixtures for branches, a second source, a powered conductor, an observer, a contact, stale saved strength/sides, and mismatched imported work. A matching imported tick retains its deadline and priority. The CPU_BubbleSort short benchmark examined 5,017 candidate groups: 1,798 were too long, 49 were branches/bends/cycles, 1,674 had a nearby external wire, and 1,496 had contact-dependent geometry. It accepted zero paths and elided zero power samples.
+Focused evidence currently includes all 256 old/new analog strength pairs at all three path positions for both seed and Turbo queries, a separate captured-old/live-new check, a synchronous comparator callback episode comparing ordered callbacks and intermediate wire state, a seeded lever history against general Graph and the interpreter, reset/materialization/continue checks, and negative fixtures for branches, a second source, a powered conductor, an observer, a contact, stale saved strength/sides, and mismatched imported work. A matching imported tick retains its deadline and priority. A profiling-only four-wire regression verifies the longer-candidate sample counter while the general path remains active.
 
-The release benchmark ran five fresh paired 100-tick episodes on the same sign-free in-memory schematic variant for Graph and interpreter. Preparation, initial stimulus, flush, RAM checks, and statistics were outside the timed interval. All Graph episodes matched interpreter RAM. The medians and ranges were:
+The new diagnostic census runs the full existing certificate checks on candidates over three wires but does not install them. It found 1,798 long groups, 4–53 wires each; **zero pass every other check**. Their first decline reasons are 280 branch/bend/cycle, 578 nearby-wire, and 940 contact-dependent groups. The complete length and runtime sample census is:
+
+| Wires | Groups | Canonical neighbor-power samples in 100 ticks |
+| ---: | ---: | ---: |
+| 4 | 335 | 252,534 |
+| 5 | 197 | 200,934 |
+| 6 | 160 | 208,176 |
+| 7 | 389 | 740,490 |
+| 8 | 47 | 87,204 |
+| 9 | 61 | 145,422 |
+| 10 | 61 | 236,730 |
+| 11 | 68 | 162,660 |
+| 12 | 68 | 186,990 |
+| 13 | 185 | 700,134 |
+| 14 | 33 | 123,036 |
+| 15 | 173 | 568,668 |
+| 17 | 1 | 7,260 |
+| 18 | 1 | 222 |
+| 19 | 2 | 540 |
+| 21 | 1 | 144 |
+| 23 | 1 | 282 |
+| 25 | 1 | 186 |
+| 27 | 1 | 300 |
+| 29 | 1 | 384 |
+| 32 | 1 | 426 |
+| 33 | 1 | 510 |
+| 35 | 1 | 0 |
+| 37 | 1 | 0 |
+| 39 | 1 | 216 |
+| 41 | 1 | 258 |
+| 43 | 1 | 342 |
+| 45 | 1 | 384 |
+| 47 | 1 | 468 |
+| 49 | 1 | 510 |
+| 51 | 1 | 552 |
+| 53 | 1 | 0 |
+| **Total** | **1,798** | **3,625,962** |
+
+These query counts are actual executions of the six canonical neighbor-power samples the specialization skips; they came from a separate `graph-profile` build and are not timing data. The O1-only and O1+dust builds retain identical post-pass graph tables, work counters, and zero accepted certificates, so both execute those same 3,625,962 samples. Since none of the long groups meet the current complete-boundary rule, this family has no safe longer-path expansion to make; continue with opt-03 instead of weakening the contact or neighboring-wire checks.
+
+The uninstrumented release benchmark ran five fresh paired 100-tick episodes on the same sign-free in-memory schematic variant for Graph and interpreter. Preparation, initial stimulus, flush, RAM checks, and statistics were outside the timed interval. All Graph episodes matched interpreter RAM. The medians and ranges were:
 
 | Executor | Median | Range |
 | --- | ---: | ---: |
-| General Graph (O0) | 1.494863 s | 1.449365–1.541250 s |
-| Opt-01 only (O1) | 1.473400 s | 1.401390–1.545116 s |
-| Opt-01 plus dust contraction (O1 + `--experimental-dust-paths`) | 1.341765 s | 1.289194–1.450645 s |
-| Interpreter | 0.739413 s | 0.690143–0.752256 s |
+| General Graph (O0) | 1.892285 s | 1.747518–1.961200 s |
+| Opt-01 only (O1) | 1.852721 s | 1.730187–1.901324 s |
+| Opt-01 plus dust contraction (O1 + `--experimental-dust-paths`) | 1.829631 s | 1.646093–1.918898 s |
+| Interpreter | 1.029503 s | 0.954668–1.069373 s |
 
 The apparent dust-enabled timing difference is not evidence of a speedup: no candidate was accepted, no dust query was elided, and the O1 and O1+dust ranges overlap. General Graph reported 20,005 scheduled ticks, 2,059,909 callbacks, 32,505 wire walks, 302,784 piston samples, and 27,884 accepted actions/deferred publications. Both O1 cases reported 2,057,492 callbacks and the same other counts. Retained-capacity estimates were 395.08 MiB after callbacks and 268.26 MiB after lowering for O0, versus 395.08 MiB and 185.26 MiB for O1 and O1+dust; these are table estimates, not RSS or peak-memory measurements.
 

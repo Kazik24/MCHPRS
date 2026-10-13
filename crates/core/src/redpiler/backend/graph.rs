@@ -366,6 +366,12 @@ pub(crate) struct GraphBackend {
     /// Opt-in inclusive operation timings; nested buckets overlap.
     #[cfg(feature = "graph-profile")]
     profile: GraphExecutionProfile,
+    #[cfg(feature = "graph-profile")]
+    /// Candidate wire node to path length, retained only by the profiling feature.
+    dust_candidate_length_by_node: Vec<Option<usize>>,
+    #[cfg(feature = "graph-profile")]
+    /// Counts actual six-site wire-power samples performed for each long candidate length.
+    dust_candidate_power_samples: FxHashMap<usize, u64>,
     #[cfg(test)]
     trace: Vec<String>,
     #[cfg(test)]
@@ -428,6 +434,14 @@ impl GraphBackend {
             lowered.logical_tick,
             lowered.positions,
         )?;
+        #[cfg(feature = "graph-profile")]
+        for (length, position) in monitor.take_dust_candidate_wires() {
+            let node = *backend
+                .positions
+                .get(&position)
+                .expect("long candidate wire position survives lowering");
+            backend.dust_candidate_length_by_node[node.index()] = Some(length);
+        }
         backend.import_ticks(lowered.imported_ticks)?;
         let initial_command_ticks: Vec<_> = backend
             .program
@@ -682,6 +696,10 @@ impl GraphBackend {
             counts: GraphExecutionCounts::default(),
             #[cfg(feature = "graph-profile")]
             profile: GraphExecutionProfile::default(),
+            #[cfg(feature = "graph-profile")]
+            dust_candidate_length_by_node: vec![None; node_count],
+            #[cfg(feature = "graph-profile")]
+            dust_candidate_power_samples: FxHashMap::default(),
             #[cfg(test)]
             trace: Vec::new(),
             #[cfg(test)]
@@ -2142,7 +2160,9 @@ impl GraphBackend {
         self.seed_power_general(plan)
     }
 
-    fn seed_power_general(&self, plan: &WirePlan) -> (u8, u8, u8) {
+    fn seed_power_general(&mut self, plan: &WirePlan) -> (u8, u8, u8) {
+        #[cfg(feature = "graph-profile")]
+        self.record_dust_candidate_power_samples(plan.node);
         let up_solid = self.live_site(plan.canonical_neighbors[3]).solid;
         let mut block_power = 0;
         let mut wire_power = 0;
@@ -2604,11 +2624,13 @@ impl GraphBackend {
     }
 
     fn turbo_wire_power_general(
-        &self,
+        &mut self,
         plan: &WirePlan,
         ordered: &[SiteId; 24],
         walk: &WireWalk,
     ) -> (u8, u8, u8) {
+        #[cfg(feature = "graph-profile")]
+        self.record_dust_candidate_power_samples(plan.node);
         let mut wire_power = 0;
         for (face, index) in BlockFace::values().into_iter().zip([3, 2, 4, 5, 1, 0]) {
             let site = plan.canonical_neighbors[index];
@@ -3529,6 +3551,27 @@ impl GraphBackend {
     #[cfg(feature = "graph-profile")]
     pub(crate) fn execution_profile(&self) -> GraphExecutionProfile {
         self.profile
+    }
+
+    #[cfg(feature = "graph-profile")]
+    pub(crate) fn dust_candidate_power_samples(&self) -> Vec<(usize, u64)> {
+        let mut counts: Vec<_> = self
+            .dust_candidate_power_samples
+            .iter()
+            .map(|(&length, &samples)| (length, samples))
+            .collect();
+        counts.sort_unstable_by_key(|(length, _)| *length);
+        counts
+    }
+
+    #[cfg(feature = "graph-profile")]
+    fn record_dust_candidate_power_samples(&mut self, node: NodeId) {
+        if let Some(Some(length)) = self.dust_candidate_length_by_node.get(node.index()) {
+            *self
+                .dust_candidate_power_samples
+                .entry(*length)
+                .or_default() += 6;
+        }
     }
 
     #[cfg(feature = "graph-profile")]

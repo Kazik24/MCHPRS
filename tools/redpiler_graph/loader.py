@@ -253,6 +253,8 @@ def _validate(data: Any) -> dict[str, dict[str, dict[str, Any]]]:
             raise GraphFormatError(f"{identifier} input must be an electrical node")
         if records["site"][input_site]["source"] != {"kind": "component", "node": input_node}:
             raise GraphFormatError(f"{identifier} input site must be owned by its input node")
+        if path.get("input_face") not in ("north", "south", "east", "west"):
+            raise GraphFormatError(f"{identifier} input face must be horizontal")
         wires = _array(path.get("wires"), f"{identifier}.wires")
         if len(wires) < 2:
             raise GraphFormatError(f"{identifier} must contain at least two wire nodes")

@@ -82,6 +82,11 @@ class DustPathLoaderTests(unittest.TestCase):
         with self.assertRaisesRegex(GraphFormatError, "missing node ID"):
             self.load_data(data)
 
+        data = document()
+        data["graph"]["dust_paths"][0]["input_face"] = "up"
+        with self.assertRaisesRegex(GraphFormatError, "input face must be horizontal"):
+            self.load_data(data)
+
     def test_rejects_duplicate_dust_path_ids_and_wire_membership(self):
         data = document()
         duplicate = dict(data["graph"]["dust_paths"][0])

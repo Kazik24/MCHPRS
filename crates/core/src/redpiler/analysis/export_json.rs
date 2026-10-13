@@ -1561,7 +1561,9 @@ fn validate_dust_paths(
         check_ref(nodes, &path.input_node, "dust path input")?;
         check_ref(sites, &path.input_site, "dust path input site")?;
         if !matches!(
-            node_records.get(path.input_node.as_str()).map(|node| &node.kind),
+            node_records
+                .get(path.input_node.as_str())
+                .map(|node| &node.kind),
             Some(NodeKindDto::Electrical { .. })
         ) {
             return Err(ExportError::new(
@@ -1580,7 +1582,10 @@ fn validate_dust_paths(
                 format!("{} input site must be owned by its input node", path.id),
             ));
         }
-        if !matches!(path.input_face.as_str(), "north" | "south" | "east" | "west") {
+        if !matches!(
+            path.input_face.as_str(),
+            "north" | "south" | "east" | "west"
+        ) {
             return Err(ExportError::new(
                 "validation",
                 format!("{} input face must be horizontal", path.id),
@@ -1653,13 +1658,17 @@ mod dust_path_validation_tests {
             },
             NodeDto {
                 id: "node:1".into(),
-                kind: NodeKindDto::Wire { plan: "wire:0".into() },
+                kind: NodeKindDto::Wire {
+                    plan: "wire:0".into(),
+                },
                 position: None,
                 output_route: None,
             },
             NodeDto {
                 id: "node:2".into(),
-                kind: NodeKindDto::Wire { plan: "wire:1".into() },
+                kind: NodeKindDto::Wire {
+                    plan: "wire:1".into(),
+                },
                 position: None,
                 output_route: None,
             },
@@ -1681,7 +1690,9 @@ mod dust_path_validation_tests {
         let sites = vec![SiteDto {
             id: "site:0".into(),
             position: PositionDto { x: 0, y: 0, z: 0 },
-            source: SiteSourceDto::Component { node: "node:0".into() },
+            source: SiteSourceDto::Component {
+                node: "node:0".into(),
+            },
         }];
         let node_ids = nodes.iter().map(|node| node.id.clone()).collect();
         let site_ids = sites.iter().map(|site| site.id.clone()).collect();
@@ -1704,24 +1715,40 @@ mod dust_path_validation_tests {
     }
 
     #[test]
+    fn rejects_non_horizontal_dust_path_input_faces() {
+        let mut certificate = path("dust_path:0", &["node:1", "node:2"]);
+        certificate.input_face = "up".into();
+        assert!(
+            validate(&[certificate])
+                .unwrap_err()
+                .to_string()
+                .contains("input face must be horizontal")
+        );
+    }
+
+    #[test]
     fn rejects_duplicate_dust_path_ids_and_wire_ownership() {
         let duplicate_ids = [
             path("dust_path:0", &["node:1", "node:2"]),
             path("dust_path:0", &["node:1", "node:2"]),
         ];
-        assert!(validate(&duplicate_ids)
-            .unwrap_err()
-            .to_string()
-            .contains("duplicate dust_path ID"));
+        assert!(
+            validate(&duplicate_ids)
+                .unwrap_err()
+                .to_string()
+                .contains("duplicate dust_path ID")
+        );
 
         let shared_wire = [
             path("dust_path:0", &["node:1", "node:2"]),
             path("dust_path:1", &["node:1", "node:2"]),
         ];
-        assert!(validate(&shared_wire)
-            .unwrap_err()
-            .to_string()
-            .contains("repeats or shares wire node"));
+        assert!(
+            validate(&shared_wire)
+                .unwrap_err()
+                .to_string()
+                .contains("repeats or shares wire node")
+        );
     }
 }
 

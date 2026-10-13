@@ -63,19 +63,39 @@ impl GraphPass for ContractDustPaths {
             let component_len = component.len();
             if component_len > 3 {
                 *report.long_candidates.entry(component_len).or_default() += 1;
+                #[cfg(feature = "graph-profile")]
+                context.monitor.record_dust_candidate_wires(
+                    component_len,
+                    &component
+                        .iter()
+                        .filter_map(|node| graph.nodes[node.index()].position)
+                        .collect::<Vec<_>>(),
+                );
             }
             if component.iter().any(|node| already_assigned.contains(node)) {
                 report.decline(DeclineReason::AlreadyAssigned);
+                if component_len > 3 {
+                    report.decline_long(component_len, DeclineReason::AlreadyAssigned);
+                }
                 continue;
             }
             match certify_candidate(graph, &context.entry, component) {
                 Ok(plan) if plan.wires.len() > 3 => {
                     // Keep the current runtime bound while measuring the wider proof's coverage.
-                    *report.long_otherwise_eligible.entry(plan.wires.len()).or_default() += 1;
+                    *report
+                        .long_otherwise_eligible
+                        .entry(plan.wires.len())
+                        .or_default() += 1;
                     report.decline(DeclineReason::TooLong);
+                    report.decline_long(component_len, DeclineReason::TooLong);
                 }
                 Ok(plan) => accepted.push(plan),
-                Err(reason) => report.decline(reason),
+                Err(reason) => {
+                    report.decline(reason);
+                    if component_len > 3 {
+                        report.decline_long(component_len, reason);
+                    }
+                }
             }
             if index % 64 == 0 && context.monitor.cancelled() {
                 return Ok(());
@@ -100,12 +120,17 @@ struct CandidateReport {
     covered_wires: usize,
     long_candidates: BTreeMap<usize, usize>,
     long_otherwise_eligible: BTreeMap<usize, usize>,
+    long_declines: BTreeMap<(usize, DeclineReason), usize>,
     declines: FxHashMap<DeclineReason, usize>,
 }
 
 impl CandidateReport {
     fn decline(&mut self, reason: DeclineReason) {
         *self.declines.entry(reason).or_default() += 1;
+    }
+
+    fn decline_long(&mut self, length: usize, reason: DeclineReason) {
+        *self.long_declines.entry((length, reason)).or_default() += 1;
     }
 
     fn record(&self, monitor: &crate::redpiler::TaskMonitor) {
@@ -126,11 +151,20 @@ impl CandidateReport {
             ),
         ];
         for (&length, &count) in &self.long_candidates {
-            tables.push(report_table(format!("long candidate length {length}"), count));
+            tables.push(report_table(
+                format!("long candidate length {length}"),
+                count,
+            ));
         }
         for (&length, &count) in &self.long_otherwise_eligible {
             tables.push(report_table(
                 format!("otherwise eligible length {length}"),
+                count,
+            ));
+        }
+        for (&(length, reason), &count) in &self.long_declines {
+            tables.push(report_table(
+                format!("length {length}: {}", reason.table()),
                 count,
             ));
         }
@@ -154,7 +188,7 @@ fn report_table(table: impl Into<String>, entries: usize) -> PreparationTableSta
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 enum DeclineReason {
     AlreadyAssigned,
     TooLong,
@@ -947,6 +981,13 @@ mod tests {
         .unwrap();
         let document: serde_json::Value =
             serde_json::from_slice(&export.to_bytes().unwrap()).unwrap();
+        assert!(
+            document["capabilities"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|capability| capability == "dust_path_certificates")
+        );
         let paths = document["graph"]["dust_paths"].as_array().unwrap();
         assert_eq!(paths.len(), 1);
         assert_eq!(paths[0]["wires"].as_array().unwrap().len(), 3);
@@ -1192,5 +1233,74 @@ mod tests {
         resumed.tick_with_world(&mut specialized_world).unwrap();
         resumed.flush(&mut specialized_world);
         assert_path_worlds_match(&interpreted, &specialized_world);
+    }
+
+    #[cfg(feature = "graph-profile")]
+    #[test]
+    fn long_candidate_profile_counts_general_neighbor_power_samples() {
+        let mut world = path_world();
+        for distance in 0..4 {
+            world.set_block(
+                FIRST_WIRE + BlockPos::new(distance, 0, 0),
+                Block::RedstoneWire {
+                    wire: RedstoneWire {
+                        power: 15 - distance as u8,
+                        ..Default::default()
+                    },
+                },
+            );
+        }
+        for distance in 0..4 {
+            let position = FIRST_WIRE + BlockPos::new(distance, 0, 0);
+            let Block::RedstoneWire { wire } = world.get_block(position) else {
+                unreachable!();
+            };
+            world.set_block(
+                position,
+                Block::RedstoneWire {
+                    wire: crate::redstone::wire::get_regulated_sides(wire, &world, position),
+                },
+            );
+        }
+        let mut compiler = Compiler::default();
+        compiler
+            .compile(
+                &world,
+                BOUNDS,
+                CompilerOptions {
+                    optimization_level: Some(1),
+                    experimental_dust_paths: true,
+                    ..Default::default()
+                },
+                vec![],
+                Default::default(),
+            )
+            .unwrap();
+        let tables = &compiler.stats().unwrap().graph.preparation_tables;
+        assert!(
+            tables.iter().any(|table| {
+                table.stage == "dust contraction"
+                    && table.table == "otherwise eligible length 4"
+                    && table.entries == 1
+            }),
+            "{tables:?}"
+        );
+
+        set_interpreted_lever(&mut world, false);
+        compiler.on_use_block(INPUT);
+        compiler.tick_with_world(&mut world).unwrap();
+        let samples = compiler.dust_candidate_power_samples().unwrap();
+        assert!(
+            samples
+                .iter()
+                .any(|(length, count)| *length == 4 && *count > 0)
+        );
+        assert_eq!(
+            compiler
+                .graph_execution_counts()
+                .unwrap()
+                .dust_path_power_samples_elided,
+            0
+        );
     }
 }

@@ -336,6 +336,7 @@ test('rejects dangling and duplicate dust-path references while preserving the l
     (graph) => { addDustPath(graph); graph.graph.dust_paths[0].wires[1] = 'node:999999'; },
     (graph) => { addDustPath(graph); graph.graph.dust_paths[0].wires[1] = graph.graph.dust_paths[0].wires[0]; },
     (graph) => { addDustPath(graph); graph.graph.dust_paths.push({ ...graph.graph.dust_paths[0] }); },
+    (graph) => { addDustPath(graph); graph.graph.dust_paths[0].input_face = 'up'; },
   ];
   for (const mutate of malformed) {
     const graph = adderFixture();

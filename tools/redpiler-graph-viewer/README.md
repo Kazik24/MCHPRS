@@ -21,6 +21,6 @@ The browser library is vendored under `vendor/` so the viewer works without a bu
 
 Example export: `../../docs/notes/redpiler-pistons-v4/fixtures/adder-1bit.graph.json`.
 
-Run the standalone regression checks with `node --test tools/redpiler-graph-viewer/viewer.test.cjs` from the repository root.
+Run the standalone regression checks with `node --test tools/redpiler-graph-viewer/viewer.test.cjs` and `py -3 -m unittest tools.redpiler_graph.test_loader` from the repository root.
 
 To inspect the adder: load the example export, click a lever under **Inputs**, and follow an outgoing link in the right panel. Search `node:49` to inspect a repeater fed by `node:50`; follow `power_link:0`, then its guard reference. Select `snapshot:initial` to see guard status. Search `resource:1` to highlight its three contacts, then follow a contact reference to inspect its alternatives. Try **World X/Z by Y layer** with **Y = 33**, then **Fit view**. Routes and trace remain explicitly unavailable for this electrical draft.

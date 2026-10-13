@@ -60,6 +60,7 @@ function validateGraph(data) {
     if (sites.get(path.input_site)?.source?.kind !== "component" || sites.get(path.input_site).source.node !== path.input_node) {
       throw Error(`${path.id} input site must be owned by its input node.`);
     }
+    if (!["north", "south", "east", "west"].includes(path.input_face)) throw Error(`${path.id} input face must be horizontal.`);
     if (!Array.isArray(path.wires) || path.wires.length < 2) throw Error(`${path.id} must contain at least two wire nodes.`);
     const localWires = new Set();
     for (const wireId of path.wires) {

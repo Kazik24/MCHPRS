@@ -31,6 +31,8 @@ def summary(document: GraphDocument) -> None:
     print("records:")
     for table in TABLES.values():
         value = data["graph"].get(table)
+        if table == "dust_paths" and value is None:
+            value = []
         print(f"  {table}: {'unavailable' if value is None else len(value)}")
     print(f"snapshots: {len(data['snapshots'])}")
     print(f"trace: {'unavailable' if data['trace'] is None else len(data['trace'])}")

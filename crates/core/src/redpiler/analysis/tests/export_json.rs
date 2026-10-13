@@ -355,7 +355,10 @@ fn write_graph_fixture_json_variants() {
     let mut schematics: Vec<_> = std::fs::read_dir(&directory)
         .unwrap()
         .map(|entry| entry.unwrap().path())
-        .filter(|path| path.extension().is_some_and(|extension| extension == "schem"))
+        .filter(|path| {
+            path.extension()
+                .is_some_and(|extension| extension == "schem")
+        })
         .collect();
     schematics.sort();
     assert!(!schematics.is_empty(), "no graph fixture schematics found");
@@ -391,7 +394,11 @@ fn write_graph_fixture_json_variants() {
             std::fs::write(destination, bytes).unwrap();
         }
     }
-    assert!(rejected.is_empty(), "fixtures not exported:\n{}", rejected.join("\n"));
+    assert!(
+        rejected.is_empty(),
+        "fixtures not exported:\n{}",
+        rejected.join("\n")
+    );
 }
 
 fn graph_fixture_world(path: &std::path::Path) -> PlotWorld {
@@ -403,11 +410,30 @@ fn graph_fixture_world(path: &std::path::Path) -> PlotWorld {
         BASE + BlockPos::new(clipboard.offset_x, clipboard.offset_y, clipboard.offset_z),
         false,
     );
-    if path.file_name().is_some_and(|name| name == "adder_non_instant_pistons_4bit.schem") {
-        // This label is mounted on a piston base and is rejected when that base moves.
-        let sign = BlockPos::new(63, 38, 58);
-        assert!(matches!(world.get_block(sign), Block::WallSign { .. }));
-        world.set_block(sign, Block::Air);
+    if path
+        .file_name()
+        .is_some_and(|name| name == "adder_non_instant_pistons_4bit.schem")
+    {
+        // This fixture uses wall signs as labels, including labels on moving piston supports.
+        let last = BASE
+            + BlockPos::new(
+                clipboard.size_x as i32 - 1,
+                clipboard.size_y as i32 - 1,
+                clipboard.size_z as i32 - 1,
+            );
+        let mut removed = 0;
+        for y in BASE.y..=last.y {
+            for z in BASE.z..=last.z {
+                for x in BASE.x..=last.x {
+                    let pos = BlockPos::new(x, y, z);
+                    if matches!(world.get_block(pos), Block::WallSign { .. }) {
+                        world.set_block(pos, Block::Air);
+                        removed += 1;
+                    }
+                }
+            }
+        }
+        assert!(removed > 0, "expected labeled graph fixture");
     }
     world
 }

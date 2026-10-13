@@ -1,12 +1,12 @@
 # Graph JSON inspection contract
 
-Status: proposed v1 format, 2026-10-12. Review alongside Side A1; implementation must map actual types faithfully.
+Status: implemented v1.1 inspection format. The serializer, Rust validator, Python loader, and local viewer validate the additive dust-path certificate table; older v1 exports without it remain readable.
 
 ## Principles
 
 Pretty-printed UTF-8 JSON, explicit tagged records, stable ordering, and named fields. Export semantic data rather than Rust debug text, packed memory, pointer addresses, or enum discriminants. Positions are provenance; runtime connections refer to typed IDs. There are no motion/progress/carried-block fields.
 
-IDs are readable typed strings (`node:0`, `site:0`, `guard:0`, `contact:0`, `resource:0`, `piston:0`, `route:0`, `profile:0`, `wire:0`). They remain stable within an artifact and its snapshots/trace, but are not promised stable after recompilation. Links have export-local IDs so inspections can refer to duplicate records. Array order follows source IDs; route delivery order is authoritative. A future rewrite needs an explicit provenance mapping to compare two artifacts.
+IDs are readable typed strings (`node:0`, `site:0`, `guard:0`, `contact:0`, `resource:0`, `piston:0`, `route:0`, `profile:0`, `wire:0`, `dust_path:0`). They remain stable within an artifact and its snapshots/trace, but are not promised stable after recompilation. Links have export-local IDs so inspections can refer to duplicate records. Array order follows source IDs; route delivery order is authoritative. A future rewrite needs an explicit provenance mapping to compare two artifacts.
 
 Version 1 is inspection/replay, not a backend import or executable ABI. Reject unknown major versions; tolerate unknown additive fields. A future runnable format must define every pending-work item and execution frontier before advertising that capability.
 
@@ -16,7 +16,7 @@ Version 1 is inspection/replay, not a backend import or executable ABI. Reject u
 type GraphExport = {
   format: "mchprs.redpiler.graph"; // Identifies this inspection format.
   version: { major: number; minor: number }; // Separates incompatible contracts from additive changes.
-  stage: "electrical_draft" | "program"; // States whether callback assembly and program validation are complete.
+  stage: "electrical_draft" | "callback_draft" | "program"; // States whether callback assembly and program validation are complete.
   capabilities: string[]; // Lists available sections such as power, routes, snapshots, dust_path_certificates, or trace_replay.
   source: Source; // Describes the selection and source revision used to create this artifact.
   graph: GraphTables; // Holds immutable graph records and all typed references.
