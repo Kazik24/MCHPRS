@@ -185,7 +185,7 @@ fn compiled_handoff_preserves_pending_short_pulse() {
             .unwrap();
         let mut trace = Vec::new();
         for _ in 0..12 {
-            compiler.tick();
+            compiler.tick().unwrap();
             compiler.flush(&mut world);
             trace.push(world.get_block(output) == Block::RedstoneLamp { lit: true });
         }
@@ -493,7 +493,7 @@ fn dust_steps_over_opaque_blocks_and_powers_the_block_below_in_both_backends() {
                     .unwrap();
                 compiler.on_use_block(source);
                 for _ in 0..4 {
-                    compiler.tick();
+                    compiler.tick().unwrap();
                 }
                 compiler.flush(&mut world);
             }

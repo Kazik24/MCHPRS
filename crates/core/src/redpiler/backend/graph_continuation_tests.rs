@@ -146,7 +146,7 @@ fn native_step(world: &mut PlotWorld, step: Step) {
 fn graph_step(compiler: &mut Compiler, world: &mut PlotWorld, step: Step, display: Display) {
     match step {
         Step::Toggle(position) => compiler.on_use_block(position),
-        Step::Tick => compiler.tick(),
+        Step::Tick => compiler.tick().unwrap(),
     }
     if display != Display::Suppressed {
         compiler.flush(world);

@@ -41,7 +41,7 @@ fn chungus_mandelbrot(c: &mut Criterion) {
     let mut compiler = init_compiler();
 
     c.bench_function("chungus-mandelbrot-tick", |b| {
-        b.iter(|| compiler.tick());
+        b.iter(|| compiler.tick().unwrap());
     });
 }
 
@@ -56,7 +56,7 @@ fn mandelbrot_full(_c: &mut Criterion) {
     let mut compiler = init_compiler();
     let start = Instant::now();
     for _ in 0..12411975 {
-        compiler.tick();
+        compiler.tick().unwrap();
     }
     println!("Mandelbrot benchmark completed in {:?}", start.elapsed());
 }

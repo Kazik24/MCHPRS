@@ -118,8 +118,8 @@ fn redpiler_activation_stages_barrel_close_notifications() {
     ));
     assert!(plot.world.scheduler().iter_entries().next().is_none());
 
-    plot.redpiler.tick();
-    plot.redpiler.tick();
+    plot.redpiler.tick().unwrap();
+    plot.redpiler.tick().unwrap();
     plot.redpiler.flush(&mut plot.world);
     assert!(matches!(
         plot.world.get_block(observer),

@@ -23,18 +23,17 @@ impl Runtime {
         }
     }
 
-    pub(crate) fn tick(&mut self) {
+    pub(crate) fn tick(&mut self) -> Result<(), graph::GraphExecutionError> {
         let Self::Graph(backend) = self;
-        if let Err(error) = backend.tick() {
-            tracing::error!(%error, "graph backend execution failed");
-        }
+        backend.tick()
     }
 
-    pub(crate) fn tick_with_world(&mut self, world: &mut impl crate::world::World) {
+    pub(crate) fn tick_with_world(
+        &mut self,
+        world: &mut impl crate::world::World,
+    ) -> Result<(), graph::GraphExecutionError> {
         let Self::Graph(backend) = self;
-        if let Err(error) = backend.tick_with_world(world) {
-            tracing::error!(%error, "graph backend execution failed");
-        }
+        backend.tick_with_world(world)
     }
 
     pub(crate) fn flush(&mut self, world: &mut impl crate::world::World, io_only: bool) {

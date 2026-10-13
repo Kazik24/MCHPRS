@@ -198,7 +198,7 @@ fn interpreter_and_compiled_bulbs_match_java_1_21_5() {
                 }
                 for _ in 0..sample["ticks"].as_u64().unwrap() {
                     if flags.is_some() {
-                        compiler.tick_with_world(&mut world);
+                        compiler.tick_with_world(&mut world).unwrap();
                     } else {
                         world.tick_interpreted();
                     }
@@ -362,7 +362,7 @@ fn copper_bulb_variants_do_not_age_during_simulation() {
             }
             for _ in 0..64 {
                 if flags.is_some() {
-                    compiler.tick_with_world(&mut world);
+                    compiler.tick_with_world(&mut world).unwrap();
                 } else {
                     world.tick_interpreted();
                 }

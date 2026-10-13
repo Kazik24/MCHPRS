@@ -167,7 +167,7 @@ fn valid_warp_name(name: &str) -> bool {
             .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b'-'))
 }
 
-fn advance_bounded(ticks: u32, mut step: impl FnMut()) -> u32 {
+fn advance_bounded(ticks: u32, mut step: impl FnMut() -> bool) -> u32 {
     let started = Instant::now();
     let budget = std::time::Duration::from_millis(crate::config::CONFIG.command_work_time_ms);
     let mut advanced = 0;
@@ -175,7 +175,9 @@ fn advance_bounded(ticks: u32, mut step: impl FnMut()) -> u32 {
         if started.elapsed() >= budget {
             break;
         }
-        step();
+        if !step() {
+            break;
+        }
         advanced += 1;
     }
     advanced
@@ -971,8 +973,14 @@ impl Plot {
                 }
                 let advanced = match unit {
                     AdvanceUnit::Game => advance_bounded(ticks, || self.tick()),
-                    AdvanceUnit::Nano => advance_bounded(ticks, || self.world.nanotick_advance(1)),
-                    AdvanceUnit::Pico => advance_bounded(ticks, || self.world.picotick_advance(1)),
+                    AdvanceUnit::Nano => advance_bounded(ticks, || {
+                        self.world.nanotick_advance(1);
+                        true
+                    }),
+                    AdvanceUnit::Pico => advance_bounded(ticks, || {
+                        self.world.picotick_advance(1);
+                        true
+                    }),
                 };
                 if advanced > 0 {
                     if self.redpiler.is_active() {
@@ -1719,6 +1727,17 @@ pub static DECLARE_COMMANDS: Lazy<PacketEncoder> = Lazy::new(|| {
 
 #[cfg(test)]
 mod security_tests {
+    #[test]
+    fn bounded_advance_stops_on_execution_failure() {
+        let mut calls = 0;
+        let advanced = super::advance_bounded(10, || {
+            calls += 1;
+            calls < 2
+        });
+        assert_eq!(advanced, 1);
+        assert_eq!(calls, 2);
+    }
+
     use super::*;
 
     #[test]

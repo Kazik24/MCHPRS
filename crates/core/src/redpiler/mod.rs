@@ -16,6 +16,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tracing::debug;
 
+pub use backend::graph::GraphExecutionError;
 pub use backend::{Queues, TickScheduler};
 pub use task_monitor::TaskMonitor;
 
@@ -493,8 +494,8 @@ impl Compiler {
             .expect("tried to get redpiler backend when inactive")
     }
 
-    pub fn tick(&mut self) {
-        self.backend().tick();
+    pub fn tick(&mut self) -> Result<(), GraphExecutionError> {
+        self.backend().tick()
     }
 
     pub fn on_use_block(&mut self, pos: BlockPos) {
@@ -510,8 +511,8 @@ impl Compiler {
         self.backend().flush(world, io_only);
     }
 
-    pub fn tick_with_world<W: World>(&mut self, world: &mut W) {
-        self.backend().tick_with_world(world);
+    pub fn tick_with_world<W: World>(&mut self, world: &mut W) -> Result<(), GraphExecutionError> {
+        self.backend().tick_with_world(world)
     }
 
     pub fn inspect(&mut self, pos: BlockPos) {
@@ -574,7 +575,7 @@ mod tests {
                         .unwrap();
                     assert_eq!(compiler.backend_kind(), Some(BackendKind::Graph));
                     assert_eq!(compiler.stats().unwrap().backend, BackendKind::Graph);
-                    compiler.tick();
+                    compiler.tick().unwrap();
                     assert_eq!(compiler.graph_execution_counts().unwrap().ticks, 1);
                     compiler.reset(&mut world, bounds);
                     assert_eq!(world.get_block(pos), Block::Piston { piston });

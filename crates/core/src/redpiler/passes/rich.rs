@@ -721,10 +721,7 @@ fn lowered_table_statistics(
             "deliveries",
             routes.iter().map(|route| route.deliveries.len()).sum(),
             routes.iter().map(|route| route.deliveries.len()).sum(),
-            routes
-                .iter()
-                .map(|route| boxed_bytes::<RouteDelivery>(route.deliveries.len()))
-                .sum(),
+            0,
         ),
         table::<WirePlan>(
             "lowering",
@@ -816,4 +813,50 @@ fn record_pass(
         duration: start.elapsed(),
     });
     monitor.inc_progress();
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn lowered_delivery_storage_is_counted_once() {
+        use crate::plot::PlotWorld;
+        use crate::redpiler::program_graph::RouteDelivery;
+        use crate::world::storage::Chunk;
+        let mut world = PlotWorld::from_chunks(0, 0, vec![Chunk::empty(0, 0)], Default::default());
+        let pos = BlockPos::new(5, 20, 5);
+        world.set_block(
+            pos,
+            Block::Lever {
+                lever: mchprs_blocks::blocks::Lever::new(
+                    mchprs_blocks::blocks::LeverFace::Floor,
+                    mchprs_blocks::BlockDirection::North,
+                    false,
+                ),
+            },
+        );
+        world.set_block(
+            pos.offset(mchprs_blocks::BlockFace::East),
+            Block::RedstoneLamp { lit: false },
+        );
+        let monitor = TaskMonitor::default();
+        let prepared = prepare(
+            &world,
+            (BlockPos::new(0, 0, 0), BlockPos::new(15, 31, 15)),
+            vec![],
+            &monitor,
+            AnalysisLimits::default(),
+        )
+        .unwrap();
+        let lowered = prepared.lower(&monitor).unwrap();
+        let table = lowered_table_statistics(&lowered.program)
+            .into_iter()
+            .find(|table| table.table == "deliveries")
+            .unwrap();
+        assert!(table.entries > 0);
+        assert_eq!(
+            table.estimated_bytes,
+            table.entries * std::mem::size_of::<RouteDelivery>()
+        );
+    }
 }

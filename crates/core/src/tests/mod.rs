@@ -142,7 +142,7 @@ fn run_mandelbrot_chungus_compiled() {
 
         for (tick, expected_outputs) in expected_trace.iter().enumerate() {
             for _ in 0..TICK_MUL {
-                compiler.tick();
+                compiler.tick().unwrap();
             }
             compiler.flush(&mut plot);
             for (&pos, expected_output) in output_positions.iter().zip(expected_outputs) {
@@ -181,7 +181,7 @@ fn run_mandelbrot_chungus_interpreted_to_compiled() {
         .unwrap();
 
     for _ in 0..1000 * TICK_MUL {
-        compiler.tick();
+        compiler.tick().unwrap();
     }
     compiler.flush(&mut plot);
 
@@ -235,7 +235,7 @@ fn run_mandelbrot_chungus_compiled_to_interpreted() {
     compiler.on_use_block(CHUNGUS_START_BUTTON);
 
     for _ in 0..1000 * TICK_MUL {
-        compiler.tick();
+        compiler.tick().unwrap();
     }
     compiler.flush(&mut plot);
 

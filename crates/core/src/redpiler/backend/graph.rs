@@ -264,7 +264,7 @@ enum PresentationEffect {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) enum GraphExecutionError {
+pub enum GraphExecutionError {
     UnsupportedComponent {
         position: Option<BlockPos>,
         kind: &'static str,
@@ -291,11 +291,16 @@ impl fmt::Display for GraphExecutionError {
 impl std::error::Error for GraphExecutionError {}
 
 trait GraphCommandHost {
+    fn publish_logical_tick(&mut self, tick: u64);
     fn run_command(&mut self, command: &str, source: &str) -> Result<(), String>;
     fn publish_command_entity(&mut self, position: BlockPos, entity: BlockEntity);
 }
 
 impl<W: World> GraphCommandHost for W {
+    fn publish_logical_tick(&mut self, tick: u64) {
+        self.piston_state_mut().logical_tick = tick;
+    }
+
     fn run_command(&mut self, command: &str, source: &str) -> Result<(), String> {
         World::execute_command_block(self, command, source)
     }
@@ -810,9 +815,7 @@ impl GraphBackend {
         &mut self,
         world: &mut W,
     ) -> Result<(), GraphExecutionError> {
-        let result = self.tick_with_host(Some(world));
-        world.piston_state_mut().logical_tick = self.clock.logical_tick;
-        result
+        self.tick_with_host(Some(world))
     }
 
     fn tick_with_host<'h>(
@@ -880,6 +883,9 @@ impl GraphBackend {
     ) -> Result<(), GraphExecutionError> {
         self.counts.ticks += 1;
         self.clock.logical_tick += 1;
+        if let Some(host) = host.as_mut() {
+            host.publish_logical_tick(self.clock.logical_tick);
+        }
         self.clock.phase = GraphPhase::ScheduledTicks;
         self.clock.scheduled_advanced = false;
         #[cfg(test)]
@@ -1142,9 +1148,11 @@ impl GraphBackend {
             }) => (repeating, chain, automatic),
             _ => return Err(self.unsupported(node, "invalid command block binding")),
         };
-        let Some(entity) = self.node_state(node).command_entity.as_ref() else {
-            return Err(self.unsupported(node, "command block state"));
-        };
+        let missing_entity = self.node_state(node).command_entity.is_none();
+        if let ComponentState::Electrical(state) = &mut self.state.components[node.index()] {
+            state.command_entity.get_or_insert_with(Default::default);
+        }
+        let entity = self.node_state(node).command_entity.as_ref().unwrap();
         let entity_powered = entity.powered;
         let last_execution = entity.last_execution;
         let rising = powered && !entity_powered;
@@ -1172,7 +1180,7 @@ impl GraphBackend {
         if let Some(condition_met) = condition_met {
             entity.condition_met = condition_met;
         }
-        if should_schedule || changed {
+        if missing_entity || should_schedule || changed {
             self.dirty[node.index()] = true;
         }
         if should_schedule {
@@ -1245,12 +1253,12 @@ impl GraphBackend {
         host: &mut Option<&'h mut (dyn GraphCommandHost + 'h)>,
     ) -> Result<bool, GraphExecutionError> {
         let position = self.position(node);
+        let Some(mut entity) = self.node_state(node).command_entity.clone() else {
+            return Ok(false);
+        };
         if host.is_none() {
             return Err(GraphExecutionError::CommandHostUnavailable { position });
         }
-        let Some(mut entity) = self.node_state(node).command_entity.clone() else {
-            return Err(self.unsupported(node, "command block entity state"));
-        };
         let tick = self.clock.logical_tick.min(i64::MAX as u64) as i64;
         if entity.update_last_execution && entity.last_execution == tick {
             return Ok(false);
@@ -1304,7 +1312,7 @@ impl GraphBackend {
         host.as_mut()
             .expect("host was checked before command execution")
             .publish_command_entity(position, BlockEntity::CommandBlock(Box::new(entity)));
-        self.fire_route_unconditionally(node)?;
+        self.fire_route(node)?;
         Ok(true)
     }
 
@@ -3189,14 +3197,6 @@ impl GraphBackend {
     fn fire_route(&mut self, node: NodeId) -> Result<(), GraphExecutionError> {
         let route = self.program.nodes()[node.index()].output_route;
         if let Some(route) = route {
-            self.deliver_route(route, None)
-        } else {
-            Ok(())
-        }
-    }
-
-    fn fire_route_unconditionally(&mut self, node: NodeId) -> Result<(), GraphExecutionError> {
-        if let Some(route) = self.program.nodes()[node.index()].output_route {
             self.deliver_route(route, None)
         } else {
             Ok(())

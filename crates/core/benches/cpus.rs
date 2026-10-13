@@ -102,7 +102,7 @@ fn graph_sample(cpu: Cpu, bounds: (BlockPos, BlockPos)) -> ShortSample {
     compiler.on_use_block(cpu.origin + cpu.start);
     let started = Instant::now();
     for _ in 0..SHORT_ACTIVE_TICKS {
-        compiler.tick_with_world(&mut world);
+        compiler.tick_with_world(&mut world).unwrap();
     }
     let elapsed = started.elapsed();
     let graph_counts = compiler

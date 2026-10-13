@@ -1151,13 +1151,20 @@ impl Plot {
             }
         }
     }
-    fn tick(&mut self) {
+    fn tick(&mut self) -> bool {
         self.timings.tick();
         if self.redpiler.is_active() {
-            self.redpiler.tick_with_world(&mut self.world);
+            if let Err(error) = self.redpiler.tick_with_world(&mut self.world) {
+                tracing::error!(%error, "graph backend execution failed; resetting compiler");
+                let bounds = self.world.get_corners();
+                self.redpiler.reset(&mut self.world, bounds);
+                self.auto_redpiler = false;
+                return false;
+            }
         } else {
             self.world.tick_interpreted();
         }
+        true
     }
 
     /// Send a block change to all connected players
@@ -2021,7 +2028,9 @@ impl Plot {
                 };
                 let mut ticks_completed = 0;
                 for _ in 0..batch_size {
-                    self.tick();
+                    if !self.tick() {
+                        break;
+                    }
                     ticks_completed += 1;
                     if simulation_started.elapsed() >= slice {
                         break;
@@ -2033,7 +2042,9 @@ impl Plot {
                 if let Some(duration) = tick_duration {
                     self.lag_time = self.lag_time.saturating_sub(duration * ticks_completed);
                 }
-                self.last_nspt = Some(simulation_started.elapsed() / ticks_completed);
+                if ticks_completed > 0 {
+                    self.last_nspt = Some(simulation_started.elapsed() / ticks_completed);
+                }
                 self.world.update_stats.simulation += simulation_started.elapsed();
                 self.world.update_stats.simulated_ticks += u64::from(ticks_completed);
             }

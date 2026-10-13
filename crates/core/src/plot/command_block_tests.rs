@@ -122,17 +122,17 @@ fn compiled_command_outputs_follow_impulse_edges_without_render_flush() {
         let mut compiler = compile_outputs(&mut world, optimize);
         compiler.on_use_block(lever);
         assert_eq!(world.command_output().count(), 0);
-        compiler.tick_with_world(&mut world);
+        compiler.tick_with_world(&mut world).unwrap();
         assert_eq!(world.command_output().count(), 1);
         assert_eq!(success(&world, pos), 1);
         for _ in 0..3 {
-            compiler.tick_with_world(&mut world);
+            compiler.tick_with_world(&mut world).unwrap();
         }
         assert_eq!(world.command_output().count(), 1);
         compiler.on_use_block(lever);
         compiler.on_use_block(lever);
         compiler.on_use_block(lever); // Short pulse still executes its queued callback.
-        compiler.tick_with_world(&mut world);
+        compiler.tick_with_world(&mut world).unwrap();
         assert_eq!(world.command_output().count(), 2);
         let bounds = world.get_corners();
         compiler.reset(&mut world, bounds);
@@ -160,7 +160,7 @@ fn compiled_repeating_chain_outputs_match_interpreter_and_preserve_reset_deadlin
     let mut compiler = compile_outputs(&mut compiled, true);
     for _ in 0..6 {
         reference.tick_interpreted();
-        compiler.tick_with_world(&mut compiled);
+        compiler.tick_with_world(&mut compiled).unwrap();
         assert_eq!(
             reference.command_output().collect::<Vec<_>>(),
             compiled.command_output().collect::<Vec<_>>()
@@ -188,13 +188,13 @@ fn compiled_automatic_outputs_start_once_and_recompile_without_replaying_impulse
     let (mut world, _, _) = output_fixture("command_block", true);
     let mut compiler = compile_outputs(&mut world, true);
     for _ in 0..3 {
-        compiler.tick_with_world(&mut world);
+        compiler.tick_with_world(&mut world).unwrap();
     }
     assert_eq!(world.command_output().count(), 1);
     let bounds = world.get_corners();
     compiler.reset(&mut world, bounds);
     let mut compiler = compile_outputs(&mut world, true);
-    compiler.tick_with_world(&mut world);
+    compiler.tick_with_world(&mut world).unwrap();
     assert_eq!(world.command_output().count(), 1);
 }
 
@@ -244,7 +244,7 @@ fn compiled_commands_preserve_allowlist_and_update_comparator_success_output() {
         let mut compiler = compile_outputs(&mut world, true);
         compiler.on_use_block(lever);
         for _ in 0..4 {
-            compiler.tick_with_world(&mut world);
+            compiler.tick_with_world(&mut world).unwrap();
         }
         compiler.flush(&mut world);
         assert_eq!(world.get_block(lamp), Block::RedstoneLamp { lit: true });
@@ -261,7 +261,7 @@ fn compiled_commands_preserve_allowlist_and_update_comparator_success_output() {
         let mut compiler = compile_outputs(&mut world, true);
         compiler.on_use_block(lever); // Off.
         compiler.on_use_block(lever); // On.
-        compiler.tick_with_world(&mut world);
+        compiler.tick_with_world(&mut world).unwrap();
         assert_eq!(success(&world, pos), 0);
         assert_eq!(world.command_output().count(), 1);
     }

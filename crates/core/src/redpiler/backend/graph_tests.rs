@@ -4482,3 +4482,127 @@ fn site_geometry_guards_use_compiled_profile_facts() {
 
     assert!(!backend.guard_matches(GuardId::new(0), None));
 }
+
+#[test]
+fn command_without_entity_survives_compile_reset_and_imported_tick() {
+    let pos = BlockPos::new(8, 20, 5);
+    for tick in [false, true] {
+        let mut world = empty_world();
+        world.set_block(pos, Block::from_name("command_block").unwrap());
+        let ticks = if tick {
+            vec![TickEntry {
+                pos,
+                ticks_left: 1,
+                tick_priority: TickPriority::Normal,
+                block_type: Some(world.get_block(pos).registry_id()),
+            }]
+        } else {
+            vec![]
+        };
+        let mut backend = recording_graph(&world, ticks);
+        if tick {
+            backend.tick_with_world(&mut world).unwrap();
+        }
+        backend.reset(&mut world);
+        assert!(world.get_block_entity(pos).is_none());
+        assert!(world.command_output().next().is_none());
+    }
+}
+
+#[test]
+fn command_callback_observes_current_host_tick() {
+    struct Host {
+        tick: u64,
+        calls: usize,
+    }
+    impl GraphCommandHost for Host {
+        fn publish_logical_tick(&mut self, tick: u64) {
+            self.tick = tick;
+        }
+        fn run_command(&mut self, _: &str, _: &str) -> Result<(), String> {
+            assert_eq!(self.tick, 1);
+            self.calls += 1;
+            Ok(())
+        }
+        fn publish_command_entity(&mut self, _: BlockPos, _: BlockEntity) {}
+    }
+    let pos = BlockPos::new(8, 20, 5);
+    let mut world = empty_world();
+    world.set_block(pos, Block::from_name("command_block").unwrap());
+    world.set_block_entity(
+        pos,
+        BlockEntity::CommandBlock(Box::new(CommandBlockEntity {
+            command: "say time".into(),
+            automatic: true,
+            ..Default::default()
+        })),
+    );
+    let mut backend = recording_graph(&world, vec![]);
+    let mut host = Host { tick: 0, calls: 0 };
+    backend.tick_with_host(Some(&mut host)).unwrap();
+    assert_eq!(host.calls, 1);
+}
+
+#[test]
+fn compiler_returns_hostless_error_and_can_retry_with_world() {
+    let pos = BlockPos::new(8, 20, 5);
+    let mut world = empty_world();
+    world.set_block(pos, Block::from_name("command_block").unwrap());
+    world.set_block_entity(
+        pos,
+        BlockEntity::CommandBlock(Box::new(CommandBlockEntity {
+            command: "say retry".into(),
+            automatic: true,
+            ..Default::default()
+        })),
+    );
+    let mut compiler = crate::redpiler::Compiler::default();
+    compiler
+        .compile(
+            &world,
+            BOUNDS,
+            Default::default(),
+            vec![],
+            Default::default(),
+        )
+        .unwrap();
+    for _ in 0..2 {
+        assert_eq!(
+            compiler.tick(),
+            Err(GraphExecutionError::CommandHostUnavailable { position: pos })
+        );
+        assert_eq!(compiler.graph_execution_counts().unwrap().ticks, 0);
+    }
+    compiler.tick_with_world(&mut world).unwrap();
+    assert_eq!(compiler.graph_execution_counts().unwrap().ticks, 1);
+    assert_eq!(world.command_output().count(), 1);
+}
+
+#[test]
+fn compiler_returns_latched_execution_failure_without_advancing_host() {
+    let mut world = empty_world();
+    world.set_block(LEVER_POS, lever(false));
+    let mut compiler = crate::redpiler::Compiler::default();
+    compiler
+        .compile(
+            &world,
+            BOUNDS,
+            Default::default(),
+            vec![],
+            Default::default(),
+        )
+        .unwrap();
+    let error = GraphExecutionError::UnsupportedComponent {
+        position: Some(LEVER_POS),
+        kind: "injected execution failure",
+    };
+    let crate::redpiler::backend::Runtime::Graph(backend) = compiler.backend.as_mut().unwrap();
+    backend.failure = Some(error.clone());
+    for _ in 0..2 {
+        assert_eq!(compiler.tick_with_world(&mut world), Err(error.clone()));
+        assert_eq!(compiler.graph_execution_counts().unwrap().ticks, 0);
+        assert_eq!(world.piston_state().logical_tick, 0);
+    }
+    compiler.reset(&mut world, BOUNDS);
+    assert!(!compiler.is_active());
+}

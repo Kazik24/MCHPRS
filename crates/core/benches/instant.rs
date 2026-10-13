@@ -495,7 +495,6 @@ fn main() -> Result<()> {
                 "graph": {
                     "baseline": stats.graph.baseline().map(|counts| json!({"nodes": counts.nodes, "links": counts.links})),
                     "final": stats.graph.final_graph().map(|counts| json!({"nodes": counts.nodes, "links": counts.links})),
-                    "wire_nodes_elided_before_baseline": stats.graph.wire_nodes_elided,
                 },
             })
         }));
@@ -1256,7 +1255,7 @@ fn fpu_changing_inputs(
 
 fn tick(compiler: &mut Option<Compiler>, world: &mut PlotWorld) {
     if let Some(compiler) = compiler {
-        compiler.tick_with_world(world);
+        compiler.tick_with_world(world).unwrap();
     } else {
         world.tick_interpreted();
     }

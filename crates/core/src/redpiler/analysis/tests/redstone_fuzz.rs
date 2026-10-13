@@ -131,7 +131,7 @@ fn compare(seed: u64, optimize: bool) -> Result<(), String> {
         for tick in 0..=wait {
             if tick > 0 {
                 native.tick_interpreted();
-                compiler.tick_with_world(&mut compiled);
+                compiler.tick_with_world(&mut compiled).unwrap();
             }
             compiler.flush(&mut compiled);
             for (pos, actual) in compiler.ordinary_sources() {
@@ -214,7 +214,7 @@ fn repeated_lamp_off_requests_keep_the_interpreter_deadline() {
     };
     let tick = |interpreted: &mut PlotWorld, compiled: &mut PlotWorld, compiler: &mut Compiler| {
         interpreted.tick_interpreted();
-        compiler.tick_with_world(compiled);
+        compiler.tick_with_world(compiled).unwrap();
         compiler.flush(compiled);
     };
 
@@ -311,7 +311,7 @@ fn due_button_callback_preserves_a_repeater_deadline() {
     let mut interpreter_trace = Vec::new();
     for _ in 0..3 {
         interpreted.tick_interpreted();
-        compiler.tick_with_world(&mut compiled);
+        compiler.tick_with_world(&mut compiled).unwrap();
         compiler.flush(&mut compiled);
         graph_trace.push(matches!(
             compiled.get_block(repeater),
@@ -411,9 +411,9 @@ fn graph_feedback_preserves_hidden_state_and_scheduler_on_reset() {
                     for tick in 1..=reset_at {
                         native.tick_interpreted();
                         if flush_every == 1 {
-                            compiler.tick();
+                            compiler.tick().unwrap();
                         } else {
-                            compiler.tick_with_world(&mut compiled);
+                            compiler.tick_with_world(&mut compiled).unwrap();
                         }
                         if flush_every > 0 && tick % flush_every == 0 {
                             compiler.flush(&mut compiled);
@@ -516,7 +516,7 @@ fn torch_oscillator_compiles_and_keeps_oscillating_after_reset() {
             let mut previous = native.get_block(torch);
             for tick in 1..=24 {
                 native.tick_interpreted();
-                compiler.tick_with_world(&mut compiled);
+                compiler.tick_with_world(&mut compiled).unwrap();
                 if tick % 5 == 0 {
                     compiler.flush(&mut compiled);
                 }
@@ -674,7 +674,7 @@ fn native_controls_observers_and_command_outputs_match_interpreter() {
             }
             if tick > 0 {
                 native.tick_interpreted();
-                compiler.tick_with_world(&mut compiled);
+                compiler.tick_with_world(&mut compiled).unwrap();
             }
             compiler.flush(&mut compiled);
             for &(pos, _) in &blocks {
@@ -825,7 +825,7 @@ fn coalesced_repeaters_preserve_display_and_pending_work_on_reset() {
                 compiler.on_use_block(control);
                 for tick in 1..=reset_at {
                     native.tick_interpreted();
-                    compiler.tick_with_world(&mut compiled);
+                    compiler.tick_with_world(&mut compiled).unwrap();
                     compiler.flush(&mut compiled);
                     for pos in repeaters.into_iter().chain(lamps) {
                         if !io_only || lamps.contains(&pos) {

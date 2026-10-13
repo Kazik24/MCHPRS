@@ -600,7 +600,7 @@ fn stop_and_restart(circuit: &Circuit, episode: &Episode, cut: usize) -> Result<
         native_step(&mut native, circuit, episode.steps[index]);
         match episode.steps[index] {
             Step::Toggle(control) => compiler.on_use_block(circuit.control(control)),
-            Step::Tick => compiler.tick(),
+            Step::Tick => compiler.tick().unwrap(),
         }
         compiler.flush(&mut world);
         index += 1;
@@ -628,7 +628,7 @@ fn stop_and_restart(circuit: &Circuit, episode: &Episode, cut: usize) -> Result<
             native_step(&mut native, circuit, episode.steps[index]);
             match episode.steps[index] {
                 Step::Toggle(control) => compiler.on_use_block(circuit.control(control)),
-                Step::Tick => compiler.tick(),
+                Step::Tick => compiler.tick().unwrap(),
             }
             index += 1;
         }

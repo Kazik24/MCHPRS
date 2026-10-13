@@ -182,7 +182,7 @@ pub(crate) fn identify_block<W: World>(
                 NodeState {
                     powered: entity.is_some_and(|entity| entity.powered),
                     output_strength: comparator::get_override(block, world, pos),
-                    command_entity: Some(entity.cloned().unwrap_or_default()),
+                    command_entity: entity.cloned(),
                     ..Default::default()
                 },
             )
