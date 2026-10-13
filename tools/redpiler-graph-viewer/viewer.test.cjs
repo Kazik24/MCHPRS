@@ -297,3 +297,51 @@ test('searching an exported piston update reveals its direct callback edge', asy
   assert.equal(edge.target().id(), update.to);
   assert.match(edge.data('label'), /^update/);
 });
+
+function addDustPath(graph) {
+  const nodes = new Map(graph.graph.nodes.map((node) => [node.id, node]));
+  const inputSite = graph.graph.sites.find((site) => site.source.kind === 'component'
+    && nodes.get(site.source.node)?.kind.kind === 'electrical');
+  assert.ok(inputSite, 'fixture has an electrical component site');
+  const wires = graph.graph.wire_plans.slice(0, 2).map((wire) => wire.node);
+  assert.equal(wires.length, 2);
+  graph.graph.dust_paths = [{
+    id: 'dust_path:0', input_node: inputSite.source.node, input_site: inputSite.id,
+    input_face: 'east', wires,
+  }];
+  return graph;
+}
+
+test('loads and indexes a dust-path certificate and accepts older exports without the table', async (t) => {
+  const viewer = makeViewer();
+  t.after(() => viewer.cy?.destroy());
+  const graph = addDustPath(adderFixture());
+  await load(viewer, graph);
+  assert.equal(viewer.elements.get('error').hidden, true, viewer.elements.get('error').textContent);
+  viewer.evaluate('focusRecord("dust_path:0")');
+  assert.match(viewer.elements.get('details').textContent, /dust_path:0/);
+
+  const older = adderFixture();
+  delete older.graph.dust_paths;
+  await load(viewer, older);
+  assert.equal(viewer.elements.get('error').hidden, true, viewer.elements.get('error').textContent);
+});
+
+test('rejects dangling and duplicate dust-path references while preserving the loaded graph', async (t) => {
+  const viewer = makeViewer();
+  t.after(() => viewer.cy?.destroy());
+  await load(viewer, adderFixture());
+  const previous = viewer.cy;
+  const malformed = [
+    (graph) => { addDustPath(graph); graph.graph.dust_paths[0].wires[1] = 'node:999999'; },
+    (graph) => { addDustPath(graph); graph.graph.dust_paths[0].wires[1] = graph.graph.dust_paths[0].wires[0]; },
+    (graph) => { addDustPath(graph); graph.graph.dust_paths.push({ ...graph.graph.dust_paths[0] }); },
+  ];
+  for (const mutate of malformed) {
+    const graph = adderFixture();
+    mutate(graph);
+    await load(viewer, graph);
+    assert.equal(viewer.elements.get('error').hidden, false);
+    assert.equal(viewer.cy, previous);
+  }
+});

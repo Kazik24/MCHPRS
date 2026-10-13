@@ -29,7 +29,7 @@ use crate::redpiler::program_graph::{
 use mchprs_blocks::BlockFace;
 use mchprs_blocks::blocks::Block;
 use rustc_hash::{FxHashMap, FxHashSet};
-use std::collections::VecDeque;
+use std::collections::{BTreeMap, VecDeque};
 
 /// Recognizes short wire paths whose power can be queried from a certificate.
 pub(crate) struct ContractDustPaths;
@@ -60,11 +60,20 @@ impl GraphPass for ContractDustPaths {
             if context.monitor.cancelled() {
                 return Ok(());
             }
+            let component_len = component.len();
+            if component_len > 3 {
+                *report.long_candidates.entry(component_len).or_default() += 1;
+            }
             if component.iter().any(|node| already_assigned.contains(node)) {
                 report.decline(DeclineReason::AlreadyAssigned);
                 continue;
             }
             match certify_candidate(graph, &context.entry, component) {
+                Ok(plan) if plan.wires.len() > 3 => {
+                    // Keep the current runtime bound while measuring the wider proof's coverage.
+                    *report.long_otherwise_eligible.entry(plan.wires.len()).or_default() += 1;
+                    report.decline(DeclineReason::TooLong);
+                }
                 Ok(plan) => accepted.push(plan),
                 Err(reason) => report.decline(reason),
             }
@@ -89,6 +98,8 @@ struct CandidateReport {
     candidates: usize,
     accepted: usize,
     covered_wires: usize,
+    long_candidates: BTreeMap<usize, usize>,
+    long_otherwise_eligible: BTreeMap<usize, usize>,
     declines: FxHashMap<DeclineReason, usize>,
 }
 
@@ -102,7 +113,27 @@ impl CandidateReport {
             report_table("candidate groups", self.candidates),
             report_table("accepted paths", self.accepted),
             report_table("covered wires", self.covered_wires),
+            report_table(
+                "long paths passing all other checks",
+                self.long_otherwise_eligible.values().sum(),
+            ),
+            report_table(
+                "wires in those long paths",
+                self.long_otherwise_eligible
+                    .iter()
+                    .map(|(length, count)| length * count)
+                    .sum(),
+            ),
         ];
+        for (&length, &count) in &self.long_candidates {
+            tables.push(report_table(format!("long candidate length {length}"), count));
+        }
+        for (&length, &count) in &self.long_otherwise_eligible {
+            tables.push(report_table(
+                format!("otherwise eligible length {length}"),
+                count,
+            ));
+        }
         for reason in DeclineReason::ALL {
             tables.push(report_table(
                 reason.table(),
@@ -113,10 +144,10 @@ impl CandidateReport {
     }
 }
 
-fn report_table(table: &'static str, entries: usize) -> PreparationTableStatistics {
+fn report_table(table: impl Into<String>, entries: usize) -> PreparationTableStatistics {
     PreparationTableStatistics {
         stage: "dust contraction",
-        table,
+        table: table.into(),
         entries,
         capacity: entries,
         estimated_bytes: 0,
@@ -166,7 +197,7 @@ impl DeclineReason {
     fn table(self) -> &'static str {
         match self {
             Self::AlreadyAssigned => "declined: already assigned",
-            Self::TooLong => "declined: path longer than three wires",
+            Self::TooLong => "declined: otherwise eligible path exceeds three wires",
             Self::BranchOrBend => "declined: branch, bend, or cycle",
             Self::NearbyWire => "declined: nearby external wire",
             Self::DynamicContact => "declined: contact-dependent site",
@@ -246,9 +277,6 @@ fn certify_candidate(
 ) -> Result<DustPathPlan, DeclineReason> {
     use crate::redpiler::program_graph::NodeId;
 
-    if component.len() > 3 {
-        return Err(DeclineReason::TooLong);
-    }
     let members: FxHashSet<_> = component.iter().copied().collect();
     let positions: FxHashMap<_, _> = component
         .iter()

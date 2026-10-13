@@ -17,7 +17,7 @@ type GraphExport = {
   format: "mchprs.redpiler.graph"; // Identifies this inspection format.
   version: { major: number; minor: number }; // Separates incompatible contracts from additive changes.
   stage: "electrical_draft" | "program"; // States whether callback assembly and program validation are complete.
-  capabilities: string[]; // Lists available sections such as power, routes, snapshots, or trace_replay.
+  capabilities: string[]; // Lists available sections such as power, routes, snapshots, dust_path_certificates, or trace_replay.
   source: Source; // Describes the selection and source revision used to create this artifact.
   graph: GraphTables; // Holds immutable graph records and all typed references.
   snapshots: Snapshot[]; // Holds explicitly captured logical states without duplicating graph ownership.
@@ -39,6 +39,7 @@ type GraphTables = {
   resources: Resource[]; // Records one shared material identity and all permitted contacts.
   power_links: PowerLink[]; // Records source site/channel, target input or conductor channel, face, attenuation, and guard.
   wire_plans: WirePlan[]; // Records the exact 24 canonical site references for each explicit wire.
+  dust_paths?: DustPathCertificate[]; // Records checked path bindings when the experimental dust pass accepts paths; older v1 exports may omit this additive table.
   wire_relations: WireRelation[]; // Records guarded step/ascent/descent dependencies and their directions.
   comparator_plans: ComparatorPlan[]; // Records rear site, literal/live overrides, far guard, and threshold precedence.
   routes: Route[] | null; // Records ordered callback procedures, or null before route assembly exists.
@@ -220,6 +221,13 @@ type WireRelation = {
   direction: string; // Preserves the relation's direction.
   guard: string; // References the guard that enables this relation.
 };
+type DustPathCertificate = {
+  id: string; // Identifies one checked path certificate with a dust_path:N ID.
+  input_node: string; // References the electrical node that supplies the path's only certified input.
+  input_site: string; // References the source site owned by input_node.
+  input_face: string; // Preserves the horizontal face used by the direct ingress query.
+  wires: string[]; // Lists the original wire node IDs in input-to-output order, with each wire owned by one certificate.
+};
 
 type ComparatorPlan = {
   id: string; // Identifies one comparator query plan with a comparator_plan:N ID.
@@ -292,6 +300,8 @@ type Diagnostic = {
 ```
 
 In the current `electrical_draft`, `graph.routes`, `node.output_route`, piston route bindings, wire route bindings, `trace`, and snapshot `execution` serialize as `null`. This marks missing program/runtime sections as unavailable instead of claiming that an empty section is complete.
+
+`graph.dust_paths` is an additive v1.1 table. It is an empty array when no path is certified, and may be absent in older v1 exports; readers treat an absent table as empty. Each certificate's IDs must resolve, its input site must belong to its electrical input node, its path must contain at least two wire nodes, and no wire may be owned by multiple certificates. The `dust_path_certificates` capability appears when at least one certificate is present. The certificate exposes provenance and query bindings, not a promise that the original wire state slots or ordered Turbo execution have been removed.
 
 ## Tagged record examples
 

@@ -13,7 +13,7 @@ use crate::world::World;
 use mchprs_blocks::blocks::{Block, ComparatorMode, Instrument, RedstoneWireSide};
 use mchprs_blocks::{BlockFace, BlockPos};
 use serde::Serialize;
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::fmt;
 use std::fs::{self, OpenOptions};
 use std::io::{self, Write};
@@ -577,6 +577,18 @@ impl GraphExport {
             "wire",
             self.graph.wire_plans.iter().map(|item| item.id.as_str()),
         )?;
+        let node_records: HashMap<_, _> = self
+            .graph
+            .nodes
+            .iter()
+            .map(|item| (item.id.as_str(), item))
+            .collect();
+        let site_records: HashMap<_, _> = self
+            .graph
+            .sites
+            .iter()
+            .map(|item| (item.id.as_str(), item))
+            .collect();
         let routes = self
             .graph
             .routes
@@ -739,6 +751,13 @@ impl GraphExport {
             check_optional_ref(&routes, wire.shape_route.as_deref(), "wire shape route")?;
             check_optional_ref(&routes, wire.turbo_route.as_deref(), "wire turbo route")?;
         }
+        validate_dust_paths(
+            &self.graph.dust_paths,
+            &nodes,
+            &sites,
+            &node_records,
+            &site_records,
+        )?;
         for relation in &self.graph.wire_relations {
             check_ref(&nodes, &relation.from, "wire relation source")?;
             check_ref(&sites, &relation.to, "wire relation target")?;
@@ -1191,21 +1210,25 @@ pub(super) fn from_graph(
             .collect(),
         execution: None,
     };
+    let mut capabilities = vec![
+        "electrical",
+        "geometry",
+        "guarded_contacts",
+        "initial_snapshot",
+        "wire_relations",
+        "comparator_plans",
+        "callback_routes",
+        "callback_links",
+        "piston_routes",
+    ];
+    if !source.dust_paths.is_empty() {
+        capabilities.push("dust_path_certificates");
+    }
     let export = GraphExport {
         format: "mchprs.redpiler.graph",
         version: VersionDto { major: 1, minor: 1 },
         stage: "callback_draft",
-        capabilities: vec![
-            "electrical",
-            "geometry",
-            "guarded_contacts",
-            "initial_snapshot",
-            "wire_relations",
-            "comparator_plans",
-            "callback_routes",
-            "callback_links",
-            "piston_routes",
-        ],
+        capabilities,
         source: SourceDto {
             revision: None,
             bounds: BoundsDto {
@@ -1525,6 +1548,73 @@ fn check_optional_ref(
     id.map_or(Ok(()), |id| check_ref(ids, id, owner))
 }
 
+fn validate_dust_paths(
+    paths: &[DustPathDto],
+    nodes: &HashSet<String>,
+    sites: &HashSet<String>,
+    node_records: &HashMap<&str, &NodeDto>,
+    site_records: &HashMap<&str, &SiteDto>,
+) -> Result<(), ExportError> {
+    unique_ids("dust_path", paths.iter().map(|path| path.id.as_str()))?;
+    let mut assigned_wires = HashSet::new();
+    for path in paths {
+        check_ref(nodes, &path.input_node, "dust path input")?;
+        check_ref(sites, &path.input_site, "dust path input site")?;
+        if !matches!(
+            node_records.get(path.input_node.as_str()).map(|node| &node.kind),
+            Some(NodeKindDto::Electrical { .. })
+        ) {
+            return Err(ExportError::new(
+                "validation",
+                format!("{} input must be an electrical node", path.id),
+            ));
+        }
+        if !matches!(
+            site_records
+                .get(path.input_site.as_str())
+                .map(|site| &site.source),
+            Some(SiteSourceDto::Component { node }) if node == &path.input_node
+        ) {
+            return Err(ExportError::new(
+                "validation",
+                format!("{} input site must be owned by its input node", path.id),
+            ));
+        }
+        if !matches!(path.input_face.as_str(), "north" | "south" | "east" | "west") {
+            return Err(ExportError::new(
+                "validation",
+                format!("{} input face must be horizontal", path.id),
+            ));
+        }
+        if path.wires.len() < 2 {
+            return Err(ExportError::new(
+                "validation",
+                format!("{} must contain at least two wire nodes", path.id),
+            ));
+        }
+        let mut path_wires = HashSet::new();
+        for wire in &path.wires {
+            check_ref(nodes, wire, "dust path wire")?;
+            if !matches!(
+                node_records.get(wire.as_str()).map(|node| &node.kind),
+                Some(NodeKindDto::Wire { .. })
+            ) {
+                return Err(ExportError::new(
+                    "validation",
+                    format!("{} references non-wire node {wire}", path.id),
+                ));
+            }
+            if !path_wires.insert(wire.as_str()) || !assigned_wires.insert(wire.as_str()) {
+                return Err(ExportError::new(
+                    "validation",
+                    format!("{} repeats or shares wire node {wire}", path.id),
+                ));
+            }
+        }
+    }
+    Ok(())
+}
+
 fn check_prior_guard(
     ids: &HashSet<String>,
     reference: &str,
@@ -1545,6 +1635,94 @@ fn id_index(id: &str) -> usize {
     id.split_once(':')
         .and_then(|(_, index)| index.parse().ok())
         .unwrap_or(usize::MAX)
+}
+
+#[cfg(test)]
+mod dust_path_validation_tests {
+    use super::*;
+
+    fn nodes() -> Vec<NodeDto> {
+        vec![
+            NodeDto {
+                id: "node:0".into(),
+                kind: NodeKindDto::Electrical {
+                    component: ElectricalKindDto::Lever,
+                },
+                position: None,
+                output_route: None,
+            },
+            NodeDto {
+                id: "node:1".into(),
+                kind: NodeKindDto::Wire { plan: "wire:0".into() },
+                position: None,
+                output_route: None,
+            },
+            NodeDto {
+                id: "node:2".into(),
+                kind: NodeKindDto::Wire { plan: "wire:1".into() },
+                position: None,
+                output_route: None,
+            },
+        ]
+    }
+
+    fn path(id: &str, wires: &[&str]) -> DustPathDto {
+        DustPathDto {
+            id: id.into(),
+            input_node: "node:0".into(),
+            input_site: "site:0".into(),
+            input_face: "east".into(),
+            wires: wires.iter().map(|wire| (*wire).into()).collect(),
+        }
+    }
+
+    fn validate(paths: &[DustPathDto]) -> Result<(), ExportError> {
+        let nodes = nodes();
+        let sites = vec![SiteDto {
+            id: "site:0".into(),
+            position: PositionDto { x: 0, y: 0, z: 0 },
+            source: SiteSourceDto::Component { node: "node:0".into() },
+        }];
+        let node_ids = nodes.iter().map(|node| node.id.clone()).collect();
+        let site_ids = sites.iter().map(|site| site.id.clone()).collect();
+        let node_records = nodes.iter().map(|node| (node.id.as_str(), node)).collect();
+        let site_records = sites.iter().map(|site| (site.id.as_str(), site)).collect();
+        validate_dust_paths(paths, &node_ids, &site_ids, &node_records, &site_records)
+    }
+
+    #[test]
+    fn accepts_a_well_formed_dust_path_certificate() {
+        validate(&[path("dust_path:0", &["node:1", "node:2"])])
+            .expect("valid dust path references should export");
+    }
+
+    #[test]
+    fn rejects_dangling_dust_path_references() {
+        let error = validate(&[path("dust_path:0", &["node:1", "node:99"])])
+            .expect_err("unknown wire node must fail export validation");
+        assert!(error.to_string().contains("missing ID node:99"));
+    }
+
+    #[test]
+    fn rejects_duplicate_dust_path_ids_and_wire_ownership() {
+        let duplicate_ids = [
+            path("dust_path:0", &["node:1", "node:2"]),
+            path("dust_path:0", &["node:1", "node:2"]),
+        ];
+        assert!(validate(&duplicate_ids)
+            .unwrap_err()
+            .to_string()
+            .contains("duplicate dust_path ID"));
+
+        let shared_wire = [
+            path("dust_path:0", &["node:1", "node:2"]),
+            path("dust_path:1", &["node:1", "node:2"]),
+        ];
+        assert!(validate(&shared_wire)
+            .unwrap_err()
+            .to_string()
+            .contains("repeats or shares wire node"));
+    }
 }
 
 fn input_port(port: InputPort) -> &'static str {

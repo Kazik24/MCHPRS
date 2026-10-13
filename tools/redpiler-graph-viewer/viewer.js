@@ -3,7 +3,7 @@
 const tables = {
   nodes: "node", sites: "site", contacts: "contact", resources: "resource", guards: "guard",
   pistons: "piston", power_links: "power_link", wire_plans: "wire", wire_relations: "wire_relation",
-  comparator_plans: "comparator_plan", callback_links: "callback_link", routes: "route", profiles: "profile",
+  dust_paths: "dust_path", comparator_plans: "comparator_plan", callback_links: "callback_link", routes: "route", profiles: "profile",
 };
 const $ = (id) => document.getElementById(id);
 let cy;
@@ -38,6 +38,7 @@ function validateGraph(data) {
     const rows = data.graph[table];
     if (table === "routes" && rows === null) continue;
     if (table === "callback_links" && rows === undefined) continue;
+    if (table === "dust_paths" && rows == null) continue;
     if (!Array.isArray(rows)) throw Error(`graph.${table} must be an array or null for routes.`);
     for (const row of rows) {
       if (!row || typeof row.id !== "string" || !new RegExp(`^${prefix}:(0|[1-9][0-9]*)$`).test(row.id)) throw Error(`Invalid ID in graph.${table}.`);
@@ -50,6 +51,24 @@ function validateGraph(data) {
     ids.add(snapshot.id);
   }
   for (const ref of typedIds(data)) if (!ids.has(ref)) throw Error(`Dangling graph reference: ${ref}`);
+  const nodes = new Map(data.graph.nodes.map((node) => [node.id, node]));
+  const sites = new Map(data.graph.sites.map((site) => [site.id, site]));
+  const assignedWires = new Set();
+  for (const path of data.graph.dust_paths || []) {
+    const input = nodes.get(path.input_node);
+    if (input?.kind?.kind !== "electrical") throw Error(`${path.id} input must be an electrical node.`);
+    if (sites.get(path.input_site)?.source?.kind !== "component" || sites.get(path.input_site).source.node !== path.input_node) {
+      throw Error(`${path.id} input site must be owned by its input node.`);
+    }
+    if (!Array.isArray(path.wires) || path.wires.length < 2) throw Error(`${path.id} must contain at least two wire nodes.`);
+    const localWires = new Set();
+    for (const wireId of path.wires) {
+      if (nodes.get(wireId)?.kind?.kind !== "wire") throw Error(`${path.id} references non-wire node ${wireId}.`);
+      if (localWires.has(wireId) || assignedWires.has(wireId)) throw Error(`${path.id} repeats or shares wire node ${wireId}.`);
+      localWires.add(wireId);
+      assignedWires.add(wireId);
+    }
+  }
   return data;
 }
 

@@ -1,0 +1,6517 @@
+{
+  "format": "mchprs.redpiler.graph",
+  "version": {
+    "major": 1,
+    "minor": 1
+  },
+  "stage": "callback_draft",
+  "capabilities": [
+    "electrical",
+    "geometry",
+    "guarded_contacts",
+    "initial_snapshot",
+    "wire_relations",
+    "comparator_plans",
+    "callback_routes",
+    "callback_links",
+    "piston_routes"
+  ],
+  "source": {
+    "revision": null,
+    "bounds": {
+      "min": {
+        "x": 0,
+        "y": 0,
+        "z": 0
+      },
+      "max": {
+        "x": 255,
+        "y": 255,
+        "z": 255
+      }
+    }
+  },
+  "graph": {
+    "nodes": [
+      {
+        "id": "node:0",
+        "kind": {
+          "kind": "piston",
+          "piston": "piston:0"
+        },
+        "position": {
+          "x": 44,
+          "y": 31,
+          "z": 40
+        },
+        "output_route": null
+      },
+      {
+        "id": "node:1",
+        "kind": {
+          "kind": "contact",
+          "contact": "contact:0"
+        },
+        "position": {
+          "x": 44,
+          "y": 31,
+          "z": 40
+        },
+        "output_route": null
+      },
+      {
+        "id": "node:2",
+        "kind": {
+          "kind": "contact",
+          "contact": "contact:1"
+        },
+        "position": {
+          "x": 43,
+          "y": 31,
+          "z": 40
+        },
+        "output_route": null
+      },
+      {
+        "id": "node:3",
+        "kind": {
+          "kind": "contact",
+          "contact": "contact:2"
+        },
+        "position": {
+          "x": 42,
+          "y": 31,
+          "z": 40
+        },
+        "output_route": null
+      },
+      {
+        "id": "node:4",
+        "kind": {
+          "kind": "electrical",
+          "component": {
+            "type": "lever"
+          }
+        },
+        "position": {
+          "x": 47,
+          "y": 30,
+          "z": 40
+        },
+        "output_route": "route:0"
+      },
+      {
+        "id": "node:5",
+        "kind": {
+          "kind": "electrical",
+          "component": {
+            "type": "lamp"
+          }
+        },
+        "position": {
+          "x": 40,
+          "y": 31,
+          "z": 40
+        },
+        "output_route": null
+      },
+      {
+        "id": "node:6",
+        "kind": {
+          "kind": "wire",
+          "plan": "wire:0"
+        },
+        "position": {
+          "x": 41,
+          "y": 31,
+          "z": 40
+        },
+        "output_route": null
+      },
+      {
+        "id": "node:7",
+        "kind": {
+          "kind": "electrical",
+          "component": {
+            "type": "constant"
+          }
+        },
+        "position": {
+          "x": 43,
+          "y": 31,
+          "z": 40
+        },
+        "output_route": null
+      },
+      {
+        "id": "node:8",
+        "kind": {
+          "kind": "wire",
+          "plan": "wire:1"
+        },
+        "position": {
+          "x": 46,
+          "y": 31,
+          "z": 40
+        },
+        "output_route": null
+      }
+    ],
+    "profiles": [
+      {
+        "id": "profile:0",
+        "raw_state": 2044,
+        "name": "sticky_piston",
+        "registry_id": 128,
+        "solid": false,
+        "transparent": true,
+        "cube": true,
+        "electrical": "none"
+      },
+      {
+        "id": "profile:1",
+        "raw_state": 2038,
+        "name": "sticky_piston",
+        "registry_id": 128,
+        "solid": false,
+        "transparent": true,
+        "cube": true,
+        "electrical": "none"
+      },
+      {
+        "id": "profile:2",
+        "raw_state": 2116,
+        "name": "moving_piston",
+        "registry_id": 156,
+        "solid": false,
+        "transparent": true,
+        "cube": true,
+        "electrical": "none"
+      },
+      {
+        "id": "profile:3",
+        "raw_state": 2084,
+        "name": "piston_head",
+        "registry_id": 139,
+        "solid": false,
+        "transparent": true,
+        "cube": true,
+        "electrical": "none"
+      },
+      {
+        "id": "profile:4",
+        "raw_state": 0,
+        "name": "air",
+        "registry_id": 0,
+        "solid": false,
+        "transparent": false,
+        "cube": false,
+        "electrical": "none"
+      },
+      {
+        "id": "profile:5",
+        "raw_state": 10032,
+        "name": "redstone_block",
+        "registry_id": 443,
+        "solid": false,
+        "transparent": true,
+        "cube": true,
+        "electrical": "redstone_source"
+      },
+      {
+        "id": "profile:6",
+        "raw_state": 13751,
+        "name": "white_concrete",
+        "registry_id": 678,
+        "solid": true,
+        "transparent": false,
+        "cube": true,
+        "electrical": "none"
+      },
+      {
+        "id": "profile:7",
+        "raw_state": 3622,
+        "name": "redstone_wire",
+        "registry_id": 189,
+        "solid": false,
+        "transparent": false,
+        "cube": false,
+        "electrical": "component"
+      }
+    ],
+    "sites": [
+      {
+        "id": "site:0",
+        "position": {
+          "x": 47,
+          "y": 28,
+          "z": 40
+        },
+        "source": {
+          "kind": "constant",
+          "profile": "profile:4"
+        }
+      },
+      {
+        "id": "site:1",
+        "position": {
+          "x": 47,
+          "y": 29,
+          "z": 39
+        },
+        "source": {
+          "kind": "constant",
+          "profile": "profile:4"
+        }
+      },
+      {
+        "id": "site:2",
+        "position": {
+          "x": 40,
+          "y": 29,
+          "z": 40
+        },
+        "source": {
+          "kind": "constant",
+          "profile": "profile:4"
+        }
+      },
+      {
+        "id": "site:3",
+        "position": {
+          "x": 41,
+          "y": 29,
+          "z": 40
+        },
+        "source": {
+          "kind": "constant",
+          "profile": "profile:4"
+        }
+      },
+      {
+        "id": "site:4",
+        "position": {
+          "x": 43,
+          "y": 29,
+          "z": 40
+        },
+        "source": {
+          "kind": "constant",
+          "profile": "profile:4"
+        }
+      },
+      {
+        "id": "site:5",
+        "position": {
+          "x": 44,
+          "y": 29,
+          "z": 40
+        },
+        "source": {
+          "kind": "constant",
+          "profile": "profile:4"
+        }
+      },
+      {
+        "id": "site:6",
+        "position": {
+          "x": 46,
+          "y": 29,
+          "z": 40
+        },
+        "source": {
+          "kind": "constant",
+          "profile": "profile:4"
+        }
+      },
+      {
+        "id": "site:7",
+        "position": {
+          "x": 47,
+          "y": 29,
+          "z": 40
+        },
+        "source": {
+          "kind": "constant",
+          "profile": "profile:4"
+        }
+      },
+      {
+        "id": "site:8",
+        "position": {
+          "x": 48,
+          "y": 29,
+          "z": 40
+        },
+        "source": {
+          "kind": "constant",
+          "profile": "profile:4"
+        }
+      },
+      {
+        "id": "site:9",
+        "position": {
+          "x": 47,
+          "y": 29,
+          "z": 41
+        },
+        "source": {
+          "kind": "constant",
+          "profile": "profile:4"
+        }
+      },
+      {
+        "id": "site:10",
+        "position": {
+          "x": 47,
+          "y": 30,
+          "z": 38
+        },
+        "source": {
+          "kind": "constant",
+          "profile": "profile:4"
+        }
+      },
+      {
+        "id": "site:11",
+        "position": {
+          "x": 40,
+          "y": 30,
+          "z": 39
+        },
+        "source": {
+          "kind": "constant",
+          "profile": "profile:4"
+        }
+      },
+      {
+        "id": "site:12",
+        "position": {
+          "x": 41,
+          "y": 30,
+          "z": 39
+        },
+        "source": {
+          "kind": "constant",
+          "profile": "profile:4"
+        }
+      },
+      {
+        "id": "site:13",
+        "position": {
+          "x": 43,
+          "y": 30,
+          "z": 39
+        },
+        "source": {
+          "kind": "constant",
+          "profile": "profile:4"
+        }
+      },
+      {
+        "id": "site:14",
+        "position": {
+          "x": 44,
+          "y": 30,
+          "z": 39
+        },
+        "source": {
+          "kind": "constant",
+          "profile": "profile:4"
+        }
+      },
+      {
+        "id": "site:15",
+        "position": {
+          "x": 46,
+          "y": 30,
+          "z": 39
+        },
+        "source": {
+          "kind": "constant",
+          "profile": "profile:4"
+        }
+      },
+      {
+        "id": "site:16",
+        "position": {
+          "x": 47,
+          "y": 30,
+          "z": 39
+        },
+        "source": {
+          "kind": "constant",
+          "profile": "profile:4"
+        }
+      },
+      {
+        "id": "site:17",
+        "position": {
+          "x": 48,
+          "y": 30,
+          "z": 39
+        },
+        "source": {
+          "kind": "constant",
+          "profile": "profile:4"
+        }
+      },
+      {
+        "id": "site:18",
+        "position": {
+          "x": 39,
+          "y": 30,
+          "z": 40
+        },
+        "source": {
+          "kind": "constant",
+          "profile": "profile:4"
+        }
+      },
+      {
+        "id": "site:19",
+        "position": {
+          "x": 40,
+          "y": 30,
+          "z": 40
+        },
+        "source": {
+          "kind": "constant",
+          "profile": "profile:4"
+        }
+      },
+      {
+        "id": "site:20",
+        "position": {
+          "x": 41,
+          "y": 30,
+          "z": 40
+        },
+        "source": {
+          "kind": "constant",
+          "profile": "profile:6"
+        }
+      },
+      {
+        "id": "site:21",
+        "position": {
+          "x": 42,
+          "y": 30,
+          "z": 40
+        },
+        "source": {
+          "kind": "constant",
+          "profile": "profile:4"
+        }
+      },
+      {
+        "id": "site:22",
+        "position": {
+          "x": 43,
+          "y": 30,
+          "z": 40
+        },
+        "source": {
+          "kind": "constant",
+          "profile": "profile:4"
+        }
+      },
+      {
+        "id": "site:23",
+        "position": {
+          "x": 44,
+          "y": 30,
+          "z": 40
+        },
+        "source": {
+          "kind": "constant",
+          "profile": "profile:4"
+        }
+      },
+      {
+        "id": "site:24",
+        "position": {
+          "x": 45,
+          "y": 30,
+          "z": 40
+        },
+        "source": {
+          "kind": "constant",
+          "profile": "profile:4"
+        }
+      },
+      {
+        "id": "site:25",
+        "position": {
+          "x": 46,
+          "y": 30,
+          "z": 40
+        },
+        "source": {
+          "kind": "constant",
+          "profile": "profile:6"
+        }
+      },
+      {
+        "id": "site:26",
+        "position": {
+          "x": 47,
+          "y": 30,
+          "z": 40
+        },
+        "source": {
+          "kind": "component",
+          "node": "node:4"
+        }
+      },
+      {
+        "id": "site:27",
+        "position": {
+          "x": 48,
+          "y": 30,
+          "z": 40
+        },
+        "source": {
+          "kind": "constant",
+          "profile": "profile:4"
+        }
+      },
+      {
+        "id": "site:28",
+        "position": {
+          "x": 49,
+          "y": 30,
+          "z": 40
+        },
+        "source": {
+          "kind": "constant",
+          "profile": "profile:4"
+        }
+      },
+      {
+        "id": "site:29",
+        "position": {
+          "x": 40,
+          "y": 30,
+          "z": 41
+        },
+        "source": {
+          "kind": "constant",
+          "profile": "profile:4"
+        }
+      },
+      {
+        "id": "site:30",
+        "position": {
+          "x": 41,
+          "y": 30,
+          "z": 41
+        },
+        "source": {
+          "kind": "constant",
+          "profile": "profile:4"
+        }
+      },
+      {
+        "id": "site:31",
+        "position": {
+          "x": 43,
+          "y": 30,
+          "z": 41
+        },
+        "source": {
+          "kind": "constant",
+          "profile": "profile:4"
+        }
+      },
+      {
+        "id": "site:32",
+        "position": {
+          "x": 44,
+          "y": 30,
+          "z": 41
+        },
+        "source": {
+          "kind": "constant",
+          "profile": "profile:4"
+        }
+      },
+      {
+        "id": "site:33",
+        "position": {
+          "x": 46,
+          "y": 30,
+          "z": 41
+        },
+        "source": {
+          "kind": "constant",
+          "profile": "profile:4"
+        }
+      },
+      {
+        "id": "site:34",
+        "position": {
+          "x": 47,
+          "y": 30,
+          "z": 41
+        },
+        "source": {
+          "kind": "constant",
+          "profile": "profile:4"
+        }
+      },
+      {
+        "id": "site:35",
+        "position": {
+          "x": 48,
+          "y": 30,
+          "z": 41
+        },
+        "source": {
+          "kind": "constant",
+          "profile": "profile:4"
+        }
+      },
+      {
+        "id": "site:36",
+        "position": {
+          "x": 47,
+          "y": 30,
+          "z": 42
+        },
+        "source": {
+          "kind": "constant",
+          "profile": "profile:4"
+        }
+      },
+      {
+        "id": "site:37",
+        "position": {
+          "x": 40,
+          "y": 31,
+          "z": 38
+        },
+        "source": {
+          "kind": "constant",
+          "profile": "profile:4"
+        }
+      },
+      {
+        "id": "site:38",
+        "position": {
+          "x": 41,
+          "y": 31,
+          "z": 38
+        },
+        "source": {
+          "kind": "constant",
+          "profile": "profile:4"
+        }
+      },
+      {
+        "id": "site:39",
+        "position": {
+          "x": 43,
+          "y": 31,
+          "z": 38
+        },
+        "source": {
+          "kind": "constant",
+          "profile": "profile:4"
+        }
+      },
+      {
+        "id": "site:40",
+        "position": {
+          "x": 44,
+          "y": 31,
+          "z": 38
+        },
+        "source": {
+          "kind": "constant",
+          "profile": "profile:4"
+        }
+      },
+      {
+        "id": "site:41",
+        "position": {
+          "x": 46,
+          "y": 31,
+          "z": 38
+        },
+        "source": {
+          "kind": "constant",
+          "profile": "profile:4"
+        }
+      },
+      {
+        "id": "site:42",
+        "position": {
+          "x": 39,
+          "y": 31,
+          "z": 39
+        },
+        "source": {
+          "kind": "constant",
+          "profile": "profile:4"
+        }
+      },
+      {
+        "id": "site:43",
+        "position": {
+          "x": 40,
+          "y": 31,
+          "z": 39
+        },
+        "source": {
+          "kind": "constant",
+          "profile": "profile:4"
+        }
+      },
+      {
+        "id": "site:44",
+        "position": {
+          "x": 41,
+          "y": 31,
+          "z": 39
+        },
+        "source": {
+          "kind": "constant",
+          "profile": "profile:4"
+        }
+      },
+      {
+        "id": "site:45",
+        "position": {
+          "x": 42,
+          "y": 31,
+          "z": 39
+        },
+        "source": {
+          "kind": "constant",
+          "profile": "profile:4"
+        }
+      },
+      {
+        "id": "site:46",
+        "position": {
+          "x": 43,
+          "y": 31,
+          "z": 39
+        },
+        "source": {
+          "kind": "constant",
+          "profile": "profile:4"
+        }
+      },
+      {
+        "id": "site:47",
+        "position": {
+          "x": 44,
+          "y": 31,
+          "z": 39
+        },
+        "source": {
+          "kind": "constant",
+          "profile": "profile:4"
+        }
+      },
+      {
+        "id": "site:48",
+        "position": {
+          "x": 45,
+          "y": 31,
+          "z": 39
+        },
+        "source": {
+          "kind": "constant",
+          "profile": "profile:4"
+        }
+      },
+      {
+        "id": "site:49",
+        "position": {
+          "x": 46,
+          "y": 31,
+          "z": 39
+        },
+        "source": {
+          "kind": "constant",
+          "profile": "profile:4"
+        }
+      },
+      {
+        "id": "site:50",
+        "position": {
+          "x": 47,
+          "y": 31,
+          "z": 39
+        },
+        "source": {
+          "kind": "constant",
+          "profile": "profile:4"
+        }
+      },
+      {
+        "id": "site:51",
+        "position": {
+          "x": 38,
+          "y": 31,
+          "z": 40
+        },
+        "source": {
+          "kind": "constant",
+          "profile": "profile:4"
+        }
+      },
+      {
+        "id": "site:52",
+        "position": {
+          "x": 39,
+          "y": 31,
+          "z": 40
+        },
+        "source": {
+          "kind": "constant",
+          "profile": "profile:4"
+        }
+      },
+      {
+        "id": "site:53",
+        "position": {
+          "x": 40,
+          "y": 31,
+          "z": 40
+        },
+        "source": {
+          "kind": "component",
+          "node": "node:5"
+        }
+      },
+      {
+        "id": "site:54",
+        "position": {
+          "x": 41,
+          "y": 31,
+          "z": 40
+        },
+        "source": {
+          "kind": "component",
+          "node": "node:6"
+        }
+      },
+      {
+        "id": "site:55",
+        "position": {
+          "x": 42,
+          "y": 31,
+          "z": 40
+        },
+        "source": {
+          "kind": "contact",
+          "contact": "contact:2"
+        }
+      },
+      {
+        "id": "site:56",
+        "position": {
+          "x": 43,
+          "y": 31,
+          "z": 40
+        },
+        "source": {
+          "kind": "contact",
+          "contact": "contact:1"
+        }
+      },
+      {
+        "id": "site:57",
+        "position": {
+          "x": 44,
+          "y": 31,
+          "z": 40
+        },
+        "source": {
+          "kind": "contact",
+          "contact": "contact:0"
+        }
+      },
+      {
+        "id": "site:58",
+        "position": {
+          "x": 45,
+          "y": 31,
+          "z": 40
+        },
+        "source": {
+          "kind": "constant",
+          "profile": "profile:6"
+        }
+      },
+      {
+        "id": "site:59",
+        "position": {
+          "x": 46,
+          "y": 31,
+          "z": 40
+        },
+        "source": {
+          "kind": "component",
+          "node": "node:8"
+        }
+      },
+      {
+        "id": "site:60",
+        "position": {
+          "x": 47,
+          "y": 31,
+          "z": 40
+        },
+        "source": {
+          "kind": "constant",
+          "profile": "profile:4"
+        }
+      },
+      {
+        "id": "site:61",
+        "position": {
+          "x": 48,
+          "y": 31,
+          "z": 40
+        },
+        "source": {
+          "kind": "constant",
+          "profile": "profile:4"
+        }
+      },
+      {
+        "id": "site:62",
+        "position": {
+          "x": 39,
+          "y": 31,
+          "z": 41
+        },
+        "source": {
+          "kind": "constant",
+          "profile": "profile:4"
+        }
+      },
+      {
+        "id": "site:63",
+        "position": {
+          "x": 40,
+          "y": 31,
+          "z": 41
+        },
+        "source": {
+          "kind": "constant",
+          "profile": "profile:4"
+        }
+      },
+      {
+        "id": "site:64",
+        "position": {
+          "x": 41,
+          "y": 31,
+          "z": 41
+        },
+        "source": {
+          "kind": "constant",
+          "profile": "profile:4"
+        }
+      },
+      {
+        "id": "site:65",
+        "position": {
+          "x": 42,
+          "y": 31,
+          "z": 41
+        },
+        "source": {
+          "kind": "constant",
+          "profile": "profile:4"
+        }
+      },
+      {
+        "id": "site:66",
+        "position": {
+          "x": 43,
+          "y": 31,
+          "z": 41
+        },
+        "source": {
+          "kind": "constant",
+          "profile": "profile:4"
+        }
+      },
+      {
+        "id": "site:67",
+        "position": {
+          "x": 44,
+          "y": 31,
+          "z": 41
+        },
+        "source": {
+          "kind": "constant",
+          "profile": "profile:4"
+        }
+      },
+      {
+        "id": "site:68",
+        "position": {
+          "x": 45,
+          "y": 31,
+          "z": 41
+        },
+        "source": {
+          "kind": "constant",
+          "profile": "profile:4"
+        }
+      },
+      {
+        "id": "site:69",
+        "position": {
+          "x": 46,
+          "y": 31,
+          "z": 41
+        },
+        "source": {
+          "kind": "constant",
+          "profile": "profile:4"
+        }
+      },
+      {
+        "id": "site:70",
+        "position": {
+          "x": 47,
+          "y": 31,
+          "z": 41
+        },
+        "source": {
+          "kind": "constant",
+          "profile": "profile:4"
+        }
+      },
+      {
+        "id": "site:71",
+        "position": {
+          "x": 40,
+          "y": 31,
+          "z": 42
+        },
+        "source": {
+          "kind": "constant",
+          "profile": "profile:4"
+        }
+      },
+      {
+        "id": "site:72",
+        "position": {
+          "x": 41,
+          "y": 31,
+          "z": 42
+        },
+        "source": {
+          "kind": "constant",
+          "profile": "profile:4"
+        }
+      },
+      {
+        "id": "site:73",
+        "position": {
+          "x": 43,
+          "y": 31,
+          "z": 42
+        },
+        "source": {
+          "kind": "constant",
+          "profile": "profile:4"
+        }
+      },
+      {
+        "id": "site:74",
+        "position": {
+          "x": 44,
+          "y": 31,
+          "z": 42
+        },
+        "source": {
+          "kind": "constant",
+          "profile": "profile:4"
+        }
+      },
+      {
+        "id": "site:75",
+        "position": {
+          "x": 46,
+          "y": 31,
+          "z": 42
+        },
+        "source": {
+          "kind": "constant",
+          "profile": "profile:4"
+        }
+      },
+      {
+        "id": "site:76",
+        "position": {
+          "x": 44,
+          "y": 32,
+          "z": 38
+        },
+        "source": {
+          "kind": "constant",
+          "profile": "profile:4"
+        }
+      },
+      {
+        "id": "site:77",
+        "position": {
+          "x": 40,
+          "y": 32,
+          "z": 39
+        },
+        "source": {
+          "kind": "constant",
+          "profile": "profile:4"
+        }
+      },
+      {
+        "id": "site:78",
+        "position": {
+          "x": 41,
+          "y": 32,
+          "z": 39
+        },
+        "source": {
+          "kind": "constant",
+          "profile": "profile:4"
+        }
+      },
+      {
+        "id": "site:79",
+        "position": {
+          "x": 43,
+          "y": 32,
+          "z": 39
+        },
+        "source": {
+          "kind": "constant",
+          "profile": "profile:4"
+        }
+      },
+      {
+        "id": "site:80",
+        "position": {
+          "x": 44,
+          "y": 32,
+          "z": 39
+        },
+        "source": {
+          "kind": "constant",
+          "profile": "profile:4"
+        }
+      },
+      {
+        "id": "site:81",
+        "position": {
+          "x": 45,
+          "y": 32,
+          "z": 39
+        },
+        "source": {
+          "kind": "constant",
+          "profile": "profile:4"
+        }
+      },
+      {
+        "id": "site:82",
+        "position": {
+          "x": 46,
+          "y": 32,
+          "z": 39
+        },
+        "source": {
+          "kind": "constant",
+          "profile": "profile:4"
+        }
+      },
+      {
+        "id": "site:83",
+        "position": {
+          "x": 39,
+          "y": 32,
+          "z": 40
+        },
+        "source": {
+          "kind": "constant",
+          "profile": "profile:4"
+        }
+      },
+      {
+        "id": "site:84",
+        "position": {
+          "x": 40,
+          "y": 32,
+          "z": 40
+        },
+        "source": {
+          "kind": "constant",
+          "profile": "profile:4"
+        }
+      },
+      {
+        "id": "site:85",
+        "position": {
+          "x": 41,
+          "y": 32,
+          "z": 40
+        },
+        "source": {
+          "kind": "constant",
+          "profile": "profile:4"
+        }
+      },
+      {
+        "id": "site:86",
+        "position": {
+          "x": 42,
+          "y": 32,
+          "z": 40
+        },
+        "source": {
+          "kind": "constant",
+          "profile": "profile:4"
+        }
+      },
+      {
+        "id": "site:87",
+        "position": {
+          "x": 43,
+          "y": 32,
+          "z": 40
+        },
+        "source": {
+          "kind": "constant",
+          "profile": "profile:4"
+        }
+      },
+      {
+        "id": "site:88",
+        "position": {
+          "x": 44,
+          "y": 32,
+          "z": 40
+        },
+        "source": {
+          "kind": "constant",
+          "profile": "profile:4"
+        }
+      },
+      {
+        "id": "site:89",
+        "position": {
+          "x": 45,
+          "y": 32,
+          "z": 40
+        },
+        "source": {
+          "kind": "constant",
+          "profile": "profile:4"
+        }
+      },
+      {
+        "id": "site:90",
+        "position": {
+          "x": 46,
+          "y": 32,
+          "z": 40
+        },
+        "source": {
+          "kind": "constant",
+          "profile": "profile:4"
+        }
+      },
+      {
+        "id": "site:91",
+        "position": {
+          "x": 47,
+          "y": 32,
+          "z": 40
+        },
+        "source": {
+          "kind": "constant",
+          "profile": "profile:4"
+        }
+      },
+      {
+        "id": "site:92",
+        "position": {
+          "x": 40,
+          "y": 32,
+          "z": 41
+        },
+        "source": {
+          "kind": "constant",
+          "profile": "profile:4"
+        }
+      },
+      {
+        "id": "site:93",
+        "position": {
+          "x": 41,
+          "y": 32,
+          "z": 41
+        },
+        "source": {
+          "kind": "constant",
+          "profile": "profile:4"
+        }
+      },
+      {
+        "id": "site:94",
+        "position": {
+          "x": 43,
+          "y": 32,
+          "z": 41
+        },
+        "source": {
+          "kind": "constant",
+          "profile": "profile:4"
+        }
+      },
+      {
+        "id": "site:95",
+        "position": {
+          "x": 44,
+          "y": 32,
+          "z": 41
+        },
+        "source": {
+          "kind": "constant",
+          "profile": "profile:4"
+        }
+      },
+      {
+        "id": "site:96",
+        "position": {
+          "x": 45,
+          "y": 32,
+          "z": 41
+        },
+        "source": {
+          "kind": "constant",
+          "profile": "profile:4"
+        }
+      },
+      {
+        "id": "site:97",
+        "position": {
+          "x": 46,
+          "y": 32,
+          "z": 41
+        },
+        "source": {
+          "kind": "constant",
+          "profile": "profile:4"
+        }
+      },
+      {
+        "id": "site:98",
+        "position": {
+          "x": 44,
+          "y": 32,
+          "z": 42
+        },
+        "source": {
+          "kind": "constant",
+          "profile": "profile:4"
+        }
+      },
+      {
+        "id": "site:99",
+        "position": {
+          "x": 44,
+          "y": 33,
+          "z": 39
+        },
+        "source": {
+          "kind": "constant",
+          "profile": "profile:4"
+        }
+      },
+      {
+        "id": "site:100",
+        "position": {
+          "x": 40,
+          "y": 33,
+          "z": 40
+        },
+        "source": {
+          "kind": "constant",
+          "profile": "profile:4"
+        }
+      },
+      {
+        "id": "site:101",
+        "position": {
+          "x": 41,
+          "y": 33,
+          "z": 40
+        },
+        "source": {
+          "kind": "constant",
+          "profile": "profile:4"
+        }
+      },
+      {
+        "id": "site:102",
+        "position": {
+          "x": 43,
+          "y": 33,
+          "z": 40
+        },
+        "source": {
+          "kind": "constant",
+          "profile": "profile:4"
+        }
+      },
+      {
+        "id": "site:103",
+        "position": {
+          "x": 44,
+          "y": 33,
+          "z": 40
+        },
+        "source": {
+          "kind": "constant",
+          "profile": "profile:4"
+        }
+      },
+      {
+        "id": "site:104",
+        "position": {
+          "x": 45,
+          "y": 33,
+          "z": 40
+        },
+        "source": {
+          "kind": "constant",
+          "profile": "profile:4"
+        }
+      },
+      {
+        "id": "site:105",
+        "position": {
+          "x": 46,
+          "y": 33,
+          "z": 40
+        },
+        "source": {
+          "kind": "constant",
+          "profile": "profile:4"
+        }
+      },
+      {
+        "id": "site:106",
+        "position": {
+          "x": 44,
+          "y": 33,
+          "z": 41
+        },
+        "source": {
+          "kind": "constant",
+          "profile": "profile:4"
+        }
+      },
+      {
+        "id": "site:107",
+        "position": {
+          "x": 44,
+          "y": 34,
+          "z": 40
+        },
+        "source": {
+          "kind": "constant",
+          "profile": "profile:4"
+        }
+      },
+      {
+        "id": "site:108",
+        "position": {
+          "x": 46,
+          "y": 28,
+          "z": 40
+        },
+        "source": {
+          "kind": "constant",
+          "profile": "profile:4"
+        }
+      },
+      {
+        "id": "site:109",
+        "position": {
+          "x": 46,
+          "y": 29,
+          "z": 39
+        },
+        "source": {
+          "kind": "constant",
+          "profile": "profile:4"
+        }
+      },
+      {
+        "id": "site:110",
+        "position": {
+          "x": 46,
+          "y": 29,
+          "z": 41
+        },
+        "source": {
+          "kind": "constant",
+          "profile": "profile:4"
+        }
+      },
+      {
+        "id": "site:111",
+        "position": {
+          "x": 45,
+          "y": 29,
+          "z": 40
+        },
+        "source": {
+          "kind": "constant",
+          "profile": "profile:4"
+        }
+      }
+    ],
+    "guards": [
+      {
+        "id": "guard:0",
+        "kind": "always"
+      },
+      {
+        "id": "guard:1",
+        "kind": "state",
+        "test": {
+          "kind": "piston_extended",
+          "piston": "piston:0"
+        }
+      },
+      {
+        "id": "guard:2",
+        "kind": "not",
+        "guard": "guard:1"
+      },
+      {
+        "id": "guard:3",
+        "kind": "state",
+        "test": {
+          "kind": "piston_availability",
+          "piston": "piston:0",
+          "availability": "ready"
+        }
+      },
+      {
+        "id": "guard:4",
+        "kind": "state",
+        "test": {
+          "kind": "piston_availability",
+          "piston": "piston:0",
+          "availability": "head_pending"
+        }
+      },
+      {
+        "id": "guard:5",
+        "kind": "state",
+        "test": {
+          "kind": "piston_availability",
+          "piston": "piston:0",
+          "availability": "publishing_head_removal"
+        }
+      },
+      {
+        "id": "guard:6",
+        "kind": "any",
+        "guards": [
+          "guard:3",
+          "guard:4",
+          "guard:5"
+        ]
+      },
+      {
+        "id": "guard:7",
+        "kind": "all",
+        "guards": [
+          "guard:2",
+          "guard:6"
+        ]
+      },
+      {
+        "id": "guard:8",
+        "kind": "all",
+        "guards": [
+          "guard:1",
+          "guard:6"
+        ]
+      },
+      {
+        "id": "guard:9",
+        "kind": "state",
+        "test": {
+          "kind": "piston_availability",
+          "piston": "piston:0",
+          "availability": "base_pending_head_present"
+        }
+      },
+      {
+        "id": "guard:10",
+        "kind": "state",
+        "test": {
+          "kind": "piston_availability",
+          "piston": "piston:0",
+          "availability": "base_pending"
+        }
+      },
+      {
+        "id": "guard:11",
+        "kind": "any",
+        "guards": [
+          "guard:9",
+          "guard:10"
+        ]
+      },
+      {
+        "id": "guard:12",
+        "kind": "state",
+        "test": {
+          "kind": "piston_head_present",
+          "piston": "piston:0"
+        }
+      },
+      {
+        "id": "guard:13",
+        "kind": "any",
+        "guards": [
+          "guard:3",
+          "guard:9"
+        ]
+      },
+      {
+        "id": "guard:14",
+        "kind": "all",
+        "guards": [
+          "guard:12",
+          "guard:13"
+        ]
+      },
+      {
+        "id": "guard:15",
+        "kind": "not",
+        "guard": "guard:4"
+      },
+      {
+        "id": "guard:16",
+        "kind": "not",
+        "guard": "guard:14"
+      },
+      {
+        "id": "guard:17",
+        "kind": "state",
+        "test": {
+          "kind": "resource_at",
+          "resource": "resource:0",
+          "contact": "contact:1"
+        }
+      },
+      {
+        "id": "guard:18",
+        "kind": "state",
+        "test": {
+          "kind": "resource_enabled",
+          "resource": "resource:0"
+        }
+      },
+      {
+        "id": "guard:19",
+        "kind": "all",
+        "guards": [
+          "guard:17",
+          "guard:18"
+        ]
+      },
+      {
+        "id": "guard:20",
+        "kind": "not",
+        "guard": "guard:19"
+      },
+      {
+        "id": "guard:21",
+        "kind": "all",
+        "guards": [
+          "guard:15",
+          "guard:16",
+          "guard:20"
+        ]
+      },
+      {
+        "id": "guard:22",
+        "kind": "state",
+        "test": {
+          "kind": "resource_at",
+          "resource": "resource:0",
+          "contact": "contact:2"
+        }
+      },
+      {
+        "id": "guard:23",
+        "kind": "all",
+        "guards": [
+          "guard:22",
+          "guard:18"
+        ]
+      },
+      {
+        "id": "guard:24",
+        "kind": "not",
+        "guard": "guard:23"
+      },
+      {
+        "id": "guard:25",
+        "kind": "not",
+        "guard": "guard:0"
+      },
+      {
+        "id": "guard:26",
+        "kind": "site",
+        "site": "site:55",
+        "view": "live",
+        "test": {
+          "kind": "is_wire"
+        }
+      },
+      {
+        "id": "guard:27",
+        "kind": "site",
+        "site": "site:55",
+        "view": "live",
+        "test": {
+          "kind": "transparent"
+        }
+      },
+      {
+        "id": "guard:28",
+        "kind": "site",
+        "site": "site:55",
+        "view": "live",
+        "test": {
+          "kind": "solid"
+        }
+      },
+      {
+        "id": "guard:29",
+        "kind": "not",
+        "guard": "guard:27"
+      },
+      {
+        "id": "guard:30",
+        "kind": "not",
+        "guard": "guard:28"
+      },
+      {
+        "id": "guard:31",
+        "kind": "site",
+        "site": "site:53",
+        "view": "live",
+        "test": {
+          "kind": "is_wire"
+        }
+      },
+      {
+        "id": "guard:32",
+        "kind": "site",
+        "site": "site:53",
+        "view": "live",
+        "test": {
+          "kind": "transparent"
+        }
+      },
+      {
+        "id": "guard:33",
+        "kind": "site",
+        "site": "site:53",
+        "view": "live",
+        "test": {
+          "kind": "solid"
+        }
+      },
+      {
+        "id": "guard:34",
+        "kind": "not",
+        "guard": "guard:32"
+      },
+      {
+        "id": "guard:35",
+        "kind": "not",
+        "guard": "guard:33"
+      },
+      {
+        "id": "guard:36",
+        "kind": "site",
+        "site": "site:26",
+        "view": "live",
+        "test": {
+          "kind": "is_wire"
+        }
+      },
+      {
+        "id": "guard:37",
+        "kind": "site",
+        "site": "site:55",
+        "view": "captured",
+        "test": {
+          "kind": "profile",
+          "profile": "profile:5"
+        }
+      },
+      {
+        "id": "guard:38",
+        "kind": "site",
+        "site": "site:55",
+        "view": "captured",
+        "test": {
+          "kind": "profile",
+          "profile": "profile:4"
+        }
+      },
+      {
+        "id": "guard:39",
+        "kind": "site",
+        "site": "site:56",
+        "view": "captured",
+        "test": {
+          "kind": "profile",
+          "profile": "profile:2"
+        }
+      },
+      {
+        "id": "guard:40",
+        "kind": "site",
+        "site": "site:56",
+        "view": "captured",
+        "test": {
+          "kind": "profile",
+          "profile": "profile:3"
+        }
+      },
+      {
+        "id": "guard:41",
+        "kind": "site",
+        "site": "site:56",
+        "view": "captured",
+        "test": {
+          "kind": "profile",
+          "profile": "profile:4"
+        }
+      },
+      {
+        "id": "guard:42",
+        "kind": "site",
+        "site": "site:56",
+        "view": "captured",
+        "test": {
+          "kind": "profile",
+          "profile": "profile:5"
+        }
+      },
+      {
+        "id": "guard:43",
+        "kind": "site",
+        "site": "site:57",
+        "view": "captured",
+        "test": {
+          "kind": "profile",
+          "profile": "profile:0"
+        }
+      },
+      {
+        "id": "guard:44",
+        "kind": "site",
+        "site": "site:57",
+        "view": "captured",
+        "test": {
+          "kind": "profile",
+          "profile": "profile:1"
+        }
+      },
+      {
+        "id": "guard:45",
+        "kind": "site",
+        "site": "site:57",
+        "view": "captured",
+        "test": {
+          "kind": "profile",
+          "profile": "profile:2"
+        }
+      }
+    ],
+    "contacts": [
+      {
+        "id": "contact:0",
+        "node": "node:1",
+        "position": {
+          "x": 44,
+          "y": 31,
+          "z": 40
+        },
+        "variants": [
+          {
+            "when": "guard:7",
+            "profile": "profile:0",
+            "receiver": {
+              "kind": "piston_base",
+              "piston": "piston:0"
+            }
+          },
+          {
+            "when": "guard:8",
+            "profile": "profile:1",
+            "receiver": {
+              "kind": "piston_base",
+              "piston": "piston:0"
+            }
+          },
+          {
+            "when": "guard:11",
+            "profile": "profile:2",
+            "receiver": {
+              "kind": "piston_base",
+              "piston": "piston:0"
+            }
+          }
+        ]
+      },
+      {
+        "id": "contact:1",
+        "node": "node:2",
+        "position": {
+          "x": 43,
+          "y": 31,
+          "z": 40
+        },
+        "variants": [
+          {
+            "when": "guard:4",
+            "profile": "profile:2",
+            "receiver": null
+          },
+          {
+            "when": "guard:14",
+            "profile": "profile:3",
+            "receiver": {
+              "kind": "piston_head",
+              "piston": "piston:0"
+            }
+          },
+          {
+            "when": "guard:21",
+            "profile": "profile:4",
+            "receiver": null
+          },
+          {
+            "when": "guard:19",
+            "profile": "profile:5",
+            "receiver": null
+          }
+        ]
+      },
+      {
+        "id": "contact:2",
+        "node": "node:3",
+        "position": {
+          "x": 42,
+          "y": 31,
+          "z": 40
+        },
+        "variants": [
+          {
+            "when": "guard:23",
+            "profile": "profile:5",
+            "receiver": null
+          },
+          {
+            "when": "guard:24",
+            "profile": "profile:4",
+            "receiver": null
+          }
+        ]
+      }
+    ],
+    "pistons": [
+      {
+        "id": "piston:0",
+        "node": "node:0",
+        "position": {
+          "x": 44,
+          "y": 31,
+          "z": 40
+        },
+        "facing": "west",
+        "sticky": true,
+        "base": "contact:0",
+        "near": "contact:1",
+        "far": "contact:2",
+        "lane": {
+          "kind": "single_resource",
+          "far": "contact:2"
+        },
+        "routes": {
+          "base_changed": "route:9",
+          "near_changed": "route:10",
+          "far_changed": "route:5",
+          "far_shape_changed": "route:6",
+          "base_restored": "route:11",
+          "head_restored": "route:12",
+          "resource_restored_near": "route:7",
+          "resource_restored_far": "route:8"
+        }
+      }
+    ],
+    "resources": [
+      {
+        "id": "resource:0",
+        "material": "profile:5",
+        "contacts": [
+          "contact:2",
+          "contact:1"
+        ]
+      }
+    ],
+    "power_links": [
+      {
+        "id": "power_link:0",
+        "from": {
+          "site": "site:54",
+          "port": {
+            "kind": "weak",
+            "face": "east"
+          }
+        },
+        "to": {
+          "kind": "input",
+          "node": "node:5",
+          "port": "main"
+        },
+        "face": "east",
+        "attenuation": 0,
+        "guard": "guard:0"
+      },
+      {
+        "id": "power_link:1",
+        "from": {
+          "site": "site:20",
+          "port": {
+            "kind": "conducted",
+            "include_dust": false
+          }
+        },
+        "to": {
+          "kind": "input",
+          "node": "node:6",
+          "port": "main"
+        },
+        "face": "bottom",
+        "attenuation": 0,
+        "guard": "guard:0"
+      },
+      {
+        "id": "power_link:2",
+        "from": {
+          "site": "site:55",
+          "port": {
+            "kind": "weak",
+            "face": "east"
+          }
+        },
+        "to": {
+          "kind": "input",
+          "node": "node:6",
+          "port": "main"
+        },
+        "face": "east",
+        "attenuation": 0,
+        "guard": "guard:23"
+      },
+      {
+        "id": "power_link:3",
+        "from": {
+          "site": "site:53",
+          "port": {
+            "kind": "conducted",
+            "include_dust": false
+          }
+        },
+        "to": {
+          "kind": "input",
+          "node": "node:6",
+          "port": "main"
+        },
+        "face": "west",
+        "attenuation": 0,
+        "guard": "guard:0"
+      },
+      {
+        "id": "power_link:4",
+        "from": {
+          "site": "site:25",
+          "port": {
+            "kind": "conducted",
+            "include_dust": false
+          }
+        },
+        "to": {
+          "kind": "input",
+          "node": "node:8",
+          "port": "main"
+        },
+        "face": "bottom",
+        "attenuation": 0,
+        "guard": "guard:0"
+      },
+      {
+        "id": "power_link:5",
+        "from": {
+          "site": "site:26",
+          "port": {
+            "kind": "strong",
+            "face": "east"
+          }
+        },
+        "to": {
+          "kind": "conductor",
+          "site": "site:25",
+          "include_dust": false
+        },
+        "face": "east",
+        "attenuation": 0,
+        "guard": "guard:0"
+      },
+      {
+        "id": "power_link:6",
+        "from": {
+          "site": "site:58",
+          "port": {
+            "kind": "conducted",
+            "include_dust": false
+          }
+        },
+        "to": {
+          "kind": "input",
+          "node": "node:8",
+          "port": "main"
+        },
+        "face": "west",
+        "attenuation": 0,
+        "guard": "guard:0"
+      },
+      {
+        "id": "power_link:7",
+        "from": {
+          "site": "site:58",
+          "port": {
+            "kind": "conducted",
+            "include_dust": true
+          }
+        },
+        "to": {
+          "kind": "input",
+          "node": "node:0",
+          "port": "main"
+        },
+        "face": "east",
+        "attenuation": 0,
+        "guard": "guard:0"
+      },
+      {
+        "id": "power_link:8",
+        "from": {
+          "site": "site:59",
+          "port": {
+            "kind": "strong",
+            "face": "east"
+          }
+        },
+        "to": {
+          "kind": "conductor",
+          "site": "site:58",
+          "include_dust": true
+        },
+        "face": "east",
+        "attenuation": 0,
+        "guard": "guard:0"
+      }
+    ],
+    "wire_plans": [
+      {
+        "id": "wire:0",
+        "node": "node:6",
+        "canonical_neighbors": [
+          "site:53",
+          "site:55",
+          "site:20",
+          "site:85",
+          "site:44",
+          "site:64",
+          "site:52",
+          "site:19",
+          "site:84",
+          "site:43",
+          "site:63",
+          "site:56",
+          "site:21",
+          "site:86",
+          "site:45",
+          "site:65",
+          "site:3",
+          "site:12",
+          "site:30",
+          "site:101",
+          "site:78",
+          "site:93",
+          "site:38",
+          "site:72"
+        ],
+        "shape_route": "route:1",
+        "turbo_route": "route:2"
+      },
+      {
+        "id": "wire:1",
+        "node": "node:8",
+        "canonical_neighbors": [
+          "site:58",
+          "site:60",
+          "site:25",
+          "site:90",
+          "site:49",
+          "site:69",
+          "site:57",
+          "site:24",
+          "site:89",
+          "site:48",
+          "site:68",
+          "site:61",
+          "site:26",
+          "site:91",
+          "site:50",
+          "site:70",
+          "site:6",
+          "site:15",
+          "site:33",
+          "site:105",
+          "site:82",
+          "site:97",
+          "site:41",
+          "site:75"
+        ],
+        "shape_route": "route:3",
+        "turbo_route": "route:4"
+      }
+    ],
+    "dust_paths": [],
+    "wire_relations": [
+      {
+        "id": "wire_relation:0",
+        "from": "node:6",
+        "to": "site:44",
+        "kind": "step",
+        "direction": "north",
+        "guard": "guard:25"
+      },
+      {
+        "id": "wire_relation:1",
+        "from": "node:6",
+        "to": "site:78",
+        "kind": "ascend",
+        "direction": "north",
+        "guard": "guard:25"
+      },
+      {
+        "id": "wire_relation:2",
+        "from": "node:6",
+        "to": "site:12",
+        "kind": "descend",
+        "direction": "north",
+        "guard": "guard:25"
+      },
+      {
+        "id": "wire_relation:3",
+        "from": "node:6",
+        "to": "site:64",
+        "kind": "step",
+        "direction": "south",
+        "guard": "guard:25"
+      },
+      {
+        "id": "wire_relation:4",
+        "from": "node:6",
+        "to": "site:93",
+        "kind": "ascend",
+        "direction": "south",
+        "guard": "guard:25"
+      },
+      {
+        "id": "wire_relation:5",
+        "from": "node:6",
+        "to": "site:30",
+        "kind": "descend",
+        "direction": "south",
+        "guard": "guard:25"
+      },
+      {
+        "id": "wire_relation:6",
+        "from": "node:6",
+        "to": "site:55",
+        "kind": "step",
+        "direction": "east",
+        "guard": "guard:26"
+      },
+      {
+        "id": "wire_relation:7",
+        "from": "node:6",
+        "to": "site:86",
+        "kind": "ascend",
+        "direction": "east",
+        "guard": "guard:25"
+      },
+      {
+        "id": "wire_relation:8",
+        "from": "node:6",
+        "to": "site:21",
+        "kind": "descend",
+        "direction": "east",
+        "guard": "guard:25"
+      },
+      {
+        "id": "wire_relation:9",
+        "from": "node:6",
+        "to": "site:53",
+        "kind": "step",
+        "direction": "west",
+        "guard": "guard:31"
+      },
+      {
+        "id": "wire_relation:10",
+        "from": "node:6",
+        "to": "site:84",
+        "kind": "ascend",
+        "direction": "west",
+        "guard": "guard:25"
+      },
+      {
+        "id": "wire_relation:11",
+        "from": "node:6",
+        "to": "site:19",
+        "kind": "descend",
+        "direction": "west",
+        "guard": "guard:25"
+      },
+      {
+        "id": "wire_relation:12",
+        "from": "node:8",
+        "to": "site:49",
+        "kind": "step",
+        "direction": "north",
+        "guard": "guard:25"
+      },
+      {
+        "id": "wire_relation:13",
+        "from": "node:8",
+        "to": "site:82",
+        "kind": "ascend",
+        "direction": "north",
+        "guard": "guard:25"
+      },
+      {
+        "id": "wire_relation:14",
+        "from": "node:8",
+        "to": "site:15",
+        "kind": "descend",
+        "direction": "north",
+        "guard": "guard:25"
+      },
+      {
+        "id": "wire_relation:15",
+        "from": "node:8",
+        "to": "site:69",
+        "kind": "step",
+        "direction": "south",
+        "guard": "guard:25"
+      },
+      {
+        "id": "wire_relation:16",
+        "from": "node:8",
+        "to": "site:97",
+        "kind": "ascend",
+        "direction": "south",
+        "guard": "guard:25"
+      },
+      {
+        "id": "wire_relation:17",
+        "from": "node:8",
+        "to": "site:33",
+        "kind": "descend",
+        "direction": "south",
+        "guard": "guard:25"
+      },
+      {
+        "id": "wire_relation:18",
+        "from": "node:8",
+        "to": "site:60",
+        "kind": "step",
+        "direction": "east",
+        "guard": "guard:25"
+      },
+      {
+        "id": "wire_relation:19",
+        "from": "node:8",
+        "to": "site:91",
+        "kind": "ascend",
+        "direction": "east",
+        "guard": "guard:25"
+      },
+      {
+        "id": "wire_relation:20",
+        "from": "node:8",
+        "to": "site:26",
+        "kind": "descend",
+        "direction": "east",
+        "guard": "guard:36"
+      },
+      {
+        "id": "wire_relation:21",
+        "from": "node:8",
+        "to": "site:58",
+        "kind": "step",
+        "direction": "west",
+        "guard": "guard:25"
+      },
+      {
+        "id": "wire_relation:22",
+        "from": "node:8",
+        "to": "site:89",
+        "kind": "ascend",
+        "direction": "west",
+        "guard": "guard:25"
+      },
+      {
+        "id": "wire_relation:23",
+        "from": "node:8",
+        "to": "site:24",
+        "kind": "descend",
+        "direction": "west",
+        "guard": "guard:25"
+      }
+    ],
+    "comparator_plans": [],
+    "callback_links": [
+      {
+        "id": "callback_link:0",
+        "from": "node:4",
+        "to": "node:8",
+        "kind": "update",
+        "direction": "bottom",
+        "guard": "guard:0",
+        "route": "route:0",
+        "sequence": 16
+      },
+      {
+        "id": "callback_link:1",
+        "from": "node:4",
+        "to": "node:8",
+        "kind": "update",
+        "direction": "bottom",
+        "guard": "guard:0",
+        "route": "route:0",
+        "sequence": 18
+      },
+      {
+        "id": "callback_link:2",
+        "from": "node:6",
+        "to": "node:6",
+        "kind": "update",
+        "direction": "top",
+        "guard": "guard:0",
+        "route": "route:1",
+        "sequence": 2
+      },
+      {
+        "id": "callback_link:3",
+        "from": "node:6",
+        "to": "node:6",
+        "kind": "update",
+        "direction": "bottom",
+        "guard": "guard:0",
+        "route": "route:1",
+        "sequence": 8
+      },
+      {
+        "id": "callback_link:4",
+        "from": "node:6",
+        "to": "node:6",
+        "kind": "update",
+        "direction": "north",
+        "guard": "guard:0",
+        "route": "route:1",
+        "sequence": 18
+      },
+      {
+        "id": "callback_link:5",
+        "from": "node:6",
+        "to": "node:6",
+        "kind": "update",
+        "direction": "south",
+        "guard": "guard:0",
+        "route": "route:1",
+        "sequence": 24
+      },
+      {
+        "id": "callback_link:6",
+        "from": "node:6",
+        "to": "node:0",
+        "kind": "update",
+        "direction": "west",
+        "guard": "guard:14",
+        "route": "route:1",
+        "sequence": 33
+      },
+      {
+        "id": "callback_link:7",
+        "from": "node:6",
+        "to": "node:6",
+        "kind": "update",
+        "direction": "east",
+        "guard": "guard:0",
+        "route": "route:1",
+        "sequence": 34
+      },
+      {
+        "id": "callback_link:8",
+        "from": "node:6",
+        "to": "node:5",
+        "kind": "update",
+        "direction": "east",
+        "guard": "guard:0",
+        "route": "route:1",
+        "sequence": 35
+      },
+      {
+        "id": "callback_link:9",
+        "from": "node:6",
+        "to": "node:6",
+        "kind": "update",
+        "direction": "west",
+        "guard": "guard:0",
+        "route": "route:1",
+        "sequence": 40
+      },
+      {
+        "id": "callback_link:10",
+        "from": "node:6",
+        "to": "node:5",
+        "kind": "update",
+        "direction": null,
+        "guard": "guard:0",
+        "route": "route:2",
+        "sequence": 0
+      },
+      {
+        "id": "callback_link:11",
+        "from": "node:6",
+        "to": "node:0",
+        "kind": "update",
+        "direction": null,
+        "guard": "guard:40",
+        "route": "route:2",
+        "sequence": 11
+      },
+      {
+        "id": "callback_link:12",
+        "from": "node:8",
+        "to": "node:8",
+        "kind": "update",
+        "direction": "top",
+        "guard": "guard:0",
+        "route": "route:3",
+        "sequence": 2
+      },
+      {
+        "id": "callback_link:13",
+        "from": "node:8",
+        "to": "node:8",
+        "kind": "update",
+        "direction": "bottom",
+        "guard": "guard:0",
+        "route": "route:3",
+        "sequence": 8
+      },
+      {
+        "id": "callback_link:14",
+        "from": "node:8",
+        "to": "node:8",
+        "kind": "update",
+        "direction": "north",
+        "guard": "guard:0",
+        "route": "route:3",
+        "sequence": 18
+      },
+      {
+        "id": "callback_link:15",
+        "from": "node:8",
+        "to": "node:8",
+        "kind": "update",
+        "direction": "south",
+        "guard": "guard:0",
+        "route": "route:3",
+        "sequence": 24
+      },
+      {
+        "id": "callback_link:16",
+        "from": "node:8",
+        "to": "node:8",
+        "kind": "update",
+        "direction": "east",
+        "guard": "guard:0",
+        "route": "route:3",
+        "sequence": 34
+      },
+      {
+        "id": "callback_link:17",
+        "from": "node:8",
+        "to": "node:8",
+        "kind": "update",
+        "direction": "west",
+        "guard": "guard:0",
+        "route": "route:3",
+        "sequence": 40
+      },
+      {
+        "id": "callback_link:18",
+        "from": "node:8",
+        "to": "node:0",
+        "kind": "update",
+        "direction": "east",
+        "guard": "guard:7",
+        "route": "route:3",
+        "sequence": 41
+      },
+      {
+        "id": "callback_link:19",
+        "from": "node:8",
+        "to": "node:0",
+        "kind": "update",
+        "direction": "east",
+        "guard": "guard:8",
+        "route": "route:3",
+        "sequence": 41
+      },
+      {
+        "id": "callback_link:20",
+        "from": "node:8",
+        "to": "node:0",
+        "kind": "update",
+        "direction": null,
+        "guard": "guard:43",
+        "route": "route:4",
+        "sequence": 6
+      },
+      {
+        "id": "callback_link:21",
+        "from": "node:8",
+        "to": "node:0",
+        "kind": "update",
+        "direction": null,
+        "guard": "guard:44",
+        "route": "route:4",
+        "sequence": 6
+      },
+      {
+        "id": "callback_link:22",
+        "from": "node:0",
+        "to": "node:6",
+        "kind": "shape",
+        "direction": "west",
+        "guard": "guard:0",
+        "route": "route:5",
+        "sequence": 0
+      },
+      {
+        "id": "callback_link:23",
+        "from": "node:0",
+        "to": "node:2",
+        "kind": "shape",
+        "direction": "east",
+        "guard": "guard:4",
+        "route": "route:5",
+        "sequence": 2
+      },
+      {
+        "id": "callback_link:24",
+        "from": "node:0",
+        "to": "node:2",
+        "kind": "shape",
+        "direction": "east",
+        "guard": "guard:14",
+        "route": "route:5",
+        "sequence": 2
+      },
+      {
+        "id": "callback_link:25",
+        "from": "node:0",
+        "to": "node:2",
+        "kind": "shape",
+        "direction": "east",
+        "guard": "guard:21",
+        "route": "route:5",
+        "sequence": 2
+      },
+      {
+        "id": "callback_link:26",
+        "from": "node:0",
+        "to": "node:2",
+        "kind": "shape",
+        "direction": "east",
+        "guard": "guard:19",
+        "route": "route:5",
+        "sequence": 2
+      },
+      {
+        "id": "callback_link:27",
+        "from": "node:0",
+        "to": "node:6",
+        "kind": "update",
+        "direction": "east",
+        "guard": "guard:0",
+        "route": "route:5",
+        "sequence": 12
+      },
+      {
+        "id": "callback_link:28",
+        "from": "node:0",
+        "to": "node:0",
+        "kind": "update",
+        "direction": "west",
+        "guard": "guard:14",
+        "route": "route:5",
+        "sequence": 13
+      },
+      {
+        "id": "callback_link:29",
+        "from": "node:0",
+        "to": "node:6",
+        "kind": "shape",
+        "direction": "west",
+        "guard": "guard:0",
+        "route": "route:6",
+        "sequence": 0
+      },
+      {
+        "id": "callback_link:30",
+        "from": "node:0",
+        "to": "node:2",
+        "kind": "shape",
+        "direction": "east",
+        "guard": "guard:4",
+        "route": "route:6",
+        "sequence": 2
+      },
+      {
+        "id": "callback_link:31",
+        "from": "node:0",
+        "to": "node:2",
+        "kind": "shape",
+        "direction": "east",
+        "guard": "guard:14",
+        "route": "route:6",
+        "sequence": 2
+      },
+      {
+        "id": "callback_link:32",
+        "from": "node:0",
+        "to": "node:2",
+        "kind": "shape",
+        "direction": "east",
+        "guard": "guard:21",
+        "route": "route:6",
+        "sequence": 2
+      },
+      {
+        "id": "callback_link:33",
+        "from": "node:0",
+        "to": "node:2",
+        "kind": "shape",
+        "direction": "east",
+        "guard": "guard:19",
+        "route": "route:6",
+        "sequence": 2
+      },
+      {
+        "id": "callback_link:34",
+        "from": "node:0",
+        "to": "node:0",
+        "kind": "update",
+        "direction": null,
+        "guard": "guard:14",
+        "route": "route:7",
+        "sequence": 0
+      },
+      {
+        "id": "callback_link:35",
+        "from": "node:0",
+        "to": "node:3",
+        "kind": "shape",
+        "direction": "west",
+        "guard": "guard:23",
+        "route": "route:7",
+        "sequence": 1
+      },
+      {
+        "id": "callback_link:36",
+        "from": "node:0",
+        "to": "node:3",
+        "kind": "shape",
+        "direction": "west",
+        "guard": "guard:24",
+        "route": "route:7",
+        "sequence": 1
+      },
+      {
+        "id": "callback_link:37",
+        "from": "node:0",
+        "to": "node:1",
+        "kind": "shape",
+        "direction": "east",
+        "guard": "guard:7",
+        "route": "route:7",
+        "sequence": 3
+      },
+      {
+        "id": "callback_link:38",
+        "from": "node:0",
+        "to": "node:1",
+        "kind": "shape",
+        "direction": "east",
+        "guard": "guard:8",
+        "route": "route:7",
+        "sequence": 3
+      },
+      {
+        "id": "callback_link:39",
+        "from": "node:0",
+        "to": "node:1",
+        "kind": "shape",
+        "direction": "east",
+        "guard": "guard:11",
+        "route": "route:7",
+        "sequence": 3
+      },
+      {
+        "id": "callback_link:40",
+        "from": "node:0",
+        "to": "node:0",
+        "kind": "update",
+        "direction": "west",
+        "guard": "guard:7",
+        "route": "route:7",
+        "sequence": 14
+      },
+      {
+        "id": "callback_link:41",
+        "from": "node:0",
+        "to": "node:0",
+        "kind": "update",
+        "direction": "west",
+        "guard": "guard:8",
+        "route": "route:7",
+        "sequence": 14
+      },
+      {
+        "id": "callback_link:42",
+        "from": "node:0",
+        "to": "node:6",
+        "kind": "shape",
+        "direction": "west",
+        "guard": "guard:0",
+        "route": "route:8",
+        "sequence": 1
+      },
+      {
+        "id": "callback_link:43",
+        "from": "node:0",
+        "to": "node:2",
+        "kind": "shape",
+        "direction": "east",
+        "guard": "guard:4",
+        "route": "route:8",
+        "sequence": 3
+      },
+      {
+        "id": "callback_link:44",
+        "from": "node:0",
+        "to": "node:2",
+        "kind": "shape",
+        "direction": "east",
+        "guard": "guard:14",
+        "route": "route:8",
+        "sequence": 3
+      },
+      {
+        "id": "callback_link:45",
+        "from": "node:0",
+        "to": "node:2",
+        "kind": "shape",
+        "direction": "east",
+        "guard": "guard:21",
+        "route": "route:8",
+        "sequence": 3
+      },
+      {
+        "id": "callback_link:46",
+        "from": "node:0",
+        "to": "node:2",
+        "kind": "shape",
+        "direction": "east",
+        "guard": "guard:19",
+        "route": "route:8",
+        "sequence": 3
+      },
+      {
+        "id": "callback_link:47",
+        "from": "node:0",
+        "to": "node:6",
+        "kind": "update",
+        "direction": "east",
+        "guard": "guard:0",
+        "route": "route:8",
+        "sequence": 13
+      },
+      {
+        "id": "callback_link:48",
+        "from": "node:0",
+        "to": "node:0",
+        "kind": "update",
+        "direction": "west",
+        "guard": "guard:14",
+        "route": "route:8",
+        "sequence": 14
+      },
+      {
+        "id": "callback_link:49",
+        "from": "node:0",
+        "to": "node:2",
+        "kind": "shape",
+        "direction": "west",
+        "guard": "guard:4",
+        "route": "route:9",
+        "sequence": 0
+      },
+      {
+        "id": "callback_link:50",
+        "from": "node:0",
+        "to": "node:2",
+        "kind": "shape",
+        "direction": "west",
+        "guard": "guard:14",
+        "route": "route:9",
+        "sequence": 0
+      },
+      {
+        "id": "callback_link:51",
+        "from": "node:0",
+        "to": "node:2",
+        "kind": "shape",
+        "direction": "west",
+        "guard": "guard:21",
+        "route": "route:9",
+        "sequence": 0
+      },
+      {
+        "id": "callback_link:52",
+        "from": "node:0",
+        "to": "node:2",
+        "kind": "shape",
+        "direction": "west",
+        "guard": "guard:19",
+        "route": "route:9",
+        "sequence": 0
+      },
+      {
+        "id": "callback_link:53",
+        "from": "node:0",
+        "to": "node:0",
+        "kind": "update",
+        "direction": "east",
+        "guard": "guard:14",
+        "route": "route:9",
+        "sequence": 12
+      },
+      {
+        "id": "callback_link:54",
+        "from": "node:0",
+        "to": "node:3",
+        "kind": "shape",
+        "direction": "west",
+        "guard": "guard:23",
+        "route": "route:10",
+        "sequence": 0
+      },
+      {
+        "id": "callback_link:55",
+        "from": "node:0",
+        "to": "node:3",
+        "kind": "shape",
+        "direction": "west",
+        "guard": "guard:24",
+        "route": "route:10",
+        "sequence": 0
+      },
+      {
+        "id": "callback_link:56",
+        "from": "node:0",
+        "to": "node:1",
+        "kind": "shape",
+        "direction": "east",
+        "guard": "guard:7",
+        "route": "route:10",
+        "sequence": 2
+      },
+      {
+        "id": "callback_link:57",
+        "from": "node:0",
+        "to": "node:1",
+        "kind": "shape",
+        "direction": "east",
+        "guard": "guard:8",
+        "route": "route:10",
+        "sequence": 2
+      },
+      {
+        "id": "callback_link:58",
+        "from": "node:0",
+        "to": "node:1",
+        "kind": "shape",
+        "direction": "east",
+        "guard": "guard:11",
+        "route": "route:10",
+        "sequence": 2
+      },
+      {
+        "id": "callback_link:59",
+        "from": "node:0",
+        "to": "node:0",
+        "kind": "update",
+        "direction": "west",
+        "guard": "guard:7",
+        "route": "route:10",
+        "sequence": 13
+      },
+      {
+        "id": "callback_link:60",
+        "from": "node:0",
+        "to": "node:0",
+        "kind": "update",
+        "direction": "west",
+        "guard": "guard:8",
+        "route": "route:10",
+        "sequence": 13
+      },
+      {
+        "id": "callback_link:61",
+        "from": "node:0",
+        "to": "node:0",
+        "kind": "update",
+        "direction": null,
+        "guard": "guard:7",
+        "route": "route:11",
+        "sequence": 0
+      },
+      {
+        "id": "callback_link:62",
+        "from": "node:0",
+        "to": "node:0",
+        "kind": "update",
+        "direction": null,
+        "guard": "guard:8",
+        "route": "route:11",
+        "sequence": 0
+      },
+      {
+        "id": "callback_link:63",
+        "from": "node:0",
+        "to": "node:2",
+        "kind": "shape",
+        "direction": "west",
+        "guard": "guard:4",
+        "route": "route:11",
+        "sequence": 1
+      },
+      {
+        "id": "callback_link:64",
+        "from": "node:0",
+        "to": "node:2",
+        "kind": "shape",
+        "direction": "west",
+        "guard": "guard:14",
+        "route": "route:11",
+        "sequence": 1
+      },
+      {
+        "id": "callback_link:65",
+        "from": "node:0",
+        "to": "node:2",
+        "kind": "shape",
+        "direction": "west",
+        "guard": "guard:21",
+        "route": "route:11",
+        "sequence": 1
+      },
+      {
+        "id": "callback_link:66",
+        "from": "node:0",
+        "to": "node:2",
+        "kind": "shape",
+        "direction": "west",
+        "guard": "guard:19",
+        "route": "route:11",
+        "sequence": 1
+      },
+      {
+        "id": "callback_link:67",
+        "from": "node:0",
+        "to": "node:0",
+        "kind": "update",
+        "direction": "east",
+        "guard": "guard:14",
+        "route": "route:11",
+        "sequence": 13
+      },
+      {
+        "id": "callback_link:68",
+        "from": "node:0",
+        "to": "node:3",
+        "kind": "shape",
+        "direction": "west",
+        "guard": "guard:23",
+        "route": "route:12",
+        "sequence": 0
+      },
+      {
+        "id": "callback_link:69",
+        "from": "node:0",
+        "to": "node:3",
+        "kind": "shape",
+        "direction": "west",
+        "guard": "guard:24",
+        "route": "route:12",
+        "sequence": 0
+      },
+      {
+        "id": "callback_link:70",
+        "from": "node:0",
+        "to": "node:1",
+        "kind": "shape",
+        "direction": "east",
+        "guard": "guard:7",
+        "route": "route:12",
+        "sequence": 2
+      },
+      {
+        "id": "callback_link:71",
+        "from": "node:0",
+        "to": "node:1",
+        "kind": "shape",
+        "direction": "east",
+        "guard": "guard:8",
+        "route": "route:12",
+        "sequence": 2
+      },
+      {
+        "id": "callback_link:72",
+        "from": "node:0",
+        "to": "node:1",
+        "kind": "shape",
+        "direction": "east",
+        "guard": "guard:11",
+        "route": "route:12",
+        "sequence": 2
+      },
+      {
+        "id": "callback_link:73",
+        "from": "node:0",
+        "to": "node:0",
+        "kind": "update",
+        "direction": "west",
+        "guard": "guard:7",
+        "route": "route:12",
+        "sequence": 13
+      },
+      {
+        "id": "callback_link:74",
+        "from": "node:0",
+        "to": "node:0",
+        "kind": "update",
+        "direction": "west",
+        "guard": "guard:8",
+        "route": "route:12",
+        "sequence": 13
+      }
+    ],
+    "routes": [
+      {
+        "id": "route:0",
+        "source": "node:4",
+        "deliveries": [
+          {
+            "ordinal": 0,
+            "sequence": 0,
+            "target": "site:60",
+            "kind": "update",
+            "direction": "bottom",
+            "guard": "guard:0",
+            "view": "live",
+            "receiver": null
+          },
+          {
+            "ordinal": 1,
+            "sequence": 1,
+            "target": "site:91",
+            "kind": "update",
+            "direction": "bottom",
+            "guard": "guard:0",
+            "view": "live",
+            "receiver": null
+          },
+          {
+            "ordinal": 2,
+            "sequence": 3,
+            "target": "site:7",
+            "kind": "update",
+            "direction": "top",
+            "guard": "guard:0",
+            "view": "live",
+            "receiver": null
+          },
+          {
+            "ordinal": 3,
+            "sequence": 5,
+            "target": "site:0",
+            "kind": "update",
+            "direction": "top",
+            "guard": "guard:0",
+            "view": "live",
+            "receiver": null
+          },
+          {
+            "ordinal": 4,
+            "sequence": 6,
+            "target": "site:16",
+            "kind": "update",
+            "direction": "south",
+            "guard": "guard:0",
+            "view": "live",
+            "receiver": null
+          },
+          {
+            "ordinal": 5,
+            "sequence": 7,
+            "target": "site:50",
+            "kind": "update",
+            "direction": "bottom",
+            "guard": "guard:0",
+            "view": "live",
+            "receiver": null
+          },
+          {
+            "ordinal": 6,
+            "sequence": 8,
+            "target": "site:1",
+            "kind": "update",
+            "direction": "top",
+            "guard": "guard:0",
+            "view": "live",
+            "receiver": null
+          },
+          {
+            "ordinal": 7,
+            "sequence": 9,
+            "target": "site:34",
+            "kind": "update",
+            "direction": "north",
+            "guard": "guard:0",
+            "view": "live",
+            "receiver": null
+          },
+          {
+            "ordinal": 8,
+            "sequence": 10,
+            "target": "site:70",
+            "kind": "update",
+            "direction": "bottom",
+            "guard": "guard:0",
+            "view": "live",
+            "receiver": null
+          },
+          {
+            "ordinal": 9,
+            "sequence": 11,
+            "target": "site:9",
+            "kind": "update",
+            "direction": "top",
+            "guard": "guard:0",
+            "view": "live",
+            "receiver": null
+          },
+          {
+            "ordinal": 10,
+            "sequence": 12,
+            "target": "site:27",
+            "kind": "update",
+            "direction": "west",
+            "guard": "guard:0",
+            "view": "live",
+            "receiver": null
+          },
+          {
+            "ordinal": 11,
+            "sequence": 13,
+            "target": "site:61",
+            "kind": "update",
+            "direction": "bottom",
+            "guard": "guard:0",
+            "view": "live",
+            "receiver": null
+          },
+          {
+            "ordinal": 12,
+            "sequence": 14,
+            "target": "site:8",
+            "kind": "update",
+            "direction": "top",
+            "guard": "guard:0",
+            "view": "live",
+            "receiver": null
+          },
+          {
+            "ordinal": 13,
+            "sequence": 15,
+            "target": "site:25",
+            "kind": "update",
+            "direction": "east",
+            "guard": "guard:0",
+            "view": "live",
+            "receiver": null
+          },
+          {
+            "ordinal": 14,
+            "sequence": 16,
+            "target": "site:59",
+            "kind": "update",
+            "direction": "bottom",
+            "guard": "guard:0",
+            "view": "live",
+            "receiver": {
+              "kind": "component",
+              "node": "node:8"
+            }
+          },
+          {
+            "ordinal": 15,
+            "sequence": 17,
+            "target": "site:6",
+            "kind": "update",
+            "direction": "top",
+            "guard": "guard:0",
+            "view": "live",
+            "receiver": null
+          },
+          {
+            "ordinal": 16,
+            "sequence": 18,
+            "target": "site:59",
+            "kind": "update",
+            "direction": "bottom",
+            "guard": "guard:0",
+            "view": "live",
+            "receiver": {
+              "kind": "component",
+              "node": "node:8"
+            }
+          },
+          {
+            "ordinal": 17,
+            "sequence": 19,
+            "target": "site:90",
+            "kind": "update",
+            "direction": "bottom",
+            "guard": "guard:0",
+            "view": "live",
+            "receiver": null
+          },
+          {
+            "ordinal": 18,
+            "sequence": 20,
+            "target": "site:25",
+            "kind": "update",
+            "direction": "top",
+            "guard": "guard:0",
+            "view": "live",
+            "receiver": null
+          },
+          {
+            "ordinal": 19,
+            "sequence": 21,
+            "target": "site:6",
+            "kind": "update",
+            "direction": "top",
+            "guard": "guard:0",
+            "view": "live",
+            "receiver": null
+          },
+          {
+            "ordinal": 20,
+            "sequence": 22,
+            "target": "site:25",
+            "kind": "update",
+            "direction": "bottom",
+            "guard": "guard:0",
+            "view": "live",
+            "receiver": null
+          },
+          {
+            "ordinal": 21,
+            "sequence": 23,
+            "target": "site:108",
+            "kind": "update",
+            "direction": "top",
+            "guard": "guard:0",
+            "view": "live",
+            "receiver": null
+          },
+          {
+            "ordinal": 22,
+            "sequence": 24,
+            "target": "site:15",
+            "kind": "update",
+            "direction": "south",
+            "guard": "guard:0",
+            "view": "live",
+            "receiver": null
+          },
+          {
+            "ordinal": 23,
+            "sequence": 25,
+            "target": "site:49",
+            "kind": "update",
+            "direction": "bottom",
+            "guard": "guard:0",
+            "view": "live",
+            "receiver": null
+          },
+          {
+            "ordinal": 24,
+            "sequence": 26,
+            "target": "site:109",
+            "kind": "update",
+            "direction": "top",
+            "guard": "guard:0",
+            "view": "live",
+            "receiver": null
+          },
+          {
+            "ordinal": 25,
+            "sequence": 27,
+            "target": "site:33",
+            "kind": "update",
+            "direction": "north",
+            "guard": "guard:0",
+            "view": "live",
+            "receiver": null
+          },
+          {
+            "ordinal": 26,
+            "sequence": 28,
+            "target": "site:69",
+            "kind": "update",
+            "direction": "bottom",
+            "guard": "guard:0",
+            "view": "live",
+            "receiver": null
+          },
+          {
+            "ordinal": 27,
+            "sequence": 29,
+            "target": "site:110",
+            "kind": "update",
+            "direction": "top",
+            "guard": "guard:0",
+            "view": "live",
+            "receiver": null
+          },
+          {
+            "ordinal": 28,
+            "sequence": 31,
+            "target": "site:60",
+            "kind": "update",
+            "direction": "bottom",
+            "guard": "guard:0",
+            "view": "live",
+            "receiver": null
+          },
+          {
+            "ordinal": 29,
+            "sequence": 32,
+            "target": "site:7",
+            "kind": "update",
+            "direction": "top",
+            "guard": "guard:0",
+            "view": "live",
+            "receiver": null
+          },
+          {
+            "ordinal": 30,
+            "sequence": 33,
+            "target": "site:24",
+            "kind": "update",
+            "direction": "east",
+            "guard": "guard:0",
+            "view": "live",
+            "receiver": null
+          },
+          {
+            "ordinal": 31,
+            "sequence": 34,
+            "target": "site:58",
+            "kind": "update",
+            "direction": "bottom",
+            "guard": "guard:0",
+            "view": "live",
+            "receiver": null
+          },
+          {
+            "ordinal": 32,
+            "sequence": 35,
+            "target": "site:111",
+            "kind": "update",
+            "direction": "top",
+            "guard": "guard:0",
+            "view": "live",
+            "receiver": null
+          }
+        ]
+      },
+      {
+        "id": "route:1",
+        "source": "node:6",
+        "deliveries": [
+          {
+            "ordinal": 0,
+            "sequence": 0,
+            "target": "site:85",
+            "kind": "update",
+            "direction": "bottom",
+            "guard": "guard:0",
+            "view": "live",
+            "receiver": null
+          },
+          {
+            "ordinal": 1,
+            "sequence": 1,
+            "target": "site:101",
+            "kind": "update",
+            "direction": "bottom",
+            "guard": "guard:0",
+            "view": "live",
+            "receiver": null
+          },
+          {
+            "ordinal": 2,
+            "sequence": 2,
+            "target": "site:54",
+            "kind": "update",
+            "direction": "top",
+            "guard": "guard:0",
+            "view": "live",
+            "receiver": {
+              "kind": "component",
+              "node": "node:6"
+            }
+          },
+          {
+            "ordinal": 3,
+            "sequence": 3,
+            "target": "site:78",
+            "kind": "update",
+            "direction": "south",
+            "guard": "guard:0",
+            "view": "live",
+            "receiver": null
+          },
+          {
+            "ordinal": 4,
+            "sequence": 4,
+            "target": "site:93",
+            "kind": "update",
+            "direction": "north",
+            "guard": "guard:0",
+            "view": "live",
+            "receiver": null
+          },
+          {
+            "ordinal": 5,
+            "sequence": 5,
+            "target": "site:86",
+            "kind": "update",
+            "direction": "west",
+            "guard": "guard:0",
+            "view": "live",
+            "receiver": null
+          },
+          {
+            "ordinal": 6,
+            "sequence": 6,
+            "target": "site:84",
+            "kind": "update",
+            "direction": "east",
+            "guard": "guard:0",
+            "view": "live",
+            "receiver": null
+          },
+          {
+            "ordinal": 7,
+            "sequence": 7,
+            "target": "site:20",
+            "kind": "update",
+            "direction": "top",
+            "guard": "guard:0",
+            "view": "live",
+            "receiver": null
+          },
+          {
+            "ordinal": 8,
+            "sequence": 8,
+            "target": "site:54",
+            "kind": "update",
+            "direction": "bottom",
+            "guard": "guard:0",
+            "view": "live",
+            "receiver": {
+              "kind": "component",
+              "node": "node:6"
+            }
+          },
+          {
+            "ordinal": 9,
+            "sequence": 9,
+            "target": "site:3",
+            "kind": "update",
+            "direction": "top",
+            "guard": "guard:0",
+            "view": "live",
+            "receiver": null
+          },
+          {
+            "ordinal": 10,
+            "sequence": 10,
+            "target": "site:12",
+            "kind": "update",
+            "direction": "south",
+            "guard": "guard:0",
+            "view": "live",
+            "receiver": null
+          },
+          {
+            "ordinal": 11,
+            "sequence": 11,
+            "target": "site:30",
+            "kind": "update",
+            "direction": "north",
+            "guard": "guard:0",
+            "view": "live",
+            "receiver": null
+          },
+          {
+            "ordinal": 12,
+            "sequence": 12,
+            "target": "site:21",
+            "kind": "update",
+            "direction": "west",
+            "guard": "guard:0",
+            "view": "live",
+            "receiver": null
+          },
+          {
+            "ordinal": 13,
+            "sequence": 13,
+            "target": "site:19",
+            "kind": "update",
+            "direction": "east",
+            "guard": "guard:0",
+            "view": "live",
+            "receiver": null
+          },
+          {
+            "ordinal": 14,
+            "sequence": 14,
+            "target": "site:44",
+            "kind": "update",
+            "direction": "south",
+            "guard": "guard:0",
+            "view": "live",
+            "receiver": null
+          },
+          {
+            "ordinal": 15,
+            "sequence": 15,
+            "target": "site:78",
+            "kind": "update",
+            "direction": "bottom",
+            "guard": "guard:0",
+            "view": "live",
+            "receiver": null
+          },
+          {
+            "ordinal": 16,
+            "sequence": 16,
+            "target": "site:12",
+            "kind": "update",
+            "direction": "top",
+            "guard": "guard:0",
+            "view": "live",
+            "receiver": null
+          },
+          {
+            "ordinal": 17,
+            "sequence": 17,
+            "target": "site:38",
+            "kind": "update",
+            "direction": "south",
+            "guard": "guard:0",
+            "view": "live",
+            "receiver": null
+          },
+          {
+            "ordinal": 18,
+            "sequence": 18,
+            "target": "site:54",
+            "kind": "update",
+            "direction": "north",
+            "guard": "guard:0",
+            "view": "live",
+            "receiver": {
+              "kind": "component",
+              "node": "node:6"
+            }
+          },
+          {
+            "ordinal": 19,
+            "sequence": 19,
+            "target": "site:45",
+            "kind": "update",
+            "direction": "west",
+            "guard": "guard:0",
+            "view": "live",
+            "receiver": null
+          },
+          {
+            "ordinal": 20,
+            "sequence": 20,
+            "target": "site:43",
+            "kind": "update",
+            "direction": "east",
+            "guard": "guard:0",
+            "view": "live",
+            "receiver": null
+          },
+          {
+            "ordinal": 21,
+            "sequence": 21,
+            "target": "site:64",
+            "kind": "update",
+            "direction": "north",
+            "guard": "guard:0",
+            "view": "live",
+            "receiver": null
+          },
+          {
+            "ordinal": 22,
+            "sequence": 22,
+            "target": "site:93",
+            "kind": "update",
+            "direction": "bottom",
+            "guard": "guard:0",
+            "view": "live",
+            "receiver": null
+          },
+          {
+            "ordinal": 23,
+            "sequence": 23,
+            "target": "site:30",
+            "kind": "update",
+            "direction": "top",
+            "guard": "guard:0",
+            "view": "live",
+            "receiver": null
+          },
+          {
+            "ordinal": 24,
+            "sequence": 24,
+            "target": "site:54",
+            "kind": "update",
+            "direction": "south",
+            "guard": "guard:0",
+            "view": "live",
+            "receiver": {
+              "kind": "component",
+              "node": "node:6"
+            }
+          },
+          {
+            "ordinal": 25,
+            "sequence": 25,
+            "target": "site:72",
+            "kind": "update",
+            "direction": "north",
+            "guard": "guard:0",
+            "view": "live",
+            "receiver": null
+          },
+          {
+            "ordinal": 26,
+            "sequence": 26,
+            "target": "site:65",
+            "kind": "update",
+            "direction": "west",
+            "guard": "guard:0",
+            "view": "live",
+            "receiver": null
+          },
+          {
+            "ordinal": 27,
+            "sequence": 27,
+            "target": "site:63",
+            "kind": "update",
+            "direction": "east",
+            "guard": "guard:0",
+            "view": "live",
+            "receiver": null
+          },
+          {
+            "ordinal": 28,
+            "sequence": 28,
+            "target": "site:55",
+            "kind": "update",
+            "direction": "west",
+            "guard": "guard:23",
+            "view": "live",
+            "receiver": null
+          },
+          {
+            "ordinal": 29,
+            "sequence": 28,
+            "target": "site:55",
+            "kind": "update",
+            "direction": "west",
+            "guard": "guard:24",
+            "view": "live",
+            "receiver": null
+          },
+          {
+            "ordinal": 30,
+            "sequence": 29,
+            "target": "site:86",
+            "kind": "update",
+            "direction": "bottom",
+            "guard": "guard:0",
+            "view": "live",
+            "receiver": null
+          },
+          {
+            "ordinal": 31,
+            "sequence": 30,
+            "target": "site:21",
+            "kind": "update",
+            "direction": "top",
+            "guard": "guard:0",
+            "view": "live",
+            "receiver": null
+          },
+          {
+            "ordinal": 32,
+            "sequence": 31,
+            "target": "site:45",
+            "kind": "update",
+            "direction": "south",
+            "guard": "guard:0",
+            "view": "live",
+            "receiver": null
+          },
+          {
+            "ordinal": 33,
+            "sequence": 32,
+            "target": "site:65",
+            "kind": "update",
+            "direction": "north",
+            "guard": "guard:0",
+            "view": "live",
+            "receiver": null
+          },
+          {
+            "ordinal": 34,
+            "sequence": 33,
+            "target": "site:56",
+            "kind": "update",
+            "direction": "west",
+            "guard": "guard:4",
+            "view": "live",
+            "receiver": null
+          },
+          {
+            "ordinal": 35,
+            "sequence": 33,
+            "target": "site:56",
+            "kind": "update",
+            "direction": "west",
+            "guard": "guard:14",
+            "view": "live",
+            "receiver": {
+              "kind": "piston_head",
+              "piston": "piston:0"
+            }
+          },
+          {
+            "ordinal": 36,
+            "sequence": 33,
+            "target": "site:56",
+            "kind": "update",
+            "direction": "west",
+            "guard": "guard:21",
+            "view": "live",
+            "receiver": null
+          },
+          {
+            "ordinal": 37,
+            "sequence": 33,
+            "target": "site:56",
+            "kind": "update",
+            "direction": "west",
+            "guard": "guard:19",
+            "view": "live",
+            "receiver": null
+          },
+          {
+            "ordinal": 38,
+            "sequence": 34,
+            "target": "site:54",
+            "kind": "update",
+            "direction": "east",
+            "guard": "guard:0",
+            "view": "live",
+            "receiver": {
+              "kind": "component",
+              "node": "node:6"
+            }
+          },
+          {
+            "ordinal": 39,
+            "sequence": 35,
+            "target": "site:53",
+            "kind": "update",
+            "direction": "east",
+            "guard": "guard:0",
+            "view": "live",
+            "receiver": {
+              "kind": "component",
+              "node": "node:5"
+            }
+          },
+          {
+            "ordinal": 40,
+            "sequence": 36,
+            "target": "site:84",
+            "kind": "update",
+            "direction": "bottom",
+            "guard": "guard:0",
+            "view": "live",
+            "receiver": null
+          },
+          {
+            "ordinal": 41,
+            "sequence": 37,
+            "target": "site:19",
+            "kind": "update",
+            "direction": "top",
+            "guard": "guard:0",
+            "view": "live",
+            "receiver": null
+          },
+          {
+            "ordinal": 42,
+            "sequence": 38,
+            "target": "site:43",
+            "kind": "update",
+            "direction": "south",
+            "guard": "guard:0",
+            "view": "live",
+            "receiver": null
+          },
+          {
+            "ordinal": 43,
+            "sequence": 39,
+            "target": "site:63",
+            "kind": "update",
+            "direction": "north",
+            "guard": "guard:0",
+            "view": "live",
+            "receiver": null
+          },
+          {
+            "ordinal": 44,
+            "sequence": 40,
+            "target": "site:54",
+            "kind": "update",
+            "direction": "west",
+            "guard": "guard:0",
+            "view": "live",
+            "receiver": {
+              "kind": "component",
+              "node": "node:6"
+            }
+          },
+          {
+            "ordinal": 45,
+            "sequence": 41,
+            "target": "site:52",
+            "kind": "update",
+            "direction": "east",
+            "guard": "guard:0",
+            "view": "live",
+            "receiver": null
+          }
+        ]
+      },
+      {
+        "id": "route:2",
+        "source": "node:6",
+        "deliveries": [
+          {
+            "ordinal": 0,
+            "sequence": 0,
+            "target": "site:53",
+            "kind": "update",
+            "direction": null,
+            "guard": "guard:0",
+            "view": "captured",
+            "receiver": {
+              "kind": "component",
+              "node": "node:5"
+            }
+          },
+          {
+            "ordinal": 1,
+            "sequence": 1,
+            "target": "site:55",
+            "kind": "update",
+            "direction": null,
+            "guard": "guard:37",
+            "view": "captured",
+            "receiver": null
+          },
+          {
+            "ordinal": 2,
+            "sequence": 1,
+            "target": "site:55",
+            "kind": "update",
+            "direction": null,
+            "guard": "guard:38",
+            "view": "captured",
+            "receiver": null
+          },
+          {
+            "ordinal": 3,
+            "sequence": 2,
+            "target": "site:20",
+            "kind": "update",
+            "direction": null,
+            "guard": "guard:0",
+            "view": "captured",
+            "receiver": null
+          },
+          {
+            "ordinal": 4,
+            "sequence": 3,
+            "target": "site:85",
+            "kind": "update",
+            "direction": null,
+            "guard": "guard:0",
+            "view": "captured",
+            "receiver": null
+          },
+          {
+            "ordinal": 5,
+            "sequence": 4,
+            "target": "site:44",
+            "kind": "update",
+            "direction": null,
+            "guard": "guard:0",
+            "view": "captured",
+            "receiver": null
+          },
+          {
+            "ordinal": 6,
+            "sequence": 5,
+            "target": "site:64",
+            "kind": "update",
+            "direction": null,
+            "guard": "guard:0",
+            "view": "captured",
+            "receiver": null
+          },
+          {
+            "ordinal": 7,
+            "sequence": 6,
+            "target": "site:52",
+            "kind": "update",
+            "direction": null,
+            "guard": "guard:0",
+            "view": "captured",
+            "receiver": null
+          },
+          {
+            "ordinal": 8,
+            "sequence": 7,
+            "target": "site:19",
+            "kind": "update",
+            "direction": null,
+            "guard": "guard:0",
+            "view": "captured",
+            "receiver": null
+          },
+          {
+            "ordinal": 9,
+            "sequence": 8,
+            "target": "site:84",
+            "kind": "update",
+            "direction": null,
+            "guard": "guard:0",
+            "view": "captured",
+            "receiver": null
+          },
+          {
+            "ordinal": 10,
+            "sequence": 9,
+            "target": "site:43",
+            "kind": "update",
+            "direction": null,
+            "guard": "guard:0",
+            "view": "captured",
+            "receiver": null
+          },
+          {
+            "ordinal": 11,
+            "sequence": 10,
+            "target": "site:63",
+            "kind": "update",
+            "direction": null,
+            "guard": "guard:0",
+            "view": "captured",
+            "receiver": null
+          },
+          {
+            "ordinal": 12,
+            "sequence": 11,
+            "target": "site:56",
+            "kind": "update",
+            "direction": null,
+            "guard": "guard:39",
+            "view": "captured",
+            "receiver": null
+          },
+          {
+            "ordinal": 13,
+            "sequence": 11,
+            "target": "site:56",
+            "kind": "update",
+            "direction": null,
+            "guard": "guard:40",
+            "view": "captured",
+            "receiver": {
+              "kind": "piston_head",
+              "piston": "piston:0"
+            }
+          },
+          {
+            "ordinal": 14,
+            "sequence": 11,
+            "target": "site:56",
+            "kind": "update",
+            "direction": null,
+            "guard": "guard:41",
+            "view": "captured",
+            "receiver": null
+          },
+          {
+            "ordinal": 15,
+            "sequence": 11,
+            "target": "site:56",
+            "kind": "update",
+            "direction": null,
+            "guard": "guard:42",
+            "view": "captured",
+            "receiver": null
+          },
+          {
+            "ordinal": 16,
+            "sequence": 12,
+            "target": "site:21",
+            "kind": "update",
+            "direction": null,
+            "guard": "guard:0",
+            "view": "captured",
+            "receiver": null
+          },
+          {
+            "ordinal": 17,
+            "sequence": 13,
+            "target": "site:86",
+            "kind": "update",
+            "direction": null,
+            "guard": "guard:0",
+            "view": "captured",
+            "receiver": null
+          },
+          {
+            "ordinal": 18,
+            "sequence": 14,
+            "target": "site:45",
+            "kind": "update",
+            "direction": null,
+            "guard": "guard:0",
+            "view": "captured",
+            "receiver": null
+          },
+          {
+            "ordinal": 19,
+            "sequence": 15,
+            "target": "site:65",
+            "kind": "update",
+            "direction": null,
+            "guard": "guard:0",
+            "view": "captured",
+            "receiver": null
+          },
+          {
+            "ordinal": 20,
+            "sequence": 16,
+            "target": "site:3",
+            "kind": "update",
+            "direction": null,
+            "guard": "guard:0",
+            "view": "captured",
+            "receiver": null
+          },
+          {
+            "ordinal": 21,
+            "sequence": 17,
+            "target": "site:12",
+            "kind": "update",
+            "direction": null,
+            "guard": "guard:0",
+            "view": "captured",
+            "receiver": null
+          },
+          {
+            "ordinal": 22,
+            "sequence": 18,
+            "target": "site:30",
+            "kind": "update",
+            "direction": null,
+            "guard": "guard:0",
+            "view": "captured",
+            "receiver": null
+          },
+          {
+            "ordinal": 23,
+            "sequence": 19,
+            "target": "site:101",
+            "kind": "update",
+            "direction": null,
+            "guard": "guard:0",
+            "view": "captured",
+            "receiver": null
+          },
+          {
+            "ordinal": 24,
+            "sequence": 20,
+            "target": "site:78",
+            "kind": "update",
+            "direction": null,
+            "guard": "guard:0",
+            "view": "captured",
+            "receiver": null
+          },
+          {
+            "ordinal": 25,
+            "sequence": 21,
+            "target": "site:93",
+            "kind": "update",
+            "direction": null,
+            "guard": "guard:0",
+            "view": "captured",
+            "receiver": null
+          },
+          {
+            "ordinal": 26,
+            "sequence": 22,
+            "target": "site:38",
+            "kind": "update",
+            "direction": null,
+            "guard": "guard:0",
+            "view": "captured",
+            "receiver": null
+          },
+          {
+            "ordinal": 27,
+            "sequence": 23,
+            "target": "site:72",
+            "kind": "update",
+            "direction": null,
+            "guard": "guard:0",
+            "view": "captured",
+            "receiver": null
+          }
+        ]
+      },
+      {
+        "id": "route:3",
+        "source": "node:8",
+        "deliveries": [
+          {
+            "ordinal": 0,
+            "sequence": 0,
+            "target": "site:90",
+            "kind": "update",
+            "direction": "bottom",
+            "guard": "guard:0",
+            "view": "live",
+            "receiver": null
+          },
+          {
+            "ordinal": 1,
+            "sequence": 1,
+            "target": "site:105",
+            "kind": "update",
+            "direction": "bottom",
+            "guard": "guard:0",
+            "view": "live",
+            "receiver": null
+          },
+          {
+            "ordinal": 2,
+            "sequence": 2,
+            "target": "site:59",
+            "kind": "update",
+            "direction": "top",
+            "guard": "guard:0",
+            "view": "live",
+            "receiver": {
+              "kind": "component",
+              "node": "node:8"
+            }
+          },
+          {
+            "ordinal": 3,
+            "sequence": 3,
+            "target": "site:82",
+            "kind": "update",
+            "direction": "south",
+            "guard": "guard:0",
+            "view": "live",
+            "receiver": null
+          },
+          {
+            "ordinal": 4,
+            "sequence": 4,
+            "target": "site:97",
+            "kind": "update",
+            "direction": "north",
+            "guard": "guard:0",
+            "view": "live",
+            "receiver": null
+          },
+          {
+            "ordinal": 5,
+            "sequence": 5,
+            "target": "site:91",
+            "kind": "update",
+            "direction": "west",
+            "guard": "guard:0",
+            "view": "live",
+            "receiver": null
+          },
+          {
+            "ordinal": 6,
+            "sequence": 6,
+            "target": "site:89",
+            "kind": "update",
+            "direction": "east",
+            "guard": "guard:0",
+            "view": "live",
+            "receiver": null
+          },
+          {
+            "ordinal": 7,
+            "sequence": 7,
+            "target": "site:25",
+            "kind": "update",
+            "direction": "top",
+            "guard": "guard:0",
+            "view": "live",
+            "receiver": null
+          },
+          {
+            "ordinal": 8,
+            "sequence": 8,
+            "target": "site:59",
+            "kind": "update",
+            "direction": "bottom",
+            "guard": "guard:0",
+            "view": "live",
+            "receiver": {
+              "kind": "component",
+              "node": "node:8"
+            }
+          },
+          {
+            "ordinal": 9,
+            "sequence": 9,
+            "target": "site:6",
+            "kind": "update",
+            "direction": "top",
+            "guard": "guard:0",
+            "view": "live",
+            "receiver": null
+          },
+          {
+            "ordinal": 10,
+            "sequence": 10,
+            "target": "site:15",
+            "kind": "update",
+            "direction": "south",
+            "guard": "guard:0",
+            "view": "live",
+            "receiver": null
+          },
+          {
+            "ordinal": 11,
+            "sequence": 11,
+            "target": "site:33",
+            "kind": "update",
+            "direction": "north",
+            "guard": "guard:0",
+            "view": "live",
+            "receiver": null
+          },
+          {
+            "ordinal": 12,
+            "sequence": 13,
+            "target": "site:24",
+            "kind": "update",
+            "direction": "east",
+            "guard": "guard:0",
+            "view": "live",
+            "receiver": null
+          },
+          {
+            "ordinal": 13,
+            "sequence": 14,
+            "target": "site:49",
+            "kind": "update",
+            "direction": "south",
+            "guard": "guard:0",
+            "view": "live",
+            "receiver": null
+          },
+          {
+            "ordinal": 14,
+            "sequence": 15,
+            "target": "site:82",
+            "kind": "update",
+            "direction": "bottom",
+            "guard": "guard:0",
+            "view": "live",
+            "receiver": null
+          },
+          {
+            "ordinal": 15,
+            "sequence": 16,
+            "target": "site:15",
+            "kind": "update",
+            "direction": "top",
+            "guard": "guard:0",
+            "view": "live",
+            "receiver": null
+          },
+          {
+            "ordinal": 16,
+            "sequence": 17,
+            "target": "site:41",
+            "kind": "update",
+            "direction": "south",
+            "guard": "guard:0",
+            "view": "live",
+            "receiver": null
+          },
+          {
+            "ordinal": 17,
+            "sequence": 18,
+            "target": "site:59",
+            "kind": "update",
+            "direction": "north",
+            "guard": "guard:0",
+            "view": "live",
+            "receiver": {
+              "kind": "component",
+              "node": "node:8"
+            }
+          },
+          {
+            "ordinal": 18,
+            "sequence": 19,
+            "target": "site:50",
+            "kind": "update",
+            "direction": "west",
+            "guard": "guard:0",
+            "view": "live",
+            "receiver": null
+          },
+          {
+            "ordinal": 19,
+            "sequence": 20,
+            "target": "site:48",
+            "kind": "update",
+            "direction": "east",
+            "guard": "guard:0",
+            "view": "live",
+            "receiver": null
+          },
+          {
+            "ordinal": 20,
+            "sequence": 21,
+            "target": "site:69",
+            "kind": "update",
+            "direction": "north",
+            "guard": "guard:0",
+            "view": "live",
+            "receiver": null
+          },
+          {
+            "ordinal": 21,
+            "sequence": 22,
+            "target": "site:97",
+            "kind": "update",
+            "direction": "bottom",
+            "guard": "guard:0",
+            "view": "live",
+            "receiver": null
+          },
+          {
+            "ordinal": 22,
+            "sequence": 23,
+            "target": "site:33",
+            "kind": "update",
+            "direction": "top",
+            "guard": "guard:0",
+            "view": "live",
+            "receiver": null
+          },
+          {
+            "ordinal": 23,
+            "sequence": 24,
+            "target": "site:59",
+            "kind": "update",
+            "direction": "south",
+            "guard": "guard:0",
+            "view": "live",
+            "receiver": {
+              "kind": "component",
+              "node": "node:8"
+            }
+          },
+          {
+            "ordinal": 24,
+            "sequence": 25,
+            "target": "site:75",
+            "kind": "update",
+            "direction": "north",
+            "guard": "guard:0",
+            "view": "live",
+            "receiver": null
+          },
+          {
+            "ordinal": 25,
+            "sequence": 26,
+            "target": "site:70",
+            "kind": "update",
+            "direction": "west",
+            "guard": "guard:0",
+            "view": "live",
+            "receiver": null
+          },
+          {
+            "ordinal": 26,
+            "sequence": 27,
+            "target": "site:68",
+            "kind": "update",
+            "direction": "east",
+            "guard": "guard:0",
+            "view": "live",
+            "receiver": null
+          },
+          {
+            "ordinal": 27,
+            "sequence": 28,
+            "target": "site:60",
+            "kind": "update",
+            "direction": "west",
+            "guard": "guard:0",
+            "view": "live",
+            "receiver": null
+          },
+          {
+            "ordinal": 28,
+            "sequence": 29,
+            "target": "site:91",
+            "kind": "update",
+            "direction": "bottom",
+            "guard": "guard:0",
+            "view": "live",
+            "receiver": null
+          },
+          {
+            "ordinal": 29,
+            "sequence": 31,
+            "target": "site:50",
+            "kind": "update",
+            "direction": "south",
+            "guard": "guard:0",
+            "view": "live",
+            "receiver": null
+          },
+          {
+            "ordinal": 30,
+            "sequence": 32,
+            "target": "site:70",
+            "kind": "update",
+            "direction": "north",
+            "guard": "guard:0",
+            "view": "live",
+            "receiver": null
+          },
+          {
+            "ordinal": 31,
+            "sequence": 33,
+            "target": "site:61",
+            "kind": "update",
+            "direction": "west",
+            "guard": "guard:0",
+            "view": "live",
+            "receiver": null
+          },
+          {
+            "ordinal": 32,
+            "sequence": 34,
+            "target": "site:59",
+            "kind": "update",
+            "direction": "east",
+            "guard": "guard:0",
+            "view": "live",
+            "receiver": {
+              "kind": "component",
+              "node": "node:8"
+            }
+          },
+          {
+            "ordinal": 33,
+            "sequence": 35,
+            "target": "site:58",
+            "kind": "update",
+            "direction": "east",
+            "guard": "guard:0",
+            "view": "live",
+            "receiver": null
+          },
+          {
+            "ordinal": 34,
+            "sequence": 36,
+            "target": "site:89",
+            "kind": "update",
+            "direction": "bottom",
+            "guard": "guard:0",
+            "view": "live",
+            "receiver": null
+          },
+          {
+            "ordinal": 35,
+            "sequence": 37,
+            "target": "site:24",
+            "kind": "update",
+            "direction": "top",
+            "guard": "guard:0",
+            "view": "live",
+            "receiver": null
+          },
+          {
+            "ordinal": 36,
+            "sequence": 38,
+            "target": "site:48",
+            "kind": "update",
+            "direction": "south",
+            "guard": "guard:0",
+            "view": "live",
+            "receiver": null
+          },
+          {
+            "ordinal": 37,
+            "sequence": 39,
+            "target": "site:68",
+            "kind": "update",
+            "direction": "north",
+            "guard": "guard:0",
+            "view": "live",
+            "receiver": null
+          },
+          {
+            "ordinal": 38,
+            "sequence": 40,
+            "target": "site:59",
+            "kind": "update",
+            "direction": "west",
+            "guard": "guard:0",
+            "view": "live",
+            "receiver": {
+              "kind": "component",
+              "node": "node:8"
+            }
+          },
+          {
+            "ordinal": 39,
+            "sequence": 41,
+            "target": "site:57",
+            "kind": "update",
+            "direction": "east",
+            "guard": "guard:7",
+            "view": "live",
+            "receiver": {
+              "kind": "piston_base",
+              "piston": "piston:0"
+            }
+          },
+          {
+            "ordinal": 40,
+            "sequence": 41,
+            "target": "site:57",
+            "kind": "update",
+            "direction": "east",
+            "guard": "guard:8",
+            "view": "live",
+            "receiver": {
+              "kind": "piston_base",
+              "piston": "piston:0"
+            }
+          },
+          {
+            "ordinal": 41,
+            "sequence": 41,
+            "target": "site:57",
+            "kind": "update",
+            "direction": "east",
+            "guard": "guard:11",
+            "view": "live",
+            "receiver": null
+          }
+        ]
+      },
+      {
+        "id": "route:4",
+        "source": "node:8",
+        "deliveries": [
+          {
+            "ordinal": 0,
+            "sequence": 0,
+            "target": "site:58",
+            "kind": "update",
+            "direction": null,
+            "guard": "guard:0",
+            "view": "captured",
+            "receiver": null
+          },
+          {
+            "ordinal": 1,
+            "sequence": 1,
+            "target": "site:60",
+            "kind": "update",
+            "direction": null,
+            "guard": "guard:0",
+            "view": "captured",
+            "receiver": null
+          },
+          {
+            "ordinal": 2,
+            "sequence": 2,
+            "target": "site:25",
+            "kind": "update",
+            "direction": null,
+            "guard": "guard:0",
+            "view": "captured",
+            "receiver": null
+          },
+          {
+            "ordinal": 3,
+            "sequence": 3,
+            "target": "site:90",
+            "kind": "update",
+            "direction": null,
+            "guard": "guard:0",
+            "view": "captured",
+            "receiver": null
+          },
+          {
+            "ordinal": 4,
+            "sequence": 4,
+            "target": "site:49",
+            "kind": "update",
+            "direction": null,
+            "guard": "guard:0",
+            "view": "captured",
+            "receiver": null
+          },
+          {
+            "ordinal": 5,
+            "sequence": 5,
+            "target": "site:69",
+            "kind": "update",
+            "direction": null,
+            "guard": "guard:0",
+            "view": "captured",
+            "receiver": null
+          },
+          {
+            "ordinal": 6,
+            "sequence": 6,
+            "target": "site:57",
+            "kind": "update",
+            "direction": null,
+            "guard": "guard:43",
+            "view": "captured",
+            "receiver": {
+              "kind": "piston_base",
+              "piston": "piston:0"
+            }
+          },
+          {
+            "ordinal": 7,
+            "sequence": 6,
+            "target": "site:57",
+            "kind": "update",
+            "direction": null,
+            "guard": "guard:44",
+            "view": "captured",
+            "receiver": {
+              "kind": "piston_base",
+              "piston": "piston:0"
+            }
+          },
+          {
+            "ordinal": 8,
+            "sequence": 6,
+            "target": "site:57",
+            "kind": "update",
+            "direction": null,
+            "guard": "guard:45",
+            "view": "captured",
+            "receiver": null
+          },
+          {
+            "ordinal": 9,
+            "sequence": 7,
+            "target": "site:24",
+            "kind": "update",
+            "direction": null,
+            "guard": "guard:0",
+            "view": "captured",
+            "receiver": null
+          },
+          {
+            "ordinal": 10,
+            "sequence": 8,
+            "target": "site:89",
+            "kind": "update",
+            "direction": null,
+            "guard": "guard:0",
+            "view": "captured",
+            "receiver": null
+          },
+          {
+            "ordinal": 11,
+            "sequence": 9,
+            "target": "site:48",
+            "kind": "update",
+            "direction": null,
+            "guard": "guard:0",
+            "view": "captured",
+            "receiver": null
+          },
+          {
+            "ordinal": 12,
+            "sequence": 10,
+            "target": "site:68",
+            "kind": "update",
+            "direction": null,
+            "guard": "guard:0",
+            "view": "captured",
+            "receiver": null
+          },
+          {
+            "ordinal": 13,
+            "sequence": 11,
+            "target": "site:61",
+            "kind": "update",
+            "direction": null,
+            "guard": "guard:0",
+            "view": "captured",
+            "receiver": null
+          },
+          {
+            "ordinal": 14,
+            "sequence": 13,
+            "target": "site:91",
+            "kind": "update",
+            "direction": null,
+            "guard": "guard:0",
+            "view": "captured",
+            "receiver": null
+          },
+          {
+            "ordinal": 15,
+            "sequence": 14,
+            "target": "site:50",
+            "kind": "update",
+            "direction": null,
+            "guard": "guard:0",
+            "view": "captured",
+            "receiver": null
+          },
+          {
+            "ordinal": 16,
+            "sequence": 15,
+            "target": "site:70",
+            "kind": "update",
+            "direction": null,
+            "guard": "guard:0",
+            "view": "captured",
+            "receiver": null
+          },
+          {
+            "ordinal": 17,
+            "sequence": 16,
+            "target": "site:6",
+            "kind": "update",
+            "direction": null,
+            "guard": "guard:0",
+            "view": "captured",
+            "receiver": null
+          },
+          {
+            "ordinal": 18,
+            "sequence": 17,
+            "target": "site:15",
+            "kind": "update",
+            "direction": null,
+            "guard": "guard:0",
+            "view": "captured",
+            "receiver": null
+          },
+          {
+            "ordinal": 19,
+            "sequence": 18,
+            "target": "site:33",
+            "kind": "update",
+            "direction": null,
+            "guard": "guard:0",
+            "view": "captured",
+            "receiver": null
+          },
+          {
+            "ordinal": 20,
+            "sequence": 19,
+            "target": "site:105",
+            "kind": "update",
+            "direction": null,
+            "guard": "guard:0",
+            "view": "captured",
+            "receiver": null
+          },
+          {
+            "ordinal": 21,
+            "sequence": 20,
+            "target": "site:82",
+            "kind": "update",
+            "direction": null,
+            "guard": "guard:0",
+            "view": "captured",
+            "receiver": null
+          },
+          {
+            "ordinal": 22,
+            "sequence": 21,
+            "target": "site:97",
+            "kind": "update",
+            "direction": null,
+            "guard": "guard:0",
+            "view": "captured",
+            "receiver": null
+          },
+          {
+            "ordinal": 23,
+            "sequence": 22,
+            "target": "site:41",
+            "kind": "update",
+            "direction": null,
+            "guard": "guard:0",
+            "view": "captured",
+            "receiver": null
+          },
+          {
+            "ordinal": 24,
+            "sequence": 23,
+            "target": "site:75",
+            "kind": "update",
+            "direction": null,
+            "guard": "guard:0",
+            "view": "captured",
+            "receiver": null
+          }
+        ]
+      },
+      {
+        "id": "route:5",
+        "source": "node:0",
+        "deliveries": [
+          {
+            "ordinal": 0,
+            "sequence": 0,
+            "target": "site:54",
+            "kind": "shape",
+            "direction": "west",
+            "guard": "guard:0",
+            "view": "live",
+            "receiver": {
+              "kind": "component",
+              "node": "node:6"
+            }
+          },
+          {
+            "ordinal": 1,
+            "sequence": 2,
+            "target": "site:56",
+            "kind": "shape",
+            "direction": "east",
+            "guard": "guard:4",
+            "view": "live",
+            "receiver": {
+              "kind": "contact",
+              "contact": "contact:1"
+            }
+          },
+          {
+            "ordinal": 2,
+            "sequence": 2,
+            "target": "site:56",
+            "kind": "shape",
+            "direction": "east",
+            "guard": "guard:14",
+            "view": "live",
+            "receiver": {
+              "kind": "contact",
+              "contact": "contact:1"
+            }
+          },
+          {
+            "ordinal": 3,
+            "sequence": 2,
+            "target": "site:56",
+            "kind": "shape",
+            "direction": "east",
+            "guard": "guard:21",
+            "view": "live",
+            "receiver": {
+              "kind": "contact",
+              "contact": "contact:1"
+            }
+          },
+          {
+            "ordinal": 4,
+            "sequence": 2,
+            "target": "site:56",
+            "kind": "shape",
+            "direction": "east",
+            "guard": "guard:19",
+            "view": "live",
+            "receiver": {
+              "kind": "contact",
+              "contact": "contact:1"
+            }
+          },
+          {
+            "ordinal": 5,
+            "sequence": 12,
+            "target": "site:54",
+            "kind": "update",
+            "direction": "east",
+            "guard": "guard:0",
+            "view": "live",
+            "receiver": {
+              "kind": "component",
+              "node": "node:6"
+            }
+          },
+          {
+            "ordinal": 6,
+            "sequence": 13,
+            "target": "site:56",
+            "kind": "update",
+            "direction": "west",
+            "guard": "guard:4",
+            "view": "live",
+            "receiver": null
+          },
+          {
+            "ordinal": 7,
+            "sequence": 13,
+            "target": "site:56",
+            "kind": "update",
+            "direction": "west",
+            "guard": "guard:14",
+            "view": "live",
+            "receiver": {
+              "kind": "piston_head",
+              "piston": "piston:0"
+            }
+          },
+          {
+            "ordinal": 8,
+            "sequence": 13,
+            "target": "site:56",
+            "kind": "update",
+            "direction": "west",
+            "guard": "guard:21",
+            "view": "live",
+            "receiver": null
+          },
+          {
+            "ordinal": 9,
+            "sequence": 13,
+            "target": "site:56",
+            "kind": "update",
+            "direction": "west",
+            "guard": "guard:19",
+            "view": "live",
+            "receiver": null
+          },
+          {
+            "ordinal": 10,
+            "sequence": 14,
+            "target": "site:21",
+            "kind": "update",
+            "direction": "top",
+            "guard": "guard:0",
+            "view": "live",
+            "receiver": null
+          },
+          {
+            "ordinal": 11,
+            "sequence": 15,
+            "target": "site:86",
+            "kind": "update",
+            "direction": "bottom",
+            "guard": "guard:0",
+            "view": "live",
+            "receiver": null
+          },
+          {
+            "ordinal": 12,
+            "sequence": 16,
+            "target": "site:45",
+            "kind": "update",
+            "direction": "south",
+            "guard": "guard:0",
+            "view": "live",
+            "receiver": null
+          },
+          {
+            "ordinal": 13,
+            "sequence": 17,
+            "target": "site:65",
+            "kind": "update",
+            "direction": "north",
+            "guard": "guard:0",
+            "view": "live",
+            "receiver": null
+          }
+        ]
+      },
+      {
+        "id": "route:6",
+        "source": "node:0",
+        "deliveries": [
+          {
+            "ordinal": 0,
+            "sequence": 0,
+            "target": "site:54",
+            "kind": "shape",
+            "direction": "west",
+            "guard": "guard:0",
+            "view": "live",
+            "receiver": {
+              "kind": "component",
+              "node": "node:6"
+            }
+          },
+          {
+            "ordinal": 1,
+            "sequence": 2,
+            "target": "site:56",
+            "kind": "shape",
+            "direction": "east",
+            "guard": "guard:4",
+            "view": "live",
+            "receiver": {
+              "kind": "contact",
+              "contact": "contact:1"
+            }
+          },
+          {
+            "ordinal": 2,
+            "sequence": 2,
+            "target": "site:56",
+            "kind": "shape",
+            "direction": "east",
+            "guard": "guard:14",
+            "view": "live",
+            "receiver": {
+              "kind": "contact",
+              "contact": "contact:1"
+            }
+          },
+          {
+            "ordinal": 3,
+            "sequence": 2,
+            "target": "site:56",
+            "kind": "shape",
+            "direction": "east",
+            "guard": "guard:21",
+            "view": "live",
+            "receiver": {
+              "kind": "contact",
+              "contact": "contact:1"
+            }
+          },
+          {
+            "ordinal": 4,
+            "sequence": 2,
+            "target": "site:56",
+            "kind": "shape",
+            "direction": "east",
+            "guard": "guard:19",
+            "view": "live",
+            "receiver": {
+              "kind": "contact",
+              "contact": "contact:1"
+            }
+          }
+        ]
+      },
+      {
+        "id": "route:7",
+        "source": "node:0",
+        "deliveries": [
+          {
+            "ordinal": 0,
+            "sequence": 0,
+            "target": "site:56",
+            "kind": "update",
+            "direction": null,
+            "guard": "guard:4",
+            "view": "live",
+            "receiver": null
+          },
+          {
+            "ordinal": 1,
+            "sequence": 0,
+            "target": "site:56",
+            "kind": "update",
+            "direction": null,
+            "guard": "guard:14",
+            "view": "live",
+            "receiver": {
+              "kind": "piston_head",
+              "piston": "piston:0"
+            }
+          },
+          {
+            "ordinal": 2,
+            "sequence": 0,
+            "target": "site:56",
+            "kind": "update",
+            "direction": null,
+            "guard": "guard:21",
+            "view": "live",
+            "receiver": null
+          },
+          {
+            "ordinal": 3,
+            "sequence": 0,
+            "target": "site:56",
+            "kind": "update",
+            "direction": null,
+            "guard": "guard:19",
+            "view": "live",
+            "receiver": null
+          },
+          {
+            "ordinal": 4,
+            "sequence": 1,
+            "target": "site:55",
+            "kind": "shape",
+            "direction": "west",
+            "guard": "guard:23",
+            "view": "live",
+            "receiver": {
+              "kind": "contact",
+              "contact": "contact:2"
+            }
+          },
+          {
+            "ordinal": 5,
+            "sequence": 1,
+            "target": "site:55",
+            "kind": "shape",
+            "direction": "west",
+            "guard": "guard:24",
+            "view": "live",
+            "receiver": {
+              "kind": "contact",
+              "contact": "contact:2"
+            }
+          },
+          {
+            "ordinal": 6,
+            "sequence": 3,
+            "target": "site:57",
+            "kind": "shape",
+            "direction": "east",
+            "guard": "guard:7",
+            "view": "live",
+            "receiver": {
+              "kind": "contact",
+              "contact": "contact:0"
+            }
+          },
+          {
+            "ordinal": 7,
+            "sequence": 3,
+            "target": "site:57",
+            "kind": "shape",
+            "direction": "east",
+            "guard": "guard:8",
+            "view": "live",
+            "receiver": {
+              "kind": "contact",
+              "contact": "contact:0"
+            }
+          },
+          {
+            "ordinal": 8,
+            "sequence": 3,
+            "target": "site:57",
+            "kind": "shape",
+            "direction": "east",
+            "guard": "guard:11",
+            "view": "live",
+            "receiver": {
+              "kind": "contact",
+              "contact": "contact:0"
+            }
+          },
+          {
+            "ordinal": 9,
+            "sequence": 13,
+            "target": "site:55",
+            "kind": "update",
+            "direction": "east",
+            "guard": "guard:23",
+            "view": "live",
+            "receiver": null
+          },
+          {
+            "ordinal": 10,
+            "sequence": 13,
+            "target": "site:55",
+            "kind": "update",
+            "direction": "east",
+            "guard": "guard:24",
+            "view": "live",
+            "receiver": null
+          },
+          {
+            "ordinal": 11,
+            "sequence": 14,
+            "target": "site:57",
+            "kind": "update",
+            "direction": "west",
+            "guard": "guard:7",
+            "view": "live",
+            "receiver": {
+              "kind": "piston_base",
+              "piston": "piston:0"
+            }
+          },
+          {
+            "ordinal": 12,
+            "sequence": 14,
+            "target": "site:57",
+            "kind": "update",
+            "direction": "west",
+            "guard": "guard:8",
+            "view": "live",
+            "receiver": {
+              "kind": "piston_base",
+              "piston": "piston:0"
+            }
+          },
+          {
+            "ordinal": 13,
+            "sequence": 14,
+            "target": "site:57",
+            "kind": "update",
+            "direction": "west",
+            "guard": "guard:11",
+            "view": "live",
+            "receiver": null
+          },
+          {
+            "ordinal": 14,
+            "sequence": 15,
+            "target": "site:22",
+            "kind": "update",
+            "direction": "top",
+            "guard": "guard:0",
+            "view": "live",
+            "receiver": null
+          },
+          {
+            "ordinal": 15,
+            "sequence": 16,
+            "target": "site:87",
+            "kind": "update",
+            "direction": "bottom",
+            "guard": "guard:0",
+            "view": "live",
+            "receiver": null
+          },
+          {
+            "ordinal": 16,
+            "sequence": 17,
+            "target": "site:46",
+            "kind": "update",
+            "direction": "south",
+            "guard": "guard:0",
+            "view": "live",
+            "receiver": null
+          },
+          {
+            "ordinal": 17,
+            "sequence": 18,
+            "target": "site:66",
+            "kind": "update",
+            "direction": "north",
+            "guard": "guard:0",
+            "view": "live",
+            "receiver": null
+          }
+        ]
+      },
+      {
+        "id": "route:8",
+        "source": "node:0",
+        "deliveries": [
+          {
+            "ordinal": 0,
+            "sequence": 0,
+            "target": "site:55",
+            "kind": "update",
+            "direction": null,
+            "guard": "guard:23",
+            "view": "live",
+            "receiver": null
+          },
+          {
+            "ordinal": 1,
+            "sequence": 0,
+            "target": "site:55",
+            "kind": "update",
+            "direction": null,
+            "guard": "guard:24",
+            "view": "live",
+            "receiver": null
+          },
+          {
+            "ordinal": 2,
+            "sequence": 1,
+            "target": "site:54",
+            "kind": "shape",
+            "direction": "west",
+            "guard": "guard:0",
+            "view": "live",
+            "receiver": {
+              "kind": "component",
+              "node": "node:6"
+            }
+          },
+          {
+            "ordinal": 3,
+            "sequence": 3,
+            "target": "site:56",
+            "kind": "shape",
+            "direction": "east",
+            "guard": "guard:4",
+            "view": "live",
+            "receiver": {
+              "kind": "contact",
+              "contact": "contact:1"
+            }
+          },
+          {
+            "ordinal": 4,
+            "sequence": 3,
+            "target": "site:56",
+            "kind": "shape",
+            "direction": "east",
+            "guard": "guard:14",
+            "view": "live",
+            "receiver": {
+              "kind": "contact",
+              "contact": "contact:1"
+            }
+          },
+          {
+            "ordinal": 5,
+            "sequence": 3,
+            "target": "site:56",
+            "kind": "shape",
+            "direction": "east",
+            "guard": "guard:21",
+            "view": "live",
+            "receiver": {
+              "kind": "contact",
+              "contact": "contact:1"
+            }
+          },
+          {
+            "ordinal": 6,
+            "sequence": 3,
+            "target": "site:56",
+            "kind": "shape",
+            "direction": "east",
+            "guard": "guard:19",
+            "view": "live",
+            "receiver": {
+              "kind": "contact",
+              "contact": "contact:1"
+            }
+          },
+          {
+            "ordinal": 7,
+            "sequence": 13,
+            "target": "site:54",
+            "kind": "update",
+            "direction": "east",
+            "guard": "guard:0",
+            "view": "live",
+            "receiver": {
+              "kind": "component",
+              "node": "node:6"
+            }
+          },
+          {
+            "ordinal": 8,
+            "sequence": 14,
+            "target": "site:56",
+            "kind": "update",
+            "direction": "west",
+            "guard": "guard:4",
+            "view": "live",
+            "receiver": null
+          },
+          {
+            "ordinal": 9,
+            "sequence": 14,
+            "target": "site:56",
+            "kind": "update",
+            "direction": "west",
+            "guard": "guard:14",
+            "view": "live",
+            "receiver": {
+              "kind": "piston_head",
+              "piston": "piston:0"
+            }
+          },
+          {
+            "ordinal": 10,
+            "sequence": 14,
+            "target": "site:56",
+            "kind": "update",
+            "direction": "west",
+            "guard": "guard:21",
+            "view": "live",
+            "receiver": null
+          },
+          {
+            "ordinal": 11,
+            "sequence": 14,
+            "target": "site:56",
+            "kind": "update",
+            "direction": "west",
+            "guard": "guard:19",
+            "view": "live",
+            "receiver": null
+          },
+          {
+            "ordinal": 12,
+            "sequence": 15,
+            "target": "site:21",
+            "kind": "update",
+            "direction": "top",
+            "guard": "guard:0",
+            "view": "live",
+            "receiver": null
+          },
+          {
+            "ordinal": 13,
+            "sequence": 16,
+            "target": "site:86",
+            "kind": "update",
+            "direction": "bottom",
+            "guard": "guard:0",
+            "view": "live",
+            "receiver": null
+          },
+          {
+            "ordinal": 14,
+            "sequence": 17,
+            "target": "site:45",
+            "kind": "update",
+            "direction": "south",
+            "guard": "guard:0",
+            "view": "live",
+            "receiver": null
+          },
+          {
+            "ordinal": 15,
+            "sequence": 18,
+            "target": "site:65",
+            "kind": "update",
+            "direction": "north",
+            "guard": "guard:0",
+            "view": "live",
+            "receiver": null
+          }
+        ]
+      },
+      {
+        "id": "route:9",
+        "source": "node:0",
+        "deliveries": [
+          {
+            "ordinal": 0,
+            "sequence": 0,
+            "target": "site:56",
+            "kind": "shape",
+            "direction": "west",
+            "guard": "guard:4",
+            "view": "live",
+            "receiver": {
+              "kind": "contact",
+              "contact": "contact:1"
+            }
+          },
+          {
+            "ordinal": 1,
+            "sequence": 0,
+            "target": "site:56",
+            "kind": "shape",
+            "direction": "west",
+            "guard": "guard:14",
+            "view": "live",
+            "receiver": {
+              "kind": "contact",
+              "contact": "contact:1"
+            }
+          },
+          {
+            "ordinal": 2,
+            "sequence": 0,
+            "target": "site:56",
+            "kind": "shape",
+            "direction": "west",
+            "guard": "guard:21",
+            "view": "live",
+            "receiver": {
+              "kind": "contact",
+              "contact": "contact:1"
+            }
+          },
+          {
+            "ordinal": 3,
+            "sequence": 0,
+            "target": "site:56",
+            "kind": "shape",
+            "direction": "west",
+            "guard": "guard:19",
+            "view": "live",
+            "receiver": {
+              "kind": "contact",
+              "contact": "contact:1"
+            }
+          },
+          {
+            "ordinal": 4,
+            "sequence": 12,
+            "target": "site:56",
+            "kind": "update",
+            "direction": "east",
+            "guard": "guard:4",
+            "view": "live",
+            "receiver": null
+          },
+          {
+            "ordinal": 5,
+            "sequence": 12,
+            "target": "site:56",
+            "kind": "update",
+            "direction": "east",
+            "guard": "guard:14",
+            "view": "live",
+            "receiver": {
+              "kind": "piston_head",
+              "piston": "piston:0"
+            }
+          },
+          {
+            "ordinal": 6,
+            "sequence": 12,
+            "target": "site:56",
+            "kind": "update",
+            "direction": "east",
+            "guard": "guard:21",
+            "view": "live",
+            "receiver": null
+          },
+          {
+            "ordinal": 7,
+            "sequence": 12,
+            "target": "site:56",
+            "kind": "update",
+            "direction": "east",
+            "guard": "guard:19",
+            "view": "live",
+            "receiver": null
+          },
+          {
+            "ordinal": 8,
+            "sequence": 13,
+            "target": "site:58",
+            "kind": "update",
+            "direction": "west",
+            "guard": "guard:0",
+            "view": "live",
+            "receiver": null
+          },
+          {
+            "ordinal": 9,
+            "sequence": 14,
+            "target": "site:23",
+            "kind": "update",
+            "direction": "top",
+            "guard": "guard:0",
+            "view": "live",
+            "receiver": null
+          },
+          {
+            "ordinal": 10,
+            "sequence": 15,
+            "target": "site:88",
+            "kind": "update",
+            "direction": "bottom",
+            "guard": "guard:0",
+            "view": "live",
+            "receiver": null
+          },
+          {
+            "ordinal": 11,
+            "sequence": 16,
+            "target": "site:47",
+            "kind": "update",
+            "direction": "south",
+            "guard": "guard:0",
+            "view": "live",
+            "receiver": null
+          },
+          {
+            "ordinal": 12,
+            "sequence": 17,
+            "target": "site:67",
+            "kind": "update",
+            "direction": "north",
+            "guard": "guard:0",
+            "view": "live",
+            "receiver": null
+          }
+        ]
+      },
+      {
+        "id": "route:10",
+        "source": "node:0",
+        "deliveries": [
+          {
+            "ordinal": 0,
+            "sequence": 0,
+            "target": "site:55",
+            "kind": "shape",
+            "direction": "west",
+            "guard": "guard:23",
+            "view": "live",
+            "receiver": {
+              "kind": "contact",
+              "contact": "contact:2"
+            }
+          },
+          {
+            "ordinal": 1,
+            "sequence": 0,
+            "target": "site:55",
+            "kind": "shape",
+            "direction": "west",
+            "guard": "guard:24",
+            "view": "live",
+            "receiver": {
+              "kind": "contact",
+              "contact": "contact:2"
+            }
+          },
+          {
+            "ordinal": 2,
+            "sequence": 2,
+            "target": "site:57",
+            "kind": "shape",
+            "direction": "east",
+            "guard": "guard:7",
+            "view": "live",
+            "receiver": {
+              "kind": "contact",
+              "contact": "contact:0"
+            }
+          },
+          {
+            "ordinal": 3,
+            "sequence": 2,
+            "target": "site:57",
+            "kind": "shape",
+            "direction": "east",
+            "guard": "guard:8",
+            "view": "live",
+            "receiver": {
+              "kind": "contact",
+              "contact": "contact:0"
+            }
+          },
+          {
+            "ordinal": 4,
+            "sequence": 2,
+            "target": "site:57",
+            "kind": "shape",
+            "direction": "east",
+            "guard": "guard:11",
+            "view": "live",
+            "receiver": {
+              "kind": "contact",
+              "contact": "contact:0"
+            }
+          },
+          {
+            "ordinal": 5,
+            "sequence": 12,
+            "target": "site:55",
+            "kind": "update",
+            "direction": "east",
+            "guard": "guard:23",
+            "view": "live",
+            "receiver": null
+          },
+          {
+            "ordinal": 6,
+            "sequence": 12,
+            "target": "site:55",
+            "kind": "update",
+            "direction": "east",
+            "guard": "guard:24",
+            "view": "live",
+            "receiver": null
+          },
+          {
+            "ordinal": 7,
+            "sequence": 13,
+            "target": "site:57",
+            "kind": "update",
+            "direction": "west",
+            "guard": "guard:7",
+            "view": "live",
+            "receiver": {
+              "kind": "piston_base",
+              "piston": "piston:0"
+            }
+          },
+          {
+            "ordinal": 8,
+            "sequence": 13,
+            "target": "site:57",
+            "kind": "update",
+            "direction": "west",
+            "guard": "guard:8",
+            "view": "live",
+            "receiver": {
+              "kind": "piston_base",
+              "piston": "piston:0"
+            }
+          },
+          {
+            "ordinal": 9,
+            "sequence": 13,
+            "target": "site:57",
+            "kind": "update",
+            "direction": "west",
+            "guard": "guard:11",
+            "view": "live",
+            "receiver": null
+          },
+          {
+            "ordinal": 10,
+            "sequence": 14,
+            "target": "site:22",
+            "kind": "update",
+            "direction": "top",
+            "guard": "guard:0",
+            "view": "live",
+            "receiver": null
+          },
+          {
+            "ordinal": 11,
+            "sequence": 15,
+            "target": "site:87",
+            "kind": "update",
+            "direction": "bottom",
+            "guard": "guard:0",
+            "view": "live",
+            "receiver": null
+          },
+          {
+            "ordinal": 12,
+            "sequence": 16,
+            "target": "site:46",
+            "kind": "update",
+            "direction": "south",
+            "guard": "guard:0",
+            "view": "live",
+            "receiver": null
+          },
+          {
+            "ordinal": 13,
+            "sequence": 17,
+            "target": "site:66",
+            "kind": "update",
+            "direction": "north",
+            "guard": "guard:0",
+            "view": "live",
+            "receiver": null
+          }
+        ]
+      },
+      {
+        "id": "route:11",
+        "source": "node:0",
+        "deliveries": [
+          {
+            "ordinal": 0,
+            "sequence": 0,
+            "target": "site:57",
+            "kind": "update",
+            "direction": null,
+            "guard": "guard:7",
+            "view": "live",
+            "receiver": {
+              "kind": "piston_base",
+              "piston": "piston:0"
+            }
+          },
+          {
+            "ordinal": 1,
+            "sequence": 0,
+            "target": "site:57",
+            "kind": "update",
+            "direction": null,
+            "guard": "guard:8",
+            "view": "live",
+            "receiver": {
+              "kind": "piston_base",
+              "piston": "piston:0"
+            }
+          },
+          {
+            "ordinal": 2,
+            "sequence": 0,
+            "target": "site:57",
+            "kind": "update",
+            "direction": null,
+            "guard": "guard:11",
+            "view": "live",
+            "receiver": null
+          },
+          {
+            "ordinal": 3,
+            "sequence": 1,
+            "target": "site:56",
+            "kind": "shape",
+            "direction": "west",
+            "guard": "guard:4",
+            "view": "live",
+            "receiver": {
+              "kind": "contact",
+              "contact": "contact:1"
+            }
+          },
+          {
+            "ordinal": 4,
+            "sequence": 1,
+            "target": "site:56",
+            "kind": "shape",
+            "direction": "west",
+            "guard": "guard:14",
+            "view": "live",
+            "receiver": {
+              "kind": "contact",
+              "contact": "contact:1"
+            }
+          },
+          {
+            "ordinal": 5,
+            "sequence": 1,
+            "target": "site:56",
+            "kind": "shape",
+            "direction": "west",
+            "guard": "guard:21",
+            "view": "live",
+            "receiver": {
+              "kind": "contact",
+              "contact": "contact:1"
+            }
+          },
+          {
+            "ordinal": 6,
+            "sequence": 1,
+            "target": "site:56",
+            "kind": "shape",
+            "direction": "west",
+            "guard": "guard:19",
+            "view": "live",
+            "receiver": {
+              "kind": "contact",
+              "contact": "contact:1"
+            }
+          },
+          {
+            "ordinal": 7,
+            "sequence": 13,
+            "target": "site:56",
+            "kind": "update",
+            "direction": "east",
+            "guard": "guard:4",
+            "view": "live",
+            "receiver": null
+          },
+          {
+            "ordinal": 8,
+            "sequence": 13,
+            "target": "site:56",
+            "kind": "update",
+            "direction": "east",
+            "guard": "guard:14",
+            "view": "live",
+            "receiver": {
+              "kind": "piston_head",
+              "piston": "piston:0"
+            }
+          },
+          {
+            "ordinal": 9,
+            "sequence": 13,
+            "target": "site:56",
+            "kind": "update",
+            "direction": "east",
+            "guard": "guard:21",
+            "view": "live",
+            "receiver": null
+          },
+          {
+            "ordinal": 10,
+            "sequence": 13,
+            "target": "site:56",
+            "kind": "update",
+            "direction": "east",
+            "guard": "guard:19",
+            "view": "live",
+            "receiver": null
+          },
+          {
+            "ordinal": 11,
+            "sequence": 14,
+            "target": "site:58",
+            "kind": "update",
+            "direction": "west",
+            "guard": "guard:0",
+            "view": "live",
+            "receiver": null
+          },
+          {
+            "ordinal": 12,
+            "sequence": 15,
+            "target": "site:23",
+            "kind": "update",
+            "direction": "top",
+            "guard": "guard:0",
+            "view": "live",
+            "receiver": null
+          },
+          {
+            "ordinal": 13,
+            "sequence": 16,
+            "target": "site:88",
+            "kind": "update",
+            "direction": "bottom",
+            "guard": "guard:0",
+            "view": "live",
+            "receiver": null
+          },
+          {
+            "ordinal": 14,
+            "sequence": 17,
+            "target": "site:47",
+            "kind": "update",
+            "direction": "south",
+            "guard": "guard:0",
+            "view": "live",
+            "receiver": null
+          },
+          {
+            "ordinal": 15,
+            "sequence": 18,
+            "target": "site:67",
+            "kind": "update",
+            "direction": "north",
+            "guard": "guard:0",
+            "view": "live",
+            "receiver": null
+          }
+        ]
+      },
+      {
+        "id": "route:12",
+        "source": "node:0",
+        "deliveries": [
+          {
+            "ordinal": 0,
+            "sequence": 0,
+            "target": "site:55",
+            "kind": "shape",
+            "direction": "west",
+            "guard": "guard:23",
+            "view": "live",
+            "receiver": {
+              "kind": "contact",
+              "contact": "contact:2"
+            }
+          },
+          {
+            "ordinal": 1,
+            "sequence": 0,
+            "target": "site:55",
+            "kind": "shape",
+            "direction": "west",
+            "guard": "guard:24",
+            "view": "live",
+            "receiver": {
+              "kind": "contact",
+              "contact": "contact:2"
+            }
+          },
+          {
+            "ordinal": 2,
+            "sequence": 2,
+            "target": "site:57",
+            "kind": "shape",
+            "direction": "east",
+            "guard": "guard:7",
+            "view": "live",
+            "receiver": {
+              "kind": "contact",
+              "contact": "contact:0"
+            }
+          },
+          {
+            "ordinal": 3,
+            "sequence": 2,
+            "target": "site:57",
+            "kind": "shape",
+            "direction": "east",
+            "guard": "guard:8",
+            "view": "live",
+            "receiver": {
+              "kind": "contact",
+              "contact": "contact:0"
+            }
+          },
+          {
+            "ordinal": 4,
+            "sequence": 2,
+            "target": "site:57",
+            "kind": "shape",
+            "direction": "east",
+            "guard": "guard:11",
+            "view": "live",
+            "receiver": {
+              "kind": "contact",
+              "contact": "contact:0"
+            }
+          },
+          {
+            "ordinal": 5,
+            "sequence": 12,
+            "target": "site:55",
+            "kind": "update",
+            "direction": "east",
+            "guard": "guard:23",
+            "view": "live",
+            "receiver": null
+          },
+          {
+            "ordinal": 6,
+            "sequence": 12,
+            "target": "site:55",
+            "kind": "update",
+            "direction": "east",
+            "guard": "guard:24",
+            "view": "live",
+            "receiver": null
+          },
+          {
+            "ordinal": 7,
+            "sequence": 13,
+            "target": "site:57",
+            "kind": "update",
+            "direction": "west",
+            "guard": "guard:7",
+            "view": "live",
+            "receiver": {
+              "kind": "piston_base",
+              "piston": "piston:0"
+            }
+          },
+          {
+            "ordinal": 8,
+            "sequence": 13,
+            "target": "site:57",
+            "kind": "update",
+            "direction": "west",
+            "guard": "guard:8",
+            "view": "live",
+            "receiver": {
+              "kind": "piston_base",
+              "piston": "piston:0"
+            }
+          },
+          {
+            "ordinal": 9,
+            "sequence": 13,
+            "target": "site:57",
+            "kind": "update",
+            "direction": "west",
+            "guard": "guard:11",
+            "view": "live",
+            "receiver": null
+          },
+          {
+            "ordinal": 10,
+            "sequence": 14,
+            "target": "site:22",
+            "kind": "update",
+            "direction": "top",
+            "guard": "guard:0",
+            "view": "live",
+            "receiver": null
+          },
+          {
+            "ordinal": 11,
+            "sequence": 15,
+            "target": "site:87",
+            "kind": "update",
+            "direction": "bottom",
+            "guard": "guard:0",
+            "view": "live",
+            "receiver": null
+          },
+          {
+            "ordinal": 12,
+            "sequence": 16,
+            "target": "site:46",
+            "kind": "update",
+            "direction": "south",
+            "guard": "guard:0",
+            "view": "live",
+            "receiver": null
+          },
+          {
+            "ordinal": 13,
+            "sequence": 17,
+            "target": "site:66",
+            "kind": "update",
+            "direction": "north",
+            "guard": "guard:0",
+            "view": "live",
+            "receiver": null
+          }
+        ]
+      }
+    ]
+  },
+  "snapshots": [
+    {
+      "id": "snapshot:initial",
+      "components": [
+        {
+          "node": "node:0",
+          "state": {
+            "kind": "specialized"
+          }
+        },
+        {
+          "node": "node:1",
+          "state": {
+            "kind": "specialized"
+          }
+        },
+        {
+          "node": "node:2",
+          "state": {
+            "kind": "specialized"
+          }
+        },
+        {
+          "node": "node:3",
+          "state": {
+            "kind": "specialized"
+          }
+        },
+        {
+          "node": "node:4",
+          "state": {
+            "kind": "electrical",
+            "powered": false,
+            "locked": false,
+            "output_strength": 0,
+            "pending_tick": false
+          }
+        },
+        {
+          "node": "node:5",
+          "state": {
+            "kind": "electrical",
+            "powered": false,
+            "locked": false,
+            "output_strength": 0,
+            "pending_tick": false
+          }
+        },
+        {
+          "node": "node:6",
+          "state": {
+            "kind": "wire",
+            "power": 0,
+            "north": "side",
+            "south": "side",
+            "east": "side",
+            "west": "side"
+          }
+        },
+        {
+          "node": "node:7",
+          "state": {
+            "kind": "electrical",
+            "powered": false,
+            "locked": false,
+            "output_strength": 15,
+            "pending_tick": false
+          }
+        },
+        {
+          "node": "node:8",
+          "state": {
+            "kind": "wire",
+            "power": 0,
+            "north": "side",
+            "south": "side",
+            "east": "side",
+            "west": "side"
+          }
+        }
+      ],
+      "pistons": [
+        {
+          "piston": "piston:0",
+          "extended": false,
+          "head_present": false,
+          "availability": "ready",
+          "revision": "0"
+        }
+      ],
+      "resources": [
+        {
+          "resource": "resource:0",
+          "selected_contact": "contact:1",
+          "enabled": true,
+          "revision": "0"
+        }
+      ],
+      "execution": null
+    }
+  ],
+  "trace": null,
+  "diagnostics": []
+}

@@ -22,7 +22,7 @@ fn table<T>(
 ) -> PreparationTableStatistics {
     PreparationTableStatistics {
         stage,
-        table: name,
+        table: name.to_owned(),
         entries,
         capacity,
         estimated_bytes: capacity

@@ -348,6 +348,70 @@ fn write_adder_1bit_graph_json_fixtures() {
     }
 }
 
+#[test]
+#[ignore = "regenerates O0 and O1 graph JSON exports for test_data/graph-fixtures"]
+fn write_graph_fixture_json_variants() {
+    let directory = root().join("test_data/graph-fixtures");
+    let mut schematics: Vec<_> = std::fs::read_dir(&directory)
+        .unwrap()
+        .map(|entry| entry.unwrap().path())
+        .filter(|path| path.extension().is_some_and(|extension| extension == "schem"))
+        .collect();
+    schematics.sort();
+    assert!(!schematics.is_empty(), "no graph fixture schematics found");
+
+    let mut rejected = Vec::new();
+    for schematic in schematics {
+        let name = schematic.file_name().unwrap().to_string_lossy();
+        let world = graph_fixture_world(&schematic);
+        for (level, suffix) in [(0, ""), (1, "-o1")] {
+            let ticks = world.scheduler().iter_entries().collect::<Vec<_>>();
+            let result = adapter::prepare(
+                &world,
+                world.get_corners(),
+                &ticks,
+                &CompilerOptions {
+                    optimization_level: Some(level),
+                    ..Default::default()
+                },
+                &crate::redpiler::TaskMonitor::default(),
+                AnalysisLimits::default(),
+            )
+            .and_then(|export| export.to_bytes());
+            let bytes = match result {
+                Ok(bytes) => bytes,
+                Err(error) => {
+                    eprintln!("{name} O{level} rejected: {error}");
+                    rejected.push(format!("{name} O{level}: {error}"));
+                    continue;
+                }
+            };
+            let stem = schematic.file_stem().unwrap().to_string_lossy();
+            let destination = directory.join(format!("{stem}{suffix}.graph.json"));
+            std::fs::write(destination, bytes).unwrap();
+        }
+    }
+    assert!(rejected.is_empty(), "fixtures not exported:\n{}", rejected.join("\n"));
+}
+
+fn graph_fixture_world(path: &std::path::Path) -> PlotWorld {
+    let clipboard = load_schematic(std::fs::File::open(path).unwrap()).unwrap();
+    let mut world = empty();
+    paste_clipboard(
+        &mut world,
+        &clipboard,
+        BASE + BlockPos::new(clipboard.offset_x, clipboard.offset_y, clipboard.offset_z),
+        false,
+    );
+    if path.file_name().is_some_and(|name| name == "adder_non_instant_pistons_4bit.schem") {
+        // This label is mounted on a piston base and is rejected when that base moves.
+        let sign = BlockPos::new(63, 38, 58);
+        assert!(matches!(world.get_block(sign), Block::WallSign { .. }));
+        world.set_block(sign, Block::Air);
+    }
+    world
+}
+
 fn adder_1bit_export(level: Option<usize>) -> Vec<u8> {
     let world = geometry_io_fixture("ADDER_1BIT.schem");
     exported_with_options(

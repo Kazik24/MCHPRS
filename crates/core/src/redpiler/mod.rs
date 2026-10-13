@@ -280,7 +280,7 @@ pub struct PassStatistics {
 /// Retained-capacity estimate for one preparation table.
 pub struct PreparationTableStatistics {
     pub stage: &'static str,
-    pub table: &'static str,
+    pub table: String,
     pub entries: usize,
     pub capacity: usize,
     /// Estimates retained element storage and known nested slices, excluding maps and allocator overhead.

@@ -17,6 +17,7 @@ TABLES = {
     "resource": "resources",
     "power_link": "power_links",
     "wire": "wire_plans",
+    "dust_path": "dust_paths",
     "wire_relation": "wire_relations",
     "comparator_plan": "comparator_plans",
     "callback_link": "callback_links",
@@ -92,7 +93,7 @@ def _validate(data: Any) -> dict[str, dict[str, dict[str, Any]]]:
     records: dict[str, dict[str, dict[str, Any]]] = {}
     for prefix, table in TABLES.items():
         values = graph.get(table)
-        if table in ("routes", "callback_links") and values is None:
+        if table in ("routes", "callback_links", "dust_paths") and values is None:
             values = []
         values = _array(values, f"graph.{table}")
         indexed: dict[str, dict[str, Any]] = {}
@@ -241,6 +242,29 @@ def _validate(data: Any) -> dict[str, dict[str, dict[str, Any]]]:
             ref("site", site, identifier)
         optional("route", wire.get("shape_route"), identifier)
         optional("route", wire.get("turbo_route"), identifier)
+
+    assigned_dust_wires: set[str] = set()
+    for identifier, path in records["dust_path"].items():
+        input_node = path.get("input_node")
+        input_site = path.get("input_site")
+        ref("node", input_node, identifier)
+        ref("site", input_site, identifier)
+        if records["node"][input_node]["kind"].get("kind") != "electrical":
+            raise GraphFormatError(f"{identifier} input must be an electrical node")
+        if records["site"][input_site]["source"] != {"kind": "component", "node": input_node}:
+            raise GraphFormatError(f"{identifier} input site must be owned by its input node")
+        wires = _array(path.get("wires"), f"{identifier}.wires")
+        if len(wires) < 2:
+            raise GraphFormatError(f"{identifier} must contain at least two wire nodes")
+        local_wires: set[str] = set()
+        for wire in wires:
+            ref("node", wire, identifier)
+            if records["node"][wire]["kind"].get("kind") != "wire":
+                raise GraphFormatError(f"{identifier} references non-wire node {wire!r}")
+            if wire in local_wires or wire in assigned_dust_wires:
+                raise GraphFormatError(f"{identifier} repeats or shares wire node {wire}")
+            local_wires.add(wire)
+            assigned_dust_wires.add(wire)
 
     for identifier, relation in records["wire_relation"].items():
         ref("node", relation.get("from"), identifier)
