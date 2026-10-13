@@ -1,6 +1,6 @@
 # G4 — Graph construction boundary and ordinary coverage
 
-Status: proposed; requires reviewed G3. Read [the ownership sketches](../GRAPH_PIPELINE_MIGRATION.md).
+Status (2026-10-13): partially implemented in batch 02 and awaiting human review. The constructor boundary and focused command/note behavior are present; ordinary coverage and G4 completion are not claimed. Read [the ownership sketches](../GRAPH_PIPELINE_MIGRATION.md).
 
 ## Goal
 
@@ -15,7 +15,7 @@ GraphBackend consumes the lowered general circuit program and prepared entry wor
 5. Keep sparse nested wire captures independent, stored wire strengths authoritative, electrical queries separate from Shape checks, and requests separate from acceptance. Preserve phase boundaries and event revision cancellation.
 6. Preserve on-use, plate controls, inspect, presentation flush and full reset continuation. `io_only` cannot discard hidden state or future work on handoff.
 7. Leave the existing packed path and selection available during review. Identify it explicitly as legacy execution; never hide Direct/Native inside Graph. Keep Native code untouched until the G6 retirement gate.
-8. Unsupported Graph components have structured capability errors. Record command/note/trapdoor coverage separately. Early refactoring preserves existing legacy entry paths; G6 cannot retire those paths until their support or explicit rejection policy is reviewed.
+8. Unsupported Graph components have structured capability errors. Batch 02 requires command/note support in Graph; trapdoors may be explicitly rejected as a user-approved regression. Early refactoring preserves existing legacy entry paths; G6 retires them only after retained support passes the coverage gate. Follow the command/note host-boundary requirements in the batch prompt.
 
 ## References
 
@@ -27,6 +27,12 @@ GraphBackend consumes the lowered general circuit program and prepared entry wor
 - Prove no spatial runtime world reads using existing read-counting/test world helpers or a targeted instrumentation check; compile/flush/reset reads are separately identified.
 - A normal component fixture and a supported TEST-family piston fixture execute through Graph with meaningful stimuli. Check intermediate observations and future work, not just final lamps.
 - Validate constructor failures transactionally and state/node correspondence before publication.
+
+## Batch 02 implementation notes
+
+`prepare_graph_backend` lowers imported target type, remaining half-tick delay, priority, and compiled receiver binding before `GraphBackend::from_lowered`; construction itself has no World parameter. Graph now executes command and note behavior, captures note instrument/obstruction at the edge, and preserves presentation across reset. Focused tests cover stale/duplicate work, unloaded targets, command host preflight, synchronous command results, saved conditional state, missing command entities, note ticks, and reset handoff.
+
+The boundary remains incomplete for callback receivers such as Hoppers and some other interpreter-supported blocks. The hostless command preflight conservatively requires a host for any due work in a graph containing a non-chain command block. Trapdoors return the approved structured rejection. See the batch coverage matrix in [the migration plan](../GRAPH_PIPELINE_MIGRATION.md); G5 and G6 remain gates.
 
 ## Non-goals
 

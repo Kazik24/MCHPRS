@@ -2,12 +2,13 @@
 
 use crate::redpiler::analysis::{AnalysisLimits, AnalysisReport, callbacks, electrical, geometry};
 use crate::redpiler::program_graph::{
-    CircuitDraft, CircuitProgram, CircuitState, CompileGraph, EntryState, GraphBuildError,
-    PowerLink, PowerTarget,
+    CircuitDraft, CompileGraph, EntryState, EntryTick, GraphBuildError, ImportedTick,
+    LoweredCircuit, PowerLink, PowerTarget,
 };
 use crate::redpiler::{GraphCounts, PassStatistics, TaskMonitor};
 use crate::world::World;
 use mchprs_blocks::BlockPos;
+use mchprs_blocks::blocks::Block;
 use mchprs_world::TickEntry;
 use std::fmt;
 use std::time::Instant;
@@ -46,11 +47,29 @@ pub(crate) struct PreparedGraph {
 }
 
 impl PreparedGraph {
-    pub(crate) fn lower(
-        self,
-    ) -> Result<(CircuitProgram, CircuitState, EntryState), GraphBuildError> {
+    pub(crate) fn lower(self) -> Result<LoweredCircuit, GraphBuildError> {
+        let logical_tick = self.entry.logical_tick;
+        let pending_ticks = self.entry.pending_ticks;
         let (program, state) = self.graph.lower()?;
-        Ok((program, state, self.entry))
+        let positions = program.position_index();
+        let imported_ticks = pending_ticks
+            .into_iter()
+            .map(|entry| ImportedTick {
+                target: positions.get(&entry.tick.pos).copied(),
+                position: entry.tick.pos,
+                block_type: entry.tick.block_type,
+                delay: entry.tick.ticks_left,
+                priority: entry.tick.tick_priority,
+                current_registry_type: entry.current_registry_type,
+            })
+            .collect();
+        Ok(LoweredCircuit {
+            program,
+            state,
+            logical_tick,
+            imported_ticks,
+            positions,
+        })
     }
 
     pub(crate) fn finish_pipeline_statistics(&self, monitor: &TaskMonitor) {
@@ -163,9 +182,25 @@ pub(crate) fn prepare(
         initial_resources: geometry.draft.initial_resources,
     };
     let report = geometry.report;
+    let pending_ticks = ticks
+        .into_iter()
+        .map(|tick| EntryTick {
+            current_registry_type: if !(0..crate::plot::PLOT_BLOCK_HEIGHT).contains(&tick.pos.y) {
+                Some(Block::Air.registry_id())
+            } else if world
+                .get_chunk(tick.pos.x.div_euclid(16), tick.pos.z.div_euclid(16))
+                .is_some()
+            {
+                Some(world.get_block(tick.pos).registry_id())
+            } else {
+                None
+            },
+            tick,
+        })
+        .collect();
     let entry = EntryState {
         logical_tick: world.piston_state().logical_tick,
-        pending_ticks: ticks,
+        pending_ticks,
     };
     monitor.set_parser_complete(GraphCounts::of(&graph));
     Ok(PreparedGraph {

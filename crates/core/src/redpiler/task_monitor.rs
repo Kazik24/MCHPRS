@@ -33,6 +33,12 @@ impl TaskMonitor {
         self.graph_statistics.lock().unwrap().passes.push(pass);
     }
 
+    pub(crate) fn record_transformation(&self, pass: PassStatistics) {
+        let mut statistics = self.graph_statistics.lock().unwrap();
+        statistics.passes.push(pass.clone());
+        statistics.transformations.push(pass);
+    }
+
     pub(crate) fn set_parser_complete(&self, counts: super::GraphCounts) {
         self.graph_statistics.lock().unwrap().parser_complete = Some(counts);
     }

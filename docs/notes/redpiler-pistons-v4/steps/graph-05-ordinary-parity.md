@@ -1,6 +1,6 @@
 # G5 — Ordinary circuit parity audit
 
-Status: proposed; requires reviewed G4. Read [the migration plan](../GRAPH_PIPELINE_MIGRATION.md) and existing reference-contract requirements.
+Status (2026-10-13): focused differential work was added in batch 02; the G5 audit remains incomplete and awaits human review. Read [the migration plan](../GRAPH_PIPELINE_MIGRATION.md) and existing reference-contract requirements.
 
 ## Goal
 
@@ -13,7 +13,8 @@ Establish which ordinary circuits can move from legacy Direct/Native selection t
 - Dust decay/rise, branches, loops, ascending/descending connections, direct/conducted lamp power, stored-wire diode reads and regulated sides.
 - Nested Turbo walks, synchronous component callbacks, observer-visible intermediate changes and callback duplicates/directions.
 - Imported stale and matching ticks, deadline ties, priorities, pending-work multiplicity, and compilation with ordinary work already queued.
-- Lever/button/plate controls, comparator/bulb state, applicable trapdoor behavior and reset/continue with pending work.
+- Lever/button/plate controls, comparator/bulb state, the explicitly approved trapdoor admission policy and reset/continue with pending work.
+- Batch 02 adds command impulse/repeating/conditional/chain behavior, synchronous result/comparator feedback and reset, plus note rising-edge/blocked/instrument/sound checks. Trapdoor compilation rejection is the specifically accepted regression and must preserve the input.
 - Existing fixture family plus ordinary electrical portions of the adder schematics. Do not demand full FPU coverage solely for this migration gate.
 
 ## Implementation instructions
@@ -28,6 +29,12 @@ Preserve first-divergence reporting. Compare eligible callback order, component/
 - Minimal regression for each confirmed bug; changes must fix the shared semantic owner, not a fixture-specific path.
 - Debug and release runs of new focused regressions, relevant existing parser/executor suites, formatting and diff checks.
 - One ordered trace explaining a comparator/feedback interaction and one exact handoff comparison.
+
+## Batch 02 evidence and remaining matrix
+
+The explicit Graph tests cover imported tick deadlines/duplicates, comparator notification scheduling from a synchronous command result, note-block edge behavior, command host errors, selected trapdoor rejection, and selected existing observer, dust, piston, TEST-family, and adder episodes. The command/result test now compares against an independently stepped interpreter, including the comparator's scheduled feedback and the later stored output. The command reset handoff is compared with uninterrupted interpreter work.
+
+This is a focused subset, not the complete matrix above. Existing command/control fuzz tests that compile through the public compiler still select Native and do not count as Graph parity. Broad analog comparator feedback, longer delayed loops, button/plate histories, full note sound capture, every command failure/chain ordering mode, and all reset boundaries remain incomplete. No unexpected divergence was reported by the focused passing tests; this does not establish parity for those untested histories.
 
 ## Non-goals
 

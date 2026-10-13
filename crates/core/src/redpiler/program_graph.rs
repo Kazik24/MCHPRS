@@ -3,7 +3,7 @@
 use crate::redpiler::compile_graph::{NodeState, NodeType};
 use mchprs_blocks::blocks::{Block, RedstoneWire};
 use mchprs_blocks::{BlockFace, BlockPos};
-use mchprs_world::TickEntry;
+use mchprs_world::{TickEntry, TickPriority};
 use rustc_hash::FxHashMap;
 use std::collections::{HashMap, VecDeque};
 use std::ops::Range;
@@ -120,6 +120,28 @@ pub(crate) struct NodeSpec {
     pub(crate) block: Option<Block>,
     pub(crate) kind: CircuitNodeKind,
     pub(crate) output_route: Option<RouteId>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct CommandBlockPlan {
+    /// This identifies the command block whose state is stored in `CircuitState`.
+    pub(crate) node: NodeId,
+    /// This binds conditional execution to its compiled predecessor, when present.
+    pub(crate) previous: Option<NodeId>,
+    /// This binds chain traversal to the next compiled chain command, when present.
+    pub(crate) next: Option<NodeId>,
+    /// This records whether activation and execution read predecessor success.
+    pub(crate) conditional: bool,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct NoteBlockPlan {
+    /// This identifies the noteblock whose powered and instrument state is live.
+    pub(crate) node: NodeId,
+    /// This is the compiled support block sampled for its instrument.
+    pub(crate) below: SiteId,
+    /// This is the compiled obstruction block sampled for sound eligibility.
+    pub(crate) above: SiteId,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -414,8 +436,45 @@ pub(crate) type CompileGraph = CircuitDraft;
 pub(crate) struct EntryState {
     /// This initializes the executor clock from the compilation boundary.
     pub(crate) logical_tick: u64,
-    /// This retains imported work and duplicate scheduling entries in order.
-    pub(crate) pending_ticks: Vec<TickEntry>,
+    /// This retains imported work and entry target facts in original queue order.
+    pub(crate) pending_ticks: Vec<EntryTick>,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct EntryTick {
+    /// This preserves the scheduler's original target, block type, deadline, and priority.
+    pub(crate) tick: TickEntry,
+    /// This records a known loaded target type; None means its chunk was unavailable.
+    pub(crate) current_registry_type: Option<u32>,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct ImportedTick {
+    /// This binds the tick to a compiled receiver when one exists.
+    pub(crate) target: Option<NodeId>,
+    /// This preserves the original scheduled position for stale checks and handoff.
+    pub(crate) position: BlockPos,
+    /// This preserves the input scheduler's optional expected block type.
+    pub(crate) block_type: Option<u32>,
+    /// This retains the remaining half-tick deadline at compilation entry.
+    pub(crate) delay: u32,
+    /// This preserves the input scheduler's priority.
+    pub(crate) priority: TickPriority,
+    /// This records the block type that was current at the compilation boundary.
+    pub(crate) current_registry_type: Option<u32>,
+}
+
+pub(crate) struct LoweredCircuit {
+    /// This owns the immutable lowered instructions used by graph execution.
+    pub(crate) program: CircuitProgram,
+    /// This owns the initial mutable component, piston, and resource state.
+    pub(crate) state: CircuitState,
+    /// This initializes the graph clock from the entry boundary.
+    pub(crate) logical_tick: u64,
+    /// This transfers prepared ticks once into the graph scheduler.
+    pub(crate) imported_ticks: Vec<ImportedTick>,
+    /// This shares the lowering position index with graph controls and tick binding.
+    pub(crate) positions: FxHashMap<BlockPos, NodeId>,
 }
 
 impl CircuitDraft {
@@ -449,6 +508,72 @@ impl CircuitDraft {
             .map(|profile| Block::from_id(profile.raw_state))
             .collect::<Vec<_>>()
             .into_boxed_slice();
+        let node_positions: FxHashMap<_, _> = nodes
+            .iter()
+            .enumerate()
+            .filter_map(|(index, node)| Some((node.position?, NodeId::try_from_index(index)?)))
+            .collect();
+        let site_positions: FxHashMap<_, _> = self
+            .sites
+            .iter()
+            .enumerate()
+            .filter_map(|(index, site)| Some((site.position, SiteId::try_from_index(index)?)))
+            .collect();
+        let command_blocks = nodes
+            .iter()
+            .enumerate()
+            .filter_map(|(index, node)| {
+                let CircuitNodeKind::Electrical(NodeType::CommandBlock { .. }) = node.kind else {
+                    return None;
+                };
+                let id = NodeId::try_from_index(index)?;
+                let block = node.block?;
+                let position = node.position?;
+                let facing = command_facing(block);
+                let command_at = |position: BlockPos| {
+                    node_positions.get(&position).copied().filter(|&other| {
+                        matches!(
+                            nodes[other.index()].kind,
+                            CircuitNodeKind::Electrical(NodeType::CommandBlock { .. })
+                        )
+                    })
+                };
+                let previous = command_at(position.offset(facing.opposite()));
+                let next = command_at(position.offset(facing)).filter(|&other| {
+                    matches!(
+                        nodes[other.index()].kind,
+                        CircuitNodeKind::Electrical(NodeType::CommandBlock { chain: true, .. })
+                    )
+                });
+                Some(CommandBlockPlan {
+                    node: id,
+                    previous,
+                    next,
+                    conditional: block.property("conditional") == Some("true"),
+                })
+            })
+            .collect::<Vec<_>>()
+            .into_boxed_slice();
+        let note_blocks = nodes
+            .iter()
+            .enumerate()
+            .filter_map(|(index, node)| {
+                if !matches!(
+                    node.kind,
+                    CircuitNodeKind::Electrical(NodeType::NoteBlock { .. })
+                ) {
+                    return None;
+                }
+                let id = NodeId::try_from_index(index)?;
+                let position = node.position?;
+                Some(NoteBlockPlan {
+                    node: id,
+                    below: *site_positions.get(&position.offset(BlockFace::Bottom))?,
+                    above: *site_positions.get(&position.offset(BlockFace::Top))?,
+                })
+            })
+            .collect::<Vec<_>>()
+            .into_boxed_slice();
 
         let state = CircuitState {
             components: self
@@ -475,6 +600,8 @@ impl CircuitDraft {
             sites: self.sites.into_boxed_slice(),
             pistons: self.pistons.into_boxed_slice(),
             resources: self.resources.into_boxed_slice(),
+            command_blocks,
+            note_blocks,
         };
         Ok((program, state))
     }
@@ -857,6 +984,9 @@ impl CircuitDraft {
             check_id("contacts", piston.far.index(), self.contacts.len())?;
             if let PistonLane::SingleResource { far } = piston.lane {
                 check_id("contacts", far.index(), self.contacts.len())?;
+                if far != piston.far {
+                    return Err(GraphBuildError::PistonFarContactMismatch { node: piston.node });
+                }
             }
             self.validate_piston_routes(piston.node, piston.lane, piston.routes)?;
         }
@@ -1270,6 +1400,17 @@ impl CircuitDraft {
     }
 }
 
+pub(crate) fn command_facing(block: Block) -> BlockFace {
+    match block.property("facing") {
+        Some("up") => BlockFace::Top,
+        Some("down") => BlockFace::Bottom,
+        Some("east") => BlockFace::East,
+        Some("west") => BlockFace::West,
+        Some("south") => BlockFace::South,
+        _ => BlockFace::North,
+    }
+}
+
 fn guard_children(guard: &Guard) -> &[GuardId] {
     match guard {
         Guard::Not(id) => std::slice::from_ref(id),
@@ -1354,6 +1495,9 @@ pub(crate) enum GraphBuildError {
     CallbackEdgeMissingReference {
         from: NodeId,
         to: NodeId,
+    },
+    PistonFarContactMismatch {
+        node: NodeId,
     },
     PistonResourceRestorationMismatch {
         node: NodeId,
@@ -1466,6 +1610,11 @@ impl std::fmt::Display for GraphBuildError {
                 from.index(),
                 to.index()
             ),
+            Self::PistonFarContactMismatch { node } => write!(
+                f,
+                "piston node {} has conflicting far contacts in its description and lane",
+                node.index()
+            ),
             Self::PistonResourceRestorationMismatch { node } => write!(
                 f,
                 "piston node {} has restoration routes that do not match its resource lane",
@@ -1535,6 +1684,8 @@ pub(crate) struct CircuitProgram {
     sites: Box<[SiteSpec]>,
     pistons: Box<[PistonSpec]>,
     resources: Box<[ResourceSpec]>,
+    command_blocks: Box<[CommandBlockPlan]>,
+    note_blocks: Box<[NoteBlockPlan]>,
 }
 
 impl CircuitProgram {
@@ -1595,6 +1746,32 @@ impl CircuitProgram {
 
     pub(crate) fn resources(&self) -> &[ResourceSpec] {
         &self.resources
+    }
+
+    pub(crate) fn command_blocks(&self) -> &[CommandBlockPlan] {
+        &self.command_blocks
+    }
+
+    pub(crate) fn note_blocks(&self) -> &[NoteBlockPlan] {
+        &self.note_blocks
+    }
+
+    pub(crate) fn position_index(&self) -> FxHashMap<BlockPos, NodeId> {
+        self.nodes
+            .iter()
+            .enumerate()
+            .filter_map(|(index, node)| {
+                if !matches!(
+                    node.kind,
+                    CircuitNodeKind::Electrical(_)
+                        | CircuitNodeKind::Observer { .. }
+                        | CircuitNodeKind::Wire(_)
+                ) {
+                    return None;
+                }
+                Some((node.position?, NodeId::new(index as u32)))
+            })
+            .collect()
     }
 }
 
@@ -2007,11 +2184,26 @@ mod tests {
     fn resource_lane_requires_both_destination_restoration_routes() {
         let mut missing = draft_with_mixed_links();
         missing.pistons[0].lane = PistonLane::SingleResource {
-            far: ContactId::new(1),
+            far: ContactId::new(0),
         };
         assert!(matches!(
             missing.lower(),
             Err(GraphBuildError::PistonResourceRestorationMismatch { .. })
+        ));
+    }
+
+    #[test]
+    fn resource_lane_far_contact_must_match_piston_far_contact() {
+        let mut mismatch = draft_with_mixed_links();
+        mismatch.pistons[0].lane = PistonLane::SingleResource {
+            far: ContactId::new(1),
+        };
+        mismatch.pistons[0].routes.resource_restored_near = Some(RouteId::new(0));
+        mismatch.pistons[0].routes.resource_restored_far = Some(RouteId::new(0));
+
+        assert!(matches!(
+            mismatch.lower(),
+            Err(GraphBuildError::PistonFarContactMismatch { node }) if node == NodeId::new(2)
         ));
     }
 

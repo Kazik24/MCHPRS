@@ -73,6 +73,42 @@ impl std::fmt::Display for CompileError {
 
 impl std::error::Error for CompileError {}
 
+fn graph_preparation_error(
+    error: passes::rich::PreparationError,
+    monitor: &TaskMonitor,
+) -> CompileError {
+    let error = match error {
+        passes::rich::PreparationError::Geometry(error) => {
+            backend::graph::GraphBackendError::Geometry(error)
+        }
+        passes::rich::PreparationError::Electrical(error) => {
+            backend::graph::GraphBackendError::Electrical(error)
+        }
+        passes::rich::PreparationError::Callbacks(error) => {
+            backend::graph::GraphBackendError::Callbacks(error)
+        }
+    };
+    graph_backend_error(error, monitor)
+}
+
+fn graph_pipeline_error(error: passes::PassPipelineError, monitor: &TaskMonitor) -> CompileError {
+    graph_backend_error(
+        backend::graph::GraphBackendError::PassPipeline(error),
+        monitor,
+    )
+}
+
+fn graph_backend_error(
+    error: backend::graph::GraphBackendError,
+    monitor: &TaskMonitor,
+) -> CompileError {
+    if monitor.cancelled() {
+        CompileError::Cancelled
+    } else {
+        CompileError::RichGraph(RichGraphError(error))
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum BackendKind {
     /// Packed ordinary electrical graph.
@@ -202,6 +238,8 @@ pub struct GraphStatistics {
     /// This occurs before the optimization baseline, not in an optional pass.
     pub wire_nodes_elided: bool,
     pub passes: Vec<PassStatistics>,
+    /// This contains only optional transformations, not mandatory parser stages.
+    pub transformations: Vec<PassStatistics>,
     /// This records the graph after required parsing and before transformations.
     pub parser_complete: Option<GraphCounts>,
     /// This records the final graph independently of the supplied pass count.
@@ -230,12 +268,26 @@ impl GraphStatistics {
                 after.nodes as i128 - before.nodes as i128,
                 after.links as i128 - before.links as i128,
             ));
-            lines.push(if self.wire_nodes_elided {
-                "Construction: ordinary wire nodes elided before the baseline (-O).".into()
-            } else {
-                "Construction: ordinary wire-node elision disabled; optional optimization passes disabled.".into()
-            });
+            lines.push(format!(
+                "Construction: ordinary wire-node elision {} before the baseline.",
+                if self.wire_nodes_elided {
+                    "enabled"
+                } else {
+                    "disabled"
+                }
+            ));
         }
+        let enabled = self
+            .transformations
+            .iter()
+            .filter(|pass| pass.enabled)
+            .count();
+        let skipped = self.transformations.len() - enabled;
+        lines.push(if self.transformations.is_empty() {
+            "Transformations: none configured.".into()
+        } else {
+            format!("Transformations: {enabled} enabled, {skipped} skipped.")
+        });
         lines.extend(self.passes.iter().map(|pass| {
             format!(
                 "{} [{}]: {} -> {} nodes, {} -> {} links, {:.3} ms",
@@ -368,75 +420,65 @@ impl Compiler {
                     analysis::AdmissionIssue::PistonRuntimeUnavailable { .. }
                 )
             });
-        if rich {
-            if options.export || options.export_dot_graph {
-                return Err(CompileError::UnsupportedRichExport);
-            }
-            let limits = analysis::AnalysisLimits::for_budget(monitor.budget_multiplier());
-            let mut prepared = passes::rich::prepare(world, bounds, ticks, &monitor, limits)
-                .map_err(|error| {
-                    let error = match error {
-                        passes::rich::PreparationError::Geometry(error) => {
-                            backend::graph::GraphBackendError::Geometry(error)
-                        }
-                        passes::rich::PreparationError::Electrical(error) => {
-                            backend::graph::GraphBackendError::Electrical(error)
-                        }
-                        passes::rich::PreparationError::Callbacks(error) => {
-                            backend::graph::GraphBackendError::Callbacks(error)
-                        }
-                    };
-                    if monitor.cancelled() {
-                        CompileError::Cancelled
-                    } else {
-                        CompileError::RichGraph(RichGraphError(error))
-                    }
-                })?;
-            let pipeline =
-                graph_pipeline.unwrap_or_else(|| passes::default_graph_pipeline(&options));
-            passes::run_graph_pipeline(
-                &mut prepared.graph,
-                &options,
-                &prepared.entry,
-                &pipeline,
-                &monitor,
-            )
-            .map_err(|error| {
-                if monitor.cancelled() {
-                    CompileError::Cancelled
-                } else {
-                    CompileError::RichGraph(RichGraphError(
-                        backend::graph::GraphBackendError::PassPipeline(error),
-                    ))
-                }
-            })?;
-            prepared.finish_pipeline_statistics(&monitor);
-            let backend_start = Instant::now();
-            let (program, state, entry) = prepared.lower().map_err(|error| {
-                CompileError::RichGraph(RichGraphError(backend::graph::GraphBackendError::Graph(
-                    error,
-                )))
-            })?;
-            let backend =
-                backend::graph::GraphBackend::from_program(world, program, state, entry, &monitor)
-                    .map_err(|error| match error {
-                        _ if monitor.cancelled() => CompileError::Cancelled,
-                        error => CompileError::RichGraph(RichGraphError(error)),
-                    })?;
-            let backend = Runtime::Graph(Box::new(backend));
-            return self.publish(
-                backend,
-                options,
-                &monitor,
-                start,
-                analysis_duration,
-                backend_start,
-            );
-        }
-        if !report.can_compile() {
+        if !rich && !report.can_compile() {
             return Err(CompileError::Unsupported(Box::new(report)));
         }
 
+        let backend_start = Instant::now();
+        let backend = if rich {
+            Self::prepare_graph_backend(world, bounds, ticks, &options, &monitor, graph_pipeline)?
+        } else {
+            Self::prepare_legacy_backend(world, bounds, ticks, &options, &monitor)?
+        };
+        self.publish(
+            backend,
+            options,
+            &monitor,
+            start,
+            analysis_duration,
+            backend_start,
+        )
+    }
+
+    fn prepare_graph_backend<W: World>(
+        world: &W,
+        bounds: (BlockPos, BlockPos),
+        ticks: Vec<TickEntry>,
+        options: &CompilerOptions,
+        monitor: &TaskMonitor,
+        graph_pipeline: Option<passes::PassPipeline>,
+    ) -> Result<Runtime, CompileError> {
+        if options.export || options.export_dot_graph {
+            return Err(CompileError::UnsupportedRichExport);
+        }
+        let limits = analysis::AnalysisLimits::for_budget(monitor.budget_multiplier());
+        let mut prepared = passes::rich::prepare(world, bounds, ticks, monitor, limits)
+            .map_err(|error| graph_preparation_error(error, monitor))?;
+        let pipeline = graph_pipeline.unwrap_or_else(|| passes::default_graph_pipeline(options));
+        passes::run_graph_pipeline(
+            &mut prepared.graph,
+            options,
+            &prepared.entry,
+            &pipeline,
+            monitor,
+        )
+        .map_err(|error| graph_pipeline_error(error, monitor))?;
+        prepared.finish_pipeline_statistics(monitor);
+        let lowered = prepared.lower().map_err(|error| {
+            graph_backend_error(backend::graph::GraphBackendError::Graph(error), monitor)
+        })?;
+        let backend = backend::graph::GraphBackend::from_lowered(lowered, monitor)
+            .map_err(|error| graph_backend_error(error, monitor))?;
+        Ok(Runtime::Graph(Box::new(backend)))
+    }
+
+    fn prepare_legacy_backend<W: World>(
+        world: &W,
+        bounds: (BlockPos, BlockPos),
+        ticks: Vec<TickEntry>,
+        options: &CompilerOptions,
+        monitor: &TaskMonitor,
+    ) -> Result<Runtime, CompileError> {
         let ticks: Vec<_> = ticks
             .into_iter()
             .filter(|entry| {
@@ -451,7 +493,7 @@ impl Compiler {
             ticks: &ticks,
         };
         let (graph, native) =
-            passes::prepare(&options, &input, &monitor, true).map_err(CompileError::Graph)?;
+            passes::prepare(options, &input, monitor, true).map_err(CompileError::Graph)?;
         if monitor.cancelled() {
             return Err(CompileError::Cancelled);
         }
@@ -460,29 +502,20 @@ impl Compiler {
         // or side tables from a previous compilation. Publish only on success.
         trace!("Compiling backend");
         monitor.set_message("Compiling backend".to_string());
-        let backend_start = Instant::now();
-        let backend = if native {
+        if native {
             if options.export_dot_graph {
                 return Err(CompileError::Graph(
                     compile_graph::GraphError::UnsupportedNativeExport,
                 ));
             }
-            Runtime::native(world, bounds, &graph, ticks, &monitor)?
+            Runtime::native(world, bounds, &graph, ticks, monitor)
         } else {
             let mut backend = DirectBackend::default();
             backend
                 .compile(graph, ticks, &options)
                 .map_err(CompileError::Backend)?;
-            Runtime::Direct(backend)
-        };
-        self.publish(
-            backend,
-            options,
-            &monitor,
-            start,
-            analysis_duration,
-            backend_start,
-        )
+            Ok(Runtime::Direct(backend))
+        }
     }
 
     /// The only place a staged backend becomes active.

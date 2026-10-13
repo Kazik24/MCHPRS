@@ -1,6 +1,6 @@
 # One compiler graph, an extensible pass pipeline, and one Graph runtime
 
-Status: G1–G3 implemented and awaiting human review, 2026-10-13. This does not establish execution parity; G4–G7 remain unstarted.
+Status (2026-10-13): G1–G3 remain awaiting human review; their four review findings were fixed and checked in batch 02. G4 is partially implemented, G5 has focused but incomplete differential coverage, G6 is incomplete, and G7 is not started. This report does not claim prior human approval.
 
 ## Agreed direction
 
@@ -8,11 +8,11 @@ Status: G1–G3 implemented and awaiting human review, 2026-10-13. This does not
 - Ordinary components, dust, observers, pistons, and shared contacts use one general compilation representation.
 - GraphBackend remains the general executor. Do not move it into Direct or wrap two unchanged executors and call that unification. Direct's useful compact representations become reviewed graph optimizations or specialized instructions inside Graph.
 - Keep Direct and Native available during migration and review. Retire both after supported ordinary circuits have migrated and remaining admission-policy decisions are explicit. The final production runtime has Graph only, with no native fallback on preparation/execution failure.
-- Command/note block rejection was described as future policy. Do not change their current admission incidentally during early refactoring. Before retiring legacy backends, explicitly resolve their treatment: reviewed Graph support or a reviewed structured rejection. Determine trapdoor coverage separately; do not preserve legacy execution forever to avoid this decision.
+- Batch 02 policy clarification: implement command and note blocks in Graph before retiring their legacy paths. Trapdoors are not required now; a structured compilation rejection is an explicitly accepted regression. Preserve existing command/note behavior during migration rather than rejecting those components to satisfy retirement.
 - The pass API is general and supports developer-defined passes, custom ordered pipelines, enabling/disabling individual transformations and isolated testing. Production defaults remain deterministic; no pass implementation or enable decision is hardcoded into the runner.
 - Preserve the interpreter's observable timing, callback direction/order/duplicates, live versus captured reads, acceptance/cancellation, shared resource ownership, and reset continuation.
 - No runtime spatial block queries, physical piston executor, motion/progress model, or interpreted dust execution in Graph.
-- Keep parser stages readable and independently debuggable. An implementation agent completes one step and stops for review.
+- Keep parser stages readable and independently debuggable. Work ordinarily stops after one step for review; batch 02 is the user's explicit exception for sequential G4–G6 work with one review at the end.
 
 ## Why the current structure needs changing
 
@@ -152,6 +152,8 @@ Keep the existing scheduler and logical phases as the correctness baseline. Late
 
 Each step includes discovery and focused tests. G5 expands ordinary coverage; it does not postpone all correctness checks until the end. Failures block changing selection for the affected cohort and retiring its legacy implementation. CPU-sized fixture preparation alone is not execution parity. G7 shares legality research with Side B and Step 15; it does not authorize later instant/BUD specializations.
 
+The user authorized batch 02 for Luna6: G4–G6, including closure of the G1–G3 review findings. Its internal verification checkpoints replace intermediate human-review pauses for that batch; the final review and correctness/retirement gates remain.
+
 ## References and implementation discipline
 
 Read `docs/REDSTONE_MODEL.md`, `docs/PISTON_MODEL.md`, `docs/INTERPRETER_ARCHITECTURE.md`, this directory's `ARCHITECTURE.md`, `AGENT_GUIDE.md`, and the assigned step. The interpreter remains the reference; existing Direct and Native are regression subjects, not proof that a rewrite is correct. Historical scraps explain failures and are not replacement specifications.
@@ -160,6 +162,24 @@ Primary files: `redpiler/mod.rs`, `passes/mod.rs`, `passes/identify_nodes.rs`, `
 
 Preserve concurrent changes. Do not rename tests into step-number folders. Explain every new field/enum variant in one sentence, follow surrounding code, reuse the scheduler and ordered notification helpers, avoid speculative abstractions/dependencies, and prefer named steps over dense expressions. No optimization inferred solely from a saved pose or settled outputs. Do not silently weaken admission to make fixtures pass.
 
-## Current workspace note
+## Batch 02 implementation status and coverage matrix
 
-An interrupted implementation added a provisional `passes/rich.rs` and its module declaration. They are unreviewed scaffolding, not G1 completion. Inspect their current consumers during G1 rather than treating them as an approved interface; other agents may have changed the working tree. This document supersedes the earlier generalized-Direct migration direction. No Rust implementation is authorized by this documentation update.
+G1–G3 are implemented in the working tree and await the first human review; this batch does not claim they were previously approved. It closes cancellation for empty/all-disabled pipelines, enforces one piston Far contact binding, splits compiler preparation from admission/publication, and reports transformation records separately from wire elision. Their regression tests are included in the focused redpiler runs below.
+
+G4's Graph construction boundary is implemented: the shared preparation/lowering artifact captures loaded target facts and imported work, lowers one position map, and passes a `LoweredCircuit` to a Graph constructor with no World argument. Imported work keeps its original order, duplicates, expected/current type, deadline, and priority. Graph handles command and note state, host execution, feedback, and presentation. G4 remains partial because the broader legacy capability inventory and runtime parity are unfinished. The hostless API conservatively asks for a host before any due work in a graph with a non-chain command block; this prevents partial command consumption while leaving circuits without command blocks hostless.
+
+| Capability | Attempted | Graph admitted/executed | Specifically rejected | Unexpected rejection | Divergence | Incomplete |
+| --- | --- | --- | --- | --- | --- | --- |
+| Comparators, delayed feedback, dust, controls, observers, bulbs | Existing focused Graph regressions and selected interpreter comparisons | Covered episodes pass, including comparator feedback scheduling from a command result | External stored-wire boundary is rejected with a structured error | Parser can still reject uninventoried update receivers | None in the passing focused episodes | Full analog/fork/reconvergence/loop/control history matrix |
+| Imported scheduled work | Matching, stale, duplicate, priority/deadline, uncompiled air, unloaded target, reset/handoff tests | Matching Graph work dispatches; stale/air work remains through due dispatch; duplicates and handoff deadlines are retained | Unknown/unloaded and matching non-air uncompiled receivers return structured errors | None in covered target classes | None reported by the focused cases | Full scheduler wrap and all type-replacement histories |
+| Commands | Impulse, automatic/repeating, conditional chain, saved condition, synchronous result, hostless failure, missing entity, reset handoff | Focused Graph episodes pass; synchronous result is compared with independent interpreter output and comparator continuation | Missing host fails before potentially command-reaching due work; unsupported external command remains a host error | No unexpected rejection in covered command cases | None in the focused command/interpreter episodes | Every command failure/output mode, ordering/dedup case, and complete chain differential matrix |
+| Notes | Rising/falling power, held power, blocked sound, sampled instrument, imported no-op tick, reset work | Focused Graph state/presentation checks and interpreter block-state comparisons pass | None | None in covered notes | None reported in the focused cases | Full sound/action comparison and changing contact/topology histories |
+| Hoppers and other legacy update receivers | Direct/Native/interpreter handler inventory; Graph callback admission inspected | Not admitted as complete Graph behavior | No approved rejection policy | Some selections return `UninventoriedReceiver` although the interpreter handles them | Not run as Graph runtime episodes | Component implementation or explicit policy and complete callback parity |
+| Trapdoors | Selected public compilation with piston forcing Graph | No Graph execution | `UnsupportedComponent` names trapdoor and position; input blocks/entities/ticks/events and activation remain unchanged | None; this is the explicitly approved regression | Not applicable | None for the selected trapdoor contract |
+| Public activation / backend retirement | Public compiler and runtime paths inspected | Piston path remains Graph; ordinary path remains legacy | No new cohort rejection policy | N/A | G5 not established for ordinary public selection | G6 incomplete; Direct/Native and their production callers remain |
+
+The table describes focused batch evidence, not a complete semantic guarantee. Existing fuzz tests that use public compilation while ordinary selection still chooses Native are not counted as Graph parity. General differential fuzzing, complete export-consumer migration, full-workspace checks, and performance measurements were not run. The older binary/DOT export consumers were not changed to carry command plans or all typed callback/contact semantics; they remain outside the activated Graph path pending a format-specific migration or rejection.
+
+Focused validation discovered 208 redpiler tests with `cargo test -p mchprs_core --lib redpiler:: --locked -- --list`. Both `cargo test -p mchprs_core --lib redpiler:: --locked -- --test-threads=1` and `cargo test -p mchprs_core --lib redpiler:: --release --locked -- --test-threads=1` passed 205 tests with 3 ignored. `cargo check -p mchprs_core --tests --locked`, `cargo check -p mroww --locked`, `cargo fmt --all -- --check`, and `git diff --check` also passed. These results cover the focused redpiler suites, not the full workspace, broad fuzzing, or performance.
+
+The command feedback trace asserts dispatch of the command, its output callback route, and comparator scheduling in that order. The host records `{"text":"[@] graph"}` synchronously and the comparator's live output query reads strength 1 in that same step; after the comparator's scheduled tick, Graph and interpreter stored output match. The note check captures a Bell at pitch 1 with category 2 and volume 3 on a rising edge, compares the powered block state to the interpreter, and verifies that an occupied above site produces no sound. The command reset test hands off its one-tick pending entry, compares the entry with the interpreter scheduler, recompiles Graph, then compares command entity/output, comparator state, and remaining ticks after continuation.

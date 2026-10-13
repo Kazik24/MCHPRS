@@ -43,6 +43,12 @@ fn plain_text(value: &serde_json::Value) -> String {
     }
 }
 
+pub(crate) fn command_source(custom_name: &str) -> String {
+    serde_json::from_str(custom_name)
+        .map(|value| plain_text(&value))
+        .unwrap_or_else(|_| "@".into())
+}
+
 pub(crate) fn update(world: &mut impl World, pos: BlockPos) {
     let block = world.get_block(pos);
     if !block.is_command_block() {
@@ -92,9 +98,7 @@ fn execute(world: &mut impl World, pos: BlockPos, notify: bool) -> bool {
     }
     entity.success_count = 0;
     if entity.condition_met && !entity.command.trim().is_empty() {
-        let source = serde_json::from_str(&entity.custom_name)
-            .map(|value| plain_text(&value))
-            .unwrap_or_else(|_| "@".into());
+        let source = command_source(&entity.custom_name);
         match world.execute_command_block(&entity.command, &source) {
             Ok(()) => {
                 entity.success_count = 1;

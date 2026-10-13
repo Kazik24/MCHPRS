@@ -206,7 +206,10 @@ pub(crate) fn identify_block<W: World>(
             let instrument = noteblock::get_noteblock_instrument(world, pos);
             (
                 NodeType::NoteBlock { instrument, note },
-                NodeState::simple(powered),
+                NodeState {
+                    note_instrument: Some(instrument),
+                    ..NodeState::simple(powered)
+                },
             )
         }
         block if block.is_command_block() => {
@@ -228,6 +231,7 @@ pub(crate) fn identify_block<W: World>(
                 NodeState {
                     powered: entity.is_some_and(|entity| entity.powered),
                     output_strength: comparator::get_override(block, world, pos),
+                    command_entity: Some(entity.cloned().unwrap_or_default()),
                     ..Default::default()
                 },
             )

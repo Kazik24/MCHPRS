@@ -68,9 +68,11 @@ The [2026-10-12 deeper audit](PARSER_AUDIT_2026-10-12.md) records counterexample
 
 ## Later implementation direction
 
-The proposed [common compiler graph, extensible pass pipeline and single Graph runtime migration](GRAPH_PIPELINE_MIGRATION.md) has seven separate review steps. Parsing becomes the required front end; developers can configure and test graph transformations through a general API; execution/export share one compilation artifact. Direct and Native remain during migration and are retired after the coverage/admission gate. The final runtime is Graph only. This replaces the earlier generalized-Direct proposal. G1–G3 are implemented under batch 01 and await human review; G4–G7 remain unstarted.
+The [common compiler graph, extensible pass pipeline and single Graph runtime migration](GRAPH_PIPELINE_MIGRATION.md) has seven review steps. It replaces the earlier generalized-Direct proposal. G1–G3 remain implemented and await their first human review; the four review findings were fixed and checked in batch 02. G4 has a partial world-independent construction boundary plus focused command and note behavior. G5 has focused differential cases but remains incomplete. G6 has not activated ordinary circuits and has not retired Direct/Native. G7 has not started. The current capability matrix and limits are in the migration plan.
 
-The user subsequently authorized [batch 01 for Luna6: G1–G3](BATCH_01_LUNA_PROMPT.md). That prompt permits sequential implementation of these three steps with internal checks and one human review at batch completion; G4–G7 remain outside its scope.
+The user authorized [batch 01 for Luna6: G1–G3](BATCH_01_LUNA_PROMPT.md), with internal checks and one human review at batch completion. This does not claim prior human approval of G1–G3.
+
+The user authorized batch 02 for Luna6: G4–G6. It closes the G1–G3 findings, adds world-independent Graph construction and focused command/note execution, and tests a specific trapdoor rejection. The coverage and retirement gates remain open: ordinary public compilation still selects Direct/Native, and Hoppers plus other callback receivers are not fully supported in Graph. Batch 02 stops at human review with G6 explicitly incomplete; see the migration plan for the coverage matrix and validation record.
 
 These are follow-up projects, not instructions to add speculative node variants during the steps above. Write and review their individual implementation prompts once the general graph provides concrete evidence.
 

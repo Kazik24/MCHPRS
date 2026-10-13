@@ -6,9 +6,10 @@ use crate::redpiler::backend::ScheduledBlockTick;
 use crate::redstone;
 use crate::redstone::instant_piston_tests::capture_at;
 use crate::world::storage::Chunk;
+use mchprs_blocks::block_entities::{BlockEntity, CommandBlockEntity};
 use mchprs_blocks::blocks::{
-    Block, ButtonFace, ComparatorMode, Lever, LeverFace, RedstoneComparator, RedstoneObserver,
-    RedstoneRepeater, RedstoneWire, RedstoneWireSide, StoneButton,
+    Block, ButtonFace, ComparatorMode, Instrument, Lever, LeverFace, RedstoneComparator,
+    RedstoneObserver, RedstoneRepeater, RedstoneWire, RedstoneWireSide, StoneButton,
 };
 use mchprs_blocks::{BlockDirection, BlockFacing};
 use serde_json::Value;
@@ -1370,27 +1371,691 @@ fn imported_tick_validation_rejects_out_of_ring_and_invalid_zero_delay() {
     let mut world = empty_world();
     world.set_block(LEVER_POS, lever(false));
     let mut backend = graph(&world, vec![]);
-    let tick = |ticks_left, tick_priority| TickEntry {
-        pos: LEVER_POS,
+    let target = backend.positions[&LEVER_POS];
+    let tick = |delay, priority| ImportedTick {
+        target: Some(target),
+        position: LEVER_POS,
         block_type: Some(lever(false).registry_id()),
-        ticks_left,
-        tick_priority,
+        delay,
+        priority,
+        current_registry_type: Some(lever(false).registry_id()),
     };
 
     assert!(matches!(
-        backend.import_ticks(
-            &world,
-            vec![tick(SCHEDULER_BUCKETS as u32, TickPriority::Normal)]
-        ),
+        backend.import_ticks(vec![tick(
+            SCHEDULER_BUCKETS as u32,
+            TickPriority::Normal
+        )]),
         Err(GraphBackendError::TickOutsideScheduler { delay })
             if delay == SCHEDULER_BUCKETS as u32
     ));
     assert!(matches!(
-        backend.import_ticks(&world, vec![tick(0, TickPriority::Highest)]),
+        backend.import_ticks(vec![tick(0, TickPriority::Highest)]),
         Err(GraphBackendError::InvalidZeroDelayPriority {
             priority: TickPriority::Highest
         })
     ));
+}
+
+#[test]
+fn imported_ticks_preserve_stale_air_duplicates_and_reset_deadlines() {
+    let position = LEVER_POS;
+    let stale = TickEntry {
+        pos: position,
+        block_type: Some(Block::Stone {}.registry_id()),
+        ticks_left: 3,
+        tick_priority: TickPriority::High,
+    };
+    let air_work = TickEntry {
+        pos: position.offset(BlockFace::East),
+        block_type: None,
+        ticks_left: 5,
+        tick_priority: TickPriority::Normal,
+    };
+    let expected = [stale.clone(), stale.clone(), air_work.clone()];
+    let world = empty_world();
+    let mut backend = GraphBackend::compile(
+        &world,
+        (position, position.offset(BlockFace::East)),
+        vec![stale.clone(), stale.clone(), air_work.clone()],
+        Arc::default(),
+    )
+    .unwrap();
+    assert_eq!(backend.scheduled_ticks(), expected);
+
+    let mut reset_world = empty_world();
+    backend.reset(&mut reset_world);
+    assert_eq!(
+        reset_world.scheduler().iter_entries().collect::<Vec<_>>(),
+        expected
+    );
+}
+
+#[test]
+fn untyped_imported_work_does_not_suppress_a_typed_callback_tick() {
+    let position = NEXT_POS;
+    let block = Block::Observer {
+        observer: RedstoneObserver {
+            facing: BlockFacing::West,
+            powered: false,
+        },
+    };
+    let untyped = TickEntry {
+        pos: position,
+        block_type: None,
+        ticks_left: 2,
+        tick_priority: TickPriority::High,
+    };
+    let mut world = empty_world();
+    world.set_block(position, block);
+    let mut backend =
+        GraphBackend::compile(&world, BOUNDS, vec![untyped.clone()], Arc::default()).unwrap();
+    let node = backend.positions[&position];
+    assert!(!backend.is_pending(node));
+
+    backend
+        .update_component(
+            node,
+            DeliveryKind::Update {
+                direction: Some(BlockFace::West),
+            },
+            None,
+        )
+        .unwrap();
+    assert_eq!(backend.scheduled_ticks()[0], untyped);
+    assert_eq!(
+        backend.scheduled_ticks()[1].block_type,
+        Some(block.registry_id())
+    );
+    assert_eq!(backend.scheduled_ticks()[1].ticks_left, 2);
+    assert_eq!(
+        backend.scheduled_ticks()[1].tick_priority,
+        TickPriority::Normal
+    );
+    assert_eq!(backend.scheduled_ticks().len(), 2);
+}
+
+#[test]
+fn imported_ticks_reject_unloaded_targets_instead_of_treating_them_as_air() {
+    let position = BlockPos::new(16, 20, 5);
+    let world = empty_world();
+    let mut backend = graph(&world, vec![]);
+    let result = backend.import_ticks(vec![ImportedTick {
+        target: None,
+        position,
+        block_type: None,
+        delay: 1,
+        priority: TickPriority::Normal,
+        current_registry_type: None,
+    }]);
+    match result {
+        Err(GraphBackendError::UnknownTickTarget { position: found }) if found == position => {}
+        Err(error) => panic!("expected an unknown imported tick target, got {error}"),
+        Ok(_) => panic!("an unloaded imported tick target was admitted"),
+    }
+}
+
+#[test]
+fn graph_noteblock_samples_live_instrument_and_buffers_only_eligible_edges() {
+    let note_pos = BlockPos::new(6, 20, 5);
+    let above = note_pos.offset(BlockFace::Top);
+    let below = note_pos.offset(BlockFace::Bottom);
+    let mut world = empty_world();
+    world.set_block(LEVER_POS, lever(false));
+    world.set_block(
+        note_pos,
+        Block::NoteBlock {
+            instrument: Instrument::Harp,
+            note: 12,
+            powered: false,
+        },
+    );
+    world.set_block(below, Block::GoldBlock);
+    let mut native = empty_world();
+    native.set_block(LEVER_POS, lever(false));
+    native.set_block(
+        note_pos,
+        Block::NoteBlock {
+            instrument: Instrument::Harp,
+            note: 12,
+            powered: false,
+        },
+    );
+    native.set_block(below, Block::GoldBlock);
+    let mut backend = graph(&world, vec![]);
+
+    backend.use_block(LEVER_POS).unwrap();
+    assert!(state_at(&backend, note_pos).powered);
+    assert!(matches!(
+        backend.effects.as_slice(),
+        [PresentationEffect::Sound {
+            id,
+            category: 2,
+            volume: 3.0,
+            pitch: 1.0,
+            ..
+        }] if *id == Instrument::Bell.to_sound_id()
+    ));
+    backend.flush(&mut world, true);
+    assert!(matches!(
+        world.get_block(note_pos),
+        Block::NoteBlock {
+            instrument: Instrument::Bell,
+            note: 12,
+            powered: true,
+        }
+    ));
+    set_native_lever_as_interaction(&mut native, LEVER_POS, true);
+    assert_eq!(world.get_block(note_pos), native.get_block(note_pos));
+    assert!(backend.effects.is_empty());
+
+    backend.use_block(LEVER_POS).unwrap();
+    assert!(!state_at(&backend, note_pos).powered);
+    assert!(
+        backend.effects.is_empty(),
+        "falling power does not play a note"
+    );
+    backend.flush(&mut world, true);
+    set_native_lever_as_interaction(&mut native, LEVER_POS, false);
+    assert_eq!(world.get_block(note_pos), native.get_block(note_pos));
+
+    world.set_block(above, Block::Stone {});
+    native.set_block(above, Block::Stone {});
+    let mut blocked = graph(&world, vec![]);
+    blocked.use_block(LEVER_POS).unwrap();
+    set_native_lever_as_interaction(&mut native, LEVER_POS, true);
+    assert!(state_at(&blocked, note_pos).powered);
+    assert_eq!(
+        blocked.node_block(blocked.positions[&note_pos]),
+        native.get_block(note_pos)
+    );
+    assert!(
+        blocked.effects.is_empty(),
+        "an occupied above block blocks sound"
+    );
+}
+
+#[test]
+fn imported_note_ticks_are_noops_and_reset_keeps_future_work() {
+    let position = BlockPos::new(6, 20, 5);
+    let note = Block::NoteBlock {
+        instrument: Instrument::Harp,
+        note: 12,
+        powered: false,
+    };
+    let entry = TickEntry {
+        pos: position,
+        block_type: Some(note.registry_id()),
+        ticks_left: 1,
+        tick_priority: TickPriority::Normal,
+    };
+    let mut world = empty_world();
+    world.set_block(position, note);
+    let mut native = PlotWorld::from_chunks(
+        0,
+        0,
+        vec![Chunk::empty(0, 0)],
+        vec![entry.clone()]
+            .into_iter()
+            .collect::<TickScheduler<ScheduledBlockTick>>(),
+    );
+    native.set_block(position, note);
+
+    let mut backend = GraphBackend::compile(&world, BOUNDS, vec![entry], Arc::default()).unwrap();
+    backend.tick().unwrap();
+    native.tick_interpreted();
+    assert!(backend.scheduled_ticks().is_empty());
+    assert_eq!(backend.node_block(backend.positions[&position]), note);
+    assert_eq!(native.get_block(position), note);
+
+    let future = TickEntry {
+        pos: position,
+        block_type: Some(note.registry_id()),
+        ticks_left: 3,
+        tick_priority: TickPriority::High,
+    };
+    let mut backend =
+        GraphBackend::compile(&world, BOUNDS, vec![future.clone()], Arc::default()).unwrap();
+    backend.reset(&mut world);
+    assert_eq!(
+        world.scheduler().iter_entries().collect::<Vec<_>>(),
+        [future]
+    );
+}
+
+#[test]
+fn graph_command_results_are_synchronous_and_hostless_ticks_preserve_work() {
+    let command_pos = BlockPos::new(8, 20, 5);
+    let lever_pos = command_pos.offset(BlockFace::North);
+    let comparator_pos = BlockPos::new(7, 20, 5);
+    let command_world = || {
+        let mut world = empty_world();
+        world.set_block(lever_pos, lever(false));
+        let mut command = Block::from_name("command_block").unwrap();
+        command.set_properties(std::collections::HashMap::from([("facing", "east")]));
+        world.set_block(command_pos, command);
+        world.set_block_entity(
+            command_pos,
+            BlockEntity::CommandBlock(Box::new(CommandBlockEntity {
+                command: "say graph".into(),
+                ..Default::default()
+            })),
+        );
+        world.set_block(
+            comparator_pos,
+            Block::RedstoneComparator {
+                comparator: RedstoneComparator::new(
+                    BlockDirection::East,
+                    ComparatorMode::Compare,
+                    false,
+                ),
+            },
+        );
+        world
+    };
+    let mut world = command_world();
+    let mut native_world = command_world();
+    set_native_lever_as_interaction(&mut native_world, lever_pos, true);
+
+    let mut backend = graph(&world, vec![]);
+    backend.use_block(lever_pos).unwrap();
+    backend.flush(&mut world, true);
+    let due_before = backend.scheduler.iter().count();
+    let clock_before = backend.clock.logical_tick;
+    assert_eq!(
+        backend.tick(),
+        Err(GraphExecutionError::CommandHostUnavailable {
+            position: command_pos
+        })
+    );
+    assert_eq!(backend.scheduler.iter().count(), due_before);
+    assert_eq!(backend.clock.logical_tick, clock_before);
+    assert!(matches!(
+        world.get_block_entity(command_pos),
+        Some(BlockEntity::CommandBlock(entity)) if entity.powered
+    ));
+
+    backend.reset(&mut world);
+    let continuation = world.scheduler().iter_entries().collect::<Vec<_>>();
+    assert_eq!(continuation.len(), 1);
+    assert_eq!(continuation[0].pos, command_pos);
+    assert_eq!(continuation[0].ticks_left, 1);
+    assert_eq!(continuation[0].tick_priority, TickPriority::Normal);
+    assert_eq!(
+        continuation,
+        native_world.scheduler().iter_entries().collect::<Vec<_>>()
+    );
+    world.clear_scheduled_ticks();
+    let mut backend = graph(&world, continuation);
+
+    backend.tick_with_world(&mut world).unwrap();
+    native_world.tick_interpreted();
+    let ComponentState::Electrical(command_state) =
+        &backend.state.components[backend.positions[&command_pos].index()]
+    else {
+        panic!("command block retains electrical state");
+    };
+    assert_eq!(command_state.output_strength, 1);
+    assert_eq!(
+        world.command_output().collect::<Vec<_>>(),
+        [r#"{"text":"[@] graph"}"#]
+    );
+    assert!(matches!(
+        world.get_block_entity(command_pos),
+        Some(BlockEntity::CommandBlock(entity)) if entity.success_count == 1
+    ));
+    let comparator = backend.positions[&comparator_pos];
+    assert_eq!(backend.comparator_output(comparator), 1);
+    assert!(backend.is_pending(comparator));
+    assert!(backend.comparator_updates.contains(&comparator_pos));
+    let trace = backend.trace();
+    let command_dispatch = trace
+        .iter()
+        .position(|entry| entry == &format!("dispatch {:?}", backend.positions[&command_pos]))
+        .unwrap();
+    let comparator_schedule = trace
+        .iter()
+        .position(|entry| entry == &format!("schedule {comparator:?} +1 ticks Normal"))
+        .unwrap();
+    assert!(command_dispatch < comparator_schedule);
+    assert!(
+        trace[command_dispatch..comparator_schedule]
+            .iter()
+            .any(|entry| entry.starts_with("route "))
+    );
+    assert_eq!(
+        backend.scheduled_ticks(),
+        native_world.scheduler().iter_entries().collect::<Vec<_>>()
+    );
+    assert_eq!(backend.comparator_output(comparator), 1);
+    assert!(backend.is_pending(comparator));
+    assert!(native_world.pending_tick_at(comparator_pos));
+    backend.tick_with_world(&mut world).unwrap();
+    native_world.tick_interpreted();
+    let native_comparator_output = match native_world.get_block_entity(comparator_pos) {
+        Some(BlockEntity::Comparator { output_strength }) => *output_strength,
+        _ => 0,
+    };
+    assert_eq!(
+        backend.node_state(comparator).output_strength,
+        native_comparator_output
+    );
+    assert_eq!(
+        world.command_output().collect::<Vec<_>>(),
+        native_world.command_output().collect::<Vec<_>>()
+    );
+    let command_entity = |world: &PlotWorld| match world.get_block_entity(command_pos) {
+        Some(BlockEntity::CommandBlock(entity)) => entity.as_ref().clone(),
+        _ => panic!("command block execution publishes its entity state"),
+    };
+    assert_eq!(command_entity(&world), command_entity(&native_world));
+}
+
+#[test]
+fn graph_conditional_chain_reads_the_synchronous_predecessor_result() {
+    let first = BlockPos::new(8, 20, 5);
+    let second = first.offset(BlockFace::East);
+    let lever_pos = first.offset(BlockFace::North);
+    let mut world = empty_world();
+    world.set_block(lever_pos, lever(false));
+    for (position, name, command, conditional) in [
+        (first, "command_block", "stop", false),
+        (second, "chain_command_block", "say should_not_run", true),
+    ] {
+        let mut block = Block::from_name(name).unwrap();
+        block.set_properties(std::collections::HashMap::from([
+            ("facing", "east"),
+            ("conditional", if conditional { "true" } else { "false" }),
+        ]));
+        world.set_block(position, block);
+        world.set_block_entity(
+            position,
+            BlockEntity::CommandBlock(Box::new(CommandBlockEntity {
+                command: command.into(),
+                automatic: conditional,
+                ..Default::default()
+            })),
+        );
+    }
+    let mut backend = graph(&world, vec![]);
+    backend.use_block(lever_pos).unwrap();
+    backend.tick_with_world(&mut world).unwrap();
+    let ComponentState::Electrical(first_state) =
+        &backend.state.components[backend.positions[&first].index()]
+    else {
+        panic!("command block retains electrical state");
+    };
+    let ComponentState::Electrical(second_state) =
+        &backend.state.components[backend.positions[&second].index()]
+    else {
+        panic!("chain command block retains electrical state");
+    };
+    assert_eq!(first_state.output_strength, 0);
+    assert_eq!(second_state.output_strength, 0);
+    assert_eq!(world.command_output().count(), 0);
+}
+
+#[test]
+fn graph_repeating_automatic_command_rearms_with_one_future_tick() {
+    let position = BlockPos::new(8, 20, 5);
+    let mut world = empty_world();
+    let block = Block::from_name("repeating_command_block").unwrap();
+    world.set_block(position, block);
+    world.set_block_entity(
+        position,
+        BlockEntity::CommandBlock(Box::new(CommandBlockEntity {
+            command: "say repeat".into(),
+            automatic: true,
+            ..Default::default()
+        })),
+    );
+    let mut backend = graph(&world, vec![]);
+    assert_eq!(backend.scheduled_ticks().len(), 1);
+    assert_eq!(backend.scheduled_ticks()[0].ticks_left, 1);
+
+    backend.tick_with_world(&mut world).unwrap();
+    assert_eq!(world.command_output().count(), 1);
+    assert_eq!(backend.scheduled_ticks().len(), 1);
+    assert_eq!(backend.scheduled_ticks()[0].pos, position);
+    assert_eq!(backend.scheduled_ticks()[0].ticks_left, 1);
+
+    backend.tick_with_world(&mut world).unwrap();
+    assert_eq!(world.command_output().count(), 2);
+    assert!(matches!(
+        world.get_block_entity(position),
+        Some(BlockEntity::CommandBlock(entity))
+            if entity.success_count == 1 && entity.last_execution == 2
+    ));
+}
+
+#[test]
+fn imported_automatic_command_keeps_its_captured_condition() {
+    let previous = BlockPos::new(8, 20, 5);
+    let command_pos = previous.offset(BlockFace::East);
+    let command = |conditional| {
+        let mut block = Block::from_name("command_block").unwrap();
+        block.set_properties(std::collections::HashMap::from([
+            ("facing", "east"),
+            ("conditional", if conditional { "true" } else { "false" }),
+        ]));
+        block
+    };
+    let previous_block = command(false);
+    let conditional_block = command(true);
+    let imported = TickEntry {
+        pos: command_pos,
+        block_type: Some(conditional_block.registry_id()),
+        ticks_left: 1,
+        tick_priority: TickPriority::Normal,
+    };
+    let make_world = || {
+        let mut world = empty_world();
+        world.set_block(previous, previous_block);
+        world.set_block(command_pos, conditional_block);
+        world.set_block_entity(
+            previous,
+            BlockEntity::CommandBlock(Box::new(CommandBlockEntity {
+                success_count: 1,
+                ..Default::default()
+            })),
+        );
+        world.set_block_entity(
+            command_pos,
+            BlockEntity::CommandBlock(Box::new(CommandBlockEntity {
+                command: "say captured false".into(),
+                automatic: true,
+                condition_met: false,
+                ..Default::default()
+            })),
+        );
+        world
+    };
+    let mut world = make_world();
+    let mut native = make_world();
+    native.restore_scheduled_tick(imported.clone());
+    let mut backend =
+        GraphBackend::compile(&world, BOUNDS, vec![imported], Arc::default()).unwrap();
+
+    backend.tick_with_world(&mut world).unwrap();
+    native.tick_interpreted();
+
+    assert_eq!(world.command_output().count(), 0);
+    assert_eq!(native.command_output().count(), 0);
+    assert!(matches!(
+        world.get_block_entity(command_pos),
+        Some(BlockEntity::CommandBlock(entity))
+            if !entity.condition_met && entity.success_count == 0
+    ));
+    let command_entity = |world: &PlotWorld| match world.get_block_entity(command_pos) {
+        Some(BlockEntity::CommandBlock(entity)) => entity.as_ref().clone(),
+        _ => panic!("command block entity should exist after the scheduled callback"),
+    };
+    assert_eq!(command_entity(&world), command_entity(&native));
+}
+
+#[test]
+fn command_block_without_entity_matches_interpreter_initialization() {
+    let command_pos = BlockPos::new(8, 20, 5);
+    let lever_pos = command_pos.offset(BlockFace::North);
+    let mut command = Block::from_name("command_block").unwrap();
+    command.set_properties(std::collections::HashMap::from([("facing", "east")]));
+    let mut world = empty_world();
+    world.set_block(command_pos, command);
+    world.set_block(lever_pos, lever(false));
+    let mut native = empty_world();
+    native.set_block(command_pos, command);
+    native.set_block(lever_pos, lever(false));
+    let mut backend = graph(&world, vec![]);
+
+    backend.use_block(lever_pos).unwrap();
+    set_native_lever_as_interaction(&mut native, lever_pos, true);
+    backend.tick_with_world(&mut world).unwrap();
+    native.tick_interpreted();
+
+    let command_entity = |world: &PlotWorld| match world.get_block_entity(command_pos) {
+        Some(BlockEntity::CommandBlock(entity)) => entity.as_ref().clone(),
+        _ => panic!("command block entity should be initialized by its first update"),
+    };
+    assert_eq!(command_entity(&world), command_entity(&native));
+    assert!(matches!(
+        world.get_block_entity(command_pos),
+        Some(BlockEntity::CommandBlock(entity)) if entity.powered
+    ));
+}
+
+#[test]
+fn hostless_tick_preserves_work_that_can_activate_a_command() {
+    let repeater_pos = BlockPos::new(6, 20, 5);
+    let lever_pos = repeater_pos.offset(BlockFace::East);
+    let command_pos = repeater_pos.offset(BlockFace::West);
+    let repeater = Block::RedstoneRepeater {
+        repeater: RedstoneRepeater {
+            facing: BlockDirection::East,
+            ..Default::default()
+        },
+    };
+    let mut command = Block::from_name("command_block").unwrap();
+    command.set_properties(std::collections::HashMap::from([("facing", "east")]));
+    let entry = TickEntry {
+        pos: repeater_pos,
+        block_type: Some(repeater.registry_id()),
+        ticks_left: 0,
+        tick_priority: TickPriority::NanoTick,
+    };
+    let make_world = || {
+        let mut world = empty_world();
+        world.set_block(lever_pos, lever(true));
+        world.set_block(repeater_pos, repeater);
+        world.set_block(command_pos, command);
+        world.set_block_entity(
+            command_pos,
+            BlockEntity::CommandBlock(Box::new(CommandBlockEntity {
+                command: "say callback".into(),
+                ..Default::default()
+            })),
+        );
+        world
+    };
+    let world = make_world();
+    let mut backend = GraphBackend::compile(&world, BOUNDS, vec![entry], Arc::default()).unwrap();
+    let pending_before = backend.scheduled_ticks();
+    let clock_before = backend.clock.logical_tick;
+    assert_eq!(
+        backend.tick(),
+        Err(GraphExecutionError::CommandHostUnavailable {
+            position: command_pos
+        })
+    );
+    assert_eq!(backend.scheduled_ticks(), pending_before);
+    assert_eq!(backend.clock.logical_tick, clock_before);
+    assert!(!state_at(&backend, repeater_pos).powered);
+
+    let mut world_with_host = make_world();
+    let mut with_host = GraphBackend::compile(
+        &world_with_host,
+        BOUNDS,
+        vec![TickEntry {
+            pos: repeater_pos,
+            block_type: Some(repeater.registry_id()),
+            ticks_left: 0,
+            tick_priority: TickPriority::NanoTick,
+        }],
+        Arc::default(),
+    )
+    .unwrap();
+    with_host.tick_with_world(&mut world_with_host).unwrap();
+    assert!(state_at(&with_host, repeater_pos).powered);
+    assert_eq!(
+        world_with_host.command_output().collect::<Vec<_>>(),
+        [r#"{"text":"[@] callback"}"#],
+        "{}",
+        with_host.trace().join("\n")
+    );
+}
+
+#[test]
+fn selected_trapdoor_rejection_preserves_world_work_and_compiler_activation() {
+    let piston_pos = BlockPos::new(5, 20, 5);
+    let trapdoor_pos = BlockPos::new(8, 20, 5);
+    let command_pos = BlockPos::new(10, 20, 5);
+    let mut world = empty_world();
+    world.set_block(
+        piston_pos,
+        Block::Piston {
+            piston: mchprs_blocks::blocks::RedstonePiston {
+                facing: mchprs_blocks::BlockFacing::East,
+                sticky: false,
+                extended: false,
+            },
+        },
+    );
+    let trapdoor = Block::from_name("iron_trapdoor").unwrap();
+    world.set_block(trapdoor_pos, trapdoor);
+    let mut command = Block::from_name("command_block").unwrap();
+    command.set_properties(std::collections::HashMap::from([("facing", "east")]));
+    world.set_block(command_pos, command);
+    world.set_block_entity(
+        command_pos,
+        BlockEntity::CommandBlock(Box::new(CommandBlockEntity {
+            command: "say must-not-run".into(),
+            ..Default::default()
+        })),
+    );
+    world.schedule_half_tick(trapdoor_pos, 2, TickPriority::Normal);
+    let before_ticks = world.scheduler().iter_entries().collect::<Vec<_>>();
+    let before_entity = match world.get_block_entity(command_pos) {
+        Some(BlockEntity::CommandBlock(entity)) => entity.as_ref().clone(),
+        _ => panic!("command block entity is present before compilation"),
+    };
+    let before_clock = world.piston_state().logical_tick;
+    let before_events = world.piston_state().events.len();
+
+    let mut compiler = crate::redpiler::Compiler::default();
+    let result = compiler.compile(
+        &world,
+        BOUNDS,
+        crate::redpiler::CompilerOptions::default(),
+        before_ticks.clone(),
+        Arc::default(),
+    );
+    let error = result.unwrap_err().to_string();
+    assert!(error.contains("trapdoor"), "{error}");
+    assert!(error.contains(&format!("{trapdoor_pos:?}")), "{error}");
+    assert_eq!(world.get_block(trapdoor_pos), trapdoor);
+    assert!(matches!(
+        world.get_block_entity(command_pos),
+        Some(BlockEntity::CommandBlock(entity)) if entity.as_ref() == &before_entity
+    ));
+    assert_eq!(
+        world.scheduler().iter_entries().collect::<Vec<_>>(),
+        before_ticks
+    );
+    assert_eq!(world.piston_state().logical_tick, before_clock);
+    assert_eq!(world.piston_state().events.len(), before_events);
+    assert!(world.command_output().next().is_none());
+    assert!(!compiler.is_active());
+    assert_eq!(compiler.backend_kind(), None);
+    assert!(compiler.stats().is_none());
 }
 
 #[test]
@@ -3672,6 +4337,41 @@ fn external_wire_boundary_rejects_indirect_conductor_and_quasi_queries() {
     quasi_world.set_block(source.offset(BlockFace::Bottom), Block::Stone {});
     assert!(matches!(
         GraphBackend::compile(&quasi_world, bounds, vec![], Arc::default()),
+        Err(GraphBackendError::UnsupportedComponent {
+            kind: "external redstone wire boundary",
+            ..
+        })
+    ));
+}
+
+#[test]
+fn stored_wire_diode_input_outside_selection_is_rejected() {
+    let bounds = (BlockPos::new(0, 0, 0), BlockPos::new(10, 31, 15));
+    let repeater_pos = BlockPos::new(10, 20, 5);
+    let wire_pos = repeater_pos.offset(BlockFace::East);
+    let mut world = empty_world();
+    world.set_block(
+        repeater_pos,
+        Block::RedstoneRepeater {
+            repeater: RedstoneRepeater {
+                facing: BlockDirection::East,
+                ..Default::default()
+            },
+        },
+    );
+    world.set_block(
+        wire_pos,
+        Block::RedstoneWire {
+            wire: RedstoneWire {
+                power: 15,
+                ..RedstoneWire::default()
+            },
+        },
+    );
+    world.set_block(wire_pos.offset(BlockFace::Bottom), Block::Stone {});
+
+    assert!(matches!(
+        GraphBackend::compile(&world, bounds, vec![], Arc::default()),
         Err(GraphBackendError::UnsupportedComponent {
             kind: "external redstone wire boundary",
             ..

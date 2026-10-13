@@ -43,6 +43,10 @@ pub(crate) enum GraphBackendError {
     MissingComponentSite {
         node: NodeId,
     },
+    MissingNoteBlockSite {
+        node: NodeId,
+        position: BlockPos,
+    },
     IncompleteWireNeighborhood {
         node: NodeId,
         position: BlockPos,
@@ -56,6 +60,9 @@ pub(crate) enum GraphBackendError {
     UnsupportedTickTarget {
         position: BlockPos,
         block_type: u32,
+    },
+    UnknownTickTarget {
+        position: BlockPos,
     },
     UnsupportedComponent {
         position: Option<BlockPos>,
@@ -86,6 +93,11 @@ impl fmt::Display for GraphBackendError {
                     node.index()
                 )
             }
+            Self::MissingNoteBlockSite { node, position } => write!(
+                f,
+                "noteblock node {} at {position:?} is missing its compiled support or above site",
+                node.index()
+            ),
             Self::IncompleteWireNeighborhood { node, position } => write!(
                 f,
                 "wire node {} is missing compiled query site at {position:?}",
@@ -104,6 +116,10 @@ impl fmt::Display for GraphBackendError {
             } => write!(
                 f,
                 "graph cannot dispatch tick for uncompiled block type {block_type} at {position:?}"
+            ),
+            Self::UnknownTickTarget { position } => write!(
+                f,
+                "graph cannot classify imported tick target at {position:?} because its chunk was unavailable"
             ),
             Self::UnsupportedComponent { position, kind } => {
                 write!(f, "graph execution does not support {kind} at {position:?}")
@@ -127,8 +143,35 @@ fn map_preparation_error(error: PreparationError) -> GraphBackendError {
 struct ScheduledNodeTick {
     node: Option<NodeId>,
     position: BlockPos,
+    block_type: Option<u32>,
     registry_type: u32,
     current_registry_type: u32,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+struct PendingNodeTick {
+    /// This identifies a compiled receiver for pending-membership checks.
+    node: Option<NodeId>,
+    /// This identifies the scheduler position shared by equivalent tick entries.
+    position: BlockPos,
+    /// This preserves whether the imported tick carried an expected block type.
+    block_type: Option<u32>,
+    /// This identifies the effective scheduled type after resolving an absent type.
+    registry_type: u32,
+    /// This identifies the entry target type used for stale-tick checks.
+    current_registry_type: u32,
+}
+
+impl From<ScheduledNodeTick> for PendingNodeTick {
+    fn from(tick: ScheduledNodeTick) -> Self {
+        Self {
+            node: tick.node,
+            position: tick.position,
+            block_type: tick.block_type,
+            registry_type: tick.registry_type,
+            current_registry_type: tick.current_registry_type,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -214,6 +257,9 @@ pub(crate) enum GraphExecutionError {
         position: Option<BlockPos>,
         kind: &'static str,
     },
+    CommandHostUnavailable {
+        position: BlockPos,
+    },
 }
 
 impl fmt::Display for GraphExecutionError {
@@ -222,11 +268,30 @@ impl fmt::Display for GraphExecutionError {
             Self::UnsupportedComponent { position, kind } => {
                 write!(f, "graph execution does not support {kind} at {position:?}")
             }
+            Self::CommandHostUnavailable { position } => write!(
+                f,
+                "graph command block at {position:?} needs a host before its scheduled work can run"
+            ),
         }
     }
 }
 
 impl std::error::Error for GraphExecutionError {}
+
+trait GraphCommandHost {
+    fn run_command(&mut self, command: &str, source: &str) -> Result<(), String>;
+    fn publish_command_entity(&mut self, position: BlockPos, entity: BlockEntity);
+}
+
+impl<W: World> GraphCommandHost for W {
+    fn run_command(&mut self, command: &str, source: &str) -> Result<(), String> {
+        World::execute_command_block(self, command, source)
+    }
+
+    fn publish_command_entity(&mut self, position: BlockPos, entity: BlockEntity) {
+        World::set_block_entity(self, position, entity);
+    }
+}
 
 #[derive(Debug, Clone)]
 struct ResolvedSite {
@@ -255,12 +320,14 @@ pub(crate) struct GraphBackend {
     positions: FxHashMap<BlockPos, NodeId>,
     component_sites: Vec<Option<SiteId>>,
     scheduler: TickScheduler<ScheduledNodeTick>,
-    pending: FxHashMap<ScheduledNodeTick, usize>,
+    pending: FxHashMap<PendingNodeTick, usize>,
     piston_requests: VecDeque<PistonRequest>,
     deferred_pistons: VecDeque<DeferredPistonEvent>,
     clock: Clock,
     dirty: Vec<bool>,
     effects: Vec<PresentationEffect>,
+    /// This stops later graph work after an error may have left a partial tick.
+    failure: Option<GraphExecutionError>,
     /// Reported work only; simulation never reads it.
     counts: GraphExecutionCounts,
     #[cfg(test)]
@@ -297,20 +364,54 @@ impl GraphBackend {
         )
         .map_err(GraphBackendError::PassPipeline)?;
         prepared.finish_pipeline_statistics(&monitor);
-        let (program, state, entry) = prepared.lower().map_err(GraphBackendError::Graph)?;
-        Self::from_program(world, program, state, entry, &monitor)
+        let lowered = prepared.lower().map_err(GraphBackendError::Graph)?;
+        Self::from_lowered(lowered, &monitor)
     }
 
-    pub(crate) fn from_program<W: World>(
-        world: &W,
-        program: CircuitProgram,
-        state: CircuitState,
-        entry: EntryState,
+    pub(crate) fn from_lowered(
+        lowered: LoweredCircuit,
         monitor: &TaskMonitor,
     ) -> Result<Self, GraphBackendError> {
-        Self::validate_supported(&program)?;
-        let mut backend = Self::new(program, state, entry.logical_tick)?;
-        backend.import_ticks(world, entry.pending_ticks)?;
+        Self::validate_supported(&lowered.program)?;
+        let mut backend = Self::new_with_positions(
+            lowered.program,
+            lowered.state,
+            lowered.logical_tick,
+            lowered.positions,
+        )?;
+        backend.import_ticks(lowered.imported_ticks)?;
+        let initial_command_ticks: Vec<_> = backend
+            .program
+            .command_blocks()
+            .iter()
+            .filter_map(|plan| {
+                if matches!(
+                    backend.program.nodes()[plan.node.index()].kind,
+                    CircuitNodeKind::Electrical(NodeType::CommandBlock {
+                        initial_tick: true,
+                        chain: false,
+                        ..
+                    })
+                ) {
+                    Some(plan.node)
+                } else {
+                    None
+                }
+            })
+            .collect();
+        for node in initial_command_ticks {
+            if backend.is_pending(node) {
+                continue;
+            }
+            let condition_met = backend.command_condition_met(node);
+            if let ComponentState::Electrical(state) = &mut backend.state.components[node.index()]
+                && let Some(entity) = &mut state.command_entity
+            {
+                entity.condition_met = condition_met;
+                backend.dirty[node.index()] = true;
+            }
+            backend.schedule_half_tick(node, 1, TickPriority::Normal);
+        }
         if monitor.cancelled() {
             return Err(GraphBackendError::Cancelled);
         }
@@ -320,8 +421,6 @@ impl GraphBackend {
     fn validate_supported(program: &CircuitProgram) -> Result<(), GraphBackendError> {
         for node in program.nodes() {
             let unsupported = match node.kind {
-                CircuitNodeKind::Electrical(NodeType::CommandBlock { .. }) => Some("command block"),
-                CircuitNodeKind::Electrical(NodeType::NoteBlock { .. }) => Some("note block"),
                 CircuitNodeKind::Electrical(NodeType::Trapdoor) => Some("trapdoor"),
                 _ => None,
             };
@@ -329,6 +428,71 @@ impl GraphBackend {
                 return Err(GraphBackendError::UnsupportedComponent {
                     position: node.position,
                     kind,
+                });
+            }
+        }
+        for node in program.nodes() {
+            let CircuitNodeKind::Electrical(NodeType::CommandBlock { .. }) = node.kind else {
+                continue;
+            };
+            let Some(position) = node.position else {
+                continue;
+            };
+            let Some(block) = node.block else { continue };
+            let facing = command_facing(block);
+            for (neighbor, only_chain, required) in [
+                (position.offset(facing), true, true),
+                (
+                    position.offset(facing.opposite()),
+                    false,
+                    block.property("conditional") == Some("true"),
+                ),
+            ] {
+                if !required {
+                    continue;
+                }
+                let uncompiled_command = program
+                    .sites()
+                    .iter()
+                    .find(|site| site.position == neighbor)
+                    .and_then(|site| match site.source {
+                        SiteSource::Constant(profile) => program.profile_block(profile),
+                        SiteSource::Component(component) => {
+                            program.nodes()[component.index()].block
+                        }
+                        SiteSource::Contact(contact) => program.contacts()[contact.index()]
+                            .variants
+                            .iter()
+                            .filter_map(|variant| program.profile_block(variant.profile))
+                            .find(|block| block.is_command_block()),
+                    })
+                    .is_some_and(|neighbor_block| {
+                        neighbor_block.is_command_block()
+                            && (!only_chain || neighbor_block.get_name() == "chain_command_block")
+                            && !program.command_blocks().iter().any(|plan| {
+                                program.nodes()[plan.node.index()].position == Some(neighbor)
+                            })
+                    });
+                if uncompiled_command {
+                    return Err(GraphBackendError::UnsupportedComponent {
+                        position: Some(neighbor),
+                        kind: "command chain or conditional predecessor outside the selection",
+                    });
+                }
+            }
+        }
+        for (index, node) in program.nodes().iter().enumerate() {
+            if matches!(
+                node.kind,
+                CircuitNodeKind::Electrical(NodeType::NoteBlock { .. })
+            ) && !program
+                .note_blocks()
+                .iter()
+                .any(|plan| plan.node.index() == index)
+            {
+                return Err(GraphBackendError::MissingNoteBlockSite {
+                    node: NodeId::new(index as u32),
+                    position: node.position.expect("noteblocks have positions"),
                 });
             }
         }
@@ -360,7 +524,10 @@ impl GraphBackend {
                     .push(link.to);
             }
             if external_wires.contains(&link.from)
-                && matches!(link.from_port, PowerPort::Weak(_) | PowerPort::Strong(_))
+                && matches!(
+                    link.from_port,
+                    PowerPort::Weak(_) | PowerPort::Strong(_) | PowerPort::Stored
+                )
             {
                 pending.push((link.to, link.from));
             }
@@ -393,10 +560,19 @@ impl GraphBackend {
 
     fn new(
         program: CircuitProgram,
-        mut state: CircuitState,
+        state: CircuitState,
         logical_tick: u64,
     ) -> Result<Self, GraphBackendError> {
-        let mut positions = FxHashMap::default();
+        let positions = program.position_index();
+        Self::new_with_positions(program, state, logical_tick, positions)
+    }
+
+    fn new_with_positions(
+        program: CircuitProgram,
+        mut state: CircuitState,
+        logical_tick: u64,
+        positions: FxHashMap<BlockPos, NodeId>,
+    ) -> Result<Self, GraphBackendError> {
         let mut component_sites = vec![None; program.nodes().len()];
         for (index, node) in program.nodes().iter().enumerate() {
             let id = NodeId::try_from_index(index).expect("graph node count was validated");
@@ -408,9 +584,6 @@ impl GraphBackend {
             ) {
                 if node.raw_state.is_none() {
                     return Err(GraphBackendError::MissingBlockState { node: id });
-                }
-                if let Some(position) = node.position {
-                    positions.insert(position, id);
                 }
             }
         }
@@ -465,6 +638,7 @@ impl GraphBackend {
             },
             dirty: vec![false; node_count],
             effects: Vec::new(),
+            failure: None,
             counts: GraphExecutionCounts::default(),
             #[cfg(test)]
             trace: Vec::new(),
@@ -479,48 +653,59 @@ impl GraphBackend {
         })
     }
 
-    fn import_ticks<W: World>(
-        &mut self,
-        world: &W,
-        ticks: Vec<TickEntry>,
-    ) -> Result<(), GraphBackendError> {
+    fn import_ticks(&mut self, ticks: Vec<ImportedTick>) -> Result<(), GraphBackendError> {
         for tick in ticks {
-            if tick.ticks_left as usize >= SCHEDULER_BUCKETS {
-                return Err(GraphBackendError::TickOutsideScheduler {
-                    delay: tick.ticks_left,
-                });
+            if tick.delay as usize >= SCHEDULER_BUCKETS {
+                return Err(GraphBackendError::TickOutsideScheduler { delay: tick.delay });
             }
-            if tick.ticks_left == 0 && tick.tick_priority != TickPriority::NanoTick {
+            if tick.delay == 0 && tick.priority != TickPriority::NanoTick {
                 return Err(GraphBackendError::InvalidZeroDelayPriority {
-                    priority: tick.tick_priority,
+                    priority: tick.priority,
                 });
             }
-            let node = self.positions.get(&tick.pos).copied();
-            let current_registry_type = node
-                .map(|node| self.registry_type(node))
-                .unwrap_or_else(|| world.get_block(tick.pos).registry_id());
+            let current_registry_type =
+                tick.current_registry_type
+                    .ok_or(GraphBackendError::UnknownTickTarget {
+                        position: tick.position,
+                    })?;
+            let node = tick.target;
+            if let Some(node) = node {
+                let Some(spec) = self.program.nodes().get(node.index()) else {
+                    return Err(GraphBackendError::UnsupportedTickTarget {
+                        position: tick.position,
+                        block_type: current_registry_type,
+                    });
+                };
+                if spec.position != Some(tick.position)
+                    || self.positions.get(&tick.position) != Some(&node)
+                    || self.registry_type(node) != current_registry_type
+                {
+                    return Err(GraphBackendError::UnsupportedTickTarget {
+                        position: tick.position,
+                        block_type: current_registry_type,
+                    });
+                }
+            }
             let registry_type = tick.block_type.unwrap_or(current_registry_type);
             if node.is_none()
                 && registry_type == current_registry_type
-                && world.get_block(tick.pos) != Block::Air
+                && current_registry_type != Block::Air.registry_id()
             {
                 return Err(GraphBackendError::UnsupportedTickTarget {
-                    position: tick.pos,
+                    position: tick.position,
                     block_type: current_registry_type,
                 });
             }
             let scheduled = ScheduledNodeTick {
                 node,
-                position: tick.pos,
+                position: tick.position,
+                block_type: tick.block_type,
                 registry_type,
                 current_registry_type,
             };
-            self.scheduler.schedule_half_tick(
-                scheduled,
-                tick.ticks_left as usize,
-                tick.tick_priority,
-            );
-            *self.pending.entry(scheduled).or_default() += 1;
+            self.scheduler
+                .schedule_half_tick(scheduled, tick.delay as usize, tick.priority);
+            *self.pending.entry(scheduled.into()).or_default() += 1;
         }
         Ok(())
     }
@@ -533,48 +718,150 @@ impl GraphBackend {
     }
 
     fn schedule(&mut self, node: NodeId, delay: usize, priority: TickPriority) {
+        self.schedule_with(node, delay.saturating_mul(2), priority, true);
+    }
+
+    fn schedule_half_tick(&mut self, node: NodeId, delay: usize, priority: TickPriority) {
+        self.schedule_with(node, delay, priority, false);
+    }
+
+    fn schedule_with(
+        &mut self,
+        node: NodeId,
+        delay: usize,
+        priority: TickPriority,
+        _game_tick_delay: bool,
+    ) {
+        if delay >= SCHEDULER_BUCKETS || (delay == 0 && priority != TickPriority::NanoTick) {
+            return;
+        }
         let tick = ScheduledNodeTick {
             node: Some(node),
             position: self.position(node),
+            block_type: Some(self.registry_type(node)),
             registry_type: self.registry_type(node),
             current_registry_type: self.registry_type(node),
         };
-        if self.pending.contains_key(&tick) {
+        let key = tick.into();
+        if self.pending.contains_key(&key) {
             return;
         }
-        self.scheduler.schedule_tick(tick, delay, priority);
-        self.pending.insert(tick, 1);
+        self.scheduler.schedule_half_tick(tick, delay, priority);
+        self.pending.insert(key, 1);
         #[cfg(test)]
-        self.trace
-            .push(format!("schedule {:?} +{delay} {priority:?}", node));
+        self.trace.push(format!(
+            "schedule {:?} +{} {} {priority:?}",
+            node,
+            if _game_tick_delay { delay / 2 } else { delay },
+            if _game_tick_delay {
+                "ticks"
+            } else {
+                "half-ticks"
+            }
+        ));
     }
 
     fn is_pending(&self, node: NodeId) -> bool {
-        self.pending.contains_key(&ScheduledNodeTick {
+        self.pending.contains_key(&PendingNodeTick {
             node: Some(node),
             position: self.position(node),
+            block_type: Some(self.registry_type(node)),
             registry_type: self.registry_type(node),
             current_registry_type: self.registry_type(node),
         })
     }
 
     fn popped(&mut self, tick: ScheduledNodeTick) {
-        if let Some(count) = self.pending.get_mut(&tick) {
+        let key = tick.into();
+        if let Some(count) = self.pending.get_mut(&key) {
             *count -= 1;
             if *count == 0 {
-                self.pending.remove(&tick);
+                self.pending.remove(&key);
             }
         }
     }
 
     pub(crate) fn tick(&mut self) -> Result<(), GraphExecutionError> {
+        self.tick_with_host(None)
+    }
+
+    pub(crate) fn tick_with_world<W: World>(
+        &mut self,
+        world: &mut W,
+    ) -> Result<(), GraphExecutionError> {
+        self.tick_with_host(Some(world))
+    }
+
+    fn tick_with_host<'h>(
+        &mut self,
+        mut host: Option<&'h mut (dyn GraphCommandHost + 'h)>,
+    ) -> Result<(), GraphExecutionError> {
+        if let Some(error) = &self.failure {
+            return Err(error.clone());
+        }
+        if host.is_none()
+            && let Some(position) = self.command_host_preflight_position()
+        {
+            return Err(GraphExecutionError::CommandHostUnavailable { position });
+        }
+        let result = self.tick_phases(&mut host);
+        if let Err(error) = &result {
+            if !matches!(error, GraphExecutionError::CommandHostUnavailable { .. }) {
+                self.failure = Some(error.clone());
+            }
+        }
+        result
+    }
+
+    fn due_command_position(&self) -> Option<BlockPos> {
+        self.scheduler
+            .iter()
+            .find(|(tick, delay, _)| {
+                *delay <= 1
+                    && tick.registry_type == tick.current_registry_type
+                    && tick.node.is_some_and(|node| {
+                        matches!(
+                            self.program.nodes()[node.index()].kind,
+                            CircuitNodeKind::Electrical(NodeType::CommandBlock {
+                                chain: false,
+                                ..
+                            })
+                        )
+                    })
+            })
+            .map(|(tick, _, _)| tick.position)
+    }
+
+    fn command_host_preflight_position(&self) -> Option<BlockPos> {
+        self.due_command_position().or_else(|| {
+            if !self.scheduler.iter().any(|(_, delay, _)| delay <= 1) {
+                return None;
+            }
+            // shortcut: any due work in a command-containing graph may activate a command, until callback reachability can prove it cannot.
+            self.program
+                .command_blocks()
+                .iter()
+                .find(|plan| {
+                    !matches!(
+                        self.program.nodes()[plan.node.index()].kind,
+                        CircuitNodeKind::Electrical(NodeType::CommandBlock { chain: true, .. })
+                    )
+                })
+                .map(|plan| self.position(plan.node))
+        })
+    }
+
+    fn tick_phases<'h>(
+        &mut self,
+        host: &mut Option<&'h mut (dyn GraphCommandHost + 'h)>,
+    ) -> Result<(), GraphExecutionError> {
         self.counts.ticks += 1;
         self.clock.logical_tick += 1;
         self.clock.phase = GraphPhase::ScheduledTicks;
         self.clock.scheduled_advanced = false;
         #[cfg(test)]
         self.trace.push("phase scheduled_ticks".into());
-        if let Err(error) = self.drain_current_ticks() {
+        if let Err(error) = self.drain_current_ticks(host) {
             self.clock.phase = GraphPhase::BetweenTicks;
             return Err(error);
         }
@@ -586,7 +873,7 @@ impl GraphBackend {
         #[cfg(test)]
         self.trace
             .push("phase scheduled_ticks_after_advance".into());
-        if let Err(error) = self.drain_current_ticks() {
+        if let Err(error) = self.drain_current_ticks(host) {
             self.clock.phase = GraphPhase::BetweenTicks;
             self.clock.scheduled_advanced = false;
             return Err(error);
@@ -613,7 +900,10 @@ impl GraphBackend {
         Ok(())
     }
 
-    fn drain_current_ticks(&mut self) -> Result<(), GraphExecutionError> {
+    fn drain_current_ticks<'h>(
+        &mut self,
+        host: &mut Option<&'h mut (dyn GraphCommandHost + 'h)>,
+    ) -> Result<(), GraphExecutionError> {
         while let Some(tick) = self.scheduler.this_tick().pop_first() {
             self.popped(tick);
             if tick.registry_type != tick.current_registry_type {
@@ -631,12 +921,21 @@ impl GraphBackend {
             #[cfg(test)]
             self.trace.push(format!("dispatch {node:?}"));
             self.counts.scheduled_ticks += 1;
-            self.tick_component(node)?;
+            self.tick_component(node, host)?;
         }
         Ok(())
     }
 
     pub(crate) fn use_block(&mut self, position: BlockPos) -> Result<(), GraphExecutionError> {
+        if let Some(error) = &self.failure {
+            return Err(error.clone());
+        }
+        let result = self.use_block_inner(position);
+        self.latch_error(&result);
+        result
+    }
+
+    fn use_block_inner(&mut self, position: BlockPos) -> Result<(), GraphExecutionError> {
         let Some(&node) = self.positions.get(&position) else {
             return Ok(());
         };
@@ -661,6 +960,19 @@ impl GraphBackend {
         position: BlockPos,
         powered: bool,
     ) -> Result<(), GraphExecutionError> {
+        if let Some(error) = &self.failure {
+            return Err(error.clone());
+        }
+        let result = self.set_pressure_plate_inner(position, powered);
+        self.latch_error(&result);
+        result
+    }
+
+    fn set_pressure_plate_inner(
+        &mut self,
+        position: BlockPos,
+        powered: bool,
+    ) -> Result<(), GraphExecutionError> {
         let Some(&node) = self.positions.get(&position) else {
             return Ok(());
         };
@@ -673,7 +985,17 @@ impl GraphBackend {
         Ok(())
     }
 
-    fn tick_component(&mut self, node: NodeId) -> Result<(), GraphExecutionError> {
+    fn latch_error(&mut self, result: &Result<(), GraphExecutionError>) {
+        if let Err(error) = result {
+            self.failure = Some(error.clone());
+        }
+    }
+
+    fn tick_component<'h>(
+        &mut self,
+        node: NodeId,
+        host: &mut Option<&'h mut (dyn GraphCommandHost + 'h)>,
+    ) -> Result<(), GraphExecutionError> {
         match self.program.nodes()[node.index()].kind.clone() {
             CircuitNodeKind::Wire(_) => Ok(()),
             CircuitNodeKind::Observer { .. } => self.tick_observer(node),
@@ -705,11 +1027,9 @@ impl GraphBackend {
                 Err(self.unsupported(node, "invalid generic observer or wire"))
             }
             CircuitNodeKind::Electrical(NodeType::CommandBlock { .. }) => {
-                Err(self.unsupported(node, "command block"))
+                self.tick_command_block(node, host)
             }
-            CircuitNodeKind::Electrical(NodeType::NoteBlock { .. }) => {
-                Err(self.unsupported(node, "note block"))
-            }
+            CircuitNodeKind::Electrical(NodeType::NoteBlock { .. }) => Ok(()),
             CircuitNodeKind::Electrical(NodeType::Trapdoor) => {
                 Err(self.unsupported(node, "trapdoor"))
             }
@@ -752,11 +1072,9 @@ impl GraphBackend {
             CircuitNodeKind::Electrical(NodeType::CopperBulb) => self.update_bulb(node),
             CircuitNodeKind::Wire(_) => self.evaluate_seed(node, captured),
             CircuitNodeKind::Electrical(NodeType::CommandBlock { .. }) => {
-                Err(self.unsupported(node, "command block"))
+                self.update_command_power(node)
             }
-            CircuitNodeKind::Electrical(NodeType::NoteBlock { .. }) => {
-                Err(self.unsupported(node, "note block"))
-            }
+            CircuitNodeKind::Electrical(NodeType::NoteBlock { .. }) => self.update_note(node),
             CircuitNodeKind::Electrical(NodeType::Trapdoor) => {
                 Err(self.unsupported(node, "trapdoor"))
             }
@@ -770,6 +1088,247 @@ impl GraphBackend {
                 Err(self.unsupported(node, "invalid generic observer or wire"))
             }
         }
+    }
+
+    fn command_plan(&self, node: NodeId) -> Option<CommandBlockPlan> {
+        self.program
+            .command_blocks()
+            .iter()
+            .copied()
+            .find(|plan| plan.node == node)
+    }
+
+    fn command_condition_met(&self, node: NodeId) -> bool {
+        let Some(plan) = self.command_plan(node) else {
+            return false;
+        };
+        if !plan.conditional {
+            return true;
+        }
+        plan.previous.is_some_and(|previous| {
+            self.node_state(previous)
+                .command_entity
+                .is_some_and(|entity| entity.success_count > 0)
+        })
+    }
+
+    fn update_command_power(&mut self, node: NodeId) -> Result<(), GraphExecutionError> {
+        let powered = self.input_strength(node, InputPort::Main) > 0;
+        let (repeating, chain, automatic) = match self.program.nodes()[node.index()].kind {
+            CircuitNodeKind::Electrical(NodeType::CommandBlock {
+                repeating,
+                chain,
+                automatic,
+                ..
+            }) => (repeating, chain, automatic),
+            _ => return Err(self.unsupported(node, "invalid command block binding")),
+        };
+        let Some(entity) = self.node_state(node).command_entity else {
+            return Err(self.unsupported(node, "command block state"));
+        };
+        let rising = powered && !entity.powered;
+        let changed = entity.powered != powered;
+        let should_start = rising || (automatic && entity.last_execution < 0);
+        let should_repeat = repeating && (powered || automatic);
+        let should_schedule = !chain && (should_start || should_repeat) && !self.is_pending(node);
+        let condition_met = should_schedule.then(|| self.command_condition_met(node));
+        let position = self.position(node);
+        let Some(ComponentState::Electrical(state)) = self.state.components.get_mut(node.index())
+        else {
+            return Err(GraphExecutionError::UnsupportedComponent {
+                position: Some(position),
+                kind: "command block state",
+            });
+        };
+        let Some(entity) = state.command_entity.as_mut() else {
+            return Err(GraphExecutionError::UnsupportedComponent {
+                position: Some(position),
+                kind: "command block entity state",
+            });
+        };
+        state.powered = powered;
+        entity.powered = powered;
+        if let Some(condition_met) = condition_met {
+            entity.condition_met = condition_met;
+        }
+        if should_schedule || changed {
+            self.dirty[node.index()] = true;
+        }
+        if should_schedule {
+            self.schedule_half_tick(node, 1, TickPriority::Normal);
+        }
+        Ok(())
+    }
+
+    fn tick_command_block<'h>(
+        &mut self,
+        node: NodeId,
+        host: &mut Option<&'h mut (dyn GraphCommandHost + 'h)>,
+    ) -> Result<(), GraphExecutionError> {
+        if self.command_plan(node).is_none() {
+            return Err(self.unsupported(node, "command block plan"));
+        }
+        if matches!(
+            self.program.nodes()[node.index()].kind,
+            CircuitNodeKind::Electrical(NodeType::CommandBlock { chain: true, .. })
+        ) {
+            return Ok(());
+        }
+        if !self.execute_command(node, host)? {
+            return Ok(());
+        }
+        let mut current = node;
+        let mut may_continue = self
+            .node_state(node)
+            .command_entity
+            .is_some_and(|entity| entity.condition_met);
+        for _ in 0..256 {
+            if !may_continue {
+                break;
+            }
+            let Some(next) = self.command_plan(current).and_then(|plan| plan.next) else {
+                break;
+            };
+            let Some(entity) = self.node_state(next).command_entity else {
+                break;
+            };
+            if entity.powered || entity.automatic {
+                if !self.execute_command(next, host)? {
+                    break;
+                }
+            }
+            current = next;
+            may_continue = true;
+        }
+        if matches!(
+            self.program.nodes()[node.index()].kind,
+            CircuitNodeKind::Electrical(NodeType::CommandBlock {
+                repeating: true,
+                ..
+            })
+        ) && self
+            .node_state(node)
+            .command_entity
+            .is_some_and(|entity| entity.powered || entity.automatic)
+        {
+            self.schedule_half_tick(node, 1, TickPriority::Normal);
+        }
+        Ok(())
+    }
+
+    fn execute_command<'h>(
+        &mut self,
+        node: NodeId,
+        host: &mut Option<&'h mut (dyn GraphCommandHost + 'h)>,
+    ) -> Result<bool, GraphExecutionError> {
+        let position = self.position(node);
+        if host.is_none() {
+            return Err(GraphExecutionError::CommandHostUnavailable { position });
+        }
+        let Some(mut entity) = self.node_state(node).command_entity else {
+            return Err(self.unsupported(node, "command block entity state"));
+        };
+        let tick = self.clock.logical_tick.min(i64::MAX as u64) as i64;
+        if entity.update_last_execution && entity.last_execution == tick {
+            return Ok(false);
+        }
+        if matches!(
+            self.program.nodes()[node.index()].kind,
+            CircuitNodeKind::Electrical(NodeType::CommandBlock { chain: true, .. })
+        ) {
+            entity.condition_met = self.command_condition_met(node);
+        }
+        entity.success_count = 0;
+        if entity.condition_met && !entity.command.trim().is_empty() {
+            let source = crate::redstone::command_block::command_source(&entity.custom_name);
+            match host
+                .as_mut()
+                .expect("host was checked before command execution")
+                .run_command(&entity.command, &source)
+            {
+                Ok(()) => {
+                    entity.success_count = 1;
+                    if entity.track_output {
+                        entity.last_output = Some(
+                            serde_json::json!({"text":crate::messages::COMMAND_BLOCK_EXECUTED})
+                                .to_string(),
+                        );
+                    }
+                }
+                Err(error) => {
+                    if entity.track_output {
+                        entity.last_output =
+                            Some(serde_json::json!({"text":error,"color":"red"}).to_string());
+                    }
+                }
+            }
+        }
+        if entity.update_last_execution {
+            entity.last_execution = tick;
+        }
+        let success_count = entity.success_count.clamp(0, 15) as u8;
+        let Some(ComponentState::Electrical(state)) = self.state.components.get_mut(node.index())
+        else {
+            return Err(GraphExecutionError::UnsupportedComponent {
+                position: Some(position),
+                kind: "command block state",
+            });
+        };
+        state.powered = entity.powered;
+        state.output_strength = success_count;
+        state.command_entity = Some(entity.clone());
+        self.dirty[node.index()] = true;
+        host.as_mut()
+            .expect("host was checked before command execution")
+            .publish_command_entity(position, BlockEntity::CommandBlock(Box::new(entity)));
+        self.fire_route_unconditionally(node)?;
+        Ok(true)
+    }
+
+    fn update_note(&mut self, node: NodeId) -> Result<(), GraphExecutionError> {
+        let powered = self.input_strength(node, InputPort::Main) > 0;
+        if powered == self.node_state(node).powered {
+            return Ok(());
+        }
+        let plan = self
+            .program
+            .note_blocks()
+            .iter()
+            .find(|plan| plan.node == node)
+            .copied()
+            .ok_or_else(|| self.unsupported(node, "noteblock compiled sites"))?;
+        let instrument = mchprs_blocks::blocks::Instrument::from_block_below(
+            self.resolve_site(plan.below, None)
+                .ok_or_else(|| self.unsupported(node, "noteblock support site"))?
+                .block,
+        );
+        let unblocked = self
+            .resolve_site(plan.above, None)
+            .is_some_and(|site| site.block == Block::Air);
+        let CircuitNodeKind::Electrical(NodeType::NoteBlock { note, .. }) =
+            &self.program.nodes()[node.index()].kind
+        else {
+            return Err(self.unsupported(node, "invalid noteblock binding"));
+        };
+        let Some(ComponentState::Electrical(state)) = self.state.components.get_mut(node.index())
+        else {
+            return Err(self.unsupported(node, "noteblock state"));
+        };
+        state.powered = powered;
+        state.note_instrument = Some(instrument);
+        self.dirty[node.index()] = true;
+        if powered && unblocked {
+            if let Some(pitch) = crate::redstone::noteblock::pitch(*note) {
+                self.effects.push(PresentationEffect::Sound {
+                    position: self.position(node),
+                    id: instrument.to_sound_id(),
+                    category: 2,
+                    volume: 3.0,
+                    pitch,
+                });
+            }
+        }
+        Ok(())
     }
 
     fn sample_piston(&mut self, piston: PistonId) -> Result<(), GraphExecutionError> {
@@ -2523,6 +3082,20 @@ impl GraphBackend {
             Block::RedstoneComparator { comparator } => comparator.powered = state.powered,
             Block::RedstoneLamp { lit } => *lit = state.powered,
             Block::Observer { observer } => observer.powered = state.powered,
+            Block::NoteBlock {
+                instrument,
+                powered,
+                ..
+            } => {
+                *powered = state.powered;
+                if let CircuitNodeKind::Electrical(NodeType::NoteBlock {
+                    instrument: initial_instrument,
+                    ..
+                }) = self.program.nodes()[node.index()].kind
+                {
+                    *instrument = state.note_instrument.unwrap_or(initial_instrument);
+                }
+            }
             Block::StonePressurePlate { powered } => *powered = state.powered,
             _ => {
                 if let Some(updated) = block.with_pressure_plate_power(state.powered) {
@@ -2558,6 +3131,14 @@ impl GraphBackend {
     fn fire_route(&mut self, node: NodeId) -> Result<(), GraphExecutionError> {
         let route = self.program.nodes()[node.index()].output_route;
         if let Some(route) = route {
+            self.deliver_route(route, None)
+        } else {
+            Ok(())
+        }
+    }
+
+    fn fire_route_unconditionally(&mut self, node: NodeId) -> Result<(), GraphExecutionError> {
+        if let Some(route) = self.program.nodes()[node.index()].output_route {
             self.deliver_route(route, None)
         } else {
             Ok(())
@@ -2739,6 +3320,8 @@ impl GraphBackend {
                         | NodeType::PressurePlate
                         | NodeType::Lamp
                         | NodeType::CopperBulb
+                        | NodeType::NoteBlock { .. }
+                        | NodeType::CommandBlock { .. }
                 )
         )
     }
@@ -2825,12 +3408,20 @@ impl GraphBackend {
                 },
             );
         }
+        if matches!(
+            spec.kind,
+            CircuitNodeKind::Electrical(NodeType::CommandBlock { .. })
+        ) && let Some(entity) = self.node_state(node).command_entity
+        {
+            world.set_block_entity(position, BlockEntity::CommandBlock(Box::new(entity)));
+        }
     }
 
     /// Hand the current graph future back to the interpreter at a tick
     /// boundary and drop graph-owned pending work. Pending transitions are
     /// reproduced, never settled.
     pub(crate) fn reset<W: World>(&mut self, world: &mut W) {
+        self.flush(world, false);
         self.project_future(world);
         self.dirty.fill(false);
         self.scheduler.clear();
@@ -2879,7 +3470,7 @@ impl GraphBackend {
         for (tick, delay, priority) in self.scheduler.iter() {
             world.restore_scheduled_tick(TickEntry {
                 pos: tick.position,
-                block_type: Some(tick.registry_type),
+                block_type: tick.block_type,
                 ticks_left: delay as u32,
                 tick_priority: priority,
             });
@@ -2977,7 +3568,7 @@ impl GraphBackend {
             .iter()
             .map(|(tick, delay, priority)| TickEntry {
                 pos: tick.position,
-                block_type: Some(tick.registry_type),
+                block_type: tick.block_type,
                 ticks_left: delay as u32,
                 tick_priority: priority,
             })

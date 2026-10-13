@@ -83,7 +83,11 @@ impl Runtime {
         match self {
             Self::Direct(b) => b.tick_with_world(world),
             Self::Native(b) => b.tick_with_world(world),
-            Self::Graph(b) => Self::tick_graph(b),
+            Self::Graph(b) => {
+                if let Err(error) = b.tick_with_world(world) {
+                    tracing::error!(%error, "graph backend execution failed");
+                }
+            }
         }
     }
     pub(crate) fn flush(&mut self, world: &mut impl crate::world::World, io_only: bool) {

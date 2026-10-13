@@ -119,6 +119,9 @@ pub(crate) fn run_graph_pipeline(
     pipeline: &PassPipeline,
     monitor: &TaskMonitor,
 ) -> Result<(), PassPipelineError> {
+    if monitor.cancelled() {
+        return Err(PassPipelineError::Cancelled);
+    }
     let mut names = std::collections::HashSet::with_capacity(pipeline.entries.len());
     for item in &pipeline.entries {
         let name = item.pass.name();
@@ -128,6 +131,9 @@ pub(crate) fn run_graph_pipeline(
         if !names.insert(name) {
             return Err(PassPipelineError::DuplicateName(name));
         }
+    }
+    if monitor.cancelled() {
+        return Err(PassPipelineError::Cancelled);
     }
     graph.validate().map_err(PassPipelineError::InvalidInput)?;
     monitor.set_max_progress(monitor.progress() + pipeline.entries.len() + 1);
@@ -143,7 +149,7 @@ pub(crate) fn run_graph_pipeline(
         let name = item.pass.name();
         let before = GraphCounts::of(graph);
         if !item.enabled {
-            monitor.record_pass(PassStatistics {
+            monitor.record_transformation(PassStatistics {
                 name,
                 enabled: false,
                 before,
@@ -174,7 +180,7 @@ pub(crate) fn run_graph_pipeline(
             return Err(PassPipelineError::MalformedOutput { pass: name, source });
         }
         let after = GraphCounts::of(graph);
-        monitor.record_pass(PassStatistics {
+        monitor.record_transformation(PassStatistics {
             name,
             enabled: true,
             before,
@@ -186,7 +192,13 @@ pub(crate) fn run_graph_pipeline(
             return Err(PassPipelineError::Cancelled);
         }
     }
+    if monitor.cancelled() {
+        return Err(PassPipelineError::Cancelled);
+    }
     graph.validate().map_err(PassPipelineError::InvalidInput)?;
+    if monitor.cancelled() {
+        return Err(PassPipelineError::Cancelled);
+    }
     monitor.set_final_graph(GraphCounts::of(graph));
     Ok(())
 }
@@ -198,7 +210,7 @@ fn record_failed_pass(
     graph: &CompileGraph,
     start: Instant,
 ) {
-    monitor.record_pass(PassStatistics {
+    monitor.record_transformation(PassStatistics {
         name,
         enabled: true,
         before,
@@ -731,6 +743,14 @@ mod tests {
         let stats = monitor.graph_statistics();
         assert_eq!(
             stats
+                .transformations
+                .iter()
+                .map(|pass| pass.name)
+                .collect::<Vec<_>>(),
+            ["set-low", "skipped", "set-high"]
+        );
+        assert_eq!(
+            stats
                 .passes
                 .iter()
                 .map(|pass| pass.name)
@@ -738,6 +758,9 @@ mod tests {
             ["set-low", "skipped", "set-high"]
         );
         assert!(!stats.passes[1].enabled);
+        let summary = stats.summary_lines().join("\n");
+        assert!(summary.contains("Transformations: 2 enabled, 1 skipped."));
+        assert!(!summary.contains("optional optimization passes disabled"));
         assert_eq!(stats.passes[1].before, stats.passes[1].after);
         assert!(stats.passes[1].duration.is_zero());
         assert_eq!(stats.final_graph(), Some(GraphCounts::of(&graph)));
@@ -761,6 +784,51 @@ mod tests {
             monitor.graph_statistics().final_graph(),
             Some(GraphCounts::of(&graph))
         );
+        let summary = monitor.graph_statistics().summary_lines().join("\n");
+        assert!(summary.contains("Transformations: 0 enabled, 1 skipped."));
+
+        let monitor = TaskMonitor::default();
+        run_test_pipeline(&mut graph, vec![], &monitor).unwrap();
+        let statistics = monitor.graph_statistics();
+        assert!(statistics.transformations.is_empty());
+        assert!(
+            statistics
+                .summary_lines()
+                .iter()
+                .any(|line| line == "Transformations: none configured.")
+        );
+    }
+
+    #[test]
+    fn cancelled_empty_and_all_disabled_pipelines_fail_before_validation() {
+        for all_disabled in [false, true] {
+            let calls = Rc::new(Cell::new((0, 0)));
+            let entries = if all_disabled {
+                vec![PassEntry {
+                    pass: Box::new(test_pass("disabled", None, calls.clone())),
+                    enabled: false,
+                }]
+            } else {
+                vec![]
+            };
+            let mut graph = graph_for_passes();
+            let ComponentState::Electrical(state) = &mut graph.nodes[0].state else {
+                panic!("test graph has an electrical node");
+            };
+            state.output_strength = 16;
+            let before = graph.clone();
+            let monitor = TaskMonitor::default();
+            monitor.cancel();
+
+            assert!(matches!(
+                run_test_pipeline(&mut graph, entries, &monitor),
+                Err(PassPipelineError::Cancelled)
+            ));
+            assert_eq!(graph, before);
+            assert_eq!(calls.get(), (0, 0));
+            assert!(monitor.graph_statistics().passes.is_empty());
+            assert_eq!(monitor.graph_statistics().final_graph(), None);
+        }
     }
 
     #[test]

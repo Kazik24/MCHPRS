@@ -229,8 +229,8 @@ impl<W: World> Builder<'_, W> {
                     NodeType::Torch => around_events(position, false),
                     NodeType::Repeater { .. } => diode_events(block, position, false),
                     NodeType::Comparator { .. } => diode_events(block, position, true),
-                    NodeType::CopperBulb => bulb_or_command_events(position),
-                    NodeType::CommandBlock { .. } => bulb_or_command_events(position),
+                    NodeType::CopperBulb => component_output_events(position, false),
+                    NodeType::CommandBlock { .. } => component_output_events(position, true),
                     _ => continue,
                 },
                 _ => continue,
@@ -762,8 +762,8 @@ fn observer_events(position: BlockPos, facing: BlockFace) -> Vec<Event> {
     events
 }
 
-fn bulb_or_command_events(position: BlockPos) -> Vec<Event> {
-    let mut events = around_events(position, false);
+fn component_output_events(position: BlockPos, skip_pistons: bool) -> Vec<Event> {
+    let mut events = around_events(position, skip_pistons);
     let horizontal = [
         BlockFace::North,
         BlockFace::South,

@@ -194,7 +194,7 @@ impl MovingPistonEntity {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CommandBlockEntity {
     pub command: String,
     pub custom_name: String,

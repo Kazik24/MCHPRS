@@ -15,6 +15,10 @@ const PITCHES_TABLE: [f32; 25] = {
     pitches
 };
 
+pub(crate) fn pitch(note: u32) -> Option<f32> {
+    PITCHES_TABLE.get(note as usize).copied()
+}
+
 pub fn is_noteblock_unblocked(world: &impl World, pos: BlockPos) -> bool {
     matches!(world.get_block(pos.offset(BlockFace::Top)), Block::Air)
 }
@@ -24,7 +28,7 @@ pub fn get_noteblock_instrument(world: &impl World, pos: BlockPos) -> Instrument
 }
 
 pub fn play_note(world: &mut impl World, pos: BlockPos, instrument: Instrument, note: u32) {
-    let Some(&pitch) = PITCHES_TABLE.get(note as usize) else {
+    let Some(pitch) = pitch(note) else {
         return;
     };
     world.play_sound(
@@ -43,7 +47,7 @@ pub fn play_note_for_action(
     instrument: Instrument,
     note: u32,
 ) {
-    let Some(&pitch) = PITCHES_TABLE.get(note as usize) else {
+    let Some(pitch) = pitch(note) else {
         return;
     };
     world.play_sound_for_action(pos, instrument.to_sound_id(), 2, 3.0, pitch, None);

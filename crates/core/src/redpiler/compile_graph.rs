@@ -1,4 +1,5 @@
 use mchprs_blocks::BlockPos;
+use mchprs_blocks::block_entities::CommandBlockEntity;
 use mchprs_blocks::blocks::{ComparatorMode, Instrument};
 use petgraph::stable_graph::{NodeIndex, StableGraph};
 
@@ -46,6 +47,10 @@ pub struct NodeState {
     pub repeater_locked: bool,
     pub output_strength: u8,
     pub pending_tick: bool,
+    /// This retains the command block's live entity fields in graph-owned state.
+    pub command_entity: Option<CommandBlockEntity>,
+    /// This retains the instrument sampled at the most recent noteblock edge.
+    pub note_instrument: Option<Instrument>,
 }
 
 impl NodeState {
@@ -53,6 +58,8 @@ impl NodeState {
         NodeState {
             powered,
             output_strength: if powered { 15 } else { 0 },
+            command_entity: None,
+            note_instrument: None,
             ..Default::default()
         }
     }
@@ -63,6 +70,8 @@ impl NodeState {
             repeater_locked: locked,
             output_strength: if powered { 15 } else { 0 },
             pending_tick: false,
+            command_entity: None,
+            note_instrument: None,
         }
     }
 
