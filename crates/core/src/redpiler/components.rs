@@ -6,6 +6,7 @@ use mchprs_blocks::block_entities::CommandBlockEntity;
 use mchprs_blocks::blocks::{Block, ComparatorMode, Instrument};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
+/// A redstone component kind and the static properties needed to simulate it.
 pub enum NodeType {
     Repeater {
         delay: u8,
@@ -41,10 +42,13 @@ pub enum NodeType {
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
+/// Mutable simulation state retained for one compiled component.
 pub struct NodeState {
     pub powered: bool,
     pub repeater_locked: bool,
+    /// Current analog output strength, used by components such as comparators.
     pub output_strength: u8,
+    /// Whether this component has work queued in the graph scheduler.
     pub pending_tick: bool,
     /// This retains the command block's live entity fields in graph-owned state.
     pub command_entity: Option<CommandBlockEntity>,

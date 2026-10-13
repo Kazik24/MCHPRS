@@ -381,32 +381,6 @@ fn copper_bulb_variants_do_not_age_during_simulation() {
 }
 
 #[test]
-fn copper_bulb_legacy_export_is_rejected_before_activation() {
-    let world = circuit("copper_bulb", false, false);
-    let mut compiler = Compiler::default();
-    let error = compiler
-        .compile(
-            &world,
-            world.get_corners(),
-            CompilerOptions {
-                export: true,
-                ..Default::default()
-            },
-            vec![],
-            Default::default(),
-        )
-        .unwrap_err();
-    assert!(matches!(
-        &error,
-        crate::redpiler::CompileError::UnsupportedRichExport
-    ));
-    assert_eq!(
-        error.to_string(),
-        "legacy binary and DOT exports cannot represent the unified graph; compile without --export or --export-dot"
-    );
-}
-
-#[test]
 fn copper_bulb_light_updates_and_removal_cross_chunk_boundaries() {
     let mut world = world();
     let source = BlockPos::new(31, 30, 31);

@@ -771,7 +771,7 @@ fn diagnose(world: &PlotWorld) -> Value {
             world.get_corners(),
             CompilerOptions {
                 budget_multiplier: budget,
-                optimize: true,
+                optimization_level: None,
                 io_only: true,
                 ..Default::default()
             },

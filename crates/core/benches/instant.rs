@@ -326,7 +326,7 @@ fn main() -> Result<()> {
                         &world,
                         world.get_corners(),
                         CompilerOptions {
-                            optimize: checked_optimize,
+                            optimization_level: if checked_optimize { None } else { Some(0) },
                             budget_multiplier: 8,
                             ..Default::default()
                         },
@@ -387,7 +387,7 @@ fn main() -> Result<()> {
                 &world,
                 world.get_corners(),
                 CompilerOptions {
-                    optimize,
+                    optimization_level: if optimize { None } else { Some(0) },
                     budget_multiplier: 8,
                     ..Default::default()
                 },

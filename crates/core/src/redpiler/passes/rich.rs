@@ -20,6 +20,7 @@ use std::fmt;
 use std::time::{Duration, Instant};
 
 #[derive(Debug)]
+/// Failure from one of the required stages that prepares a graph for execution.
 pub(crate) enum PreparationError {
     /// A retained preparation table crossed the hard memory estimate limit.
     Analysis(AnalysisError),
@@ -44,6 +45,7 @@ impl fmt::Display for PreparationError {
 
 impl std::error::Error for PreparationError {}
 
+/// Fully parsed graph and entry state before lowering into an execution program.
 pub(crate) struct PreparedGraph {
     /// This records admission results and the normalized compilation bounds.
     pub(crate) report: AnalysisReport,
@@ -195,6 +197,7 @@ pub(crate) fn prepare(
         contacts: electrical.contacts,
         routes: callbacks.routes,
         wires: electrical.wires,
+        dust_paths: Vec::new(),
         wire_relations: electrical.wire_relations,
         sites: electrical.sites,
         pistons: callbacks.pistons,

@@ -160,7 +160,7 @@ def _validate(data: Any) -> dict[str, dict[str, dict[str, Any]]]:
         if kind == "state":
             test = _object(test, f"{identifier}.test")
             test_kind = test.get("kind")
-            if test_kind in ("piston_extended", "piston_availability"):
+            if test_kind in ("piston_extended", "piston_head_present", "piston_availability"):
                 ref("piston", test.get("piston"), identifier)
             elif test_kind == "resource_at":
                 ref("resource", test.get("resource"), identifier)

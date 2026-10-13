@@ -406,6 +406,7 @@ fn fixture_callback_projection(name: &str) -> (FixturePrepStage, Option<String>)
             contacts: electrical.contacts,
             routes: callbacks.routes,
             wires: electrical.wires,
+            dust_paths: Vec::new(),
             wire_relations: electrical.wire_relations,
             sites: electrical.sites,
             pistons: callbacks.pistons,

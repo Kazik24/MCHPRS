@@ -91,7 +91,7 @@ fn compile_outputs(world: &mut PlotWorld, optimize: bool) -> crate::redpiler::Co
             world,
             world.get_corners(),
             crate::redpiler::CompilerOptions {
-                optimize,
+                optimization_level: if optimize { None } else { Some(0) },
                 io_only: true,
                 ..Default::default()
             },
@@ -196,34 +196,6 @@ fn compiled_automatic_outputs_start_once_and_recompile_without_replaying_impulse
     let mut compiler = compile_outputs(&mut world, true);
     compiler.tick_with_world(&mut world).unwrap();
     assert_eq!(world.command_output().count(), 1);
-}
-
-#[test]
-fn legacy_graph_export_rejection_preserves_world_and_pending_ticks() {
-    let (mut world, pos, _) = output_fixture("repeating_command_block", true);
-    redstone::command_block::update(&mut world, pos);
-    let before: Vec<_> = world.scheduler().iter_entries().collect();
-    let mut compiler = crate::redpiler::Compiler::default();
-    let error = compiler
-        .compile(
-            &world,
-            world.get_corners(),
-            crate::redpiler::CompilerOptions {
-                export: true,
-                ..Default::default()
-            },
-            before.clone(),
-            Default::default(),
-        )
-        .unwrap_err();
-    assert!(
-        error
-            .to_string()
-            .contains("legacy binary and DOT exports cannot represent the unified graph")
-    );
-    assert!(!compiler.is_active());
-    assert_eq!(world.scheduler().iter_entries().collect::<Vec<_>>(), before);
-    assert_eq!(world.command_output().count(), 0);
 }
 
 #[test]

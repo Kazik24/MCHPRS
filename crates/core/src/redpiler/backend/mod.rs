@@ -2,6 +2,7 @@ pub(crate) mod graph;
 mod queue;
 pub use queue::*;
 
+/// Active compiled backend implementation.
 pub(crate) enum Runtime {
     Graph(Box<graph::GraphBackend>),
 }

@@ -21,6 +21,7 @@ pub use backend::{Queues, TickScheduler};
 pub use task_monitor::TaskMonitor;
 
 #[derive(Debug)]
+/// Failure to prepare or activate a compiled redstone backend.
 pub enum CompileError {
     AlreadyActive,
     Analysis(analysis::AnalysisError),
@@ -28,8 +29,6 @@ pub enum CompileError {
     Cancelled,
     /// Graph preparation rejected the selection; nothing was published.
     RichGraph(RichGraphError),
-    /// Legacy binary and dot exports cannot carry piston, contact, or route edges.
-    UnsupportedRichExport,
 }
 
 /// Structured rich-graph preparation failure, kept opaque outside the crate.
@@ -56,9 +55,6 @@ impl std::fmt::Display for CompileError {
             }
             Self::Cancelled => f.write_str("compilation cancelled"),
             Self::RichGraph(error) => write!(f, "graph preparation rejected: {error}"),
-            Self::UnsupportedRichExport => f.write_str(
-                "legacy binary and DOT exports cannot represent the unified graph; compile without --export or --export-dot",
-            ),
         }
     }
 }
@@ -105,6 +101,7 @@ fn graph_backend_error(
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+/// The execution engine selected for a compiled circuit.
 pub enum BackendKind {
     /// Compiled redstone execution uses the lowered Graph program.
     Graph,
@@ -112,13 +109,17 @@ pub enum BackendKind {
 
 /// Work performed by the graph backend since activation.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+/// Cumulative work counters for an active graph backend.
 pub struct GraphExecutionCounts {
     pub ticks: u64,
     pub scheduled_ticks: u64,
     pub callbacks: u64,
     pub wire_walks: u64,
+    /// Directional power samples omitted by certified dust-path queries.
+    pub dust_path_power_samples_elided: u64,
     pub piston_samples: u64,
     pub piston_actions: u64,
+    /// Piston-driven block changes waiting for publication to the world.
     pub deferred_publications: u64,
 }
 
@@ -152,44 +153,90 @@ pub struct GraphExecutionProfile {
     pub piston_sample: GraphProfileMetric,
 }
 
-#[derive(Default, PartialEq, Eq, Debug)]
+#[derive(PartialEq, Eq, Debug)]
+/// Options that control graph preparation and reset behavior.
 pub struct CompilerOptions {
     /// Set by the server from the initiating player's rank, never from flags.
     /// Zero retains the default 1x budget; values are capped at 8x.
     pub budget_multiplier: usize,
-    /// Enable configured graph optimization passes.
-    pub optimize: bool,
-    /// Request the legacy binary export, which cannot represent the unified graph.
-    pub export: bool,
+    /// `Some(level)` selects that pass tier; `None` selects every configured tier.
+    pub optimization_level: Option<usize>,
+    /// Adds certified dust-path contraction to the O1 pass set for review and measurement.
+    pub experimental_dust_paths: bool,
     /// Only flush visible outputs and controls, including lamps and copper bulbs.
     pub io_only: bool,
     /// Update all blocks in the input region after reset.
     pub update: bool,
-    /// Request the legacy DOT export, which cannot represent the unified graph.
-    pub export_dot_graph: bool,
+}
+
+pub(crate) const MAX_OPTIMIZATION_LEVEL: usize = 1;
+
+impl Default for CompilerOptions {
+    fn default() -> Self {
+        Self {
+            budget_multiplier: 0,
+            optimization_level: Some(0),
+            experimental_dust_paths: false,
+            io_only: false,
+            update: false,
+        }
+    }
 }
 
 impl CompilerOptions {
     pub fn parse(flags: &str) -> Result<CompilerOptions, String> {
         let mut options = Self::default();
         for option in flags.split_whitespace() {
+            if let Some(level) = option
+                .strip_prefix("-O")
+                .or_else(|| option.strip_prefix("-o"))
+            {
+                options.optimization_level = if level.is_empty() {
+                    None
+                } else {
+                    let level = level
+                        .parse::<usize>()
+                        .map_err(|_| format!("Invalid Redpiler optimization level: {option}"))?;
+                    if level > MAX_OPTIMIZATION_LEVEL {
+                        return Err(format!(
+                            "Redpiler supports optimization levels 0 through {MAX_OPTIMIZATION_LEVEL}"
+                        ));
+                    }
+                    Some(level)
+                };
+                continue;
+            }
             if option.starts_with("--") {
                 match option {
-                    "--optimize" => options.optimize = true,
-                    "--export" => options.export = true,
+                    "--optimize" => options.optimization_level = None,
+                    "--experimental-dust-paths" => options.experimental_dust_paths = true,
                     "--io-only" => options.io_only = true,
                     "--update" => options.update = true,
-                    "--export-dot" => options.export_dot_graph = true,
                     _ => return Err(format!("Unrecognized Redpiler option: {option}")),
                 }
             } else if let Some(short_flags) = option.strip_prefix('-') {
                 if short_flags.is_empty() {
                     return Err(format!("Unrecognized Redpiler option: {option}"));
                 }
-                for c in short_flags.chars() {
+                for (index, c) in short_flags.char_indices() {
                     match c.to_ascii_lowercase() {
-                        'o' => options.optimize = true,
-                        'e' => options.export = true,
+                        'o' => {
+                            let level = &short_flags[index + c.len_utf8()..];
+                            options.optimization_level = if level.is_empty() {
+                                None
+                            } else {
+                                let level = level.parse::<usize>().map_err(|_| {
+                                    format!("Invalid Redpiler optimization level: {option}")
+                                })?;
+                                if level > MAX_OPTIMIZATION_LEVEL {
+                                    return Err(format!(
+                                        "Redpiler supports optimization levels 0 through {MAX_OPTIMIZATION_LEVEL}"
+                                    ));
+                                }
+                                Some(level)
+                            };
+                            break;
+                        }
                         'i' => options.io_only = true,
                         'u' => options.update = true,
                         _ => return Err(format!("Unrecognized Redpiler option: -{c}")),
@@ -204,6 +251,7 @@ impl CompilerOptions {
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+/// Node and link counts for one compiler graph snapshot.
 pub struct GraphCounts {
     pub nodes: usize,
     pub links: usize,
@@ -219,6 +267,7 @@ impl GraphCounts {
 }
 
 #[derive(Clone, Debug)]
+/// Timing and size results for one graph pass.
 pub struct PassStatistics {
     pub name: &'static str,
     pub enabled: bool,
@@ -228,6 +277,7 @@ pub struct PassStatistics {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
+/// Retained-capacity estimate for one preparation table.
 pub struct PreparationTableStatistics {
     pub stage: &'static str,
     pub table: &'static str,
@@ -238,6 +288,7 @@ pub struct PreparationTableStatistics {
 }
 
 #[derive(Clone, Debug, Default)]
+/// Graph sizes, pass timings, and preparation memory estimates from compilation.
 pub struct GraphStatistics {
     pub passes: Vec<PassStatistics>,
     /// This contains only optional transformations, not mandatory parser stages.
@@ -329,6 +380,7 @@ impl GraphStatistics {
 }
 
 #[derive(Clone, Debug)]
+/// Timing and backend size results for one successful compilation.
 pub struct CompileStatistics {
     pub graph: GraphStatistics,
     pub backend: BackendKind,
@@ -349,17 +401,13 @@ impl CompileStatistics {
             ms(self.backend_duration),
             self.backend_nodes,
         )];
-        if self.backend == BackendKind::Graph {
-            lines.push(
-                "Execution: unified Graph program; no built-in optimization passes are configured, so -O has no effect.".into(),
-            );
-        }
         lines.extend(self.graph.summary_lines().into_iter().take(3));
         lines
     }
 }
 
 #[derive(Default)]
+/// Owns the active compiled backend and its options and statistics.
 pub struct Compiler {
     backend: Option<Runtime>,
     options: CompilerOptions,
@@ -452,9 +500,6 @@ impl Compiler {
         monitor: &TaskMonitor,
         graph_pipeline: Option<passes::PassPipeline>,
     ) -> Result<(Runtime, Duration), CompileError> {
-        if options.export || options.export_dot_graph {
-            return Err(CompileError::UnsupportedRichExport);
-        }
         let limits = analysis::AnalysisLimits::for_budget(monitor.budget_multiplier());
         let mut prepared = passes::rich::prepare(world, bounds, ticks, monitor, limits)
             .map_err(|error| graph_preparation_error(error, monitor))?;
@@ -560,6 +605,7 @@ impl Compiler {
     }
 }
 
+/// Inputs needed to compile a bounded region of a world.
 pub struct CompilerInput<'w, W: World> {
     pub world: &'w W,
     pub bounds: (BlockPos, BlockPos),
@@ -602,7 +648,7 @@ mod tests {
                 );
                 for optimize in [false, true] {
                     let options = CompilerOptions {
-                        optimize,
+                        optimization_level: if optimize { None } else { Some(0) },
                         ..Default::default()
                     };
                     let mut compiler = Compiler::default();
@@ -715,7 +761,7 @@ mod tests {
 
         let cancelled = Arc::new(TaskMonitor::default());
         cancelled.cancel();
-        let cases: [(&str, &PlotWorld, CompilerOptions, Arc<TaskMonitor>); 4] = [
+        let cases: [(&str, &PlotWorld, CompilerOptions, Arc<TaskMonitor>); 2] = [
             (
                 "moved observer",
                 &moved_observer,
@@ -723,24 +769,6 @@ mod tests {
                 Arc::default(),
             ),
             ("cancelled", &world, CompilerOptions::default(), cancelled),
-            (
-                "binary export",
-                &world,
-                CompilerOptions {
-                    export: true,
-                    ..Default::default()
-                },
-                Arc::default(),
-            ),
-            (
-                "dot export",
-                &world,
-                CompilerOptions {
-                    export_dot_graph: true,
-                    ..Default::default()
-                },
-                Arc::default(),
-            ),
         ];
         for (name, input, options, monitor) in cases {
             let before = interpreter_snapshot(input, bounds);
@@ -756,7 +784,7 @@ mod tests {
                     CompileError::Cancelled
                         | CompileError::Analysis(analysis::AnalysisError::Cancelled)
                 )),
-                _ => assert!(matches!(error, CompileError::UnsupportedRichExport)),
+                _ => unreachable!(),
             }
             assert!(!compiler.is_active(), "{name}");
             assert!(compiler.current_flags().is_none(), "{name}");
@@ -771,18 +799,20 @@ mod tests {
 
     #[test]
     fn parse_options() {
-        let input = "-iO -U --export";
+        let input = "-iO0 -U";
         let expected_options = CompilerOptions {
             budget_multiplier: 0,
+            experimental_dust_paths: false,
             io_only: true,
-            optimize: true,
-            export: true,
+            optimization_level: Some(0),
             update: true,
-            export_dot_graph: false,
         };
         let options = CompilerOptions::parse(input).unwrap();
 
         assert_eq!(options, expected_options);
+        let dust_options = CompilerOptions::parse("-O1 --experimental-dust-paths").unwrap();
+        assert_eq!(dust_options.optimization_level, Some(1));
+        assert!(dust_options.experimental_dust_paths);
     }
 
     #[test]
@@ -796,7 +826,7 @@ mod tests {
 
     #[test]
     fn unknown_flags_fail() {
-        for flags in ["--unknown", "-ox", "-"] {
+        for flags in ["--unknown", "--export", "--export-dot", "-ox", "-"] {
             assert!(CompilerOptions::parse(flags).is_err(), "{flags}");
         }
     }
@@ -821,7 +851,13 @@ mod tests {
             .unwrap();
         let statistics = compiler.stats().unwrap();
         assert!(!statistics.graph.passes.is_empty());
-        assert!(statistics.graph.transformations.is_empty());
+        assert!(
+            statistics
+                .graph
+                .transformations
+                .iter()
+                .all(|pass| !pass.enabled)
+        );
         assert_eq!(statistics.graph.baseline(), statistics.graph.final_graph());
         assert!(statistics.backend_nodes > 0);
         let total_duration = statistics.total_duration;

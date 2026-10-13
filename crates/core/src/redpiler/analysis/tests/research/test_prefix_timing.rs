@@ -173,7 +173,7 @@ fn test_prefixed_schematics_have_native_timing_report() {
                         world.get_corners(),
                         CompilerOptions {
                             budget_multiplier,
-                            optimize,
+                            optimization_level: if optimize { None } else { Some(0) },
                             ..Default::default()
                         },
                         vec![],

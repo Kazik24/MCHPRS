@@ -106,7 +106,7 @@ fn compare(seed: u64, optimize: bool) -> Result<(), String> {
         &compiled,
         bounds,
         CompilerOptions {
-            optimize,
+            optimization_level: if optimize { None } else { Some(0) },
             ..Default::default()
         },
         compiled.scheduler().iter_entries().collect(),
@@ -297,7 +297,7 @@ fn due_button_callback_preserves_a_repeater_deadline() {
             &compiled,
             bounds,
             CompilerOptions {
-                optimize: true,
+                optimization_level: None,
                 ..Default::default()
             },
             vec![tick_entry],
@@ -392,7 +392,7 @@ fn graph_feedback_preserves_hidden_state_and_scheduler_on_reset() {
                             &compiled,
                             bounds,
                             CompilerOptions {
-                                optimize,
+                                optimization_level: if optimize { None } else { Some(0) },
                                 io_only,
                                 ..Default::default()
                             },
@@ -403,9 +403,16 @@ fn graph_feedback_preserves_hidden_state_and_scheduler_on_reset() {
                     assert_eq!(compiler.backend_kind(), Some(BackendKind::Graph));
                     let statistics = compiler.stats().unwrap();
                     let transformations = &statistics.graph.transformations;
-                    assert_eq!(transformations.len(), if optimize { 1 } else { 0 });
+                    let enabled_transformations = transformations
+                        .iter()
+                        .filter(|pass| pass.enabled)
+                        .collect::<Vec<_>>();
+                    assert_eq!(enabled_transformations.len(), if optimize { 1 } else { 0 });
                     if optimize {
-                        assert_eq!(transformations[0].name, "guard-and-update-reduction");
+                        assert_eq!(
+                            enabled_transformations[0].name,
+                            "guard-and-update-reduction"
+                        );
                     }
                     compiled.clear_scheduled_ticks();
                     compiler.on_use_block(control);
@@ -506,7 +513,7 @@ fn torch_oscillator_compiles_and_keeps_oscillating_after_reset() {
                     &compiled,
                     bounds,
                     CompilerOptions {
-                        optimize,
+                        optimization_level: if optimize { None } else { Some(0) },
                         io_only,
                         ..Default::default()
                     },
@@ -642,7 +649,7 @@ fn native_controls_observers_and_command_outputs_match_interpreter() {
                 &compiled,
                 bounds,
                 CompilerOptions {
-                    optimize,
+                    optimization_level: if optimize { None } else { Some(0) },
                     ..Default::default()
                 },
                 compiled.scheduler().iter_entries().collect(),
@@ -714,47 +721,34 @@ fn graph_compilation_errors_preserve_world_and_scheduler() {
     let block = Block::RedstoneComparator {
         comparator: RedstoneComparator::new(BlockDirection::West, ComparatorMode::Subtract, false),
     };
-    for (strength, export, export_dot_graph) in
-        [(16, false, false), (0, true, false), (0, false, true)]
-    {
-        let mut world = load(&[(BASE, block)], 0);
-        world.set_block_entity(
-            BASE,
-            BlockEntity::Comparator {
-                output_strength: strength,
+    let mut world = load(&[(BASE, block)], 0);
+    world.set_block_entity(
+        BASE,
+        BlockEntity::Comparator {
+            output_strength: 16,
+        },
+    );
+    world.schedule_tick(BASE, 1, TickPriority::High);
+    let ticks = world.scheduler().iter_entries().collect::<Vec<_>>();
+    let mut compiler = Compiler::default();
+    let error = compiler
+        .compile(
+            &world,
+            world.get_corners(),
+            CompilerOptions {
+                optimization_level: None,
+                ..Default::default()
             },
-        );
-        world.schedule_tick(BASE, 1, TickPriority::High);
-        let ticks = world.scheduler().iter_entries().collect::<Vec<_>>();
-        let mut compiler = Compiler::default();
-        let error = compiler
-            .compile(
-                &world,
-                world.get_corners(),
-                CompilerOptions {
-                    optimize: true,
-                    export,
-                    export_dot_graph,
-                    ..Default::default()
-                },
-                ticks.clone(),
-                Default::default(),
-            )
-            .unwrap_err();
-        if strength > 15 {
-            assert!(matches!(error, CompileError::RichGraph(_)));
-        } else {
-            assert!(matches!(error, CompileError::UnsupportedRichExport));
-        }
-        assert!(!compiler.is_active());
-        assert!(compiler.stats().is_none());
-        assert_eq!(world.get_block(BASE), block);
-        assert_eq!(
-            crate::redstone::source_strength(block, &world, BASE),
-            strength
-        );
-        assert_eq!(world.scheduler().iter_entries().collect::<Vec<_>>(), ticks);
-    }
+            ticks.clone(),
+            Default::default(),
+        )
+        .unwrap_err();
+    assert!(matches!(error, CompileError::RichGraph(_)));
+    assert!(!compiler.is_active());
+    assert!(compiler.stats().is_none());
+    assert_eq!(world.get_block(BASE), block);
+    assert_eq!(crate::redstone::source_strength(block, &world, BASE), 16);
+    assert_eq!(world.scheduler().iter_entries().collect::<Vec<_>>(), ticks);
 }
 
 #[test]
@@ -816,7 +810,7 @@ fn coalesced_repeaters_preserve_display_and_pending_work_on_reset() {
                         &compiled,
                         bounds,
                         CompilerOptions {
-                            optimize,
+                            optimization_level: if optimize { None } else { Some(0) },
                             io_only,
                             update: true,
                             ..Default::default()

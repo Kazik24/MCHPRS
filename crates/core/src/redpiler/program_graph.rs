@@ -37,8 +37,10 @@ graph_id!(ContactId);
 graph_id!(ProfileId);
 graph_id!(GuardId);
 graph_id!(RouteId);
+graph_id!(DustPathId);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
+/// Which component input receives an electrical dependency.
 pub(crate) enum InputPort {
     Main,
     Side,
@@ -46,6 +48,7 @@ pub(crate) enum InputPort {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+/// Which kind of power a compiled site exposes to a query.
 pub(crate) enum PowerPort {
     Output,
     Stored,
@@ -55,6 +58,7 @@ pub(crate) enum PowerPort {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+/// Whether a callback link represents a block update or shape notification.
 pub(crate) enum LinkKind {
     Update {
         direction: Option<BlockFace>,
@@ -67,6 +71,7 @@ pub(crate) enum LinkKind {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// One callback dependency between compiled nodes.
 pub(crate) struct LinkSpec {
     pub(crate) from: NodeId,
     pub(crate) to: NodeId,
@@ -75,12 +80,14 @@ pub(crate) struct LinkSpec {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+/// Identifies one ordered delivery within a prepared callback route.
 pub(crate) struct CallbackEdgeRef {
     pub(crate) route: RouteId,
     pub(crate) sequence: u32,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+/// Runtime category and state owner for a node in the circuit draft.
 pub(crate) enum CircuitNodeKind {
     Electrical(NodeType),
     Observer { watched: SiteId, facing: BlockFace },
@@ -90,6 +97,7 @@ pub(crate) enum CircuitNodeKind {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+/// Initial mutable state representation for a circuit node.
 pub(crate) enum ComponentState {
     Electrical(NodeState),
     Wire(RedstoneWire),
@@ -97,6 +105,7 @@ pub(crate) enum ComponentState {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+/// Mutable node data collected while building the circuit draft.
 pub(crate) struct CircuitNodeDraft {
     pub(crate) position: Option<BlockPos>,
     /// Original registry state; runtime uses it for static properties and tick type.
@@ -107,6 +116,7 @@ pub(crate) struct CircuitNodeDraft {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+/// Static node data used to create the immutable execution program.
 pub(crate) struct NodeSpec {
     pub(crate) position: Option<BlockPos>,
     pub(crate) raw_state: Option<u32>,
@@ -116,6 +126,7 @@ pub(crate) struct NodeSpec {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// Compiled predecessor and successor relationships for a command block.
 pub(crate) struct CommandBlockPlan {
     /// This identifies the command block whose state is stored in `CircuitState`.
     pub(crate) node: NodeId,
@@ -128,6 +139,7 @@ pub(crate) struct CommandBlockPlan {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// Compiled sites sampled when a note block is activated.
 pub(crate) struct NoteBlockPlan {
     /// This identifies the noteblock whose powered and instrument state is live.
     pub(crate) node: NodeId,
@@ -138,6 +150,7 @@ pub(crate) struct NoteBlockPlan {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// Electrical role of a block profile.
 pub(crate) enum ProfileElectrical {
     None,
     RedstoneSource,
@@ -145,6 +158,7 @@ pub(crate) enum ProfileElectrical {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// Static block properties shared by compiled sites.
 pub(crate) struct Profile {
     pub(crate) raw_state: u32,
     pub(crate) registry_type: u32,
@@ -155,12 +169,14 @@ pub(crate) struct Profile {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+/// Selects whether a guard reads live state or a captured delivery snapshot.
 pub(crate) enum OperandView {
     Live,
     Captured,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+/// A state predicate evaluated by a graph guard.
 pub(crate) enum StateTest {
     PistonExtended(PistonId),
     PistonHeadPresent(PistonId),
@@ -176,6 +192,7 @@ pub(crate) enum StateTest {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+/// A static or captured block-site predicate evaluated by a graph guard.
 pub(crate) enum SiteTest {
     Solid,
     Transparent,
@@ -184,6 +201,7 @@ pub(crate) enum SiteTest {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
+/// Boolean condition that controls a compiled callback or power relation.
 pub(crate) enum Guard {
     Always,
     State(StateTest),
@@ -198,6 +216,7 @@ pub(crate) enum Guard {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// The kind of compiled receiver notified by a callback delivery.
 pub(crate) enum CallbackReceiver {
     Component(NodeId),
     PistonBase(PistonId),
@@ -206,6 +225,7 @@ pub(crate) enum CallbackReceiver {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+/// One guarded contact profile and its optional callback receiver.
 pub(crate) struct ContactVariant {
     pub(crate) when: GuardId,
     pub(crate) profile: ProfileId,
@@ -213,6 +233,7 @@ pub(crate) struct ContactVariant {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+/// Profile variants that can occupy a physical contact position.
 pub(crate) struct ContactSpec {
     pub(crate) node: NodeId,
     pub(crate) position: BlockPos,
@@ -220,12 +241,14 @@ pub(crate) struct ContactSpec {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+/// Material profile and contacts that may contain it.
 pub(crate) struct ResourceSpec {
     pub(crate) material: ProfileId,
     pub(crate) contacts: Box<[ContactId]>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// Current location and activation revision of a movable resource.
 pub(crate) struct ResourceState {
     pub(crate) at: ContactId,
     pub(crate) enabled: bool,
@@ -267,12 +290,14 @@ impl<T: Copy> ContactCandidates<T> {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// Empty or single-resource geometry in front of a piston.
 pub(crate) enum PistonLane {
     Empty,
     SingleResource { far: ContactId },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// Callback routes used during piston transitions and restoration.
 pub(crate) struct PistonRoutes {
     pub(crate) base_changed: RouteId,
     pub(crate) near_changed: RouteId,
@@ -285,6 +310,7 @@ pub(crate) struct PistonRoutes {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// Static geometry and callback bindings for a compiled piston.
 pub(crate) struct PistonSpec {
     pub(crate) node: NodeId,
     /// This records the piston base location for graph inspection and diagnostics.
@@ -300,6 +326,7 @@ pub(crate) struct PistonSpec {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+/// Availability phase used to guard piston-dependent graph behavior.
 pub(crate) enum PistonAvailability {
     Ready,
     HeadPending,
@@ -315,6 +342,7 @@ impl PistonAvailability {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// Mutable extension and publication state of a compiled piston.
 pub(crate) struct PistonState {
     pub(crate) extended: bool,
     /// Tracks head occupancy across the piston transition publication phases.
@@ -324,6 +352,7 @@ pub(crate) struct PistonState {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// Source from which a compiled site obtains its block properties.
 pub(crate) enum SiteSource {
     Component(NodeId),
     Contact(ContactId),
@@ -331,6 +360,7 @@ pub(crate) enum SiteSource {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// A sampled world position and the compiled source that represents it.
 pub(crate) struct SiteSpec {
     pub(crate) position: BlockPos,
     pub(crate) source: SiteSource,
@@ -338,6 +368,7 @@ pub(crate) struct SiteSpec {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+/// Compiled neighbor sites and callback routes for one redstone wire.
 pub(crate) struct WirePlan {
     pub(crate) node: NodeId,
     pub(crate) canonical_neighbors: [SiteId; 24],
@@ -346,13 +377,28 @@ pub(crate) struct WirePlan {
     pub(crate) turbo_route: Option<RouteId>,
 }
 
+/// A certified short dust line whose only variable input is the first wire's direct source.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct DustPathPlan {
+    /// This identifies the component whose output is the path's one external input.
+    pub(crate) input_node: NodeId,
+    /// This is the compiled site sampled for the source's directional output.
+    pub(crate) input_site: SiteId,
+    /// This preserves the receiver-to-source face used by the ordinary wire query.
+    pub(crate) input_face: BlockFace,
+    /// These are the original wire state owners, ordered from ingress to the free end.
+    pub(crate) wires: Box<[NodeId]>,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+/// Callback delivery form for one update or shape notification.
 pub(crate) enum DeliveryKind {
     Update { direction: Option<BlockFace> },
     Shape { direction: BlockFace },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// One ordered, guarded notification from a compiled callback route.
 pub(crate) struct RouteDelivery {
     pub(crate) target: SiteId,
     pub(crate) kind: DeliveryKind,
@@ -363,18 +409,21 @@ pub(crate) struct RouteDelivery {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+/// Ordered notifications emitted when a node changes.
 pub(crate) struct Route {
     pub(crate) source: NodeId,
     pub(crate) deliveries: Box<[RouteDelivery]>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
+/// Destination of an electrical power relation.
 pub(crate) enum PowerTarget {
     Input { node: NodeId, port: InputPort },
     Conductor { site: SiteId, include_dust: bool },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// Directional power transfer between compiled sites or component inputs.
 pub(crate) struct PowerLink {
     pub(crate) from: SiteId,
     pub(crate) from_port: PowerPort,
@@ -385,12 +434,14 @@ pub(crate) struct PowerLink {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// Comparator override from a fixed strength or live component output.
 pub(crate) enum ComparatorOverride {
     Literal(u8),
     LiveComponentOutput(NodeId),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// Compiled rear input and override checks for a comparator.
 pub(crate) struct ComparatorInputPlan {
     pub(crate) node: NodeId,
     pub(crate) rear: SiteId,
@@ -400,6 +451,7 @@ pub(crate) struct ComparatorInputPlan {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// Geometric relation between a wire and a neighboring query site.
 pub(crate) enum WireRelationKind {
     /// This denotes a same-level neighbor dependency.
     Step,
@@ -410,6 +462,7 @@ pub(crate) enum WireRelationKind {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// A guarded wire-to-site dependency discovered from wire geometry.
 pub(crate) struct WireRelation {
     /// This identifies the wire that discovered the dependency.
     pub(crate) from: NodeId,
@@ -439,6 +492,7 @@ impl RouteDelivery {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+/// All typed tables assembled during graph preparation.
 pub(crate) struct CircuitDraft {
     pub(crate) nodes: Vec<CircuitNodeDraft>,
     pub(crate) links: Vec<LinkSpec>,
@@ -449,6 +503,7 @@ pub(crate) struct CircuitDraft {
     pub(crate) contacts: Vec<ContactSpec>,
     pub(crate) routes: Vec<Route>,
     pub(crate) wires: Vec<WirePlan>,
+    pub(crate) dust_paths: Vec<DustPathPlan>,
     pub(crate) wire_relations: Vec<WireRelation>,
     pub(crate) sites: Vec<SiteSpec>,
     pub(crate) pistons: Vec<PistonSpec>,
@@ -461,6 +516,7 @@ pub(crate) struct CircuitDraft {
 pub(crate) type CompileGraph = CircuitDraft;
 
 #[derive(Debug, Clone)]
+/// Clock and pending scheduler entries captured at compilation time.
 pub(crate) struct EntryState {
     /// This initializes the executor clock from the compilation boundary.
     pub(crate) logical_tick: u64,
@@ -469,6 +525,7 @@ pub(crate) struct EntryState {
 }
 
 #[derive(Debug, Clone)]
+/// A pending tick plus the target type observed at the compilation boundary.
 pub(crate) struct EntryTick {
     /// This preserves the scheduler's original target, block type, deadline, and priority.
     pub(crate) tick: TickEntry,
@@ -477,6 +534,7 @@ pub(crate) struct EntryTick {
 }
 
 #[derive(Debug, Clone, Copy)]
+/// Scheduler entry translated for graph execution while preserving stale-tick checks.
 pub(crate) struct ImportedTick {
     /// This binds the tick to a compiled receiver when one exists.
     pub(crate) target: Option<NodeId>,
@@ -492,6 +550,7 @@ pub(crate) struct ImportedTick {
     pub(crate) current_registry_type: Option<u32>,
 }
 
+/// Immutable execution program and its initial state, clock, and imported work.
 pub(crate) struct LoweredCircuit {
     /// This owns the immutable lowered instructions used by graph execution.
     pub(crate) program: CircuitProgram,
@@ -642,6 +701,20 @@ impl CircuitDraft {
             head_piston_buckets[piston.near.index()].push(id);
         }
 
+        let mut dust_path_by_wire = vec![None; self.wires.len()];
+        for (path_index, path) in self.dust_paths.iter().enumerate() {
+            let id =
+                DustPathId::try_from_index(path_index).ok_or(GraphBuildError::TooManyEntries {
+                    table: "dust paths",
+                })?;
+            for &node in path.wires.iter() {
+                let CircuitNodeKind::Wire(wire_index) = self.nodes[node.index()].kind else {
+                    unreachable!("dust path references were validated before lowering");
+                };
+                dust_path_by_wire[wire_index] = Some(id);
+            }
+        }
+
         let state = CircuitState {
             components: self
                 .nodes
@@ -664,6 +737,8 @@ impl CircuitDraft {
             contacts: self.contacts.into_boxed_slice(),
             routes: self.routes.into_boxed_slice(),
             wires: self.wires.into_boxed_slice(),
+            dust_paths: self.dust_paths.into_boxed_slice(),
+            dust_path_by_wire: dust_path_by_wire.into_boxed_slice(),
             sites: self.sites.into_boxed_slice(),
             pistons: self.pistons.into_boxed_slice(),
             resources: self.resources.into_boxed_slice(),
@@ -699,6 +774,7 @@ impl CircuitDraft {
             ("guards", self.guards.len()),
             ("routes", self.routes.len()),
             ("wires", self.wires.len()),
+            ("dust paths", self.dust_paths.len()),
             ("wire relations", self.wire_relations.len()),
         ] {
             if u32::try_from(len).is_err() {
@@ -710,10 +786,129 @@ impl CircuitDraft {
         self.validate_guards()?;
         self.validate_sites_and_wires()?;
         self.validate_wire_relations()?;
+        self.validate_dust_paths()?;
         self.validate_contacts_and_pistons()?;
         self.validate_routes()?;
         self.validate_links()?;
         self.validate_power()?;
+        Ok(())
+    }
+
+    fn validate_dust_paths(&self) -> Result<(), GraphBuildError> {
+        let mut assigned = vec![false; self.wires.len()];
+        for (path_index, path) in self.dust_paths.iter().enumerate() {
+            if !(2..=3).contains(&path.wires.len()) {
+                return Err(GraphBuildError::InvalidDustPath {
+                    path: path_index,
+                    reason: "path length must be two or three wires",
+                });
+            }
+            check_id("nodes", path.input_node.index(), self.nodes.len())?;
+            let input_site = self.sites.get(path.input_site.index()).ok_or(
+                GraphBuildError::InvalidReference {
+                    table: "sites",
+                    index: path.input_site.index(),
+                    len: self.sites.len(),
+                },
+            )?;
+            if input_site.source != SiteSource::Component(path.input_node)
+                || !matches!(
+                    self.nodes[path.input_node.index()].kind,
+                    CircuitNodeKind::Electrical(_)
+                )
+                || self.nodes[path.input_node.index()].raw_state.is_none()
+            {
+                return Err(GraphBuildError::InvalidDustPath {
+                    path: path_index,
+                    reason: "input site is not owned by an electrical component",
+                });
+            }
+            check_id("nodes", path.wires[0].index(), self.nodes.len())?;
+            let first_position = self.nodes[path.wires[0].index()].position.ok_or(
+                GraphBuildError::InvalidDustPath {
+                    path: path_index,
+                    reason: "wire positions are required",
+                },
+            )?;
+            if input_site.position != first_position.offset(path.input_face) {
+                return Err(GraphBuildError::InvalidDustPath {
+                    path: path_index,
+                    reason: "input site is not directly adjacent on the declared face",
+                });
+            }
+            if !matches!(
+                path.input_face,
+                BlockFace::North | BlockFace::South | BlockFace::East | BlockFace::West
+            ) || !self.power_links.iter().any(|link| {
+                link.from == path.input_site
+                    && link.from_port == PowerPort::Weak(path.input_face)
+                    && link.to
+                        == (PowerTarget::Input {
+                            node: path.wires[0],
+                            port: InputPort::Main,
+                        })
+                    && link.face == path.input_face
+                    && link.attenuation == 0
+                    && self.guards.get(link.guard.index()) == Some(&Guard::Always)
+            }) {
+                return Err(GraphBuildError::InvalidDustPath {
+                    path: path_index,
+                    reason: "direct ingress power binding is missing or non-horizontal",
+                });
+            }
+            let mut previous: Option<BlockPos> = None;
+            let mut axis = None;
+            for &node in path.wires.iter() {
+                check_id("nodes", node.index(), self.nodes.len())?;
+                let CircuitNodeKind::Wire(wire_index) = self.nodes[node.index()].kind else {
+                    return Err(GraphBuildError::InvalidDustPath {
+                        path: path_index,
+                        reason: "path contains a non-wire node",
+                    });
+                };
+                let wire = self
+                    .wires
+                    .get(wire_index)
+                    .ok_or(GraphBuildError::InvalidReference {
+                        table: "wires",
+                        index: wire_index,
+                        len: self.wires.len(),
+                    })?;
+                if wire.node != node || assigned[wire_index] {
+                    return Err(GraphBuildError::InvalidDustPath {
+                        path: path_index,
+                        reason: "wire is mismatched or assigned to multiple paths",
+                    });
+                }
+                assigned[wire_index] = true;
+                let position =
+                    self.nodes[node.index()]
+                        .position
+                        .ok_or(GraphBuildError::InvalidDustPath {
+                            path: path_index,
+                            reason: "wire positions are required",
+                        })?;
+                if let Some(previous) = previous {
+                    let dx = position.x - previous.x;
+                    let dz = position.z - previous.z;
+                    let this_axis = if position.y == previous.y && dx.abs() == 1 && dz == 0 {
+                        Some(0)
+                    } else if position.y == previous.y && dz.abs() == 1 && dx == 0 {
+                        Some(1)
+                    } else {
+                        None
+                    };
+                    if this_axis.is_none() || axis.is_some_and(|axis| Some(axis) != this_axis) {
+                        return Err(GraphBuildError::InvalidDustPath {
+                            path: path_index,
+                            reason: "wires are not a straight horizontal path",
+                        });
+                    }
+                    axis = this_axis;
+                }
+                previous = Some(position);
+            }
+        }
         Ok(())
     }
 
@@ -1503,6 +1698,7 @@ fn check_id(table: &'static str, index: usize, len: usize) -> Result<(), GraphBu
 }
 
 #[derive(Debug)]
+/// Structural validation failures encountered while building or lowering a graph.
 pub(crate) enum GraphBuildError {
     PreparationMemoryLimit {
         stage: &'static str,
@@ -1524,6 +1720,10 @@ pub(crate) enum GraphBuildError {
     InvalidPowerAttenuation {
         from: SiteId,
         attenuation: u8,
+    },
+    InvalidDustPath {
+        path: usize,
+        reason: &'static str,
     },
     InvalidNodeState {
         node: NodeId,
@@ -1616,6 +1816,9 @@ impl std::fmt::Display for GraphBuildError {
                 "power source site {} has attenuation {attenuation}; expected 0..15",
                 from.index()
             ),
+            Self::InvalidDustPath { path, reason } => {
+                write!(f, "dust path {path} is invalid: {reason}")
+            }
             Self::InvalidNodeState { node } => {
                 write!(
                     f,
@@ -1722,6 +1925,7 @@ impl std::fmt::Display for GraphBuildError {
 impl std::error::Error for GraphBuildError {}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+/// Immutable tables used by the graph executor after lowering.
 pub(crate) struct CircuitProgram {
     nodes: Box<[NodeSpec]>,
     power_links: Box<[PowerLink]>,
@@ -1735,6 +1939,10 @@ pub(crate) struct CircuitProgram {
     contacts: Box<[ContactSpec]>,
     routes: Box<[Route]>,
     wires: Box<[WirePlan]>,
+    /// These immutable certificates select the local power calculation for proven wire paths.
+    dust_paths: Box<[DustPathPlan]>,
+    /// This binds each original wire plan to its optional dust-path certificate.
+    dust_path_by_wire: Box<[Option<DustPathId>]>,
     sites: Box<[SiteSpec]>,
     pistons: Box<[PistonSpec]>,
     resources: Box<[ResourceSpec]>,
@@ -1811,6 +2019,18 @@ impl CircuitProgram {
         &self.wires
     }
 
+    pub(crate) fn dust_paths(&self) -> &[DustPathPlan] {
+        &self.dust_paths
+    }
+
+    pub(crate) fn dust_path_for_wire(&self, node: NodeId) -> Option<&DustPathPlan> {
+        let CircuitNodeKind::Wire(wire_index) = self.nodes.get(node.index())?.kind else {
+            return None;
+        };
+        let id = self.dust_path_by_wire.get(wire_index).copied().flatten()?;
+        self.dust_paths.get(id.index())
+    }
+
     pub(crate) fn pistons(&self) -> &[PistonSpec] {
         &self.pistons
     }
@@ -1881,6 +2101,7 @@ impl CircuitProgram {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+/// Mutable component, piston, and resource state paired with a circuit program.
 pub(crate) struct CircuitState {
     pub(crate) components: Box<[ComponentState]>,
     pub(crate) pistons: Box<[PistonState]>,
@@ -1888,6 +2109,7 @@ pub(crate) struct CircuitState {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+/// Properties captured from the block occupying a compiled site.
 pub(crate) enum ObservedProperties {
     Passive,
     Electrical { powered: bool, locked: bool },
@@ -1897,6 +2119,7 @@ pub(crate) enum ObservedProperties {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+/// Captured profile and callback receiver for one observed contact.
 pub(crate) struct ObservedSite {
     pub(crate) profile: Option<ProfileId>,
     pub(crate) receiver: Option<CallbackReceiver>,
@@ -1904,6 +2127,7 @@ pub(crate) struct ObservedSite {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+/// One sampled neighbor used by the runtime wire walk.
 pub(crate) struct WalkSite {
     pub(crate) observed: ObservedSite,
     pub(crate) visited: bool,
@@ -2120,6 +2344,7 @@ mod tests {
                 shape_route: None,
                 turbo_route: None,
             }],
+            dust_paths: vec![],
             wire_relations: vec![],
             sites: vec![SiteSpec {
                 position: BlockPos::new(0, 0, 0),

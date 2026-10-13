@@ -303,20 +303,17 @@ impl Scoreboard {
 
     pub fn set_redpiler_options(&mut self, players: &[Player], options: &CompilerOptions) {
         self.compiler_flags.clear();
-        if options.optimize {
-            self.compiler_flags.push("optimize".to_owned());
-        }
-        if options.export {
-            self.compiler_flags.push("export".to_owned());
+        if options.optimization_level != Some(0) {
+            self.compiler_flags.push(match options.optimization_level {
+                Some(level) => format!("O{level}"),
+                None => "Omax".to_owned(),
+            });
         }
         if options.io_only {
             self.compiler_flags.push("io-only".to_owned());
         }
         if options.update {
             self.compiler_flags.push("update".to_owned());
-        }
-        if options.export_dot_graph {
-            self.compiler_flags.push("export-dot".to_owned());
         }
         self.refresh_lines(players);
     }
@@ -399,11 +396,9 @@ mod tests {
         board.set_redpiler_options(
             &[],
             &CompilerOptions {
-                optimize: true,
-                export: true,
+                optimization_level: None,
                 io_only: true,
                 update: true,
-                export_dot_graph: true,
                 ..Default::default()
             },
         );

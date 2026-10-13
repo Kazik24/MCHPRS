@@ -7,6 +7,7 @@ use mchprs_world::{TickEntry, TickPriority};
 pub(crate) const NUM_QUEUES: usize = 32;
 
 #[derive(Debug, Clone)]
+/// FIFO tick queues partitioned by tick priority.
 pub struct Queues<T>([VecDeque<T>; TickPriority::COUNT]);
 
 impl<T> Queues<T> {
@@ -63,6 +64,7 @@ impl<T> Queues<T> {
 }
 
 #[derive(Debug, Clone)]
+/// A 32-slot ring scheduler for delayed, priority-ordered work.
 pub struct TickScheduler<T> {
     queues_deque: [Queues<T>; NUM_QUEUES],
     pos: usize,
@@ -84,6 +86,7 @@ impl<T> Default for TickScheduler<T> {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+/// A scheduled block tick identified by position and optional registry type.
 pub struct ScheduledBlockTick {
     pub pos: BlockPos,
     pub block_type: Option<u32>,

@@ -28,6 +28,7 @@ use mchprs_blocks::blocks::Block;
 use rustc_hash::{FxHashMap, FxHashSet, FxHasher};
 use std::hash::{Hash, Hasher};
 
+/// Removes redundant guards and merges compatible update routes.
 pub(crate) struct GuardAndUpdateReduction;
 
 impl GraphPass for GuardAndUpdateReduction {
@@ -609,21 +610,27 @@ mod tests {
     use mchprs_blocks::BlockPos;
 
     #[test]
-    fn empty_pipeline_retains_general_graph_and_optimize_selects_this_pass() {
-        assert!(
-            super::super::default_graph_pipeline(&CompilerOptions::default())
-                .entries
-                .is_empty()
-        );
+    fn optimization_levels_select_pass_tiers() {
+        let unoptimized = super::super::default_graph_pipeline(&CompilerOptions::default());
+        assert_eq!(unoptimized.entries.len(), 1);
+        assert!(!unoptimized.entries[0].enabled);
+
         let optimized = super::super::default_graph_pipeline(&CompilerOptions {
-            optimize: true,
+            optimization_level: Some(1),
             ..Default::default()
         });
         assert_eq!(optimized.entries.len(), 1);
+        assert!(optimized.entries[0].enabled);
         assert_eq!(
             optimized.entries[0].pass.name(),
             "guard-and-update-reduction"
         );
+
+        let max_optimized = super::super::default_graph_pipeline(&CompilerOptions {
+            optimization_level: None,
+            ..Default::default()
+        });
+        assert!(max_optimized.entries.iter().all(|entry| entry.enabled));
     }
 
     #[test]
@@ -926,7 +933,7 @@ mod tests {
         super::super::run_graph_pipeline(
             &mut graph,
             &CompilerOptions {
-                optimize: true,
+                optimization_level: None,
                 ..Default::default()
             },
             &entry,
@@ -949,7 +956,7 @@ mod tests {
         let monitor = TaskMonitor::default();
         monitor.cancel();
         let options = CompilerOptions {
-            optimize: true,
+            optimization_level: None,
             ..Default::default()
         };
         let entry = EntryState {
@@ -968,7 +975,7 @@ mod tests {
     fn run_pass(graph: &mut CompileGraph) {
         let monitor = TaskMonitor::default();
         let options = CompilerOptions {
-            optimize: true,
+            optimization_level: None,
             ..Default::default()
         };
         let entry = EntryState {
@@ -1036,6 +1043,7 @@ mod tests {
                 deliveries: Vec::new().into_boxed_slice(),
             }],
             wires: Vec::new(),
+            dust_paths: Vec::new(),
             wire_relations: Vec::new(),
             sites: vec![SiteSpec {
                 position,

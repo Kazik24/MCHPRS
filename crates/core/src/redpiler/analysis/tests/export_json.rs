@@ -12,11 +12,16 @@ use serde_json::Value;
 use std::cell::Cell;
 
 fn exported(world: &PlotWorld) -> adapter::GraphExport {
+    exported_with_options(world, &CompilerOptions::default())
+}
+
+fn exported_with_options(world: &PlotWorld, options: &CompilerOptions) -> adapter::GraphExport {
     let ticks = world.scheduler().iter_entries().collect::<Vec<_>>();
     adapter::prepare(
         world,
         world.get_corners(),
         &ticks,
+        options,
         &crate::redpiler::TaskMonitor::default(),
         AnalysisLimits::default(),
     )
@@ -35,7 +40,7 @@ fn prepared_graph_export(world: &PlotWorld, optimize: bool) -> (CompileGraph, Ve
     )
     .unwrap();
     let options = CompilerOptions {
-        optimize,
+        optimization_level: if optimize { None } else { Some(0) },
         ..Default::default()
     };
     let pipeline = passes::default_graph_pipeline(&options);
@@ -174,6 +179,7 @@ fn electrical_preparation_stops_after_cancellation_and_export_reports_it() {
         &world,
         bounds,
         &[],
+        &CompilerOptions::default(),
         &monitor,
         AnalysisLimits::default(),
         &directory,
@@ -210,6 +216,7 @@ fn electrical_graph_expansion_obeys_the_preparation_budget() {
         &world,
         (lamp, lamp),
         &[],
+        &CompilerOptions::default(),
         &TaskMonitor::default(),
         AnalysisLimits {
             max_cells: 1,
@@ -295,52 +302,74 @@ fn callback_preparation_stops_reading_after_cancellation() {
 
 #[test]
 fn adder_1bit_fixture_matches_graph_json() {
-    let bytes = adder_1bit_export();
-    assert_eq!(bytes, std::fs::read(adder_1bit_export_path()).unwrap());
-    let document: Value = serde_json::from_slice(&bytes).unwrap();
-    assert_eq!(document["version"]["major"], 1);
-    assert_eq!(document["stage"], "callback_draft");
-    assert!(!document["graph"]["routes"].as_array().unwrap().is_empty());
-    let graph = &document["graph"];
-    assert!(!graph["callback_links"].as_array().unwrap().is_empty());
-    assert!(
-        graph["callback_links"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .any(|link| {
-                link["kind"] == "update"
-                    && graph["nodes"]
-                        .as_array()
-                        .unwrap()
-                        .iter()
-                        .any(|node| node["id"] == link["from"] && node["kind"]["kind"] == "piston")
-                    && graph["nodes"]
-                        .as_array()
-                        .unwrap()
-                        .iter()
-                        .any(|node| node["id"] == link["to"] && node["kind"]["kind"] == "observer")
-            }),
-        "the adder export retains direct piston-to-observer updates"
+    for level in 0..=crate::redpiler::MAX_OPTIMIZATION_LEVEL {
+        let bytes = adder_1bit_export(Some(level));
+        assert_eq!(bytes, std::fs::read(adder_1bit_export_path(level)).unwrap());
+        let document: Value = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(document["version"]["major"], 1);
+        assert_eq!(document["stage"], "callback_draft");
+        assert!(!document["graph"]["routes"].as_array().unwrap().is_empty());
+        let graph = &document["graph"];
+        assert!(!graph["callback_links"].as_array().unwrap().is_empty());
+        assert!(
+            graph["callback_links"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|link| {
+                    link["kind"] == "update"
+                        && graph["nodes"].as_array().unwrap().iter().any(|node| {
+                            node["id"] == link["from"] && node["kind"]["kind"] == "piston"
+                        })
+                        && graph["nodes"].as_array().unwrap().iter().any(|node| {
+                            node["id"] == link["to"] && node["kind"]["kind"] == "observer"
+                        })
+                }),
+            "the adder export retains direct piston-to-observer updates"
+        );
+        assert!(document["trace"].is_null());
+    }
+    assert_eq!(
+        adder_1bit_export(None),
+        adder_1bit_export(Some(crate::redpiler::MAX_OPTIMIZATION_LEVEL))
     );
-    assert!(document["trace"].is_null());
 }
 
 #[test]
-#[ignore = "regenerates the checked-in ADDER_1BIT graph JSON fixture"]
-fn write_adder_1bit_graph_json_fixture() {
-    std::fs::create_dir_all(adder_1bit_export_path().parent().unwrap()).unwrap();
-    std::fs::write(adder_1bit_export_path(), adder_1bit_export()).unwrap();
+#[ignore = "regenerates the checked-in ADDER_1BIT graph JSON fixtures for every optimization level"]
+fn write_adder_1bit_graph_json_fixtures() {
+    std::fs::create_dir_all(adder_1bit_export_path(0).parent().unwrap()).unwrap();
+    for level in 0..=crate::redpiler::MAX_OPTIMIZATION_LEVEL {
+        std::fs::write(
+            adder_1bit_export_path(level),
+            adder_1bit_export(Some(level)),
+        )
+        .unwrap();
+    }
 }
 
-fn adder_1bit_export() -> Vec<u8> {
+fn adder_1bit_export(level: Option<usize>) -> Vec<u8> {
     let world = geometry_io_fixture("ADDER_1BIT.schem");
-    exported(&world).to_bytes().unwrap()
+    exported_with_options(
+        &world,
+        &CompilerOptions {
+            optimization_level: level,
+            ..Default::default()
+        },
+    )
+    .to_bytes()
+    .unwrap()
 }
 
-fn adder_1bit_export_path() -> std::path::PathBuf {
+fn adder_1bit_export_path(level: usize) -> std::path::PathBuf {
+    let name = if level == 0 {
+        "adder-1bit.graph.json".to_owned()
+    } else {
+        format!("adder-1bit-o{level}.graph.json")
+    };
     std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../../docs/notes/redpiler-pistons-v4/fixtures/adder-1bit.graph.json")
+        .join("../../docs/notes/redpiler-pistons-v4/fixtures")
+        .join(name)
 }
 
 fn site_at(graph: &Value, position: BlockPos) -> String {
@@ -469,6 +498,7 @@ fn pinned_sticky_shared_graph_export_matches_the_pipeline_artifact() {
         &world,
         world.get_corners(),
         &ticks,
+        &CompilerOptions::default(),
         &monitor,
         AnalysisLimits::default(),
     )
@@ -764,6 +794,7 @@ fn failed_preparation_creates_no_export_and_preserves_world_and_ticks() {
         &world,
         (BASE, BlockPos::new(BASE.x, -1, BASE.z)),
         &ticks,
+        &CompilerOptions::default(),
         &crate::redpiler::TaskMonitor::default(),
         AnalysisLimits::default(),
         &directory,

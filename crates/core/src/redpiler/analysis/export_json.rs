@@ -107,6 +107,7 @@ struct GraphTablesDto {
     resources: Vec<ResourceDto>,
     power_links: Vec<PowerLinkDto>,
     wire_plans: Vec<WirePlanDto>,
+    dust_paths: Vec<DustPathDto>,
     wire_relations: Vec<WireRelationDto>,
     comparator_plans: Vec<ComparatorPlanDto>,
     callback_links: Vec<CallbackLinkDto>,
@@ -364,6 +365,15 @@ struct WirePlanDto {
     canonical_neighbors: Vec<String>,
     shape_route: Option<String>,
     turbo_route: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+struct DustPathDto {
+    id: String,
+    input_node: String,
+    input_site: String,
+    input_face: String,
+    wires: Vec<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -813,21 +823,21 @@ impl GraphExport {
     }
 }
 
-/// prepare builds a read-only electrical draft and preserves any preparation failure.
+/// Prepare a read-only graph with the same optimization tiers used by compilation.
 pub(crate) fn prepare<W: World>(
     world: &W,
     bounds: (BlockPos, BlockPos),
     ticks: &[mchprs_world::TickEntry],
+    options: &CompilerOptions,
     monitor: &TaskMonitor,
     limits: AnalysisLimits,
 ) -> Result<GraphExport, ExportError> {
     let mut prepared = passes::rich::prepare(world, bounds, ticks.to_vec(), monitor, limits)
         .map_err(map_preparation_error)?;
-    let options = CompilerOptions::default();
-    let pipeline = passes::default_graph_pipeline(&options);
+    let pipeline = passes::default_graph_pipeline(options);
     passes::run_graph_pipeline(
         &mut prepared.graph,
-        &options,
+        options,
         &prepared.entry,
         &pipeline,
         monitor,
@@ -845,13 +855,14 @@ pub(crate) fn prepare_and_write<W: World>(
     world: &W,
     bounds: (BlockPos, BlockPos),
     ticks: &[mchprs_world::TickEntry],
+    options: &CompilerOptions,
     monitor: &TaskMonitor,
     limits: AnalysisLimits,
     directory: &Path,
     plot_x: i32,
     plot_z: i32,
 ) -> Result<(PathBuf, ExportCounts), ExportError> {
-    let export = prepare(world, bounds, ticks, monitor, limits)?;
+    let export = prepare(world, bounds, ticks, options, monitor, limits)?;
     let counts = export.counts();
     let bytes = export.to_bytes()?;
     check_export_cancellation(monitor)?;
@@ -1056,6 +1067,22 @@ pub(super) fn from_graph(
                 turbo_route: item
                     .turbo_route
                     .map(|route| typed_id("route", route.index())),
+            })
+            .collect(),
+        dust_paths: source
+            .dust_paths
+            .iter()
+            .enumerate()
+            .map(|(index, path)| DustPathDto {
+                id: typed_id("dust_path", index),
+                input_node: typed_id("node", path.input_node.index()),
+                input_site: typed_id("site", path.input_site.index()),
+                input_face: face(path.input_face),
+                wires: path
+                    .wires
+                    .iter()
+                    .map(|node| typed_id("node", node.index()))
+                    .collect(),
             })
             .collect(),
         wire_relations: source

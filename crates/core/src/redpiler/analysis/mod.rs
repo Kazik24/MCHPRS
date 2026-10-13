@@ -22,6 +22,7 @@ pub(crate) const MAX_GRAPH_PREPARATION_BYTES: usize = 1024 * 1024 * 1024;
 mod tests;
 
 #[derive(Debug, Clone, Copy)]
+/// Limits the world scan and piston expansion performed during analysis.
 pub struct AnalysisLimits {
     /// Bound inspected cells (including air) and subsequent graph preparation work.
     pub max_cells: usize,
@@ -49,6 +50,7 @@ impl AnalysisLimits {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+/// A failure that prevents bounded analysis or graph preparation from completing.
 pub enum AnalysisError {
     Cancelled,
     InvalidBounds,
@@ -134,34 +136,28 @@ impl<'a> PreparationBudget<'a> {
 }
 
 #[derive(Debug, Clone, Serialize)]
+/// A condition that makes the selected world state unsuitable for graph compilation.
 pub enum AdmissionIssue {
+    /// A block is recognized but its graph behavior is not implemented.
     UnsupportedComponent {
         pos: BlockPos,
         block: u32,
         reason: &'static str,
     },
-    MissingPistonHead {
-        piston: BlockPos,
-        head: BlockPos,
-    },
-    UnownedPistonHead {
-        pos: BlockPos,
-    },
-    MovingPiston {
-        pos: BlockPos,
-    },
-    EntryPhase {
-        phase: AdvancePhase,
-    },
-    PendingPistonEvents {
-        count: usize,
-    },
-    PendingPistonMotions {
-        count: usize,
-    },
-    PendingMovementWork {
-        count: usize,
-    },
+    /// An extended piston has no head at the expected position.
+    MissingPistonHead { piston: BlockPos, head: BlockPos },
+    /// A piston head in the selection does not belong to an extended piston.
+    UnownedPistonHead { pos: BlockPos },
+    /// A piston is mid-animation and must be handled by the interpreter.
+    MovingPiston { pos: BlockPos },
+    /// The selection was inspected while the world was not between ticks.
+    EntryPhase { phase: AdvancePhase },
+    /// Piston events are queued at the compilation boundary.
+    PendingPistonEvents { count: usize },
+    /// Piston motions are active at the compilation boundary.
+    PendingPistonMotions { count: usize },
+    /// Piston movement work remains unfinished at the compilation boundary.
+    PendingMovementWork { count: usize },
 }
 
 impl fmt::Display for AdmissionIssue {
@@ -201,7 +197,9 @@ pub(crate) fn unsupported_component_reason(block: Block) -> Option<&'static str>
 }
 
 #[derive(Debug, Clone, Serialize)]
+/// Results of scanning a selection for graph compilation support and limits.
 pub struct AnalysisReport {
+    /// Version of the serialized report format.
     pub schema_version: u32,
     pub bounds: (BlockPos, BlockPos),
     pub inspected_cells: usize,

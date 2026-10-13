@@ -4,6 +4,7 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 #[derive(Default)]
+/// Tracks cancellation, progress, messages, and graph statistics during compilation.
 pub struct TaskMonitor {
     cancelled: AtomicBool,
     max_progress: AtomicUsize,

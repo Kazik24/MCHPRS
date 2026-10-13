@@ -128,39 +128,6 @@ fn redpiler_activation_stages_barrel_close_notifications() {
 }
 
 #[test]
-fn failed_redpiler_activation_preserves_open_barrels_and_container_state() {
-    use mchprs_blocks::BlockFacing;
-    use mchprs_blocks::block_entities::ContainerType;
-
-    let (mut plot, _peer) = fixture(false);
-    let barrel = BlockPos::new(34, 20, 32);
-    plot.world.set_block(
-        barrel,
-        Block::Barrel {
-            facing: BlockFacing::North,
-            open: true,
-        },
-    );
-    plot.world.set_block(
-        BlockPos::new(36, 20, 32),
-        Block::from_name("piston").unwrap(),
-    );
-    plot.players[0].open_container(barrel, &[], ContainerType::Barrel);
-
-    plot.start_redpiler(CompilerOptions {
-        export: true,
-        ..Default::default()
-    });
-
-    assert!(!plot.redpiler.is_active());
-    assert!(plot.players[0].open_container.is_some());
-    assert!(matches!(
-        plot.world.get_block(barrel),
-        Block::Barrel { open: true, .. }
-    ));
-}
-
-#[test]
 fn pressure_plate_enter_then_leave_before_flush_releases_graph_input() {
     use mchprs_blocks::blocks::RedstonePiston;
 
@@ -458,7 +425,7 @@ fn redpiler_flag_suggestions_reach_the_chat_client() {
     for compressed in [false, true] {
         let (mut plot, mut peer) = fixture(compressed);
         plot.players[0].set_test_permissions(&["mchprs.access.commands"]);
-        let text = "/rp c --optimize --exp";
+        let text = "/rp c -O";
         plot.handle_tab_complete(
             STabComplete {
                 transaction_id: 42,
@@ -473,9 +440,11 @@ fn redpiler_flag_suggestions_reach_the_chat_client() {
             frame.read_varint().unwrap(),
             text.rfind(' ').unwrap() as i32 + 1
         );
-        assert_eq!(frame.read_varint().unwrap(), 5);
         assert_eq!(frame.read_varint().unwrap(), 2);
-        assert_eq!(frame.read_string().unwrap(), "--export");
+        assert_eq!(frame.read_varint().unwrap(), 2);
+        assert_eq!(frame.read_string().unwrap(), "-O0");
+        assert!(!frame.read_bool().unwrap());
+        assert_eq!(frame.read_string().unwrap(), "-O1");
         assert!(!frame.read_bool().unwrap());
     }
 }

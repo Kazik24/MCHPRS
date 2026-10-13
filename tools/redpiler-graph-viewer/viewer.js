@@ -347,6 +347,7 @@ function evaluateGuards(data, snapshot) {
       const test = guard.test;
       const piston = pistons.get(test.piston), resource = resources.get(test.resource);
       if (test.kind === 'piston_extended' && typeof piston?.extended === 'boolean') result = piston.extended;
+      else if (test.kind === 'piston_head_present' && typeof piston?.head_present === 'boolean') result = piston.head_present;
       else if (test.kind === 'piston_availability' && piston?.availability !== undefined) result = piston.availability === test.availability;
       else if (test.kind === 'resource_at' && resource?.selected_contact !== undefined) result = resource.selected_contact === test.contact;
       else if (test.kind === 'resource_enabled' && typeof resource?.enabled === 'boolean') result = resource.enabled;

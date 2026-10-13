@@ -1,4 +1,5 @@
 //! Graph preparation pipelines; backends receive prepared execution data.
+pub(crate) mod contract_dust_paths;
 pub(crate) mod rich;
 pub(crate) mod simplify_guards;
 pub(crate) mod utils;
@@ -16,6 +17,7 @@ pub(crate) trait GraphPass {
 }
 
 #[allow(dead_code)]
+/// Shared compilation inputs available to each graph transformation.
 pub(crate) struct PassContext<'a> {
     /// This shares cancellation and progress reporting with compilation.
     pub(crate) monitor: &'a TaskMonitor,
@@ -25,6 +27,7 @@ pub(crate) struct PassContext<'a> {
     pub(crate) entry: &'a EntryState,
 }
 
+/// A graph transformation and whether this pipeline should run it.
 pub(crate) struct PassEntry {
     /// This owns a built-in or developer-defined transformation.
     pub(crate) pass: Box<dyn GraphPass>,
@@ -32,6 +35,7 @@ pub(crate) struct PassEntry {
     pub(crate) enabled: bool,
 }
 
+/// Ordered graph transformations used between preparation and lowering.
 pub(crate) struct PassPipeline {
     /// This preserves the caller-supplied transformation order.
     pub(crate) entries: Vec<PassEntry>,
@@ -53,6 +57,7 @@ impl Default for PassPipeline {
 }
 
 #[derive(Debug)]
+/// Failure while validating or running an ordered graph transformation pipeline.
 pub(crate) enum PassPipelineError {
     /// Cancellation stopped the ordered pass sequence.
     Cancelled,
@@ -144,6 +149,9 @@ pub(crate) fn run_graph_pipeline(
             monitor.inc_progress();
             continue;
         }
+        if name != "contract-static-dust-paths" && !graph.dust_paths.is_empty() {
+            graph.dust_paths.clear();
+        }
         monitor.set_message(name.to_string());
         let start = Instant::now();
         if let Err(message) = item.pass.validate_input(graph) {
@@ -182,16 +190,26 @@ pub(crate) fn run_graph_pipeline(
     Ok(())
 }
 
-/// `--optimize` enables the reviewed guard and ineffective-update reduction.
+/// Pass tiers are declared beside their implementations, ordered by minimum level.
 pub(crate) fn default_graph_pipeline(options: &CompilerOptions) -> PassPipeline {
-    if options.optimize {
-        PassPipeline::new(vec![PassEntry {
-            pass: Box::new(simplify_guards::GuardAndUpdateReduction),
-            enabled: true,
-        }])
-    } else {
-        PassPipeline::default()
+    let level = options.optimization_level.unwrap_or(usize::MAX);
+    let mut entries: Vec<_> = [(
+        1,
+        Box::new(simplify_guards::GuardAndUpdateReduction) as Box<dyn GraphPass>,
+    )]
+    .into_iter()
+    .map(|(minimum_level, pass)| PassEntry {
+        pass,
+        enabled: level >= minimum_level,
+    })
+    .collect();
+    if options.experimental_dust_paths {
+        entries.push(PassEntry {
+            pass: Box::new(contract_dust_paths::ContractDustPaths),
+            enabled: level >= 1,
+        });
     }
+    PassPipeline::new(entries)
 }
 
 #[cfg(test)]
@@ -286,6 +304,7 @@ mod tests {
             contacts: vec![],
             routes: vec![],
             wires: vec![],
+            dust_paths: vec![],
             wire_relations: vec![],
             sites: vec![],
             pistons: vec![],

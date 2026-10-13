@@ -64,20 +64,18 @@ pub(super) fn complete_redpiler(id: i32, text: &str) -> Option<CTabComplete> {
         "--optimize",
         "--io-only",
         "--update",
-        "--export",
-        "--export-dot",
         "--export-json",
         "--graph",
         "-o",
         "-i",
         "-u",
-        "-e",
+        "-O0",
+        "-O1",
     ]
     .into_iter()
     .filter(|flag| flag.starts_with(prefix) && !words[2..].contains(flag))
     .filter(|flag| match *flag {
         "--graph" => analyze,
-        "--export" | "--export-dot" | "-e" => !analyze,
         "--export-json" => analyze,
         _ => true,
     })
@@ -477,12 +475,6 @@ impl Plot {
                     }
                 };
                 if args.contains(&"--export-json") {
-                    if options.export || options.export_dot_graph {
-                        self.players[player].send_error_message(
-                            "Use --export-json separately from the legacy --export flags.",
-                        );
-                        return;
-                    }
                     options.budget_multiplier =
                         self.players[player].compilation_budget_multiplier();
                     let monitor = Arc::new(crate::redpiler::TaskMonitor::default());
@@ -490,6 +482,7 @@ impl Plot {
                         &self.world,
                         self.world.get_corners(),
                         &ticks,
+                        &options,
                         &monitor,
                         crate::redpiler::analysis::AnalysisLimits::for_budget(
                             options.budget_multiplier,
@@ -500,7 +493,7 @@ impl Plot {
                     );
                     match result {
                         Ok((path, counts)) => self.players[player].send_system_message(&format!(
-                            "Graph JSON v1 electrical_draft written to {} ({} nodes, {} power links, {} sites, {} guards, {} resources)",
+                            "Graph JSON v1 callback_draft written to {} ({} nodes, {} power links, {} sites, {} guards, {} resources)",
                             path.display(), counts.nodes, counts.power_links, counts.sites,
                             counts.guards, counts.resources,
                         )),
@@ -512,12 +505,6 @@ impl Plot {
                             ));
                         }
                     }
-                    return;
-                }
-                if options.export || options.export_dot_graph {
-                    self.players[player].send_error_message(
-                        "Export flags are unavailable during read-only analysis.",
-                    );
                     return;
                 }
                 options.budget_multiplier = self.players[player].compilation_budget_multiplier();
@@ -2306,12 +2293,11 @@ mod security_tests {
                     "--optimize",
                     "--io-only",
                     "--update",
-                    "--export",
-                    "--export-dot",
                     "-o",
                     "-i",
                     "-u",
-                    "-e",
+                    "-O0",
+                    "-O1",
                 ],
             ),
             ("/rp analyze --ex", vec!["--export-json"]),

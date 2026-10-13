@@ -280,14 +280,15 @@ enum PresentationEffect {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+/// A runtime failure that requires falling back from graph execution.
 pub enum GraphExecutionError {
+    /// The selected component kind has no graph execution implementation.
     UnsupportedComponent {
         position: Option<BlockPos>,
         kind: &'static str,
     },
-    CommandHostUnavailable {
-        position: BlockPos,
-    },
+    /// Scheduled command block work reached execution without a world command host.
+    CommandHostUnavailable { position: BlockPos },
 }
 
 impl fmt::Display for GraphExecutionError {
@@ -2105,7 +2106,43 @@ impl GraphBackend {
         self.evaluate_turbo_wire(node)
     }
 
-    fn seed_power(&self, plan: &WirePlan) -> (u8, u8, u8) {
+    fn seed_power(&mut self, plan: &WirePlan) -> (u8, u8, u8) {
+        if let Some((input_site, input_face, is_input, adjacent)) = {
+            self.program.dust_path_for_wire(plan.node).map(|path| {
+                let index = path
+                    .wires
+                    .iter()
+                    .position(|&node| node == plan.node)
+                    .expect("validated dust path contains its wire");
+                let adjacent = [
+                    index.checked_sub(1).map(|index| path.wires[index]),
+                    (index + 1 < path.wires.len()).then(|| path.wires[index + 1]),
+                ];
+                (path.input_site, path.input_face, index == 0, adjacent)
+            })
+        } {
+            let block_power = if is_input {
+                self.power_no_dust(input_site, input_face, None)
+            } else {
+                0
+            };
+            let wire_power = adjacent
+                .into_iter()
+                .flatten()
+                .map(|node| self.wire_state(node).power)
+                .max()
+                .unwrap_or(0);
+            self.counts.dust_path_power_samples_elided += 6 - u64::from(is_input);
+            return (
+                block_power.max(wire_power.saturating_sub(1)),
+                block_power,
+                wire_power,
+            );
+        }
+        self.seed_power_general(plan)
+    }
+
+    fn seed_power_general(&self, plan: &WirePlan) -> (u8, u8, u8) {
         let up_solid = self.live_site(plan.canonical_neighbors[3]).solid;
         let mut block_power = 0;
         let mut wire_power = 0;
@@ -2513,6 +2550,60 @@ impl GraphBackend {
     }
 
     fn turbo_wire_power(
+        &mut self,
+        plan: &WirePlan,
+        ordered: &[SiteId; 24],
+        walk: &WireWalk,
+    ) -> (u8, u8, u8) {
+        if let Some((input_site, input_face, is_input, adjacent)) = {
+            self.program.dust_path_for_wire(plan.node).map(|path| {
+                let index = path
+                    .wires
+                    .iter()
+                    .position(|&node| node == plan.node)
+                    .expect("validated dust path contains its wire");
+                let adjacent = [
+                    index.checked_sub(1).map(|index| path.wires[index]),
+                    (index + 1 < path.wires.len()).then(|| path.wires[index + 1]),
+                ];
+                (path.input_site, path.input_face, index == 0, adjacent)
+            })
+        } {
+            let input_power = if is_input {
+                let captured = &walk
+                    .sites
+                    .get(&input_site)
+                    .expect("wire walk captured its certified input")
+                    .observed;
+                self.power_no_dust(input_site, input_face, Some(captured))
+            } else {
+                0
+            };
+            let mut wire_power = 0;
+            if input_power < 15 {
+                for neighbor in adjacent.into_iter().flatten() {
+                    let site = self.component_sites[neighbor.index()]
+                        .expect("certified neighboring wire has a root site");
+                    let Some(observed) = walk.sites.get(&site).map(|site| &site.observed) else {
+                        return self.turbo_wire_power_general(plan, ordered, walk);
+                    };
+                    let ObservedProperties::Wire(wire) = observed.properties else {
+                        return self.turbo_wire_power_general(plan, ordered, walk);
+                    };
+                    wire_power = wire_power.max(wire.power);
+                }
+            }
+            self.counts.dust_path_power_samples_elided += 6 - u64::from(is_input);
+            return (
+                input_power.max(wire_power.saturating_sub(1)),
+                wire_power,
+                input_power,
+            );
+        }
+        self.turbo_wire_power_general(plan, ordered, walk)
+    }
+
+    fn turbo_wire_power_general(
         &self,
         plan: &WirePlan,
         ordered: &[SiteId; 24],

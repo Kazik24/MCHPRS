@@ -87,6 +87,128 @@ fn recording_graph(world: &PlotWorld, ticks: Vec<TickEntry>) -> GraphBackend {
     backend
 }
 
+fn dust_path_backend(
+    world: &PlotWorld,
+    optimization_level: Option<usize>,
+    dust_paths: bool,
+) -> GraphBackend {
+    let monitor = TaskMonitor::default();
+    let options = crate::redpiler::CompilerOptions {
+        optimization_level,
+        experimental_dust_paths: dust_paths,
+        ..Default::default()
+    };
+    let mut prepared = passes::rich::prepare(
+        world,
+        BOUNDS,
+        world.scheduler().iter_entries().collect(),
+        &monitor,
+        crate::redpiler::analysis::AnalysisLimits::default(),
+    )
+    .unwrap();
+    let pipeline = passes::default_graph_pipeline(&options);
+    passes::run_graph_pipeline(
+        &mut prepared.graph,
+        &options,
+        &prepared.entry,
+        &pipeline,
+        &monitor,
+    )
+    .unwrap();
+    prepared.finish_pipeline_statistics(&monitor);
+    let lowered = prepared.lower(&monitor).unwrap();
+    GraphBackend::from_lowered(lowered, &monitor).unwrap()
+}
+
+fn captured_wire_walk(backend: &GraphBackend, plan: &WirePlan) -> WireWalk {
+    let mut walk = WireWalk::new();
+    let root = backend.component_sites[plan.node.index()].unwrap();
+    for site in plan.canonical_neighbors.into_iter().chain([root]) {
+        let observed = backend.live_site(site).observed();
+        walk.sites.insert(
+            site,
+            WalkSite {
+                observed,
+                visited: site == root,
+                x_bias: 0,
+                z_bias: 0,
+                layer: 0,
+                heading: None,
+            },
+        );
+    }
+    walk
+}
+
+fn analog_dust_world() -> PlotWorld {
+    let mut world = empty_world();
+    for x in 3..=9 {
+        world.set_block(BlockPos::new(x, 19, 5), Block::Stone {});
+    }
+    world.set_block(
+        LEVER_POS,
+        Block::RedstoneComparator {
+            comparator: RedstoneComparator::new(
+                BlockDirection::West,
+                ComparatorMode::Compare,
+                false,
+            ),
+        },
+    );
+    world.set_block_entity(
+        LEVER_POS,
+        BlockEntity::Comparator {
+            output_strength: 15,
+        },
+    );
+    for distance in 0..3 {
+        let position = NEXT_POS + BlockPos::new(distance, 0, 0);
+        world.set_block(
+            position,
+            Block::RedstoneWire {
+                wire: RedstoneWire {
+                    power: 15 - distance as u8,
+                    ..Default::default()
+                },
+            },
+        );
+    }
+    for distance in 0..3 {
+        let position = NEXT_POS + BlockPos::new(distance, 0, 0);
+        let Block::RedstoneWire { wire } = world.get_block(position) else {
+            unreachable!();
+        };
+        world.set_block(
+            position,
+            Block::RedstoneWire {
+                wire: redstone::wire::get_regulated_sides(wire, &world, position),
+            },
+        );
+    }
+    world
+}
+
+fn set_analog_dust_state(
+    backend: &mut GraphBackend,
+    input: NodeId,
+    wires: &[NodeId],
+    old_strength: u8,
+    new_strength: u8,
+) {
+    let ComponentState::Electrical(input_state) = &mut backend.state.components[input.index()]
+    else {
+        panic!("analog source must have electrical state");
+    };
+    input_state.powered = new_strength > 0;
+    input_state.output_strength = new_strength;
+    for (distance, &node) in wires.iter().enumerate() {
+        let ComponentState::Wire(wire) = &mut backend.state.components[node.index()] else {
+            panic!("path state must remain owned by its wire node");
+        };
+        wire.power = old_strength.saturating_sub(distance as u8);
+    }
+}
+
 #[test]
 fn test_recording_can_be_toggled_around_a_graph_episode() {
     let world = empty_world();
@@ -98,6 +220,127 @@ fn test_recording_can_be_toggled_around_a_graph_episode() {
     backend.set_test_recording(true);
     backend.tick().unwrap();
     assert!(!backend.trace().is_empty());
+}
+
+#[test]
+fn dust_path_seed_and_captured_queries_match_for_all_strength_transitions() {
+    let world = analog_dust_world();
+    let mut general = dust_path_backend(&world, Some(0), false);
+    let mut contracted = dust_path_backend(&world, None, true);
+    let path = contracted.program.dust_paths();
+    assert_eq!(path.len(), 1);
+    let wires = path[0].wires.to_vec();
+    let general_wires = wires.clone();
+    let general_input = general.positions[&LEVER_POS];
+    let contracted_input = contracted.positions[&LEVER_POS];
+
+    for old_strength in 0..=15 {
+        for new_strength in 0..=15 {
+            set_analog_dust_state(
+                &mut general,
+                general_input,
+                &general_wires,
+                old_strength,
+                new_strength,
+            );
+            set_analog_dust_state(
+                &mut contracted,
+                contracted_input,
+                &wires,
+                old_strength,
+                new_strength,
+            );
+            for &node in &wires {
+                let general_plan = general.wire_plan(node).clone();
+                let contracted_plan = contracted.wire_plan(node).clone();
+                assert_eq!(
+                    contracted.seed_power(&contracted_plan),
+                    general.seed_power_general(&general_plan),
+                    "seed old={old_strength} new={new_strength} wire={node:?}"
+                );
+                let mut general_walk = captured_wire_walk(&general, &general_plan);
+                let mut contracted_walk = captured_wire_walk(&contracted, &contracted_plan);
+                let general_ordered = general.identify_wire_neighbors(node, &mut general_walk);
+                let contracted_ordered =
+                    contracted.identify_wire_neighbors(node, &mut contracted_walk);
+                assert_eq!(contracted_ordered, general_ordered);
+                assert_eq!(
+                    contracted.turbo_wire_power(
+                        &contracted_plan,
+                        &contracted_ordered,
+                        &contracted_walk,
+                    ),
+                    general.turbo_wire_power_general(
+                        &general_plan,
+                        &general_ordered,
+                        &general_walk,
+                    ),
+                    "captured old={old_strength} new={new_strength} wire={node:?}"
+                );
+            }
+        }
+    }
+
+    set_analog_dust_state(&mut general, general_input, &general_wires, 7, 12);
+    set_analog_dust_state(&mut contracted, contracted_input, &wires, 7, 12);
+    let mut captured_general = Vec::new();
+    let mut captured_contracted = Vec::new();
+    for &node in &wires {
+        let general_plan = general.wire_plan(node).clone();
+        let contracted_plan = contracted.wire_plan(node).clone();
+        let mut general_walk = captured_wire_walk(&general, &general_plan);
+        let mut contracted_walk = captured_wire_walk(&contracted, &contracted_plan);
+        let general_ordered = general.identify_wire_neighbors(node, &mut general_walk);
+        let contracted_ordered = contracted.identify_wire_neighbors(node, &mut contracted_walk);
+        captured_general.push((general_plan, general_walk, general_ordered));
+        captured_contracted.push((contracted_plan, contracted_walk, contracted_ordered));
+    }
+    set_analog_dust_state(&mut general, general_input, &general_wires, 1, 4);
+    set_analog_dust_state(&mut contracted, contracted_input, &wires, 1, 4);
+    for (index, node) in wires.iter().copied().enumerate() {
+        let (general_plan, general_walk, general_ordered) = &captured_general[index];
+        let (contracted_plan, contracted_walk, contracted_ordered) = &captured_contracted[index];
+        assert_eq!(
+            contracted.turbo_wire_power(contracted_plan, contracted_ordered, contracted_walk),
+            general.turbo_wire_power_general(general_plan, general_ordered, general_walk),
+            "captured-old/live-new wire={node:?}"
+        );
+    }
+    assert!(contracted.counts.dust_path_power_samples_elided > 0);
+}
+
+#[test]
+fn dust_path_keeps_nested_input_callback_order_and_intermediate_writes() {
+    let world = analog_dust_world();
+    let mut general = dust_path_backend(&world, None, false);
+    let mut contracted = dust_path_backend(&world, None, true);
+    let input = general.positions[&LEVER_POS];
+    let wires = contracted.program.dust_paths()[0].wires.to_vec();
+    general.set_test_recording(true);
+    contracted.set_test_recording(true);
+
+    for strength in [8, 3, 15, 0, 0, 7] {
+        let start = general.callback_order.len();
+        general
+            .set_node(input, false, strength, None, true)
+            .unwrap();
+        contracted
+            .set_node(input, false, strength, None, true)
+            .unwrap();
+        assert_eq!(
+            &contracted.callback_order[start..],
+            &general.callback_order[start..],
+            "callback order at analog strength {strength}"
+        );
+        assert_eq!(contracted.trace(), general.trace());
+        for &node in &wires {
+            assert_eq!(
+                contracted.state.components[node.index()],
+                general.state.components[node.index()],
+                "intermediate wire state at analog strength {strength}"
+            );
+        }
+    }
 }
 
 fn state_at(backend: &GraphBackend, position: BlockPos) -> NodeState {
@@ -227,6 +470,7 @@ fn contact_resource_backend() -> GraphBackend {
         ],
         routes: vec![],
         wires: vec![],
+        dust_paths: vec![],
         wire_relations: vec![],
         sites: vec![
             SiteSpec {
@@ -325,6 +569,7 @@ fn backend_with_unrelated_power_links(unrelated: usize) -> GraphBackend {
         contacts: vec![],
         routes: vec![],
         wires: vec![],
+        dust_paths: vec![],
         wire_relations: vec![],
         sites: vec![
             SiteSpec {
@@ -4465,6 +4710,7 @@ fn site_geometry_guards_use_compiled_profile_facts() {
         contacts: vec![],
         routes: vec![],
         wires: vec![],
+        dust_paths: vec![],
         wire_relations: vec![],
         sites: vec![SiteSpec {
             position: BlockPos::new(0, 0, 0),

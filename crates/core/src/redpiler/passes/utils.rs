@@ -3,7 +3,11 @@
 use crate::redpiler::analysis::{
     AnalysisError, MAX_GRAPH_PREPARATION_BYTES, callbacks, electrical, geometry,
 };
-use crate::redpiler::program_graph::{CompileGraph, GraphBuildError, Guard, GuardId, PowerLink};
+use crate::redpiler::program_graph::{
+    ComparatorInputPlan, CompileGraph, ContactSpec, DustPathId, DustPathPlan, GraphBuildError,
+    Guard, GuardId, NodeSpec, PistonId, PistonSpec, PowerLink, Profile, ResourceId, ResourceSpec,
+    Route, RouteDelivery, SiteSpec, WirePlan,
+};
 use crate::redpiler::{GraphCounts, PassStatistics, PreparationTableStatistics, TaskMonitor};
 use mchprs_blocks::BlockPos;
 use mchprs_blocks::blocks::Block;
@@ -245,7 +249,8 @@ pub(super) fn record_lowering_input_tables(
     graph: &CompileGraph,
 ) -> Result<(), GraphBuildError> {
     use crate::redpiler::program_graph::{
-        ComparatorInputPlan, ContactSpec, NodeSpec, PistonSpec, Profile, ResourceSpec, WirePlan,
+        ComparatorInputPlan, ContactSpec, DustPathPlan, NodeSpec, PistonSpec, Profile,
+        ResourceSpec, WirePlan,
     };
     let contact_variant_bytes = graph
         .contacts
@@ -354,6 +359,17 @@ pub(super) fn record_lowering_input_tables(
             graph.wires.capacity(),
             0,
         ),
+        table::<DustPathPlan>(
+            "lowering input",
+            "dust paths",
+            graph.dust_paths.len(),
+            graph.dust_paths.capacity(),
+            graph
+                .dust_paths
+                .iter()
+                .map(|path| boxed_bytes::<crate::redpiler::program_graph::NodeId>(path.wires.len()))
+                .sum(),
+        ),
         table::<PistonSpec>(
             "lowering input",
             "pistons",
@@ -426,10 +442,6 @@ pub(super) fn record_lowering_input_tables(
 pub(super) fn lowered_table_statistics(
     program: &crate::redpiler::program_graph::CircuitProgram,
 ) -> Vec<PreparationTableStatistics> {
-    use crate::redpiler::program_graph::{
-        ComparatorInputPlan, ContactSpec, Guard, NodeSpec, PistonId, PistonSpec, PowerLink,
-        Profile, ResourceId, ResourceSpec, Route, RouteDelivery, SiteSpec, WirePlan,
-    };
     let routes = program.routes();
     vec![
         table::<NodeSpec>(
@@ -500,6 +512,24 @@ pub(super) fn lowered_table_statistics(
         table::<WirePlan>(
             "lowering",
             "wire plans",
+            program.wires().len(),
+            program.wires().len(),
+            0,
+        ),
+        table::<DustPathPlan>(
+            "lowering",
+            "dust paths",
+            program.dust_paths().len(),
+            program.dust_paths().len(),
+            program
+                .dust_paths()
+                .iter()
+                .map(|path| boxed_bytes::<crate::redpiler::program_graph::NodeId>(path.wires.len()))
+                .sum(),
+        ),
+        table::<Option<DustPathId>>(
+            "lowering",
+            "dust path wire bindings",
             program.wires().len(),
             program.wires().len(),
             0,

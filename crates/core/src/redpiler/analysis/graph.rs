@@ -11,10 +11,10 @@ use std::fmt;
 use std::sync::Arc;
 
 #[derive(Debug)]
+/// Why a candidate graph could not be prepared for inspection.
 pub enum GraphPreparationError {
     Analysis(AnalysisError),
     Entry(AdmissionIssue),
-    UnsupportedExport,
     Graph(String),
 }
 
@@ -23,9 +23,6 @@ impl fmt::Display for GraphPreparationError {
         match self {
             Self::Analysis(error) => error.fmt(f),
             Self::Entry(issue) => issue.fmt(f),
-            Self::UnsupportedExport => {
-                f.write_str("legacy binary and DOT exports cannot represent the unified graph")
-            }
             Self::Graph(error) => f.write_str(error),
         }
     }
@@ -33,12 +30,14 @@ impl fmt::Display for GraphPreparationError {
 impl std::error::Error for GraphPreparationError {}
 
 #[derive(Debug, Serialize)]
+/// Counts of nodes and links in a prepared graph.
 pub struct GraphSummary {
     pub nodes: usize,
     pub links: usize,
 }
 
 #[derive(Debug)]
+/// Prepared graph and admission report, available for inspection before execution.
 pub struct CandidateGraph {
     pub(crate) graph: CompileGraph,
     pub report: AnalysisReport,
@@ -63,9 +62,6 @@ pub fn prepare_candidate_graph(
     options: &CompilerOptions,
     monitor: Arc<TaskMonitor>,
 ) -> Result<CandidateGraph, GraphPreparationError> {
-    if options.export || options.export_dot_graph {
-        return Err(GraphPreparationError::UnsupportedExport);
-    }
     monitor.set_budget_multiplier(options.budget_multiplier);
     let mut prepared = passes::rich::prepare(
         world,
