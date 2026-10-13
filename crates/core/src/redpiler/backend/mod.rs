@@ -23,6 +23,13 @@ impl Runtime {
         }
     }
 
+    #[cfg(feature = "graph-profile")]
+    pub(crate) fn graph_execution_profile(&self) -> Option<super::GraphExecutionProfile> {
+        match self {
+            Self::Graph(backend) => Some(backend.execution_profile()),
+        }
+    }
+
     pub(crate) fn tick(&mut self) -> Result<(), graph::GraphExecutionError> {
         let Self::Graph(backend) = self;
         backend.tick()

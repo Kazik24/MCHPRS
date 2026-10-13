@@ -5,6 +5,8 @@ mod support;
 use mchprs_blocks::BlockPos;
 use mchprs_blocks::blocks::Block;
 use mchprs_core::plot::PlotWorld;
+#[cfg(feature = "graph-profile")]
+use mchprs_core::redpiler::GraphExecutionProfile;
 use mchprs_core::redpiler::{
     BackendKind, Compiler, CompilerOptions, GraphExecutionCounts, TaskMonitor,
 };
@@ -24,6 +26,44 @@ const TEST_GRAPH_COUNTS: GraphExecutionCounts = GraphExecutionCounts {
     piston_actions: 27_884,
     deferred_publications: 27_884,
 };
+
+#[cfg(feature = "graph-profile")]
+fn print_graph_profile(profile: GraphExecutionProfile) {
+    assert_eq!(profile.tick_phases.calls, u64::from(SHORT_ACTIVE_TICKS));
+    assert_eq!(
+        profile.scheduled_drain.calls,
+        u64::from(SHORT_ACTIVE_TICKS) * 2
+    );
+    assert_eq!(profile.piston_actions.calls, u64::from(SHORT_ACTIVE_TICKS));
+    assert_eq!(
+        profile.deferred_connections.calls,
+        u64::from(SHORT_ACTIVE_TICKS)
+    );
+    assert!(profile.route_delivery.calls > 0);
+    assert_eq!(profile.turbo_wire_walk.calls, 32_505);
+    assert!(profile.piston_sample.calls > 0);
+    println!("Graph operation timings (inclusive; nested buckets overlap):");
+    for (name, metric) in [
+        ("tick phases", profile.tick_phases),
+        ("scheduled drain", profile.scheduled_drain),
+        ("piston actions", profile.piston_actions),
+        ("deferred connections", profile.deferred_connections),
+        ("route delivery", profile.route_delivery),
+        ("Turbo wire walk", profile.turbo_wire_walk),
+        ("piston sample", profile.piston_sample),
+    ] {
+        let total_ms = metric.elapsed_ns as f64 / 1_000_000.0;
+        let average_us = if metric.calls == 0 {
+            0.0
+        } else {
+            metric.elapsed_ns as f64 / metric.calls as f64 / 1_000.0
+        };
+        println!(
+            "  {name}: {total_ms:.3} ms / {} calls ({average_us:.3} us per call)",
+            metric.calls
+        );
+    }
+}
 
 struct ShortSample {
     initial: Checkpoint,
@@ -105,6 +145,12 @@ fn graph_sample(cpu: Cpu, bounds: (BlockPos, BlockPos)) -> ShortSample {
         compiler.tick_with_world(&mut world).unwrap();
     }
     let elapsed = started.elapsed();
+    #[cfg(feature = "graph-profile")]
+    print_graph_profile(
+        compiler
+            .graph_execution_profile()
+            .expect("Graph profile must be available in the profiling build"),
+    );
     let graph_counts = compiler
         .graph_execution_counts()
         .expect("Graph backend must report work counters");

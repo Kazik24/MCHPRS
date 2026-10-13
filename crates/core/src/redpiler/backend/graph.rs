@@ -12,6 +12,8 @@ use crate::redpiler::passes;
 #[cfg(test)]
 use crate::redpiler::passes::rich::PreparationError;
 use crate::redpiler::program_graph::*;
+#[cfg(feature = "graph-profile")]
+use crate::redpiler::{GraphExecutionProfile, GraphProfileMetric};
 use crate::world::{BlockAction, World};
 use mchprs_blocks::block_entities::{BlockEntity, ContainerType, MovingPistonEntity};
 use mchprs_blocks::blocks::{
@@ -24,6 +26,8 @@ use rustc_hash::{FxHashMap, FxHashSet};
 use std::cell::Cell;
 use std::collections::VecDeque;
 use std::fmt;
+#[cfg(feature = "graph-profile")]
+use std::time::Instant;
 
 #[cfg(test)]
 macro_rules! graph_test_trace {
@@ -37,6 +41,18 @@ macro_rules! graph_test_trace {
 use std::sync::Arc;
 
 const SCHEDULER_BUCKETS: usize = super::queue::NUM_QUEUES;
+
+#[cfg(feature = "graph-profile")]
+#[derive(Clone, Copy)]
+enum GraphProfileBucket {
+    TickPhases,
+    ScheduledDrain,
+    PistonActions,
+    DeferredConnections,
+    RouteDelivery,
+    TurboWireWalk,
+    PistonSample,
+}
 
 #[derive(Debug)]
 pub(crate) enum GraphBackendError {
@@ -347,6 +363,9 @@ pub(crate) struct GraphBackend {
     failure: Option<GraphExecutionError>,
     /// Reported work only; simulation never reads it.
     counts: GraphExecutionCounts,
+    /// Opt-in inclusive operation timings; nested buckets overlap.
+    #[cfg(feature = "graph-profile")]
+    profile: GraphExecutionProfile,
     #[cfg(test)]
     trace: Vec<String>,
     #[cfg(test)]
@@ -661,6 +680,8 @@ impl GraphBackend {
             effects: Vec::new(),
             failure: None,
             counts: GraphExecutionCounts::default(),
+            #[cfg(feature = "graph-profile")]
+            profile: GraphExecutionProfile::default(),
             #[cfg(test)]
             trace: Vec::new(),
             #[cfg(test)]
@@ -830,7 +851,11 @@ impl GraphBackend {
         {
             return Err(GraphExecutionError::CommandHostUnavailable { position });
         }
+        #[cfg(feature = "graph-profile")]
+        let started = Instant::now();
         let result = self.tick_phases(&mut host);
+        #[cfg(feature = "graph-profile")]
+        self.record_profile(GraphProfileBucket::TickPhases, started);
         if let Err(error) = &result {
             if !matches!(error, GraphExecutionError::CommandHostUnavailable { .. }) {
                 self.failure = Some(error.clone());
@@ -890,7 +915,12 @@ impl GraphBackend {
         self.clock.scheduled_advanced = false;
         #[cfg(test)]
         graph_test_trace!(self, "phase scheduled_ticks".into());
-        if let Err(error) = self.drain_current_ticks(host) {
+        #[cfg(feature = "graph-profile")]
+        let started = Instant::now();
+        let drain_result = self.drain_current_ticks(host);
+        #[cfg(feature = "graph-profile")]
+        self.record_profile(GraphProfileBucket::ScheduledDrain, started);
+        if let Err(error) = drain_result {
             self.clock.phase = GraphPhase::BetweenTicks;
             return Err(error);
         }
@@ -901,7 +931,12 @@ impl GraphBackend {
         graph_test_trace!(self, "clock.advance".into());
         #[cfg(test)]
         graph_test_trace!(self, "phase scheduled_ticks_after_advance".into());
-        if let Err(error) = self.drain_current_ticks(host) {
+        #[cfg(feature = "graph-profile")]
+        let started = Instant::now();
+        let drain_result = self.drain_current_ticks(host);
+        #[cfg(feature = "graph-profile")]
+        self.record_profile(GraphProfileBucket::ScheduledDrain, started);
+        if let Err(error) = drain_result {
             self.clock.phase = GraphPhase::BetweenTicks;
             self.clock.scheduled_advanced = false;
             return Err(error);
@@ -910,14 +945,24 @@ impl GraphBackend {
         self.clock.phase = GraphPhase::PistonActions;
         #[cfg(test)]
         graph_test_trace!(self, "phase piston_actions".into());
-        if let Err(error) = self.drain_piston_actions() {
+        #[cfg(feature = "graph-profile")]
+        let started = Instant::now();
+        let action_result = self.drain_piston_actions();
+        #[cfg(feature = "graph-profile")]
+        self.record_profile(GraphProfileBucket::PistonActions, started);
+        if let Err(error) = action_result {
             self.clock.phase = GraphPhase::BetweenTicks;
             return Err(error);
         }
         self.clock.phase = GraphPhase::DeferredConnections;
         #[cfg(test)]
         graph_test_trace!(self, "phase deferred_connections".into());
-        if let Err(error) = self.publish_deferred_pistons() {
+        #[cfg(feature = "graph-profile")]
+        let started = Instant::now();
+        let deferred_result = self.publish_deferred_pistons();
+        #[cfg(feature = "graph-profile")]
+        self.record_profile(GraphProfileBucket::DeferredConnections, started);
+        if let Err(error) = deferred_result {
             self.clock.phase = GraphPhase::BetweenTicks;
             return Err(error);
         }
@@ -1359,7 +1404,17 @@ impl GraphBackend {
         Ok(())
     }
 
+    #[inline(always)]
     fn sample_piston(&mut self, piston: PistonId) -> Result<(), GraphExecutionError> {
+        #[cfg(feature = "graph-profile")]
+        let started = Instant::now();
+        let result = self.sample_piston_inner(piston);
+        #[cfg(feature = "graph-profile")]
+        self.record_profile(GraphProfileBucket::PistonSample, started);
+        result
+    }
+
+    fn sample_piston_inner(&mut self, piston: PistonId) -> Result<(), GraphExecutionError> {
         let spec = self.program.pistons()[piston.index()];
         let powered = self.input_strength(spec.node, InputPort::Main) > 0
             || self.input_strength(spec.node, InputPort::Quasi) > 0;
@@ -2323,7 +2378,17 @@ impl GraphBackend {
         walk.queues[2].clear();
     }
 
+    #[inline(always)]
     fn evaluate_turbo_wire(&mut self, node: NodeId) -> Result<(), GraphExecutionError> {
+        #[cfg(feature = "graph-profile")]
+        let started = Instant::now();
+        let result = self.evaluate_turbo_wire_inner(node);
+        #[cfg(feature = "graph-profile")]
+        self.record_profile(GraphProfileBucket::TurboWireWalk, started);
+        result
+    }
+
+    fn evaluate_turbo_wire_inner(&mut self, node: NodeId) -> Result<(), GraphExecutionError> {
         let root = self.component_sites[node.index()]
             .expect("wire root site was validated during preparation");
         let mut walk = WireWalk::new();
@@ -3228,7 +3293,21 @@ impl GraphBackend {
         }
     }
 
+    #[inline(always)]
     fn deliver_route(
+        &mut self,
+        route: RouteId,
+        captured: Option<&[Option<ObservedSite>]>,
+    ) -> Result<(), GraphExecutionError> {
+        #[cfg(feature = "graph-profile")]
+        let started = Instant::now();
+        let result = self.deliver_route_inner(route, captured);
+        #[cfg(feature = "graph-profile")]
+        self.record_profile(GraphProfileBucket::RouteDelivery, started);
+        result
+    }
+
+    fn deliver_route_inner(
         &mut self,
         route: RouteId,
         captured: Option<&[Option<ObservedSite>]>,
@@ -3359,6 +3438,26 @@ impl GraphBackend {
 
     pub(crate) fn execution_counts(&self) -> GraphExecutionCounts {
         self.counts
+    }
+
+    #[cfg(feature = "graph-profile")]
+    pub(crate) fn execution_profile(&self) -> GraphExecutionProfile {
+        self.profile
+    }
+
+    #[cfg(feature = "graph-profile")]
+    fn record_profile(&mut self, bucket: GraphProfileBucket, started: Instant) {
+        let metric: &mut GraphProfileMetric = match bucket {
+            GraphProfileBucket::TickPhases => &mut self.profile.tick_phases,
+            GraphProfileBucket::ScheduledDrain => &mut self.profile.scheduled_drain,
+            GraphProfileBucket::PistonActions => &mut self.profile.piston_actions,
+            GraphProfileBucket::DeferredConnections => &mut self.profile.deferred_connections,
+            GraphProfileBucket::RouteDelivery => &mut self.profile.route_delivery,
+            GraphProfileBucket::TurboWireWalk => &mut self.profile.turbo_wire_walk,
+            GraphProfileBucket::PistonSample => &mut self.profile.piston_sample,
+        };
+        metric.calls += 1;
+        metric.elapsed_ns += started.elapsed().as_nanos();
     }
 
     pub(crate) fn node_count(&self) -> usize {

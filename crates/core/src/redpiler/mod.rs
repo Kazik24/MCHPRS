@@ -122,6 +122,36 @@ pub struct GraphExecutionCounts {
     pub deferred_publications: u64,
 }
 
+/// One inclusive timing bucket from an opt-in `graph-profile` benchmark build.
+#[cfg(feature = "graph-profile")]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct GraphProfileMetric {
+    /// Number of calls included in this bucket.
+    pub calls: u64,
+    /// Inclusive elapsed time across those calls, in nanoseconds.
+    pub elapsed_ns: u128,
+}
+
+/// Inclusive Graph timings; nested buckets overlap and must not be summed.
+#[cfg(feature = "graph-profile")]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct GraphExecutionProfile {
+    /// Time in scheduler and piston phases, excluding command-host preflight.
+    pub tick_phases: GraphProfileMetric,
+    /// Time draining scheduled work before and after scheduler advancement.
+    pub scheduled_drain: GraphProfileMetric,
+    /// Time validating and accepting queued piston actions.
+    pub piston_actions: GraphProfileMetric,
+    /// Time publishing deferred piston connections.
+    pub deferred_connections: GraphProfileMetric,
+    /// Time delivering compiled callback routes, including nested callbacks.
+    pub route_delivery: GraphProfileMetric,
+    /// Time walking a Turbo wire neighborhood, including nested deliveries.
+    pub turbo_wire_walk: GraphProfileMetric,
+    /// Time sampling piston inputs and checking their compiled lane.
+    pub piston_sample: GraphProfileMetric,
+}
+
 #[derive(Default, PartialEq, Eq, Debug)]
 pub struct CompilerOptions {
     /// Set by the server from the initiating player's rank, never from flags.
@@ -362,6 +392,12 @@ impl Compiler {
     /// Executed graph work; None unless the active backend is the graph.
     pub fn graph_execution_counts(&self) -> Option<GraphExecutionCounts> {
         self.backend.as_ref()?.graph_execution_counts()
+    }
+
+    /// Inclusive operation timings, available only in an opt-in profiling build.
+    #[cfg(feature = "graph-profile")]
+    pub fn graph_execution_profile(&self) -> Option<GraphExecutionProfile> {
+        self.backend.as_ref()?.graph_execution_profile()
     }
 
     pub fn compile<W: World>(
