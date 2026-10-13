@@ -5,7 +5,7 @@ use crate::redpiler::program_graph::{
     Route, SiteSource,
 };
 use mchprs_blocks::block_entities::MovingPistonEntity;
-use mchprs_blocks::blocks::{Block, Lever, LeverFace, RedstoneObserver};
+use mchprs_blocks::blocks::{Block, Lever, LeverFace, RedstoneObserver, TrapdoorHalf};
 use mchprs_blocks::blocks::{RedstoneMovingPiston, RedstonePistonHead};
 
 fn prepare_callbacks_for(
@@ -608,4 +608,52 @@ fn callback_targets_outside_component_inventory_are_rejected() {
             block: repeater.get_id(),
         }
     );
+}
+
+#[test]
+fn unsupported_external_hopper_and_trapdoor_dependencies_name_type_and_reason() {
+    for (block, expected_name) in [
+        (Block::from_name("hopper").unwrap(), "hopper"),
+        (
+            Block::IronTrapdoor {
+                facing: BlockDirection::North,
+                half: TrapdoorHalf::Bottom,
+                powered: false,
+            },
+            "iron_trapdoor",
+        ),
+    ] {
+        let mut world = empty();
+        world.set_block(
+            BASE,
+            Block::Lever {
+                lever: Lever::new(
+                    LeverFace::Floor,
+                    mchprs_blocks::BlockDirection::North,
+                    false,
+                ),
+            },
+        );
+        let external = BASE.offset(BlockFace::East);
+        world.set_block(external, block);
+        let geometry = prepare_geometry_with_bounds(&world, (BASE, BASE)).unwrap();
+        let mut electrical = electrical::prepare_electrical(
+            &world,
+            (BASE, BASE),
+            &geometry.draft,
+            &Default::default(),
+        )
+        .unwrap();
+        let error = callbacks::prepare_callbacks(
+            &world,
+            &geometry.draft,
+            &mut electrical,
+            &Default::default(),
+        )
+        .unwrap_err();
+        let message = error.to_string();
+        assert!(message.contains(expected_name), "{message}");
+        assert!(message.contains(&format!("{external:?}")), "{message}");
+        assert!(message.contains("not implemented in Graph"), "{message}");
+    }
 }

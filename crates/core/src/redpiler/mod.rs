@@ -50,12 +50,14 @@ impl std::fmt::Display for CompileError {
         match self {
             Self::AlreadyActive => f.write_str("reset the active compiler before recompiling"),
             Self::Analysis(error) => error.fmt(f),
-            Self::Unsupported(report) if !report.pistons.is_empty() => {
-                f.write_str("build contains pistons, which require the interpreter")
-            }
             Self::Unsupported(report) => {
                 write!(f, "{}", report.summary())?;
-                if let Some(issue) = report.issues.first() {
+                if let Some(issue) = report
+                    .issues
+                    .iter()
+                    .find(|issue| !matches!(issue, analysis::AdmissionIssue::PistonRuntimeUnavailable { .. }))
+                    .or_else(|| report.issues.first())
+                {
                     write!(f, "; {issue}")?;
                 }
                 Ok(())
@@ -78,6 +80,9 @@ fn graph_preparation_error(
     monitor: &TaskMonitor,
 ) -> CompileError {
     let error = match error {
+        passes::rich::PreparationError::Analysis(error) => {
+            backend::graph::GraphBackendError::Analysis(error)
+        }
         passes::rich::PreparationError::Geometry(error) => {
             backend::graph::GraphBackendError::Geometry(error)
         }
@@ -230,6 +235,16 @@ pub struct PassStatistics {
     pub duration: Duration,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct PreparationTableStatistics {
+    pub stage: &'static str,
+    pub table: &'static str,
+    pub entries: usize,
+    pub capacity: usize,
+    /// Estimates retained element storage and known nested slices, excluding maps and allocator overhead.
+    pub estimated_bytes: usize,
+}
+
 #[derive(Clone, Debug, Default)]
 pub struct GraphStatistics {
     /// Native dust/component execution retains physical identities and skips rewrites.
@@ -240,6 +255,8 @@ pub struct GraphStatistics {
     pub passes: Vec<PassStatistics>,
     /// This contains only optional transformations, not mandatory parser stages.
     pub transformations: Vec<PassStatistics>,
+    /// Retained table capacities sampled after each required preparation stage.
+    pub preparation_tables: Vec<PreparationTableStatistics>,
     /// This records the graph after required parsing and before transformations.
     pub parser_complete: Option<GraphCounts>,
     /// This records the final graph independently of the supplied pass count.
@@ -275,6 +292,36 @@ impl GraphStatistics {
                 } else {
                     "disabled"
                 }
+            ));
+        }
+        if let Some(stage) = self.preparation_tables.last().map(|table| table.stage) {
+            let mut tables: Vec<_> = self
+                .preparation_tables
+                .iter()
+                .filter(|table| table.stage == stage)
+                .collect();
+            tables.sort_by_key(|table| std::cmp::Reverse(table.estimated_bytes));
+            let estimate = tables
+                .iter()
+                .map(|table| table.estimated_bytes)
+                .sum::<usize>();
+            let largest = tables
+                .iter()
+                .take(3)
+                .map(|table| {
+                    format!(
+                        "{} {} entries, capacity {}, {:.1} MiB",
+                        table.table,
+                        table.entries,
+                        table.capacity,
+                        table.estimated_bytes as f64 / (1024.0 * 1024.0),
+                    )
+                })
+                .collect::<Vec<_>>()
+                .join("; ");
+            lines.push(format!(
+                "Graph preparation table estimate at {stage}: {:.1} MiB retained capacity; largest: {largest}",
+                estimate as f64 / (1024.0 * 1024.0),
             ));
         }
         let enabled = self
@@ -330,7 +377,7 @@ impl CompileStatistics {
                 "Execution: graph backend with pistons, shared resources, and generalized dust; -O does not apply.".into(),
             );
         }
-        lines.extend(self.graph.summary_lines().into_iter().take(2));
+        lines.extend(self.graph.summary_lines().into_iter().take(3));
         lines
     }
 }
@@ -464,7 +511,7 @@ impl Compiler {
         )
         .map_err(|error| graph_pipeline_error(error, monitor))?;
         prepared.finish_pipeline_statistics(monitor);
-        let lowered = prepared.lower().map_err(|error| {
+        let lowered = prepared.lower(&monitor).map_err(|error| {
             graph_backend_error(backend::graph::GraphBackendError::Graph(error), monitor)
         })?;
         let backend = backend::graph::GraphBackend::from_lowered(lowered, monitor)

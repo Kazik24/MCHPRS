@@ -58,6 +58,7 @@ pub(crate) enum GeometryIssue {
         changed: BlockPos,
         dependent: BlockPos,
         block: u32,
+        support_state: u32,
     },
     MultipleResources {
         actor: BlockPos,
@@ -128,10 +129,12 @@ impl fmt::Display for GeometryIssue {
                 changed,
                 dependent,
                 block,
+                support_state,
             } => write!(
                 f,
-                "piston at {actor:?} can remove support at {changed:?} from {} at {dependent:?}",
-                Block::from_id(*block).get_name()
+                "piston at {actor:?} can make {} at {dependent:?} unsupported: support at {changed:?} may become {}",
+                Block::from_id(*block).get_name(),
+                Block::from_id(*support_state).get_name(),
             ),
             Self::MultipleResources {
                 actor,
@@ -259,6 +262,8 @@ struct Actor {
     facing: BlockFace,
     near: BlockPos,
     far: BlockPos,
+    /// Captures whether the saved near contact contains this piston’s matching head.
+    head_present: bool,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -400,10 +405,15 @@ fn inventory_actors<W: World>(
         let near = position.offset(facing);
         let far = near.offset(facing);
         let near_block = probe.block(position, near)?;
-        if piston.extended
-            && !matches!(near_block, Block::PistonHead { head }
-                if head.facing == piston.facing && head.sticky == piston.sticky && !head.short)
-        {
+        let head_present = matches!(near_block, Block::PistonHead { head }
+            if head.facing == piston.facing && head.sticky == piston.sticky && !head.short);
+        if piston.extended && !head_present {
+            if near_block == Block::Air {
+                return Err(GeometryError::Entry(AdmissionIssue::MissingPistonHead {
+                    piston: position,
+                    head: near,
+                }));
+            }
             return Err(GeometryError::Rejected(GeometryIssue::MalformedHead {
                 actor: position,
                 position: near,
@@ -431,6 +441,7 @@ fn inventory_actors<W: World>(
             facing,
             near,
             far,
+            head_present,
         });
     }
     Ok(actors)
@@ -775,6 +786,7 @@ fn validate_support<W: World>(
                     changed: support,
                     dependent,
                     block: block.get_id(),
+                    support_state: probe.block(actor, support)?.get_id(),
                 }));
             }
             // Like interaction::supports_dust, a retracting downward base keeps
@@ -787,7 +799,7 @@ fn validate_support<W: World>(
                     && face == BlockFace::Top
                     && owner.facing == BlockFace::Bottom
             };
-            if alternatives.iter().any(|&(id, support)| {
+            if let Some((_, unsupported_support)) = alternatives.iter().find(|&&(id, support)| {
                 !interaction::supports_attachment(support, support_face) && !keeps_dust(id, support)
             }) {
                 return Err(GeometryError::Rejected(GeometryIssue::SupportLoss {
@@ -795,6 +807,7 @@ fn validate_support<W: World>(
                     changed,
                     dependent,
                     block: block.get_id(),
+                    support_state: unsupported_support.get_id(),
                 }));
             }
         }
@@ -990,6 +1003,7 @@ fn build_draft<W: World>(
         .iter()
         .map(|actor| PistonState {
             extended: actor.piston.extended,
+            head_present: actor.head_present,
             availability: PistonAvailability::Ready,
             revision: 0,
         })

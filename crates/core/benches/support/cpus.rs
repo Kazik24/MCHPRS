@@ -50,7 +50,7 @@ pub const CPUS: [Cpu; 3] = [
     Cpu {
         name: "cpu_bubblesort",
         schematic: "piston-research/cpu-bubblesort/CPU_BubbleSort.schem",
-        sha256: "907e74d6c4882d4c7065d55e0f8ec4cca8885a34f7af90ca51c060953badaf2c",
+        sha256: "803dbe5d6751b152bea9b134d6c8571cfafa3e840e372f82e41a535b658f1611",
         start: BlockPos::new(166, 7, 156),
         stop: None,
         origin: BlockPos::new(2, 8, 2),

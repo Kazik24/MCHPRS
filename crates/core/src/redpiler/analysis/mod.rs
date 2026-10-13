@@ -15,6 +15,9 @@ pub(crate) mod export_json;
 pub(crate) mod geometry;
 pub mod graph;
 
+// shortcut: excludes maps and allocator overhead, upgrade if measured RSS exceeds the table estimate.
+pub(crate) const MAX_GRAPH_PREPARATION_BYTES: usize = 1024 * 1024 * 1024;
+
 #[cfg(test)]
 mod tests;
 
@@ -49,9 +52,17 @@ impl AnalysisLimits {
 pub enum AnalysisError {
     Cancelled,
     InvalidBounds,
-    UnloadedChunk { x: i32, z: i32 },
+    UnloadedChunk {
+        x: i32,
+        z: i32,
+    },
     CellLimit,
     PistonLimit,
+    PreparationMemoryLimit {
+        stage: &'static str,
+        estimated_bytes: usize,
+        limit_bytes: usize,
+    },
 }
 
 impl fmt::Display for AnalysisError {
@@ -64,6 +75,14 @@ impl fmt::Display for AnalysisError {
             Self::UnloadedChunk { x, z } => write!(f, "analysis requires loaded chunk {x}, {z}"),
             Self::CellLimit => f.write_str("analysis cell budget exceeded"),
             Self::PistonLimit => f.write_str("analysis piston budget exceeded"),
+            Self::PreparationMemoryLimit {
+                stage,
+                estimated_bytes,
+                limit_bytes,
+            } => write!(
+                f,
+                "Graph {stage} table estimate ({estimated_bytes} bytes) exceeds the {limit_bytes}-byte preparation limit"
+            ),
         }
     }
 }
@@ -96,17 +115,56 @@ impl<'a> PreparationBudget<'a> {
             .ok_or(AnalysisError::CellLimit)?;
         Ok(())
     }
+
+    pub(crate) fn check_estimated_bytes(
+        &self,
+        stage: &'static str,
+        estimated_bytes: usize,
+    ) -> Result<(), AnalysisError> {
+        self.check()?;
+        if estimated_bytes > MAX_GRAPH_PREPARATION_BYTES {
+            return Err(AnalysisError::PreparationMemoryLimit {
+                stage,
+                estimated_bytes,
+                limit_bytes: MAX_GRAPH_PREPARATION_BYTES,
+            });
+        }
+        Ok(())
+    }
 }
 
 #[derive(Debug, Clone, Serialize)]
 pub enum AdmissionIssue {
-    PistonRuntimeUnavailable { pos: BlockPos },
-    UnownedPistonHead { pos: BlockPos },
-    MovingPiston { pos: BlockPos },
-    EntryPhase { phase: AdvancePhase },
-    PendingPistonEvents { count: usize },
-    PendingPistonMotions { count: usize },
-    PendingMovementWork { count: usize },
+    PistonRuntimeUnavailable {
+        pos: BlockPos,
+    },
+    UnsupportedComponent {
+        pos: BlockPos,
+        block: u32,
+        reason: &'static str,
+    },
+    MissingPistonHead {
+        piston: BlockPos,
+        head: BlockPos,
+    },
+    UnownedPistonHead {
+        pos: BlockPos,
+    },
+    MovingPiston {
+        pos: BlockPos,
+    },
+    EntryPhase {
+        phase: AdvancePhase,
+    },
+    PendingPistonEvents {
+        count: usize,
+    },
+    PendingPistonMotions {
+        count: usize,
+    },
+    PendingMovementWork {
+        count: usize,
+    },
 }
 
 impl fmt::Display for AdmissionIssue {
@@ -118,6 +176,15 @@ impl fmt::Display for AdmissionIssue {
                     "piston at {pos:?} requires the interpreter; piston compilation is unsupported"
                 )
             }
+            Self::UnsupportedComponent { pos, block, reason } => write!(
+                f,
+                "{} at {pos:?} is unsupported: {reason}",
+                Block::from_id(*block).get_name()
+            ),
+            Self::MissingPistonHead { piston, head } => write!(
+                f,
+                "extended piston at {piston:?} is missing its head at {head:?}"
+            ),
             Self::UnownedPistonHead { pos } => {
                 write!(f, "piston head at {pos:?} has no matching extended base")
             }
@@ -129,6 +196,16 @@ impl fmt::Display for AdmissionIssue {
             Self::PendingPistonMotions { count } => write!(f, "{count} active piston motions"),
             Self::PendingMovementWork { count } => write!(f, "{count} pending movement work items"),
         }
+    }
+}
+
+pub(crate) fn unsupported_component_reason(block: Block) -> Option<&'static str> {
+    if matches!(block, Block::Hopper { .. }) {
+        Some("hopper inventory and comparator behavior are not implemented in Graph")
+    } else if block.get_name().ends_with("_trapdoor") {
+        Some("trapdoor state and redstone behavior are not implemented in Graph")
+    } else {
+        None
     }
 }
 
@@ -218,7 +295,15 @@ pub fn analyze(
                             }
                             report.inspected_cells += 1;
                             let pos = BlockPos::new(x, y, z);
-                            match world.get_block(pos) {
+                            let block = world.get_block(pos);
+                            if let Some(reason) = unsupported_component_reason(block) {
+                                report.issues.push(AdmissionIssue::UnsupportedComponent {
+                                    pos,
+                                    block: block.get_id(),
+                                    reason,
+                                });
+                            }
+                            match block {
                                 Block::Air => continue,
                                 Block::Piston { piston } => {
                                     if report.pistons.len() >= limits.max_pistons {

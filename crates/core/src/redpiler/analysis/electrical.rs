@@ -16,7 +16,7 @@ pub(crate) use crate::redpiler::program_graph::{
 };
 use crate::redstone::{comparator, power};
 use crate::world::{World, try_for_each_block_optimized, wire_cache};
-use mchprs_blocks::blocks::Block;
+use mchprs_blocks::blocks::{Block, RedstoneWire};
 use mchprs_blocks::{BlockFace, BlockPos};
 use rustc_hash::{FxHashMap, FxHashSet};
 use std::fmt;
@@ -24,6 +24,11 @@ use std::fmt;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum ElectricalError {
     Preparation(AnalysisError),
+    UnsupportedComponent {
+        position: BlockPos,
+        block: u32,
+        reason: &'static str,
+    },
     DynamicComparatorOverrideNotInventoried {
         comparator: BlockPos,
         source: BlockPos,
@@ -34,6 +39,15 @@ impl fmt::Display for ElectricalError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Preparation(error) => error.fmt(f),
+            Self::UnsupportedComponent {
+                position,
+                block,
+                reason,
+            } => write!(
+                f,
+                "unsupported {} at {position:?}: {reason}",
+                Block::from_id(*block).get_name()
+            ),
             Self::DynamicComparatorOverrideNotInventoried { comparator, source } => write!(
                 f,
                 "comparator at {comparator:?} has dynamic override source at {source:?} outside the compiled electrical inventory"
@@ -90,6 +104,13 @@ struct Component {
     block: Block,
 }
 
+#[derive(Clone, Copy)]
+struct WireComponent {
+    position: BlockPos,
+    node: NodeId,
+    state: RedstoneWire,
+}
+
 #[derive(Debug, Clone, Copy)]
 struct Root {
     position: BlockPos,
@@ -121,6 +142,7 @@ pub(crate) fn prepare_electrical(
     monitor: &TaskMonitor,
 ) -> Result<ElectricalDraft, ElectricalError> {
     let mut budget = PreparationBudget::new(monitor, geometry.remaining_cells);
+    let retained_geometry_bytes = monitor.preparation_stage_estimate("geometry");
     let bounds = (bounds.0.min(bounds.1), bounds.0.max(bounds.1));
     let mut block_positions = Vec::new();
     try_for_each_block_optimized(world, bounds.0, bounds.1, |position| {
@@ -203,7 +225,16 @@ pub(crate) fn prepare_electrical(
     }
     let wires: Vec<_> = components
         .iter()
-        .filter_map(|component| matches!(component.ty, NodeType::Wire).then_some(component.clone()))
+        .filter_map(|component| {
+            let Block::RedstoneWire { wire } = component.block else {
+                return None;
+            };
+            matches!(component.ty, NodeType::Wire).then_some(WireComponent {
+                position: component.position,
+                node: component.node,
+                state: wire,
+            })
+        })
         .collect();
     for wire in &wires {
         budget.check()?;
@@ -298,10 +329,7 @@ pub(crate) fn prepare_electrical(
         });
         let node = &mut nodes[wire.node.index()];
         node.kind = CircuitNodeKind::Wire(plan);
-        node.state = ComponentState::Wire(match wire.block {
-            Block::RedstoneWire { wire } => wire,
-            _ => unreachable!(),
-        });
+        node.state = ComponentState::Wire(wire.state);
     }
     for component in &components {
         budget.check()?;
@@ -362,12 +390,16 @@ pub(crate) fn prepare_electrical(
 
     let mut links = Vec::new();
     let mut wire_relations = Vec::new();
+    let fixed_table_bytes =
+        electrical_fixed_table_bytes(&nodes, &profiles, &sites, &contacts, &wire_plans)
+            .saturating_add(retained_geometry_bytes);
     compile_wire_relations(
         &wires,
         &site,
         &mut guard_table,
         &mut wire_relations,
         &mut budget,
+        fixed_table_bytes,
     )?;
     for component in &components {
         budget.check()?;
@@ -389,6 +421,13 @@ pub(crate) fn prepare_electrical(
                 &mut guard_table,
                 &mut links,
                 &mut budget,
+            )?;
+            check_electrical_growth(
+                &budget,
+                &guard_table,
+                links.capacity(),
+                &wire_relations,
+                fixed_table_bytes,
             )?;
         }
     }
@@ -608,6 +647,13 @@ fn comparator_override(
     world: &impl World,
     component_at: &FxHashMap<BlockPos, NodeId>,
 ) -> Result<ComparatorOverride, ElectricalError> {
+    if let Some(reason) = super::unsupported_component_reason(block) {
+        return Err(ElectricalError::UnsupportedComponent {
+            position,
+            block: block.get_id(),
+            reason,
+        });
+    }
     if block.is_copper_bulb() || block.is_command_block() {
         let Some(&node) = component_at.get(&position) else {
             return Err(ElectricalError::DynamicComparatorOverrideNotInventoried {
@@ -904,13 +950,14 @@ fn is_comparator_side_source(block: Block) -> bool {
 }
 
 fn compile_wire_relations(
-    wires: &[Component],
+    wires: &[WireComponent],
     site_for: &impl Fn(BlockPos) -> SiteId,
     guards: &mut Vec<Guard>,
     relations: &mut Vec<WireRelation>,
     budget: &mut PreparationBudget<'_>,
+    fixed_table_bytes: usize,
 ) -> Result<(), AnalysisError> {
-    for wire in wires {
+    for (index, wire) in wires.iter().enumerate() {
         budget.check()?;
         let previous_guards = guards.len();
         let previous_relations = relations.len();
@@ -922,6 +969,7 @@ fn compile_wire_relations(
                 test: SiteTest::Solid,
             },
         );
+        let ascent_headroom = not_guard(guards, above);
         for direction in [
             BlockFace::North,
             BlockFace::South,
@@ -971,7 +1019,6 @@ fn compile_wire_relations(
                     test: SiteTest::IsWire,
                 },
             );
-            let ascent_headroom = not_guard(guards, above);
             let transparent = not_guard(guards, neighbor_transparent);
             let ascent = join_guards(guards, &[up_wire, ascent_headroom, transparent]);
             relations.push(WireRelation {
@@ -1004,8 +1051,62 @@ fn compile_wire_relations(
         let added_guards = guards.len() - previous_guards;
         let added_relations = relations.len() - previous_relations;
         budget.consume(added_guards + added_relations)?;
+        if index % 256 == 0 {
+            check_electrical_growth(budget, guards, 0, relations, fixed_table_bytes)?;
+        }
     }
     Ok(())
+}
+
+fn electrical_fixed_table_bytes(
+    nodes: &Vec<CircuitNodeDraft>,
+    profiles: &Vec<Profile>,
+    sites: &Vec<SiteSpec>,
+    contacts: &Vec<ContactSpec>,
+    wires: &Vec<WirePlan>,
+) -> usize {
+    fn bytes<T>(capacity: usize) -> usize {
+        capacity.saturating_mul(std::mem::size_of::<T>())
+    }
+    bytes::<CircuitNodeDraft>(nodes.capacity())
+        .saturating_add(bytes::<Profile>(profiles.capacity()))
+        .saturating_add(bytes::<SiteSpec>(sites.capacity()))
+        .saturating_add(bytes::<ContactSpec>(contacts.capacity()))
+        .saturating_add(
+            contacts
+                .iter()
+                .map(|contact| {
+                    contact
+                        .variants
+                        .len()
+                        .saturating_mul(std::mem::size_of::<ContactVariant>())
+                })
+                .sum::<usize>(),
+        )
+        .saturating_add(bytes::<WirePlan>(wires.capacity()))
+}
+
+fn check_electrical_growth(
+    budget: &PreparationBudget<'_>,
+    guards: &Vec<Guard>,
+    link_capacity: usize,
+    relations: &Vec<WireRelation>,
+    fixed_table_bytes: usize,
+) -> Result<(), AnalysisError> {
+    let guard_bytes = guards
+        .capacity()
+        .saturating_mul(std::mem::size_of::<Guard>() + std::mem::size_of::<GuardId>() * 4);
+    let link_bytes = link_capacity.saturating_mul(std::mem::size_of::<ElectricalLink>());
+    let relation_bytes = relations
+        .capacity()
+        .saturating_mul(std::mem::size_of::<WireRelation>());
+    budget.check_estimated_bytes(
+        "electrical",
+        fixed_table_bytes
+            .saturating_add(guard_bytes)
+            .saturating_add(link_bytes)
+            .saturating_add(relation_bytes),
+    )
 }
 
 fn variant_guard(
@@ -1021,7 +1122,7 @@ fn variant_guard(
             stationary_base_guard(guards, piston, extended)
         }
         GeometryView::PistonHead(piston) => {
-            let extended = push_guard(guards, Guard::State(StateTest::PistonExtended(piston)));
+            let present = push_guard(guards, Guard::State(StateTest::PistonHeadPresent(piston)));
             let available = [
                 crate::redpiler::program_graph::PistonAvailability::Ready,
                 crate::redpiler::program_graph::PistonAvailability::BasePendingHeadPresent,
@@ -1033,7 +1134,7 @@ fn variant_guard(
                 )
             });
             let available = any_guards(guards, &available);
-            join_guards(guards, &[extended, available])
+            join_guards(guards, &[present, available])
         }
         GeometryView::MovingPistonHead(piston) => push_guard(
             guards,
@@ -1066,8 +1167,8 @@ fn variant_guard(
                         stationary_base_guard(guards, piston, extended)
                     }
                     GeometryView::PistonHead(piston) => {
-                        let extended =
-                            push_guard(guards, Guard::State(StateTest::PistonExtended(piston)));
+                        let present =
+                            push_guard(guards, Guard::State(StateTest::PistonHeadPresent(piston)));
                         let available = [
                             crate::redpiler::program_graph::PistonAvailability::Ready,
                             crate::redpiler::program_graph::PistonAvailability::BasePendingHeadPresent,
@@ -1079,7 +1180,7 @@ fn variant_guard(
                             )
                         });
                         let available = any_guards(guards, &available);
-                        join_guards(guards, &[extended, available])
+                        join_guards(guards, &[present, available])
                     }
                     GeometryView::MovingPistonHead(piston) => push_guard(
                         guards,
@@ -1180,6 +1281,15 @@ fn any_guards(guards: &mut Vec<Guard>, children: &[GuardId]) -> GuardId {
 }
 
 fn all_guard(guards: &mut Vec<Guard>, left: GuardId, right: GuardId) -> GuardId {
+    if left == right {
+        return left;
+    }
+    if matches!(guards[left.index()], Guard::Always) {
+        return right;
+    }
+    if matches!(guards[right.index()], Guard::Always) {
+        return left;
+    }
     join_guards(guards, &[left, right])
 }
 
@@ -1215,4 +1325,30 @@ fn block_at(world: &impl World, position: BlockPos) -> Block {
 
 pub(crate) fn attenuate_power(strength: u8, attenuation: u8) -> u8 {
     strength.saturating_sub(attenuation)
+}
+
+#[cfg(test)]
+mod memory_tests {
+    use super::all_guard;
+    use crate::redpiler::program_graph::{Guard, GuardId, OperandView, SiteId, SiteTest};
+
+    #[test]
+    fn all_guard_reuses_identity_terms() {
+        let always = GuardId::new(0);
+        let site_guard = GuardId::new(1);
+        let mut guards = vec![
+            Guard::Always,
+            Guard::Site {
+                site: SiteId::new(4),
+                view: OperandView::Live,
+                test: SiteTest::Solid,
+            },
+        ];
+
+        assert_eq!(all_guard(&mut guards, always, always), always);
+        assert_eq!(all_guard(&mut guards, site_guard, always), site_guard);
+        assert_eq!(all_guard(&mut guards, always, site_guard), site_guard);
+        assert_eq!(all_guard(&mut guards, site_guard, site_guard), site_guard);
+        assert_eq!(guards.len(), 2);
+    }
 }

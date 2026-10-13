@@ -6,8 +6,10 @@
   "files": [
     {
       "name": "CPU_BubbleSort.schem",
-      "bytes": 59872,
-      "sha256": "907e74d6c4882d4c7065d55e0f8ec4cca8885a34f7af90ca51c060953badaf2c",
+      "bytes": 59851,
+      "sha256": "803dbe5d6751b152bea9b134d6c8571cfafa3e840e372f82e41a535b658f1611",
+      "source_sha256": "907e74d6c4882d4c7065d55e0f8ec4cca8885a34f7af90ca51c060953badaf2c",
+      "local_repair": "Added the missing extended sticky piston head at schematic-local (180,6,165).",
       "modified_utc": "2026-10-07T08:54:00.041128+00:00"
     }
   ]

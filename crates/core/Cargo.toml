@@ -27,6 +27,10 @@ name = "cpus"
 harness = false
 
 [[bench]]
+name = "cpu_bubblesort"
+harness = false
+
+[[bench]]
 name = "instant"
 harness = false
 

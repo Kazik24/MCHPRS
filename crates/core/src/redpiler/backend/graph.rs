@@ -6,7 +6,7 @@ use crate::redpiler::GraphExecutionCounts;
 use crate::redpiler::TaskMonitor;
 #[cfg(test)]
 use crate::redpiler::analysis::AnalysisLimits;
-use crate::redpiler::analysis::{callbacks, electrical, geometry};
+use crate::redpiler::analysis::{AnalysisError, callbacks, electrical, geometry};
 use crate::redpiler::compile_graph::{NodeState, NodeType};
 use crate::redpiler::passes;
 #[cfg(test)]
@@ -32,6 +32,7 @@ const SCHEDULER_BUCKETS: usize = super::queue::NUM_QUEUES;
 #[derive(Debug)]
 pub(crate) enum GraphBackendError {
     Cancelled,
+    Analysis(AnalysisError),
     Geometry(geometry::GeometryError),
     Electrical(electrical::ElectricalError),
     Callbacks(callbacks::CallbackError),
@@ -74,6 +75,7 @@ impl fmt::Display for GraphBackendError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Cancelled => f.write_str("graph preparation cancelled"),
+            Self::Analysis(error) => error.fmt(f),
             Self::Geometry(error) => error.fmt(f),
             Self::Electrical(error) => error.fmt(f),
             Self::Callbacks(error) => error.fmt(f),
@@ -133,6 +135,7 @@ impl std::error::Error for GraphBackendError {}
 #[cfg(test)]
 fn map_preparation_error(error: PreparationError) -> GraphBackendError {
     match error {
+        PreparationError::Analysis(error) => GraphBackendError::Analysis(error),
         PreparationError::Geometry(error) => GraphBackendError::Geometry(error),
         PreparationError::Electrical(error) => GraphBackendError::Electrical(error),
         PreparationError::Callbacks(error) => GraphBackendError::Callbacks(error),
@@ -344,6 +347,16 @@ pub(crate) struct GraphBackend {
 
 impl GraphBackend {
     #[cfg(test)]
+    pub(crate) fn new(
+        program: CircuitProgram,
+        state: CircuitState,
+        logical_tick: u64,
+    ) -> Result<Self, GraphBackendError> {
+        let positions = program.position_index();
+        Self::new_with_positions(program, state, logical_tick, positions)
+    }
+
+    #[cfg(test)]
     pub(crate) fn compile<W: World>(
         world: &W,
         bounds: (BlockPos, BlockPos),
@@ -364,7 +377,7 @@ impl GraphBackend {
         )
         .map_err(GraphBackendError::PassPipeline)?;
         prepared.finish_pipeline_statistics(&monitor);
-        let lowered = prepared.lower().map_err(GraphBackendError::Graph)?;
+        let lowered = prepared.lower(&monitor).map_err(GraphBackendError::Graph)?;
         Self::from_lowered(lowered, &monitor)
     }
 
@@ -556,15 +569,6 @@ impl GraphBackend {
             }
         }
         Ok(())
-    }
-
-    fn new(
-        program: CircuitProgram,
-        state: CircuitState,
-        logical_tick: u64,
-    ) -> Result<Self, GraphBackendError> {
-        let positions = program.position_index();
-        Self::new_with_positions(program, state, logical_tick, positions)
     }
 
     fn new_with_positions(
@@ -1589,7 +1593,7 @@ impl GraphBackend {
             if piston.base == contact && !state.availability.base_pending() {
                 return false;
             }
-            let head_is_present = state.extended
+            let head_is_present = state.head_present
                 && matches!(
                     state.availability,
                     PistonAvailability::Ready
@@ -1685,6 +1689,7 @@ impl GraphBackend {
             let state = &mut self.state.pistons[piston.index()];
             state.revision = state.revision.wrapping_add(1);
             state.availability = PistonAvailability::HeadPending;
+            state.head_present = true;
             state.revision
         };
         let resource = match (resource_to_move, spec.lane) {
@@ -1769,11 +1774,13 @@ impl GraphBackend {
         };
         if interrupted_head {
             self.deliver_route(spec.routes.near_changed, None)?;
+            self.state.pistons[piston.index()].head_present = false;
             self.state.pistons[piston.index()].availability = PistonAvailability::BasePending;
             self.deliver_route(spec.routes.base_changed, None)?;
         } else {
             self.deliver_route(spec.routes.base_changed, None)?;
             self.state.pistons[piston.index()].availability = PistonAvailability::BasePending;
+            self.state.pistons[piston.index()].head_present = false;
         }
         let restored_far = if restore_far {
             let resource = resource_at_far.expect("restore requires a selected resource");
@@ -1845,6 +1852,7 @@ impl GraphBackend {
             self.apply_deferred_resource(event, spec)?;
             if actor_valid {
                 self.state.pistons[event.piston.index()].availability = PistonAvailability::Ready;
+                self.state.pistons[event.piston.index()].head_present = true;
                 self.deliver_route(spec.routes.head_restored, None)?;
             } else {
                 #[cfg(test)]
@@ -1856,6 +1864,7 @@ impl GraphBackend {
         } else {
             if actor_valid {
                 self.state.pistons[event.piston.index()].extended = false;
+                self.state.pistons[event.piston.index()].head_present = false;
                 self.state.pistons[event.piston.index()].availability = PistonAvailability::Ready;
                 self.deliver_route(spec.routes.base_restored, None)?;
             } else {
@@ -2877,6 +2886,9 @@ impl GraphBackend {
             Guard::Always => true,
             Guard::State(test) => match *test {
                 StateTest::PistonExtended(piston) => self.state.pistons[piston.index()].extended,
+                StateTest::PistonHeadPresent(piston) => {
+                    self.state.pistons[piston.index()].head_present
+                }
                 StateTest::PistonAvailability { piston, is } => {
                     self.state.pistons[piston.index()].availability == is
                 }
@@ -3560,6 +3572,14 @@ impl GraphBackend {
     #[cfg(test)]
     fn trace(&self) -> &[String] {
         &self.trace
+    }
+
+    #[cfg(test)]
+    pub(crate) fn clear_test_traces(&mut self) {
+        self.trace.clear();
+        self.callback_order.clear();
+        self.comparator_updates.clear();
+        self.observed_operations.clear();
     }
 
     #[cfg(test)]

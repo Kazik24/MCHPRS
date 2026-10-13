@@ -24,6 +24,7 @@ fn guard_holds(
             .iter()
             .any(|child| guard_holds(world, draft, *child, pistons, resources)),
         Guard::State(StateTest::PistonExtended(id)) => pistons[id.index()].extended,
+        Guard::State(StateTest::PistonHeadPresent(id)) => pistons[id.index()].head_present,
         Guard::State(StateTest::PistonAvailability { piston, is }) => {
             pistons[piston.index()].availability == *is
         }

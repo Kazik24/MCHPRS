@@ -1,4 +1,4 @@
-use super::{GraphStatistics, PassStatistics};
+use super::{GraphStatistics, PassStatistics, PreparationTableStatistics};
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
@@ -37,6 +37,25 @@ impl TaskMonitor {
         let mut statistics = self.graph_statistics.lock().unwrap();
         statistics.passes.push(pass.clone());
         statistics.transformations.push(pass);
+    }
+
+    pub(crate) fn record_preparation_tables(&self, tables: Vec<PreparationTableStatistics>) {
+        self.graph_statistics
+            .lock()
+            .unwrap()
+            .preparation_tables
+            .extend(tables);
+    }
+
+    pub(crate) fn preparation_stage_estimate(&self, stage: &'static str) -> usize {
+        let statistics = self.graph_statistics.lock().unwrap();
+        statistics
+            .preparation_tables
+            .iter()
+            .filter(|table| table.stage == stage)
+            .fold(0usize, |total, table| {
+                total.saturating_add(table.estimated_bytes)
+            })
     }
 
     pub(crate) fn set_parser_complete(&self, counts: super::GraphCounts) {

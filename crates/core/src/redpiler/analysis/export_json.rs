@@ -233,6 +233,9 @@ enum StateTestDto {
     PistonExtended {
         piston: String,
     },
+    PistonHeadPresent {
+        piston: String,
+    },
     PistonAvailability {
         piston: String,
         availability: &'static str,
@@ -477,6 +480,7 @@ enum ComponentStateDto {
 struct PistonSnapshotDto {
     piston: String,
     extended: bool,
+    head_present: bool,
     availability: &'static str,
     revision: String,
 }
@@ -626,6 +630,7 @@ impl GraphExport {
                 GuardExpressionDto::Always => {}
                 GuardExpressionDto::State { test } => match test {
                     StateTestDto::PistonExtended { piston }
+                    | StateTestDto::PistonHeadPresent { piston }
                     | StateTestDto::PistonAvailability { piston, .. } => {
                         check_ref(&pistons, piston, "guard piston")?
                     }
@@ -866,6 +871,14 @@ fn check_export_cancellation(monitor: &TaskMonitor) -> Result<(), ExportError> {
 fn map_preparation_error(error: passes::rich::PreparationError) -> ExportError {
     use passes::rich::PreparationError;
     let (code, message) = match &error {
+        PreparationError::Analysis(error) => {
+            let code = if matches!(error, super::AnalysisError::Cancelled) {
+                "cancelled"
+            } else {
+                "analysis"
+            };
+            (code, error.to_string())
+        }
         PreparationError::Geometry(error) => {
             let code = match error {
                 super::geometry::GeometryError::Analysis(super::AnalysisError::Cancelled) => {
@@ -1134,6 +1147,7 @@ pub(super) fn from_graph(
             .map(|(index, state)| PistonSnapshotDto {
                 piston: typed_id("piston", index),
                 extended: state.extended,
+                head_present: state.head_present,
                 availability: piston_availability(state.availability),
                 revision: state.revision.to_string(),
             })
@@ -1274,6 +1288,9 @@ fn guard_dto(guard: &Guard) -> GuardExpressionDto {
         Guard::State(test) => GuardExpressionDto::State {
             test: match test {
                 StateTest::PistonExtended(piston) => StateTestDto::PistonExtended {
+                    piston: typed_id("piston", piston.index()),
+                },
+                StateTest::PistonHeadPresent(piston) => StateTestDto::PistonHeadPresent {
                     piston: typed_id("piston", piston.index()),
                 },
                 StateTest::PistonAvailability { piston, is } => StateTestDto::PistonAvailability {

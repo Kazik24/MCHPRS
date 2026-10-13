@@ -24,6 +24,21 @@ use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use std::path::{Path, PathBuf};
 
+#[test]
+fn preparation_memory_limit_reports_stage_and_estimate() {
+    let monitor = crate::redpiler::TaskMonitor::default();
+    let budget = super::PreparationBudget::new(&monitor, 1);
+    let estimated = super::MAX_GRAPH_PREPARATION_BYTES + 1;
+    assert_eq!(
+        budget.check_estimated_bytes("callbacks", estimated),
+        Err(AnalysisError::PreparationMemoryLimit {
+            stage: "callbacks",
+            estimated_bytes: estimated,
+            limit_bytes: super::MAX_GRAPH_PREPARATION_BYTES,
+        })
+    );
+}
+
 use super::electrical::{
     self, ComparatorOverride, ElectricalDraft, ElectricalError, ElectricalLink, ElectricalTarget,
     WireRelationKind,
@@ -305,6 +320,48 @@ fn piston_entry_rejection_preserves_the_interpreter_world() {
 }
 
 #[test]
+fn selected_hoppers_and_trapdoors_are_rejected_before_compiler_publication() {
+    for (name, block, reason) in [
+        (
+            "hopper",
+            Block::from_name("hopper").unwrap(),
+            "inventory and comparator behavior",
+        ),
+        (
+            "iron_trapdoor",
+            Block::IronTrapdoor {
+                facing: BlockDirection::North,
+                half: mchprs_blocks::blocks::TrapdoorHalf::Bottom,
+                powered: false,
+            },
+            "state and redstone behavior",
+        ),
+    ] {
+        let mut world = empty();
+        world.set_block(BASE, block);
+        let before = world.get_block_raw(BASE);
+        let mut compiler = Compiler::default();
+        let error = compiler
+            .compile(
+                &world,
+                (BASE, BASE),
+                CompilerOptions::default(),
+                Vec::new(),
+                Default::default(),
+            )
+            .unwrap_err();
+        let message = error.to_string();
+        assert!(message.contains(name), "{message}");
+        assert!(message.contains(&format!("{BASE:?}")), "{message}");
+        assert!(message.contains(reason), "{message}");
+        assert!(!compiler.is_active());
+        assert!(compiler.stats().is_none());
+        assert_eq!(world.get_block_raw(BASE), before);
+        assert!(world.scheduler().iter_entries().next().is_none());
+    }
+}
+
+#[test]
 fn ordinary_compile_and_reset_still_work() {
     let mut world = empty();
     let lever = Block::Lever {
@@ -446,6 +503,7 @@ fn electrical_guard_holds(
     match &draft.guards[guard.index()] {
         Guard::Always => true,
         Guard::State(StateTest::PistonExtended(piston)) => pistons[piston.index()].extended,
+        Guard::State(StateTest::PistonHeadPresent(piston)) => pistons[piston.index()].head_present,
         Guard::State(StateTest::PistonAvailability { piston, is }) => {
             pistons[piston.index()].availability == *is
         }
@@ -1127,6 +1185,53 @@ fn electrical_comparator_overrides_replace_rear_power_in_order() {
 }
 
 #[test]
+fn electrical_rejects_hopper_comparator_overrides_outside_selection() {
+    let comparator = RedstoneComparator::new(BlockDirection::South, ComparatorMode::Compare, false);
+    for through_solid in [false, true] {
+        let mut world = empty();
+        world.set_block(BASE, Block::RedstoneComparator { comparator });
+        let rear = BASE.offset(BlockFace::South);
+        let source = rear.offset(BlockFace::South);
+        let (bounds, hopper) = if through_solid {
+            world.set_block(rear, Block::Stone {});
+            ((BASE, rear), source)
+        } else {
+            ((BASE, BASE), rear)
+        };
+        let hopper_block = Block::from_name("hopper").unwrap();
+        world.set_block(hopper, hopper_block);
+        world.set_block_entity(
+            hopper,
+            BlockEntity::Container {
+                comparator_override: 11,
+                inventory: Default::default(),
+                ty: ContainerType::Hopper,
+            },
+        );
+
+        let geometry = prepare_geometry_with_bounds(&world, bounds).unwrap();
+        let error =
+            electrical::prepare_electrical(&world, bounds, &geometry.draft, &Default::default())
+                .unwrap_err();
+        assert!(
+            matches!(
+                error,
+                ElectricalError::UnsupportedComponent { position, block, .. }
+                    if position == hopper && block == hopper_block.get_id()
+            ),
+            "{error:?}"
+        );
+        let message = error.to_string();
+        assert!(message.contains("hopper"), "{message}");
+        assert!(message.contains(&format!("{hopper:?}")), "{message}");
+        assert!(
+            message.contains("inventory and comparator behavior"),
+            "{message}"
+        );
+    }
+}
+
+#[test]
 fn electrical_dynamic_comparator_overrides_read_live_component_output() {
     let comparator = RedstoneComparator::new(BlockDirection::South, ComparatorMode::Compare, false);
     for block in [
@@ -1222,7 +1327,7 @@ fn geometry_io_fixture(name: &str) -> PlotWorld {
 }
 
 #[test]
-fn geometry_accepts_matching_heads_for_every_facing_and_rejects_missing_heads() {
+fn geometry_requires_matching_heads_for_extended_pistons_and_rejects_conflicts() {
     for facing in BlockFace::values() {
         let mut world = empty();
         let piston = RedstonePiston {
@@ -1240,6 +1345,7 @@ fn geometry_accepts_matching_heads_for_every_facing_and_rejects_missing_heads() 
         let parsed = prepare_geometry_for(&world).unwrap();
         assert_eq!(parsed.draft.pistons[0].facing, facing);
         assert!(parsed.draft.initial_pistons[0].extended);
+        assert!(parsed.draft.initial_pistons[0].head_present);
         let base = parsed
             .draft
             .contacts
@@ -1257,17 +1363,92 @@ fn geometry_accepts_matching_heads_for_every_facing_and_rejects_missing_heads() 
             variant.view == GeometryView::MovingPistonBase(parsed.draft.pistons[0].id)
         }));
 
+        let mut headless = empty();
+        headless.set_block(BASE, Block::Piston { piston });
+        let missing = prepare_geometry_for(&headless).unwrap_err();
+        assert!(
+            matches!(
+                &missing,
+                GeometryError::Entry(AdmissionIssue::MissingPistonHead { piston, head })
+                    if *piston == BASE && *head == BASE.offset(facing)
+            ),
+            "{missing:?}"
+        );
+
         let mut malformed = empty();
         malformed.set_block(BASE, Block::Piston { piston });
-        assert!(matches!(
-            prepare_geometry_for(&malformed),
-            Err(GeometryError::Rejected(GeometryIssue::MalformedHead {
-                actor,
-                position,
-                ..
-            })) if actor == BASE && position == BASE.offset(facing)
-        ));
+        malformed.set_block(
+            BASE.offset(facing),
+            Block::PistonHead {
+                head: RedstonePiston {
+                    sticky: false,
+                    ..piston
+                }
+                .into(),
+            },
+        );
+        let malformed = prepare_geometry_for(&malformed).unwrap_err();
+        assert!(
+            matches!(
+                &malformed,
+                GeometryError::Entry(AdmissionIssue::UnownedPistonHead { pos })
+                    if *pos == BASE.offset(facing)
+            ),
+            "{malformed:?}"
+        );
     }
+}
+
+#[test]
+fn extended_piston_head_guard_matches_its_valid_initial_state() {
+    let mut world = empty();
+    let piston = RedstonePiston {
+        facing: BlockFacing::East,
+        sticky: true,
+        extended: true,
+    };
+    world.set_block(BASE, Block::Piston { piston });
+    world.set_block(
+        BASE.offset(BlockFace::East),
+        Block::PistonHead {
+            head: piston.into(),
+        },
+    );
+    let (geometry, electrical) = prepare_electrical_for(&world);
+    let near = geometry.draft.pistons[0].near;
+    let contact = &electrical.contacts[near.index()];
+    let head = contact
+        .variants
+        .iter()
+        .find(|variant| {
+            matches!(
+                Block::from_id(electrical.profiles[variant.profile.index()].raw_state),
+                Block::PistonHead { .. }
+            )
+        })
+        .unwrap();
+    let air = contact
+        .variants
+        .iter()
+        .find(|variant| {
+            Block::from_id(electrical.profiles[variant.profile.index()].raw_state) == Block::Air
+        })
+        .unwrap();
+    let resources = &geometry.draft.initial_resources;
+    let initial = &geometry.draft.initial_pistons;
+    assert!(initial[0].head_present);
+    assert!(electrical_guard_holds(
+        &electrical,
+        head.when,
+        initial,
+        resources
+    ));
+    assert!(!electrical_guard_holds(
+        &electrical,
+        air.when,
+        initial,
+        resources
+    ));
 }
 
 #[test]

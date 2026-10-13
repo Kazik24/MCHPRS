@@ -46,7 +46,7 @@ type GraphTables = {
 type Snapshot = {
   id: string; // Identifies a captured state referenced by the trace.
   components: ComponentSnapshot[]; // Stores component or wire state keyed by its authoritative node ID.
-  pistons: PistonSnapshot[]; // Stores extended, availability, and revision keyed by piston ID.
+  pistons: PistonSnapshot[]; // Stores extension, head occupancy, availability, and revision keyed by piston ID.
   resources: ResourceSnapshot[]; // Stores selected contact, enabled flag, and revision keyed by resource ID.
   execution: JsonValue | null; // Stores reviewed scheduler/frontier data when available, otherwise no continuation claim.
 };
@@ -130,6 +130,7 @@ type GuardExpression =
   | { kind: "any"; guards: string[] }; // Requires at least one referenced earlier guard.
 type StateTest =
   | { kind: "piston_extended"; piston: string } // Tests the piston extension flag.
+  | { kind: "piston_head_present"; piston: string } // Tests whether the head occupies its near contact.
   | { kind: "piston_availability"; piston: string; availability: PistonAvailability } // Tests a piston connection-availability phase.
   | { kind: "resource_at"; resource: string; contact: string } // Tests whether a shared resource is selected at a contact.
   | { kind: "resource_enabled"; resource: string }; // Tests whether the shared resource is electrically available.
@@ -250,7 +251,7 @@ type RouteDelivery = {
 type Snapshot = {
   id: string; // Identifies this captured logical state.
   components: ComponentSnapshot[]; // Stores authoritative state for circuit component nodes.
-  pistons: PistonSnapshot[]; // Stores piston extension and connection availability state.
+  pistons: PistonSnapshot[]; // Stores extension, head occupancy, and connection availability state.
   resources: ResourceSnapshot[]; // Stores each shared resource's selected contact and availability.
   execution: JsonValue | null; // Stores a reviewed continuation frontier, or null when none is available.
 };
@@ -264,6 +265,7 @@ type PistonAvailability = "ready" | "head_pending" | "publishing_head_removal" |
 type PistonSnapshot = {
   piston: string; // References the piston whose state is captured.
   extended: boolean; // Records the piston extension flag.
+  head_present: boolean; // Records whether the piston head occupies its near contact.
   availability: PistonAvailability; // Records which piston contacts are currently available.
   revision: string; // Stores the revision as a decimal string without integer precision loss.
 };

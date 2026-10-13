@@ -29,6 +29,12 @@ pub(crate) enum CallbackError {
         target: BlockPos,
         block: u32,
     },
+    UnsupportedComponent {
+        source: BlockPos,
+        target: BlockPos,
+        block: u32,
+        reason: &'static str,
+    },
     InvalidReceiverReference {
         receiver: CallbackReceiver,
     },
@@ -51,6 +57,16 @@ impl fmt::Display for CallbackError {
             } => write!(
                 f,
                 "callback from {source:?} reaches uncompiled receiver {block} at {target:?}"
+            ),
+            Self::UnsupportedComponent {
+                source,
+                target,
+                block,
+                reason,
+            } => write!(
+                f,
+                "callback from {source:?} reaches unsupported {} at {target:?}: {reason}",
+                Block::from_id(*block).get_name()
             ),
             Self::InvalidReceiverReference { receiver } => {
                 write!(f, "callback route has invalid receiver {receiver:?}")
@@ -133,6 +149,7 @@ pub(crate) fn prepare_callbacks<W: World>(
 ) -> Result<CallbackDraft, CallbackError> {
     let budget = PreparationBudget::new(monitor, electrical.remaining_cells);
     budget.check()?;
+    let geometry_table_bytes = monitor.preparation_stage_estimate("geometry");
     let contact_at: FxHashMap<_, _> = electrical
         .contacts
         .iter()
@@ -160,17 +177,29 @@ pub(crate) fn prepare_callbacks<W: World>(
             )
         })
         .collect();
+    let contact_variant_bytes = electrical
+        .contacts
+        .iter()
+        .map(|contact| {
+            contact.variants.len().saturating_mul(std::mem::size_of::<
+                crate::redpiler::program_graph::ContactVariant,
+            >())
+        })
+        .sum();
     let mut builder = Builder {
         budget,
         world,
         geometry,
         electrical,
+        geometry_table_bytes,
+        contact_variant_bytes,
         contact_at,
         piston_nodes,
         profile_at,
         site_at: FxHashMap::default(),
         routes: Vec::new(),
         links: Vec::new(),
+        delivery_entries: 0,
     };
     for (index, site) in builder.electrical.sites.iter().enumerate() {
         builder
@@ -195,6 +224,8 @@ struct Builder<'a, W> {
     world: &'a W,
     geometry: &'a GeometryDraft,
     electrical: &'a mut ElectricalDraft,
+    geometry_table_bytes: usize,
+    contact_variant_bytes: usize,
     contact_at: FxHashMap<BlockPos, crate::redpiler::program_graph::ContactId>,
     piston_nodes:
         FxHashMap<crate::redpiler::program_graph::PistonId, crate::redpiler::program_graph::NodeId>,
@@ -202,6 +233,7 @@ struct Builder<'a, W> {
     site_at: FxHashMap<BlockPos, SiteId>,
     routes: Vec<Route>,
     links: Vec<LinkSpec>,
+    delivery_entries: usize,
 }
 
 impl<W: World> Builder<'_, W> {
@@ -349,7 +381,7 @@ impl<W: World> Builder<'_, W> {
         self.budget.consume(1)?;
         let route_id = RouteId::try_from_index(self.routes.len())
             .ok_or(CallbackError::TooManyEntries { table: "routes" })?;
-        let mut deliveries = Vec::new();
+        let mut deliveries = Vec::with_capacity(events.len());
         for (sequence, event) in events.into_iter().enumerate() {
             self.budget.check()?;
             let sequence = u32::try_from(sequence).map_err(|_| CallbackError::TooManyEntries {
@@ -377,6 +409,10 @@ impl<W: World> Builder<'_, W> {
                     sequence,
                     receiver,
                 });
+                self.budget.check_estimated_bytes(
+                    "callbacks",
+                    self.callback_capacity_estimate(deliveries.capacity()),
+                )?;
                 let Some(receiver) = receiver else {
                     continue;
                 };
@@ -395,13 +431,81 @@ impl<W: World> Builder<'_, W> {
                         sequence,
                     }),
                 });
+                self.budget.check_estimated_bytes(
+                    "callbacks",
+                    self.callback_capacity_estimate(deliveries.capacity()),
+                )?;
             }
         }
+        let delivery_count = deliveries.len();
         self.routes.push(Route {
             source,
             deliveries: deliveries.into_boxed_slice(),
         });
+        self.delivery_entries = self.delivery_entries.saturating_add(delivery_count);
         Ok(route_id)
+    }
+
+    fn callback_capacity_estimate(&self, pending_delivery_capacity: usize) -> usize {
+        use crate::redpiler::program_graph::{
+            CircuitNodeDraft, ComparatorInputPlan, ContactSpec, Guard, PistonSpec, Profile, Route,
+            RouteDelivery, SiteSpec, WirePlan, WireRelation,
+        };
+        let bytes = |capacity: usize, element_size: usize| capacity.saturating_mul(element_size);
+        self.geometry_table_bytes
+            .saturating_add(bytes(
+                self.electrical.nodes.capacity(),
+                std::mem::size_of::<CircuitNodeDraft>(),
+            ))
+            .saturating_add(bytes(
+                self.electrical.profiles.capacity(),
+                std::mem::size_of::<Profile>(),
+            ))
+            .saturating_add(bytes(
+                self.electrical.guards.capacity(),
+                std::mem::size_of::<Guard>() + std::mem::size_of::<GuardId>() * 4,
+            ))
+            .saturating_add(bytes(
+                self.electrical.contacts.capacity(),
+                std::mem::size_of::<ContactSpec>(),
+            ))
+            .saturating_add(self.contact_variant_bytes)
+            .saturating_add(bytes(
+                self.electrical.sites.capacity(),
+                std::mem::size_of::<SiteSpec>(),
+            ))
+            .saturating_add(bytes(
+                self.electrical.wires.capacity(),
+                std::mem::size_of::<WirePlan>(),
+            ))
+            .saturating_add(bytes(
+                self.electrical.links.capacity(),
+                std::mem::size_of::<crate::redpiler::analysis::electrical::ElectricalLink>(),
+            ))
+            .saturating_add(bytes(
+                self.electrical.wire_relations.capacity(),
+                std::mem::size_of::<WireRelation>(),
+            ))
+            .saturating_add(bytes(
+                self.electrical.comparators.capacity(),
+                std::mem::size_of::<ComparatorInputPlan>(),
+            ))
+            .saturating_add(bytes(
+                self.geometry.pistons.len(),
+                std::mem::size_of::<PistonSpec>(),
+            ))
+            .saturating_add(bytes(
+                self.routes.capacity() + 1,
+                std::mem::size_of::<Route>(),
+            ))
+            .saturating_add(bytes(
+                self.delivery_entries + pending_delivery_capacity,
+                std::mem::size_of::<RouteDelivery>(),
+            ))
+            .saturating_add(bytes(
+                self.links.capacity(),
+                std::mem::size_of::<LinkSpec>(),
+            ))
     }
 
     fn branches(
@@ -422,6 +526,14 @@ impl<W: World> Builder<'_, W> {
                         Block::from_id(self.electrical.profiles[variant.profile.index()].raw_state);
                     if !self.allowed(event.filter, block, event.position) {
                         continue;
+                    }
+                    if let Some(reason) = super::unsupported_component_reason(block) {
+                        return Err(CallbackError::UnsupportedComponent {
+                            source: source_position,
+                            target: event.position,
+                            block: block.get_id(),
+                            reason,
+                        });
                     }
                     let guard = if event.view == OperandView::Live {
                         variant.when
@@ -458,6 +570,14 @@ impl<W: World> Builder<'_, W> {
             SiteSource::Component(node) => {
                 let block = self.world.get_block(event.position);
                 if self.allowed(event.filter, block, event.position) {
+                    if let Some(reason) = super::unsupported_component_reason(block) {
+                        return Err(CallbackError::UnsupportedComponent {
+                            source: source_position,
+                            target: event.position,
+                            block: block.get_id(),
+                            reason,
+                        });
+                    }
                     let guard = self.combine_guards(self.always_guard(), condition)?;
                     let receiver = match event.kind {
                         DeliveryKind::Shape { .. } => Some(CallbackReceiver::Component(node)),
@@ -470,6 +590,14 @@ impl<W: World> Builder<'_, W> {
             SiteSource::Constant(profile) => {
                 let block = Block::from_id(self.electrical.profiles[profile.index()].raw_state);
                 if self.allowed(event.filter, block, event.position) {
+                    if let Some(reason) = super::unsupported_component_reason(block) {
+                        return Err(CallbackError::UnsupportedComponent {
+                            source: source_position,
+                            target: event.position,
+                            block: block.get_id(),
+                            reason,
+                        });
+                    }
                     let requires_receiver = match event.kind {
                         DeliveryKind::Update { .. } => redstone::has_neighbor_update(block),
                         DeliveryKind::Shape { .. } => {

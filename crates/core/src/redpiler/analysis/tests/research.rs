@@ -140,6 +140,220 @@ fn bubblesort_import_preserves_full_memory_and_button_protocol() {
     assert!(matches!(world.get_block(pos), Block::StoneButton { button } if !button.powered));
 }
 
+#[test]
+fn cpu_bubblesort_head_matches_piston_and_missing_variant_is_rejected_transactionally() {
+    let fixture = manifest("cpu_bubblesort");
+    let (mut world, _) = load(&fixture);
+    let actor = BlockPos::new(180, 14, 166);
+    let head = actor.offset(BlockFace::East);
+    let Block::Piston { piston } = world.get_block(actor) else {
+        panic!("expected piston at {actor:?}");
+    };
+    assert!(piston.extended);
+    assert!(matches!(
+        world.get_block(head),
+        Block::PistonHead { head: actual }
+            if actual.facing == piston.facing
+                && actual.sticky == piston.sticky
+                && !actual.short
+    ));
+    assert!(world.set_block(head, Block::Air));
+    let before = cpus::checkpoint(&world, 0, &[]);
+    let mut compiler = crate::redpiler::Compiler::default();
+    let error = compiler
+        .compile(
+            &world,
+            (actor, head.offset(BlockFace::East)),
+            crate::redpiler::CompilerOptions::default(),
+            Vec::new(),
+            Default::default(),
+        )
+        .unwrap_err();
+    let message = error.to_string();
+    assert!(message.contains("extended piston"), "{message}");
+    assert!(message.contains(&format!("{actor:?}")), "{message}");
+    assert!(message.contains(&format!("{head:?}")), "{message}");
+    assert!(message.contains("missing its head"), "{message}");
+    assert!(!compiler.is_active());
+    assert!(compiler.stats().is_none());
+    assert_eq!(cpus::checkpoint(&world, 0, &[]), before);
+}
+
+#[test]
+#[ignore = "explicit Graph-versus-interpreter timing episode"]
+fn cpu_bubblesort_graph_and_interpreter_match_short_sign_free_episode() {
+    let cpu = cpus::CPUS[2];
+    const MEASURED_ACTIVE_TICKS: u64 = 100;
+    let mut fixture = manifest("cpu_bubblesort");
+    fixture["origin"] = json!([cpu.origin.x, cpu.origin.y, cpu.origin.z]);
+    let benchmark_sign = cpu.origin + BlockPos::new(186, 2, 184);
+    let checkpoints = [0, 10, MEASURED_ACTIVE_TICKS];
+
+    let mut interpreter = cpus::load_cpu(cpu);
+    assert!(matches!(
+        interpreter.get_block(benchmark_sign),
+        Block::WallSign { .. }
+    ));
+    assert!(interpreter.set_block(benchmark_sign, Block::Air));
+    let expected_initial = cpus::checkpoint(&interpreter, 0, &[]);
+    let mut interpreter_ram = BTreeMap::from([(0, cpu_words(&interpreter, &fixture))]);
+    cpus::click_cpu(&mut interpreter, cpu, cpu.start);
+    let interpreter_started = Instant::now();
+    for tick in 1..=MEASURED_ACTIVE_TICKS {
+        interpreter.tick_interpreted();
+        if checkpoints.contains(&tick) {
+            interpreter_ram.insert(tick, cpu_words(&interpreter, &fixture));
+        }
+    }
+    let interpreter_runtime = interpreter_started.elapsed();
+    drop(interpreter);
+
+    let mut graph_world = cpus::load_cpu(cpu);
+    assert!(matches!(
+        graph_world.get_block(benchmark_sign),
+        Block::WallSign { .. }
+    ));
+    assert!(graph_world.set_block(benchmark_sign, Block::Air));
+    assert_eq!(
+        cpus::checkpoint(&graph_world, 0, &[]),
+        expected_initial,
+        "Graph and interpreter inputs must differ only by the same sign removal"
+    );
+    let dimensions = fixture["dimensions"].as_array().unwrap();
+    let bounds = (
+        cpu.origin,
+        cpu.origin
+            + BlockPos::new(
+                dimensions[0].as_i64().unwrap() as i32 - 1,
+                dimensions[1].as_i64().unwrap() as i32 - 1,
+                dimensions[2].as_i64().unwrap() as i32 - 1,
+            ),
+    );
+    let monitor = std::sync::Arc::new(crate::redpiler::TaskMonitor::default());
+    let ticks = graph_world.scheduler().iter_entries().collect();
+    let mut graph = crate::redpiler::backend::graph::GraphBackend::compile(
+        &graph_world,
+        bounds,
+        ticks,
+        monitor.clone(),
+    )
+    .unwrap_or_else(|error| {
+        panic!(
+            "Graph preparation failed: {error}; preparation tables: {:?}",
+            monitor.graph_statistics().preparation_tables
+        )
+    });
+    let tables = monitor.graph_statistics().preparation_tables;
+    for stage in [
+        "geometry",
+        "electrical",
+        "callbacks",
+        "lowering input",
+        "lowering",
+    ] {
+        let estimate: usize = tables
+            .iter()
+            .filter(|table| table.stage == stage)
+            .map(|table| table.estimated_bytes)
+            .sum();
+        eprintln!(
+            "Graph {stage} tables: {:.1} MiB",
+            estimate as f64 / 1_048_576.0
+        );
+    }
+    let mut largest_callbacks: Vec<_> = tables
+        .iter()
+        .filter(|table| table.stage == "callbacks")
+        .collect();
+    largest_callbacks.sort_by_key(|table| std::cmp::Reverse(table.estimated_bytes));
+    eprintln!(
+        "Largest callback tables: {}",
+        largest_callbacks
+            .iter()
+            .take(3)
+            .map(|table| format!(
+                "{} {:.1} MiB",
+                table.table,
+                table.estimated_bytes as f64 / 1_048_576.0
+            ))
+            .collect::<Vec<_>>()
+            .join(", ")
+    );
+    let mut graph_ram = BTreeMap::from([(0, cpu_words(&graph_world, &fixture))]);
+    let button = cpu.origin + cpu.start;
+    graph.use_block(button).unwrap();
+    let graph_started = Instant::now();
+    for tick in 1..=MEASURED_ACTIVE_TICKS {
+        graph
+            .tick()
+            .unwrap_or_else(|error| panic!("Graph failed at active tick {tick}: {error}"));
+        graph.clear_test_traces();
+        if tick % 1_000 == 0 {
+            eprintln!("Graph BubbleSort active tick {tick}");
+        }
+        if checkpoints.contains(&tick) {
+            graph.flush(&mut graph_world, false);
+            graph_ram.insert(tick, cpu_words(&graph_world, &fixture));
+        }
+    }
+    let graph_runtime = graph_started.elapsed();
+    assert_eq!(graph_ram, interpreter_ram, "checkpoint RAM parity");
+    eprintln!("Graph work counts: {:?}", graph.execution_counts());
+    eprintln!(
+        "CPU sign-free short replay at {benchmark_sign:?}: Graph {} ticks in {:.2}s; interpreter {} ticks in {:.2}s",
+        MEASURED_ACTIVE_TICKS,
+        graph_runtime.as_secs_f64(),
+        MEASURED_ACTIVE_TICKS,
+        interpreter_runtime.as_secs_f64()
+    );
+}
+
+#[test]
+fn cpu_bubblesort_sign_on_piston_reports_transition_support_loss() {
+    let fixture = manifest("cpu_bubblesort");
+    let (world, _) = load(&fixture);
+    let sign = BlockPos::new(187, 10, 185);
+    let piston = BlockPos::new(188, 10, 185);
+    let head = piston.offset(BlockFace::East);
+    assert!(matches!(
+        world.get_block(sign),
+        Block::WallSign {
+            facing: BlockDirection::West,
+            ..
+        }
+    ));
+    assert!(
+        matches!(world.get_block(piston), Block::Piston { piston } if piston.facing == BlockFacing::East && piston.extended)
+    );
+    assert!(matches!(world.get_block(head), Block::PistonHead { .. }));
+
+    let before = cpus::checkpoint(&world, 0, &[]);
+    let mut compiler = crate::redpiler::Compiler::default();
+    let error = compiler
+        .compile(
+            &world,
+            (sign, head.offset(BlockFace::East)),
+            crate::redpiler::CompilerOptions::default(),
+            Vec::new(),
+            Default::default(),
+        )
+        .unwrap_err();
+    let message = error.to_string();
+    assert!(message.contains("oak_wall_sign"), "{message}");
+    assert!(
+        message.contains("BlockPos { x: 187, y: 10, z: 185 }"),
+        "{message}"
+    );
+    assert!(
+        message.contains("BlockPos { x: 188, y: 10, z: 185 }"),
+        "{message}"
+    );
+    assert!(message.contains("moving_piston"), "{message}");
+    assert!(!compiler.is_active());
+    assert!(compiler.stats().is_none());
+    assert_eq!(cpus::checkpoint(&world, 0, &[]), before);
+}
+
 fn memory_pos(address: u8, bit: u8) -> BlockPos {
     BASE + BlockPos::new(14 - 2 * i32::from(address), 9, 24 - 2 * i32::from(bit))
 }

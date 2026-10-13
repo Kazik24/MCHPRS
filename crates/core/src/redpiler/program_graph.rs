@@ -170,6 +170,7 @@ pub(crate) enum OperandView {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum StateTest {
     PistonExtended(PistonId),
+    PistonHeadPresent(PistonId),
     PistonAvailability {
         piston: PistonId,
         is: PistonAvailability,
@@ -239,6 +240,37 @@ pub(crate) struct ResourceState {
     pub(crate) revision: u64,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct ContactCandidates<T> {
+    /// This stores the flattened candidate slice owned by each contact.
+    ranges: Box<[Range<usize>]>,
+    /// This keeps only typed IDs, avoiding a per-contact allocation at runtime.
+    ids: Box<[T]>,
+}
+
+impl<T: Copy> ContactCandidates<T> {
+    fn from_buckets(buckets: Vec<Vec<T>>) -> Self {
+        let mut ranges = Vec::with_capacity(buckets.len());
+        let mut ids = Vec::new();
+        for bucket in buckets {
+            let start = ids.len();
+            ids.extend(bucket);
+            ranges.push(start..ids.len());
+        }
+        Self {
+            ranges: ranges.into_boxed_slice(),
+            ids: ids.into_boxed_slice(),
+        }
+    }
+
+    fn at(&self, contact: ContactId) -> &[T] {
+        self.ranges
+            .get(contact.index())
+            .map(|range| &self.ids[range.clone()])
+            .unwrap_or(&[])
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum PistonLane {
     Empty,
@@ -290,6 +322,8 @@ impl PistonAvailability {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct PistonState {
     pub(crate) extended: bool,
+    /// Tracks head occupancy across the piston transition publication phases.
+    pub(crate) head_present: bool,
     pub(crate) availability: PistonAvailability,
     pub(crate) revision: u64,
 }
@@ -420,7 +454,6 @@ pub(crate) struct CircuitDraft {
     pub(crate) contacts: Vec<ContactSpec>,
     pub(crate) routes: Vec<Route>,
     pub(crate) wires: Vec<WirePlan>,
-    /// This preserves the guarded geometric relations used to build dust channels.
     pub(crate) wire_relations: Vec<WireRelation>,
     pub(crate) sites: Vec<SiteSpec>,
     pub(crate) pistons: Vec<PistonSpec>,
@@ -574,6 +607,46 @@ impl CircuitDraft {
             })
             .collect::<Vec<_>>()
             .into_boxed_slice();
+        let mut command_plan_by_node = vec![None; nodes.len()];
+        for (index, plan) in command_blocks.iter().enumerate() {
+            command_plan_by_node[plan.node.index()] = Some(index as u32);
+        }
+        let mut note_plan_by_node = vec![None; nodes.len()];
+        for (index, plan) in note_blocks.iter().enumerate() {
+            note_plan_by_node[plan.node.index()] = Some(index as u32);
+        }
+        let mut comparator_plan_by_node = vec![None; nodes.len()];
+        for (index, plan) in self.comparator_inputs.iter().enumerate() {
+            comparator_plan_by_node[plan.node.index()] = Some(index as u32);
+        }
+        let mut piston_resources = Vec::with_capacity(self.pistons.len());
+        for piston in &self.pistons {
+            let binding = match piston.lane {
+                PistonLane::Empty => None,
+                PistonLane::SingleResource { far } => self
+                    .resources
+                    .iter()
+                    .position(|resource| {
+                        resource.contacts.contains(&piston.near)
+                            && resource.contacts.contains(&far)
+                    })
+                    .map(|index| ResourceId::new(index as u32)),
+            };
+            piston_resources.push(binding);
+        }
+        let mut resource_buckets = vec![Vec::new(); self.contacts.len()];
+        for (index, resource) in self.resources.iter().enumerate() {
+            for &contact in resource.contacts.iter() {
+                resource_buckets[contact.index()].push(ResourceId::new(index as u32));
+            }
+        }
+        let mut base_piston_buckets = vec![Vec::new(); self.contacts.len()];
+        let mut head_piston_buckets = vec![Vec::new(); self.contacts.len()];
+        for (index, piston) in self.pistons.iter().enumerate() {
+            let id = PistonId::new(index as u32);
+            base_piston_buckets[piston.base.index()].push(id);
+            head_piston_buckets[piston.near.index()].push(id);
+        }
 
         let state = CircuitState {
             components: self
@@ -587,10 +660,10 @@ impl CircuitDraft {
         };
         let program = CircuitProgram {
             nodes: nodes.into_boxed_slice(),
-            links: self.links.into_boxed_slice(),
             power_links: self.power_links.into_boxed_slice(),
             power_inputs,
             comparator_inputs: self.comparator_inputs.into_boxed_slice(),
+            comparator_plan_by_node: comparator_plan_by_node.into_boxed_slice(),
             profiles: self.profiles.into_boxed_slice(),
             profile_blocks,
             guards: self.guards.into_boxed_slice(),
@@ -600,8 +673,14 @@ impl CircuitDraft {
             sites: self.sites.into_boxed_slice(),
             pistons: self.pistons.into_boxed_slice(),
             resources: self.resources.into_boxed_slice(),
+            piston_resources: piston_resources.into_boxed_slice(),
+            resource_contacts: ContactCandidates::from_buckets(resource_buckets),
+            base_pistons: ContactCandidates::from_buckets(base_piston_buckets),
+            head_pistons: ContactCandidates::from_buckets(head_piston_buckets),
             command_blocks,
+            command_plan_by_node: command_plan_by_node.into_boxed_slice(),
             note_blocks,
+            note_plan_by_node: note_plan_by_node.into_boxed_slice(),
         };
         Ok((program, state))
     }
@@ -851,7 +930,9 @@ impl CircuitDraft {
 
     fn validate_state_test(&self, test: StateTest) -> Result<(), GraphBuildError> {
         match test {
-            StateTest::PistonExtended(piston) | StateTest::PistonAvailability { piston, .. } => {
+            StateTest::PistonExtended(piston)
+            | StateTest::PistonHeadPresent(piston)
+            | StateTest::PistonAvailability { piston, .. } => {
                 check_id("pistons", piston.index(), self.pistons.len())?;
             }
             StateTest::ResourceAt { resource, contact } => {
@@ -1442,6 +1523,11 @@ fn check_id(table: &'static str, index: usize, len: usize) -> Result<(), GraphBu
 
 #[derive(Debug)]
 pub(crate) enum GraphBuildError {
+    PreparationMemoryLimit {
+        stage: &'static str,
+        estimated_bytes: usize,
+        limit_bytes: usize,
+    },
     TooManyEntries {
         table: &'static str,
     },
@@ -1532,6 +1618,14 @@ pub(crate) enum GraphBuildError {
 impl std::fmt::Display for GraphBuildError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
+            Self::PreparationMemoryLimit {
+                stage,
+                estimated_bytes,
+                limit_bytes,
+            } => write!(
+                f,
+                "Graph {stage} table estimate ({estimated_bytes} bytes) exceeds the {limit_bytes}-byte preparation limit"
+            ),
             Self::TooManyEntries { table } => write!(f, "{table} table exceeds u32 graph IDs"),
             Self::InvalidReference { table, index, len } => {
                 write!(f, "{table} reference {index} is out of range 0..{len}")
@@ -1671,10 +1765,11 @@ impl std::error::Error for GraphBuildError {}
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct CircuitProgram {
     nodes: Box<[NodeSpec]>,
-    links: Box<[LinkSpec]>,
     power_links: Box<[PowerLink]>,
     power_inputs: FxHashMap<PowerTarget, Range<usize>>,
     comparator_inputs: Box<[ComparatorInputPlan]>,
+    /// This maps a dense node ID directly to its comparator input plan.
+    comparator_plan_by_node: Box<[Option<u32>]>,
     profiles: Box<[Profile]>,
     profile_blocks: Box<[Block]>,
     guards: Box<[Guard]>,
@@ -1684,17 +1779,25 @@ pub(crate) struct CircuitProgram {
     sites: Box<[SiteSpec]>,
     pistons: Box<[PistonSpec]>,
     resources: Box<[ResourceSpec]>,
+    /// This binds each piston to the lane resource selected during lowering.
+    piston_resources: Box<[Option<ResourceId>]>,
+    /// These candidates contain resources that can occupy each contact.
+    resource_contacts: ContactCandidates<ResourceId>,
+    /// These candidates contain piston bases indexed by contact.
+    base_pistons: ContactCandidates<PistonId>,
+    /// These candidates contain piston heads indexed by their near contact.
+    head_pistons: ContactCandidates<PistonId>,
     command_blocks: Box<[CommandBlockPlan]>,
+    /// This maps a dense node ID directly to its command plan.
+    command_plan_by_node: Box<[Option<u32>]>,
     note_blocks: Box<[NoteBlockPlan]>,
+    /// This maps a dense node ID directly to its note-block plan.
+    note_plan_by_node: Box<[Option<u32>]>,
 }
 
 impl CircuitProgram {
     pub(crate) fn nodes(&self) -> &[NodeSpec] {
         &self.nodes
-    }
-
-    pub(crate) fn links(&self) -> &[LinkSpec] {
-        &self.links
     }
 
     pub(crate) fn power_links(&self) -> &[PowerLink] {
@@ -1714,6 +1817,11 @@ impl CircuitProgram {
 
     pub(crate) fn comparator_inputs(&self) -> &[ComparatorInputPlan] {
         &self.comparator_inputs
+    }
+
+    pub(crate) fn comparator_input(&self, node: NodeId) -> Option<&ComparatorInputPlan> {
+        let index = self.comparator_plan_by_node.get(node.index()).copied().flatten()?;
+        self.comparator_inputs.get(index as usize)
     }
 
     pub(crate) fn sites(&self) -> &[SiteSpec] {
@@ -1748,12 +1856,38 @@ impl CircuitProgram {
         &self.resources
     }
 
+    pub(crate) fn resource_for_piston(&self, piston: PistonId) -> Option<ResourceId> {
+        self.piston_resources.get(piston.index()).copied().flatten()
+    }
+
+    pub(crate) fn resources_at_contact(&self, contact: ContactId) -> &[ResourceId] {
+        self.resource_contacts.at(contact)
+    }
+
+    pub(crate) fn base_pistons_at_contact(&self, contact: ContactId) -> &[PistonId] {
+        self.base_pistons.at(contact)
+    }
+
+    pub(crate) fn head_pistons_at_contact(&self, contact: ContactId) -> &[PistonId] {
+        self.head_pistons.at(contact)
+    }
+
     pub(crate) fn command_blocks(&self) -> &[CommandBlockPlan] {
         &self.command_blocks
     }
 
+    pub(crate) fn command_plan(&self, node: NodeId) -> Option<CommandBlockPlan> {
+        let index = self.command_plan_by_node.get(node.index()).copied().flatten()?;
+        self.command_blocks.get(index as usize).copied()
+    }
+
     pub(crate) fn note_blocks(&self) -> &[NoteBlockPlan] {
         &self.note_blocks
+    }
+
+    pub(crate) fn note_plan(&self, node: NodeId) -> Option<NoteBlockPlan> {
+        let index = self.note_plan_by_node.get(node.index()).copied().flatten()?;
+        self.note_blocks.get(index as usize).copied()
     }
 
     pub(crate) fn position_index(&self) -> FxHashMap<BlockPos, NodeId> {
@@ -2048,6 +2182,7 @@ mod tests {
             }],
             initial_pistons: vec![PistonState {
                 extended: false,
+                head_present: false,
                 availability: PistonAvailability::Ready,
                 revision: 0,
             }],
