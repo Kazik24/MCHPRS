@@ -81,12 +81,27 @@ fn set_native_lever_as_interaction(world: &mut PlotWorld, position: BlockPos, po
     redstone::update_surrounding_blocks(world, position.offset(attachment));
 }
 
-fn graph(world: &PlotWorld, ticks: Vec<TickEntry>) -> GraphBackend {
-    GraphBackend::compile(world, BOUNDS, ticks, Arc::default()).unwrap()
+fn recording_graph(world: &PlotWorld, ticks: Vec<TickEntry>) -> GraphBackend {
+    let mut backend = GraphBackend::compile(world, BOUNDS, ticks, Arc::default()).unwrap();
+    backend.set_test_recording(true);
+    backend
+}
+
+#[test]
+fn test_recording_can_be_toggled_around_a_graph_episode() {
+    let world = empty_world();
+    let mut backend = recording_graph(&world, vec![]);
+    backend.set_test_recording(false);
+    backend.tick().unwrap();
+    assert!(backend.trace().is_empty());
+
+    backend.set_test_recording(true);
+    backend.tick().unwrap();
+    assert!(!backend.trace().is_empty());
 }
 
 fn state_at(backend: &GraphBackend, position: BlockPos) -> NodeState {
-    backend.node_state(backend.positions[&position])
+    backend.node_state(backend.positions[&position]).clone()
 }
 
 fn ticks_at(
@@ -343,7 +358,7 @@ fn graph_route_powers_lamp_synchronously_and_flush_only_projects_state() {
         world.set_block(LEVER_POS, lever(false));
         world.set_block(lamp_pos, Block::RedstoneLamp { lit: false });
     }
-    let mut backend = graph(&graph_world, vec![]);
+    let mut backend = recording_graph(&graph_world, vec![]);
     let lever_node = backend.positions[&LEVER_POS];
     let lamp_node = backend.positions[&lamp_pos];
 
@@ -405,7 +420,7 @@ fn dust_output_uses_regulated_sides_from_compiled_neighbors() {
         );
         world.set_block(lamp_pos, Block::RedstoneLamp { lit: false });
     }
-    let mut backend = graph(&graph_world, vec![]);
+    let mut backend = recording_graph(&graph_world, vec![]);
     assert!(
         matches!(backend.node_block(backend.positions[&wire_pos]), Block::RedstoneWire { wire }
         if wire.north == RedstoneWireSide::None && wire.south == RedstoneWireSide::None
@@ -475,7 +490,7 @@ fn dust_strong_output_uses_regulated_sides_through_a_conductor() {
         world.set_block(conductor_pos, Block::Stone {});
         world.set_block(lamp_pos, Block::RedstoneLamp { lit: false });
     }
-    let mut backend = graph(&graph_world, vec![]);
+    let mut backend = recording_graph(&graph_world, vec![]);
 
     backend.use_block(LEVER_POS).unwrap();
     set_native_lever(&mut native, LEVER_POS, true);
@@ -510,7 +525,7 @@ fn wire_seed_and_turbo_rise_and_fall_match_native_order() {
         }
         world.set_block(lamp_pos, Block::RedstoneLamp { lit: false });
     }
-    let mut backend = graph(&graph_world, vec![]);
+    let mut backend = recording_graph(&graph_world, vec![]);
 
     for powered in [true, false] {
         let graph_start = backend.callback_order.len();
@@ -592,7 +607,7 @@ fn wire_seed_with_unchanged_power_does_not_start_a_turbo_walk() {
         world.set_block(wire_pos.offset(BlockFace::Bottom), Block::Stone {});
         world.set_block(wire_pos, Block::RedstoneWire { wire });
     }
-    let mut backend = graph(&graph_world, vec![]);
+    let mut backend = recording_graph(&graph_world, vec![]);
     let node = backend.positions[&wire_pos];
     backend
         .update_component(node, DeliveryKind::Update { direction: None }, None)
@@ -628,7 +643,7 @@ fn stale_wire_sides_and_strength_remain_untouched_until_a_rule_changes_them() {
     let mut world = empty_world();
     world.set_block(wire_pos.offset(BlockFace::Bottom), Block::Stone {});
     world.set_block(wire_pos, Block::RedstoneWire { wire });
-    let mut backend = graph(&world, vec![]);
+    let mut backend = recording_graph(&world, vec![]);
 
     backend.flush(&mut world, false);
 
@@ -652,7 +667,7 @@ fn wire_shape_callback_regulates_sides_then_uses_native_neighbor_route() {
         );
         world.set_block(source_pos, Block::RedstoneBlock {});
     }
-    let mut backend = graph(&graph_world, vec![]);
+    let mut backend = recording_graph(&graph_world, vec![]);
     let node = backend.positions[&wire_pos];
     let native_trace = capture_at(&[wire_pos], || {
         crate::interaction::change(
@@ -723,7 +738,7 @@ fn wire_turbo_walk_matches_native_across_ascent_and_descent() {
             );
         }
     }
-    let mut backend = graph(&graph_world, vec![]);
+    let mut backend = recording_graph(&graph_world, vec![]);
     backend.use_block(lever_pos).unwrap();
     set_native_lever(&mut native, lever_pos, true);
     backend.flush(&mut graph_world, false);
@@ -775,7 +790,7 @@ fn wire_turbo_heading_orders_match_native_for_all_horizontal_directions() {
                 );
             }
         }
-        let mut backend = graph(&graph_world, vec![]);
+        let mut backend = recording_graph(&graph_world, vec![]);
         backend.use_block(lever_pos).unwrap();
         let native_trace = capture_at(&wires, || set_native_lever(&mut native, lever_pos, true));
         let native_callbacks: Vec<_> = native_trace
@@ -835,7 +850,7 @@ fn wire_reads_live_strong_power_through_a_compiled_conductor() {
             },
         );
     }
-    let mut backend = graph(&graph_world, vec![]);
+    let mut backend = recording_graph(&graph_world, vec![]);
 
     for powered in [true, false] {
         backend.use_block(lever_pos).unwrap();
@@ -941,7 +956,7 @@ fn bulb_callback_starts_a_nested_wire_walk_and_outer_order_resumes() {
         world.set_block(inner_source, lever(false));
         world.set_block(bulb_source, Block::RedstoneBlock);
     }
-    let mut backend = graph(&graph_world, vec![]);
+    let mut backend = recording_graph(&graph_world, vec![]);
     let inner_source_node = backend.positions[&inner_source];
     let outer_node = backend.positions[&outer_wire];
     let inner_node = backend.positions[&inner_wire];
@@ -1096,7 +1111,7 @@ fn observer_filters_direction_suppresses_pending_and_uses_two_tick_edges() {
             },
         );
     }
-    let mut backend = graph(&graph_world, vec![]);
+    let mut backend = recording_graph(&graph_world, vec![]);
     let observer = backend.positions[&observer_pos];
     backend
         .update_component(
@@ -1161,7 +1176,7 @@ fn observer_filters_direction_suppresses_pending_and_uses_two_tick_edges() {
             },
         },
     );
-    let mut recovery = graph(&recovery_world, vec![]);
+    let mut recovery = recording_graph(&recovery_world, vec![]);
     let recovery_node = recovery.positions[&observer_pos];
     recovery
         .update_component(
@@ -1194,7 +1209,7 @@ fn shape_delivery_does_not_sample_observers() {
         world.set_block(away, observer(BlockFacing::West));
         world.set_block(toward, observer(BlockFacing::West));
     }
-    let mut backend = graph(&graph_world, vec![]);
+    let mut backend = recording_graph(&graph_world, vec![]);
 
     for (position, shape_direction, update_direction) in [
         (away, BlockFace::West, BlockFace::East),
@@ -1286,7 +1301,7 @@ fn imported_ticks_keep_duplicates_priority_fifo_and_reject_stale_types() {
     let mut native = PlotWorld::from_chunks(0, 0, vec![Chunk::empty(0, 0)], scheduler);
     native.set_block(first, button);
     native.set_block(second, button);
-    let mut backend = graph(&native, entries);
+    let mut backend = recording_graph(&native, entries);
     assert_eq!(
         backend.scheduled_ticks().len(),
         5,
@@ -1345,7 +1360,7 @@ fn imported_wire_tick_is_consumed_as_a_native_noop() {
         .collect::<TickScheduler<ScheduledBlockTick>>();
     let mut native = PlotWorld::from_chunks(0, 0, vec![Chunk::empty(0, 0)], scheduler);
     native.set_block(position, block);
-    let mut backend = graph(&native, vec![entry.clone()]);
+    let mut backend = recording_graph(&native, vec![entry.clone()]);
     let node = backend.positions[&position];
     assert_eq!(backend.scheduled_ticks(), [entry]);
 
@@ -1370,7 +1385,7 @@ fn imported_wire_tick_is_consumed_as_a_native_noop() {
 fn imported_tick_validation_rejects_out_of_ring_and_invalid_zero_delay() {
     let mut world = empty_world();
     world.set_block(LEVER_POS, lever(false));
-    let mut backend = graph(&world, vec![]);
+    let mut backend = recording_graph(&world, vec![]);
     let target = backend.positions[&LEVER_POS];
     let tick = |delay, priority| ImportedTick {
         target: Some(target),
@@ -1479,7 +1494,7 @@ fn untyped_imported_work_does_not_suppress_a_typed_callback_tick() {
 fn imported_ticks_reject_unloaded_targets_instead_of_treating_them_as_air() {
     let position = BlockPos::new(16, 20, 5);
     let world = empty_world();
-    let mut backend = graph(&world, vec![]);
+    let mut backend = recording_graph(&world, vec![]);
     let result = backend.import_ticks(vec![ImportedTick {
         target: None,
         position,
@@ -1522,7 +1537,7 @@ fn graph_noteblock_samples_live_instrument_and_buffers_only_eligible_edges() {
         },
     );
     native.set_block(below, Block::GoldBlock);
-    let mut backend = graph(&world, vec![]);
+    let mut backend = recording_graph(&world, vec![]);
 
     backend.use_block(LEVER_POS).unwrap();
     assert!(state_at(&backend, note_pos).powered);
@@ -1561,7 +1576,7 @@ fn graph_noteblock_samples_live_instrument_and_buffers_only_eligible_edges() {
 
     world.set_block(above, Block::Stone {});
     native.set_block(above, Block::Stone {});
-    let mut blocked = graph(&world, vec![]);
+    let mut blocked = recording_graph(&world, vec![]);
     blocked.use_block(LEVER_POS).unwrap();
     set_native_lever_as_interaction(&mut native, LEVER_POS, true);
     assert!(state_at(&blocked, note_pos).powered);
@@ -1657,7 +1672,7 @@ fn graph_command_results_are_synchronous_and_hostless_ticks_preserve_work() {
     let mut native_world = command_world();
     set_native_lever_as_interaction(&mut native_world, lever_pos, true);
 
-    let mut backend = graph(&world, vec![]);
+    let mut backend = recording_graph(&world, vec![]);
     backend.use_block(lever_pos).unwrap();
     backend.flush(&mut world, true);
     let due_before = backend.scheduler.iter().count();
@@ -1686,7 +1701,7 @@ fn graph_command_results_are_synchronous_and_hostless_ticks_preserve_work() {
         native_world.scheduler().iter_entries().collect::<Vec<_>>()
     );
     world.clear_scheduled_ticks();
-    let mut backend = graph(&world, continuation);
+    let mut backend = recording_graph(&world, continuation);
 
     backend.tick_with_world(&mut world).unwrap();
     native_world.tick_interpreted();
@@ -1777,7 +1792,7 @@ fn graph_conditional_chain_reads_the_synchronous_predecessor_result() {
             })),
         );
     }
-    let mut backend = graph(&world, vec![]);
+    let mut backend = recording_graph(&world, vec![]);
     backend.use_block(lever_pos).unwrap();
     backend.tick_with_world(&mut world).unwrap();
     let ComponentState::Electrical(first_state) =
@@ -1809,7 +1824,7 @@ fn graph_repeating_automatic_command_rearms_with_one_future_tick() {
             ..Default::default()
         })),
     );
-    let mut backend = graph(&world, vec![]);
+    let mut backend = recording_graph(&world, vec![]);
     assert_eq!(backend.scheduled_ticks().len(), 1);
     assert_eq!(backend.scheduled_ticks()[0].ticks_left, 1);
 
@@ -1905,7 +1920,7 @@ fn command_block_without_entity_matches_interpreter_initialization() {
     let mut native = empty_world();
     native.set_block(command_pos, command);
     native.set_block(lever_pos, lever(false));
-    let mut backend = graph(&world, vec![]);
+    let mut backend = recording_graph(&world, vec![]);
 
     backend.use_block(lever_pos).unwrap();
     set_native_lever_as_interaction(&mut native, lever_pos, true);
@@ -1983,6 +1998,7 @@ fn hostless_tick_preserves_work_that_can_activate_a_command() {
         Arc::default(),
     )
     .unwrap();
+    with_host.set_test_recording(true);
     with_host.tick_with_world(&mut world_with_host).unwrap();
     assert!(state_at(&with_host, repeater_pos).powered);
     assert_eq!(
@@ -2075,7 +2091,7 @@ fn stale_tick_at_uncompiled_air_position_remains_until_dispatch() {
         .into_iter()
         .collect::<TickScheduler<ScheduledBlockTick>>();
     let mut native = PlotWorld::from_chunks(0, 0, vec![Chunk::empty(0, 0)], scheduler);
-    let mut backend = graph(&native, entries);
+    let mut backend = recording_graph(&native, entries);
 
     assert_eq!(
         backend.scheduled_ticks(),
@@ -2122,7 +2138,7 @@ fn due_at_entry_comparator_repeats_same_value_notification() {
         },
     );
     graph_world.set_block(lamp_pos, Block::RedstoneLamp { lit: false });
-    let mut backend = graph(&graph_world, ticks.clone());
+    let mut backend = recording_graph(&graph_world, ticks.clone());
 
     let scheduler = ticks
         .into_iter()
@@ -2203,7 +2219,7 @@ fn repeater_keeps_short_pulse_and_delayed_off_transition() {
         world.set_block(repeater_pos, repeater);
         world.set_block(lamp_pos, Block::RedstoneLamp { lit: false });
     }
-    let mut backend = graph(&graph_world, vec![]);
+    let mut backend = recording_graph(&graph_world, vec![]);
     backend.use_block(lever_pos).unwrap();
     set_native_lever(&mut native, lever_pos, true);
     backend.tick().unwrap();
@@ -2251,7 +2267,7 @@ fn captured_repeater_lock_change_uses_captured_powered_state() {
             },
         );
     }
-    let mut backend = graph(&graph_world, vec![]);
+    let mut backend = recording_graph(&graph_world, vec![]);
     let node = backend.positions[&repeater_pos];
     assert!(backend.repeater_locked(node));
     assert!(state_at(&backend, repeater_pos).powered);
@@ -2297,7 +2313,7 @@ fn copper_bulb_uses_power_latch_separately_from_lit_state() {
         world.set_block(LEVER_POS, lever(false));
         world.set_block(bulb_pos, bulb);
     }
-    let mut backend = graph(&graph_world, vec![]);
+    let mut backend = recording_graph(&graph_world, vec![]);
     for (powered, lit) in [(true, true), (false, true), (true, false)] {
         backend.use_block(LEVER_POS).unwrap();
         set_native_lever(&mut native, LEVER_POS, powered);
@@ -2339,7 +2355,7 @@ fn bulb_far_comparator_callbacks_match_native_order_and_count() {
             BlockEntity::Comparator { output_strength: 0 },
         );
     }
-    let mut backend = graph(&graph_world, vec![]);
+    let mut backend = recording_graph(&graph_world, vec![]);
     let comparator_node = backend.positions[&comparator_pos];
 
     backend.use_block(lever_pos).unwrap();
@@ -2418,7 +2434,7 @@ fn torch_uses_compiled_conductor_query_and_scheduled_edges() {
         world.set_block(lever_pos.offset(BlockFace::East), Block::Stone {});
         world.set_block(lever_pos, wall_lever);
     }
-    let mut backend = graph(&graph_world, vec![]);
+    let mut backend = recording_graph(&graph_world, vec![]);
 
     backend.use_block(lever_pos).unwrap();
     set_native_lever_with_support(&mut native, lever_pos, true, BlockFace::East);
@@ -2515,7 +2531,7 @@ fn boundary_torch_power_is_not_silently_compiled_as_zero() {
         source
     };
     assert!(redstone::redstone_lamp_should_be_lit(&world, lamp));
-    let full = graph(&world, vec![]);
+    let full = recording_graph(&world, vec![]);
     assert_eq!(
         full.input_strength(full.positions[&lamp], InputPort::Main),
         15
@@ -2690,7 +2706,7 @@ fn observer_shape_then_explicit_update_matches_native_for_every_orientation() {
                 },
             };
             native.set_block(position, observer);
-            let mut backend = graph(&native, vec![]);
+            let mut backend = recording_graph(&native, vec![]);
             let node = backend.positions[&position];
             let shape_direction = if watches_changed_cell {
                 facing.opposite()
@@ -2767,7 +2783,7 @@ fn torch_shape_does_not_sample_power_before_the_update_phase() {
             lever: Lever::new(LeverFace::Wall, control_face.unwrap_direction(), true),
         },
     );
-    let mut backend = graph(&native, vec![]);
+    let mut backend = recording_graph(&native, vec![]);
     let node = backend.positions[&position];
     assert_eq!(backend.input_strength(node, InputPort::Main), 15);
     assert!(crate::interaction::is_valid_position(
@@ -2837,7 +2853,7 @@ fn captured_repeater_lock_rewrite_keeps_native_output_strength_and_consumers() {
         );
         let lamp = position.offset(template.facing.opposite().block_face());
         native.set_block(lamp, Block::RedstoneLamp { lit: false });
-        let mut backend = graph(&native, vec![]);
+        let mut backend = recording_graph(&native, vec![]);
         let node = backend.positions[&position];
         let observed = ObservedSite {
             profile: None,
@@ -2923,7 +2939,7 @@ fn bulb_far_comparator_callbacks_match_native_order_and_multiplicity() {
         native.set_block_entity(position, BlockEntity::Comparator { output_strength: 0 });
         comparators.push(position);
     }
-    let mut backend = graph(&native, vec![]);
+    let mut backend = recording_graph(&native, vec![]);
     let records = capture_at(&comparators, || {
         set_native_lever(&mut native, control, true)
     });
@@ -3043,7 +3059,7 @@ fn shared_payload_opposite_direction_does_not_request_early_retraction() {
             }
             world.set_block(far, Block::Air);
         }
-        let mut backend = graph(&graph_world, vec![]);
+        let mut backend = recording_graph(&graph_world, vec![]);
         assert_eq!(backend.program.resources().len(), 1);
         for index in [extending_actor, retracting_actor] {
             set_native_lever(&mut native, controls[index], true);
@@ -3084,7 +3100,7 @@ fn shared_payload_deadline_reversal_executes_notified_actor_in_same_tick() {
             world.set_block(control.offset(BlockFace::Bottom), Block::Stone {});
             world.set_block(control, lever(false));
         }
-        let mut backend = graph(&graph_world, vec![]);
+        let mut backend = recording_graph(&graph_world, vec![]);
         assert_eq!(backend.program.resources().len(), 1);
         set_native_lever(&mut native, control, true);
         backend.use_block(control).unwrap();
@@ -3136,6 +3152,7 @@ fn shared_payload_actor_orders_select_the_first_retracting_contact() {
         let (mut native, graph_world, bases, near, resource_pos) = opposing_shared_pistons();
         let mut backend = GraphBackend::compile(&graph_world, BOUNDS, vec![], Arc::default())
             .unwrap_or_else(|error| panic!("shared two-actor fixture rejected: {error}"));
+        backend.set_test_recording(true);
 
         for actor_index in order {
             let base = bases[actor_index];
@@ -3199,6 +3216,7 @@ fn shared_payload_overlapping_repeated_triggers_keep_fifo_and_conserve_one_token
         let (mut native, graph_world, bases, near, resource_pos) = opposing_shared_pistons();
         let mut backend = GraphBackend::compile(&graph_world, BOUNDS, vec![], Arc::default())
             .unwrap_or_else(|error| panic!("shared two-actor fixture rejected: {error}"));
+        backend.set_test_recording(true);
 
         for actor_index in order {
             let base = bases[actor_index];
@@ -3282,6 +3300,7 @@ fn three_sticky_actors_share_one_conserved_resource() {
     }
     let mut backend = GraphBackend::compile(&graph_world, BOUNDS, vec![], Arc::default())
         .unwrap_or_else(|error| panic!("three-actor shared fixture rejected: {error}"));
+    backend.set_test_recording(true);
     assert_eq!(backend.program.resources().len(), 1);
     assert_eq!(backend.program.resources()[0].contacts.len(), 4);
 
@@ -3318,6 +3337,7 @@ fn shared_resource_drop_and_recapture_ignore_the_obsolete_actor_event() {
     }
     let mut backend = GraphBackend::compile(&graph_world, BOUNDS, vec![], Arc::default())
         .unwrap_or_else(|error| panic!("shared drop/recapture fixture rejected: {error}"));
+    backend.set_test_recording(true);
 
     let Block::Piston { piston } = native.get_block(bases[0]) else {
         unreachable!();
@@ -3406,6 +3426,7 @@ fn stale_resource_publication_does_not_cancel_a_valid_actor_publication() {
     let (_, graph_world, bases, _, resource_pos) = opposing_shared_pistons();
     let mut backend = GraphBackend::compile(&graph_world, BOUNDS, vec![], Arc::default())
         .unwrap_or_else(|error| panic!("shared two-actor fixture rejected: {error}"));
+    backend.set_test_recording(true);
     let actor = piston_id_at(&backend, bases[0]);
     backend.retract_connections(actor, false).unwrap();
     let event = backend.deferred_pistons.pop_front().unwrap();
@@ -3821,7 +3842,7 @@ fn same_value_quasi_updates_match_native_and_deduplicate_extension() {
     let quasi_source = base.offset(BlockFace::Top).offset(BlockFace::East);
     native.set_block(quasi_source, Block::RedstoneBlock);
     graph_world.set_block(quasi_source, Block::RedstoneBlock);
-    let mut backend = graph(&graph_world, vec![]);
+    let mut backend = recording_graph(&graph_world, vec![]);
     let piston_node = backend.program.pistons()[0].node;
 
     assert_eq!(backend.input_strength(piston_node, InputPort::Main), 0);
@@ -3850,7 +3871,7 @@ fn same_value_quasi_updates_match_native_and_deduplicate_extension() {
 #[test]
 fn piston_acceptance_cancellation_matches_interpreter() {
     let (mut native, graph_world, base, lever_pos) = isolated_piston_pair(true);
-    let mut backend = graph(&graph_world, vec![]);
+    let mut backend = recording_graph(&graph_world, vec![]);
 
     set_native_lever_with_support(&mut native, lever_pos, true, BlockFace::West);
     backend.use_block(lever_pos).unwrap();
@@ -3876,7 +3897,7 @@ fn blocked_piston_lane_rejects_extension_at_sampling_and_acceptance() {
     let container = Block::from_name("barrel").unwrap();
     native.set_block(near, container);
     graph_world.set_block(near, container);
-    let mut backend = graph(&graph_world, vec![]);
+    let mut backend = recording_graph(&graph_world, vec![]);
 
     set_native_lever_with_support(&mut native, lever_pos, true, BlockFace::West);
     backend.use_block(lever_pos).unwrap();
@@ -3915,7 +3936,7 @@ fn piston_early_reversal_matches_interpreter_and_invalidates_old_restoration() {
     for world in [&mut native, &mut graph_world] {
         world.set_block(far_lamp, Block::RedstoneLamp { lit: false });
     }
-    let mut backend = graph(&graph_world, vec![]);
+    let mut backend = recording_graph(&graph_world, vec![]);
     let far_contact = match backend.program.pistons()[0].lane {
         PistonLane::SingleResource { far } => far,
         PistonLane::Empty => unreachable!(),
@@ -4022,7 +4043,7 @@ fn ordinary_early_retraction_publishes_interrupted_head_before_base() {
     };
     native.set_block(far, observer);
     graph_world.set_block(far, observer);
-    let mut backend = graph(&graph_world, vec![]);
+    let mut backend = recording_graph(&graph_world, vec![]);
 
     set_native_lever_with_support(&mut native, lever_pos, true, BlockFace::West);
     backend.use_block(lever_pos).unwrap();
@@ -4060,7 +4081,7 @@ fn piston_delayed_restoration_matches_interpreter() {
     for world in [&mut native, &mut graph_world] {
         world.set_block(far_lamp, Block::RedstoneLamp { lit: false });
     }
-    let mut backend = graph(&graph_world, vec![]);
+    let mut backend = recording_graph(&graph_world, vec![]);
     set_native_lever_with_support(&mut native, lever_pos, true, BlockFace::West);
     backend.use_block(lever_pos).unwrap();
 
@@ -4134,7 +4155,7 @@ fn sticky_retraction_publishes_base_then_resource_once_in_native_order() {
             );
         }
     }
-    let mut backend = graph(&graph_world, vec![]);
+    let mut backend = recording_graph(&graph_world, vec![]);
 
     set_native_lever_with_support(&mut native, lever_pos, true, BlockFace::West);
     backend.use_block(lever_pos).unwrap();
@@ -4189,7 +4210,7 @@ fn ordinary_empty_piston_extension_restoration_matches_interpreter() {
     native.set_block(far, observer);
     let mut graph_world = graph_world;
     graph_world.set_block(far, observer);
-    let mut backend = graph(&graph_world, vec![]);
+    let mut backend = recording_graph(&graph_world, vec![]);
     let observer_node = backend.positions[&far];
     set_native_lever_with_support(&mut native, lever_pos, true, BlockFace::West);
     backend.use_block(lever_pos).unwrap();

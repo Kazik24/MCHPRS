@@ -2,7 +2,7 @@
 
 Status: proposal for review. This incorporates the user's explicit correction: **the graph does not simulate physical movement and has no Motion/progress model**. Read [requirements](FINDINGS.md) and [agent rules](AGENT_GUIDE.md) first.
 
-Integration direction updated 2026-10-13: follow [the common graph and pass API migration](GRAPH_PIPELINE_MIGRATION.md). The required parser front end produces the general CompileGraph; configurable graph transformations, export and lowering consume it. GraphBackend remains the sole target executor. Direct/Native coexist only during migration and are retired after coverage and admission review. The earlier generalized-Direct proposal is superseded; historical module sketches below do not require preserving legacy executors.
+Integration direction updated 2026-10-13: follow [the common graph and pass API migration](GRAPH_PIPELINE_MIGRATION.md). The required parser front end produces the general CompileGraph; configurable graph transformations, export and lowering consume it. GraphBackend is the sole compiled executor; the interpreter remains the reference path. Direct/Native and the electrical-only legacy compile graph have been retired. The earlier generalized-Direct proposal is superseded; historical module sketches below do not require preserving legacy executors.
 
 ## 1. The model in one circuit
 
@@ -66,7 +66,7 @@ redpiler/
 
 Create modules when their assigned step needs them. Reuse existing helpers and queues. No general instruction VM, physical World adapter, worker pool, or new dependency is needed.
 
-Keep ordinary Direct and Native working during the reviewed migration. After covered ordinary circuits use Graph and unsupported-case policy is explicit, retire both legacy backends. A Graph circuit must never fall back to native simulation. Recover compact ordinary performance with reviewed passes and specialized Graph instructions, rather than an independent simulator.
+Compiled circuits use Graph only and never fall back to native simulation. Compact ordinary performance can be recovered later with reviewed passes and specialized Graph instructions, rather than an independent simulator.
 
 ## 3. Ownership and memory
 

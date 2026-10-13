@@ -2,14 +2,7 @@ use std::collections::VecDeque;
 use std::mem;
 
 use mchprs_blocks::BlockPos;
-use mchprs_blocks::blocks::Block;
 use mchprs_world::{TickEntry, TickPriority};
-use rustc_hash::FxHashMap;
-use tracing::warn;
-
-use crate::world::World;
-
-use super::direct::node::NodeId;
 
 pub(crate) const NUM_QUEUES: usize = 32;
 
@@ -87,29 +80,6 @@ impl<T> Default for TickScheduler<T> {
             queues_deque: Default::default(),
             pos: 0,
         }
-    }
-}
-
-impl TickScheduler<NodeId> {
-    pub fn reset<W: World>(
-        &mut self,
-        world: &mut W,
-        blocks: &[Option<(BlockPos, Block)>],
-        aliases: &FxHashMap<usize, Vec<(BlockPos, Block)>>,
-    ) {
-        for (node, delay, priority) in self.iter() {
-            let Some((pos, _)) = blocks[node.index()] else {
-                warn!(
-                    "Cannot schedule tick for node {node:?} because block information is missing"
-                );
-                continue;
-            };
-            world.schedule_half_tick(pos, delay as u32, priority);
-            for &(pos, _) in aliases.get(&node.index()).into_iter().flatten() {
-                world.schedule_half_tick(pos, delay as u32, priority);
-            }
-        }
-        self.clear();
     }
 }
 

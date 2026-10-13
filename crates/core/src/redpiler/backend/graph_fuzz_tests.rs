@@ -1077,6 +1077,7 @@ fn replay(template: Template, protocol: &Protocol) -> Result<ReplayResult, Strin
     let ticks = native.scheduler().iter_entries().collect();
     let mut backend = GraphBackend::compile(&graph_world, BOUNDS, ticks, Arc::default())
         .map_err(|error| format!("compile: {error}"))?;
+    backend.set_test_recording(true);
     let mut ordinal = 0usize;
     let mut first_failure = None;
     let mut coverage = EpisodeCoverage::default();
@@ -1568,6 +1569,7 @@ fn dropped_payload_reuse_keeps_far_resource_live() {
         let ticks = native.scheduler().iter_entries().collect();
         let mut backend = GraphBackend::compile(&graph_world, BOUNDS, ticks, Arc::default())
             .unwrap_or_else(|error| panic!("dropped payload fixture rejected: {error}"));
+        backend.set_test_recording(true);
 
         update_native_lever(&mut native, fixture.normal, true, false);
         backend.use_block(fixture.normal).unwrap();

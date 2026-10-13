@@ -531,8 +531,8 @@ impl Plot {
                         Ok(candidate) => {
                             let summary = candidate.summary();
                             self.players[player].send_system_message(&format!(
-                                "Candidate graph: {} ordinary nodes, {} electrical links; execution remains disabled",
-                                summary.ordinary_nodes, summary.electrical_links,
+                                "Prepared Graph: {} nodes, {} links; no compiler was activated",
+                                summary.nodes, summary.links,
                             ));
                             for line in monitor.graph_statistics().summary_lines() {
                                 self.players[player].send_system_message(&line);
@@ -592,12 +592,6 @@ impl Plot {
                     }
                 };
                 options.budget_multiplier = self.players[player].compilation_budget_multiplier();
-
-                if options.optimize {
-                    let msg = messages::REDPILER_OPTIMIZATION_HIGHLY_UNSTABLE_CAN_BREAK;
-                    warn!("{}", msg);
-                    self.players[player].send_system_message(msg);
-                }
 
                 self.reset_redpiler();
                 self.start_redpiler(options);
@@ -2186,7 +2180,7 @@ mod security_tests {
     }
 
     #[test]
-    fn redpiler_analysis_reports_graph_passes_and_compile_statistics_to_the_client() {
+    fn redpiler_analysis_reports_the_unified_graph_and_compile_statistics() {
         use crate::world::World;
         use mchprs_blocks::blocks::{Block, Lever, LeverFace};
         use mchprs_blocks::{BlockDirection, BlockPos};
@@ -2232,28 +2226,20 @@ mod security_tests {
                 }
                 panic!("analysis response did not complete");
             };
-            for (args, folding) in [
-                (vec!["--graph"], "Constant folding [skipped]"),
-                (
-                    vec!["--graph", "--optimize", "--io-only"],
-                    "Constant folding [enabled]",
-                ),
-            ] {
+            for args in [vec!["--graph"], vec!["--graph", "--optimize", "--io-only"]] {
                 plot.handle_redpiler_command(0, "analyze", &args);
-                let lines = messages("Exporting graph [skipped]");
-                assert!(
-                    lines
-                        .iter()
-                        .any(|line| line.starts_with("Candidate graph:"))
-                );
+                let lines = messages("Transformations: none configured.");
+                assert!(lines.iter().any(|line| line.starts_with("Prepared Graph:")));
                 assert!(
                     lines
                         .iter()
                         .any(|line| line.starts_with("Graph after required preparation:"))
                 );
-                assert!(lines.iter().any(|line| line.contains(folding)
-                    && line.contains("links")
-                    && line.ends_with("ms")));
+                assert!(
+                    lines
+                        .iter()
+                        .any(|line| line == "Transformations: none configured.")
+                );
                 assert!(!plot.redpiler.is_active());
             }
             plot.handle_redpiler_command(0, "analyze", &[]);

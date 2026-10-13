@@ -1,6 +1,6 @@
 //! Typed construction and immutable program storage for the general graph.
 
-use crate::redpiler::compile_graph::{NodeState, NodeType};
+use crate::redpiler::components::{NodeState, NodeType};
 use mchprs_blocks::blocks::{Block, RedstoneWire};
 use mchprs_blocks::{BlockFace, BlockPos};
 use mchprs_world::{TickEntry, TickPriority};
@@ -242,31 +242,34 @@ pub(crate) struct ResourceState {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct ContactCandidates<T> {
-    /// This stores the flattened candidate slice owned by each contact.
-    ranges: Box<[Range<usize>]>,
-    /// This keeps only typed IDs, avoiding a per-contact allocation at runtime.
+    /// This maps each dense contact ID to its slice in `ids`.
+    ranges: Box<[Range<u32>]>,
+    /// This stores typed contact-local candidates contiguously.
     ids: Box<[T]>,
 }
 
 impl<T: Copy> ContactCandidates<T> {
-    fn from_buckets(buckets: Vec<Vec<T>>) -> Self {
+    fn from_buckets(buckets: Vec<Vec<T>>, table: &'static str) -> Result<Self, GraphBuildError> {
         let mut ranges = Vec::with_capacity(buckets.len());
         let mut ids = Vec::new();
         for bucket in buckets {
-            let start = ids.len();
+            let start =
+                u32::try_from(ids.len()).map_err(|_| GraphBuildError::TooManyEntries { table })?;
             ids.extend(bucket);
-            ranges.push(start..ids.len());
+            let end =
+                u32::try_from(ids.len()).map_err(|_| GraphBuildError::TooManyEntries { table })?;
+            ranges.push(start..end);
         }
-        Self {
+        Ok(Self {
             ranges: ranges.into_boxed_slice(),
             ids: ids.into_boxed_slice(),
-        }
+        })
     }
 
     fn at(&self, contact: ContactId) -> &[T] {
         self.ranges
             .get(contact.index())
-            .map(|range| &self.ids[range.clone()])
+            .map(|range| &self.ids[range.start as usize..range.end as usize])
             .unwrap_or(&[])
     }
 }
@@ -617,7 +620,7 @@ impl CircuitDraft {
         }
         let mut comparator_plan_by_node = vec![None; nodes.len()];
         for (index, plan) in self.comparator_inputs.iter().enumerate() {
-            comparator_plan_by_node[plan.node.index()] = Some(index as u32);
+            comparator_plan_by_node[plan.node.index()].get_or_insert(index as u32);
         }
         let mut piston_resources = Vec::with_capacity(self.pistons.len());
         for piston in &self.pistons {
@@ -627,8 +630,7 @@ impl CircuitDraft {
                     .resources
                     .iter()
                     .position(|resource| {
-                        resource.contacts.contains(&piston.near)
-                            && resource.contacts.contains(&far)
+                        resource.contacts.contains(&piston.near) && resource.contacts.contains(&far)
                     })
                     .map(|index| ResourceId::new(index as u32)),
             };
@@ -674,9 +676,18 @@ impl CircuitDraft {
             pistons: self.pistons.into_boxed_slice(),
             resources: self.resources.into_boxed_slice(),
             piston_resources: piston_resources.into_boxed_slice(),
-            resource_contacts: ContactCandidates::from_buckets(resource_buckets),
-            base_pistons: ContactCandidates::from_buckets(base_piston_buckets),
-            head_pistons: ContactCandidates::from_buckets(head_piston_buckets),
+            resource_contacts: ContactCandidates::from_buckets(
+                resource_buckets,
+                "resource contact candidates",
+            )?,
+            base_pistons: ContactCandidates::from_buckets(
+                base_piston_buckets,
+                "base piston candidates",
+            )?,
+            head_pistons: ContactCandidates::from_buckets(
+                head_piston_buckets,
+                "head piston candidates",
+            )?,
             command_blocks,
             command_plan_by_node: command_plan_by_node.into_boxed_slice(),
             note_blocks,
@@ -1626,7 +1637,9 @@ impl std::fmt::Display for GraphBuildError {
                 f,
                 "Graph {stage} table estimate ({estimated_bytes} bytes) exceeds the {limit_bytes}-byte preparation limit"
             ),
-            Self::TooManyEntries { table } => write!(f, "{table} table exceeds u32 graph IDs"),
+            Self::TooManyEntries { table } => {
+                write!(f, "{table} table exceeds the supported u32 index range")
+            }
             Self::InvalidReference { table, index, len } => {
                 write!(f, "{table} reference {index} is out of range 0..{len}")
             }
@@ -1820,7 +1833,11 @@ impl CircuitProgram {
     }
 
     pub(crate) fn comparator_input(&self, node: NodeId) -> Option<&ComparatorInputPlan> {
-        let index = self.comparator_plan_by_node.get(node.index()).copied().flatten()?;
+        let index = self
+            .comparator_plan_by_node
+            .get(node.index())
+            .copied()
+            .flatten()?;
         self.comparator_inputs.get(index as usize)
     }
 
@@ -1877,7 +1894,11 @@ impl CircuitProgram {
     }
 
     pub(crate) fn command_plan(&self, node: NodeId) -> Option<CommandBlockPlan> {
-        let index = self.command_plan_by_node.get(node.index()).copied().flatten()?;
+        let index = self
+            .command_plan_by_node
+            .get(node.index())
+            .copied()
+            .flatten()?;
         self.command_blocks.get(index as usize).copied()
     }
 
@@ -1886,7 +1907,11 @@ impl CircuitProgram {
     }
 
     pub(crate) fn note_plan(&self, node: NodeId) -> Option<NoteBlockPlan> {
-        let index = self.note_plan_by_node.get(node.index()).copied().flatten()?;
+        let index = self
+            .note_plan_by_node
+            .get(node.index())
+            .copied()
+            .flatten()?;
         self.note_blocks.get(index as usize).copied()
     }
 
@@ -2197,30 +2222,32 @@ mod tests {
 
     #[test]
     fn lowering_preserves_callback_duplicates_and_direction() {
-        let (program, state) = draft_with_mixed_links().lower().unwrap();
-        assert_eq!(program.links().len(), 4);
+        let draft = draft_with_mixed_links();
+        draft.validate().unwrap();
+        assert_eq!(draft.links.len(), 4);
         assert!(matches!(
-            program.links()[0].kind,
+            draft.links[0].kind,
             LinkKind::Power {
                 attenuation: 15,
                 ..
             }
         ));
         assert_eq!(
-            program
-                .links()
+            draft
+                .links
                 .iter()
                 .filter(|link| matches!(link.kind, LinkKind::Update { .. }))
                 .count(),
             2
         );
         assert!(matches!(
-            program.links()[3].kind,
+            draft.links[3].kind,
             LinkKind::Shape {
                 direction: BlockFace::West,
                 ..
             }
         ));
+        let (program, state) = draft.lower().unwrap();
         assert_eq!(
             program.routes[0].deliveries[0].kind,
             DeliveryKind::Update {

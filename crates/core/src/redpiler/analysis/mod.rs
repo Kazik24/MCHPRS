@@ -135,9 +135,6 @@ impl<'a> PreparationBudget<'a> {
 
 #[derive(Debug, Clone, Serialize)]
 pub enum AdmissionIssue {
-    PistonRuntimeUnavailable {
-        pos: BlockPos,
-    },
     UnsupportedComponent {
         pos: BlockPos,
         block: u32,
@@ -170,12 +167,6 @@ pub enum AdmissionIssue {
 impl fmt::Display for AdmissionIssue {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::PistonRuntimeUnavailable { pos } => {
-                write!(
-                    f,
-                    "piston at {pos:?} requires the interpreter; piston compilation is unsupported"
-                )
-            }
             Self::UnsupportedComponent { pos, block, reason } => write!(
                 f,
                 "{} at {pos:?} is unsupported: {reason}",
@@ -310,9 +301,6 @@ pub fn analyze(
                                         return Err(AnalysisError::PistonLimit);
                                     }
                                     report.pistons.push(pos);
-                                    report
-                                        .issues
-                                        .push(AdmissionIssue::PistonRuntimeUnavailable { pos });
                                     if piston.extended {
                                         owned_heads.insert((
                                             pos.offset(BlockFace::from(piston.facing)),

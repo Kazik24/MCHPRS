@@ -199,7 +199,7 @@ fn compiled_automatic_outputs_start_once_and_recompile_without_replaying_impulse
 }
 
 #[test]
-fn command_output_export_rejection_preserves_live_world_and_pending_ticks() {
+fn legacy_graph_export_rejection_preserves_world_and_pending_ticks() {
     let (mut world, pos, _) = output_fixture("repeating_command_block", true);
     redstone::command_block::update(&mut world, pos);
     let before: Vec<_> = world.scheduler().iter_entries().collect();
@@ -216,7 +216,11 @@ fn command_output_export_rejection_preserves_live_world_and_pending_ticks() {
             Default::default(),
         )
         .unwrap_err();
-    assert!(error.to_string().contains("command-block output export"));
+    assert!(
+        error
+            .to_string()
+            .contains("legacy binary and DOT exports cannot represent the unified graph")
+    );
     assert!(!compiler.is_active());
     assert_eq!(world.scheduler().iter_entries().collect::<Vec<_>>(), before);
     assert_eq!(world.command_output().count(), 0);

@@ -1,10 +1,10 @@
 # G5 — Ordinary circuit parity audit
 
-Status (2026-10-13): focused differential work was added in batch 02; the G5 audit remains incomplete and awaits human review. Read [the migration plan](../GRAPH_PIPELINE_MIGRATION.md) and existing reference-contract requirements.
+Status (2026-10-13): the retained supported subset passed the focused differential gate in this batch; broader histories remain untested, and the result awaits human review. Read [the migration plan](../GRAPH_PIPELINE_MIGRATION.md) and existing reference-contract requirements.
 
 ## Goal
 
-Establish which ordinary circuits can move from legacy Direct/Native selection to Graph. Backend identity is part of every claimed execution test. Record unresolved component policy before legacy retirement.
+Establish differential evidence for ordinary behavior under the unified Graph executor. Backend identity is part of every claimed execution test. Record explicit unsupported components and untested histories.
 
 ## Cases
 
@@ -19,7 +19,7 @@ Establish which ordinary circuits can move from legacy Direct/Native selection t
 
 ## Implementation instructions
 
-Reuse `analysis/tests/redstone_fuzz.rs`, graph regression helpers, the reference-contract comparator and pinned fixture loader. Use an explicit Graph runner; do not use the public compiler as the sole selector while it can still choose Direct/Native. Compare against independently executed interpreter episodes, using existing fixed seeds and short targeted histories before larger campaigns. Passing legacy-versus-interpreter tests do not establish Graph parity.
+Reuse `analysis/tests/redstone_fuzz.rs`, graph regression helpers, the reference-contract comparator and pinned fixture loader. Tests assert Graph identity for public compilation and compare against independently stepped interpreter episodes. Keep future coverage incremental; passing focused histories do not establish full CPU or all-world parity.
 
 Preserve first-divergence reporting. Compare eligible callback order, component/resource state, pending work and reset continuation at appropriate boundaries. Revision IDs need not numerically match the interpreter; cancellation validity must match. Normalize only documented unobservable records. Same settled outputs are insufficient.
 
@@ -30,16 +30,16 @@ Preserve first-divergence reporting. Compare eligible callback order, component/
 - Debug and release runs of new focused regressions, relevant existing parser/executor suites, formatting and diff checks.
 - One ordered trace explaining a comparator/feedback interaction and one exact handoff comparison.
 
-## Batch 02 evidence and remaining matrix
+## Verification and remaining matrix
 
-The explicit Graph tests cover imported tick deadlines/duplicates, comparator notification scheduling from a synchronous command result, note-block edge behavior, command host errors, selected trapdoor rejection, and selected existing observer, dust, piston, TEST-family, and adder episodes. The command/result test now compares against an independently stepped interpreter, including the comparator's scheduled feedback and the later stored output. The command reset handoff is compared with uninterrupted interpreter work.
+The 202 discovered redpiler tests cover imported tick deadlines/duplicates, comparator feedback from a synchronous command result, note-block edge behavior, command host errors, selected Hopper/trapdoor rejection, ordinary feedback/controls, observers, dust, piston, TEST-family, and adder episodes. Public compilation tests assert Graph identity. The command/result test compares an independently stepped interpreter, including live comparator feedback and the later scheduled output. The command reset handoff is compared with uninterrupted interpreter work.
 
 The repaired CPU_BubbleSort interpreter reference passed its full 50,000-tick frozen replay. An explicit Graph episode also sorted the selected RAM bank after 10,035 active ticks and matched interpreter RAM at ticks 0, 10, 100, 1,000, 5,000, and 10,035. For this benchmark only, the same in-memory removal of the wall sign at `(188,10,186)` was applied to both inputs; the stored schematic keeps the sign, and compilation with it selected still returns the structured support-loss error. The repaired schematic includes the correctly oriented sticky piston head at `(181,14,166)`.
 
-Current CPU Graph retained-table estimates were 19.74 MiB after geometry, 194.70 MiB after electrical analysis, 411.08 MiB after callbacks, 405.30 MiB at lowering input, and 323.78 MiB after lowering. These are estimated table bytes, not process RSS. Deliveries (133.0 MiB), guards (102.7 MiB), and callback links (64.0 MiB) were largest. During the explicit test, clearing test-only trace vectors each tick kept sampled RSS near 0.54 GiB; the first test run without that clearing reached 12.45 GiB and was stopped. This confirms unbounded test instrumentation caused that run's growth. The older ~42 GiB preparation report remains unexplained because it lacks stage data and RSS sampling. The existing release CPU harness now runs five fresh sign-free input pairs for 100 active ticks; it compiles Graph and checks backend identity, RAM, and counters outside the timed section. Graph median was 4.396806 s (4.245987–4.582137 s), interpreter median was 0.634134 s (0.621264–0.646845 s). Each Graph sample recorded 2,059,909 callbacks, 32,505 wire walks, 302,784 piston samples, and 27,884 piston actions/publications, matching the `cfg(test)` run. The test trace formatting is omitted from the release library; the two timing paths are not identical (`Graph::tick_with_world` versus direct test-backend `tick`), so the timing difference does not isolate the instrumentation cost. Compilation time was not measured.
+The final release harness runs five fresh sign-free input pairs for 100 active ticks; it compiles Graph and checks backend identity, RAM, and counters outside the timed section. Graph median was 1.284687 s (1.241218–1.301638 s), interpreter median was 0.649654 s (0.642933–0.695880 s). Each Graph sample recorded 20,005 scheduled ticks, 2,059,909 callbacks, 32,505 wire walks, 302,784 piston samples, and 27,884 piston actions/publications. The prior production baseline was Graph 4.215202 s (4.045955–4.592488 s) and interpreter 0.626306 s (0.590885–0.736583 s). These timings use release code with `cfg(test)` traces absent; the code changes reduce callback-route discovery/allocation and heap-bearing state copies, but no per-function profiler was run, so the exact share of elapsed time is unknown.
 
-This is a focused subset, not the complete matrix above. Existing command/control fuzz tests that compile through the public compiler still select Native and do not count as Graph parity. Broad analog comparator feedback, longer delayed loops, button/plate histories, full note sound capture, every command failure/chain ordering mode, and all reset boundaries remain incomplete. No unexpected divergence was reported by the focused passing tests; this does not establish parity for those untested histories.
+This is a focused matrix, not proof of every possible history. Long CPU histories, exhaustive analog fork/reconvergence sequences, all command failure/output combinations, changing note support topologies, and every scheduler wrap/type-replacement history were not tested in this batch. No unexpected divergence occurred in the exercised cases. The saved CPU sign remains intact and its support-loss state is deliberately rejected; the benchmark removes it in memory from both inputs only.
 
 ## Non-goals
 
-No routing changes, output-only sampling shortcuts, source-manifest changes, full CPU benchmark campaign or Native deletion. An unresolved divergence blocks activation of its affected cohort.
+No routing changes, output-only sampling shortcuts, source-manifest changes, full CPU benchmark campaign, or later circuit-specific optimization. A newly found divergence in admitted behavior blocks that behavior until fixed.

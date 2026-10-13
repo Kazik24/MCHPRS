@@ -7,7 +7,7 @@ use crate::redpiler::TaskMonitor;
 #[cfg(test)]
 use crate::redpiler::analysis::AnalysisLimits;
 use crate::redpiler::analysis::{AnalysisError, callbacks, electrical, geometry};
-use crate::redpiler::compile_graph::{NodeState, NodeType};
+use crate::redpiler::components::{NodeState, NodeType};
 use crate::redpiler::passes;
 #[cfg(test)]
 use crate::redpiler::passes::rich::PreparationError;
@@ -24,6 +24,15 @@ use rustc_hash::{FxHashMap, FxHashSet};
 use std::cell::Cell;
 use std::collections::VecDeque;
 use std::fmt;
+
+#[cfg(test)]
+macro_rules! graph_test_trace {
+    ($backend:expr, $value:expr) => {
+        if $backend.test_recording {
+            $backend.trace.push($value);
+        }
+    };
+}
 #[cfg(test)]
 use std::sync::Arc;
 
@@ -336,6 +345,9 @@ pub(crate) struct GraphBackend {
     #[cfg(test)]
     trace: Vec<String>,
     #[cfg(test)]
+    /// This disables detailed test traces during long episodes before formatting.
+    test_recording: bool,
+    #[cfg(test)]
     callback_order: Vec<(BlockPos, DeliveryKind)>,
     #[cfg(test)]
     comparator_updates: Vec<BlockPos>,
@@ -647,6 +659,8 @@ impl GraphBackend {
             #[cfg(test)]
             trace: Vec::new(),
             #[cfg(test)]
+            test_recording: false,
+            #[cfg(test)]
             callback_order: Vec::new(),
             #[cfg(test)]
             comparator_updates: Vec::new(),
@@ -753,16 +767,19 @@ impl GraphBackend {
         self.scheduler.schedule_half_tick(tick, delay, priority);
         self.pending.insert(key, 1);
         #[cfg(test)]
-        self.trace.push(format!(
-            "schedule {:?} +{} {} {priority:?}",
-            node,
-            if _game_tick_delay { delay / 2 } else { delay },
-            if _game_tick_delay {
-                "ticks"
-            } else {
-                "half-ticks"
-            }
-        ));
+        graph_test_trace!(
+            self,
+            format!(
+                "schedule {:?} +{} {} {priority:?}",
+                node,
+                if _game_tick_delay { delay / 2 } else { delay },
+                if _game_tick_delay {
+                    "ticks"
+                } else {
+                    "half-ticks"
+                }
+            )
+        );
     }
 
     fn is_pending(&self, node: NodeId) -> bool {
@@ -793,7 +810,9 @@ impl GraphBackend {
         &mut self,
         world: &mut W,
     ) -> Result<(), GraphExecutionError> {
-        self.tick_with_host(Some(world))
+        let result = self.tick_with_host(Some(world));
+        world.piston_state_mut().logical_tick = self.clock.logical_tick;
+        result
     }
 
     fn tick_with_host<'h>(
@@ -864,7 +883,7 @@ impl GraphBackend {
         self.clock.phase = GraphPhase::ScheduledTicks;
         self.clock.scheduled_advanced = false;
         #[cfg(test)]
-        self.trace.push("phase scheduled_ticks".into());
+        graph_test_trace!(self, "phase scheduled_ticks".into());
         if let Err(error) = self.drain_current_ticks(host) {
             self.clock.phase = GraphPhase::BetweenTicks;
             return Err(error);
@@ -873,10 +892,9 @@ impl GraphBackend {
         self.scheduler.end_last_tick_move_next();
         self.clock.scheduled_advanced = true;
         #[cfg(test)]
-        self.trace.push("clock.advance".into());
+        graph_test_trace!(self, "clock.advance".into());
         #[cfg(test)]
-        self.trace
-            .push("phase scheduled_ticks_after_advance".into());
+        graph_test_trace!(self, "phase scheduled_ticks_after_advance".into());
         if let Err(error) = self.drain_current_ticks(host) {
             self.clock.phase = GraphPhase::BetweenTicks;
             self.clock.scheduled_advanced = false;
@@ -885,14 +903,14 @@ impl GraphBackend {
 
         self.clock.phase = GraphPhase::PistonActions;
         #[cfg(test)]
-        self.trace.push("phase piston_actions".into());
+        graph_test_trace!(self, "phase piston_actions".into());
         if let Err(error) = self.drain_piston_actions() {
             self.clock.phase = GraphPhase::BetweenTicks;
             return Err(error);
         }
         self.clock.phase = GraphPhase::DeferredConnections;
         #[cfg(test)]
-        self.trace.push("phase deferred_connections".into());
+        graph_test_trace!(self, "phase deferred_connections".into());
         if let Err(error) = self.publish_deferred_pistons() {
             self.clock.phase = GraphPhase::BetweenTicks;
             return Err(error);
@@ -900,7 +918,7 @@ impl GraphBackend {
         self.clock.phase = GraphPhase::BetweenTicks;
         self.clock.scheduled_advanced = false;
         #[cfg(test)]
-        self.trace.push("phase between_ticks".into());
+        graph_test_trace!(self, "phase between_ticks".into());
         Ok(())
     }
 
@@ -912,18 +930,16 @@ impl GraphBackend {
             self.popped(tick);
             if tick.registry_type != tick.current_registry_type {
                 #[cfg(test)]
-                self.trace
-                    .push(format!("stale {:?} skipped", tick.position));
+                graph_test_trace!(self, format!("stale {:?} skipped", tick.position));
                 continue;
             }
             let Some(node) = tick.node else {
                 #[cfg(test)]
-                self.trace
-                    .push(format!("unbound {:?} skipped", tick.position));
+                graph_test_trace!(self, format!("unbound {:?} skipped", tick.position));
                 continue;
             };
             #[cfg(test)]
-            self.trace.push(format!("dispatch {node:?}"));
+            graph_test_trace!(self, format!("dispatch {node:?}"));
             self.counts.scheduled_ticks += 1;
             self.tick_component(node, host)?;
         }
@@ -1062,7 +1078,9 @@ impl GraphBackend {
             }
         };
         #[cfg(test)]
-        self.callback_order.push((self.position(node), kind));
+        if self.test_recording {
+            self.callback_order.push((self.position(node), kind));
+        }
         match self.program.nodes()[node.index()].kind.clone() {
             CircuitNodeKind::Observer { .. } => self.update_observer(node, direction, captured),
             CircuitNodeKind::Electrical(NodeType::Torch) => self.update_torch(node, captured),
@@ -1095,11 +1113,7 @@ impl GraphBackend {
     }
 
     fn command_plan(&self, node: NodeId) -> Option<CommandBlockPlan> {
-        self.program
-            .command_blocks()
-            .iter()
-            .copied()
-            .find(|plan| plan.node == node)
+        self.program.command_plan(node)
     }
 
     fn command_condition_met(&self, node: NodeId) -> bool {
@@ -1112,6 +1126,7 @@ impl GraphBackend {
         plan.previous.is_some_and(|previous| {
             self.node_state(previous)
                 .command_entity
+                .as_ref()
                 .is_some_and(|entity| entity.success_count > 0)
         })
     }
@@ -1127,12 +1142,14 @@ impl GraphBackend {
             }) => (repeating, chain, automatic),
             _ => return Err(self.unsupported(node, "invalid command block binding")),
         };
-        let Some(entity) = self.node_state(node).command_entity else {
+        let Some(entity) = self.node_state(node).command_entity.as_ref() else {
             return Err(self.unsupported(node, "command block state"));
         };
-        let rising = powered && !entity.powered;
-        let changed = entity.powered != powered;
-        let should_start = rising || (automatic && entity.last_execution < 0);
+        let entity_powered = entity.powered;
+        let last_execution = entity.last_execution;
+        let rising = powered && !entity_powered;
+        let changed = entity_powered != powered;
+        let should_start = rising || (automatic && last_execution < 0);
         let should_repeat = repeating && (powered || automatic);
         let should_schedule = !chain && (should_start || should_repeat) && !self.is_pending(node);
         let condition_met = should_schedule.then(|| self.command_condition_met(node));
@@ -1185,6 +1202,7 @@ impl GraphBackend {
         let mut may_continue = self
             .node_state(node)
             .command_entity
+            .as_ref()
             .is_some_and(|entity| entity.condition_met);
         for _ in 0..256 {
             if !may_continue {
@@ -1193,7 +1211,7 @@ impl GraphBackend {
             let Some(next) = self.command_plan(current).and_then(|plan| plan.next) else {
                 break;
             };
-            let Some(entity) = self.node_state(next).command_entity else {
+            let Some(entity) = self.node_state(next).command_entity.as_ref() else {
                 break;
             };
             if entity.powered || entity.automatic {
@@ -1213,6 +1231,7 @@ impl GraphBackend {
         ) && self
             .node_state(node)
             .command_entity
+            .as_ref()
             .is_some_and(|entity| entity.powered || entity.automatic)
         {
             self.schedule_half_tick(node, 1, TickPriority::Normal);
@@ -1229,7 +1248,7 @@ impl GraphBackend {
         if host.is_none() {
             return Err(GraphExecutionError::CommandHostUnavailable { position });
         }
-        let Some(mut entity) = self.node_state(node).command_entity else {
+        let Some(mut entity) = self.node_state(node).command_entity.clone() else {
             return Err(self.unsupported(node, "command block entity state"));
         };
         let tick = self.clock.logical_tick.min(i64::MAX as u64) as i64;
@@ -1296,10 +1315,7 @@ impl GraphBackend {
         }
         let plan = self
             .program
-            .note_blocks()
-            .iter()
-            .find(|plan| plan.node == node)
-            .copied()
+            .note_plan(node)
             .ok_or_else(|| self.unsupported(node, "noteblock compiled sites"))?;
         let instrument = mchprs_blocks::blocks::Instrument::from_block_below(
             self.resolve_site(plan.below, None)
@@ -1345,12 +1361,14 @@ impl GraphBackend {
         }
         self.counts.piston_samples += 1;
         #[cfg(test)]
-        self.observed_operations
-            .push(GraphObservedOperation::Sample {
-                actor: self.program.nodes()[spec.node.index()].position.unwrap(),
-                extended: state.extended,
-                powered,
-            });
+        if self.test_recording {
+            self.observed_operations
+                .push(GraphObservedOperation::Sample {
+                    actor: self.program.nodes()[spec.node.index()].position.unwrap(),
+                    extended: state.extended,
+                    powered,
+                });
+        }
         let action = match (powered, state.extended) {
             (true, false) if self.piston_lane_available(piston) => {
                 mchprs_world::PistonAction::Extend
@@ -1390,19 +1408,21 @@ impl GraphBackend {
             .any(|queued| queued.piston == request.piston && queued.action == request.action)
         {
             #[cfg(test)]
-            self.observed_operations
-                .push(GraphObservedOperation::Request {
-                    actor: self.program.nodes()
-                        [self.program.pistons()[request.piston.index()].node.index()]
-                    .position
-                    .unwrap(),
-                    action: request.action,
-                });
+            if self.test_recording {
+                self.observed_operations
+                    .push(GraphObservedOperation::Request {
+                        actor: self.program.nodes()
+                            [self.program.pistons()[request.piston.index()].node.index()]
+                        .position
+                        .unwrap(),
+                        action: request.action,
+                    });
+            }
             #[cfg(test)]
-            self.trace.push(format!(
-                "piston request {:?} {:?}",
-                request.piston, request.action
-            ));
+            graph_test_trace!(
+                self,
+                format!("piston request {:?} {:?}", request.piston, request.action)
+            );
             self.piston_requests.push_back(request);
         }
     }
@@ -1418,11 +1438,13 @@ impl GraphBackend {
         let spec = self.program.pistons()[request.piston.index()];
         let state = self.state.pistons[request.piston.index()];
         #[cfg(test)]
-        self.observed_operations
-            .push(GraphObservedOperation::AcceptanceAttempt {
-                actor: self.program.nodes()[spec.node.index()].position.unwrap(),
-                action: request.action,
-            });
+        if self.test_recording {
+            self.observed_operations
+                .push(GraphObservedOperation::AcceptanceAttempt {
+                    actor: self.program.nodes()[spec.node.index()].position.unwrap(),
+                    action: request.action,
+                });
+        }
         let powered = self.input_strength(spec.node, InputPort::Main) > 0
             || self.input_strength(spec.node, InputPort::Quasi) > 0;
         match request.action {
@@ -1433,18 +1455,20 @@ impl GraphBackend {
                     && self.piston_lane_available(request.piston) =>
             {
                 #[cfg(test)]
-                self.trace.push(format!(
-                    "piston accept {:?} {:?}",
-                    request.piston, request.action
-                ));
+                graph_test_trace!(
+                    self,
+                    format!("piston accept {:?} {:?}", request.piston, request.action)
+                );
                 self.extend_connections(request.piston)?;
                 self.accepted(request, state.extended);
                 #[cfg(test)]
-                self.observed_operations
-                    .push(GraphObservedOperation::Accepted {
-                        actor: self.program.nodes()[spec.node.index()].position.unwrap(),
-                        action: request.action,
-                    });
+                if self.test_recording {
+                    self.observed_operations
+                        .push(GraphObservedOperation::Accepted {
+                            actor: self.program.nodes()[spec.node.index()].position.unwrap(),
+                            action: request.action,
+                        });
+                }
             }
             mchprs_world::PistonAction::Retract
             | mchprs_world::PistonAction::RetractWithoutPull
@@ -1457,28 +1481,30 @@ impl GraphBackend {
                     ) =>
             {
                 #[cfg(test)]
-                self.trace.push(format!(
-                    "piston accept {:?} {:?}",
-                    request.piston, request.action
-                ));
+                graph_test_trace!(
+                    self,
+                    format!("piston accept {:?} {:?}", request.piston, request.action)
+                );
                 self.retract_connections(
                     request.piston,
                     request.action == mchprs_world::PistonAction::RetractWithoutPull,
                 )?;
                 self.accepted(request, state.extended);
                 #[cfg(test)]
-                self.observed_operations
-                    .push(GraphObservedOperation::Accepted {
-                        actor: self.program.nodes()[spec.node.index()].position.unwrap(),
-                        action: request.action,
-                    });
+                if self.test_recording {
+                    self.observed_operations
+                        .push(GraphObservedOperation::Accepted {
+                            actor: self.program.nodes()[spec.node.index()].position.unwrap(),
+                            action: request.action,
+                        });
+                }
             }
             _ => {
                 #[cfg(test)]
-                self.trace.push(format!(
-                    "piston cancelled {:?} {:?}",
-                    request.piston, request.action
-                ));
+                graph_test_trace!(
+                    self,
+                    format!("piston cancelled {:?} {:?}", request.piston, request.action)
+                );
             }
         }
         Ok(())
@@ -1509,11 +1535,12 @@ impl GraphBackend {
         let index = resource.index();
         debug_assert!(self.program.resources()[index].contacts.contains(&contact));
         debug_assert!(
-            self.state
-                .resources
+            self.program
+                .resources_at_contact(contact)
                 .iter()
-                .enumerate()
-                .all(|(other, state)| other == index || state.at != contact)
+                .all(|other| {
+                    other.index() == index || self.state.resources[other.index()].at != contact
+                })
         );
         let state = &mut self.state.resources[index];
         if state.at == contact && state.enabled == enabled {
@@ -1526,17 +1553,7 @@ impl GraphBackend {
     }
 
     fn resource_for_lane(&self, piston: PistonId) -> Option<ResourceId> {
-        let spec = self.program.pistons()[piston.index()];
-        let PistonLane::SingleResource { far } = spec.lane else {
-            return None;
-        };
-        self.program
-            .resources()
-            .iter()
-            .position(|resource| {
-                resource.contacts.contains(&spec.near) && resource.contacts.contains(&far)
-            })
-            .map(|index| ResourceId::new(index as u32))
+        self.program.resource_for_piston(piston)
     }
 
     fn piston_resource_at(&self, piston: PistonId, contact: ContactId) -> Option<ResourceId> {
@@ -1579,20 +1596,23 @@ impl GraphBackend {
         };
         if !spec.contacts.contains(&contact)
             || self
-                .state
-                .resources
+                .program
+                .resources_at_contact(contact)
                 .iter()
-                .enumerate()
-                .any(|(other, state)| other != resource.index() && state.at == contact)
+                .any(|other| {
+                    other.index() != resource.index()
+                        && self.state.resources[other.index()].at == contact
+                })
         {
             return false;
         }
-        for (index, piston) in self.program.pistons().iter().enumerate() {
-            let id = PistonId::new(index as u32);
-            let state = self.state.pistons[index];
-            if piston.base == contact && !state.availability.base_pending() {
+        for &id in self.program.base_pistons_at_contact(contact) {
+            if !self.state.pistons[id.index()].availability.base_pending() {
                 return false;
             }
+        }
+        for &id in self.program.head_pistons_at_contact(contact) {
+            let state = self.state.pistons[id.index()];
             let head_is_present = state.head_present
                 && matches!(
                     state.availability,
@@ -1600,10 +1620,7 @@ impl GraphBackend {
                         | PistonAvailability::HeadPending
                         | PistonAvailability::BasePendingHeadPresent
                 );
-            if piston.near == contact
-                && head_is_present
-                && !(vacated_head == Some(id) && piston.near == contact)
-            {
+            if head_is_present && vacated_head != Some(id) {
                 return false;
             }
         }
@@ -1671,11 +1688,11 @@ impl GraphBackend {
     }
 
     fn resource_at_contact(&self, contact: ContactId) -> Option<ResourceId> {
-        self.state
-            .resources
+        self.program
+            .resources_at_contact(contact)
             .iter()
-            .position(|state| state.at == contact)
-            .map(|index| ResourceId::new(index as u32))
+            .copied()
+            .find(|resource| self.state.resources[resource.index()].at == contact)
     }
 
     fn extend_connections(&mut self, piston: PistonId) -> Result<(), GraphExecutionError> {
@@ -1726,8 +1743,10 @@ impl GraphBackend {
         self.state.pistons[piston.index()].extended = true;
         self.deliver_route(spec.routes.base_changed, None)?;
         #[cfg(test)]
-        self.trace
-            .push(format!("piston extend {:?} revision={revision}", piston));
+        graph_test_trace!(
+            self,
+            format!("piston extend {:?} revision={revision}", piston)
+        );
         Ok(())
     }
 
@@ -1821,8 +1840,10 @@ impl GraphBackend {
             extending: false,
         });
         #[cfg(test)]
-        self.trace
-            .push(format!("piston retract {:?} revision={revision}", piston));
+        graph_test_trace!(
+            self,
+            format!("piston retract {:?} revision={revision}", piston)
+        );
         Ok(())
     }
 
@@ -1856,10 +1877,13 @@ impl GraphBackend {
                 self.deliver_route(spec.routes.head_restored, None)?;
             } else {
                 #[cfg(test)]
-                self.trace.push(format!(
-                    "piston stale {:?} revision={}",
-                    event.piston, event.revision
-                ));
+                graph_test_trace!(
+                    self,
+                    format!(
+                        "piston stale {:?} revision={}",
+                        event.piston, event.revision
+                    )
+                );
             }
         } else {
             if actor_valid {
@@ -1869,18 +1893,24 @@ impl GraphBackend {
                 self.deliver_route(spec.routes.base_restored, None)?;
             } else {
                 #[cfg(test)]
-                self.trace.push(format!(
-                    "piston stale {:?} revision={}",
-                    event.piston, event.revision
-                ));
+                graph_test_trace!(
+                    self,
+                    format!(
+                        "piston stale {:?} revision={}",
+                        event.piston, event.revision
+                    )
+                );
             }
             self.apply_deferred_resource(event, spec)?;
         }
         #[cfg(test)]
-        self.trace.push(format!(
-            "piston restored {:?} revision={}",
-            event.piston, event.revision
-        ));
+        graph_test_trace!(
+            self,
+            format!(
+                "piston restored {:?} revision={}",
+                event.piston, event.revision
+            )
+        );
         Ok(())
     }
 
@@ -1903,10 +1933,13 @@ impl GraphBackend {
             )
         {
             #[cfg(test)]
-            self.trace.push(format!(
-                "resource stale {:?} revision={}",
-                resource_event.resource, resource_event.revision
-            ));
+            graph_test_trace!(
+                self,
+                format!(
+                    "resource stale {:?} revision={}",
+                    resource_event.resource, resource_event.revision
+                )
+            );
             return Ok(());
         }
         let (_, revision) = self
@@ -1950,8 +1983,7 @@ impl GraphBackend {
         *current = wire;
         self.dirty[node.index()] = true;
         #[cfg(test)]
-        self.trace
-            .push(format!("wire state {node:?} {old:?} -> {wire:?}"));
+        graph_test_trace!(self, format!("wire state {node:?} {old:?} -> {wire:?}"));
     }
 
     fn update_wire_shape(
@@ -1995,10 +2027,13 @@ impl GraphBackend {
         #[cfg(not(test))]
         let (power, _, _) = self.seed_power(&plan);
         #[cfg(test)]
-        self.trace.push(format!(
-            "wire seed {node:?} operands=live-sites/live-strong block={block_power} wire={wire_power} power {} -> {power}",
-            wire.power,
-        ));
+        graph_test_trace!(
+            self,
+            format!(
+                "wire seed {node:?} operands=live-sites/live-strong block={block_power} wire={wire_power} power {} -> {power}",
+                wire.power,
+            )
+        );
         if wire.power == power {
             return Ok(());
         }
@@ -2134,12 +2169,15 @@ impl GraphBackend {
             .expect("wire traversal site was validated during preparation")
             .observed();
         #[cfg(test)]
-        self.trace.push(format!(
-            "wire discover {:?} receiver={:?} properties={:?}",
-            self.program.sites()[site.index()].position,
-            observed.receiver,
-            observed.properties
-        ));
+        graph_test_trace!(
+            self,
+            format!(
+                "wire discover {:?} receiver={:?} properties={:?}",
+                self.program.sites()[site.index()].position,
+                observed.receiver,
+                observed.properties
+            )
+        );
         walk.sites.insert(
             site,
             WalkSite {
@@ -2201,9 +2239,10 @@ impl GraphBackend {
         }
         walk.sites.get_mut(&root).unwrap().heading = Some(heading as u8);
         #[cfg(test)]
-        self.trace.push(format!(
-            "wire heading {node:?} bias=({x_bias},{z_bias}) order={heading}"
-        ));
+        graph_test_trace!(
+            self,
+            format!("wire heading {node:?} bias=({x_bias},{z_bias}) order={heading}")
+        );
         crate::redstone::wire::TURBO_ORDER[heading].map(|index| plan.canonical_neighbors[index])
     }
 
@@ -2283,7 +2322,7 @@ impl GraphBackend {
         self.capture_walk_site(&mut walk, root);
         walk.sites.get_mut(&root).unwrap().visited = true;
         #[cfg(test)]
-        self.trace.push(format!("wire turbo start {node:?}"));
+        graph_test_trace!(self, format!("wire turbo start {node:?}"));
         self.propagate_wire_changes(node, &mut walk, 0);
         self.shift_wire_queues(&mut walk);
         walk.layer = 1;
@@ -2297,7 +2336,7 @@ impl GraphBackend {
             walk.layer += 1;
         }
         #[cfg(test)]
-        self.trace.push(format!("wire turbo end {node:?}"));
+        graph_test_trace!(self, format!("wire turbo end {node:?}"));
         Ok(())
     }
 
@@ -2313,7 +2352,8 @@ impl GraphBackend {
         self.counts.callbacks += 1;
         // Dust-to-dust steps stay inside the walk; native dispatches only the rest.
         #[cfg(test)]
-        if self.has_semantic_callback(receiver)
+        if self.test_recording
+            && self.has_semantic_callback(receiver)
             && !matches!(receiver, CallbackReceiver::Component(node)
                 if matches!(self.program.nodes()[node.index()].kind, CircuitNodeKind::Wire(_)))
         {
@@ -2324,11 +2364,14 @@ impl GraphBackend {
                 });
         }
         #[cfg(test)]
-        self.trace.push(format!(
-            "wire deliver {:?} layer={} Update {{ direction: None }} receiver={receiver:?}",
-            self.program.sites()[site.index()].position,
-            walk.layer
-        ));
+        graph_test_trace!(
+            self,
+            format!(
+                "wire deliver {:?} layer={} Update {{ direction: None }} receiver={receiver:?}",
+                self.program.sites()[site.index()].position,
+                walk.layer
+            )
+        );
         match receiver {
             CallbackReceiver::Component(node)
                 if matches!(
@@ -2370,10 +2413,13 @@ impl GraphBackend {
         #[cfg(not(test))]
         let (new_power, _, _) = self.turbo_wire_power(&plan, &ordered, walk);
         #[cfg(test)]
-        self.trace.push(format!(
-            "wire query {node:?} layer={} operands=captured-walk/live-strong block={block_power} direct={wire_power}",
-            walk.layer,
-        ));
+        graph_test_trace!(
+            self,
+            format!(
+                "wire query {node:?} layer={} operands=captured-walk/live-strong block={block_power} direct={wire_power}",
+                walk.layer,
+            )
+        );
         if wire.power == new_power {
             return Ok(());
         }
@@ -2383,10 +2429,13 @@ impl GraphBackend {
         walk.sites.get_mut(&root).unwrap().observed.properties = ObservedProperties::Wire(wire);
         self.set_wire(node, wire);
         #[cfg(test)]
-        self.trace.push(format!(
-            "wire strength {node:?} layer={} {old_power} -> {new_power}",
-            walk.layer
-        ));
+        graph_test_trace!(
+            self,
+            format!(
+                "wire strength {node:?} layer={} {old_power} -> {new_power}",
+                walk.layer
+            )
+        );
         self.propagate_wire_changes(node, walk, walk.layer);
         Ok(())
     }
@@ -2575,7 +2624,9 @@ impl GraphBackend {
 
     fn update_comparator(&mut self, node: NodeId) -> Result<(), GraphExecutionError> {
         #[cfg(test)]
-        self.comparator_updates.push(self.position(node));
+        if self.test_recording {
+            self.comparator_updates.push(self.position(node));
+        }
         if self.is_pending(node) {
             return Ok(());
         }
@@ -2620,12 +2671,7 @@ impl GraphBackend {
     }
 
     fn comparator_input(&self, node: NodeId) -> u8 {
-        let Some(plan) = self
-            .program
-            .comparator_inputs()
-            .iter()
-            .find(|plan| plan.node == node)
-        else {
+        let Some(plan) = self.program.comparator_input(node) else {
             return 0;
         };
         if let Some(source) = plan.direct_override {
@@ -3133,10 +3179,10 @@ impl GraphBackend {
         block
     }
 
-    fn node_state(&self, node: NodeId) -> NodeState {
+    fn node_state(&self, node: NodeId) -> &NodeState {
         match &self.state.components[node.index()] {
-            ComponentState::Electrical(state) => state.clone(),
-            _ => NodeState::default(),
+            ComponentState::Electrical(state) => state,
+            _ => unreachable!("component state requested for a specialized graph node"),
         }
     }
 
@@ -3187,8 +3233,9 @@ impl GraphBackend {
         route: RouteId,
         captured: Option<&[Option<ObservedSite>]>,
     ) -> Result<(), GraphExecutionError> {
-        let deliveries = self.program.routes()[route.index()].deliveries.to_vec();
-        for delivery in deliveries {
+        let delivery_count = self.program.routes()[route.index()].deliveries.len();
+        for index in 0..delivery_count {
+            let delivery = self.program.routes()[route.index()].deliveries[index];
             if !self.guard_matches(delivery.guard, captured) {
                 continue;
             }
@@ -3217,7 +3264,8 @@ impl GraphBackend {
             let Some(receiver) = receiver else { continue };
             self.counts.callbacks += 1;
             #[cfg(test)]
-            if self.has_semantic_callback(receiver)
+            if self.test_recording
+                && self.has_semantic_callback(receiver)
                 && matches!(delivery.kind, DeliveryKind::Update { .. })
             {
                 self.observed_operations
@@ -3230,12 +3278,15 @@ impl GraphBackend {
                     });
             }
             #[cfg(test)]
-            self.trace.push(format!(
-                "route {}:{} {:?}",
-                route.index(),
-                delivery.sequence,
-                delivery.kind
-            ));
+            graph_test_trace!(
+                self,
+                format!(
+                    "route {}:{} {:?}",
+                    route.index(),
+                    delivery.sequence,
+                    delivery.kind
+                )
+            );
             match receiver {
                 CallbackReceiver::Component(node) => {
                     self.update_component(node, delivery.kind, observed)?;
@@ -3272,10 +3323,13 @@ impl GraphBackend {
         if changed {
             self.dirty[node.index()] = true;
             #[cfg(test)]
-            self.trace.push(format!(
-                "state {:?} powered={powered} strength={output_strength}",
-                node
-            ));
+            graph_test_trace!(
+                self,
+                format!(
+                    "state {:?} powered={powered} strength={output_strength}",
+                    node
+                )
+            );
             if notify {
                 self.fire_route(node)?;
             }
@@ -3309,6 +3363,29 @@ impl GraphBackend {
 
     pub(crate) fn node_count(&self) -> usize {
         self.program.nodes().len()
+    }
+
+    #[cfg(test)]
+    pub(crate) fn ordinary_sources(&self) -> Vec<(BlockPos, u8)> {
+        self.program
+            .nodes()
+            .iter()
+            .enumerate()
+            .filter_map(|(index, node)| {
+                if !matches!(
+                    node.kind,
+                    CircuitNodeKind::Electrical(
+                        NodeType::Torch | NodeType::Repeater { .. } | NodeType::Comparator { .. }
+                    )
+                ) {
+                    return None;
+                }
+                let ComponentState::Electrical(state) = &self.state.components[index] else {
+                    return None;
+                };
+                Some((node.position?, state.output_strength))
+            })
+            .collect()
     }
 
     pub(crate) fn inspect(&self, position: BlockPos) {
@@ -3423,7 +3500,7 @@ impl GraphBackend {
         if matches!(
             spec.kind,
             CircuitNodeKind::Electrical(NodeType::CommandBlock { .. })
-        ) && let Some(entity) = self.node_state(node).command_entity
+        ) && let Some(entity) = self.node_state(node).command_entity.clone()
         {
             world.set_block_entity(position, BlockEntity::CommandBlock(Box::new(entity)));
         }
@@ -3580,6 +3657,14 @@ impl GraphBackend {
         self.callback_order.clear();
         self.comparator_updates.clear();
         self.observed_operations.clear();
+    }
+
+    #[cfg(test)]
+    pub(crate) fn set_test_recording(&mut self, enabled: bool) {
+        self.test_recording = enabled;
+        if !enabled {
+            self.clear_test_traces();
+        }
     }
 
     #[cfg(test)]

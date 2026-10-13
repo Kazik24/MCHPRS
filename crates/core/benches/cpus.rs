@@ -30,6 +30,10 @@ struct ShortSample {
     final_ram: Vec<Option<u16>>,
     elapsed: Duration,
     graph_counts: Option<GraphExecutionCounts>,
+    /// This retains the parser's estimated table bytes after callback construction.
+    retained_callback_bytes: usize,
+    /// This retains the lowered program's estimated table bytes.
+    retained_lowering_bytes: usize,
 }
 
 fn sign_free_world(cpu: Cpu) -> PlotWorld {
@@ -60,6 +64,8 @@ fn interpreter_sample(cpu: Cpu) -> ShortSample {
         final_ram: current_ram(&world, cpu),
         elapsed,
         graph_counts: None,
+        retained_callback_bytes: 0,
+        retained_lowering_bytes: 0,
     }
 }
 
@@ -79,6 +85,19 @@ fn graph_sample(cpu: Cpu, bounds: (BlockPos, BlockPos)) -> ShortSample {
         .expect("CPU Graph compilation must succeed");
     assert_eq!(compiler.backend_kind(), Some(BackendKind::Graph));
     assert_eq!(compiler.stats().unwrap().backend, BackendKind::Graph);
+    let retained_bytes = |stage| {
+        compiler
+            .stats()
+            .unwrap()
+            .graph
+            .preparation_tables
+            .iter()
+            .filter(|table| table.stage == stage)
+            .map(|table| table.estimated_bytes)
+            .sum()
+    };
+    let retained_callback_bytes = retained_bytes("callbacks");
+    let retained_lowering_bytes = retained_bytes("lowering");
 
     compiler.on_use_block(cpu.origin + cpu.start);
     let started = Instant::now();
@@ -95,6 +114,8 @@ fn graph_sample(cpu: Cpu, bounds: (BlockPos, BlockPos)) -> ShortSample {
         final_ram: current_ram(&world, cpu),
         elapsed,
         graph_counts: Some(graph_counts),
+        retained_callback_bytes,
+        retained_lowering_bytes,
     }
 }
 
@@ -118,6 +139,7 @@ fn graph_short(cpu: Cpu, iterations: usize, output: Option<&str>, label: &str) {
     let mut graph_times = Vec::with_capacity(iterations);
     let mut interpreter_times = Vec::with_capacity(iterations);
     let mut graph_counts = None;
+    let mut retained_estimates = None;
 
     for sample in 0..iterations {
         let (graph, interpreter) = if sample % 2 == 0 {
@@ -140,6 +162,11 @@ fn graph_short(cpu: Cpu, iterations: usize, output: Option<&str>, label: &str) {
             assert_eq!(counts, previous, "Graph work changed between samples");
         }
         graph_counts = Some(counts);
+        let estimates = (graph.retained_callback_bytes, graph.retained_lowering_bytes);
+        if let Some(previous) = retained_estimates {
+            assert_eq!(estimates, previous, "retained table estimates changed");
+        }
+        retained_estimates = Some(estimates);
         println!(
             "cpu_bubblesort sample {}: Graph {:.6}s, interpreter {:.6}s; {} active ticks; RAM and Graph counters match",
             sample + 1,
@@ -171,6 +198,12 @@ fn graph_short(cpu: Cpu, iterations: usize, output: Option<&str>, label: &str) {
         interpreter_max.as_secs_f64()
     );
     println!("Graph work counters: {counts:?}");
+    let (callback_bytes, lowering_bytes) = retained_estimates.unwrap();
+    println!(
+        "Estimated retained tables: after callbacks {:.2} MiB; after lowering {:.2} MiB",
+        callback_bytes as f64 / (1024.0 * 1024.0),
+        lowering_bytes as f64 / (1024.0 * 1024.0),
+    );
 
     if let Some(output) = output {
         let report = serde_json::json!({
@@ -199,6 +232,8 @@ fn graph_short(cpu: Cpu, iterations: usize, output: Option<&str>, label: &str) {
                 "deferred_publications": counts.deferred_publications,
             },
             "counters_match_cfg_test_episode": counts == TEST_GRAPH_COUNTS,
+            "estimated_retained_table_bytes_after_callbacks": callback_bytes,
+            "estimated_retained_table_bytes_after_lowering": lowering_bytes,
             "ram_matches_interpreter_each_sample": true,
             "timed_operations": "100 calls to tick_with_world or tick_interpreted; compile, input setup, flush, RAM reads, and counter checks excluded",
         });

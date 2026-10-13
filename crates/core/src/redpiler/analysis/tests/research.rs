@@ -282,12 +282,12 @@ fn cpu_bubblesort_graph_and_interpreter_match_short_sign_free_episode() {
     let mut graph_ram = BTreeMap::from([(0, cpu_words(&graph_world, &fixture))]);
     let button = cpu.origin + cpu.start;
     graph.use_block(button).unwrap();
+    graph.set_test_recording(false);
     let graph_started = Instant::now();
     for tick in 1..=MEASURED_ACTIVE_TICKS {
         graph
             .tick()
             .unwrap_or_else(|error| panic!("Graph failed at active tick {tick}: {error}"));
-        graph.clear_test_traces();
         if tick % 1_000 == 0 {
             eprintln!("Graph BubbleSort active tick {tick}");
         }

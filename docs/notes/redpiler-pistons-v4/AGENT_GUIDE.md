@@ -19,9 +19,9 @@ The design targets the repository's interpreter behavior for the admitted subset
 - Stationary entry is required. Ordinary pending ticks and saved strengths are imported without eager normalization.
 - Failure and cancellation preserve the input world, scheduler, and piston state. No partially active backend or published success statistics.
 - Parser completeness, abstraction sufficiency, and resource exhaustion have explicit errors. Do not interpret out-of-footprint contacts as air.
-- Generalized dust exists before any dust-elimination pass. Keep legacy ordinary backends working during migration; retire Direct/Native only at the reviewed activation gate in [the common graph migration](GRAPH_PIPELINE_MIGRATION.md). Graph remains the target executor; do not move it into Direct.
+- Generalized dust remains explicit; no dust-elimination pass is configured. Graph is the sole compiled executor. Keep the interpreter as the independent reference path; do not add a native fallback.
 - Use the general graph-pass API for transformations. Developer-defined passes and configurable order/enable states must not require runner changes or a closed pass enum. Parser stages and outputs retain their required boundaries; accepted reordered pipelines still require behavioral verification.
-- New edge families must not accidentally enter old electrical-only rewrites, cycle guards, packed link encoding, or binary export.
+- New edge families must retain their typed callback/contact semantics. Legacy binary and DOT formats are rejected by the compiler because they cannot represent the unified graph.
 - An added observer or analog consumer can invalidate an optimization's observability assumptions.
 
 ## Ponytail and readability
@@ -46,16 +46,15 @@ Explain every retained runtime field with a concrete query, pending event, or co
 | --- | --- |
 | Compiler admission/publication | [redpiler/mod.rs](../../../crates/core/src/redpiler/mod.rs), [analysis](../../../crates/core/src/redpiler/analysis/mod.rs) |
 | Read-only candidate | [analysis/graph.rs](../../../crates/core/src/redpiler/analysis/graph.rs) |
-| Graph vocabulary | [compile_graph.rs](../../../crates/core/src/redpiler/compile_graph.rs) |
-| Passes and wire elision | [passes](../../../crates/core/src/redpiler/passes/mod.rs), [identify_nodes](../../../crates/core/src/redpiler/passes/identify_nodes.rs), [input_search](../../../crates/core/src/redpiler/passes/input_search.rs) |
-| Existing fast backend | [direct](../../../crates/core/src/redpiler/backend/direct/mod.rs), [packed nodes](../../../crates/core/src/redpiler/backend/direct/node.rs) |
-| Runtime selection and queues | [backend](../../../crates/core/src/redpiler/backend/mod.rs), [queue](../../../crates/core/src/redpiler/backend/queue.rs) |
+| Graph vocabulary and shared component types | [program graph](../../../crates/core/src/redpiler/program_graph.rs), [components](../../../crates/core/src/redpiler/components.rs) |
+| Passes and wire elision | [passes](../../../crates/core/src/redpiler/passes/mod.rs), [rich preparation](../../../crates/core/src/redpiler/passes/rich.rs) |
+| Compiled runtime and queues | [Graph backend](../../../crates/core/src/redpiler/backend/graph.rs), [backend](../../../crates/core/src/redpiler/backend/mod.rs), [queue](../../../crates/core/src/redpiler/backend/queue.rs) |
 | Reference power and callbacks | [power](../../../crates/core/src/redstone/power.rs), [redstone](../../../crates/core/src/redstone/mod.rs) |
 | Reference dust | [wire](../../../crates/core/src/redstone/wire/mod.rs), [Turbo](../../../crates/core/src/redstone/wire/turbo.rs) |
 | Reference piston behavior | [piston](../../../crates/core/src/redstone/piston.rs), [world types](../../../crates/world/src/lib.rs) |
 | Support and interaction | [interaction](../../../crates/core/src/interaction.rs) |
 | Activation, tick, and reset host | [plot](../../../crates/core/src/plot/mod.rs), [commands](../../../crates/core/src/plot/commands.rs), [packet handlers](../../../crates/core/src/plot/packet_handlers.rs) |
-| Legacy binary graph | [redpiler_graph](../../../crates/redpiler_graph/src/lib.rs), [export pass](../../../crates/core/src/redpiler/passes/export_graph.rs) |
+| Legacy binary graph crate | [redpiler_graph](../../../crates/redpiler_graph/src/lib.rs); the unified compiler does not depend on or emit this format |
 
 ## Validation and review report
 

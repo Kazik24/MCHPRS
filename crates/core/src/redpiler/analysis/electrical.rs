@@ -4,8 +4,7 @@ use super::geometry::{GeometryDraft, GeometryView};
 use super::{AnalysisError, PreparationBudget};
 use crate::plot::PLOT_BLOCK_HEIGHT;
 use crate::redpiler::TaskMonitor;
-use crate::redpiler::compile_graph::{NodeState, NodeType};
-use crate::redpiler::passes::identify_block;
+use crate::redpiler::components::{NodeState, NodeType, identify_block};
 use crate::redpiler::program_graph::{
     CallbackReceiver, CircuitNodeDraft, CircuitNodeKind, ComponentState, ContactId, ContactSpec,
     ContactVariant, Guard, GuardId, InputPort, NodeId, OperandView, PowerPort, Profile,

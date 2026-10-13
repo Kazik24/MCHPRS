@@ -1,22 +1,20 @@
-//! Compile world blocks into an electrical graph, then execute it with the direct
-//! backend. Builds with pistons compile to the rich graph backend instead.
+//! The graph backend executes the lowered general redstone program.
 
 pub mod analysis;
 pub(crate) mod backend;
-mod compile_graph;
+mod components;
 mod passes;
 pub(crate) mod program_graph;
 mod task_monitor;
 
 use crate::redstone;
 use crate::world::{World, for_each_block_mut_optimized};
-use backend::{Runtime, direct::DirectBackend};
+use backend::Runtime;
 use mchprs_blocks::BlockPos;
-use mchprs_blocks::blocks::Block;
 use mchprs_world::TickEntry;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
-use tracing::{debug, trace};
+use tracing::debug;
 
 pub use backend::{Queues, TickScheduler};
 pub use task_monitor::TaskMonitor;
@@ -27,9 +25,7 @@ pub enum CompileError {
     Analysis(analysis::AnalysisError),
     Unsupported(Box<analysis::AnalysisReport>),
     Cancelled,
-    Backend(backend::BackendError),
-    Graph(compile_graph::GraphError),
-    /// The rich piston graph rejected the selection; nothing was published.
+    /// Graph preparation rejected the selection; nothing was published.
     RichGraph(RichGraphError),
     /// Legacy binary and dot exports cannot carry piston, contact, or route edges.
     UnsupportedRichExport,
@@ -52,22 +48,15 @@ impl std::fmt::Display for CompileError {
             Self::Analysis(error) => error.fmt(f),
             Self::Unsupported(report) => {
                 write!(f, "{}", report.summary())?;
-                if let Some(issue) = report
-                    .issues
-                    .iter()
-                    .find(|issue| !matches!(issue, analysis::AdmissionIssue::PistonRuntimeUnavailable { .. }))
-                    .or_else(|| report.issues.first())
-                {
+                if let Some(issue) = report.issues.first() {
                     write!(f, "; {issue}")?;
                 }
                 Ok(())
             }
             Self::Cancelled => f.write_str("compilation cancelled"),
-            Self::Backend(error) => error.fmt(f),
-            Self::Graph(error) => error.fmt(f),
-            Self::RichGraph(error) => write!(f, "piston graph rejected: {error}"),
+            Self::RichGraph(error) => write!(f, "graph preparation rejected: {error}"),
             Self::UnsupportedRichExport => f.write_str(
-                "legacy graph export cannot represent piston graphs; compile without --export or --export-dot",
+                "legacy binary and DOT exports cannot represent the unified graph; compile without --export or --export-dot",
             ),
         }
     }
@@ -116,11 +105,7 @@ fn graph_backend_error(
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum BackendKind {
-    /// Packed ordinary electrical graph.
-    Direct,
-    /// Ordinary circuits whose dust feedback needs native propagation.
-    Native,
-    /// Graph-native pistons, shared resources, routes, and generalized dust.
+    /// Compiled redstone execution uses the lowered Graph program.
     Graph,
 }
 
@@ -136,37 +121,20 @@ pub struct GraphExecutionCounts {
     pub deferred_publications: u64,
 }
 
-fn block_powered_mut(block: &mut Block) -> Option<&mut bool> {
-    Some(match block {
-        Block::RedstoneComparator { comparator } => &mut comparator.powered,
-        Block::RedstoneTorch { lit } => lit,
-        Block::RedstoneWallTorch { lit, .. } => lit,
-        Block::RedstoneRepeater { repeater } => &mut repeater.powered,
-        Block::Observer { observer } => &mut observer.powered,
-        Block::Lever { lever } => &mut lever.powered,
-        Block::StoneButton { button } => &mut button.powered,
-        Block::StonePressurePlate { powered } => powered,
-        Block::RedstoneLamp { lit } => lit,
-        Block::IronTrapdoor { powered, .. } => powered,
-        Block::NoteBlock { powered, .. } => powered,
-        _ => return None,
-    })
-}
-
 #[derive(Default, PartialEq, Eq, Debug)]
 pub struct CompilerOptions {
     /// Set by the server from the initiating player's rank, never from flags.
     /// Zero retains the default 1x budget; values are capped at 8x.
     pub budget_multiplier: usize,
-    /// Enable optimization passes which may significantly increase compile times.
+    /// Enable configured graph optimization passes.
     pub optimize: bool,
-    /// Export the graph to a binary format. See the [`redpiler_graph`] crate.
+    /// Request the legacy binary export, which cannot represent the unified graph.
     pub export: bool,
     /// Only flush visible outputs and controls, including lamps and copper bulbs.
     pub io_only: bool,
     /// Update all blocks in the input region after reset.
     pub update: bool,
-    /// Export a dot file of the backend graph after compilation.
+    /// Request the legacy DOT export, which cannot represent the unified graph.
     pub export_dot_graph: bool,
 }
 
@@ -217,13 +185,6 @@ impl GraphCounts {
             links: graph.links.len() + graph.power_links.len() + graph.wire_relations.len(),
         }
     }
-
-    pub(crate) fn of_legacy(graph: &compile_graph::LegacyCompileGraph) -> Self {
-        Self {
-            nodes: graph.node_count(),
-            links: graph.edge_count(),
-        }
-    }
 }
 
 #[derive(Clone, Debug)]
@@ -247,11 +208,6 @@ pub struct PreparationTableStatistics {
 
 #[derive(Clone, Debug, Default)]
 pub struct GraphStatistics {
-    /// Native dust/component execution retains physical identities and skips rewrites.
-    pub native_propagation: bool,
-    /// Ordinary wire nodes are omitted by identify_nodes when -O is enabled.
-    /// This occurs before the optimization baseline, not in an optional pass.
-    pub wire_nodes_elided: bool,
     pub passes: Vec<PassStatistics>,
     /// This contains only optional transformations, not mandatory parser stages.
     pub transformations: Vec<PassStatistics>,
@@ -275,9 +231,6 @@ impl GraphStatistics {
 
     pub fn summary_lines(&self) -> Vec<String> {
         let mut lines = Vec::new();
-        if self.native_propagation {
-            lines.push("Execution: native redstone propagation over a private snapshot; graph optimization skipped.".into());
-        }
         if let (Some(before), Some(after)) = (self.baseline(), self.final_graph()) {
             lines.push(format!(
                 "Graph after required preparation: {} nodes / {} links; after passes: {} nodes / {} links (change {:+} nodes / {:+} links)",
@@ -285,14 +238,7 @@ impl GraphStatistics {
                 after.nodes as i128 - before.nodes as i128,
                 after.links as i128 - before.links as i128,
             ));
-            lines.push(format!(
-                "Construction: ordinary wire-node elision {} before the baseline.",
-                if self.wire_nodes_elided {
-                    "enabled"
-                } else {
-                    "disabled"
-                }
-            ));
+            lines.push("Construction: all parsed wire nodes are retained.".into());
         }
         if let Some(stage) = self.preparation_tables.last().map(|table| table.stage) {
             let mut tables: Vec<_> = self
@@ -374,7 +320,7 @@ impl CompileStatistics {
         )];
         if self.backend == BackendKind::Graph {
             lines.push(
-                "Execution: graph backend with pistons, shared resources, and generalized dust; -O does not apply.".into(),
+                "Execution: unified Graph program; no built-in optimization passes are configured, so -O has no effect.".into(),
             );
         }
         lines.extend(self.graph.summary_lines().into_iter().take(3));
@@ -448,35 +394,9 @@ impl Compiler {
         }
         monitor.clear_graph_statistics();
         monitor.set_budget_multiplier(options.budget_multiplier);
-        let analysis_start = Instant::now();
-        let report = analysis::analyze(
-            world,
-            bounds,
-            &ticks,
-            &monitor,
-            analysis::AnalysisLimits::for_budget(monitor.budget_multiplier()),
-        )
-        .map_err(CompileError::Analysis)?;
-        let analysis_duration = analysis_start.elapsed();
-        // Pistons are rejected by the ordinary graph only; any other entry
-        // issue (moving blocks, queued piston work, phase) rejects both.
-        let rich = !report.pistons.is_empty()
-            && report.issues.iter().all(|issue| {
-                matches!(
-                    issue,
-                    analysis::AdmissionIssue::PistonRuntimeUnavailable { .. }
-                )
-            });
-        if !rich && !report.can_compile() {
-            return Err(CompileError::Unsupported(Box::new(report)));
-        }
-
         let backend_start = Instant::now();
-        let backend = if rich {
-            Self::prepare_graph_backend(world, bounds, ticks, &options, &monitor, graph_pipeline)?
-        } else {
-            Self::prepare_legacy_backend(world, bounds, ticks, &options, &monitor)?
-        };
+        let (backend, analysis_duration) =
+            Self::prepare_graph_backend(world, bounds, ticks, &options, &monitor, graph_pipeline)?;
         self.publish(
             backend,
             options,
@@ -494,13 +414,14 @@ impl Compiler {
         options: &CompilerOptions,
         monitor: &TaskMonitor,
         graph_pipeline: Option<passes::PassPipeline>,
-    ) -> Result<Runtime, CompileError> {
+    ) -> Result<(Runtime, Duration), CompileError> {
         if options.export || options.export_dot_graph {
             return Err(CompileError::UnsupportedRichExport);
         }
         let limits = analysis::AnalysisLimits::for_budget(monitor.budget_multiplier());
         let mut prepared = passes::rich::prepare(world, bounds, ticks, monitor, limits)
             .map_err(|error| graph_preparation_error(error, monitor))?;
+        let analysis_duration = prepared.analysis_duration;
         let pipeline = graph_pipeline.unwrap_or_else(|| passes::default_graph_pipeline(options));
         passes::run_graph_pipeline(
             &mut prepared.graph,
@@ -516,53 +437,7 @@ impl Compiler {
         })?;
         let backend = backend::graph::GraphBackend::from_lowered(lowered, monitor)
             .map_err(|error| graph_backend_error(error, monitor))?;
-        Ok(Runtime::Graph(Box::new(backend)))
-    }
-
-    fn prepare_legacy_backend<W: World>(
-        world: &W,
-        bounds: (BlockPos, BlockPos),
-        ticks: Vec<TickEntry>,
-        options: &CompilerOptions,
-        monitor: &TaskMonitor,
-    ) -> Result<Runtime, CompileError> {
-        let ticks: Vec<_> = ticks
-            .into_iter()
-            .filter(|entry| {
-                entry
-                    .block_type
-                    .is_none_or(|kind| world.get_block(entry.pos).registry_id() == kind)
-            })
-            .collect();
-        let input = CompilerInput {
-            world,
-            bounds,
-            ticks: &ticks,
-        };
-        let (graph, native) =
-            passes::prepare(options, &input, monitor, true).map_err(CompileError::Graph)?;
-        if monitor.cancelled() {
-            return Err(CompileError::Cancelled);
-        }
-
-        // Stage a fresh backend. Reusing one can leave aliases, scheduler work
-        // or side tables from a previous compilation. Publish only on success.
-        trace!("Compiling backend");
-        monitor.set_message("Compiling backend".to_string());
-        if native {
-            if options.export_dot_graph {
-                return Err(CompileError::Graph(
-                    compile_graph::GraphError::UnsupportedNativeExport,
-                ));
-            }
-            Runtime::native(world, bounds, &graph, ticks, monitor)
-        } else {
-            let mut backend = DirectBackend::default();
-            backend
-                .compile(graph, ticks, &options)
-                .map_err(CompileError::Backend)?;
-            Ok(Runtime::Direct(backend))
-        }
+        Ok((Runtime::Graph(Box::new(backend)), analysis_duration))
     }
 
     /// The only place a staged backend becomes active.
@@ -657,6 +532,7 @@ pub struct CompilerInput<'w, W: World> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use mchprs_blocks::blocks::Block;
 
     #[test]
     fn stationary_pistons_select_the_graph_backend_in_every_compiler_mode() {
@@ -702,19 +578,15 @@ mod tests {
                     assert_eq!(compiler.graph_execution_counts().unwrap().ticks, 1);
                     compiler.reset(&mut world, bounds);
                     assert_eq!(world.get_block(pos), Block::Piston { piston });
-                    // The ordinary read-only candidate still excludes pistons.
-                    assert!(matches!(
-                        analysis::graph::prepare_candidate_graph(
-                            &world,
-                            bounds,
-                            &[],
-                            &CompilerOptions::default(),
-                            Arc::default()
-                        ),
-                        Err(analysis::graph::GraphPreparationError::Entry(
-                            analysis::AdmissionIssue::PistonRuntimeUnavailable { .. }
-                        ))
-                    ));
+                    let candidate = analysis::graph::prepare_candidate_graph(
+                        &world,
+                        bounds,
+                        &[],
+                        &CompilerOptions::default(),
+                        Arc::default(),
+                    )
+                    .unwrap();
+                    assert!(candidate.summary().nodes > 0);
                 }
             }
         }
@@ -911,7 +783,8 @@ mod tests {
             )
             .unwrap();
         let statistics = compiler.stats().unwrap();
-        assert_eq!(statistics.graph.passes.len(), 10);
+        assert!(!statistics.graph.passes.is_empty());
+        assert!(statistics.graph.transformations.is_empty());
         assert_eq!(statistics.graph.baseline(), statistics.graph.final_graph());
         assert!(statistics.backend_nodes > 0);
         let total_duration = statistics.total_duration;

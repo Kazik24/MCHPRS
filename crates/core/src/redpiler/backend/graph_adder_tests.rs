@@ -445,6 +445,7 @@ fn replay(
     let ticks = native.scheduler().iter_entries().collect();
     let mut backend = GraphBackend::compile(&native, circuit.bounds(), ticks, Arc::default())
         .map_err(|error| format!("{} compile: {error}", circuit.id))?;
+    backend.set_test_recording(true);
     let mut coverage = Coverage::default();
     check_boundary(&backend, &native, &mut scratch, &positions, "initial")?;
 
@@ -777,6 +778,7 @@ fn reset_and_continue(circuit: &Adder, case: &Value, response_tick: usize, expec
     let ticks = native.scheduler().iter_entries().collect();
     let mut backend = GraphBackend::compile(&native, circuit.bounds(), ticks, Arc::default())
         .unwrap_or_else(|error| panic!("{} compile: {error}", circuit.id));
+    backend.set_test_recording(true);
     let mut scratch = circuit.build();
     for (index, &step) in steps[..cut].iter().enumerate() {
         let toggle = match step {

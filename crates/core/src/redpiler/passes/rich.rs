@@ -14,7 +14,7 @@ use mchprs_blocks::BlockPos;
 use mchprs_blocks::blocks::Block;
 use mchprs_world::TickEntry;
 use std::fmt;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 #[derive(Debug)]
 pub(crate) enum PreparationError {
@@ -48,6 +48,8 @@ pub(crate) struct PreparedGraph {
     pub(crate) graph: CompileGraph,
     /// This owns the clock and pending work imported at the compilation boundary.
     pub(crate) entry: EntryState,
+    /// This records the single admission scan performed inside geometry preparation.
+    pub(crate) analysis_duration: Duration,
     /// This spans required parsing and the configured transformation sequence.
     pipeline_start: Instant,
 }
@@ -95,7 +97,7 @@ pub(crate) fn prepare(
     limits: AnalysisLimits,
 ) -> Result<PreparedGraph, PreparationError> {
     let pipeline_start = Instant::now();
-    monitor.begin_graph_statistics(false);
+    monitor.begin_graph_statistics();
     monitor.set_progress(0);
     monitor.set_max_progress(4);
 
@@ -201,6 +203,7 @@ pub(crate) fn prepare(
         initial_pistons: geometry.draft.initial_pistons,
         initial_resources: geometry.draft.initial_resources,
     };
+    let analysis_duration = geometry.analysis_duration;
     let report = geometry.report;
     let pending_ticks = ticks
         .into_iter()
@@ -227,6 +230,7 @@ pub(crate) fn prepare(
         report,
         graph,
         entry,
+        analysis_duration,
         pipeline_start,
     })
 }
@@ -649,8 +653,8 @@ fn lowered_table_statistics(
     program: &crate::redpiler::program_graph::CircuitProgram,
 ) -> Vec<PreparationTableStatistics> {
     use crate::redpiler::program_graph::{
-        ComparatorInputPlan, ContactSpec, Guard, LinkSpec, NodeSpec, PistonSpec, PowerLink,
-        Profile, ResourceSpec, Route, RouteDelivery, SiteSpec, WirePlan,
+        ComparatorInputPlan, ContactSpec, Guard, NodeSpec, PistonId, PistonSpec, PowerLink,
+        Profile, ResourceId, ResourceSpec, Route, RouteDelivery, SiteSpec, WirePlan,
     };
     let routes = program.routes();
     vec![
@@ -659,13 +663,6 @@ fn lowered_table_statistics(
             "nodes",
             program.nodes().len(),
             program.nodes().len(),
-            0,
-        ),
-        table::<LinkSpec>(
-            "lowering",
-            "callback links",
-            program.links().len(),
-            program.links().len(),
             0,
         ),
         table::<PowerLink>(
@@ -724,7 +721,10 @@ fn lowered_table_statistics(
             "deliveries",
             routes.iter().map(|route| route.deliveries.len()).sum(),
             routes.iter().map(|route| route.deliveries.len()).sum(),
-            0,
+            routes
+                .iter()
+                .map(|route| boxed_bytes::<RouteDelivery>(route.deliveries.len()))
+                .sum(),
         ),
         table::<WirePlan>(
             "lowering",
@@ -754,6 +754,49 @@ fn lowered_table_statistics(
                     )
                 })
                 .sum(),
+        ),
+        table::<Option<ResourceId>>(
+            "lowering",
+            "piston lane bindings",
+            program.pistons().len(),
+            program.pistons().len(),
+            0,
+        ),
+        table::<Option<u32>>(
+            "lowering",
+            "component plan bindings",
+            program.nodes().len().saturating_mul(3),
+            program.nodes().len().saturating_mul(3),
+            0,
+        ),
+        table::<ResourceId>(
+            "lowering",
+            "resource contact candidates",
+            program
+                .resources()
+                .iter()
+                .map(|resource| resource.contacts.len())
+                .sum(),
+            program
+                .resources()
+                .iter()
+                .map(|resource| resource.contacts.len())
+                .sum(),
+            boxed_bytes::<std::ops::Range<u32>>(program.contacts().len()),
+        ),
+        table::<PistonId>(
+            "lowering",
+            "base piston candidates",
+            program.pistons().len(),
+            program.pistons().len(),
+            boxed_bytes::<std::ops::Range<u32>>(program.contacts().len()),
+        ),
+        table::<PistonId>(
+            "lowering",
+            "head piston candidates",
+            program.pistons().len(),
+            program.pistons().len(),
+            boxed_bytes::<std::ops::Range<u32>>(program.contacts().len()),
         ),
     ]
 }

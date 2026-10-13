@@ -1,7 +1,7 @@
 //! Versioned inspection JSON for the richer graph drafts.
 use super::electrical::{ComparatorInputPlan, ComparatorOverride, WireRelationKind};
 use super::{AnalysisLimits, AnalysisReport};
-use crate::redpiler::compile_graph::{NodeState, NodeType};
+use crate::redpiler::components::{NodeState, NodeType};
 use crate::redpiler::passes;
 use crate::redpiler::program_graph::{
     CallbackReceiver, CircuitNodeKind, CompileGraph, ComponentState, Guard, InputPort, LinkKind,

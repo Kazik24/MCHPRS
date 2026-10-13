@@ -136,37 +136,6 @@ pub(crate) fn tick(world: &mut impl World, pos: BlockPos) {
     }
 }
 
-/// Compiled output activation uses the existing command allowlist, chain limits,
-/// conditions and entity lifecycle, without restarting physical redstone.
-pub(crate) fn tick_output(world: &mut impl World, pos: BlockPos) -> Vec<BlockPos> {
-    tick_inner(world, pos, false)
-}
-
-pub(crate) fn set_output_power(
-    world: &mut impl World,
-    pos: BlockPos,
-    powered: bool,
-    capture_condition: bool,
-) {
-    if !world.get_block(pos).is_command_block() {
-        return;
-    }
-    if !matches!(
-        world.get_block_entity(pos),
-        Some(BlockEntity::CommandBlock(_))
-    ) {
-        world.set_block_entity(pos, BlockEntity::CommandBlock(Box::default()));
-    }
-    let met = condition_met(world, pos);
-    let Some(BlockEntity::CommandBlock(entity)) = world.get_block_entity_mut(pos) else {
-        return;
-    };
-    entity.powered = powered;
-    if capture_condition {
-        entity.condition_met = met;
-    }
-}
-
 fn tick_inner(world: &mut impl World, pos: BlockPos, notify: bool) -> Vec<BlockPos> {
     let name = world.get_block(pos).get_name();
     if name == "chain_command_block" {

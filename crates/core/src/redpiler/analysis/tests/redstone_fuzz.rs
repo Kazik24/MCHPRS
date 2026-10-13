@@ -1,6 +1,7 @@
 //! Deterministic differential fuzzing. MCHPRS_REDSTONE_FUZZ_SEED selects the first
 //! case; MCHPRS_REDSTONE_FUZZ_CASES sets the count (defaults: 0 and 64).
 use super::*;
+use crate::redpiler::BackendKind;
 use mchprs_blocks::BlockDirection;
 use mchprs_blocks::block_entities::BlockEntity;
 use mchprs_blocks::blocks::{
@@ -119,7 +120,7 @@ fn compare(seed: u64, optimize: bool) -> Result<(), String> {
         }
     }
     compiled.clear_scheduled_ticks();
-    let native_propagation = compiler.stats().unwrap().graph.native_propagation;
+    assert_eq!(compiler.backend_kind(), Some(BackendKind::Graph));
 
     for (step, &(z, powered, wait)) in actions.iter().enumerate() {
         let input = BASE + BlockPos::new(0, 0, z);
@@ -147,9 +148,7 @@ fn compare(seed: u64, optimize: bool) -> Result<(), String> {
             }
             for &(pos, block) in &blocks {
                 // The native executor retains dust even when optimization is requested.
-                if block != Block::Air
-                    && (native_propagation || !matches!(block, Block::RedstoneWire { .. }))
-                {
+                if block != Block::Air {
                     let actual = compiled.get_block(pos);
                     let expected = native.get_block(pos);
                     if actual != expected {
@@ -176,6 +175,155 @@ fn compare(seed: u64, optimize: bool) -> Result<(), String> {
         }
     }
     Ok(())
+}
+
+#[test]
+fn repeated_lamp_off_requests_keep_the_interpreter_deadline() {
+    let control = BASE + BlockPos::new(8, 30, 8);
+    let lamp = BASE + BlockPos::new(7, 30, 8);
+    let blocks = [
+        (
+            control,
+            Block::Lever {
+                lever: Lever::new(LeverFace::Floor, BlockDirection::North, true),
+            },
+        ),
+        (lamp, Block::RedstoneLamp { lit: true }),
+    ];
+    let mut interpreted = load(&blocks, 0);
+    let mut compiled = load(&blocks, 0);
+    let bounds = compiled.get_corners();
+    let mut compiler = Compiler::default();
+    compiler
+        .compile(
+            &compiled,
+            bounds,
+            CompilerOptions::default(),
+            compiled.scheduler().iter_entries().collect(),
+            Default::default(),
+        )
+        .unwrap();
+    assert_eq!(compiler.backend_kind(), Some(BackendKind::Graph));
+
+    let toggle = |interpreted: &mut PlotWorld, compiler: &mut Compiler| {
+        let Block::Lever { lever } = interpreted.get_block(control) else {
+            unreachable!()
+        };
+        lever_action(interpreted, control, !lever.powered);
+        compiler.on_use_block(control);
+    };
+    let tick = |interpreted: &mut PlotWorld, compiled: &mut PlotWorld, compiler: &mut Compiler| {
+        interpreted.tick_interpreted();
+        compiler.tick_with_world(compiled);
+        compiler.flush(compiled);
+    };
+
+    compiled.clear_scheduled_ticks();
+    toggle(&mut interpreted, &mut compiler); // Off at t=0, due at t=4.
+    tick(&mut interpreted, &mut compiled, &mut compiler);
+    toggle(&mut interpreted, &mut compiler); // On at t=1.
+    tick(&mut interpreted, &mut compiled, &mut compiler);
+    toggle(&mut interpreted, &mut compiler); // Off at t=2, keep the earlier deadline.
+    for _ in 0..3 {
+        tick(&mut interpreted, &mut compiled, &mut compiler);
+    }
+    assert_eq!(
+        interpreted.get_block(lamp),
+        Block::RedstoneLamp { lit: false }
+    );
+    assert_eq!(compiled.get_block(lamp), interpreted.get_block(lamp));
+
+    toggle(&mut interpreted, &mut compiler); // On at t=5.
+    toggle(&mut interpreted, &mut compiler); // Off at t=5, due at t=9.
+    let mut actual = Vec::new();
+    let mut expected = Vec::new();
+    for _ in 0..4 {
+        tick(&mut interpreted, &mut compiled, &mut compiler);
+        actual.push(compiled.get_block(lamp));
+        expected.push(interpreted.get_block(lamp));
+    }
+    assert_eq!(actual, expected);
+    assert_eq!(
+        expected,
+        vec![
+            Block::RedstoneLamp { lit: true },
+            Block::RedstoneLamp { lit: true },
+            Block::RedstoneLamp { lit: true },
+            Block::RedstoneLamp { lit: false },
+        ]
+    );
+}
+
+#[test]
+fn due_button_callback_preserves_a_repeater_deadline() {
+    let button = BASE + BlockPos::new(8, 30, 8);
+    let repeater = BASE + BlockPos::new(7, 30, 8);
+    let blocks = [
+        (
+            button,
+            Block::StoneButton {
+                button: mchprs_blocks::blocks::StoneButton {
+                    powered: true,
+                    ..Default::default()
+                },
+            },
+        ),
+        (
+            repeater,
+            Block::RedstoneRepeater {
+                repeater: RedstoneRepeater {
+                    delay: 1,
+                    facing: BlockDirection::East,
+                    powered: true,
+                    locked: false,
+                },
+            },
+        ),
+    ];
+    let tick_entry = mchprs_world::TickEntry {
+        ticks_left: 0,
+        tick_priority: mchprs_world::TickPriority::NanoTick,
+        pos: button,
+        block_type: Some(blocks[0].1.registry_id()),
+    };
+    let mut interpreted = load(&blocks, 0);
+    let mut compiled = load(&blocks, 0);
+    interpreted.schedule_half_tick(button, 0, mchprs_world::TickPriority::NanoTick);
+    compiled.schedule_half_tick(button, 0, mchprs_world::TickPriority::NanoTick);
+    let bounds = compiled.get_corners();
+    let mut compiler = Compiler::default();
+    compiler
+        .compile(
+            &compiled,
+            bounds,
+            CompilerOptions {
+                optimize: true,
+                ..Default::default()
+            },
+            vec![tick_entry],
+            Default::default(),
+        )
+        .unwrap();
+    assert_eq!(compiler.backend_kind(), Some(BackendKind::Graph));
+    compiled.clear_scheduled_ticks();
+
+    let mut graph_trace = Vec::new();
+    let mut interpreter_trace = Vec::new();
+    for _ in 0..3 {
+        interpreted.tick_interpreted();
+        compiler.tick_with_world(&mut compiled);
+        compiler.flush(&mut compiled);
+        graph_trace.push(matches!(
+            compiled.get_block(repeater),
+            Block::RedstoneRepeater { repeater } if repeater.powered
+        ));
+        interpreter_trace.push(matches!(
+            interpreted.get_block(repeater),
+            Block::RedstoneRepeater { repeater } if repeater.powered
+        ));
+    }
+    assert_eq!(graph_trace, interpreter_trace);
+    assert_eq!(interpreter_trace, vec![true, false, false]);
 }
 
 #[test]
@@ -226,7 +374,7 @@ fn feedback_fuzz_seeds_compile_and_match_native_callback_order() {
 }
 
 #[test]
-fn native_feedback_preserves_hidden_state_and_scheduler_on_reset() {
+fn graph_feedback_preserves_hidden_state_and_scheduler_on_reset() {
     let mut rng = StdRng::seed_from_u64(121);
     let blocks = circuit(&mut rng);
     let warmup = rng.random_range(0..=16);
@@ -252,12 +400,8 @@ fn native_feedback_preserves_hidden_state_and_scheduler_on_reset() {
                             Default::default(),
                         )
                         .unwrap();
-                    assert!(compiler.stats().unwrap().graph.native_propagation);
-                    assert!(
-                        compiler.stats().unwrap().graph.passes[3..9]
-                            .iter()
-                            .all(|pass| !pass.enabled)
-                    );
+                    assert_eq!(compiler.backend_kind(), Some(BackendKind::Graph));
+                    assert!(compiler.stats().unwrap().graph.transformations.is_empty());
                     compiled.clear_scheduled_ticks();
                     compiler.on_use_block(control);
                     let Block::Lever { lever } = native.get_block(control) else {
@@ -365,7 +509,7 @@ fn torch_oscillator_compiles_and_keeps_oscillating_after_reset() {
                     Default::default(),
                 )
                 .unwrap();
-            assert!(compiler.stats().unwrap().graph.native_propagation);
+            assert_eq!(compiler.backend_kind(), Some(BackendKind::Graph));
             compiled.clear_scheduled_ticks();
             let torch = BASE.offset(BlockFace::East);
             let mut changes = 0;
@@ -561,9 +705,7 @@ fn native_controls_observers_and_command_outputs_match_interpreter() {
 }
 
 #[test]
-fn native_compilation_errors_preserve_world_and_scheduler() {
-    use crate::redpiler::backend::BackendError;
-    use crate::redpiler::compile_graph::GraphError;
+fn graph_compilation_errors_preserve_world_and_scheduler() {
     let block = Block::RedstoneComparator {
         comparator: RedstoneComparator::new(BlockDirection::West, ComparatorMode::Subtract, false),
     };
@@ -594,11 +736,11 @@ fn native_compilation_errors_preserve_world_and_scheduler() {
                 Default::default(),
             )
             .unwrap_err();
-        assert!(matches!(
-            error,
-            CompileError::Backend(BackendError::InvalidStrength { .. })
-                | CompileError::Graph(GraphError::UnsupportedNativeExport)
-        ));
+        if strength > 15 {
+            assert!(matches!(error, CompileError::RichGraph(_)));
+        } else {
+            assert!(matches!(error, CompileError::UnsupportedRichExport));
+        }
         assert!(!compiler.is_active());
         assert!(compiler.stats().is_none());
         assert_eq!(world.get_block(BASE), block);

@@ -15,6 +15,7 @@ use mchprs_blocks::{BlockFace, BlockPos};
 use mchprs_world::TickEntry;
 use rustc_hash::{FxHashMap, FxHashSet};
 use std::fmt;
+use std::time::{Duration, Instant};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum GeometryIssue {
@@ -248,9 +249,11 @@ pub(crate) struct GeometryDraft {
 
 #[derive(Debug, Clone)]
 pub(crate) struct GeometryResult {
-    /// Retains runtime-unavailable markers for callers; only this parser handles them.
+    /// This preserves entry inspection results for later graph stages.
     pub(crate) report: AnalysisReport,
     pub(crate) draft: GeometryDraft,
+    /// This records admission time separately from geometry preparation.
+    pub(crate) analysis_duration: Duration,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -343,7 +346,9 @@ pub(crate) fn prepare_geometry(
     monitor: &TaskMonitor,
     limits: AnalysisLimits,
 ) -> Result<GeometryResult, GeometryError> {
+    let analysis_start = Instant::now();
     let report = analyze(world, bounds, ticks, monitor, limits).map_err(GeometryError::Analysis)?;
+    let analysis_duration = analysis_start.elapsed();
     validate_entry(world, &report)?;
 
     let mut probe = Probe {
@@ -362,13 +367,16 @@ pub(crate) fn prepare_geometry(
     if monitor.cancelled() {
         return Err(GeometryError::Analysis(AnalysisError::Cancelled));
     }
-    Ok(GeometryResult { report, draft })
+    Ok(GeometryResult {
+        report,
+        draft,
+        analysis_duration,
+    })
 }
 
 fn validate_entry(world: &impl World, report: &AnalysisReport) -> Result<(), GeometryError> {
     for issue in &report.issues {
         match issue {
-            AdmissionIssue::PistonRuntimeUnavailable { .. } => {}
             AdmissionIssue::MovingPiston { pos } => {
                 validate_moving_metadata(world, *pos)?;
                 return Err(GeometryError::Entry(issue.clone()));

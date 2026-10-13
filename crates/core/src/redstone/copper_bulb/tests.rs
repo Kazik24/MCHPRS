@@ -381,7 +381,7 @@ fn copper_bulb_variants_do_not_age_during_simulation() {
 }
 
 #[test]
-fn copper_bulb_legacy_export_is_rejected_before_writing() {
+fn copper_bulb_legacy_export_is_rejected_before_activation() {
     let world = circuit("copper_bulb", false, false);
     let mut compiler = Compiler::default();
     let error = compiler
@@ -396,10 +396,13 @@ fn copper_bulb_legacy_export_is_rejected_before_writing() {
             Default::default(),
         )
         .unwrap_err();
-    assert!(matches!(&error, crate::redpiler::CompileError::Graph(_)));
+    assert!(matches!(
+        &error,
+        crate::redpiler::CompileError::UnsupportedRichExport
+    ));
     assert_eq!(
         error.to_string(),
-        "copper-bulb state cannot be exported in the electrical graph format"
+        "legacy binary and DOT exports cannot represent the unified graph; compile without --export or --export-dot"
     );
 }
 

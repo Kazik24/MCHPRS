@@ -507,6 +507,7 @@ fn replay(
     let ticks = native.scheduler().iter_entries().collect();
     let mut backend = GraphBackend::compile(&native, circuit.bounds(), ticks, Arc::default())
         .map_err(|error| format!("compile: {error}"))?;
+    backend.set_test_recording(true);
     let mut coverage = Coverage::default();
     let mut last_outputs: Vec<_> = outputs.iter().map(|&o| native.get_block(o)).collect();
     for (index, &step) in episode.steps.iter().enumerate() {

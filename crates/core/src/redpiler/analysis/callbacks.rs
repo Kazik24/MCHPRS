@@ -5,7 +5,7 @@ use super::electrical::ElectricalDraft;
 use super::geometry::GeometryDraft;
 use super::{AnalysisError, PreparationBudget};
 use crate::redpiler::TaskMonitor;
-use crate::redpiler::compile_graph::NodeType;
+use crate::redpiler::components::NodeType;
 use crate::redpiler::program_graph::{
     CallbackEdgeRef, CallbackReceiver, CircuitNodeKind, DeliveryKind, Guard, GuardId, LinkKind,
     LinkSpec, OperandView, PistonLane, PistonRoutes, PistonSpec, Route, RouteDelivery, RouteId,

@@ -8,7 +8,7 @@ mod research;
 use crate::plot::worldedit::{load_schematic, paste_clipboard};
 use crate::plot::{PLOT_WIDTH, PlotWorld};
 use crate::redpiler::analysis::AnalysisLimits;
-use crate::redpiler::compile_graph::{NodeState, NodeType};
+use crate::redpiler::components::{NodeState, NodeType};
 use crate::redpiler::program_graph::{
     CircuitNodeKind, ComponentState, Guard, GuardId, InputPort, PowerPort, ResourceState, StateTest,
 };
@@ -213,12 +213,6 @@ fn piston_head_moving_piston_and_unsafe_entry_state_are_admission_blockers() {
         report
             .issues
             .iter()
-            .any(|i| matches!(i, AdmissionIssue::PistonRuntimeUnavailable { pos } if *pos == BASE))
-    );
-    assert!(
-        report
-            .issues
-            .iter()
             .any(|i| matches!(i, AdmissionIssue::MovingPiston { .. }))
     );
     assert!(
@@ -303,8 +297,8 @@ fn piston_entry_rejection_preserves_the_interpreter_world() {
             Default::default(),
         )
         .unwrap_err();
-    assert!(matches!(&error, CompileError::Unsupported(report)
-        if report.issues.iter().any(|issue| matches!(issue, AdmissionIssue::PendingPistonEvents { count: 1 }))));
+    assert!(matches!(&error, CompileError::RichGraph(error)
+        if error.to_string().contains("1 pending piston events")));
     assert!(!compiler.is_active());
     assert!(compiler.stats().is_none());
     assert_eq!(world.get_block(BASE), before);
@@ -1523,10 +1517,7 @@ fn geometry_keeps_empty_ordinary_far_as_fixed_context() {
         variant.view == GeometryView::Fixed
             && Block::from_id(parsed.draft.profiles[variant.profile.index()].raw_state) == observer
     }));
-    assert!(parsed.report.issues.iter().any(|issue| matches!(
-        issue,
-        AdmissionIssue::PistonRuntimeUnavailable { pos } if *pos == BASE
-    )));
+    assert!(parsed.report.issues.is_empty());
 }
 
 #[test]

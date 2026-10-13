@@ -1,18 +1,18 @@
 # G6 — Activate Graph and retire legacy backends
 
-Status (2026-10-13): incomplete. Batch 02 did not change public backend selection or retire Direct/Native because the G5 coverage and capability gates are not met. Read [the migration plan](../GRAPH_PIPELINE_MIGRATION.md).
+Status (2026-10-13): implemented for the retained supported subset and awaiting human review. Public compiled execution uses Graph only; Direct/Native and their obsolete compilation path are retired. Broader behavioral histories remain unverified. Read [the migration plan](../GRAPH_PIPELINE_MIGRATION.md).
 
 ## Goal
 
-All supported ordinary and piston circuits compile through the common graph pipeline and execute through Graph. Retire production Direct/Native after coverage and admission policy are reviewed. Keep their code until this gate is ready; do not delete an implementation merely to force tests onto Graph.
+Supported ordinary and piston circuits compile through the common graph pipeline and execute through Graph. Explicitly unsupported components and entry states fail before publication. The interpreter remains available as the reference executor.
 
 ## Scope
 
 1. Switch reviewed supported cohorts in `Compiler::compile`, rather than assigning all comparators/cycles to Native. Preparation and backend construction occur before ownership/publication changes.
-2. Keep `Runtime::Graph(Box<GraphBackend>)` as the sole variant if it minimizes host changes; remove Direct/Native variants and selection once all retained supported cohorts have migrated. Update backend reporting, work counters, command help, diagnostics and tests to describe the actual executor. A one-variant enum is acceptable; do not add a new wrapper abstraction.
-3. Supported circuits select Graph; unsupported circuits fail before publication. Do not select Direct/Native after Graph preparation or execution fails. During reviewed intermediate activation, remaining legacy cohorts are explicit; this step is not complete while any production selection uses them.
+2. `Runtime::Graph(Box<GraphBackend>)` is the sole variant. Backend reporting, work counters, command help, diagnostics and tests describe Graph. A one-variant enum avoids unnecessary host changes.
+3. Supported circuits select Graph; unsupported circuits fail before publication. No compiled path selects another executor after Graph preparation or execution fails.
 4. Retire Direct/Native production implementations and legacy-only graph plumbing when references are migrated. Preserve meaningful regression scenarios using the interpreter as oracle; do not delete failing tests or retain snapshots as hidden Graph simulators. Never move native redstone execution calls into Graph.
-5. Batch 02 settles the component policy: retain command/note support by implementing it in Graph; trapdoors may produce a structured rejection as an explicitly accepted regression. Check every other legacy capability separately. Preserve existing export behavior or document deliberate format compatibility changes. Remaining unsupported retained capabilities block retirement, not earlier refactoring/testing.
+5. Commands and notes remain implemented in Graph. Hoppers and trapdoors return structured rejections. Legacy binary/DOT export flags return a clear prepublication format error; JSON remains the supported inspection format.
 6. Ensure compiler/reset lifecycle and host effects remain transactional. Do not log execution errors and silently continue in a corrupted state; retain the project's reviewed error policy and expose defects clearly.
 
 ## References and required evidence
@@ -27,8 +27,10 @@ All supported ordinary and piston circuits compile through the common graph pipe
 
 ## Non-goals
 
-No new native fallback, incidental command/note policy change, or mandatory performance target. Retirement is authorized only by this step's reviewed scope/coverage gate. Report remaining legacy production cohorts explicitly; their presence means this step is incomplete.
+No native fallback, incidental command/note policy change, or mandatory performance target. Human review still checks the implemented scope and the documented untested histories; no further executor or optimization work is included here.
 
-## Batch 02 disposition
+## Activation and retirement evidence
 
-`Compiler::compile_with_graph_pipeline` still routes ordinary selections through the legacy preparation path, including Direct/Native selection for comparator/cycle cases. Hoppers and trapdoors have the explicitly approved structured rejection contract and no longer block retirement by themselves. The pinned CPU_BubbleSort schematic now contains its matching sticky piston head, but the saved-sign selection still receives a structured support-loss error. An earlier explicit GraphBackend replay and independent interpreter replay both sorted after the same wall sign was removed from each input in memory; RAM matched at six checkpoints through 10,035 active ticks. The production release CPU harness now measures only 100 active ticks across five fresh pairs: Graph median 4.396806 s (range 4.245987–4.582137 s), interpreter median 0.634134 s (0.621264–0.646845 s). It asserts Graph backend identity and confirms RAM plus all Graph work counters match the earlier `cfg(test)` episode. The test instrumentation is absent from the release library, but the tick entry points differ, so the timing difference does not quantify its cost. Current CPU preparation table estimates peak at 411 MiB; an older ~42 GiB preparation report remains unexplained. Broad G5 differential coverage and legacy binary/DOT consumer migration are incomplete. Direct and Native therefore remain production backends, and G6 is not complete.
+Public compiler and runtime consumers now use the common Graph pipeline. Search and test discovery found no production `DirectBackend`, `NativeBackend`, `LegacyCompileGraph`, legacy pass entry point, or related backend variant. Read-only analysis uses the same prepared graph. JSON inspection remains supported; `--export` and `--export-dot` fail explicitly before activation because their format cannot preserve routes, contacts, and callback semantics. Selected Hoppers/trapdoors, moving entry, malformed piston heads, support loss, unloaded targets, and unsupported external wire-boundary queries retain structured admission errors.
+
+`cargo test -p mchprs_core --lib redpiler:: --locked -- --list` discovered 202 redpiler tests. Debug and release each passed 198 with 4 ignored. The ignored release CPU comparison passed for 100 active ticks and matched Graph/interpreter RAM. The public release benchmark asserted Graph identity and ran five fresh pairs: Graph median 1.284687 s (1.241218–1.301638 s), interpreter median 0.649654 s (0.642933–0.695880 s). Work counts matched each run. This demonstrates a short episode only; it does not establish full CPU-history equivalence. See the migration report for exact commands, counts, table estimates, and remaining limits.

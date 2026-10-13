@@ -22,11 +22,8 @@ impl TaskMonitor {
         *self.graph_statistics.lock().unwrap() = GraphStatistics::default();
     }
 
-    pub(crate) fn begin_graph_statistics(&self, wire_nodes_elided: bool) {
-        *self.graph_statistics.lock().unwrap() = GraphStatistics {
-            wire_nodes_elided,
-            ..Default::default()
-        };
+    pub(crate) fn begin_graph_statistics(&self) {
+        *self.graph_statistics.lock().unwrap() = GraphStatistics::default();
     }
 
     pub(crate) fn record_pass(&self, pass: PassStatistics) {
@@ -68,10 +65,6 @@ impl TaskMonitor {
 
     pub(crate) fn finish_graph_statistics(&self, duration: Duration) {
         self.graph_statistics.lock().unwrap().duration = duration;
-    }
-
-    pub(crate) fn set_native_propagation(&self, native: bool) {
-        self.graph_statistics.lock().unwrap().native_propagation = native;
     }
 
     pub fn set_budget_multiplier(&self, multiplier: usize) {
