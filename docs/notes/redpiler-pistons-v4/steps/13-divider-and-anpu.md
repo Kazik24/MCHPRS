@@ -12,7 +12,7 @@ Validate a harder instant arithmetic fixture and full noninstant logic, includin
 
 ## Read these sources
 
-- [Divider manifest](../../../../test_data/piston-research/divider-fixed/download-manifest.json), [Divider protocol](../../../../test_data/piston-research/fixtures/fpu_divider.json), and [research test registration](../../../../crates/core/src/redpiler/analysis/tests/research.rs).
+- [Divider schematic](../../../../test_data/piston-research/divider-fixed/divider_fpu_fixed.schem), [Divider protocol](../../../../test_data/piston-research/fixtures/fpu_divider.json), and [benchmark loader](../../../../crates/core/benches/instant.rs).
 - [CPU reference tests](../../../../crates/core/tests/cpu_references.rs), [CPU reference harness](../../../../crates/core/benches/support/cpus.rs), and [ANPU schematic](../../../../test_data/Q2CK@Q2CK_Anpu1_Pong_KBTV.schem).
 - [command-block rules](../../../../crates/core/src/redstone/command_block.rs), [plot host](../../../../crates/core/src/plot/mod.rs), and architecture sections 7 and 11-12.
 

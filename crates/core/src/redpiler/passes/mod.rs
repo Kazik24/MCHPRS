@@ -3,6 +3,7 @@ pub(crate) mod contract_dust_paths;
 pub(crate) mod index_turbo_callbacks;
 pub(crate) mod rich;
 pub(crate) mod simplify_guards;
+pub(crate) mod simplify_state_guards;
 pub(crate) mod utils;
 
 use super::program_graph::{CompileGraph, EntryState, GraphBuildError};
@@ -199,13 +200,14 @@ pub(crate) fn run_graph_pipeline(
 /// Pass tiers are declared beside their implementations, ordered by minimum level.
 pub(crate) fn default_graph_pipeline(options: &CompilerOptions) -> PassPipeline {
     let level = options.optimization_level.unwrap_or(usize::MAX);
-    let optimization_1: [Box<dyn GraphPass>; 3] = [
-        Box::new(simplify_guards::GuardAndUpdateReduction),
-        Box::new(index_turbo_callbacks::IndexTurboCallbacks),
-        Box::new(contract_dust_paths::ContractDustPaths),
+    let passes: [(usize, Box<dyn GraphPass>); 4] = [
+        (1, Box::new(simplify_guards::GuardAndUpdateReduction)),
+        (1, Box::new(index_turbo_callbacks::IndexTurboCallbacks)),
+        (1, Box::new(contract_dust_paths::ContractDustPaths)),
+        (2, Box::new(simplify_state_guards::SimplifyStateGuards)),
     ];
-    let passes = optimization_1.into_iter().map(|pass| (1, pass));
     let entries = passes
+        .into_iter()
         .map(|(minimum_level, pass)| PassEntry {
             pass,
             enabled: level >= minimum_level,

@@ -14,6 +14,7 @@
 //! callbacks to components are retained because captured Turbo delivery can use
 //! their routes to dispatch an Update.
 
+use super::utils::child_before_parent_order;
 use super::{GraphPass, PassContext};
 use crate::redpiler::TaskMonitor;
 use crate::redpiler::components::NodeType;
@@ -156,51 +157,6 @@ fn normalize_guards(graph: &CompileGraph, monitor: &TaskMonitor) -> Result<Guard
         old_to_new,
         facts: interner.facts,
     })
-}
-
-fn child_before_parent_order(guards: &[Guard], monitor: &TaskMonitor) -> Result<Vec<usize>, String> {
-    let mut marks = vec![0u8; guards.len()];
-    let mut order = Vec::with_capacity(guards.len());
-    let mut stack = Vec::<(usize, usize)>::new();
-    for root in 0..guards.len() {
-        if marks[root] == 2 {
-            continue;
-        }
-        marks[root] = 1;
-        stack.push((root, 0));
-        while !stack.is_empty() {
-            if monitor.cancelled() {
-                return Err("cancelled while ordering guard dependencies".into());
-            }
-            let (id, child_index) = *stack.last().unwrap();
-            let children = guard_children(&guards[id]);
-            if child_index == children.len() {
-                marks[id] = 2;
-                order.push(id);
-                stack.pop();
-                continue;
-            }
-            let child = children[child_index].index();
-            stack.last_mut().unwrap().1 += 1;
-            match marks[child] {
-                0 => {
-                    marks[child] = 1;
-                    stack.push((child, 0));
-                }
-                1 => return Err(format!("cyclic guard dependency at guard {child}")),
-                _ => {}
-            }
-        }
-    }
-    Ok(order)
-}
-
-fn guard_children(guard: &Guard) -> &[GuardId] {
-    match guard {
-        Guard::Not(child) => std::slice::from_ref(child),
-        Guard::All(children) | Guard::Any(children) => children,
-        Guard::Always | Guard::State(_) | Guard::Site { .. } => &[],
-    }
 }
 
 enum JoinForm {
@@ -545,19 +501,31 @@ mod tests {
     #[test]
     fn optimization_levels_select_pass_tiers() {
         let unoptimized = super::super::default_graph_pipeline(&CompilerOptions::default());
-        assert_eq!(unoptimized.entries.len(), 3);
+        assert_eq!(unoptimized.entries.len(), 4);
         assert!(unoptimized.entries.iter().all(|entry| !entry.enabled));
 
         let optimized = super::super::default_graph_pipeline(&CompilerOptions {
             optimization_level: Some(1),
             ..Default::default()
         });
-        assert_eq!(optimized.entries.len(), 3);
-        assert!(optimized.entries.iter().all(|entry| entry.enabled));
+        assert_eq!(optimized.entries.len(), 4);
+        assert!(optimized.entries.iter().take(3).all(|entry| entry.enabled));
+        assert!(!optimized.entries[3].enabled);
         assert_eq!(
             optimized.entries.iter().map(|entry| entry.pass.name()).collect::<Vec<_>>(),
-            ["guard-and-update-reduction", "index-turbo-callbacks", "contract-static-dust-paths"]
+            [
+                "guard-and-update-reduction",
+                "index-turbo-callbacks",
+                "contract-static-dust-paths",
+                "simplify-state-guards"
+            ]
         );
+
+        let opt_2 = super::super::default_graph_pipeline(&CompilerOptions {
+            optimization_level: Some(2),
+            ..Default::default()
+        });
+        assert!(opt_2.entries.iter().all(|entry| entry.enabled));
 
         let max_optimized = super::super::default_graph_pipeline(&CompilerOptions {
             optimization_level: None,

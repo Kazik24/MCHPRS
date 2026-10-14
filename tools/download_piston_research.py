@@ -11,7 +11,7 @@ from pathlib import Path
 import subprocess
 
 ROOT = Path(__file__).resolve().parents[1]
-NAMES = ["FPU_LEGAL.schem", "RILAX_MEMORY_BANK_BUD.schem"]
+NAMES = ["FPU_MROWW.schem", "RILAX_MEMORY_BANK_BUD.schem"]
 
 
 def main():

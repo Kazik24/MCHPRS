@@ -31,7 +31,7 @@ pub struct Cpu {
 pub const CPUS: [Cpu; 3] = [
     Cpu {
         name: "pm1_sort",
-        schematic: "PM1_SORT.schem",
+        schematic: "instant-pistons/PM1_SORT.schem",
         sha256: "e338028d50a4400056e25037d1f43d37c08baed079edede6298f78b0a6341654",
         start: BlockPos::new(187, 35, 72),
         stop: Some(BlockPos::new(187, 32, 72)),

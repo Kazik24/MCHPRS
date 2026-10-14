@@ -148,7 +148,7 @@ fn interpreter_sample(cpu: Cpu) -> ShortSample {
     }
 }
 
-fn graph_sample(cpu: Cpu, bounds: (BlockPos, BlockPos), optimize: bool, profile_label: &str) -> ShortSample {
+fn graph_sample(cpu: Cpu, bounds: (BlockPos, BlockPos), optimization_level: usize, profile_label: &str) -> ShortSample {
     #[cfg(not(feature = "graph-profile"))]
     let _ = profile_label;
     let mut world = sign_free_world(cpu);
@@ -160,7 +160,7 @@ fn graph_sample(cpu: Cpu, bounds: (BlockPos, BlockPos), optimize: bool, profile_
             &world,
             bounds,
             CompilerOptions {
-                optimization_level: if optimize { None } else { Some(0) },
+                optimization_level: Some(optimization_level),
                 ..Default::default()
             },
             ticks,
@@ -210,7 +210,7 @@ fn graph_sample(cpu: Cpu, bounds: (BlockPos, BlockPos), optimize: bool, profile_
         .filter(|table| table.stage == "Turbo callback index")
         .map(|table| (table.table.to_owned(), table.entries))
         .collect();
-    assert_eq!(dust_path_tables.is_empty(), !optimize);
+    assert_eq!(dust_path_tables.is_empty(), optimization_level == 0);
     let retained_bytes = |stage| {
         statistics
             .graph
@@ -345,60 +345,60 @@ fn graph_short(cpu: Cpu, iterations: usize, output: Option<&str>, label: &str) {
     let bounds = short_bounds(cpu);
     let mut graph_times = Vec::with_capacity(iterations);
     let mut opt01_times = Vec::with_capacity(iterations);
-    let mut dust_times = Vec::with_capacity(iterations);
+    let mut opt02_times = Vec::with_capacity(iterations);
     let mut interpreter_times = Vec::with_capacity(iterations);
     let mut graph_counts = None;
     let mut opt01_counts = None;
-    let mut dust_counts = None;
+    let mut opt02_counts = None;
     let mut graph_tables = None;
     let mut opt01_tables = None;
-    let mut dust_graph_tables = None;
+    let mut opt02_graph_tables = None;
     let mut dust_path_tables = None;
     let mut turbo_callback_index_tables = None;
     let mut dust_candidate_power_samples = None;
     let mut retained_estimates = None;
     let mut graph_preparation_tables = None;
     let mut opt01_preparation_tables = None;
-    let mut dust_preparation_tables = None;
+    let mut opt02_preparation_tables = None;
     let mut graph_callback_window = None;
     let mut opt01_callback_window = None;
-    let mut dust_callback_window = None;
+    let mut opt02_callback_window = None;
     let mut graph_piston_samples_window = None;
     let mut opt01_piston_samples_window = None;
-    let mut dust_piston_samples_window = None;
+    let mut opt02_piston_samples_window = None;
     #[cfg(feature = "graph-profile")]
     let mut graph_callback_profile = None;
     #[cfg(feature = "graph-profile")]
     let mut opt01_callback_profile = None;
     #[cfg(feature = "graph-profile")]
-    let mut dust_callback_profile = None;
+    let mut opt02_callback_profile = None;
     #[cfg(feature = "graph-profile")]
     let mut graph_callback_inventory = None;
     #[cfg(feature = "graph-profile")]
     let mut opt01_callback_inventory = None;
     #[cfg(feature = "graph-profile")]
-    let mut dust_callback_inventory = None;
+    let mut opt02_callback_inventory = None;
 
     for sample in 0..iterations {
-        let (graph, opt01, dust, interpreter) = if sample % 2 == 0 {
-            let graph = graph_sample(cpu, bounds, false, "O0 Graph");
-            let opt01 = graph_sample(cpu, bounds, true, "O1 Graph");
-            let dust = graph_sample(cpu, bounds, true, "O1 repeat Graph");
+        let (graph, opt01, opt02, interpreter) = if sample % 2 == 0 {
+            let graph = graph_sample(cpu, bounds, 0, "O0 Graph");
+            let opt01 = graph_sample(cpu, bounds, 1, "O1 Graph");
+            let opt02 = graph_sample(cpu, bounds, 2, "O2 Graph");
             let interpreter = interpreter_sample(cpu);
-            (graph, opt01, dust, interpreter)
+            (graph, opt01, opt02, interpreter)
         } else {
             let interpreter = interpreter_sample(cpu);
-            let dust = graph_sample(cpu, bounds, true, "O1 repeat Graph");
-            let opt01 = graph_sample(cpu, bounds, true, "O1 Graph");
-            let graph = graph_sample(cpu, bounds, false, "O0 Graph");
-            (graph, opt01, dust, interpreter)
+            let opt02 = graph_sample(cpu, bounds, 2, "O2 Graph");
+            let opt01 = graph_sample(cpu, bounds, 1, "O1 Graph");
+            let graph = graph_sample(cpu, bounds, 0, "O0 Graph");
+            (graph, opt01, opt02, interpreter)
         };
         assert_eq!(graph.initial, interpreter.initial, "sample {sample} inputs");
         assert_eq!(opt01.initial, interpreter.initial, "sample {sample} O1 inputs");
-        assert_eq!(dust.initial, interpreter.initial, "sample {sample} repeated O1 inputs");
+        assert_eq!(opt02.initial, interpreter.initial, "sample {sample} O2 inputs");
         assert_eq!(graph.final_ram, interpreter.final_ram, "sample {sample} RAM");
         assert_eq!(opt01.final_ram, interpreter.final_ram, "sample {sample} O1 RAM");
-        assert_eq!(dust.final_ram, interpreter.final_ram, "sample {sample} repeated O1 RAM");
+        assert_eq!(opt02.final_ram, interpreter.final_ram, "sample {sample} O2 RAM");
         let counts = graph.graph_counts.unwrap();
         assert_eq!(counts, TEST_GRAPH_COUNTS, "sample {sample} Graph work");
         if let Some(previous) = graph_counts {
@@ -460,39 +460,38 @@ fn graph_short(cpu: Cpu, iterations: usize, output: Option<&str>, label: &str) {
             opt01_callback_inventory = Some(inventory);
         }
 
-        let dust_counts_sample = dust.graph_counts.unwrap();
-        let mut opt01_without_dust = opt01_counts_sample;
-        opt01_without_dust.dust_path_power_samples_elided = 0;
-        let mut dust_without_counter = dust_counts_sample;
-        dust_without_counter.dust_path_power_samples_elided = 0;
-        assert_eq!(dust_without_counter, opt01_without_dust, "dust changed unrelated Graph work");
-        if let Some(previous) = dust_counts {
-            assert_eq!(dust_counts_sample, previous, "repeated O1 Graph work changed between samples");
+        let opt02_counts_sample = opt02.graph_counts.unwrap();
+        assert_eq!(
+            opt02_counts_sample, opt01_counts_sample,
+            "O2 state-guard rewriting changed Graph work counters"
+        );
+        if let Some(previous) = opt02_counts {
+            assert_eq!(opt02_counts_sample, previous, "O2 Graph work changed between samples");
         }
-        dust_counts = Some(dust_counts_sample);
-        dust_callback_window = Some((dust.callback_count_before_tick_window, dust.callback_count_in_tick_window));
-        dust_piston_samples_window = Some(dust.piston_samples_in_tick_window);
+        opt02_counts = Some(opt02_counts_sample);
+        opt02_callback_window = Some((opt02.callback_count_before_tick_window, opt02.callback_count_in_tick_window));
+        opt02_piston_samples_window = Some(opt02.piston_samples_in_tick_window);
         #[cfg(feature = "graph-profile")]
         {
-            let profile = dust.callback_profile.unwrap();
+            let profile = opt02.callback_profile.unwrap();
             assert_eq!(
                 profile.dispatches_by_receiver_and_kind.iter().flatten().sum::<u64>(),
-                dust.callback_count_in_tick_window
+                opt02.callback_count_in_tick_window
             );
-            if let Some(previous) = dust_callback_profile {
-                assert_eq!(profile, previous, "repeated O1 callback work changed between samples");
+            if let Some(previous) = opt02_callback_profile {
+                assert_eq!(profile, previous, "O2 callback work changed between samples");
             }
-            dust_callback_profile = Some(profile);
-            let inventory = dust.callback_inventory.clone().unwrap();
-            if let Some(previous) = &dust_callback_inventory {
-                assert_eq!(&inventory, previous, "repeated O1 static inventory changed between samples");
+            opt02_callback_profile = Some(profile);
+            let inventory = opt02.callback_inventory.clone().unwrap();
+            if let Some(previous) = &opt02_callback_inventory {
+                assert_eq!(&inventory, previous, "O2 static inventory changed between samples");
             }
-            dust_callback_inventory = Some(inventory);
+            opt02_callback_inventory = Some(inventory);
         }
 
         let plain_tables = graph.graph_tables.unwrap();
         let opt01_tables_sample = opt01.graph_tables.unwrap();
-        let dust_tables_sample = dust.graph_tables.unwrap();
+        let opt02_tables_sample = opt02.graph_tables.unwrap();
         assert!(opt01_tables_sample.guards <= plain_tables.guards);
         assert!(opt01_tables_sample.deliveries <= plain_tables.deliveries);
         assert!(opt01_tables_sample.callback_links <= plain_tables.callback_links);
@@ -501,21 +500,33 @@ fn graph_short(cpu: Cpu, iterations: usize, output: Option<&str>, label: &str) {
         assert_eq!(plain_tables.turbo_callback_index_bytes, 0);
         assert!(opt01_tables_sample.turbo_callback_index_entries > 0);
         assert!(opt01_tables_sample.turbo_callback_index_bytes > 0);
-        assert_eq!(dust_tables_sample, opt01_tables_sample, "dust pass changed graph tables");
+        assert!(opt02_tables_sample.guards <= opt01_tables_sample.guards);
+        assert_eq!(opt02_tables_sample.deliveries, opt01_tables_sample.deliveries);
+        assert_eq!(opt02_tables_sample.callback_links, opt01_tables_sample.callback_links);
+        assert_eq!(opt02_tables_sample.power_links, opt01_tables_sample.power_links);
+        assert_eq!(
+            opt02_tables_sample.turbo_callback_index_entries,
+            opt01_tables_sample.turbo_callback_index_entries
+        );
+        assert_eq!(
+            opt02_tables_sample.turbo_callback_index_bytes,
+            opt01_tables_sample.turbo_callback_index_bytes
+        );
         if let Some(previous) = graph_tables {
             assert_eq!(plain_tables, previous, "unoptimized table counts changed");
         }
         if let Some(previous) = opt01_tables {
             assert_eq!(opt01_tables_sample, previous, "O1 table counts changed");
         }
-        if let Some(previous) = dust_graph_tables {
-            assert_eq!(dust_tables_sample, previous, "repeated O1 table counts changed");
+        if let Some(previous) = opt02_graph_tables {
+            assert_eq!(opt02_tables_sample, previous, "O2 table counts changed");
         }
         graph_tables = Some(plain_tables);
         opt01_tables = Some(opt01_tables_sample);
-        dust_graph_tables = Some(dust_tables_sample);
+        opt02_graph_tables = Some(opt02_tables_sample);
 
-        let dust_path_tables_sample = dust.dust_path_tables.clone();
+        let dust_path_tables_sample = opt02.dust_path_tables.clone();
+        assert_eq!(dust_path_tables_sample, opt01.dust_path_tables, "O2 changed O1 dust candidate coverage");
         if let Some(previous) = &dust_path_tables {
             assert_eq!(&dust_path_tables_sample, previous, "dust candidate coverage changed");
         }
@@ -525,7 +536,7 @@ fn graph_short(cpu: Cpu, iterations: usize, output: Option<&str>, label: &str) {
             assert_eq!(&index_tables_sample, previous, "Turbo callback index coverage changed between samples");
         }
         turbo_callback_index_tables = Some(index_tables_sample);
-        let candidate_power_samples = dust.dust_candidate_power_samples.clone();
+        let candidate_power_samples = opt02.dust_candidate_power_samples.clone();
         if let Some(previous) = &dust_candidate_power_samples {
             assert_eq!(&candidate_power_samples, previous, "long-candidate query counts changed between samples");
         }
@@ -536,8 +547,8 @@ fn graph_short(cpu: Cpu, iterations: usize, output: Option<&str>, label: &str) {
             graph.retained_lowering_bytes,
             opt01.retained_callback_bytes,
             opt01.retained_lowering_bytes,
-            dust.retained_callback_bytes,
-            dust.retained_lowering_bytes,
+            opt02.retained_callback_bytes,
+            opt02.retained_lowering_bytes,
         );
         if let Some(previous) = retained_estimates {
             assert_eq!(estimates, previous, "retained table estimates changed");
@@ -546,7 +557,7 @@ fn graph_short(cpu: Cpu, iterations: usize, output: Option<&str>, label: &str) {
         for (tables, previous, label) in [
             (graph.preparation_tables.clone(), &mut graph_preparation_tables, "O0"),
             (opt01.preparation_tables.clone(), &mut opt01_preparation_tables, "O1"),
-            (dust.preparation_tables.clone(), &mut dust_preparation_tables, "O1 repeat"),
+            (opt02.preparation_tables.clone(), &mut opt02_preparation_tables, "O2"),
         ] {
             if let Some(previous) = previous {
                 assert_eq!(tables, *previous, "{label} preparation tables changed");
@@ -554,20 +565,20 @@ fn graph_short(cpu: Cpu, iterations: usize, output: Option<&str>, label: &str) {
             *previous = Some(tables);
         }
         println!(
-            "cpu_bubblesort sample {}: Graph {:.6}s, O1 {:.6}s, O1 repeat {:.6}s, interpreter {:.6}s; {} active ticks; RAM matches; callbacks {} -> {}; dust samples elided {}",
+            "cpu_bubblesort sample {}: Graph {:.6}s, O1 {:.6}s, O2 {:.6}s, interpreter {:.6}s; {} active ticks; RAM matches; callbacks {} -> {}; dust samples elided {}",
             sample + 1,
             graph.elapsed.as_secs_f64(),
             opt01.elapsed.as_secs_f64(),
-            dust.elapsed.as_secs_f64(),
+            opt02.elapsed.as_secs_f64(),
             interpreter.elapsed.as_secs_f64(),
             SHORT_ACTIVE_TICKS,
             counts.callbacks,
             opt01_counts_sample.callbacks,
-            dust_counts_sample.dust_path_power_samples_elided,
+            opt02_counts_sample.dust_path_power_samples_elided,
         );
         graph_times.push(graph.elapsed);
         opt01_times.push(opt01.elapsed);
-        dust_times.push(dust.elapsed);
+        opt02_times.push(opt02.elapsed);
         interpreter_times.push(interpreter.elapsed);
     }
 
@@ -577,19 +588,19 @@ fn graph_short(cpu: Cpu, iterations: usize, output: Option<&str>, label: &str) {
     };
     let (graph_median, graph_min, graph_max) = summarize(&mut graph_times);
     let (opt01_median, opt01_min, opt01_max) = summarize(&mut opt01_times);
-    let (dust_median, dust_min, dust_max) = summarize(&mut dust_times);
+    let (opt02_median, opt02_min, opt02_max) = summarize(&mut opt02_times);
     let (interpreter_median, interpreter_min, interpreter_max) = summarize(&mut interpreter_times);
     let counts = graph_counts.unwrap();
     let opt01_counts = opt01_counts.unwrap();
-    let dust_counts = dust_counts.unwrap();
+    let opt02_counts = opt02_counts.unwrap();
     let (graph_callbacks_before, graph_callbacks_window) = graph_callback_window.unwrap();
     let (opt01_callbacks_before, opt01_callbacks_window) = opt01_callback_window.unwrap();
-    let (dust_callbacks_before, dust_callbacks_window) = dust_callback_window.unwrap();
+    let (opt02_callbacks_before, opt02_callbacks_window) = opt02_callback_window.unwrap();
     let graph_piston_samples_window = graph_piston_samples_window.unwrap();
     let opt01_piston_samples_window = opt01_piston_samples_window.unwrap();
-    let dust_piston_samples_window = dust_piston_samples_window.unwrap();
+    let opt02_piston_samples_window = opt02_piston_samples_window.unwrap();
     println!(
-        "Graph backend: {:?}; {} paired samples of {} ticks; Graph median {:.6}s [{:.6}, {:.6}], O1 median {:.6}s [{:.6}, {:.6}], repeated O1 median {:.6}s [{:.6}, {:.6}], interpreter median {:.6}s [{:.6}, {:.6}]",
+        "Graph backend: {:?}; {} paired samples of {} ticks; Graph median {:.6}s [{:.6}, {:.6}], O1 median {:.6}s [{:.6}, {:.6}], O2 median {:.6}s [{:.6}, {:.6}], interpreter median {:.6}s [{:.6}, {:.6}]",
         BackendKind::Graph,
         iterations,
         SHORT_ACTIVE_TICKS,
@@ -599,23 +610,23 @@ fn graph_short(cpu: Cpu, iterations: usize, output: Option<&str>, label: &str) {
         opt01_median.as_secs_f64(),
         opt01_min.as_secs_f64(),
         opt01_max.as_secs_f64(),
-        dust_median.as_secs_f64(),
-        dust_min.as_secs_f64(),
-        dust_max.as_secs_f64(),
+        opt02_median.as_secs_f64(),
+        opt02_min.as_secs_f64(),
+        opt02_max.as_secs_f64(),
         interpreter_median.as_secs_f64(),
         interpreter_min.as_secs_f64(),
         interpreter_max.as_secs_f64()
     );
     println!("Unoptimized Graph work counters: {counts:?}");
     println!("O1 Graph work counters: {opt01_counts:?}");
-    println!("Repeated O1 Graph work counters: {dust_counts:?}");
+    println!("O2 Graph work counters: {opt02_counts:?}");
     println!(
-        "Post-pass graph tables: general={:?}; O1={:?}; repeated O1={:?}",
+        "Post-pass graph tables: general={:?}; O1={:?}; O2={:?}",
         graph_tables.unwrap(),
         opt01_tables.unwrap(),
-        dust_graph_tables.unwrap()
+        opt02_graph_tables.unwrap()
     );
-    let (callback_bytes, lowering_bytes, opt01_callback_bytes, opt01_lowering_bytes, dust_callback_bytes, dust_lowering_bytes) =
+    let (callback_bytes, lowering_bytes, opt01_callback_bytes, opt01_lowering_bytes, opt02_callback_bytes, opt02_lowering_bytes) =
         retained_estimates.unwrap();
     #[cfg(feature = "graph-profile")]
     let callback_research = serde_json::json!({
@@ -629,27 +640,27 @@ fn graph_short(cpu: Cpu, iterations: usize, output: Option<&str>, label: &str) {
             "work": callback_profile_json(opt01_callback_profile.unwrap()),
             "inventory": opt01_callback_inventory.unwrap(),
         },
-        "o1_repeat": {
-            "work": callback_profile_json(dust_callback_profile.unwrap()),
-            "inventory": dust_callback_inventory.unwrap(),
+        "o2": {
+            "work": callback_profile_json(opt02_callback_profile.unwrap()),
+            "inventory": opt02_callback_inventory.unwrap(),
         },
     });
     #[cfg(not(feature = "graph-profile"))]
     let callback_research = serde_json::Value::Null;
     println!(
-        "Estimated retained tables: general callbacks/lowering {:.2}/{:.2} MiB; O1 {:.2}/{:.2} MiB; repeated O1 {:.2}/{:.2} MiB",
+        "Estimated retained tables: general callbacks/lowering {:.2}/{:.2} MiB; O1 {:.2}/{:.2} MiB; O2 {:.2}/{:.2} MiB",
         callback_bytes as f64 / (1024.0 * 1024.0),
         lowering_bytes as f64 / (1024.0 * 1024.0),
         opt01_callback_bytes as f64 / (1024.0 * 1024.0),
         opt01_lowering_bytes as f64 / (1024.0 * 1024.0),
-        dust_callback_bytes as f64 / (1024.0 * 1024.0),
-        dust_lowering_bytes as f64 / (1024.0 * 1024.0),
+        opt02_callback_bytes as f64 / (1024.0 * 1024.0),
+        opt02_lowering_bytes as f64 / (1024.0 * 1024.0),
     );
     let coverage = dust_path_tables.unwrap();
-    println!("O1 preparation coverage tables: {coverage:?}");
+    println!("O1/O2 dust preparation coverage tables: {coverage:?}");
     let candidate_power_samples = dust_candidate_power_samples.unwrap();
     println!(
-        "Long-candidate canonical neighbor-power samples in the profiled O1 episode: {:?}",
+        "Long-candidate canonical neighbor-power samples in the profiled O2 episode: {:?}",
         candidate_power_samples
     );
     let turbo_callback_index_tables = turbo_callback_index_tables.unwrap();
@@ -678,7 +689,7 @@ fn graph_short(cpu: Cpu, iterations: usize, output: Option<&str>, label: &str) {
                 "estimated_retained_bytes_after_lowering": lowering_bytes,
                 "preparation_tables": graph_preparation_tables.unwrap(),
             },
-            "o1_only": {
+            "o1": {
                 "median_seconds": opt01_median.as_secs_f64(),
                 "range_seconds": [opt01_min.as_secs_f64(), opt01_max.as_secs_f64()],
                 "counters": graph_counts_json(opt01_counts),
@@ -691,20 +702,21 @@ fn graph_short(cpu: Cpu, iterations: usize, output: Option<&str>, label: &str) {
                 "estimated_retained_bytes_after_lowering": opt01_lowering_bytes,
                 "preparation_tables": opt01_preparation_tables.unwrap(),
             },
-            "o1_repeat": {
-                "median_seconds": dust_median.as_secs_f64(),
-                "range_seconds": [dust_min.as_secs_f64(), dust_max.as_secs_f64()],
-                "counters": graph_counts_json(dust_counts),
-                "callbacks_before_tick_window": dust_callbacks_before,
-                "callbacks_in_tick_window": dust_callbacks_window,
-                "piston_samples_in_tick_window": dust_piston_samples_window,
-                "tables": dust_graph_tables.unwrap(),
+            "o2": {
+                "median_seconds": opt02_median.as_secs_f64(),
+                "range_seconds": [opt02_min.as_secs_f64(), opt02_max.as_secs_f64()],
+                "counters": graph_counts_json(opt02_counts),
+                "callbacks_before_tick_window": opt02_callbacks_before,
+                "callbacks_in_tick_window": opt02_callbacks_window,
+                "piston_samples_in_tick_window": opt02_piston_samples_window,
+                "tables": opt02_graph_tables.unwrap(),
+                "turbo_callback_index_coverage_tables": turbo_callback_index_tables,
                 "candidate_coverage_tables": coverage,
                 "long_candidate_neighbor_power_samples": candidate_power_samples,
                 "query_sample_instrumentation_enabled": cfg!(feature = "graph-profile"),
-                "estimated_retained_bytes_after_callbacks": dust_callback_bytes,
-                "estimated_retained_bytes_after_lowering": dust_lowering_bytes,
-                "preparation_tables": dust_preparation_tables.unwrap(),
+                "estimated_retained_bytes_after_callbacks": opt02_callback_bytes,
+                "estimated_retained_bytes_after_lowering": opt02_lowering_bytes,
+                "preparation_tables": opt02_preparation_tables.unwrap(),
             },
             "interpreter": {
                 "median_seconds": interpreter_median.as_secs_f64(),

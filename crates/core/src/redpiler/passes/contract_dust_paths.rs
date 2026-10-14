@@ -1028,10 +1028,10 @@ mod tests {
         let mut specialized_world = path_world();
         let mut general = compile_path(&general_world, Some(0));
         let mut disabled = compile_path(&disabled_world, Some(0));
-        let mut specialized = compile_path(&specialized_world, None);
+        let mut specialized = compile_path(&specialized_world, Some(1));
         let transformations = &specialized.stats().unwrap().graph.transformations;
         assert_eq!(
-            transformations.iter().map(|pass| pass.name).collect::<Vec<_>>(),
+            transformations.iter().filter(|pass| pass.enabled).map(|pass| pass.name).collect::<Vec<_>>(),
             ["guard-and-update-reduction", "index-turbo-callbacks", "contract-static-dust-paths"]
         );
         let disabled_dust_pass = disabled

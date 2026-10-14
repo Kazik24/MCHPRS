@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
-  "fixture": "test_data/piston-research/fpu-piston-correct/fpu_pistion_correct.schem",
-  "sha256": "704016b6900ec22ff0d37184de480a5c9965fd390b7bcf7c3f23d7677048c391",
+  "fixture": "test_data/piston-research/FPU_MROWW.schem",
+  "sha256": "88dc95cd6e048561a4fc2fe8f53dbecbc81e8adfda108eb27ba8e12966c0a5dc",
   "dimensions": [
     171,
     43,
@@ -649,10 +649,5 @@
   "unresolved": {
     "operand_bit_order": "Not numerically certified; levers are interleaved, not two adjacent 16-lever banks",
     "final_ports": "Final ports are dust; benchmark attaches sixteen native repeater consumers east of this bank."
-  },
-  "supersedes": "test_data/piston-research/fixtures/fpu_legal_legacy.json",
-  "previous_revision": {
-    "fixture": "test_data/piston-research/fpu-fixed/fpu_fixed_compilation.schem",
-    "sha256": "7a652a52729fa8850f98dd2f46d8c2cc23171ace0d78670f47212e12763b76cf"
   }
 }

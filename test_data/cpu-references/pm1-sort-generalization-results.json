@@ -2,7 +2,6 @@
   "source_base_commit": "74aead766ce8a92a93ac65acf2a2c8d4505b6880",
   "source_working_tree_changes": true,
   "fixture_sha256": {
-    "test_data/PM1_SORT.schem": "e338028d50a4400056e25037d1f43d37c08baed079edede6298f78b0a6341654",
     "test_data/instant-pistons/PM1_SORT.schem": "e338028d50a4400056e25037d1f43d37c08baed079edede6298f78b0a6341654",
     "test_data/PM1_SORT_FIXED.schem": "ad68a0160990c72612c0105802fade337758de127dcdbd4cc1a195059ad2d893"
   },

@@ -340,7 +340,7 @@ const READ_ENABLE: BlockPos = BlockPos::new(18, 7, 1);
 
 #[test]
 fn fpu_strict_import_preserves_the_947_analog_reference_values() {
-    let (world, bounds) = load(&manifest("fpu_fixed_compilation"));
+    let (world, bounds) = load(&manifest("fpu_legal"));
     let mut strengths = BTreeMap::<u8, usize>::new();
     crate::world::for_each_block_optimized(&world, bounds.0, bounds.1, |pos| {
         let block = world.get_block(pos);

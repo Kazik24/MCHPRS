@@ -13,8 +13,8 @@ Complete the initial graph representation's hardest stateful and arithmetic targ
 ## Read these sources
 
 - [BUD/reference checks](../../../../crates/core/src/redstone/piston/tests/bud_reference.rs), [counter IO checks](../../../../crates/core/src/redstone/instant_piston_tests/io.rs), and [COUNTER_BASIC manifest](../../../../test_data/instant-pistons-io/fixtures/counter_basic.json).
-- [minimal QC counter inspection](../../../../test_data/piston-research/pc-counter-minimal-20261009/inspection.json), [PC counter manifest](../../../../test_data/piston-research/pc-counter-measurement-points-20261010/download-manifest.json), and [revised Potados manifest](../../../../test_data/piston-research/test-potados-counter-revised-20261008/download-manifest.json).
-- [corrected FPU manifest](../../../../test_data/piston-research/fpu-piston-correct/download-manifest.json), [FPU protocol](../../../../test_data/piston-research/fixtures/fpu_legal.json), and [FPU_FULL manifest](../../../../test_data/piston-research/fpu-full-20261009/manifest.json).
+- [PC counter benchmark and fixture descriptor](../../../../crates/core/benches/instant.rs), and the [retained revised Potados schematic](../../../../test_data/piston-research/test-potados-counter-revised-20261008/TEST_POTADOS_PC_COUNTER.schem).
+- [current FPU manifest](../../../../test_data/piston-research/download-manifest.json), [FPU schematic](../../../../test_data/piston-research/FPU_MROWW.schem), and [FPU protocol](../../../../test_data/piston-research/fixtures/fpu_legal.json).
 - [frozen FPU reference](../../../../test_data/cpu-references/interpreter-20261009-fpu-reference.json) and [frozen PC-counter reference](../../../../test_data/cpu-references/interpreter-20261009-pc-counter-reference.json).
 
 ## Scope and implementation
@@ -24,7 +24,7 @@ Two sequential checkpoints: stateful counters, then FPU. Preserve each schematic
 1. Start with independent QC data/update histories: data alone, update before data, data then update, same-strength qualifying update, and acceptance cancellation. Retained state depends on actual callbacks, not automatic resampling on every data edge.
 2. Run COUNTER_BASIC active windows and stop/restart. Preserve the existing manifest's memory-bank observations separately from later bus publication; the current tests use a six-times-trigger-count pattern, not a generic increment-at-every-tick assertion.
 3. Cover the minimal PC-counter mechanism and the pinned PC-counter/revised Potados episodes needed by the target set. Explain None/West/Top callback eligibility with actual reference routes. Include long idle then retrigger and reset with pending work.
-4. Use the corrected FPU and FPU_FULL as separately identified fixtures; verify their distinct hashes. Exercise every defined opcode, selected operands, held inputs, and repeated trigger/rearm histories according to the matching manifests.
+4. Use the single FPU_MROWW fixture; verify its hash. Exercise every defined opcode, selected operands, held inputs, and repeated trigger/rearm histories according to the fixture protocol.
 5. Compare per-tick observations, callbacks, pending graph events, obsolete-event cancellation, and stop/continuation. A fixture's observed arithmetic defects are interpreter behavior for parity purposes; report them rather than claiming IEEE or mathematical correctness.
 6. Require nonzero graph execution and no native-domain fallback on every replay. Validate payload conservation in the large shared groups without inventing private copies or ignoring ownership transitions.
 7. When a failure appears, isolate the first different operation and correct the common parser/query/transition. Rerun earlier affected packs and the active minimal case before repeating a long replay.

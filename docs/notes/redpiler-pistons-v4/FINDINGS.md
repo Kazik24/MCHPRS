@@ -59,7 +59,6 @@ The previous investigation reused [the schematic inspector](../../../tools/inspe
 | Fixture | Sticky bases | Ordinary bases | Shared current payload positions | Maximum sharing |
 | --- | ---: | ---: | ---: | ---: |
 | ANPU Pong | 2,113 | 785 | 0 | 1 |
-| FPU_FULL | 8,090 | 0 | 1,463 | 3 |
 | Fixed Divider | 2,055 | 0 | 489 | 2 |
 | ADDER_11BITS | 142 | 0 | 33 | 2 |
 | ADDER_1BIT | 13 | 0 | 3 | 2 |
@@ -72,14 +71,13 @@ ANPU contains 728 empty ordinary actuators with a foreign piston base at Far. Al
 | Fixture path | SHA-256 |
 | --- | --- |
 | `test_data/Q2CK@Q2CK_Anpu1_Pong_KBTV.schem` | `f4068257797399531ce31d56c972af32d0f73f7d8d496ce1b7b8cd1c178decec` |
-| `test_data/piston-research/fpu-full-20261009/FPU_FULL.schem` | `f893a4618f19c10bc7b1bc553a0d37e33c4fc5cd2d3521b881c1665a2b66a6e9` |
-| `test_data/piston-research/fpu-piston-correct/fpu_pistion_correct.schem` | `704016b6900ec22ff0d37184de480a5c9965fd390b7bcf7c3f23d7677048c391` |
+| `test_data/piston-research/FPU_MROWW.schem` | `88dc95cd6e048561a4fc2fe8f53dbecbc81e8adfda108eb27ba8e12966c0a5dc` |
 | `test_data/piston-research/divider-fixed/divider_fpu_fixed.schem` | `c6f04b0f948a3dc5b05e42e7b1a450edefed522159f421a6dd25f891b6e5297b` |
 | `test_data/instant-pistons-io/ADDER_11BITS.schem` | `335ab94a3ba7f89cd0a497a2ac606372ff2743cfcd549f4863ead310af4138b9` |
 | `test_data/instant-pistons-io/ADDER_1BIT.schem` | `e80092c97fc4637c313a735d38d0241b69b876f41dd2db7de571a6458369e526` |
 | `test_data/instant-pistons-io/COUNTER_BASIC.schem` | `ae325e9238942ad0ebbe49671b39cda1a563ab45e7bd55c32ee5800298cf3ff4` |
 
-Use an existing manifest's exact revision for each replay. Do not substitute FPU_FULL, corrected FPU, or a legacy Divider for each other silently. Verify hashes again during Step 01.
+Use the single current FPU manifest revision for each replay. Keep the corrected Divider as a separate fixture and verify hashes during Step 01.
 
 ## Dust and observers
 

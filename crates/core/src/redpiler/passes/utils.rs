@@ -11,6 +11,51 @@ use mchprs_blocks::BlockPos;
 use mchprs_blocks::blocks::Block;
 use std::time::Instant;
 
+pub(super) fn child_before_parent_order(guards: &[Guard], monitor: &TaskMonitor) -> Result<Vec<usize>, String> {
+    let mut marks = vec![0u8; guards.len()];
+    let mut order = Vec::with_capacity(guards.len());
+    let mut stack = Vec::<(usize, usize)>::new();
+    for root in 0..guards.len() {
+        if marks[root] == 2 {
+            continue;
+        }
+        marks[root] = 1;
+        stack.push((root, 0));
+        while !stack.is_empty() {
+            if monitor.cancelled() {
+                return Err("cancelled while ordering guard dependencies".into());
+            }
+            let (id, child_index) = *stack.last().unwrap();
+            let children = guard_children(&guards[id]);
+            if child_index == children.len() {
+                marks[id] = 2;
+                order.push(id);
+                stack.pop();
+                continue;
+            }
+            let child = children[child_index].index();
+            stack.last_mut().unwrap().1 += 1;
+            match marks[child] {
+                0 => {
+                    marks[child] = 1;
+                    stack.push((child, 0));
+                }
+                1 => return Err(format!("cyclic guard dependency at guard {child}")),
+                _ => {}
+            }
+        }
+    }
+    Ok(order)
+}
+
+pub(super) fn guard_children(guard: &Guard) -> &[GuardId] {
+    match guard {
+        Guard::Not(child) => std::slice::from_ref(child),
+        Guard::All(children) | Guard::Any(children) => children,
+        Guard::Always | Guard::State(_) | Guard::Site { .. } => &[],
+    }
+}
+
 fn table<T>(stage: &'static str, name: &'static str, entries: usize, capacity: usize, nested_bytes: usize) -> PreparationTableStatistics {
     PreparationTableStatistics {
         stage,

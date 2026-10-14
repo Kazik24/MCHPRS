@@ -30,6 +30,7 @@ Execution and inspection use shared preparation and pass infrastructure. Preserv
 4. Common helpers used by multiple passes may live in `passes/utils.rs`, or `passes/utils/` when several focused modules are needed. Extract a helper when real consumers exist; do not create a generic framework for hypothetical passes. Utilities must not silently run another pass or choose pipeline order.
 5. Keep focused tests in the pass's `#[cfg(test)]` module. A larger suite may use a clearly named sibling test file in this folder. Register it so Cargo actually discovers the tests.
 6. Runtime instructions, lowering support, and validators belong in their existing layers when a rewrite requires them. A pass must not introduce a second simulator or a fallback backend.
+7. Never import functions or primitives between passes - must use utils, mod or other common file for this.
 
 The required preparation driver `rich.rs` is not an optional optimization. Disabling optimization must still produce a complete, executable general graph.
 
@@ -80,7 +81,7 @@ The runner checks cancellation, validates the graph before execution and after e
 
 **A candidate that is not optimizable is not an invalid circuit.** Leave it unchanged and continue. Use errors for actual violated pass contracts or failed execution, not ordinary lack of an eligible motif. A proof timeout, excessive state space, unknown dependency, or unsupported optimization case retains general execution.
 
-The API and custom compiler entry point remain crate-private. `O0` skips optimization passes; `O1` enables `guard-and-update-reduction`, `index-turbo-callbacks`, and `contract-static-dust-paths` in the order listed in the pipeline. The unoptimized pipeline still runs the complete general graph. Keep pass order explicit; do not silently reorder passes or turn a custom pipeline into the default. When adding pass, add it to corresponding list, do not introduce dedicated setting for pass.
+The API and custom compiler entry point remain crate-private. `O0` skips optimization passes; `O1` enables `guard-and-update-reduction`, `index-turbo-callbacks`, and `contract-static-dust-paths` in that order. `O2` adds `simplify-state-guards` after O1. The unoptimized pipeline still runs the complete general graph. Keep pass order explicit; do not silently reorder passes or turn a custom pipeline into the default. When adding a pass, add it to the corresponding optimization tier; do not introduce a dedicated setting for the pass.
 
 Long discovery/proof loops must check cancellation at sensible boundaries. Compute eligibility and replacement data before mutating each candidate. The compiler stages the graph and publishes only after success; the runner does not roll back failed mutations. Do not clone an entire large graph merely to provide rollback, and never mutate the input World from a pass.
 
