@@ -6,18 +6,18 @@
 mod cpu_support;
 
 use anyhow::{Context, Result, bail, ensure};
+use cpu_support::{load_manifest as load, manifest_origin as origin, manifest_position as position};
+#[path = "support/graph_short.rs"]
+mod graph_short;
 use mchprs_blocks::{
     BlockColorVariant, BlockDirection, BlockFace, BlockPos,
     blocks::{Block, LeverFace, RedstoneRepeater},
 };
 use mchprs_core::{
-    plot::{
-        PLOT_WIDTH, PlotWorld,
-        worldedit::{load_schematic, paste_clipboard},
-    },
+    plot::PlotWorld,
     redpiler::{Compiler, CompilerOptions},
     redstone,
-    world::{World, storage::Chunk},
+    world::World,
 };
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
@@ -115,6 +115,9 @@ fn check_workloads() {
 }
 
 fn main() -> Result<()> {
+    if std::env::args().any(|arg| arg == "--graph-short" || arg == "--admission-smoke") {
+        return graph_short::main();
+    }
     let mut component = String::from("counter_basic");
     let mut iterations = 3usize;
     let mut episodes = 32usize;
@@ -1105,35 +1108,6 @@ fn use_lever(compiler: &mut Option<Compiler>, world: &mut PlotWorld, pos: BlockP
     redstone::update_surrounding_blocks(world, pos.offset(face));
 }
 
-fn load(descriptor: &Value) -> Result<PlotWorld> {
-    let bytes = std::fs::read(root().join(descriptor["fixture"].as_str().context("missing schematic path")?))?;
-    ensure!(descriptor["sha256"] == format!("{:x}", Sha256::digest(&bytes)), "schematic hash changed");
-    let clipboard = load_schematic(std::io::Cursor::new(bytes))?;
-    ensure!(
-        descriptor["dimensions"] == json!([clipboard.size_x, clipboard.size_y, clipboard.size_z]),
-        "schematic dimensions changed"
-    );
-    let chunks = (0..PLOT_WIDTH).flat_map(|x| (0..PLOT_WIDTH).map(move |z| Chunk::empty(x, z))).collect();
-    let mut world = PlotWorld::from_chunks(0, 0, chunks, Default::default());
-    paste_clipboard(
-        &mut world,
-        &clipboard,
-        origin(descriptor) + BlockPos::new(clipboard.offset_x, clipboard.offset_y, clipboard.offset_z),
-        false,
-    );
-    Ok(world)
-}
-
-fn position(value: &Value) -> BlockPos {
-    BlockPos::new(
-        value[0].as_i64().unwrap() as i32,
-        value[1].as_i64().unwrap() as i32,
-        value[2].as_i64().unwrap() as i32,
-    )
-}
-fn origin(descriptor: &Value) -> BlockPos {
-    position(descriptor.get("origin").unwrap_or(&descriptor["coordinates"]["origin"]))
-}
 fn root() -> &'static Path {
     Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/../.."))
 }

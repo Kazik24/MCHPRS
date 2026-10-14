@@ -1,6 +1,7 @@
 //! Graph-native execution for rich piston circuits. The World is read only at
 //! compilation; flush and reset project graph state back to it.
 
+mod instant;
 mod pistons;
 mod power;
 mod projection;
@@ -275,9 +276,7 @@ pub(crate) struct GraphBackend {
     clock: Clock,
     dirty: Vec<bool>,
     effects: Vec<PresentationEffect>,
-    /// This stops later graph work after an error may have left a partial tick.
     failure: Option<GraphExecutionError>,
-    /// Reported work only; simulation never reads it.
     counts: GraphExecutionCounts,
     #[cfg(test)]
     test_recorder: TestRecorder,
@@ -313,11 +312,21 @@ impl GraphBackend {
         ticks: Vec<TickEntry>,
         monitor: Arc<TaskMonitor>,
     ) -> Result<Self, GraphBackendError> {
+        Self::compile_with_options(world, bounds, ticks, &crate::redpiler::CompilerOptions::default(), monitor)
+    }
+
+    #[cfg(test)]
+    pub(crate) fn compile_with_options<W: World>(
+        world: &W,
+        bounds: (BlockPos, BlockPos),
+        ticks: Vec<TickEntry>,
+        options: &crate::redpiler::CompilerOptions,
+        monitor: Arc<TaskMonitor>,
+    ) -> Result<Self, GraphBackendError> {
         let limits = AnalysisLimits::for_budget(monitor.budget_multiplier());
         let mut prepared = passes::rich::prepare(world, bounds, ticks, &monitor, limits).map_err(map_preparation_error)?;
-        let options = crate::redpiler::CompilerOptions::default();
-        let pipeline = passes::default_graph_pipeline(&options);
-        passes::run_graph_pipeline(&mut prepared.graph, &options, &prepared.entry, &pipeline, &monitor).map_err(GraphBackendError::PassPipeline)?;
+        let pipeline = passes::default_graph_pipeline(options);
+        passes::run_graph_pipeline(&mut prepared.graph, options, &prepared.entry, &pipeline, &monitor).map_err(GraphBackendError::PassPipeline)?;
         prepared.finish_pipeline_statistics(&monitor);
         let lowered = prepared.lower(&monitor).map_err(GraphBackendError::Graph)?;
         Self::from_lowered(lowered, &monitor)
@@ -877,7 +886,7 @@ impl GraphBackend {
                 Ok(())
             }
             CircuitNodeKind::Electrical(NodeType::Lever | NodeType::PressurePlate) => Ok(()),
-            CircuitNodeKind::Electrical(NodeType::CopperBulb) => Ok(()),
+            CircuitNodeKind::Electrical(NodeType::CopperBulb | NodeType::Hopper) => Ok(()),
             CircuitNodeKind::Electrical(NodeType::Constant) => Ok(()),
             CircuitNodeKind::Electrical(NodeType::Observer { .. } | NodeType::Wire) => {
                 Err(self.unsupported(node, "invalid generic observer or wire"))
@@ -913,6 +922,7 @@ impl GraphBackend {
             CircuitNodeKind::Electrical(NodeType::Comparator { .. }) => self.update_comparator(node),
             CircuitNodeKind::Electrical(NodeType::Lamp) => self.update_lamp(node, captured),
             CircuitNodeKind::Electrical(NodeType::CopperBulb) => self.update_bulb(node),
+            CircuitNodeKind::Electrical(NodeType::Hopper) => self.update_hopper(node, captured),
             CircuitNodeKind::Wire(_) => self.evaluate_seed(node, captured),
             CircuitNodeKind::Electrical(NodeType::CommandBlock { .. }) => self.update_command_power(node),
             CircuitNodeKind::Electrical(NodeType::NoteBlock { .. }) => self.update_note(node),
@@ -1369,6 +1379,21 @@ impl GraphBackend {
         Ok(())
     }
 
+    fn update_hopper(&mut self, node: NodeId, captured: Option<&ObservedSite>) -> Result<(), GraphExecutionError> {
+        let powered = captured
+            .and_then(|site| match site.properties {
+                ObservedProperties::Electrical { powered, .. } => Some(powered),
+                _ => None,
+            })
+            .unwrap_or(self.node_state(node).powered);
+        let should_power = self.input_strength(node, InputPort::Main) > 0;
+        if powered != should_power {
+            // Native hopper updates change enabled without notifying neighbors or touching inventory.
+            self.set_node(node, should_power, self.node_state(node).output_strength, None, false)?;
+        }
+        Ok(())
+    }
+
     fn tick_lamp(&mut self, node: NodeId) -> Result<(), GraphExecutionError> {
         if self.node_state(node).powered && self.input_strength(node, InputPort::Main) == 0 {
             self.set_node(node, false, 0, None, false)?;
@@ -1436,6 +1461,7 @@ impl GraphBackend {
                         | "redstone_lamp"
                         | "observer"
                         | "copper_bulb"
+                        | "hopper"
                         | "note_block"
                         | "iron_trapdoor"
                 )
@@ -1626,3 +1652,19 @@ mod test_family_tests;
 #[cfg(test)]
 #[path = "graph_adder_tests.rs"]
 mod adder_tests;
+
+#[cfg(test)]
+#[path = "graph_hopper_tests.rs"]
+mod hopper_tests;
+
+#[cfg(test)]
+#[path = "graph_wire_query_tests.rs"]
+mod wire_query_tests;
+
+#[cfg(test)]
+#[path = "graph_isolated_wire_tests.rs"]
+mod isolated_wire_tests;
+
+#[cfg(test)]
+#[path = "graph_instant_reset_tests.rs"]
+mod instant_reset_tests;

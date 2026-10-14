@@ -47,8 +47,6 @@ for arbitrary circuits. Put fixture setup and reproduction commands under
 `test_data/`. Keep derived inspections and traces in their ignored output paths.
 
 Implementation plans and dated investigations belong in `docs/notes/`.
-The [fourth piston implementation plan](notes/redpiler-pistons-v4/README.md) contains
-the proposed graph architecture, memory model, and individually reviewed agent steps.
 The [general activation proposal](../scraps/docs/notes/NOTIFICATION_GATED_RESPONSES.md) describes
 obligations beyond the restricted activation path in the active model.
 Existing machine-readable provenance is evidence about its recorded revision,

@@ -23,6 +23,8 @@ pub enum NodeType {
     },
     Lamp,
     CopperBulb,
+    /// A stationary inventory source whose powered state is the inverse of enabled.
+    Hopper,
     Button,
     Lever,
     PressurePlate,
@@ -128,6 +130,10 @@ pub(crate) fn identify_block<W: World>(block: Block, pos: BlockPos, world: &W) -
         Block::RedstoneWire { wire } => (NodeType::Wire, NodeState::with_strength(wire.power)),
         Block::StoneButton { button } => (NodeType::Button, NodeState::simple(button.powered)),
         Block::RedstoneLamp { lit } => (NodeType::Lamp, NodeState::simple(lit)),
+        Block::Hopper { enabled, .. } => (
+            NodeType::Hopper,
+            NodeState::comparator(!enabled, comparator::get_override(block, world, pos)),
+        ),
         block if block.is_copper_bulb() => {
             let (lit, powered) = block.copper_bulb_state().unwrap();
             (NodeType::CopperBulb, NodeState::comparator(powered, redstone::bool_to_ss(lit)))

@@ -26,6 +26,7 @@ impl GraphBackend {
                         | NodeType::PressurePlate
                         | NodeType::Lamp
                         | NodeType::CopperBulb
+                        | NodeType::Hopper
                         | NodeType::NoteBlock { .. }
                         | NodeType::CommandBlock { .. }
                 )

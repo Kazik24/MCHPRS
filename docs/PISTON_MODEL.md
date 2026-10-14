@@ -422,7 +422,7 @@ A first-response function $\mathbf y=F(\mathbf d,\mathbf e,\mathbf q)$ is a deri
 
 ## 6. General rules and implementation limits
 
-The power/notification separation, event revalidation, identity-based motion and strength/occupancy projections explain broad classes of instant and BUD circuits. They do not require recognizing an adder, counter or memory by its name, bit coordinates or schematic hash. Stationary piston builds within the admitted subset compile to the graph backend described in [redpiler-pistons-v4](notes/redpiler-pistons-v4/README.md); other builds remain interpreter work.
+The power/notification separation, event revalidation, identity-based motion and strength/occupancy projections explain broad classes of instant and BUD circuits. They do not require recognizing an adder, counter or memory by its name, bit coordinates or schematic hash. Stationary piston builds within the admitted subset compile to the graph backend described in the [Redpiler architecture](../scraps/docs/REDPILER_ARCHITECTURE.md); other builds remain interpreter work.
 
 Transport/ownership limits follow section 3; event facing and early retraction
 follow section 2. Notification exclusions and restore-time support are defined

@@ -69,6 +69,55 @@ function makeViewer() {
   return { elements, evaluate: (code) => vm.runInContext(code, context), get cy() { return cy; }, get cytoscapeOptions() { return cytoscapeOptions; } };
 }
 
+function instantCertificate(graph) {
+  return {
+    piston: graph.graph.pistons[0].id,
+    resource: graph.graph.resources[0].id,
+    observer: graph.graph.nodes.find((node) => node.kind.kind === 'observer').id,
+    partner: graph.graph.wire_plans[1].node,
+  };
+}
+
+test('loads additive instant bindings and accepts older exports', async (t) => {
+  const viewer = makeViewer();
+  t.after(() => viewer.cy?.destroy());
+  const graph = adderFixture();
+  graph.graph.wire_plans[0].instant_reset = instantCertificate(graph);
+  await load(viewer, graph);
+  assert.equal(viewer.elements.get('error').hidden, true);
+  graph.graph.wire_plans[0].instant_reset = null;
+  await load(viewer, graph);
+  assert.equal(viewer.elements.get('error').hidden, true);
+  delete graph.graph.wire_plans[0].instant_reset;
+  await load(viewer, graph);
+  assert.equal(viewer.elements.get('error').hidden, true);
+});
+
+test('rejects malformed and overlapping instant bindings without replacing the graph', async (t) => {
+  const viewer = makeViewer();
+  t.after(() => viewer.cy?.destroy());
+  await load(viewer, adderFixture());
+  const previous = viewer.cy;
+  const base = adderFixture();
+  const valid = instantCertificate(base);
+  const invalid = [[], false, 'reset', {}, { ...valid, piston: valid.resource },
+    { ...valid, resource: valid.piston }, { ...valid, observer: valid.partner },
+    { ...valid, partner: base.graph.wire_plans[0].node }, { ...valid, partner: 'node:9999999' }];
+  for (const instant_reset of invalid) {
+    const graph = adderFixture();
+    graph.graph.wire_plans[0].instant_reset = instant_reset;
+    await load(viewer, graph);
+    assert.equal(viewer.elements.get('error').hidden, false, JSON.stringify(instant_reset));
+    assert.equal(viewer.cy, previous);
+  }
+  const overlap = adderFixture();
+  overlap.graph.wire_plans[0].instant_reset = valid;
+  overlap.graph.wire_plans[1].instant_reset = { ...valid, partner: overlap.graph.wire_plans[0].node };
+  await load(viewer, overlap);
+  assert.equal(viewer.elements.get('error').hidden, false);
+  assert.equal(viewer.cy, previous);
+});
+
 for (const count of [1, 20_001]) {
   test(`loads ${count} nodes and sends only a bounded view to the layout`, async (t) => {
     const viewer = makeViewer();
@@ -124,7 +173,7 @@ for (const count of [1, 20_001]) {
 test("a high-degree fixture keeps the layout bounded and every edge endpoint present", async (t) => {
   const viewer = makeViewer();
   t.after(() => viewer.cy?.destroy());
-  const document = JSON.parse(fs.readFileSync(path.join(__dirname, "../../docs/notes/redpiler-pistons-v4/fixtures/adder-1bit.graph.json"), "utf8"));
+  const document = JSON.parse(fs.readFileSync(path.join(__dirname, "../../test_data/graph-fixtures/adder-1bit/adder-1bit.graph.json"), "utf8"));
   const first = document.graph.nodes[0].id;
   const source = document.graph.power_links[0].from;
   const guard = document.graph.guards[0].id;
@@ -158,7 +207,7 @@ test("a high-degree fixture keeps the layout bounded and every edge endpoint pre
 });
 
 function adderFixture() {
-  return JSON.parse(fs.readFileSync(path.join(__dirname, '../../docs/notes/redpiler-pistons-v4/fixtures/adder-1bit.graph.json'), 'utf8'));
+  return JSON.parse(fs.readFileSync(path.join(__dirname, '../../test_data/graph-fixtures/adder-1bit/adder-1bit.graph.json'), 'utf8'));
 }
 
 async function load(viewer, graph) {
@@ -311,6 +360,45 @@ function addDustPath(graph) {
   }];
   return graph;
 }
+
+test('accepts wire query fact masks and older exports without the optional field', async (t) => {
+  const viewer = makeViewer();
+  t.after(() => viewer.cy?.destroy());
+  const graph = adderFixture();
+  await load(viewer, graph);
+  assert.equal(viewer.elements.get('error').hidden, true);
+  graph.graph.wire_plans[0].query_facts = null;
+  await load(viewer, graph);
+  assert.equal(viewer.elements.get('error').hidden, true);
+  graph.graph.wire_plans[0].query_facts = { known: 0xffffff, solid: 1, transparent: 2, wire: 4, zero_no_dust: 0xfffffe };
+  await load(viewer, graph);
+  assert.equal(viewer.elements.get('error').hidden, true, viewer.elements.get('error').textContent);
+  for (const isolated of [true, false]) {
+    graph.graph.wire_plans[0].query_facts.isolated = isolated;
+    await load(viewer, graph);
+    assert.equal(viewer.elements.get('error').hidden, true, viewer.elements.get('error').textContent);
+  }
+});
+
+test('rejects malformed wire query fact masks while preserving the loaded graph', async (t) => {
+  const viewer = makeViewer();
+  t.after(() => viewer.cy?.destroy());
+  await load(viewer, adderFixture());
+  const previous = viewer.cy;
+  const valid = { known: 0xffffff, solid: 1, transparent: 2, wire: 4, zero_no_dust: 0xfffffe };
+  const invalid = [[], false, 'masks', {}, { ...valid, known: 0 }, { ...valid, zero_no_dust: 1 }];
+  for (const isolated of [null, 0, 1, 'true', [], {}]) invalid.push({ ...valid, isolated });
+  for (const key of Object.keys(valid)) {
+    for (const value of [-1, 1 << 24, 0.5, true, null, '1']) invalid.push({ ...valid, [key]: value });
+  }
+  for (const query_facts of invalid) {
+    const graph = adderFixture();
+    graph.graph.wire_plans[0].query_facts = query_facts;
+    await load(viewer, graph);
+    assert.equal(viewer.elements.get('error').hidden, false, JSON.stringify(query_facts));
+    assert.equal(viewer.cy, previous);
+  }
+});
 
 test('loads and indexes a dust-path certificate and accepts older exports without the table', async (t) => {
   const viewer = makeViewer();

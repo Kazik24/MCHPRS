@@ -19,7 +19,7 @@ The browser library is vendored under `vendor/` so the viewer works without a bu
 
 - Cytoscape.js 3.34.3 (MIT), `vendor/CYTOSCAPE-LICENSE.txt`
 
-Example export: `../../docs/notes/redpiler-pistons-v4/fixtures/adder-1bit.graph.json`.
+Example export: `../../test_data/graph-fixtures/adder-1bit/adder-1bit.graph.json`.
 
 Run the standalone regression checks with `node --test tools/redpiler-graph-viewer/viewer.test.cjs` and `py -3 -m unittest tools.redpiler_graph.test_loader` from the repository root.
 

@@ -250,19 +250,16 @@ fn piston_entry_rejection_preserves_the_interpreter_world() {
 }
 
 #[test]
-fn selected_hoppers_and_trapdoors_are_rejected_before_compiler_publication() {
-    for (name, block, reason) in [
-        ("hopper", Block::from_name("hopper").unwrap(), "inventory and comparator behavior"),
-        (
-            "iron_trapdoor",
-            Block::IronTrapdoor {
-                facing: BlockDirection::North,
-                half: mchprs_blocks::blocks::TrapdoorHalf::Bottom,
-                powered: false,
-            },
-            "state and redstone behavior",
-        ),
-    ] {
+fn selected_trapdoors_are_rejected_before_compiler_publication() {
+    for (name, block, reason) in [(
+        "iron_trapdoor",
+        Block::IronTrapdoor {
+            facing: BlockDirection::North,
+            half: mchprs_blocks::blocks::TrapdoorHalf::Bottom,
+            powered: false,
+        },
+        "state and redstone behavior",
+    )] {
         let mut world = empty();
         world.set_block(BASE, block);
         let before = world.get_block_raw(BASE);
@@ -982,7 +979,7 @@ fn electrical_comparator_overrides_replace_rear_power_in_order() {
 }
 
 #[test]
-fn electrical_rejects_hopper_comparator_overrides_outside_selection() {
+fn electrical_reads_stationary_hopper_comparator_overrides_outside_selection() {
     let comparator = RedstoneComparator::new(BlockDirection::South, ComparatorMode::Compare, false);
     for through_solid in [false, true] {
         let mut world = empty();
@@ -1007,19 +1004,17 @@ fn electrical_rejects_hopper_comparator_overrides_outside_selection() {
         );
 
         let geometry = prepare_geometry_with_bounds(&world, bounds).unwrap();
-        let error = electrical::prepare_electrical(&world, bounds, &geometry.draft, &Default::default()).unwrap_err();
-        assert!(
-            matches!(
-                error,
-                ElectricalError::UnsupportedComponent { position, block, .. }
-                    if position == hopper && block == hopper_block.get_id()
-            ),
-            "{error:?}"
-        );
-        let message = error.to_string();
-        assert!(message.contains("hopper"), "{message}");
-        assert!(message.contains(&format!("{hopper:?}")), "{message}");
-        assert!(message.contains("inventory and comparator behavior"), "{message}");
+        let draft = electrical::prepare_electrical(&world, bounds, &geometry.draft, &Default::default()).unwrap();
+        let plan = draft
+            .comparators
+            .iter()
+            .find(|plan| draft.nodes[plan.node.index()].position == Some(BASE))
+            .unwrap();
+        if through_solid {
+            assert!(matches!(plan.far_override, Some((_, ComparatorOverride::Literal(11), _))));
+        } else {
+            assert_eq!(plan.direct_override, Some(ComparatorOverride::Literal(11)));
+        }
     }
 }
 
@@ -1415,6 +1410,41 @@ fn geometry_distinguishes_blocked_lines_from_unsupported_pushes() {
             position,
         })) if actor == BASE && position == BASE + BlockPos::new(0, 0, 2)
     ));
+}
+
+#[test]
+fn geometry_hoppers_remain_immovable_containers_and_support_dust() {
+    let near = BASE.offset(BlockFace::South);
+    for sticky in [false, true] {
+        let mut world = empty();
+        world.set_block(BASE, piston_block(BlockFace::South, sticky, false));
+        let hopper = Block::from_name("hopper").unwrap();
+        world.set_block(near, hopper);
+        world.set_block_entity(
+            near,
+            BlockEntity::Container {
+                comparator_override: 15,
+                inventory: Default::default(),
+                ty: ContainerType::Hopper,
+            },
+        );
+        let before_entity = serde_json::to_value(world.get_block_entity(near)).unwrap();
+        let geometry = prepare_geometry_for(&world).unwrap();
+        assert!(geometry.draft.resources.is_empty());
+        world.set_block(near.offset(BlockFace::Top), Block::RedstoneWire { wire: Default::default() });
+        assert!(crate::interaction::is_valid_position(
+            world.get_block(near.offset(BlockFace::Top)),
+            &world,
+            near.offset(BlockFace::Top)
+        ));
+        assert_eq!(world.get_block(near), hopper);
+        assert_eq!(serde_json::to_value(world.get_block_entity(near)).unwrap(), before_entity);
+        // The general geometry model still declines attachment support in a piston footprint.
+        assert!(matches!(
+            prepare_geometry_for(&world),
+            Err(GeometryError::Rejected(GeometryIssue::SupportLoss { .. }))
+        ));
+    }
 }
 
 #[test]

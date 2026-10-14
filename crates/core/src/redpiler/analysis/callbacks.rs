@@ -508,7 +508,11 @@ impl<W: World> Builder<'_, W> {
             SiteSource::Constant(profile) => {
                 let block = Block::from_id(self.electrical.profiles[profile.index()].raw_state);
                 if self.allowed(event.filter, block, event.position) {
-                    if let Some(reason) = super::unsupported_component_reason(block) {
+                    let unsupported = super::unsupported_component_reason(block).or_else(|| {
+                        matches!((block, event.kind), (Block::Hopper { .. }, DeliveryKind::Update { .. }))
+                            .then_some("hopper enabled-state updates outside the selection are not implemented in Graph")
+                    });
+                    if let Some(reason) = unsupported {
                         return Err(CallbackError::UnsupportedComponent {
                             source: source_position,
                             target: event.position,

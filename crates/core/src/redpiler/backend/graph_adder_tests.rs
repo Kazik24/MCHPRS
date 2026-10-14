@@ -383,6 +383,19 @@ fn assert_math_window(circuit: &Adder, world: &PlotWorld, sum: u16, carry: u16, 
     }
 }
 
+fn compile_with_instant_pass(circuit: &Adder, world: &PlotWorld, ticks: Vec<TickEntry>) -> Result<GraphBackend, String> {
+    let monitor = TaskMonitor::default();
+    let mut prepared =
+        passes::rich::prepare(world, circuit.bounds(), ticks, &monitor, AnalysisLimits::default()).map_err(|error| error.to_string())?;
+    let pipeline = passes::PassPipeline::new(vec![passes::PassEntry {
+        pass: Box::new(passes::simplify_instant_resets::SimplifyInstantResets),
+        enabled: true,
+    }]);
+    // Isolate this rewrite: older O1 passes intentionally erase identity callbacks.
+    passes::run_graph_pipeline(&mut prepared.graph, &Default::default(), &prepared.entry, &pipeline, &monitor).map_err(|error| error.to_string())?;
+    GraphBackend::from_lowered(prepared.lower(&monitor).map_err(|error| error.to_string())?, &monitor).map_err(|error| error.to_string())
+}
+
 fn replay(
     circuit: &Adder,
     steps: &[Step],
@@ -394,8 +407,7 @@ fn replay(
     let mut native = circuit.build();
     let mut scratch = circuit.build();
     let ticks = native.scheduler().iter_entries().collect();
-    let mut backend =
-        GraphBackend::compile(&native, circuit.bounds(), ticks, Arc::default()).map_err(|error| format!("{} compile: {error}", circuit.id))?;
+    let mut backend = compile_with_instant_pass(circuit, &native, ticks).map_err(|error| format!("{} compile: {error}", circuit.id))?;
     backend.set_test_recording(true);
     let mut coverage = Coverage::default();
     check_boundary(&backend, &native, &mut scratch, &positions, "initial")?;

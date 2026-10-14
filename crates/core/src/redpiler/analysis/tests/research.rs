@@ -1,7 +1,7 @@
 //! Opt-in characterization of larger author fixtures. Never an execution fallback.
 use super::*;
 use crate::redstone::piston::trace;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::time::Instant;
 
 mod notification_routes;
@@ -339,19 +339,23 @@ const WRITE_ENABLE: BlockPos = BlockPos::new(19, 12, 1);
 const READ_ENABLE: BlockPos = BlockPos::new(18, 7, 1);
 
 #[test]
-fn fpu_strict_import_preserves_the_947_analog_reference_values() {
+fn fpu_strict_import_preserves_the_948_analog_reference_values() {
     let (world, bounds) = load(&manifest("fpu_legal"));
     let mut strengths = BTreeMap::<u8, usize>::new();
+    let mut positions = BTreeSet::new();
     crate::world::for_each_block_optimized(&world, bounds.0, bounds.1, |pos| {
         let block = world.get_block(pos);
         if matches!(block, Block::Furnace { .. }) {
+            assert!(positions.insert((pos.x, pos.y, pos.z)), "duplicate furnace visit at {pos:?}");
             let strength = crate::redstone::comparator::get_override(block, &world, pos);
             *strengths.entry(strength).or_default() += 1;
         }
     });
+    // Independent raw NBT contains 948 unique furnaces, including 637 strength-1 inventories.
+    assert_eq!(positions.len(), 948);
     assert_eq!(
         strengths,
-        BTreeMap::from([(1, 636), (2, 1), (3, 1), (4, 128), (6, 64), (11, 1), (12, 16), (15, 100)])
+        BTreeMap::from([(1, 637), (2, 1), (3, 1), (4, 128), (6, 64), (11, 1), (12, 16), (15, 100)])
     );
 }
 

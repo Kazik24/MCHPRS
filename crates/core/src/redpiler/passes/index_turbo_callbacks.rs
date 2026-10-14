@@ -26,12 +26,6 @@ impl GraphPass for IndexTurboCallbacks {
         "index-turbo-callbacks"
     }
 
-    fn validate_input(&self, graph: &CompileGraph) -> Result<(), String> {
-        graph
-            .validate()
-            .map_err(|error| format!("Turbo callback index input graph is invalid: {error}"))
-    }
-
     fn run(&self, graph: &mut CompileGraph, context: &PassContext<'_>) -> Result<(), String> {
         let mut indices = Vec::with_capacity(graph.wires.len());
         for wire in &graph.wires {
@@ -165,6 +159,8 @@ mod tests {
                 canonical_neighbors: targets,
                 shape_route: None,
                 turbo_route: Some(RouteId::new(0)),
+                query_facts: None,
+                instant_reset: None,
             }],
             dust_paths: vec![],
             wire_relations: vec![],
@@ -232,6 +228,8 @@ mod tests {
             canonical_neighbors: targets,
             shape_route: None,
             turbo_route: None,
+            query_facts: None,
+            instant_reset: None,
         };
         assert!(index_wire(&no_route, &[]).is_none());
     }

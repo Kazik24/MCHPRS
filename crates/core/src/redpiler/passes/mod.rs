@@ -1,9 +1,13 @@
 //! Graph preparation pipelines; backends receive prepared execution data.
 pub(crate) mod contract_dust_paths;
 pub(crate) mod index_turbo_callbacks;
+pub(crate) mod prune_inert_callbacks;
+pub(crate) mod prune_unhandled_updates;
 pub(crate) mod rich;
 pub(crate) mod simplify_guards;
+pub(crate) mod simplify_instant_resets;
 pub(crate) mod simplify_state_guards;
+pub(crate) mod specialize_wire_queries;
 pub(crate) mod utils;
 
 use super::program_graph::{CompileGraph, EntryState, GraphBuildError};
@@ -14,7 +18,10 @@ use std::time::Instant;
 /// A graph transformation with its own assumptions and optional parameters.
 pub(crate) trait GraphPass {
     fn name(&self) -> &'static str;
-    fn validate_input(&self, graph: &CompileGraph) -> Result<(), String>;
+    /// Check pass-specific preconditions; the runner already validates the graph.
+    fn validate_input(&self, _graph: &CompileGraph) -> Result<(), String> {
+        Ok(())
+    }
     fn run(&self, graph: &mut CompileGraph, context: &PassContext<'_>) -> Result<(), String>;
 
     /// Return true only when the pass keeps these derived records valid.
@@ -24,6 +31,16 @@ pub(crate) trait GraphPass {
 
     /// Return true only when the pass keeps the callback indices valid.
     fn preserves_turbo_callback_indices(&self) -> bool {
+        false
+    }
+
+    /// Preserve only when fixed site geometry and canonical bindings are unchanged.
+    fn preserves_wire_query_facts(&self) -> bool {
+        false
+    }
+
+    /// Preserve only when the private reset footprint, inputs and ordered routes stay valid.
+    fn preserves_instant_resets(&self) -> bool {
         false
     }
 }
@@ -154,6 +171,16 @@ pub(crate) fn run_graph_pipeline(
         if !item.pass.preserves_turbo_callback_indices() {
             graph.turbo_callback_indices.clear();
         }
+        if !item.pass.preserves_wire_query_facts() {
+            for wire in &mut graph.wires {
+                wire.query_facts = None;
+            }
+        }
+        if !item.pass.preserves_instant_resets() {
+            for wire in &mut graph.wires {
+                wire.instant_reset = None;
+            }
+        }
         monitor.set_message(name.to_string());
         let start = Instant::now();
 
@@ -207,11 +234,15 @@ pub(crate) fn run_graph_pipeline(
 /// Pass tiers are declared beside their implementations, ordered by minimum level.
 pub(crate) fn default_graph_pipeline(options: &CompilerOptions) -> PassPipeline {
     let level = options.optimization_level.unwrap_or(usize::MAX);
-    let passes: [(usize, Box<dyn GraphPass>); 4] = [
+    let passes: [(usize, Box<dyn GraphPass>); 8] = [
         (1, Box::new(simplify_guards::GuardAndUpdateReduction)),
+        (1, Box::new(prune_inert_callbacks::PruneInertCallbacks)),
+        (1, Box::new(prune_unhandled_updates::PruneUnhandledUpdates)),
         (1, Box::new(index_turbo_callbacks::IndexTurboCallbacks)),
         (1, Box::new(contract_dust_paths::ContractDustPaths)),
         (2, Box::new(simplify_state_guards::SimplifyStateGuards)),
+        (2, Box::new(specialize_wire_queries::SpecializeWireQueries)),
+        (3, Box::new(simplify_instant_resets::SimplifyInstantResets)),
     ];
     let entries = passes
         .into_iter()

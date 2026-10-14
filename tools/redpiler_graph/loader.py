@@ -233,6 +233,7 @@ def _validate(data: Any) -> dict[str, dict[str, dict[str, Any]]]:
             raise GraphFormatError(f"{identifier} has unknown target kind {target.get('kind')!r}")
         ref("guard", link.get("guard"), identifier)
 
+    instant_wires: set[str] = set()
     for identifier, wire in records["wire"].items():
         ref("node", wire.get("node"), identifier)
         neighbors = _array(wire.get("canonical_neighbors"), f"{identifier}.canonical_neighbors")
@@ -242,6 +243,29 @@ def _validate(data: Any) -> dict[str, dict[str, dict[str, Any]]]:
             ref("site", site, identifier)
         optional("route", wire.get("shape_route"), identifier)
         optional("route", wire.get("turbo_route"), identifier)
+        instant = wire.get("instant_reset")
+        if instant is not None:
+            instant = _object(instant, f"{identifier}.instant_reset")
+            for kind, field in (("piston", "piston"), ("resource", "resource"), ("node", "observer"), ("node", "partner")):
+                ref(kind, instant.get(field), identifier)
+            owner, partner, observer = wire["node"], instant["partner"], instant["observer"]
+            if (records["node"][owner]["kind"].get("kind") != "wire"
+                    or records["node"][partner]["kind"].get("kind") != "wire"
+                    or records["node"][observer]["kind"].get("kind") != "observer"
+                    or owner == partner or {owner, partner} & instant_wires):
+                raise GraphFormatError(f"{identifier} has invalid or overlapping instant reset bindings")
+            instant_wires.update((owner, partner))
+        facts = wire.get("query_facts")
+        if facts is not None:
+            facts = _object(facts, f"{identifier}.query_facts")
+            if "isolated" in facts and type(facts["isolated"]) is not bool:
+                raise GraphFormatError(f"{identifier}.query_facts.isolated must be a boolean")
+            masks = [facts.get(key) for key in ("known", "solid", "transparent", "wire", "zero_no_dust")]
+            if any(type(mask) is not int or not 0 <= mask <= 0xffffff for mask in masks):
+                raise GraphFormatError(f"{identifier} has invalid wire query fact masks")
+            known, solid, transparent, is_wire, zero_no_dust = masks
+            if (solid | transparent | is_wire | zero_no_dust) & ~known or zero_no_dust & solid:
+                raise GraphFormatError(f"{identifier} has invalid wire query fact masks")
 
     assigned_dust_wires: set[str] = set()
     for identifier, path in records["dust_path"].items():

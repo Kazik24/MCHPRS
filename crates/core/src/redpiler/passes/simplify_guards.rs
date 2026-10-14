@@ -501,23 +501,27 @@ mod tests {
     #[test]
     fn optimization_levels_select_pass_tiers() {
         let unoptimized = super::super::default_graph_pipeline(&CompilerOptions::default());
-        assert_eq!(unoptimized.entries.len(), 4);
+        assert_eq!(unoptimized.entries.len(), 8);
         assert!(unoptimized.entries.iter().all(|entry| !entry.enabled));
 
         let optimized = super::super::default_graph_pipeline(&CompilerOptions {
             optimization_level: Some(1),
             ..Default::default()
         });
-        assert_eq!(optimized.entries.len(), 4);
-        assert!(optimized.entries.iter().take(3).all(|entry| entry.enabled));
-        assert!(!optimized.entries[3].enabled);
+        assert_eq!(optimized.entries.len(), 8);
+        assert!(optimized.entries.iter().take(5).all(|entry| entry.enabled));
+        assert!(optimized.entries[5..].iter().all(|entry| !entry.enabled));
         assert_eq!(
             optimized.entries.iter().map(|entry| entry.pass.name()).collect::<Vec<_>>(),
             [
                 "guard-and-update-reduction",
+                "prune-inert-callbacks",
+                "prune-unhandled-updates",
                 "index-turbo-callbacks",
                 "contract-static-dust-paths",
-                "simplify-state-guards"
+                "simplify-state-guards",
+                "specialize-wire-queries",
+                "simplify-instant-resets",
             ]
         );
 
@@ -525,7 +529,8 @@ mod tests {
             optimization_level: Some(2),
             ..Default::default()
         });
-        assert!(opt_2.entries.iter().all(|entry| entry.enabled));
+        assert!(opt_2.entries.iter().take(7).all(|entry| entry.enabled));
+        assert!(!opt_2.entries[7].enabled);
 
         let max_optimized = super::super::default_graph_pipeline(&CompilerOptions {
             optimization_level: None,

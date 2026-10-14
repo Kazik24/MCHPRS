@@ -91,7 +91,7 @@ impl GraphBackend {
         }
     }
 
-    fn set_wire(&mut self, node: NodeId, wire: RedstoneWire) {
+    pub(super) fn set_wire(&mut self, node: NodeId, wire: RedstoneWire) {
         let ComponentState::Wire(current) = &mut self.state.components[node.index()] else {
             unreachable!("wire node has non-wire state");
         };
@@ -183,7 +183,7 @@ impl GraphBackend {
     }
 
     pub(super) fn seed_power_general(&mut self, plan: &WirePlan) -> (u8, u8, u8) {
-        let up_solid = self.live_site(plan.canonical_neighbors[3]).solid;
+        let (up_solid, _) = self.live_neighbor_geometry(plan, 3);
         let mut block_power = 0;
         let mut wire_power = 0;
         for face in BlockFace::values() {
@@ -195,26 +195,75 @@ impl GraphBackend {
                 BlockFace::East => (1, Some(13), Some(12)),
                 BlockFace::West => (0, Some(8), Some(7)),
             };
-            let site = plan.canonical_neighbors[index];
-            let neighbor = self.live_site(site);
-            block_power = block_power.max(self.power_no_dust(site, face, None));
-            if let Block::RedstoneWire { wire } = neighbor.block {
-                wire_power = wire_power.max(wire.power);
-            }
+            let (solid, transparent, neighbor_wire_power) = self.live_neighbor_properties(plan, index);
+            block_power = block_power.max(self.neighbor_power_no_dust(plan, index, face, None));
+            wire_power = wire_power.max(neighbor_wire_power);
             if let (Some(above), Some(below)) = (above, below) {
-                if !up_solid && !neighbor.transparent {
-                    if let Block::RedstoneWire { wire } = self.site_block(plan.canonical_neighbors[above]) {
-                        wire_power = wire_power.max(wire.power);
-                    }
+                if !up_solid && !transparent {
+                    wire_power = wire_power.max(self.live_neighbor_wire_strength(plan, above));
                 }
-                if !neighbor.solid {
-                    if let Block::RedstoneWire { wire } = self.site_block(plan.canonical_neighbors[below]) {
-                        wire_power = wire_power.max(wire.power);
-                    }
+                if !solid {
+                    wire_power = wire_power.max(self.live_neighbor_wire_strength(plan, below));
                 }
             }
         }
         (block_power.max(wire_power.saturating_sub(1)), block_power, wire_power)
+    }
+
+    fn live_neighbor_geometry(&self, plan: &WirePlan, index: usize) -> (bool, bool) {
+        if let Some(geometry) = plan.query_facts.and_then(|facts| facts.geometry_at(index)) {
+            return geometry;
+        }
+        let site = self.live_site(plan.canonical_neighbors[index]);
+        (site.solid, site.transparent)
+    }
+
+    fn live_neighbor_properties(&self, plan: &WirePlan, index: usize) -> (bool, bool, u8) {
+        if let Some((solid, transparent)) = plan.query_facts.and_then(|facts| facts.geometry_at(index)) {
+            return (solid, transparent, self.live_neighbor_wire_strength(plan, index));
+        }
+        // Resolve an uncertified neighbor once for both geometry and wire strength.
+        let site = self.live_site(plan.canonical_neighbors[index]);
+        let power = match site.block {
+            Block::RedstoneWire { wire } => wire.power,
+            _ => 0,
+        };
+        (site.solid, site.transparent, power)
+    }
+
+    fn live_neighbor_wire_strength(&self, plan: &WirePlan, index: usize) -> u8 {
+        if let Some(facts) = plan.query_facts
+            && facts.known & (1 << index) != 0
+        {
+            if facts.wire & (1 << index) == 0 {
+                return 0;
+            }
+            let source = self.program.sites()[plan.canonical_neighbors[index].index()].source;
+            if let SiteSource::Component(node) = source
+                && matches!(self.program.nodes()[node.index()].kind, CircuitNodeKind::Wire(_))
+            {
+                return self.wire_state(node).power;
+            }
+        }
+        match self.site_block(plan.canonical_neighbors[index]) {
+            Block::RedstoneWire { wire } => wire.power,
+            _ => 0,
+        }
+    }
+
+    fn neighbor_power_no_dust(&self, plan: &WirePlan, index: usize, face: BlockFace, captured: Option<&ObservedSite>) -> u8 {
+        let site = plan.canonical_neighbors[index];
+        if let Some(facts) = plan.query_facts {
+            let bit = 1 << index;
+            if facts.zero_no_dust & bit != 0 {
+                return 0;
+            }
+            if facts.solid & bit != 0 {
+                // Geometry is fixed, but conducted contributors must still be read live.
+                return self.conducted_power(site, false);
+            }
+        }
+        self.power_no_dust(site, face, captured)
     }
 
     pub(super) fn raw_wire_sides(&self, plan: &WirePlan, wire: RedstoneWire) -> RedstoneWire {
@@ -303,7 +352,7 @@ impl GraphBackend {
         WireWalkNeighbors { heading, slots }
     }
 
-    fn wire_route_delivery(&self, wire_index: usize, route: RouteId, slot: usize, target: SiteId, observed: &ObservedSite) -> Option<RouteDelivery> {
+    pub(super) fn wire_route_delivery(&self, wire_index: usize, route: RouteId, slot: usize, target: SiteId, observed: &ObservedSite) -> Option<RouteDelivery> {
         let deliveries = &self.program.routes()[route.index()].deliveries;
         let index = self.program.turbo_callback_index(wire_index);
         let candidates = index.map_or(deliveries.as_ref(), |index| {
@@ -375,8 +424,47 @@ impl GraphBackend {
 
     #[inline(always)]
     fn evaluate_turbo_wire(&mut self, node: NodeId) -> Result<(), GraphExecutionError> {
+        if let Some(instant) = self.wire_plan(node).instant_reset {
+            let plan = self.wire_plan(node).clone();
+            return self.evaluate_instant_output(&plan, instant);
+        }
+        if self.wire_plan(node).query_facts.is_some_and(|facts| facts.isolated) {
+            let plan = self.wire_plan(node).clone();
+            return self.evaluate_isolated_turbo_wire(&plan);
+        }
         let result = self.evaluate_turbo_wire_inner(node);
         result
+    }
+
+    fn evaluate_isolated_turbo_wire(&mut self, plan: &WirePlan) -> Result<(), GraphExecutionError> {
+        let Some(route) = plan.turbo_route else {
+            return Ok(());
+        };
+        let CircuitNodeKind::Wire(wire_index) = self.program.nodes()[plan.node.index()].kind else {
+            unreachable!("isolated Turbo received a non-wire node");
+        };
+        let observed = plan.canonical_neighbors.map(|site| {
+            self.resolve_site(site, None)
+                .expect("wire traversal site was validated during preparation")
+                .observed()
+        });
+        // Both original enqueue loops finish before any callback can change a guard.
+        let selected: [bool; 24] = std::array::from_fn(|slot| {
+            self.wire_route_delivery(wire_index, route, slot, plan.canonical_neighbors[slot], &observed[slot])
+                .is_some()
+        });
+        // A fresh walk has no visited neighbors or bias: compute_heading(0, 0) == 3.
+        let order = &crate::redstone::wire::TURBO_ORDER[3];
+        #[cfg(test)]
+        graph_test_trace!(self, format!("wire isolated replay {:?}", plan.node));
+        for (slots, layer) in [(order.as_slice(), 1), (&order[..4], 2)] {
+            for &slot in slots {
+                if selected[slot] {
+                    self.dispatch_turbo_nonwire(plan.canonical_neighbors[slot], &observed[slot], layer)?;
+                }
+            }
+        }
+        Ok(())
     }
 
     fn evaluate_turbo_wire_inner(&mut self, node: NodeId) -> Result<(), GraphExecutionError> {
@@ -404,17 +492,24 @@ impl GraphBackend {
     }
 
     fn dispatch_turbo_site(&mut self, slot: usize, walk: &mut WireWalk) -> Result<(), GraphExecutionError> {
-        let _site = walk.sites[slot].site;
+        let site = walk.sites[slot].site;
         let observed = walk.sites[slot].observed.clone();
-        let Some(receiver) = observed.receiver else {
-            return Ok(());
-        };
+        if let Some(receiver @ CallbackReceiver::Component(node)) = observed.receiver
+            && matches!(self.program.nodes()[node.index()].kind, CircuitNodeKind::Wire(_))
+        {
+            self.record_turbo_delivery(site, receiver, walk.layer);
+            return self.evaluate_turbo_wire_node(node, walk);
+        }
+        self.dispatch_turbo_nonwire(site, &observed, walk.layer)
+    }
+
+    fn record_turbo_delivery(&mut self, _site: SiteId, _receiver: CallbackReceiver, _layer: u32) {
         self.counts.callbacks += 1;
         // Dust-to-dust steps stay inside the walk; native dispatches only the rest.
         #[cfg(test)]
         if self.test_recording
-            && self.has_semantic_callback(receiver)
-            && !matches!(receiver, CallbackReceiver::Component(node)
+            && self.has_semantic_callback(_receiver)
+            && !matches!(_receiver, CallbackReceiver::Component(node)
                 if matches!(self.program.nodes()[node.index()].kind, CircuitNodeKind::Wire(_)))
         {
             self.test_recorder.observed_operations.push(GraphObservedOperation::Callback {
@@ -426,16 +521,20 @@ impl GraphBackend {
         graph_test_trace!(
             self,
             format!(
-                "wire deliver {:?} layer={} Update {{ direction: None }} receiver={receiver:?}",
+                "wire deliver {:?} layer={} Update {{ direction: None }} receiver={_receiver:?}",
                 self.program.sites()[_site.index()].position,
-                walk.layer
+                _layer
             )
         );
+    }
+
+    pub(super) fn dispatch_turbo_nonwire(&mut self, site: SiteId, observed: &ObservedSite, layer: u32) -> Result<(), GraphExecutionError> {
+        let Some(receiver) = observed.receiver else {
+            return Ok(());
+        };
+        self.record_turbo_delivery(site, receiver, layer);
         match receiver {
-            CallbackReceiver::Component(node) if matches!(self.program.nodes()[node.index()].kind, CircuitNodeKind::Wire(_)) => {
-                self.evaluate_turbo_wire_node(node, walk)
-            }
-            CallbackReceiver::Component(node) => self.update_component(node, DeliveryKind::Update { direction: None }, Some(&observed)),
+            CallbackReceiver::Component(node) => self.update_component(node, DeliveryKind::Update { direction: None }, Some(observed)),
             CallbackReceiver::PistonBase(piston) | CallbackReceiver::PistonHead(piston) => self.sample_piston(piston),
             CallbackReceiver::Contact(_) => Ok(()),
         }
@@ -521,29 +620,36 @@ impl GraphBackend {
     pub(super) fn turbo_wire_power_general(&mut self, plan: &WirePlan, neighbors: &WireWalkNeighbors, walk: &WireWalk) -> (u8, u8, u8) {
         let mut wire_power = 0;
         for (face, index) in BlockFace::values().into_iter().zip([3, 2, 4, 5, 1, 0]) {
-            let site = plan.canonical_neighbors[index];
             let observed = &walk.sites[neighbors.slots[index]].observed;
-            wire_power = wire_power.max(self.power_no_dust(site, face, Some(observed)));
+            wire_power = wire_power.max(self.neighbor_power_no_dust(plan, index, face, Some(observed)));
         }
         let mut block_power = 0;
         if wire_power < 15 {
             let order = crate::redstone::wire::TURBO_ORDER[neighbors.heading];
-            let center_up_solid = self.walk_site(neighbors.slots[order[1]], walk).solid;
+            let (center_up_solid, _) = self.captured_neighbor_geometry(plan, order[1], neighbors, walk);
             let horizontal = [4, 5, 6, 7];
             let down = [8, 10, 12, 14];
             let up = [9, 11, 13, 15];
             for index in 0..4 {
                 let neighbor = neighbors.slots[order[horizontal[index]]];
-                let neighbor_site = self.walk_site(neighbor, walk);
+                let (solid, transparent) = self.captured_neighbor_geometry(plan, order[horizontal[index]], neighbors, walk);
                 block_power = self.walk_wire_strength(neighbor, walk, block_power);
-                if !neighbor_site.solid {
+                if !solid {
                     block_power = self.walk_wire_strength(neighbors.slots[order[down[index]]], walk, block_power);
-                } else if !center_up_solid && !neighbor_site.transparent {
+                } else if !center_up_solid && !transparent {
                     block_power = self.walk_wire_strength(neighbors.slots[order[up[index]]], walk, block_power);
                 }
             }
         }
         (wire_power.max(block_power.saturating_sub(1)), block_power, wire_power)
+    }
+
+    fn captured_neighbor_geometry(&self, plan: &WirePlan, index: usize, neighbors: &WireWalkNeighbors, walk: &WireWalk) -> (bool, bool) {
+        if let Some(geometry) = plan.query_facts.and_then(|facts| facts.geometry_at(index)) {
+            return geometry;
+        }
+        let site = self.walk_site(neighbors.slots[index], walk);
+        (site.solid, site.transparent)
     }
 
     fn walk_site(&self, slot: usize, walk: &WireWalk) -> ResolvedSiteView {

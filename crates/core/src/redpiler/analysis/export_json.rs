@@ -5,7 +5,7 @@ use crate::redpiler::components::{NodeState, NodeType};
 use crate::redpiler::passes;
 use crate::redpiler::program_graph::{
     CallbackReceiver, CircuitNodeKind, CompileGraph, ComponentState, Guard, InputPort, LinkKind, LinkSpec, OperandView, PistonAvailability,
-    PistonLane, PistonRoutes, PowerLink, PowerPort, PowerTarget, Profile, ProfileElectrical, SiteSource, SiteTest, StateTest,
+    PistonLane, PistonRoutes, PowerLink, PowerPort, PowerTarget, Profile, ProfileElectrical, SiteSource, SiteTest, StateTest, WireQueryFacts,
 };
 use crate::redpiler::{CompilerOptions, TaskMonitor};
 use crate::world::World;
@@ -151,6 +151,7 @@ enum ElectricalKindDto {
     },
     Lamp,
     CopperBulb,
+    Hopper,
     Button,
     Lever,
     PressurePlate,
@@ -340,6 +341,22 @@ struct WirePlanDto {
     canonical_neighbors: Vec<String>,
     shape_route: Option<String>,
     turbo_route: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    query_facts: Option<WireQueryFacts>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    instant_reset: Option<InstantResetDto>,
+}
+
+#[derive(Debug, Serialize)]
+struct InstantResetDto {
+    /// This references the actor whose private reset footprint was certified.
+    piston: String,
+    /// This references the existing movable-resource owner.
+    resource: String,
+    /// This references the existing base observer and its scheduler target.
+    observer: String,
+    /// This references the second wire whose general Turbo execution is absorbed.
+    partner: String,
 }
 
 #[derive(Debug, Serialize)]
@@ -637,6 +654,7 @@ impl GraphExport {
                 PowerTargetDto::Conductor { site, .. } => check_ref(&sites, site, "conductor target")?,
             }
         }
+        let mut instant_wires = HashSet::new();
         for wire in &self.graph.wire_plans {
             check_ref(&nodes, &wire.node, "wire node")?;
             if wire.canonical_neighbors.len() != 24 {
@@ -647,6 +665,24 @@ impl GraphExport {
             }
             check_optional_ref(&routes, wire.shape_route.as_deref(), "wire shape route")?;
             check_optional_ref(&routes, wire.turbo_route.as_deref(), "wire turbo route")?;
+            validate_wire_query_facts(wire.query_facts.as_ref())?;
+            if let Some(instant) = &wire.instant_reset {
+                check_ref(&pistons, &instant.piston, "instant reset piston")?;
+                check_ref(&resources, &instant.resource, "instant reset resource")?;
+                check_ref(&nodes, &instant.observer, "instant reset observer")?;
+                check_ref(&nodes, &instant.partner, "instant reset partner")?;
+                if !matches!(node_records[wire.node.as_str()].kind, NodeKindDto::Wire { .. })
+                    || !matches!(node_records[instant.partner.as_str()].kind, NodeKindDto::Wire { .. })
+                    || !matches!(node_records[instant.observer.as_str()].kind, NodeKindDto::Observer { .. })
+                    || !instant_wires.insert(wire.node.as_str())
+                    || !instant_wires.insert(instant.partner.as_str())
+                {
+                    return Err(ExportError::new(
+                        "validation",
+                        "instant reset has invalid or overlapping component bindings",
+                    ));
+                }
+            }
         }
         validate_dust_paths(&self.graph.dust_paths, &nodes, &sites, &node_records, &site_records)?;
         for relation in &self.graph.wire_relations {
@@ -921,6 +957,13 @@ pub(super) fn from_graph(report: &AnalysisReport, source: &CompileGraph) -> Resu
                 canonical_neighbors: item.canonical_neighbors.iter().map(|site| typed_id("site", site.index())).collect(),
                 shape_route: item.shape_route.map(|route| typed_id("route", route.index())),
                 turbo_route: item.turbo_route.map(|route| typed_id("route", route.index())),
+                query_facts: item.query_facts,
+                instant_reset: item.instant_reset.map(|plan| InstantResetDto {
+                    piston: typed_id("piston", plan.piston.index()),
+                    resource: typed_id("resource", plan.resource.index()),
+                    observer: typed_id("node", plan.observer.index()),
+                    partner: typed_id("node", plan.partner.index()),
+                }),
             })
             .collect(),
         dust_paths: source
@@ -1047,6 +1090,12 @@ pub(super) fn from_graph(report: &AnalysisReport, source: &CompileGraph) -> Resu
     if !source.dust_paths.is_empty() {
         capabilities.push("dust_path_certificates");
     }
+    if source.wires.iter().any(|wire| wire.query_facts.is_some()) {
+        capabilities.push("wire_query_facts");
+    }
+    if source.wires.iter().any(|wire| wire.instant_reset.is_some()) {
+        capabilities.push("instant_reset_plans");
+    }
     let export = GraphExport {
         format: "mchprs.redpiler.graph",
         version: VersionDto { major: 1, minor: 1 },
@@ -1108,6 +1157,7 @@ fn electrical_kind(kind: &NodeType) -> Result<ElectricalKindDto, ExportError> {
         },
         NodeType::Lamp => ElectricalKindDto::Lamp,
         NodeType::CopperBulb => ElectricalKindDto::CopperBulb,
+        NodeType::Hopper => ElectricalKindDto::Hopper,
         NodeType::Button => ElectricalKindDto::Button,
         NodeType::Lever => ElectricalKindDto::Lever,
         NodeType::PressurePlate => ElectricalKindDto::PressurePlate,
@@ -1391,6 +1441,119 @@ fn check_prior_guard(ids: &HashSet<String>, reference: &str, current: &str) -> R
 
 fn id_index(id: &str) -> usize {
     id.split_once(':').and_then(|(_, index)| index.parse().ok()).unwrap_or(usize::MAX)
+}
+
+fn validate_wire_query_facts(facts: Option<&WireQueryFacts>) -> Result<(), ExportError> {
+    let Some(facts) = facts else {
+        return Ok(());
+    };
+    let properties = facts.solid | facts.transparent | facts.wire | facts.zero_no_dust;
+    if facts.known >> 24 != 0 || properties & !facts.known != 0 || facts.zero_no_dust & facts.solid != 0 {
+        return Err(ExportError::new("validation", "invalid wire query fact masks"));
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+mod wire_query_fact_validation_tests {
+    use super::*;
+
+    #[test]
+    fn instant_reset_export_retains_typed_bindings_and_rejects_wrong_roles() {
+        let (world, bounds) = passes::simplify_instant_resets::tests::fixture();
+        let options = CompilerOptions {
+            optimization_level: Some(3),
+            ..Default::default()
+        };
+        let mut export = prepare(&world, bounds, &[], &options, &TaskMonitor::default(), AnalysisLimits::default()).unwrap();
+        let index = export
+            .graph
+            .wire_plans
+            .iter()
+            .position(|wire| wire.instant_reset.is_some())
+            .expect("the original fixture is certified");
+        export.validate().unwrap();
+        let json = serde_json::to_value(&export).unwrap();
+        assert!(export.capabilities.contains(&"instant_reset_plans"));
+        assert!(
+            json["graph"]["wire_plans"][index]["instant_reset"]["piston"]
+                .as_str()
+                .unwrap()
+                .starts_with("piston:")
+        );
+        let observer = export.graph.wire_plans[index].instant_reset.as_ref().unwrap().observer.clone();
+        export.graph.wire_plans[index].instant_reset.as_mut().unwrap().observer = "node:999999".into();
+        assert!(export.validate().is_err());
+        export.graph.wire_plans[index].instant_reset.as_mut().unwrap().observer = observer.clone();
+        let partner = export.graph.wire_plans[index].instant_reset.as_ref().unwrap().partner.clone();
+        export.graph.wire_plans[index].instant_reset.as_mut().unwrap().partner = observer;
+        assert!(export.validate().is_err());
+        export.graph.wire_plans[index].instant_reset.as_mut().unwrap().partner = partner;
+        export.validate().unwrap();
+    }
+
+    #[test]
+    fn serializes_stationary_hopper_component_kind() {
+        assert_eq!(
+            serde_json::to_value(electrical_kind(&NodeType::Hopper).unwrap()).unwrap()["type"],
+            "hopper"
+        );
+    }
+
+    fn facts() -> WireQueryFacts {
+        WireQueryFacts {
+            known: 0xffffff,
+            solid: 1,
+            transparent: 2,
+            wire: 4,
+            zero_no_dust: 0xfffffe,
+            isolated: false,
+        }
+    }
+
+    #[test]
+    fn accepts_valid_query_fact_masks_and_absent_older_field() {
+        validate_wire_query_facts(Some(&facts())).unwrap();
+        validate_wire_query_facts(None).unwrap();
+        let mut wire = WirePlanDto {
+            id: "wire:0".into(),
+            node: "node:0".into(),
+            canonical_neighbors: vec!["site:0".into(); 24],
+            shape_route: None,
+            turbo_route: None,
+            query_facts: None,
+            instant_reset: None,
+        };
+        assert!(serde_json::to_value(&wire).unwrap().get("query_facts").is_none());
+        wire.query_facts = Some(facts());
+        let json = serde_json::to_value(&wire).unwrap();
+        assert_eq!(json["query_facts"]["known"], 0xffffff);
+        assert_eq!(json["query_facts"]["zero_no_dust"], 0xfffffe);
+        assert_eq!(json["query_facts"]["isolated"], false);
+        wire.query_facts.as_mut().unwrap().isolated = true;
+        assert_eq!(serde_json::to_value(&wire).unwrap()["query_facts"]["isolated"], true);
+    }
+
+    #[test]
+    fn rejects_out_of_range_unknown_and_contradictory_query_fact_masks() {
+        for bad in [
+            WireQueryFacts { known: 1 << 24, ..facts() },
+            WireQueryFacts { solid: 1 << 24, ..facts() },
+            WireQueryFacts {
+                transparent: 1 << 24,
+                ..facts()
+            },
+            WireQueryFacts { wire: 1 << 24, ..facts() },
+            WireQueryFacts {
+                zero_no_dust: 1 << 24,
+                ..facts()
+            },
+            WireQueryFacts { known: 0, ..facts() },
+            WireQueryFacts { zero_no_dust: 1, ..facts() },
+        ] {
+            assert!(validate_wire_query_facts(Some(&bad)).is_err());
+        }
+    }
 }
 
 #[cfg(test)]

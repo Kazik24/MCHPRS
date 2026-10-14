@@ -53,6 +53,30 @@ function validateGraph(data) {
   for (const ref of typedIds(data)) if (!ids.has(ref)) throw Error(`Dangling graph reference: ${ref}`);
   const nodes = new Map(data.graph.nodes.map((node) => [node.id, node]));
   const sites = new Map(data.graph.sites.map((site) => [site.id, site]));
+  const instantWires = new Set();
+  for (const wire of data.graph.wire_plans) {
+    const instant = wire.instant_reset;
+    if (instant != null) {
+      if (typeof instant !== "object" || Array.isArray(instant)
+        || typeof instant.piston !== "string" || !instant.piston.startsWith("piston:") || !ids.has(instant.piston)
+        || typeof instant.resource !== "string" || !instant.resource.startsWith("resource:") || !ids.has(instant.resource)
+        || nodes.get(wire.node)?.kind?.kind !== "wire" || nodes.get(instant.partner)?.kind?.kind !== "wire"
+        || nodes.get(instant.observer)?.kind?.kind !== "observer" || wire.node === instant.partner
+        || instantWires.has(wire.node) || instantWires.has(instant.partner)) {
+        throw Error(`${wire.id} has invalid or overlapping instant reset bindings.`);
+      }
+      instantWires.add(wire.node);
+      instantWires.add(instant.partner);
+    }
+    const facts = wire.query_facts;
+    if (facts == null) continue;
+    if (typeof facts !== "object" || Array.isArray(facts)) throw Error(`${wire.id} has invalid wire query fact masks.`);
+    if ("isolated" in facts && typeof facts.isolated !== "boolean") throw Error(`${wire.id}.query_facts.isolated must be a boolean.`);
+    const masks = [facts.known, facts.solid, facts.transparent, facts.wire, facts.zero_no_dust];
+    if (masks.some((mask) => !Number.isInteger(mask) || mask < 0 || mask > 0xffffff)
+      || ((facts.solid | facts.transparent | facts.wire | facts.zero_no_dust) & ~facts.known)
+      || (facts.zero_no_dust & facts.solid)) throw Error(`${wire.id} has invalid wire query fact masks.`);
+  }
   const assignedWires = new Set();
   for (const path of data.graph.dust_paths || []) {
     const input = nodes.get(path.input_node);

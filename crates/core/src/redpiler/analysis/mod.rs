@@ -169,9 +169,7 @@ impl fmt::Display for AdmissionIssue {
 }
 
 pub(crate) fn unsupported_component_reason(block: Block) -> Option<&'static str> {
-    if matches!(block, Block::Hopper { .. }) {
-        Some("hopper inventory and comparator behavior are not implemented in Graph")
-    } else if block.get_name().ends_with("_trapdoor") {
+    if block.get_name().ends_with("_trapdoor") {
         Some("trapdoor state and redstone behavior are not implemented in Graph")
     } else {
         None

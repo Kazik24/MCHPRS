@@ -140,7 +140,10 @@ impl GraphBackend {
         ResolvedSiteView {
             profile: Some(profile),
             receiver,
-            block: self.program.profile_block(profile).expect("validated profile"),
+            block: match receiver {
+                Some(CallbackReceiver::Component(node)) => self.node_block(node),
+                _ => self.program.profile_block(profile).expect("validated profile"),
+            },
             solid: facts.solid,
             transparent: facts.transparent,
         }
@@ -172,7 +175,10 @@ impl GraphBackend {
 
     fn resolve_profile(&self, profile: ProfileId, receiver: Option<CallbackReceiver>) -> ResolvedSite {
         let facts = self.program.profiles()[profile.index()];
-        let block = self.program.profile_block(profile).expect("validated profile");
+        let block = match receiver {
+            Some(CallbackReceiver::Component(node)) => self.node_block(node),
+            _ => self.program.profile_block(profile).expect("validated profile"),
+        };
         ResolvedSite {
             profile: Some(profile),
             receiver,
@@ -214,6 +220,7 @@ impl GraphBackend {
 
     fn contact_properties(&self, receiver: Option<CallbackReceiver>, block: Block) -> ObservedProperties {
         match receiver {
+            Some(CallbackReceiver::Component(node)) => self.node_properties(node),
             Some(CallbackReceiver::PistonBase(piston) | CallbackReceiver::PistonHead(piston)) => ObservedProperties::Piston {
                 extended: self.state.pistons[piston.index()].extended,
             },
@@ -275,6 +282,7 @@ impl GraphBackend {
             }
             Block::RedstoneComparator { comparator } => comparator.powered = state.powered,
             Block::RedstoneLamp { lit } => *lit = state.powered,
+            Block::Hopper { enabled, .. } => *enabled = !state.powered,
             Block::Observer { observer } => observer.powered = state.powered,
             Block::NoteBlock { instrument, powered, .. } => {
                 *powered = state.powered;
@@ -302,6 +310,7 @@ impl GraphBackend {
                 Block::RedstoneComparator { comparator } => comparator.powered = *powered,
                 Block::RedstoneTorch { lit } | Block::RedstoneWallTorch { lit, .. } => *lit = *powered,
                 Block::RedstoneLamp { lit } => *lit = *powered,
+                Block::Hopper { enabled, .. } => *enabled = !*powered,
                 Block::Observer { observer } => observer.powered = *powered,
                 _ => {}
             }

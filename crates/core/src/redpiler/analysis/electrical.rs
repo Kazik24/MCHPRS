@@ -304,6 +304,8 @@ pub(crate) fn prepare_electrical(
             canonical_neighbors,
             shape_route: None,
             turbo_route: None,
+            query_facts: None,
+            instant_reset: None,
         });
         let node = &mut nodes[wire.node.index()];
         node.kind = CircuitNodeKind::Wire(plan);
@@ -560,8 +562,10 @@ fn consumer_roots(block: Block, position: BlockPos, world: &impl World) -> Vec<R
         }],
         Block::RedstoneWire { .. } => wire_power_roots(position),
         block
-            if matches!(block, Block::RedstoneLamp { .. } | Block::IronTrapdoor { .. } | Block::NoteBlock { .. })
-                || block.is_command_block()
+            if matches!(
+                block,
+                Block::RedstoneLamp { .. } | Block::Hopper { .. } | Block::IronTrapdoor { .. } | Block::NoteBlock { .. }
+            ) || block.is_command_block()
                 || block.is_copper_bulb() =>
         {
             BlockFace::values().into_iter().map(|face| root(face, InputPort::Main)).collect()

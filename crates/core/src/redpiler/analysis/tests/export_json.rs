@@ -358,7 +358,7 @@ fn adder_1bit_export_path(level: usize) -> std::path::PathBuf {
         format!("adder-1bit-o{level}.graph.json")
     };
     std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../../docs/notes/redpiler-pistons-v4/fixtures")
+        .join("../../test_data/graph-fixtures/adder-1bit")
         .join(name)
 }
 

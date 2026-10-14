@@ -3,8 +3,10 @@
 pub mod analysis;
 pub(crate) mod backend;
 mod components;
+mod options;
 mod passes;
 pub(crate) mod program_graph;
+mod statistics;
 mod task_monitor;
 
 use crate::redstone;
@@ -18,6 +20,10 @@ use tracing::debug;
 
 pub use backend::graph::GraphExecutionError;
 pub use backend::{Queues, TickScheduler};
+pub use options::CompilerOptions;
+#[cfg(test)]
+pub(crate) use options::MAX_OPTIMIZATION_LEVEL;
+pub use statistics::{CompileStatistics, GraphCounts, GraphStatistics, PassStatistics, PreparationTableStatistics};
 pub use task_monitor::TaskMonitor;
 
 #[derive(Debug)]
@@ -90,7 +96,6 @@ pub enum BackendKind {
     Graph,
 }
 
-/// Work performed by the graph backend since activation.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 /// Cumulative work counters for an active graph backend.
 pub struct GraphExecutionCounts {
@@ -104,254 +109,6 @@ pub struct GraphExecutionCounts {
     pub piston_actions: u64,
     /// Piston-driven block changes waiting for publication to the world.
     pub deferred_publications: u64,
-}
-
-#[derive(PartialEq, Eq, Debug)]
-/// Options that control graph preparation and reset behavior.
-pub struct CompilerOptions {
-    /// Set by the server from the initiating player's rank, never from flags.
-    /// Zero retains the default 1x budget; values are capped at 8x.
-    pub budget_multiplier: usize,
-    /// `Some(level)` selects that pass tier; `None` selects every configured tier.
-    pub optimization_level: Option<usize>,
-    /// Only flush visible outputs and controls, including lamps and copper bulbs.
-    pub io_only: bool,
-    /// Update all blocks in the input region after reset.
-    pub update: bool,
-}
-
-pub(crate) const MAX_OPTIMIZATION_LEVEL: usize = 2;
-
-impl Default for CompilerOptions {
-    fn default() -> Self {
-        Self {
-            budget_multiplier: 0,
-            optimization_level: Some(0),
-            io_only: false,
-            update: false,
-        }
-    }
-}
-
-impl CompilerOptions {
-    pub fn parse(flags: &str) -> Result<CompilerOptions, String> {
-        let mut options = Self::default();
-        for option in flags.split_whitespace() {
-            if let Some(level) = option.strip_prefix("-O").or_else(|| option.strip_prefix("-o")) {
-                options.optimization_level = if level.is_empty() {
-                    None
-                } else {
-                    let level = level
-                        .parse::<usize>()
-                        .map_err(|_| format!("Invalid Redpiler optimization level: {option}"))?;
-                    if level > MAX_OPTIMIZATION_LEVEL {
-                        return Err(format!("Redpiler supports optimization levels 0 through {MAX_OPTIMIZATION_LEVEL}"));
-                    }
-                    Some(level)
-                };
-                continue;
-            }
-            if option.starts_with("--") {
-                match option {
-                    "--optimize" => options.optimization_level = None,
-                    "--io-only" => options.io_only = true,
-                    "--update" => options.update = true,
-                    _ => return Err(format!("Unrecognized Redpiler option: {option}")),
-                }
-            } else if let Some(short_flags) = option.strip_prefix('-') {
-                if short_flags.is_empty() {
-                    return Err(format!("Unrecognized Redpiler option: {option}"));
-                }
-                for (index, c) in short_flags.char_indices() {
-                    match c.to_ascii_lowercase() {
-                        'o' => {
-                            let level = &short_flags[index + c.len_utf8()..];
-                            options.optimization_level = if level.is_empty() {
-                                None
-                            } else {
-                                let level = level
-                                    .parse::<usize>()
-                                    .map_err(|_| format!("Invalid Redpiler optimization level: {option}"))?;
-                                if level > MAX_OPTIMIZATION_LEVEL {
-                                    return Err(format!("Redpiler supports optimization levels 0 through {MAX_OPTIMIZATION_LEVEL}"));
-                                }
-                                Some(level)
-                            };
-                            break;
-                        }
-                        'i' => options.io_only = true,
-                        'u' => options.update = true,
-                        _ => return Err(format!("Unrecognized Redpiler option: -{c}")),
-                    }
-                }
-            } else {
-                return Err(format!("Unrecognized Redpiler option: {option}"));
-            }
-        }
-        Ok(options)
-    }
-}
-
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-/// Node and link counts for one compiler graph snapshot.
-pub struct GraphCounts {
-    pub nodes: usize,
-    pub links: usize,
-}
-
-impl GraphCounts {
-    pub const fn new(nodes: usize, links: usize) -> Self {
-        Self { nodes, links }
-    }
-
-    pub(crate) fn of(graph: &program_graph::CompileGraph) -> Self {
-        Self::new(graph.nodes.len(), graph.links.len() + graph.power_links.len() + graph.wire_relations.len())
-    }
-}
-
-#[derive(Clone, Debug)]
-/// Timing and size results for one graph pass.
-pub struct PassStatistics {
-    pub name: &'static str,
-    pub enabled: bool,
-    pub before: GraphCounts,
-    pub after: GraphCounts,
-    pub duration: Duration,
-}
-
-impl PassStatistics {
-    pub(crate) fn disabled(name: &'static str, counts: GraphCounts) -> Self {
-        Self {
-            name,
-            enabled: false,
-            before: counts,
-            after: counts,
-            duration: Duration::ZERO,
-        }
-    }
-}
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-/// Retained-capacity estimate for one preparation table.
-pub struct PreparationTableStatistics {
-    pub stage: &'static str,
-    pub table: String,
-    pub entries: usize,
-    pub capacity: usize,
-    /// Estimates retained element storage and known nested slices, excluding maps and allocator overhead.
-    pub estimated_bytes: usize,
-}
-
-#[derive(Clone, Debug, Default)]
-/// Graph sizes, pass timings, and preparation memory estimates from compilation.
-pub struct GraphStatistics {
-    pub passes: Vec<PassStatistics>,
-    /// This contains only optional transformations, not mandatory parser stages.
-    pub transformations: Vec<PassStatistics>,
-    /// Retained table capacities sampled after each required preparation stage.
-    pub preparation_tables: Vec<PreparationTableStatistics>,
-    /// This records the graph after required parsing and before transformations.
-    pub parser_complete: Option<GraphCounts>,
-    /// This records the final graph independently of the supplied pass count.
-    pub final_counts: Option<GraphCounts>,
-    pub duration: Duration,
-}
-
-impl GraphStatistics {
-    pub fn baseline(&self) -> Option<GraphCounts> {
-        self.parser_complete
-    }
-
-    pub fn final_graph(&self) -> Option<GraphCounts> {
-        self.final_counts
-    }
-
-    // TODO: this function is quite unreadable, try splitting into abstracted helper functions inside this fn block.
-    pub fn summary_lines(&self) -> Vec<String> {
-        let mut lines = Vec::new();
-        if let (Some(before), Some(after)) = (self.baseline(), self.final_graph()) {
-            lines.push(format!(
-                "Graph after required preparation: {} nodes / {} links; after passes: {} nodes / {} links (change {:+} nodes / {:+} links)",
-                before.nodes,
-                before.links,
-                after.nodes,
-                after.links,
-                after.nodes as i128 - before.nodes as i128,
-                after.links as i128 - before.links as i128,
-            ));
-            lines.push("Construction: all parsed wire nodes are retained.".into());
-        }
-        if let Some(stage) = self.preparation_tables.last().map(|table| table.stage) {
-            let mut tables: Vec<_> = self.preparation_tables.iter().filter(|table| table.stage == stage).collect();
-            tables.sort_by_key(|table| std::cmp::Reverse(table.estimated_bytes));
-            let estimate = tables.iter().map(|table| table.estimated_bytes).sum::<usize>();
-            let largest = tables
-                .iter()
-                .take(3)
-                .map(|table| {
-                    format!(
-                        "{} {} entries, capacity {}, {:.1} MiB",
-                        table.table,
-                        table.entries,
-                        table.capacity,
-                        table.estimated_bytes as f64 / (1024.0 * 1024.0),
-                    )
-                })
-                .collect::<Vec<_>>()
-                .join("; ");
-            lines.push(format!(
-                "Graph preparation table estimate at {stage}: {:.1} MiB retained capacity; largest: {largest}",
-                estimate as f64 / (1024.0 * 1024.0),
-            ));
-        }
-        let enabled = self.transformations.iter().filter(|pass| pass.enabled).count();
-        let skipped = self.transformations.len() - enabled;
-        lines.push(if self.transformations.is_empty() {
-            "Transformations: none configured.".into()
-        } else {
-            format!("Transformations: {enabled} enabled, {skipped} skipped.")
-        });
-        lines.extend(self.passes.iter().map(|pass| {
-            format!(
-                "{} [{}]: {} -> {} nodes, {} -> {} links, {:.3} ms",
-                pass.name,
-                if pass.enabled { "enabled" } else { "skipped" },
-                pass.before.nodes,
-                pass.after.nodes,
-                pass.before.links,
-                pass.after.links,
-                pass.duration.as_secs_f64() * 1000.0,
-            )
-        }));
-        lines
-    }
-}
-
-#[derive(Clone, Debug)]
-/// Timing and backend size results for one successful compilation.
-pub struct CompileStatistics {
-    pub graph: GraphStatistics,
-    pub backend: BackendKind,
-    pub backend_nodes: usize,
-    pub analysis_duration: Duration,
-    pub backend_duration: Duration,
-    pub total_duration: Duration,
-}
-
-impl CompileStatistics {
-    pub fn summary_lines(&self) -> Vec<String> {
-        let ms = |duration: Duration| duration.as_secs_f64() * 1000.0;
-        let mut lines = vec![format!(
-            "Compile: {:.3} ms total; analysis {:.3}, graph {:.3}, backend {:.3} ms; {} backend nodes",
-            ms(self.total_duration),
-            ms(self.analysis_duration),
-            ms(self.graph.duration),
-            ms(self.backend_duration),
-            self.backend_nodes,
-        )];
-        lines.extend(self.graph.summary_lines().into_iter().take(3));
-        lines
-    }
 }
 
 #[derive(Default)]
@@ -423,43 +180,6 @@ impl Compiler {
         monitor.set_budget_multiplier(options.budget_multiplier);
         let backend_start = Instant::now();
         let (backend, analysis_duration) = Self::prepare_graph_backend(world, bounds, ticks, &options, &monitor, graph_pipeline)?;
-        self.publish(backend, options, &monitor, start, analysis_duration, backend_start)
-    }
-
-    fn prepare_graph_backend<W: World>(
-        world: &W,
-        bounds: (BlockPos, BlockPos),
-        ticks: Vec<TickEntry>,
-        options: &CompilerOptions,
-        monitor: &TaskMonitor,
-        graph_pipeline: Option<passes::PassPipeline>,
-    ) -> Result<(Runtime, Duration), CompileError> {
-        let limits = analysis::AnalysisLimits::for_budget(monitor.budget_multiplier());
-        let mut prepared = passes::rich::prepare(world, bounds, ticks, monitor, limits).map_err(|error| graph_preparation_error(error, monitor))?;
-        let analysis_duration = prepared.analysis_duration;
-        let pipeline = graph_pipeline.unwrap_or_else(|| passes::default_graph_pipeline(options));
-        passes::run_graph_pipeline(&mut prepared.graph, options, &prepared.entry, &pipeline, monitor)
-            .map_err(|error| graph_pipeline_error(error, monitor))?;
-        prepared.finish_pipeline_statistics(monitor);
-        let lowered = prepared
-            .lower(&monitor)
-            .map_err(|error| graph_backend_error(backend::graph::GraphBackendError::Graph(error), monitor))?;
-        let backend = backend::graph::GraphBackend::from_lowered(lowered, monitor).map_err(|error| graph_backend_error(error, monitor))?;
-        Ok((Runtime::Graph(Box::new(backend)), analysis_duration))
-    }
-
-    /// The only place a staged backend becomes active.
-    fn publish(
-        &mut self,
-        backend: Runtime,
-        options: CompilerOptions,
-        monitor: &TaskMonitor,
-        start: Instant,
-        analysis_duration: Duration,
-        // TODO: these instants passed via arguments are sussy, we should consider more linear, flat way of instrumenting the compiler and backend durations.
-        // Also there are two seperate durations here, why?
-        backend_start: Instant,
-    ) -> Result<(), CompileError> {
         let backend_duration = backend_start.elapsed();
         if monitor.cancelled() {
             return Err(CompileError::Cancelled);
@@ -480,6 +200,28 @@ impl Compiler {
         tracing::info!(stats = ?self.statistics, "Compiler completed");
         debug!("Compile completed in {:?}", start.elapsed());
         Ok(())
+    }
+
+    fn prepare_graph_backend<W: World>(
+        world: &W,
+        bounds: (BlockPos, BlockPos),
+        ticks: Vec<TickEntry>,
+        options: &CompilerOptions,
+        monitor: &TaskMonitor,
+        graph_pipeline: Option<passes::PassPipeline>,
+    ) -> Result<(Runtime, Duration), CompileError> {
+        let limits = analysis::AnalysisLimits::for_budget(monitor.budget_multiplier());
+        let mut prepared = passes::rich::prepare(world, bounds, ticks, monitor, limits).map_err(|error| graph_preparation_error(error, monitor))?;
+        let analysis_duration = prepared.analysis_duration;
+        let pipeline = graph_pipeline.unwrap_or_else(|| passes::default_graph_pipeline(options));
+        passes::run_graph_pipeline(&mut prepared.graph, options, &prepared.entry, &pipeline, monitor)
+            .map_err(|error| graph_pipeline_error(error, monitor))?;
+        prepared.finish_pipeline_statistics(monitor);
+        let lowered = prepared
+            .lower(monitor)
+            .map_err(|error| graph_backend_error(backend::graph::GraphBackendError::Graph(error), monitor))?;
+        let backend = backend::graph::GraphBackend::from_lowered(lowered, monitor).map_err(|error| graph_backend_error(error, monitor))?;
+        Ok((Runtime::Graph(Box::new(backend)), analysis_duration))
     }
 
     pub fn reset<W: World>(&mut self, world: &mut W, bounds: (BlockPos, BlockPos)) {
@@ -706,6 +448,18 @@ mod tests {
         let options = CompilerOptions::parse(input).unwrap();
 
         assert_eq!(options, expected_options);
+    }
+
+    #[test]
+    fn optimization_flags_share_the_same_level_validation() {
+        for prefix in ["-O", "-o", "-iO", "-uo"] {
+            for level in 0..=MAX_OPTIMIZATION_LEVEL {
+                let options = CompilerOptions::parse(&format!("{prefix}{level}")).unwrap();
+                assert_eq!(options.optimization_level, Some(level));
+            }
+            assert_eq!(CompilerOptions::parse(prefix).unwrap().optimization_level, None);
+            assert!(CompilerOptions::parse(&format!("{prefix}{}", MAX_OPTIMIZATION_LEVEL + 1)).is_err());
+        }
     }
 
     #[test]

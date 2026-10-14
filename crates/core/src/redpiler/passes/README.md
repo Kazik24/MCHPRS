@@ -81,7 +81,24 @@ The runner checks cancellation, validates the graph before execution and after e
 
 **A candidate that is not optimizable is not an invalid circuit.** Leave it unchanged and continue. Use errors for actual violated pass contracts or failed execution, not ordinary lack of an eligible motif. A proof timeout, excessive state space, unknown dependency, or unsupported optimization case retains general execution.
 
-The API and custom compiler entry point remain crate-private. `O0` skips optimization passes; `O1` enables `guard-and-update-reduction`, `index-turbo-callbacks`, and `contract-static-dust-paths` in that order. `O2` adds `simplify-state-guards` after O1. The unoptimized pipeline still runs the complete general graph. Keep pass order explicit; do not silently reorder passes or turn a custom pipeline into the default. When adding a pass, add it to the corresponding optimization tier; do not introduce a dedicated setting for the pass.
+The API and custom compiler entry point remain crate-private. `O0` skips optimization passes. The default transformation order is:
+
+| Tier | Pass | Work removed |
+| --- | --- | --- |
+| O1 | `guard-and-update-reduction` | Proven constant conditions and ineffective contributions. |
+| O1 | `prune-inert-callbacks` | Delivery rows with neither an explicit receiver nor an ordinary dispatcher fallback. |
+| O1 | `prune-unhandled-updates` | Live ordinary notifications whose fixed handler is an identity. |
+| O1 | `index-turbo-callbacks` | Repeated searches through unrelated callback rows. |
+| O1 | `contract-static-dust-paths` | General power queries on certified private dust paths. |
+| O2 | `simplify-state-guards` | Redundant predicates on the same state field. |
+| O2 | `specialize-wire-queries` | Repeated property queries and whole Turbo walks whose distinct neighbors can never contain a wire. |
+| O3 | `simplify-instant-resets` | Two conductor traversals in a private reset mechanism and general Turbo execution of its certified two-wire output. |
+
+The unoptimized pipeline still runs the complete general graph. Keep pass order explicit; do not silently reorder passes or turn a custom pipeline into the default. When adding a pass, add it to the corresponding optimization tier; do not introduce a dedicated setting for the pass.
+
+Derived dust paths, Turbo offsets, wire-query facts and instant-reset plans are invalidated before enabled passes by default. Override a `preserves_*` method only with an argument that the affected references and assumptions remain valid. Disabled entries preserve metadata. Wire-query facts certify geometry, block class, and absence of neighboring wires, never strength or contact selection; their shared inference rule lives in `program_graph/wire_query_facts.rs` so graph validation can independently reject stale certificates. An isolated-wire certificate preserves the complete captured callback schedule, including duplicate deliveries and nested execution; it does not permit dropping those callbacks.
+
+The first instant pass recognizes a closed graph pattern, not a schematic name. Its two-wire transfer removes internal wire callbacks, discovery, maps and queues while retaining every intermediate write and outside callback. The actor, resource, observer and global scheduler remain their existing state owners. Recognition deliberately declines shared resources, extra sources/readers, unsupported orientations and uncertain routes. O2 is the pass-off baseline and O3 enables this first family; recognition and execution checks live in [simplify_instant_resets.rs](simplify_instant_resets.rs) and [graph_instant_reset_tests.rs](../backend/graph_instant_reset_tests.rs).
 
 Long discovery/proof loops must check cancellation at sensible boundaries. Compute eligibility and replacement data before mutating each candidate. The compiler stages the graph and publishes only after success; the runner does not roll back failed mutations. Do not clone an entire large graph merely to provide rollback, and never mutate the input World from a pass.
 
@@ -180,13 +197,3 @@ The final report must state:
 - What was not checked, remaining risks, and in what opt effort is enabled.
 
 Default enablement requires reviewed correctness evidence and measured benefit. Unsupported proof cases must retain the general graph; no Native/Direct fallback, TODO execution branch, guessed output, or broader unsupported circuit rejection may substitute for a proof.
-
-## Scoped optimization projects
-
-These documents provide implementation milestones and concrete proof requirements. They remain scopes until their assigned implementation and review are complete:
-
-- [01 — guard and update reduction](../../../../../docs/notes/redpiler-pistons-v4/steps/opt-01-guard-and-update-reduction.md).
-- [02 — dust contraction](../../../../../docs/notes/redpiler-pistons-v4/steps/opt-02-dust-contraction.md).
-- [03 — piston specialization](../../../../../docs/notes/redpiler-pistons-v4/steps/opt-03-piston-specialization.md).
-- [04 — instant-region contraction](../../../../../docs/notes/redpiler-pistons-v4/steps/opt-04-instant-region-contraction.md).
-- [05 — removed legacy passes and safe equivalents](../../../../../docs/notes/redpiler-pistons-v4/steps/opt-05-legacy-pass-migration.md).

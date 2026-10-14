@@ -37,10 +37,6 @@ impl GraphPass for ContractDustPaths {
         "contract-static-dust-paths"
     }
 
-    fn validate_input(&self, graph: &CompileGraph) -> Result<(), String> {
-        graph.validate().map_err(|error| format!("dust path input graph is invalid: {error}"))
-    }
-
     fn run(&self, graph: &mut CompileGraph, context: &PassContext<'_>) -> Result<(), String> {
         let mut report = CandidateReport::default();
         let candidates = discover_wire_components(graph);
@@ -1026,8 +1022,18 @@ mod tests {
         let mut specialized = compile_path(&specialized_world, Some(1));
         let transformations = &specialized.stats().unwrap().graph.transformations;
         assert_eq!(
-            transformations.iter().filter(|pass| pass.enabled).map(|pass| pass.name).collect::<Vec<_>>(),
-            ["guard-and-update-reduction", "index-turbo-callbacks", "contract-static-dust-paths"]
+            transformations
+                .iter()
+                .filter(|pass| pass.enabled)
+                .map(|pass| pass.name)
+                .collect::<Vec<_>>(),
+            [
+                "guard-and-update-reduction",
+                "prune-inert-callbacks",
+                "prune-unhandled-updates",
+                "index-turbo-callbacks",
+                "contract-static-dust-paths",
+            ]
         );
         let disabled_dust_pass = disabled
             .stats()

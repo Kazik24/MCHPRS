@@ -1,11 +1,15 @@
 //! Typed construction and immutable program storage for the general graph.
 
+mod wire_query_facts;
+pub(crate) use wire_query_facts::WireQueryFacts;
+
 use crate::redpiler::components::{NodeState, NodeType};
 use crate::redpiler::passes::index_turbo_callbacks::TurboCallbackIndex;
 use mchprs_blocks::blocks::{Block, RedstoneWire};
 use mchprs_blocks::{BlockFace, BlockPos};
 use mchprs_world::{TickEntry, TickPriority};
 use rustc_hash::FxHashMap;
+use smallvec::SmallVec;
 use std::collections::{HashMap, VecDeque};
 use std::ops::Range;
 
@@ -358,6 +362,23 @@ pub(crate) struct WirePlan {
     pub(crate) shape_route: Option<RouteId>,
     /// Canonical captured candidates are ordered by TURBO_ORDER at delivery.
     pub(crate) turbo_route: Option<RouteId>,
+    /// Checked fixed geometry removes repeated property resolution without caching power.
+    pub(crate) query_facts: Option<WireQueryFacts>,
+    /// This replaces a certified private reset cell's output walk with its exact two-wire transfer.
+    pub(crate) instant_reset: Option<InstantResetPlan>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// Bindings for the first private redstone-resource/base-observer reset family.
+pub(crate) struct InstantResetPlan {
+    /// This identifies the existing actor whose lane and callbacks close the mechanism.
+    pub(crate) piston: PistonId,
+    /// This identifies the sole payload owner; no proxy copies its location or revision.
+    pub(crate) resource: ResourceId,
+    /// This identifies the base-watching reset observer and its existing scheduled state.
+    pub(crate) observer: NodeId,
+    /// This identifies the second wire in the certified two-wire output line.
+    pub(crate) partner: NodeId,
 }
 
 /// A certified short dust line whose only variable input is the first wire's direct source.
@@ -755,6 +776,33 @@ impl CircuitDraft {
         self.validate_routes()?;
         self.validate_links()?;
         self.validate_power()?;
+        // Certificate inference follows contact variants, so their references must be valid first.
+        for (index, wire) in self.wires.iter().enumerate() {
+            if let Some(facts) = wire.query_facts
+                && facts != WireQueryFacts::infer(self, wire)
+            {
+                return Err(GraphBuildError::InvalidWireQueryFacts { wire: index });
+            }
+        }
+        self.validate_instant_resets()?;
+        Ok(())
+    }
+
+    fn validate_instant_resets(&self) -> Result<(), GraphBuildError> {
+        if !self.wires.iter().any(|wire| wire.instant_reset.is_some()) {
+            return Ok(());
+        }
+        let mut inferred = vec![None; self.wires.len()];
+        for (wire, plan) in crate::redpiler::passes::simplify_instant_resets::infer_instant_resets(self) {
+            inferred[wire] = Some(plan);
+        }
+        for (index, wire) in self.wires.iter().enumerate() {
+            if let Some(plan) = wire.instant_reset
+                && inferred[index] != Some(plan)
+            {
+                return Err(GraphBuildError::InvalidInstantReset { wire: index });
+            }
+        }
         Ok(())
     }
 
@@ -1620,6 +1668,12 @@ pub(crate) enum GraphBuildError {
         wire: usize,
         reason: &'static str,
     },
+    InvalidWireQueryFacts {
+        wire: usize,
+    },
+    InvalidInstantReset {
+        wire: usize,
+    },
     InvalidNodeState {
         node: NodeId,
     },
@@ -1711,6 +1765,8 @@ impl std::fmt::Display for GraphBuildError {
             Self::InvalidTurboCallbackIndex { wire, reason } => {
                 write!(f, "Turbo callback index for wire {wire} is invalid: {reason}")
             }
+            Self::InvalidWireQueryFacts { wire } => write!(f, "wire {wire} has stale or invalid static query facts"),
+            Self::InvalidInstantReset { wire } => write!(f, "wire {wire} has a stale or invalid instant reset certificate"),
             Self::InvalidNodeState { node } => {
                 write!(f, "node {} has state that does not match its kind", node.index())
             }
@@ -1985,7 +2041,8 @@ pub(crate) struct WalkSite {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct WireWalk {
     pub(crate) site_slots: FxHashMap<SiteId, usize>,
-    pub(crate) sites: Vec<WalkSite>,
+    // shortcut: inline storage covers the root plus one 24-neighbor set; larger walks spill.
+    pub(crate) sites: SmallVec<[WalkSite; 25]>,
     pub(crate) queues: [VecDeque<usize>; 3],
     pub(crate) layer: u32,
 }
@@ -1994,7 +2051,7 @@ impl WireWalk {
     pub(crate) fn new() -> Self {
         Self {
             site_slots: FxHashMap::default(),
-            sites: Vec::new(),
+            sites: SmallVec::new(),
             queues: std::array::from_fn(|_| VecDeque::new()),
             layer: 0,
         }
@@ -2184,6 +2241,8 @@ mod tests {
                 canonical_neighbors: [site; 24],
                 shape_route: None,
                 turbo_route: None,
+                query_facts: None,
+                instant_reset: None,
             }],
             dust_paths: vec![],
             wire_relations: vec![],
@@ -2438,6 +2497,50 @@ mod tests {
         assert!(!nested.sites[0].visited);
         assert_eq!(outer.queues, std::array::from_fn(|_| VecDeque::new()));
         assert_eq!(nested.queues, std::array::from_fn(|_| VecDeque::new()));
+    }
+
+    #[test]
+    fn walk_slots_keep_the_initial_neighbor_set_inline() {
+        let mut walk = WireWalk::new();
+        for index in 0..25 {
+            let site = SiteId::new(index);
+            walk.insert_site(
+                site,
+                WalkSite {
+                    site,
+                    observed: ObservedSite {
+                        profile: None,
+                        receiver: None,
+                        properties: ObservedProperties::Passive,
+                    },
+                    visited: false,
+                    x_bias: 0,
+                    z_bias: 0,
+                    layer: 0,
+                    heading: None,
+                },
+            );
+        }
+        assert_eq!(walk.site_slots.len(), 25);
+        assert!(!walk.sites.spilled());
+        let site = SiteId::new(25);
+        walk.insert_site(
+            site,
+            WalkSite {
+                site,
+                observed: ObservedSite {
+                    profile: None,
+                    receiver: None,
+                    properties: ObservedProperties::Passive,
+                },
+                visited: false,
+                x_bias: 0,
+                z_bias: 0,
+                layer: 0,
+                heading: None,
+            },
+        );
+        assert!(walk.sites.spilled());
     }
 
     #[test]
