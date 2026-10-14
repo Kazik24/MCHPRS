@@ -1,15 +1,15 @@
 use mchprs_blocks::block_entities::BlockEntity;
 use mchprs_blocks::{
-    BlockFace, BlockPos,
     blocks::{Block, ButtonFace},
+    BlockFace, BlockPos,
 };
 use mchprs_core::{
     plot::{
-        PLOT_WIDTH, PlotWorld,
         worldedit::{load_schematic, paste_clipboard},
+        PlotWorld, PLOT_WIDTH,
     },
     redstone,
-    world::{World, storage::Chunk},
+    world::{storage::Chunk, World},
 };
 use mchprs_world::TickPriority;
 use serde::{Deserialize, Serialize};

@@ -726,6 +726,7 @@ impl CircuitDraft {
     }
 
     fn validate_inner(&self) -> Result<(), GraphBuildError> {
+        // TODO: extract to helper function just like all others.
         for (name, len) in [
             ("nodes", self.nodes.len()),
             ("sites", self.sites.len()),

@@ -2,8 +2,8 @@
 //! Run once by default; CPU initialization and verification are excluded from timing.
 #[path = "support/cpus.rs"]
 mod support;
-use mchprs_blocks::BlockPos;
 use mchprs_blocks::blocks::Block;
+use mchprs_blocks::BlockPos;
 use mchprs_core::plot::PlotWorld;
 use mchprs_core::redpiler::{BackendKind, Compiler, CompilerOptions, GraphExecutionCounts, TaskMonitor};
 use mchprs_core::world::World;
@@ -529,6 +529,59 @@ fn graph_short(cpu: Cpu, iterations: usize, output: Option<&str>, label: &str) {
     }
 }
 
+fn graph_tier_short(cpu: Cpu, iterations: usize, tier: usize) {
+    assert!(matches!(tier, 1 | 2));
+    let bounds = short_bounds(cpu);
+    let mut graph_times = Vec::with_capacity(iterations);
+    let mut interpreter_times = Vec::with_capacity(iterations);
+
+    for sample in 0..iterations {
+        let (graph, interpreter) = if sample % 2 == 0 {
+            let graph = graph_sample(cpu, bounds, tier);
+            let interpreter = interpreter_sample(cpu);
+            (graph, interpreter)
+        } else {
+            let interpreter = interpreter_sample(cpu);
+            let graph = graph_sample(cpu, bounds, tier);
+            (graph, interpreter)
+        };
+        assert_eq!(graph.initial, interpreter.initial, "sample {sample} inputs");
+        assert_eq!(graph.final_ram, interpreter.final_ram, "sample {sample} RAM");
+        let counts = graph.graph_counts.expect("Graph backend must report work counters");
+        assert_eq!(
+            counts,
+            GraphExecutionCounts {
+                callbacks: 2_057_492,
+                ..TEST_GRAPH_COUNTS
+            }
+        );
+        println!(
+            "cpu_bubblesort O{tier} sample {}: Graph {:.6}s, interpreter {:.6}s; 100 active ticks; RAM matches",
+            sample + 1,
+            graph.elapsed.as_secs_f64(),
+            interpreter.elapsed.as_secs_f64()
+        );
+        graph_times.push(graph.elapsed);
+        interpreter_times.push(interpreter.elapsed);
+    }
+
+    graph_times.sort_unstable();
+    interpreter_times.sort_unstable();
+    let median = graph_times[iterations / 2];
+    let interpreter_median = interpreter_times[iterations / 2];
+    println!(
+        "Graph O{tier}: {} paired samples of {} ticks; median {:.6}s [{:.6}, {:.6}], interpreter median {:.6}s [{:.6}, {:.6}]",
+        iterations,
+        SHORT_ACTIVE_TICKS,
+        median.as_secs_f64(),
+        graph_times[0].as_secs_f64(),
+        graph_times[iterations - 1].as_secs_f64(),
+        interpreter_median.as_secs_f64(),
+        interpreter_times[0].as_secs_f64(),
+        interpreter_times[iterations - 1].as_secs_f64()
+    );
+}
+
 fn graph_counts_json(counts: GraphExecutionCounts) -> serde_json::Value {
     serde_json::json!({
         "ticks": counts.ticks,
@@ -545,6 +598,10 @@ fn graph_counts_json(counts: GraphExecutionCounts) -> serde_json::Value {
 fn main() {
     let args: Vec<_> = std::env::args().skip(1).collect();
     let short_graph = args.iter().any(|arg| arg == "--graph-short");
+    let graph_tier = args
+        .windows(2)
+        .find(|pair| pair[0] == "--graph-tier")
+        .map(|pair| pair[1].parse::<usize>().expect("--graph-tier needs 1 or 2"));
     let iterations = args
         .windows(2)
         .find(|pair| pair[0] == "--iterations")
@@ -572,14 +629,15 @@ fn main() {
             selected.is_none_or(|name| name == "cpu_bubblesort"),
             "--graph-short only supports cpu_bubblesort"
         );
-        graph_short(
-            CPUS.iter().copied().find(|cpu| cpu.name == "cpu_bubblesort").unwrap(),
-            iterations,
-            output.map(String::as_str),
-            label,
-        );
+        let cpu = CPUS.iter().copied().find(|cpu| cpu.name == "cpu_bubblesort").unwrap();
+        if let Some(tier) = graph_tier {
+            graph_tier_short(cpu, iterations, tier);
+        } else {
+            graph_short(cpu, iterations, output.map(String::as_str), label);
+        }
         return;
     }
+    assert!(graph_tier.is_none(), "--graph-tier requires --graph-short");
     for cpu in CPUS {
         if selected.is_some_and(|name| name != cpu.name) {
             continue;

@@ -266,6 +266,7 @@ impl GraphStatistics {
         self.final_counts
     }
 
+    // TODO: this function is quite unreadable, try splitting into abstracted helper functions inside this fn block.
     pub fn summary_lines(&self) -> Vec<String> {
         let mut lines = Vec::new();
         if let (Some(before), Some(after)) = (self.baseline(), self.final_graph()) {
@@ -455,6 +456,8 @@ impl Compiler {
         monitor: &TaskMonitor,
         start: Instant,
         analysis_duration: Duration,
+        // TODO: these instants passed via arguments are sussy, we should consider more linear, flat way of instrumenting the compiler and backend durations.
+        // Also there are two seperate durations here, why?
         backend_start: Instant,
     ) -> Result<(), CompileError> {
         let backend_duration = backend_start.elapsed();

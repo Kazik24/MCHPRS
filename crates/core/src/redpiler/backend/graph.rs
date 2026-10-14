@@ -284,6 +284,15 @@ struct ResolvedSite {
     transparent: bool,
 }
 
+#[derive(Debug, Clone)]
+struct ResolvedSiteView {
+    profile: Option<ProfileId>,
+    receiver: Option<CallbackReceiver>,
+    block: Block,
+    solid: bool,
+    transparent: bool,
+}
+
 impl ResolvedSite {
     fn observed(self) -> ObservedSite {
         ObservedSite {
@@ -1869,8 +1878,8 @@ impl GraphBackend {
         self.live_site(site).block
     }
 
-    fn live_site(&self, site: SiteId) -> ResolvedSite {
-        self.resolve_site(site, None).expect("wire query site was validated during preparation")
+    fn live_site(&self, site: SiteId) -> ResolvedSiteView {
+        self.resolve_site_view(site, None).expect("wire query site was validated during preparation")
     }
 
     fn raw_wire_sides(&self, plan: &WirePlan, wire: RedstoneWire) -> RedstoneWire {
@@ -1878,7 +1887,7 @@ impl GraphBackend {
         crate::redstone::wire::get_raw_sides_from_neighbors(wire, &neighbors)
     }
 
-    fn site_source_strength(&self, site: SiteId, resolved: &ResolvedSite) -> u8 {
+    fn site_source_strength(&self, site: SiteId, resolved: &ResolvedSiteView) -> u8 {
         if let Some(CallbackReceiver::Component(node)) = resolved.receiver {
             if matches!(
                 self.program.nodes()[node.index()].kind,
@@ -1890,7 +1899,7 @@ impl GraphBackend {
         let fixed_component = matches!(resolved.receiver, Some(CallbackReceiver::Component(_)));
         let selectable_contact = matches!(self.program.sites()[site.index()].source, SiteSource::Contact(_));
         if selectable_contact && !fixed_component {
-            return self.contact_or_boundary_strength(site, resolved);
+            return self.contact_or_boundary_strength(site, resolved.profile);
         }
         match resolved.block {
             Block::RedstoneTorch { lit: true } | Block::RedstoneWallTorch { lit: true, .. } => 15,
@@ -1910,7 +1919,7 @@ impl GraphBackend {
 
     fn power_no_dust(&self, site: SiteId, face: BlockFace, captured_emitter: Option<&ObservedSite>) -> u8 {
         let resolved = self
-            .resolve_site(site, captured_emitter)
+            .resolve_site_view(site, captured_emitter)
             .expect("wire query site was validated during preparation");
         if resolved.solid {
             return self.strong_power_at(site);
@@ -2244,9 +2253,9 @@ impl GraphBackend {
         (wire_power.max(block_power.saturating_sub(1)), block_power, wire_power)
     }
 
-    fn walk_site(&self, site: SiteId, walk: &WireWalk) -> ResolvedSite {
+    fn walk_site(&self, site: SiteId, walk: &WireWalk) -> ResolvedSiteView {
         let observed = &walk.sites[&site].observed;
-        self.resolve_site(site, Some(observed)).expect("captured wire site is valid")
+        self.resolve_site_view(site, Some(observed)).expect("captured wire site is valid")
     }
 
     fn walk_wire_strength(&self, site: SiteId, walk: &WireWalk, strength: u8) -> u8 {
@@ -2554,7 +2563,7 @@ impl GraphBackend {
                 ComponentState::Specialized => 0,
             },
             Some(CallbackReceiver::PistonBase(_) | CallbackReceiver::PistonHead(_) | CallbackReceiver::Contact(_)) | None => {
-                self.contact_or_boundary_strength(site, &resolved)
+                self.contact_or_boundary_strength(site, resolved.profile)
             }
         };
         match port {
@@ -2577,11 +2586,11 @@ impl GraphBackend {
         }
     }
 
-    fn contact_or_boundary_strength(&self, site: SiteId, resolved: &ResolvedSite) -> u8 {
+    fn contact_or_boundary_strength(&self, site: SiteId, profile: Option<ProfileId>) -> u8 {
         if matches!(self.program.sites()[site.index()].source, SiteSource::Constant(_)) {
             return self.program.sites()[site.index()].source_strength;
         }
-        let Some(profile) = resolved.profile else {
+        let Some(profile) = profile else {
             return 0;
         };
         match self.program.profiles()[profile.index()].electrical {
@@ -2698,6 +2707,70 @@ impl GraphBackend {
                 None
             }
         }
+    }
+
+    fn resolve_site_view(&self, site: SiteId, captured: Option<&ObservedSite>) -> Option<ResolvedSiteView> {
+        if let Some(observed) = captured {
+            return self.resolve_observed_site_view(observed);
+        }
+        let spec = *self.program.sites().get(site.index())?;
+        match spec.source {
+            SiteSource::Constant(profile) => Some(self.resolve_profile_view(profile, None)),
+            SiteSource::Component(node) => {
+                let block = self.node_block(node);
+                Some(ResolvedSiteView {
+                    profile: None,
+                    receiver: Some(CallbackReceiver::Component(node)),
+                    solid: block.is_solid(),
+                    transparent: block.is_transparent(),
+                    block,
+                })
+            }
+            SiteSource::Contact(contact) => {
+                let spec = &self.program.contacts()[contact.index()];
+                for variant in spec.variants.iter() {
+                    if self.guard_matches(variant.when, None) {
+                        return Some(self.resolve_profile_view(variant.profile, variant.receiver));
+                    }
+                }
+                None
+            }
+        }
+    }
+
+    fn resolve_profile_view(&self, profile: ProfileId, receiver: Option<CallbackReceiver>) -> ResolvedSiteView {
+        let facts = self.program.profiles()[profile.index()];
+        ResolvedSiteView {
+            profile: Some(profile),
+            receiver,
+            block: self.program.profile_block(profile).expect("validated profile"),
+            solid: facts.solid,
+            transparent: facts.transparent,
+        }
+    }
+
+    fn resolve_observed_site_view(&self, observed: &ObservedSite) -> Option<ResolvedSiteView> {
+        let block = if let Some(receiver) = observed.receiver {
+            match receiver {
+                CallbackReceiver::Component(node) => self.node_block_with_properties(node, &observed.properties),
+                _ => self.block_for_profile(observed.profile?)?,
+            }
+        } else {
+            self.block_for_profile(observed.profile?)?
+        };
+        let (solid, transparent) = if let Some(profile) = observed.profile {
+            let facts = self.program.profiles()[profile.index()];
+            (facts.solid, facts.transparent)
+        } else {
+            (block.is_solid(), block.is_transparent())
+        };
+        Some(ResolvedSiteView {
+            profile: observed.profile,
+            receiver: observed.receiver,
+            block,
+            solid,
+            transparent,
+        })
     }
 
     fn resolve_profile(&self, profile: ProfileId, receiver: Option<CallbackReceiver>) -> ResolvedSite {
@@ -3317,6 +3390,12 @@ impl MotionProjection {
 #[cfg(test)]
 #[path = "graph_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[test]
+fn site_view_size_probe() {
+    println!("ResolvedSite={} ResolvedSiteView={}", std::mem::size_of::<ResolvedSite>(), std::mem::size_of::<ResolvedSiteView>());
+}
 
 #[cfg(test)]
 #[path = "graph_fuzz_tests.rs"]

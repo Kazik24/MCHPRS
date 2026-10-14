@@ -105,7 +105,10 @@ fn captured_wire_walk(backend: &GraphBackend, plan: &WirePlan) -> WireWalk {
     let mut walk = WireWalk::new();
     let root = backend.component_sites[plan.node.index()].unwrap();
     for site in plan.canonical_neighbors.into_iter().chain([root]) {
-        let observed = backend.live_site(site).observed();
+        let observed = backend
+            .resolve_site(site, None)
+            .expect("wire walk site is resolvable")
+            .observed();
         walk.sites.insert(
             site,
             WalkSite {
