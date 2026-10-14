@@ -1362,7 +1362,6 @@ blocks! {
         cube: true,
     },
 
-    //todo maybe in the future add slime blocks
     Piston{
         props: {
             piston: RedstonePiston
@@ -1666,7 +1665,6 @@ blocks! {
         },
         get_name: "composter",
         transparent: true,
-        // FIXME: You can place repeaters and comparators on it, but not wires?
         cube: true,
     },
     Concrete {
@@ -2039,8 +2037,6 @@ blocks! {
         cube: true,
     }
 }
-
-// TODO make macro for building blocks
 
 #[cfg(test)]
 mod decoded_state_tests {

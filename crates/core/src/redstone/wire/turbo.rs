@@ -334,7 +334,7 @@ impl RedstoneWireTurbo {
         self.shift_queue();
         self.current_walk_layer = 1;
 
-        // TODO: add piston (3 tick search)
+        // TODO Include piston events here if this walk gains three-tick lookahead.
         while !self.update_queue[0].is_empty() || !self.update_queue[1].is_empty() {
             // Propagation only appends to the next two layers. Keep the current
             // layer in place and process its original length in the original order.
@@ -345,8 +345,6 @@ impl RedstoneWireTurbo {
                     Block::RedstoneWire { .. } => {
                         self.update_node(world, node_id, self.current_walk_layer);
                     }
-                    //todo since we might want to impl pistons as a type of wire, we need to add case here (?)
-
                     // This only works because updating any other block than a wire will
                     // never change the state of the block. If that changes in the future,
                     // the cached state will need to be updated

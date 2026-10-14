@@ -185,7 +185,8 @@ impl BlockFace {
     }
 }
 
-//todo remove (not needed anymore)
+/// Convert between block faces and redstone facings; vertical directions use
+/// `Top`/`Bottom` as faces and `Up`/`Down` as facings.
 impl From<BlockFace> for BlockFacing {
     #[inline]
     fn from(face: BlockFace) -> BlockFacing {

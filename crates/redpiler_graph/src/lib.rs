@@ -41,7 +41,7 @@ pub enum NodeType {
     Trapdoor,
     Wire,
     Constant,
-    Piston, //TODO: Implement
+    Piston, // TODO Implement piston behavior in the legacy serialized graph format.
     NoteBlock,
 }
 

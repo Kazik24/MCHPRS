@@ -479,7 +479,7 @@ impl PacketEncoder {
     }
 
     pub fn write_compressed(&self, mut w: impl Write) -> io::Result<()> {
-        // TODO: zero allocation
+        // TODO Write the packet ID and payload directly instead of allocating their concatenation.
         let packet_id = PacketEncoder::varint(self.packet_id as i32);
         let data = [packet_id.as_slice(), self.buffer.as_slice()].concat();
         if data.len() < 256 {

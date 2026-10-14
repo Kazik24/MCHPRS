@@ -109,11 +109,7 @@ pub(crate) fn prepare(
 
     record_tables(monitor, "geometry", geometry_table_statistics("geometry", &geometry.draft)).map_err(PreparationError::Analysis)?;
 
-    // TODO: Graph counts ::from ???? Indentify all places where GraphCounts and create proper constuctor or from method for it.
-    let geometry_counts = GraphCounts {
-        nodes: geometry.draft.nodes.len(),
-        links: 0,
-    };
+    let geometry_counts = GraphCounts::new(geometry.draft.nodes.len(), 0);
     record_preparation_pass(
         monitor,
         "Identifying nodes and piston contacts",
@@ -129,10 +125,7 @@ pub(crate) fn prepare(
     let mut electrical_tables = electrical_table_statistics("electrical", &electrical);
     electrical_tables.extend(geometry_table_statistics("electrical", &geometry.draft));
     record_tables(monitor, "electrical", electrical_tables).map_err(PreparationError::Analysis)?;
-    let electrical_counts = GraphCounts {
-        nodes: electrical.nodes.len(),
-        links: electrical.links.len() + electrical.wire_relations.len(),
-    };
+    let electrical_counts = GraphCounts::new(electrical.nodes.len(), electrical.links.len() + electrical.wire_relations.len());
     record_preparation_pass(monitor, "Searching for electrical links", geometry_counts, electrical_counts, start);
 
     monitor.set_message("Building ordered callback routes".into());
@@ -142,10 +135,10 @@ pub(crate) fn prepare(
     callback_tables.extend(callback_table_statistics(&callbacks));
     callback_tables.extend(geometry_table_statistics("callbacks", &geometry.draft));
     record_tables(monitor, "callbacks", callback_tables).map_err(PreparationError::Analysis)?;
-    let complete_counts = GraphCounts {
-        nodes: electrical.nodes.len(),
-        links: electrical.links.len() + electrical.wire_relations.len() + callbacks.links.len(),
-    };
+    let complete_counts = GraphCounts::new(
+        electrical.nodes.len(),
+        electrical.links.len() + electrical.wire_relations.len() + callbacks.links.len(),
+    );
     record_preparation_pass(monitor, "Building ordered callback routes", electrical_counts, complete_counts, start);
 
     let power_links = electrical
@@ -163,6 +156,7 @@ pub(crate) fn prepare(
             guard: link.guard,
         })
         .collect();
+    let resources = geometry.draft.resources.into_iter().map(|resource| resource.spec).collect();
     let graph = CircuitDraft {
         nodes: electrical.nodes,
         links: callbacks.links,
@@ -178,8 +172,7 @@ pub(crate) fn prepare(
         wire_relations: electrical.wire_relations,
         sites: electrical.sites,
         pistons: callbacks.pistons,
-        // TODO: Put into named variable for clarity
-        resources: geometry.draft.resources.into_iter().map(|resource| resource.spec).collect(),
+        resources,
         initial_pistons: geometry.draft.initial_pistons,
         initial_resources: geometry.draft.initial_resources,
     };
@@ -187,16 +180,15 @@ pub(crate) fn prepare(
     let report = geometry.report;
     let pending_ticks = ticks
         .into_iter()
-        // TODO: Unreadable
-        .map(|tick| EntryTick {
-            current_registry_type: if !(0..crate::plot::PLOT_BLOCK_HEIGHT).contains(&tick.pos.y) {
+        .map(|tick| {
+            let current_registry_type = if !(0..crate::plot::PLOT_BLOCK_HEIGHT).contains(&tick.pos.y) {
                 Some(Block::Air.registry_id())
             } else if world.get_chunk(tick.pos.x.div_euclid(16), tick.pos.z.div_euclid(16)).is_some() {
                 Some(world.get_block(tick.pos).registry_id())
             } else {
                 None
-            },
-            tick,
+            };
+            EntryTick { current_registry_type, tick }
         })
         .collect();
     let entry = EntryState {

@@ -200,11 +200,12 @@ pub struct GraphCounts {
 }
 
 impl GraphCounts {
+    pub const fn new(nodes: usize, links: usize) -> Self {
+        Self { nodes, links }
+    }
+
     pub(crate) fn of(graph: &program_graph::CompileGraph) -> Self {
-        Self {
-            nodes: graph.nodes.len(),
-            links: graph.links.len() + graph.power_links.len() + graph.wire_relations.len(),
-        }
+        Self::new(graph.nodes.len(), graph.links.len() + graph.power_links.len() + graph.wire_relations.len())
     }
 }
 
@@ -216,6 +217,18 @@ pub struct PassStatistics {
     pub before: GraphCounts,
     pub after: GraphCounts,
     pub duration: Duration,
+}
+
+impl PassStatistics {
+    pub(crate) fn disabled(name: &'static str, counts: GraphCounts) -> Self {
+        Self {
+            name,
+            enabled: false,
+            before: counts,
+            after: counts,
+            duration: Duration::ZERO,
+        }
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]

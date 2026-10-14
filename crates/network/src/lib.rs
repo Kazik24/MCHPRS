@@ -16,8 +16,7 @@ use tracing::{debug, warn};
 
 #[derive(Debug)]
 pub struct PlayerPacketSender {
-    // todo add synced player position, so that block_actions, and chunk updates can be sent more locally to
-    // the player reducing lag spikes while moving around very large redstone contraptions
+    // TODO Track player position here to limit block-action and chunk-update fanout near large contraptions.
     // player_pos: Arc<AtomicI64>, // raw PackedPos converted with as_raw()/from_raw()
     outbound: outbound::Outbound,
     compressed: Arc<AtomicBool>,

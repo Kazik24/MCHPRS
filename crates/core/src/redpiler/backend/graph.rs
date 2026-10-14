@@ -23,12 +23,14 @@ use rustc_hash::{FxHashMap, FxHashSet};
 use std::cell::Cell;
 use std::collections::VecDeque;
 use std::fmt;
+#[cfg(test)]
+use std::ops::{Deref, DerefMut};
 
 #[cfg(test)]
 macro_rules! graph_test_trace {
     ($backend:expr, $value:expr) => {
         if $backend.test_recording {
-            $backend.trace.push($value);
+            $backend.test_recorder.trace.push($value);
         }
     };
 }
@@ -193,6 +195,27 @@ enum GraphObservedOperation {
     Accepted { actor: BlockPos, action: mchprs_world::PistonAction },
 }
 
+#[cfg(test)]
+#[derive(Default)]
+pub(crate) struct TestRecorder {
+    test_recording: bool,
+    trace: Vec<String>,
+    callback_order: Vec<(BlockPos, DeliveryKind)>,
+    comparator_updates: Vec<BlockPos>,
+    power_links_examined: Cell<usize>,
+    observed_operations: Vec<GraphObservedOperation>,
+}
+
+#[cfg(test)]
+impl TestRecorder {
+    fn clear(&mut self) {
+        self.trace.clear();
+        self.callback_order.clear();
+        self.comparator_updates.clear();
+        self.observed_operations.clear();
+    }
+}
+
 enum PresentationEffect {
     BlockAction {
         position: BlockPos,
@@ -287,20 +310,24 @@ pub(crate) struct GraphBackend {
     failure: Option<GraphExecutionError>,
     /// Reported work only; simulation never reads it.
     counts: GraphExecutionCounts,
-    /// Opt-in inclusive operation timings; nested buckets overlap.
     #[cfg(test)]
-    trace: Vec<String>,
-    #[cfg(test)]
-    /// This disables detailed test traces during long episodes before formatting.
-    test_recording: bool,
-    #[cfg(test)]
-    callback_order: Vec<(BlockPos, DeliveryKind)>,
-    #[cfg(test)]
-    comparator_updates: Vec<BlockPos>,
-    #[cfg(test)]
-    power_links_examined: Cell<usize>,
-    #[cfg(test)]
-    observed_operations: Vec<GraphObservedOperation>,
+    test_recorder: TestRecorder,
+}
+
+#[cfg(test)]
+impl Deref for GraphBackend {
+    type Target = TestRecorder;
+
+    fn deref(&self) -> &Self::Target {
+        &self.test_recorder
+    }
+}
+
+#[cfg(test)]
+impl DerefMut for GraphBackend {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.test_recorder
+    }
 }
 
 #[inline]
@@ -618,17 +645,7 @@ impl GraphBackend {
             failure: None,
             counts: GraphExecutionCounts::default(),
             #[cfg(test)]
-            trace: Vec::new(),
-            #[cfg(test)]
-            test_recording: false,
-            #[cfg(test)]
-            callback_order: Vec::new(),
-            #[cfg(test)]
-            comparator_updates: Vec::new(),
-            #[cfg(test)]
-            power_links_examined: Cell::new(0),
-            #[cfg(test)]
-            observed_operations: Vec::new(),
+            test_recorder: TestRecorder::default(),
         })
     }
 
@@ -985,7 +1002,8 @@ impl GraphBackend {
         };
         #[cfg(test)]
         if self.test_recording {
-            self.callback_order.push((self.position(node), kind));
+            let position = self.position(node);
+            self.test_recorder.callback_order.push((position, kind));
         }
         match self.program.nodes()[node.index()].kind.clone() {
             CircuitNodeKind::Observer { .. } => self.update_observer(node, direction, captured),
@@ -1236,7 +1254,7 @@ impl GraphBackend {
         self.counts.piston_samples += 1;
         #[cfg(test)]
         if self.test_recording {
-            self.observed_operations.push(GraphObservedOperation::Sample {
+            self.test_recorder.observed_operations.push(GraphObservedOperation::Sample {
                 actor: self.program.nodes()[spec.node.index()].position.unwrap(),
                 extended: state.extended,
                 powered,
@@ -1275,7 +1293,7 @@ impl GraphBackend {
         {
             #[cfg(test)]
             if self.test_recording {
-                self.observed_operations.push(GraphObservedOperation::Request {
+                self.test_recorder.observed_operations.push(GraphObservedOperation::Request {
                     actor: self.program.nodes()[self.program.pistons()[request.piston.index()].node.index()]
                         .position
                         .unwrap(),
@@ -1300,7 +1318,7 @@ impl GraphBackend {
         let state = self.state.pistons[request.piston.index()];
         #[cfg(test)]
         if self.test_recording {
-            self.observed_operations.push(GraphObservedOperation::AcceptanceAttempt {
+            self.test_recorder.observed_operations.push(GraphObservedOperation::AcceptanceAttempt {
                 actor: self.program.nodes()[spec.node.index()].position.unwrap(),
                 action: request.action,
             });
@@ -1316,7 +1334,7 @@ impl GraphBackend {
                 self.accepted(request, state.extended);
                 #[cfg(test)]
                 if self.test_recording {
-                    self.observed_operations.push(GraphObservedOperation::Accepted {
+                    self.test_recorder.observed_operations.push(GraphObservedOperation::Accepted {
                         actor: self.program.nodes()[spec.node.index()].position.unwrap(),
                         action: request.action,
                     });
@@ -1334,7 +1352,7 @@ impl GraphBackend {
                 self.accepted(request, state.extended);
                 #[cfg(test)]
                 if self.test_recording {
-                    self.observed_operations.push(GraphObservedOperation::Accepted {
+                    self.test_recorder.observed_operations.push(GraphObservedOperation::Accepted {
                         actor: self.program.nodes()[spec.node.index()].position.unwrap(),
                         action: request.action,
                     });
@@ -2099,7 +2117,7 @@ impl GraphBackend {
             && !matches!(receiver, CallbackReceiver::Component(node)
                 if matches!(self.program.nodes()[node.index()].kind, CircuitNodeKind::Wire(_)))
         {
-            self.observed_operations.push(GraphObservedOperation::Callback {
+            self.test_recorder.observed_operations.push(GraphObservedOperation::Callback {
                 target: self.program.sites()[site.index()].position,
                 direction: None,
             });
@@ -2352,7 +2370,8 @@ impl GraphBackend {
     fn update_comparator(&mut self, node: NodeId) -> Result<(), GraphExecutionError> {
         #[cfg(test)]
         if self.test_recording {
-            self.comparator_updates.push(self.position(node));
+            let position = self.position(node);
+            self.test_recorder.comparator_updates.push(position);
         }
         if self.is_pending(node) {
             return Ok(());
@@ -2511,7 +2530,7 @@ impl GraphBackend {
         let mut maximum = 0;
         for link in self.program.power_links_to(target) {
             #[cfg(test)]
-            self.power_links_examined.set(self.power_links_examined.get() + 1);
+            self.test_recorder.power_links_examined.set(self.power_links_examined.get() + 1);
             if !self.guard_matches(link.guard, None) {
                 continue;
             }
@@ -2893,7 +2912,7 @@ impl GraphBackend {
             self.counts.callbacks += 1;
             #[cfg(test)]
             if self.test_recording && self.has_semantic_callback(receiver) && matches!(delivery.kind, DeliveryKind::Update { .. }) {
-                self.observed_operations.push(GraphObservedOperation::Callback {
+                self.test_recorder.observed_operations.push(GraphObservedOperation::Callback {
                     target: self.program.sites()[delivery.target.index()].position,
                     direction: match delivery.kind {
                         DeliveryKind::Update { direction } => direction,
@@ -3220,15 +3239,12 @@ impl GraphBackend {
 
     #[cfg(test)]
     pub(crate) fn clear_test_traces(&mut self) {
-        self.trace.clear();
-        self.callback_order.clear();
-        self.comparator_updates.clear();
-        self.observed_operations.clear();
+        self.test_recorder.clear();
     }
 
     #[cfg(test)]
     pub(crate) fn set_test_recording(&mut self, enabled: bool) {
-        self.test_recording = enabled;
+        self.test_recorder.test_recording = enabled;
         if !enabled {
             self.clear_test_traces();
         }

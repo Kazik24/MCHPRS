@@ -893,8 +893,11 @@ impl ServerBoundPacketHandler for MinecraftServer {
         let next_state = match handshake.next_state {
             1 => NetworkState::Status,
             2 => NetworkState::Login,
-            // TODO: Handle invalid next state
-            _ => return,
+            _ => {
+                warn!(next_state = handshake.next_state, "Rejected handshake with invalid next state");
+                client.close_connection();
+                return;
+            }
         };
         if next_state == NetworkState::Login && handshake.protocol_version != PROTOCOL_VERSION {
             warn!("A player tried to connect using the wrong version");

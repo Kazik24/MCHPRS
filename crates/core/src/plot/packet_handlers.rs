@@ -258,8 +258,7 @@ impl Plot {
                     self.players[player].worldedit_set_second_position(block_pos);
                 }
                 cancel(self);
-                // FIXME: Because the client sends another packet after this for the left hand for most blocks,
-                // redpiler will get reset anyways.
+                // FIXME The client's off-hand follow-up can still reach normal placement handling and reset the Redpiler.
                 return;
             }
         }

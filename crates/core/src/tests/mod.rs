@@ -204,7 +204,7 @@ fn run_mandelbrot_chungus_compiled_to_interpreted() {
     compiler.reset(&mut plot, bounds);
 
     for _ in 0..28 * TICK_MUL {
-        // todo when transferring from compiled to interpreted, chungus stops running after around 30 ticks
+        // TODO Investigate why this circuit stops after about 30 interpreter ticks following the graph reset.
         // println!("{}", plot.to_be_ticked.len());
         plot.tick_interpreted();
     }

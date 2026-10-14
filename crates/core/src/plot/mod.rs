@@ -84,7 +84,7 @@ pub const PLOT_BLOCK_HEIGHT: i32 = PLOT_SECTIONS as i32 * 16;
 pub struct Plot {
     #[cfg(test)]
     transient_test_fixture: bool,
-    //todo plots are worlds on its own, when player enters the plot, all network packets are dispatched by that plot
+    // TODO Route plot-specific world packets through the active plot when a player enters it.
     pub world: PlotWorld,
     pub players: Vec<Player>,
     pub redpiler: Compiler,
@@ -115,10 +115,12 @@ pub struct Plot {
     running: bool,
     /// If true, the plot will remain running even if no players are on for a long time.
     always_running: bool,
-    auto_redpiler: bool, //todo disables/enables automatic redpiler engaging
+    /// Whether the update loop may automatically compile eligible plots.
+    auto_redpiler: bool,
 
     owner: Option<u128>,
-    async_rt: Runtime, //todo use one runtime for all plots since it's heavy object used just for some small requests
+    /// Runtime entered by this plot's worker for its async helpers.
+    async_rt: Runtime,
     scoreboard: Scoreboard,
     last_sidebar_update: Instant,
     /// The last time player positions were reported to the RedBox proxy.
@@ -1252,8 +1254,7 @@ impl Plot {
                 for z in nz..=pz {
                     let was_loaded = Self::get_chunk_distance(x, z, last_chunk_x, last_chunk_z) <= view_distance as u32;
                     let should_be_loaded = Self::get_chunk_distance(x, z, chunk_x, chunk_z) <= view_distance as u32;
-                    // todo make this little bit async, so that chunks dont load all at the same time
-                    // causing lag spikes in client when there is a massive redstone contraption on plot
+                    // TODO Spread chunk loading over time to avoid client hitches when a large view is loaded.
                     self.set_chunk_loaded_at_player(player_idx, x, z, was_loaded, should_be_loaded);
                 }
             }
@@ -1290,7 +1291,7 @@ impl Plot {
         self.scoreboard.set_redpiler_options(&self.players, &options);
 
         let bounds = self.world.get_corners();
-        // TODO: use monitor
+        // Compilation currently uses a default monitor whose progress is not shown to players.
         let monitor = Default::default();
         let mut staged_world = self.world.activation_snapshot();
         let open_barrels: HashSet<_> = self

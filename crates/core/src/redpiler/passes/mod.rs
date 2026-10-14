@@ -17,11 +17,12 @@ pub(crate) trait GraphPass {
     fn validate_input(&self, graph: &CompileGraph) -> Result<(), String>;
     fn run(&self, graph: &mut CompileGraph, context: &PassContext<'_>) -> Result<(), String>;
 
-    // TODO: I do not like these special functions on passes, why they are required?
+    /// Return true only when the pass keeps these derived records valid.
     fn preserves_dust_paths(&self) -> bool {
         false
     }
 
+    /// Return true only when the pass keeps the callback indices valid.
     fn preserves_turbo_callback_indices(&self) -> bool {
         false
     }
@@ -141,19 +142,12 @@ pub(crate) fn run_graph_pipeline(
         let name = item.pass.name();
         let before = GraphCounts::of(graph);
 
-        // TODO PassStatistics::Default() or new_disabled()
         if !item.enabled {
-            monitor.record_transformation(PassStatistics {
-                name,
-                enabled: false,
-                before,
-                after: before,
-                duration: std::time::Duration::ZERO,
-            });
+            monitor.record_transformation(PassStatistics::disabled(name, before));
             monitor.inc_progress();
             continue;
         }
-        // TODO - I do not like these 'preserve' function callbacks on passes. makes stuff unreadable. Should create an nice structured way to declare what should do what or create 'dummy' pass.
+        // Passes drop derived records by default and must opt in when they preserve their IDs.
         if !item.pass.preserves_dust_paths() && !graph.dust_paths.is_empty() {
             graph.dust_paths.clear();
         }
